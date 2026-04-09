@@ -560,14 +560,25 @@ CRITICAL RULES:
 - For Network dimension: use FREQUENCY data only. Never reference DM content.
 - Geographic data should note both CURRENT location and HISTORICAL journey.
 - Opinions should track SHIFTS — what changed and what triggered the change.
-- When a PREVIOUS SYNTHESIS is provided, build on it: keep correct information, enrich with new data, refine language.
+
+INCREMENTAL UPDATE RULES (when PREVIOUS SYNTHESIS is provided):
+- Your job is to COMPLEMENT and ENRICH the previous synthesis, NOT replace it.
+- NEVER drop existing information unless an admin correction explicitly says to remove it.
+- Keep ALL existing career stages, locations, domains, opinions, traits — add to them.
+- If new data provides more detail about something already in the synthesis, enrich the existing entry.
+- If new data introduces something not in the previous synthesis, add it as a new entry.
+- Merging means the output should be a SUPERSET of previous + new, minus admin corrections.
 
 ADMIN CORRECTIONS:
 - If an ADMIN CORRECTIONS section is provided, treat it as ABSOLUTE GROUND TRUTH.
 - Admin corrections override ALL other data sources including the raw profile and previous synthesis.
-- If an admin says "this person does NOT have X experience", you MUST remove X entirely.
-- If an admin says "this should be Y instead of Z", use Y.
+- If an admin says "REMOVE/FIX", you MUST remove or correct that information entirely.
 - Never re-infer information that an admin has explicitly corrected or removed.
+
+MISSING INFORMATION:
+- If a MISSING INFORMATION section is provided, the admin has confirmed these facts are true.
+- You MUST include this information in the relevant dimension even if the raw data doesn't mention it.
+- Treat missing information hints as first-party facts — they are authoritative.
 
 PRIVACY:
 - Never mention specific community or network names in output.
@@ -658,8 +669,9 @@ def _format_prior_synthesis(existing_kb: Dict[str, Any]) -> str:
 
 
 def _extract_admin_corrections(existing_kb: Dict[str, Any]) -> str:
-    """Extract admin feedback marked as 'needs_correction' into a text block."""
+    """Extract admin feedback (corrections and missing info) into a text block."""
     corrections = []
+    missing = []
     for key, doc in existing_kb.items():
         fb = doc.get("adminFeedback")
         if not fb or not isinstance(fb, dict):
@@ -668,15 +680,24 @@ def _extract_admin_corrections(existing_kb: Dict[str, Any]) -> str:
         note = fb.get("note", "").strip()
         nt = doc.get("noteType", key)
         if status == "needs_correction" and note:
-            corrections.append(f"- {nt}: {note}")
+            corrections.append(f"- {nt}: REMOVE/FIX: {note}")
         elif status == "needs_correction":
             corrections.append(f"- {nt}: marked as needing correction (no specific detail provided)")
-    if not corrections:
-        return ""
-    return (
-        "--- ADMIN CORRECTIONS (treat as ABSOLUTE GROUND TRUTH, override all other data) ---\n"
-        + "\n".join(corrections)
-    )
+        elif status == "missing_info" and note:
+            missing.append(f"- {nt}: ADD THIS: {note}")
+
+    parts = []
+    if corrections:
+        parts.append(
+            "--- ADMIN CORRECTIONS (ABSOLUTE GROUND TRUTH — override all other data) ---\n"
+            + "\n".join(corrections)
+        )
+    if missing:
+        parts.append(
+            "--- MISSING INFORMATION (admin confirmed this is true — MUST be included) ---\n"
+            + "\n".join(missing)
+        )
+    return "\n\n".join(parts)
 
 
 def _assemble_raw_text_for_synthesis(

@@ -83,7 +83,7 @@ export default function KnowledgeBaseGraph({ username, open, onClose }: { userna
   const [selectedNote, setSelectedNote] = useState<string | null>(null)
   const [activeView, setActiveView] = useState<'graph' | 'notes'>('notes')
   const [feedbackNote, setFeedbackNote] = useState('')
-  const [feedbackStatus, setFeedbackStatus] = useState<'approved' | 'needs_correction'>('approved')
+  const [feedbackStatus, setFeedbackStatus] = useState<'approved' | 'needs_correction' | 'missing_info'>('approved')
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false)
 
   const loadKnowledge = useCallback(async () => {
@@ -143,7 +143,7 @@ export default function KnowledgeBaseGraph({ username, open, onClose }: { userna
   }
 
   const submitFeedback = async (noteType: string) => {
-    if (feedbackStatus === 'needs_correction' && !feedbackNote.trim()) return
+    if ((feedbackStatus === 'needs_correction' || feedbackStatus === 'missing_info') && !feedbackNote.trim()) return
     setFeedbackSubmitting(true)
     try {
       const resp = await fetch(`/api/admin/knowledge_base/${encodeURIComponent(username)}/feedback`, {
@@ -345,15 +345,17 @@ export default function KnowledgeBaseGraph({ username, open, onClose }: { userna
                       <div className={`mt-3 px-3 py-2 rounded-lg text-xs border ${
                         selected.adminFeedback.status === 'needs_correction'
                           ? 'bg-red-500/10 border-red-500/20 text-red-300/80'
+                          : selected.adminFeedback.status === 'missing_info'
+                          ? 'bg-amber-500/10 border-amber-500/20 text-amber-300/80'
                           : 'bg-green-500/10 border-green-500/20 text-green-300/80'
                       }`}>
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className="font-medium">
-                            {selected.adminFeedback.status === 'needs_correction' ? 'Correction pending' : 'Approved'}
-                          </span>
-                        </div>
+                        <span className="font-medium">
+                          {selected.adminFeedback.status === 'needs_correction' ? 'Correction pending'
+                            : selected.adminFeedback.status === 'missing_info' ? 'Missing information flagged'
+                            : 'Approved'}
+                        </span>
                         {selected.adminFeedback.note && (
-                          <p className="text-white/60 mt-0.5">{String(selected.adminFeedback.note)}</p>
+                          <p className="text-white/60 mt-1">{String(selected.adminFeedback.note)}</p>
                         )}
                       </div>
                     )}
@@ -363,7 +365,7 @@ export default function KnowledgeBaseGraph({ username, open, onClose }: { userna
                       <div className="flex gap-1.5 mb-2">
                         <button
                           onClick={() => setFeedbackStatus('approved')}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
                             feedbackStatus === 'approved'
                               ? 'bg-green-500/20 text-green-400 border border-green-500/30'
                               : 'bg-white/5 text-white/40 border border-white/10 hover:bg-white/10'
@@ -371,20 +373,37 @@ export default function KnowledgeBaseGraph({ username, open, onClose }: { userna
                         >Approve</button>
                         <button
                           onClick={() => setFeedbackStatus('needs_correction')}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
                             feedbackStatus === 'needs_correction'
                               ? 'bg-red-500/20 text-red-400 border border-red-500/30'
                               : 'bg-white/5 text-white/40 border border-white/10 hover:bg-white/10'
                           }`}
-                        >Needs Correction</button>
+                        >Wrong Info</button>
+                        <button
+                          onClick={() => setFeedbackStatus('missing_info')}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                            feedbackStatus === 'missing_info'
+                              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                              : 'bg-white/5 text-white/40 border border-white/10 hover:bg-white/10'
+                          }`}
+                        >Missing Info</button>
                       </div>
                       {feedbackStatus === 'needs_correction' && (
                         <textarea
                           value={feedbackNote}
                           onChange={e => setFeedbackNote(e.target.value)}
-                          placeholder="What's wrong and what should it say instead? (required)"
-                          rows={3}
+                          placeholder="What's wrong? What should it say instead? (required)"
+                          rows={2}
                           className="w-full px-2.5 py-2 bg-white/5 border border-red-500/20 rounded-lg text-xs text-white/80 placeholder-white/25 focus:outline-none focus:border-red-500/40 resize-none mb-2"
+                        />
+                      )}
+                      {feedbackStatus === 'missing_info' && (
+                        <textarea
+                          value={feedbackNote}
+                          onChange={e => setFeedbackNote(e.target.value)}
+                          placeholder='What info is missing? e.g. "Spent 7 years at Deloitte in consulting" (required)'
+                          rows={2}
+                          className="w-full px-2.5 py-2 bg-white/5 border border-amber-500/20 rounded-lg text-xs text-white/80 placeholder-white/25 focus:outline-none focus:border-amber-500/40 resize-none mb-2"
                         />
                       )}
                       {feedbackStatus === 'approved' && (
@@ -397,9 +416,9 @@ export default function KnowledgeBaseGraph({ username, open, onClose }: { userna
                       )}
                       <button
                         onClick={() => submitFeedback(selected.noteType)}
-                        disabled={feedbackSubmitting || (feedbackStatus === 'needs_correction' && !feedbackNote.trim())}
+                        disabled={feedbackSubmitting || ((feedbackStatus === 'needs_correction' || feedbackStatus === 'missing_info') && !feedbackNote.trim())}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                          feedbackSubmitting || (feedbackStatus === 'needs_correction' && !feedbackNote.trim())
+                          feedbackSubmitting || ((feedbackStatus === 'needs_correction' || feedbackStatus === 'missing_info') && !feedbackNote.trim())
                             ? 'bg-white/5 text-white/20 cursor-not-allowed'
                             : 'bg-[#6366f1]/20 text-[#a5b4fc] border border-[#6366f1]/30 hover:bg-[#6366f1]/30'
                         }`}

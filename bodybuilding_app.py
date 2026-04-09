@@ -8123,7 +8123,12 @@ def _merge_career_history_lists(new_hist: list, old_hist: list) -> list:
 
 
 def _merge_analyses(existing: dict, new: dict) -> dict:
-    """Merge a new Grok analysis into an existing one, preserving richer data."""
+    """Merge a new Grok analysis into an existing one, preserving richer data.
+
+    Core principle: new data COMPLEMENTS existing — never drops fields that
+    the new run simply didn't return.  Only overwrites a field when the new
+    value is non-empty and at least as rich as the old one.
+    """
     if not existing:
         return new
     if not new:
@@ -8134,31 +8139,65 @@ def _merge_analyses(existing: dict, new: dict) -> dict:
     DEPTH_RANK = {'quick': 0, 'standard': 1, 'deep': 2}
 
     for key in ('summary', 'observations', 'networkingValue', 'dataQuality'):
-        if new.get(key):
-            merged[key] = new[key]
+        new_val = new.get(key)
+        if new_val and (not merged.get(key) or len(str(new_val)) >= len(str(merged.get(key, ''))) * 0.7):
+            merged[key] = new_val
 
     if 'notes' in new:
         merged['notes'] = new['notes']
 
     if new.get('identity'):
-        merged['identity'] = new['identity']
+        old_id = existing.get('identity') or {}
+        new_id = new['identity'] or {}
+        merged_id = dict(old_id)
+        for k, v in new_id.items():
+            if v:
+                if k == 'roles' and isinstance(v, list):
+                    old_roles = set(old_id.get('roles') or [])
+                    merged_id['roles'] = list(old_roles | set(v))
+                else:
+                    merged_id[k] = v
+        merged['identity'] = merged_id
 
     if new.get('professional'):
         old_pro = existing.get('professional') or {}
         new_pro = new['professional'] or {}
-        merged_pro = dict(new_pro)
-        # Merge careerHistory: light key dedup, prefer Unknown over guessed ~N years, collapse same-employer near-dupes
+        merged_pro = dict(old_pro)
+        for k, v in new_pro.items():
+            if k == 'careerHistory':
+                continue
+            if v and k not in merged_pro:
+                merged_pro[k] = v
+            elif v and k in merged_pro:
+                old_v = merged_pro[k]
+                if isinstance(v, str) and isinstance(old_v, str):
+                    if len(v) >= len(old_v) * 0.7:
+                        merged_pro[k] = v
+                elif isinstance(v, list) and isinstance(old_v, list):
+                    merged_pro[k] = v if len(v) >= len(old_v) else old_v
+                elif isinstance(v, dict) and isinstance(old_v, dict):
+                    merged_sub = dict(old_v)
+                    merged_sub.update({sk: sv for sk, sv in v.items() if sv})
+                    merged_pro[k] = merged_sub
+                else:
+                    merged_pro[k] = v
         old_history = old_pro.get('careerHistory') or []
         new_history = new_pro.get('careerHistory') or []
         merged_pro['careerHistory'] = _merge_career_history_lists(new_history, old_history)
-        # Keep longer webFindings if new one is shorter
-        old_wf = old_pro.get('webFindings', '') or ''
-        new_wf = new_pro.get('webFindings', '') or ''
-        if len(old_wf) > len(new_wf) * 1.5 and new_wf:
-            merged_pro['webFindings'] = old_wf
         merged['professional'] = merged_pro
+
     if new.get('personal'):
-        merged['personal'] = new['personal']
+        old_personal = existing.get('personal') or {}
+        new_personal = new['personal'] or {}
+        merged_personal = dict(old_personal)
+        for k, v in new_personal.items():
+            if v:
+                old_v = merged_personal.get(k)
+                if not old_v or (isinstance(v, str) and len(v) >= len(str(old_v)) * 0.7):
+                    merged_personal[k] = v
+                elif isinstance(v, (list, dict)):
+                    merged_personal[k] = v
+        merged['personal'] = merged_personal
 
     old_interests = existing.get('interests') or {}
     new_interests = new.get('interests') or {}
@@ -8174,7 +8213,9 @@ def _merge_analyses(existing: dict, new: dict) -> dict:
     merged['traits'] = list(old_traits | new_traits)
 
     if new.get('conversationStarters'):
-        merged['conversationStarters'] = new['conversationStarters']
+        old_starters = set(existing.get('conversationStarters') or [])
+        new_starters = set(new['conversationStarters'])
+        merged['conversationStarters'] = list(old_starters | new_starters)
 
     old_depth = existing.get('analysisDepth', 'quick')
     new_depth = new.get('analysisDepth', 'quick')
