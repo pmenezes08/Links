@@ -6,6 +6,10 @@ type SteveProfilePayload = {
   username: string
   analysis: Record<string, unknown>
   lastUpdated?: string | null
+  profilingExternalSources?: {
+    updatedAt?: string
+    items?: Array<{ url: string; kind: string; postDate?: string; success: boolean; detail?: string }>
+  } | null
 }
 
 /** Fixed order for the user-facing Steve page (matches product spec). */
@@ -426,6 +430,42 @@ export default function SteveKnowsMe() {
               ))
             )}
           </section>
+
+          {profile.profilingExternalSources?.items && profile.profilingExternalSources.items.length > 0 ? (
+            <section className="rounded-xl border border-white/10 p-4 space-y-3">
+              <div className="font-semibold text-cyan-400/90 text-sm">External sources Steve consulted</div>
+              <p className="text-[11px] text-[#9fb0b5]">
+                Links from your recent posts that were fetched (articles, transcripts, or audio) to build this view.
+              </p>
+              {profile.profilingExternalSources.updatedAt ? (
+                <div className="text-[10px] text-white/35">
+                  Updated {new Date(profile.profilingExternalSources.updatedAt).toLocaleString()}
+                </div>
+              ) : null}
+              <ul className="space-y-2 text-[11px]">
+                {profile.profilingExternalSources.items.map((item, idx) => (
+                  <li key={`${item.url}-${idx}`} className="border-b border-white/5 last:border-0 pb-2 last:pb-0">
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#4db6ac] hover:underline break-all"
+                    >
+                      {item.url}
+                    </a>
+                    <div className="flex flex-wrap gap-1.5 mt-1 items-center text-white/45">
+                      <span className="text-[9px] uppercase tracking-wide">{item.kind}</span>
+                      {item.postDate ? <span>· post {item.postDate}</span> : null}
+                      <span className={item.success ? 'text-green-400/90' : 'text-amber-400/90'}>
+                        · {item.success ? 'used' : 'not used'}
+                      </span>
+                    </div>
+                    {item.detail ? <div className="text-[10px] text-white/35 mt-0.5">{item.detail}</div> : null}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           <p className="text-xs text-orange-300/90">
             If something is completely off, tap <strong>This is not me</strong>, update your profile if needed, then use the{' '}

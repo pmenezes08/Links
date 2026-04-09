@@ -752,8 +752,17 @@ def onboarding_enrich_profile():
             activity=activity,
             onboarding_context=onboarding_context,
         )
+        profiling_external_sources_payload = None
         try:
-            enrich_block, ingest_errors = enrich_shared_activity_for_profile(activity, "standard")
+            from datetime import datetime as _dt
+
+            enrich_block, ingest_errors, external_sources = enrich_shared_activity_for_profile(
+                activity or {}, "standard"
+            )
+            profiling_external_sources_payload = {
+                "updatedAt": _dt.utcnow().isoformat() + "Z",
+                "items": external_sources,
+            }
             if enrich_block:
                 profile_text = profile_text + "\n\n" + enrich_block
             if ingest_errors:
@@ -776,22 +785,29 @@ def onboarding_enrich_profile():
         existing_profile = get_steve_user_profile(username)
         if existing_profile and existing_profile.get("analysis"):
             from bodybuilding_app import _merge_analyses, _get_steve_profiling_write_payloads
+
             merged = _merge_analyses(existing_profile.get("analysis", {}), analysis)
-            write_steve_user_profile(
-                username,
-                analysis=merged,
-                **_get_steve_profiling_write_payloads(username),
-            )
+            _wk = dict(_get_steve_profiling_write_payloads(username))
+            if profiling_external_sources_payload is not None:
+                _wk["profiling_external_sources"] = profiling_external_sources_payload
+            write_steve_user_profile(username, analysis=merged, **_wk)
         else:
             try:
                 from bodybuilding_app import _get_steve_profiling_write_payloads
-                write_steve_user_profile(
-                    username,
-                    analysis=analysis,
-                    **_get_steve_profiling_write_payloads(username),
-                )
+
+                _wk = dict(_get_steve_profiling_write_payloads(username))
+                if profiling_external_sources_payload is not None:
+                    _wk["profiling_external_sources"] = profiling_external_sources_payload
+                write_steve_user_profile(username, analysis=analysis, **_wk)
             except Exception:
-                write_steve_user_profile(username, analysis=analysis)
+                if profiling_external_sources_payload is not None:
+                    write_steve_user_profile(
+                        username,
+                        analysis=analysis,
+                        profiling_external_sources=profiling_external_sources_payload,
+                    )
+                else:
+                    write_steve_user_profile(username, analysis=analysis)
 
         # Extract review cards for the user
         cards = _build_review_cards(analysis)

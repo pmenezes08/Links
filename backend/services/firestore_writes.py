@@ -353,10 +353,14 @@ def write_steve_user_profile(
     analysis: dict = None,
     profiling_platform_activity: dict = None,
     profiling_shared_externals: dict = None,
+    profiling_external_sources: dict = None,
 ):
     """Write a Grok-analyzed user profile to Firestore.
     Also invalidates the cached context string and triggers a background
     embedding recomputation.
+
+    profiling_external_sources: { updatedAt: iso, items: [{ url, kind, postDate, success, detail }] }
+    Set when standard/deep enrichment runs; omit (None) to leave previous value on merge.
     """
     if not USE_FIRESTORE_WRITES:
         return
@@ -375,6 +379,8 @@ def write_steve_user_profile(
         if profiling_shared_externals is not None:
             profile_data['profilingSharedExternals'] = profiling_shared_externals
             profile_data['profilingContextUpdatedAt'] = now
+        if profiling_external_sources is not None:
+            profile_data['profilingExternalSources'] = profiling_external_sources
 
         fs.collection('steve_user_profiles').document(username).set(profile_data, merge=True)
         logger.debug(f"Firestore Steve profile written for {username}")

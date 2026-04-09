@@ -358,6 +358,7 @@ def list_steve_user_profiles(limit: int = 500):
                 'lastUpdated': _ts_to_str(p.get('lastUpdated')),
                 'profilingPlatformActivity': p.get('profilingPlatformActivity'),
                 'profilingSharedExternals': p.get('profilingSharedExternals'),
+                'profilingExternalSources': p.get('profilingExternalSources'),
                 'profilingContextUpdatedAt': _ts_to_str(p.get('profilingContextUpdatedAt')),
             })
         return profiles

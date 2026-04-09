@@ -262,6 +262,11 @@ export default function AdminDashboard() {
       _userReview?: { status: 'pending' | 'confirmed' | 'edited' | 'disputed'; at?: string; notes?: string }
     }
     lastUpdated?: string
+    /** URLs fetched for enrichment (articles, YouTube, audio) on last standard/deep run */
+    profilingExternalSources?: {
+      updatedAt?: string
+      items?: Array<{ url: string; kind: string; postDate?: string; success: boolean; detail?: string }>
+    } | null
   }
   const [steveProfiles, setSteveProfiles] = useState<SteveProfile[]>([])
   const [steveProfilesLoading, setSteveProfilesLoading] = useState(false)
@@ -498,7 +503,12 @@ export default function AdminDashboard() {
       if (data?.success && data.analysis) {
         setSteveProfiles(prev => prev.map(p =>
           p.username === targetUsername
-            ? { ...p, analysis: data.analysis, lastUpdated: new Date().toISOString() }
+            ? {
+                ...p,
+                analysis: data.analysis,
+                lastUpdated: new Date().toISOString(),
+                profilingExternalSources: data.profilingExternalSources ?? p.profilingExternalSources,
+              }
             : p
         ))
       } else {
@@ -532,7 +542,14 @@ export default function AdminDashboard() {
         const data = await res.json()
         if (data?.success && data.analysis) {
           setSteveProfiles(prev => prev.map(p =>
-            p.username === u.username ? { ...p, analysis: data.analysis, lastUpdated: new Date().toISOString() } : p
+            p.username === u.username
+              ? {
+                  ...p,
+                  analysis: data.analysis,
+                  lastUpdated: new Date().toISOString(),
+                  profilingExternalSources: data.profilingExternalSources ?? p.profilingExternalSources,
+                }
+              : p
           ))
         }
       } catch {}
@@ -2434,6 +2451,52 @@ export default function AdminDashboard() {
                                     </div>
                                     <div className="text-xs text-amber-200/70 leading-relaxed bg-amber-500/5 rounded-lg px-3.5 py-2.5 border border-amber-500/15 whitespace-pre-wrap">
                                       {a.notes}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {profile.profilingExternalSources?.items && profile.profilingExternalSources.items.length > 0 && (
+                                  <div>
+                                    <div className="text-[10px] text-cyan-400/90 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                                      <i className="fa-solid fa-link" />
+                                      External sources
+                                    </div>
+                                    <div className="text-[11px] text-white/65 space-y-1.5 bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5">
+                                      {profile.profilingExternalSources.updatedAt && (
+                                        <div className="text-[10px] text-white/35 mb-1">
+                                          Last enriched: {new Date(profile.profilingExternalSources.updatedAt).toLocaleString()}
+                                        </div>
+                                      )}
+                                      <ul className="space-y-2">
+                                        {profile.profilingExternalSources.items.map((item, idx) => (
+                                          <li key={`${item.url}-${idx}`} className="border-b border-white/5 last:border-0 pb-2 last:pb-0">
+                                            <a
+                                              href={item.url}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="text-[#4db6ac] hover:underline break-all"
+                                            >
+                                              {item.url}
+                                            </a>
+                                            <div className="flex flex-wrap gap-1.5 mt-1 items-center">
+                                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-white/50">{item.kind}</span>
+                                              {item.postDate ? (
+                                                <span className="text-[9px] text-white/30">Post {item.postDate}</span>
+                                              ) : null}
+                                              <span
+                                                className={`text-[9px] px-1.5 py-0.5 rounded ${
+                                                  item.success ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'
+                                                }`}
+                                              >
+                                                {item.success ? 'Included' : 'Not included'}
+                                              </span>
+                                            </div>
+                                            {item.detail ? (
+                                              <div className="text-[10px] text-white/40 mt-0.5">{item.detail}</div>
+                                            ) : null}
+                                          </li>
+                                        ))}
+                                      </ul>
                                     </div>
                                   </div>
                                 )}

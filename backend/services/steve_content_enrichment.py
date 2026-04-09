@@ -199,9 +199,28 @@ def _classify_url(url: str) -> str:
     return "article"
 
 
-def _enrich_single_url(url: str, user_caption: str, post_date: str) -> Tuple[str, Optional[Dict[str, str]]]:
+def _source_record(
+    url: str,
+    kind: str,
+    post_date: str,
+    *,
+    success: bool,
+    detail: Optional[str] = None,
+) -> Dict[str, Any]:
+    return {
+        "url": url,
+        "kind": kind,
+        "postDate": (post_date or "")[:10],
+        "success": success,
+        "detail": detail or "",
+    }
+
+
+def _enrich_single_url(
+    url: str, user_caption: str, post_date: str
+) -> Tuple[str, Optional[Dict[str, str]], Dict[str, Any]]:
     """
-    Returns (block_text_for_prompt, error_record_or_none).
+    Returns (block_text_for_prompt, error_record_or_none, source_record_for_firestore).
     error_record: {"url", "error"}
     """
     kind = _classify_url(url)
@@ -211,35 +230,65 @@ def _enrich_single_url(url: str, user_caption: str, post_date: str) -> Tuple[str
     if kind == "youtube":
         vid = extract_youtube_video_id(url)
         if not vid:
-            return "", {"url": url, "error": "Could not parse YouTube video id"}
+            return (
+                "",
+                {"url": url, "error": "Could not parse YouTube video id"},
+                _source_record(url, kind, post_date, success=False, detail="Could not parse YouTube video id"),
+            )
         text, err = _fetch_youtube_transcript(vid)
         if err or not text:
-            return "", {"url": url, "error": err or "No transcript"}
+            return (
+                "",
+                {"url": url, "error": err or "No transcript"},
+                _source_record(url, kind, post_date, success=False, detail=err or "No transcript"),
+            )
         body = _truncate(text, MAX_CHARS_PER_SOURCE)
         block = f"{headline}{cap}\n--- YouTube transcript (excerpt) ---\n{body}\n"
-        return block, None
+        return (
+            block,
+            None,
+            _source_record(url, kind, post_date, success=True, detail="YouTube transcript retrieved"),
+        )
 
     if kind == "podcast_platform":
-        return "", {
-            "url": url,
-            "error": "Podcast page — automatic transcript not available for this host (not a direct audio file)",
-        }
+        msg = "Podcast page — automatic transcript not available for this host (not a direct audio file)"
+        return (
+            "",
+            {"url": url, "error": msg},
+            _source_record(url, kind, post_date, success=False, detail=msg),
+        )
 
     if kind == "direct_audio":
         text, err = _whisper_direct_audio_url(url)
         if err or not text:
-            return "", {"url": url, "error": err or "Whisper failed"}
+            return (
+                "",
+                {"url": url, "error": err or "Whisper failed"},
+                _source_record(url, kind, post_date, success=False, detail=err or "Whisper failed"),
+            )
         body = _truncate(text, MAX_CHARS_PER_SOURCE)
         block = f"{headline}{cap}\n--- Audio transcription (Whisper excerpt) ---\n{body}\n"
-        return block, None
+        return (
+            block,
+            None,
+            _source_record(url, kind, post_date, success=True, detail="Audio transcribed (Whisper)"),
+        )
 
     # article / generic HTML
     text, err = _fetch_article_text(url)
     if err or not text:
-        return "", {"url": url, "error": err or "Article extraction failed"}
+        return (
+            "",
+            {"url": url, "error": err or "Article extraction failed"},
+            _source_record(url, kind, post_date, success=False, detail=err or "Article extraction failed"),
+        )
     body = _truncate(text, MAX_CHARS_PER_SOURCE)
     block = f"{headline}{cap}\n--- Article text (excerpt) ---\n{body}\n"
-    return block, None
+    return (
+        block,
+        None,
+        _source_record(url, kind, post_date, success=True, detail="Article text retrieved"),
+    )
 
 
 def _collect_urls_from_activity(activity: Dict[str, Any]) -> List[Tuple[str, str, str]]:
@@ -271,20 +320,22 @@ def _collect_urls_from_activity(activity: Dict[str, Any]) -> List[Tuple[str, str
 def enrich_shared_activity_for_profile(
     activity: Optional[Dict[str, Any]],
     depth: str,
-) -> Tuple[str, List[Dict[str, str]]]:
+) -> Tuple[str, List[Dict[str, str]], List[Dict[str, Any]]]:
     """
-    Build an extra text block for Grok plus a list of ingestion errors.
+    Build an extra text block for Grok, ingestion errors, and external source records.
+
+    external_sources: one entry per URL attempted (order = processing order), for UI / Firestore.
 
     Only standard/deep should call this (caller responsibility).
     """
     if not activity or depth not in ("standard", "deep"):
-        return "", []
+        return "", [], []
 
     items = _collect_urls_from_activity(activity)
     if not items:
-        return "", []
+        return "", [], []
 
-    results_by_url: Dict[str, Tuple[str, Optional[Dict[str, str]]]] = {}
+    results_by_url: Dict[str, Tuple[str, Optional[Dict[str, str]], Dict[str, Any]]] = {}
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL_FETCHES) as ex:
         fmap = {ex.submit(_enrich_single_url, u, c, d): u for u, c, d in items}
         for fut in as_completed(fmap):
@@ -292,31 +343,62 @@ def enrich_shared_activity_for_profile(
             try:
                 results_by_url[u] = fut.result()
             except Exception as e:
-                results_by_url[u] = ("", {"url": u, "error": f"Unexpected: {e!s}"})
+                results_by_url[u] = (
+                    "",
+                    {"url": u, "error": f"Unexpected: {e!s}"},
+                    _source_record(
+                        u,
+                        _classify_url(u),
+                        "",
+                        success=False,
+                        detail=f"Unexpected: {e!s}",
+                    ),
+                )
 
     ordered_blocks: List[str] = []
     errors: List[Dict[str, str]] = []
+    external_sources: List[Dict[str, Any]] = []
     total_chars = 0
 
-    for u, _cap, _d in items:
-        block, err = results_by_url.get(u, ("", {"url": u, "error": "missing result"}))
+    for u, _cap, d in items:
+        tup = results_by_url.get(u)
+        if not tup:
+            errors.append({"url": u, "error": "missing result"})
+            external_sources.append(
+                _source_record(u, _classify_url(u), d, success=False, detail="missing result")
+            )
+            continue
+        block, err, src = tup
         if err:
             errors.append(err)
+            external_sources.append(src)
             continue
         if not block:
+            external_sources.append(src)
             continue
         if total_chars + len(block) > MAX_TOTAL_ENRICHMENT_CHARS:
-            errors.append({"url": u, "error": "Skipped: total enrichment size limit reached"})
+            err_msg = "Skipped: total enrichment size limit reached"
+            errors.append({"url": u, "error": err_msg})
+            external_sources.append(
+                {
+                    **src,
+                    "success": False,
+                    "detail": "Not included in prompt: total enrichment size limit",
+                }
+            )
             continue
         ordered_blocks.append(block)
         total_chars += len(block)
+        external_sources.append(src)
 
-    if not ordered_blocks and not errors:
-        return "", []
+    if not ordered_blocks:
+        if errors:
+            return "", errors, external_sources
+        return "", [], external_sources
 
     header = (
         "--- ENRICHED SHARED LINKS (full text or transcript excerpts from the last "
         f"{STEVE_ENRICH_MONTHS} months; use with user captions) ---\n"
     )
     body = "\n".join(ordered_blocks)
-    return header + body, errors
+    return header + body, errors, external_sources

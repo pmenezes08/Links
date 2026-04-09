@@ -7241,6 +7241,7 @@ def admin_steve_profiles():
                 'display_name': u['display_name'],
                 'analysis': _migrate_analysis_to_v3(raw_analysis) if raw_analysis else {},
                 'lastUpdated': existing.get('lastUpdated') if existing else None,
+                'profilingExternalSources': existing.get('profilingExternalSources') if existing else None,
             })
 
         return jsonify({'success': True, 'profiles': profiles, 'total': len(profiles)})
@@ -7290,11 +7291,18 @@ def _execute_steve_profile_analysis(target_username: str, depth: str = 'standard
             activity=activity,
             onboarding_context=onboarding_context,
         )
-        if depth in ('standard', 'deep') and activity:
+        profiling_external_sources_payload = None
+        if depth in ('standard', 'deep'):
             try:
                 from backend.services.steve_content_enrichment import enrich_shared_activity_for_profile
 
-                enrich_block, ingest_errors = enrich_shared_activity_for_profile(activity, depth)
+                enrich_block, ingest_errors, external_sources = enrich_shared_activity_for_profile(
+                    activity or {}, depth
+                )
+                profiling_external_sources_payload = {
+                    'updatedAt': datetime.utcnow().isoformat() + 'Z',
+                    'items': external_sources,
+                }
                 if enrich_block:
                     profile_text = profile_text + "\n\n" + enrich_block
                 if ingest_errors:
@@ -7324,13 +7332,21 @@ def _execute_steve_profile_analysis(target_username: str, depth: str = 'standard
         else:
             final = _merge_analyses(existing_analysis, analysis)
 
+        write_kwargs = dict(_get_steve_profiling_write_payloads(target_username))
+        if profiling_external_sources_payload is not None:
+            write_kwargs['profiling_external_sources'] = profiling_external_sources_payload
         write_steve_user_profile(
             target_username,
             analysis=final,
-            **_get_steve_profiling_write_payloads(target_username),
+            **write_kwargs,
         )
 
-        return True, {'username': target_username, 'analysis': final}, None
+        refreshed = get_steve_user_profile(target_username) or {}
+        return True, {
+            'username': target_username,
+            'analysis': final,
+            'profilingExternalSources': refreshed.get('profilingExternalSources'),
+        }, None
     except Exception as e:
         logger.error(f"_execute_steve_profile_analysis failed for {target_username}: {e}", exc_info=True)
         return False, str(e), 500
@@ -7684,6 +7700,7 @@ def api_profile_steve_analysis():
             'username': username,
             'analysis': filtered_analysis,
             'lastUpdated': _ts_to_str(profile.get('lastUpdated')),
+            'profilingExternalSources': profile.get('profilingExternalSources'),
         }
         return _no_cache(jsonify({
             'success': True,
