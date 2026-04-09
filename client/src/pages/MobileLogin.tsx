@@ -71,7 +71,7 @@ export default function MobileLogin() {
         token = extractInviteToken(raw)
       }
       if (!token) {
-        setError('No invite found. Open the link from your invitation, then tap here again.')
+        setError('Could not read your invite. Click on the invite link, then try again.')
         return
       }
 
@@ -88,7 +88,7 @@ export default function MobileLogin() {
       markClipboardInviteConsumed(token)
       navigate(`/login?invite=${encodeURIComponent(token)}`, { replace: true })
     } catch {
-      setError('Could not read your invite. Open the link from your invitation, then try again.')
+      setError('Could not read your invite. Click on the invite link, then try again.')
     } finally {
       setInviteFromInstallBusy(false)
     }
@@ -242,7 +242,7 @@ export default function MobileLogin() {
       <div className="w-full max-w-xs rounded-xl p-6 relative z-10 bg-black border border-white/10">
         {step !== 'password' && (
           <div className="text-center mb-5">
-            <h1 className="text-lg font-semibold">C.Point</h1>
+            <h1 className="text-lg font-semibold">C-Point</h1>
             {invitationInfo ? (
               <div className="mt-3 p-3 bg-[#4db6ac]/10 border border-[#4db6ac]/30 rounded-lg">
                 <p className="text-xs text-white font-medium">
@@ -463,24 +463,6 @@ export default function MobileLogin() {
               }
             }}
           >
-            {/* Show when invite is not already in the URL: install-from-store + clipboard handoff, and after logout.
-                If ?invite= is present, user already has the token — no need for paste. */}
-            {Capacitor.getPlatform() !== 'web' && !inviteToken && authCheckDone && (
-              <div className="space-y-2">
-                <button
-                  type="button"
-                  disabled={inviteFromInstallBusy}
-                  onClick={() => void tryInviteFromInstallTap()}
-                  className="w-full rounded-lg border border-[#4db6ac]/40 bg-[#4db6ac]/10 py-2.5 text-sm font-medium text-[#4db6ac] active:opacity-90 disabled:opacity-50"
-                >
-                  {inviteFromInstallBusy ? 'Checking…' : 'Use community invite'}
-                </button>
-                <p className="text-white/40 text-[11px] text-center leading-snug">
-                  After installing from an invite link, tap here before you sign in.
-                </p>
-              </div>
-            )}
-
             <div>
               <input
                 type="text"
@@ -559,6 +541,22 @@ export default function MobileLogin() {
             </button>
 
             <a href={inviteToken ? `/signup?invite=${inviteToken}` : '/signup'} className="block w-full text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm">Create Account</a>
+
+            {Capacitor.getPlatform() !== 'web' && !inviteToken && authCheckDone && (
+              <div className="space-y-2 mt-3">
+                <button
+                  type="button"
+                  disabled={inviteFromInstallBusy}
+                  onClick={() => void tryInviteFromInstallTap()}
+                  className="w-full rounded-lg border border-[#4db6ac]/40 bg-[#4db6ac]/10 py-2.5 text-sm font-medium text-[#4db6ac] active:opacity-90 disabled:opacity-50"
+                >
+                  {inviteFromInstallBusy ? 'Checking…' : 'Use Community Invite'}
+                </button>
+                <p className="text-white/40 text-[11px] text-center leading-snug">
+                  After installing C-Point from an invite link, tap here before you sign in
+                </p>
+              </div>
+            )}
           </>
         )}
 

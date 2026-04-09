@@ -35,19 +35,19 @@ const COMMUNITY_DEVICE_CACHE_VERSION = 'community-mgmt-v2'
 const COMMUNITIES_GUIDE_STEPS = [
   {
     title: 'Sub-Communities',
-    description: 'Micro-networks inside your network that you are a member of.',
+    description: 'Micro-networks within your broader network that you actively belong to.',
     icon: 'fa-solid fa-diagram-project',
     tab: 'management' as const,
   },
   {
     title: 'Home Timeline',
-    description: 'The main feed for this network, showing the activity that happened in the last 48h across all micro-networks you belong to.',
+    description: 'The central feed for your network, capturing the most relevant activity from the past 48 hours across every micro-network you’re part of.',
     icon: 'fa-solid fa-house',
     tab: 'timeline' as const,
   },
   {
     title: 'Groups',
-    description: 'Focused spaces for smaller discussions, coordination, and shared interests.',
+    description: 'Dedicated spaces for focused conversations, smooth coordination, and meaningful shared interests.',
     icon: 'fa-solid fa-users',
     tab: 'groups' as const,
   },
