@@ -745,8 +745,18 @@ def _assemble_raw_text_for_synthesis(
     if manual_pro:
         if isinstance(manual_pro, list):
             for entry in manual_pro:
-                if isinstance(entry, dict) and entry.get("text"):
-                    parts.append(f"MANUAL EDIT — PROFESSIONAL (ADMIN AUTHORITATIVE):\n{entry['text']}")
+                if isinstance(entry, dict):
+                    if entry.get("text"):
+                        parts.append(f"MANUAL EDIT — PROFESSIONAL (ADMIN AUTHORITATIVE):\n{entry['text']}")
+                    elif entry.get("experiences") and isinstance(entry.get("experiences"), list):
+                        for exp in entry["experiences"]:
+                            if isinstance(exp, dict):
+                                line = f"{exp.get('title', '')} at {exp.get('company', '')}"
+                                if exp.get('dates'):
+                                    line += f" ({exp['dates']})"
+                                if exp.get('description'):
+                                    line += f" — {exp['description']}"
+                                parts.append(f"MANUAL EXPERIENCE (ADMIN ADDED):\n{line}")
         else:
             parts.append(f"MANUAL EDITS — PROFESSIONAL (ADMIN AUTHORITATIVE, USE THIS FIRST):\n{manual_pro}")
 

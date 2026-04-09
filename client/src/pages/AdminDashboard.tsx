@@ -654,9 +654,21 @@ export default function AdminDashboard() {
     if (!editingSteveProfile || !editSection || !editContent.trim()) return
 
     try {
+      let payloadContent = editContent.trim()
+
+      // If it's professional and looks like JSON, parse and structure it properly
+      if (editSection === 'professional' && payloadContent.includes('{')) {
+        try {
+          const parsed = JSON.parse(payloadContent)
+          payloadContent = parsed
+        } catch (e) {
+          // If parsing fails, send as raw text
+        }
+      }
+
       const payload = {
         section: editSection,
-        content: editContent.trim(),
+        content: payloadContent,
         type: 'manualEdits'
       }
 
@@ -3387,14 +3399,16 @@ export default function AdminDashboard() {
       {/* Steve Profile Edit Modal */}
       {editingSteveProfile && editSection && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#1a1a1a] rounded-xl w-full max-w-2xl border border-white/10 flex flex-col max-h-[90vh]">
+          <div className="bg-[#1a1a1a] rounded-2xl w-full max-w-2xl border border-white/10 flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 bg-gradient-to-br from-[#4db6ac] to-blue-500 rounded-xl flex items-center justify-center text-base font-bold text-white">
                   {editingSteveProfile[0]?.toUpperCase()}
                 </div>
                 <div>
-                  <h3 className="font-semibold text-lg text-white">Edit {editSection === 'professional' ? 'Professional' : 'Personal'} Information</h3>
+                  <h3 className="font-semibold text-lg text-white">
+                    Add to {editSection === 'professional' ? 'Professional' : 'Personal'} Profile
+                  </h3>
                   <p className="text-sm text-white/40">@{editingSteveProfile}</p>
                 </div>
               </div>
@@ -3410,63 +3424,73 @@ export default function AdminDashboard() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-auto p-6 space-y-6">
+            <div className="flex-1 overflow-auto p-6">
               {editSection === 'professional' ? (
-                <>
+                <div className="space-y-8">
                   <div>
-                    <label className="block text-xs text-white/50 mb-1.5">ADDITIONAL EXPERIENCE</label>
-                    <p className="text-xs text-white/40 mb-3">Add experiences that Steve missed (like your 7 years at Deloitte).</p>
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="text-sm font-medium text-white">Experience Entries</label>
+                      <button
+                        onClick={() => {
+                          const current = editContent ? JSON.parse(editContent) : { experiences: [] }
+                          current.experiences = current.experiences || []
+                          current.experiences.push({ company: '', title: '', dates: '', description: '' })
+                          setEditContent(JSON.stringify(current, null, 2))
+                        }}
+                        className="text-xs px-3 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-white/70"
+                      >
+                        + Add Experience
+                      </button>
+                    </div>
                     <textarea
                       value={editContent}
                       onChange={(e) => setEditContent(e.target.value)}
-                      placeholder='Example:
-• Manager at Deloitte (2015-2022) - Financial Services, TelCo, M&A projects across Portugal, Angola, and Ireland
-• Led cost transformation and GDPR implementation programs'
-                      className="w-full h-52 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#4db6ac] resize-y"
+                      className="w-full h-80 font-mono text-xs bg-black/60 border border-white/10 rounded-xl p-4 text-white/90 focus:outline-none focus:border-[#4db6ac] resize-y"
+                      placeholder={`{
+  "experiences": [
+    {
+      "company": "Deloitte",
+      "title": "Manager",
+      "dates": "2015-2022",
+      "description": "Financial Services and TelCo consulting. Led cost transformation, M&A carve-outs, and GDPR implementation across Portugal, Angola, and Ireland."
+    }
+  ]
+}`}
                     />
+                    <p className="text-[10px] text-white/40 mt-2">
+                      Add one or more experiences. Grok will automatically enrich with company intelligence when you save.
+                    </p>
                   </div>
-
-                  <div>
-                    <label className="block text-xs text-white/50 mb-1.5">ADDITIONAL CONTEXT OR CORRECTIONS</label>
-                    <textarea
-                      value={editContent}
-                      onChange={(e) => setEditContent(e.target.value)}
-                      placeholder="Any other context Steve should know about your professional background..."
-                      className="w-full h-32 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#4db6ac]"
-                    />
-                  </div>
-                </>
+                </div>
               ) : (
-                <>
-                  <div>
-                    <label className="block text-xs text-white/50 mb-1.5">PERSONAL CONTEXT / LIFE NOTES</label>
-                    <textarea
-                      value={editContent}
-                      onChange={(e) => setEditContent(e.target.value)}
-                      placeholder="Add any personal context, life experiences, values, or insights that Steve should know..."
-                      className="w-full h-64 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#4db6ac] resize-y"
-                    />
-                  </div>
-                </>
+                <div>
+                  <label className="block text-sm font-medium text-white mb-2">Personal Context &amp; Life Notes</label>
+                  <textarea
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    placeholder="Add any personal background, life experiences, values, or context that Steve should know about you..."
+                    className="w-full h-80 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm leading-relaxed text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac] resize-y"
+                  />
+                </div>
               )}
             </div>
 
-            <div className="p-6 border-t border-white/10 flex gap-3">
+            <div className="p-6 border-t border-white/10 flex gap-3 bg-[#161618]">
               <button
                 onClick={() => {
                   setEditingSteveProfile(null)
                   setEditSection(null)
                   setEditContent('')
                 }}
-                className="flex-1 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium transition-colors"
+                className="flex-1 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-sm font-medium transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={saveSteveEdit}
-                className="flex-1 py-3 bg-[#4db6ac] hover:bg-[#45a099] text-black rounded-xl text-sm font-semibold transition-colors"
+                className="flex-1 py-3 bg-[#4db6ac] hover:bg-[#45a099] text-black rounded-2xl text-sm font-semibold transition-colors"
               >
-                Save Manual Edits
+                Save to Steve's Knowledge
               </button>
             </div>
           </div>
