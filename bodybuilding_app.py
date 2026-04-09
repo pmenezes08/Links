@@ -7342,6 +7342,17 @@ def _execute_steve_profile_analysis(target_username: str, depth: str = 'standard
         )
 
         refreshed = get_steve_user_profile(target_username) or {}
+
+        try:
+            from backend.services.steve_knowledge_base import (
+                USE_KNOWLEDGE_BASE_V1,
+                schedule_knowledge_synthesis,
+            )
+            if USE_KNOWLEDGE_BASE_V1:
+                schedule_knowledge_synthesis(target_username)
+        except Exception as kb_err:
+            logger.debug("Knowledge base synthesis trigger skipped for %s: %s", target_username, kb_err)
+
         return True, {
             'username': target_username,
             'analysis': final,
@@ -7544,6 +7555,135 @@ def admin_steve_profile_feedback(target_username):
         return jsonify({'success': True, 'feedback': feedback})
     except Exception as e:
         logger.error(f"Error recording feedback for {target_username}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ── Knowledge Base Admin API ──────────────────────────────────────────────
+
+@app.route('/api/admin/knowledge_base/<target_username>', methods=['GET'])
+@login_required
+def admin_knowledge_base_get(target_username):
+    """Retrieve the full knowledge base for a user (all synthesis + atomic notes)."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        from backend.services.steve_knowledge_base import get_member_knowledge
+        knowledge = get_member_knowledge(target_username)
+        return jsonify({'success': True, 'username': target_username, 'knowledge': knowledge})
+    except Exception as e:
+        logger.error(f"Error fetching knowledge base for {target_username}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/knowledge_base/<target_username>/synthesize', methods=['POST'])
+@login_required
+def admin_knowledge_base_synthesize(target_username):
+    """Trigger knowledge base synthesis for a user (on-demand)."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        from backend.services.steve_knowledge_base import synthesize_member_knowledge
+        ok = synthesize_member_knowledge(target_username)
+        if ok:
+            return jsonify({'success': True, 'message': f'Knowledge base synthesized for {target_username}'})
+        return jsonify({'success': False, 'error': 'Synthesis failed or no data available'}), 400
+    except Exception as e:
+        logger.error(f"Error synthesizing knowledge base for {target_username}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/knowledge_base/<target_username>/feedback', methods=['POST'])
+@login_required
+def admin_knowledge_base_feedback(target_username):
+    """Record admin feedback on a specific knowledge base note.
+    Body: { "noteType": "LifeCareer", "feedback": { "status": "approved"|"needs_correction", "note": "..." } }"""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        data = request.get_json(force=True) or {}
+        note_type = data.get('noteType', '')
+        feedback = data.get('feedback', {})
+        if not note_type or not feedback:
+            return jsonify({'success': False, 'error': 'noteType and feedback required'}), 400
+        feedback['by'] = username
+        feedback['at'] = datetime.utcnow().isoformat()
+
+        from backend.services.steve_knowledge_base import save_admin_feedback
+        ok = save_admin_feedback(target_username, note_type, feedback)
+        if ok:
+            return jsonify({'success': True})
+        return jsonify({'success': False, 'error': 'Failed to save feedback'}), 400
+    except Exception as e:
+        logger.error(f"Error saving KB feedback for {target_username}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/knowledge_base/graph/<target_username>', methods=['GET'])
+@login_required
+def admin_knowledge_base_graph(target_username):
+    """Return the knowledge graph data for admin visualization.
+    Returns nodes (synthesis notes, atomic notes, shared concepts) and edges (links between them)."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        from backend.services.steve_knowledge_base import (
+            get_member_knowledge,
+            SYNTHESIS_NOTE_TYPES,
+        )
+        knowledge = get_member_knowledge(target_username)
+        if not knowledge:
+            return jsonify({'success': True, 'nodes': [], 'edges': []})
+
+        nodes = []
+        edges = []
+
+        for key, data in knowledge.items():
+            note_type = data.get('noteType', key)
+            node = {
+                'id': key,
+                'type': data.get('type', 'unknown'),
+                'noteType': note_type,
+                'label': note_type,
+                'updatedAt': data.get('updatedAt') or data.get('createdAt', ''),
+                'hasContent': bool(data.get('content')),
+                'version': data.get('version', 1),
+            }
+            nodes.append(node)
+
+            if data.get('type') == 'synthesis' and note_type != 'Index':
+                edges.append({'source': 'Index', 'target': key, 'type': 'dimension'})
+
+            content = data.get('content', {})
+            if isinstance(content, dict):
+                linked = content.get('linkedDimensions', [])
+                for dim in linked:
+                    if isinstance(dim, str):
+                        edges.append({'source': key, 'target': dim, 'type': 'reference'})
+
+        return jsonify({'success': True, 'nodes': nodes, 'edges': edges})
+    except Exception as e:
+        logger.error(f"Error building KB graph for {target_username}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/knowledge_base/shared_nodes', methods=['GET'])
+@login_required
+def admin_knowledge_base_shared_nodes():
+    """List all shared nodes (locations, institutions, topics) for cross-user graph."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        from backend.services.steve_knowledge_base import query_shared_nodes_by_type
+        concept_type = request.args.get('type', 'location')
+        nodes = query_shared_nodes_by_type(concept_type)
+        return jsonify({'success': True, 'nodes': nodes})
+    except Exception as e:
+        logger.error(f"Error fetching shared nodes: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -8704,7 +8844,34 @@ STEVE_CTX_CACHE_TTL = 600  # 10 minutes
 
 def _build_context_from_profile(profile: dict, username: str) -> str:
     """Build a context string from a pre-loaded steve_user_profiles document.
-    This is the pure computation step — no Firestore reads, no caching."""
+    This is the pure computation step — no Firestore reads, no caching.
+
+    When the Knowledge Base V1 feature flag is enabled, the knowledge base
+    context is prepended (higher priority) with the legacy context as fallback.
+    """
+    if not profile:
+        return ''
+
+    try:
+        from backend.services.steve_knowledge_base import (
+            USE_KNOWLEDGE_BASE_V1,
+            build_knowledge_context_for_steve,
+        )
+        if USE_KNOWLEDGE_BASE_V1:
+            kb_context = build_knowledge_context_for_steve(username)
+            if kb_context:
+                legacy = _build_legacy_context_from_profile(profile, username)
+                if legacy:
+                    return f"[MEMBER KNOWLEDGE BASE — PREFERRED SOURCE]\n{kb_context}\n\n[LEGACY PROFILE — SUPPLEMENTARY]\n{legacy}"
+                return kb_context
+    except Exception as e:
+        logger.debug("Knowledge base context unavailable for %s: %s", username, e)
+
+    return _build_legacy_context_from_profile(profile, username)
+
+
+def _build_legacy_context_from_profile(profile: dict, username: str) -> str:
+    """Build a context string from the legacy steve_user_profiles document."""
     if not profile:
         return ''
     analysis = _migrate_analysis_to_v3(profile.get('analysis', {}))
@@ -15367,6 +15534,13 @@ HOW TO MATCH:
 3. Sub-community membership is a strong signal (e.g., being in "India Field Trip" means a real connection to India).
 4. Use everything you know about each member — their background, company, role, location, interests, what they've posted, and any deeper context provided. The richer profile data is your best source of truth.
 5. Never recommend someone with zero connection to the ask. If someone shares an interest in AI but the user asked about Lisbon, that person is not relevant.
+
+KNOWLEDGE BASE CONTEXT (when available):
+- Some members will have a [MEMBER KNOWLEDGE BASE] section in their AI insight. This is a high-quality, structured analysis of the member across multiple dimensions: life/career evolution, geographic journey, expertise depth, opinion evolution, identity traits, network relationships, and unique fingerprint.
+- ALWAYS prioritize knowledge base insights over basic profile data. The knowledge base tracks how people EVOLVE over time — opinion shifts, career transitions, geographic moves, and contradictions.
+- When matching for locations (e.g. "UK knowledge"), look at the GEOGRAPHIC & CULTURAL JOURNEY dimension — it distinguishes between "currently lives there" vs "has deep historical knowledge".
+- When matching for expertise, look at EXPERTISE & DEPTH for progression and credibility signals.
+- The UNIQUE FINGERPRINT dimension reveals rare qualities and bridging capabilities that make someone an exceptional match.
 
 LOAD BALANCING & QUALITY SIGNALS — VERY IMPORTANT:
 - Some members are tagged "Recommended Nx recently". This means Steve has already recommended them N times in the past 30 days. High-frequency members risk being overloaded with connection requests.

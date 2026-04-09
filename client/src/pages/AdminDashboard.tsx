@@ -4,6 +4,7 @@ import { useHeader } from '../contexts/HeaderContext'
 import { invalidateDashboardCache } from '../utils/dashboardCache'
 import { triggerDashboardServerPull } from '../utils/serverPull'
 import { clearDeviceCache } from '../utils/deviceCache'
+import KnowledgeBaseGraph from '../components/KnowledgeBaseGraph'
 
 interface Stats {
   total_users: number
@@ -2723,6 +2724,11 @@ export default function AdminDashboard() {
                                 )}
                               </>
                             )}
+
+                            {/* Knowledge Base Graph */}
+                            <div className="mt-6 bg-white/5 rounded-lg border border-white/10 overflow-hidden">
+                              <KnowledgeBaseGraph username={profile.username} />
+                            </div>
                           </div>
                         );
                       })()
