@@ -674,18 +674,41 @@ export default function Communities(){
         communityId={groupsModalCommunityId}
       />
       {communitiesGuideStep !== null && (
-        <div className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center px-4" onClick={dismissCommunitiesGuide}>
-          <div 
-            className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#111] overflow-hidden shadow-2xl" 
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm"
+          onClick={dismissCommunitiesGuide}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl bg-[#0a0a0c] shadow-2xl shadow-black/50 ring-1 ring-white/10 overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
-            <div className="px-6 pt-8 pb-6 flex flex-col items-center text-center">
-              <div className="w-16 h-16 rounded-2xl bg-[#4db6ac]/10 border border-[#4db6ac]/20 flex items-center justify-center mb-5">
-                <i className={`${COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].icon} text-3xl text-[#4db6ac]`} />
-              </div>
-              <div className="text-xl font-semibold text-white mb-2">{COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].title}</div>
-              <div className="text-sm text-white/70 leading-relaxed max-w-[260px]">
-                {COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].description}
+            {/* Progress bar */}
+            <div className="h-0.5 w-full bg-white/10">
+              <div
+                className="h-full bg-[#4db6ac] transition-[width] duration-300 ease-out shadow-[0_0_12px_rgba(77,182,172,0.35)]"
+                style={{
+                  width: `${((communitiesGuideStep + 1) / COMMUNITIES_GUIDE_STEPS.length) * 100}%`,
+                }}
+              />
+            </div>
+
+            <div className="px-6 pt-7 pb-5 flex flex-col items-center text-center">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-[#4db6ac]/75 mb-4 font-medium">
+                Quick tour
+              </p>
+              <div
+                key={communitiesGuideStep}
+                className="flex flex-col items-center animate-fade-in"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#4db6ac]/25 to-[#4db6ac]/5 border border-[#4db6ac]/25 flex items-center justify-center mb-4 shadow-[0_8px_32px_-8px_rgba(77,182,172,0.35)]">
+                  <i className={`${COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].icon} text-2xl text-[#4db6ac]`} />
+                </div>
+                <div className="text-lg font-semibold text-white tracking-tight mb-2">
+                  {COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].title}
+                </div>
+                <div className="text-[13px] sm:text-sm text-white/75 leading-relaxed max-w-[280px]">
+                  {COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].description}
+                </div>
               </div>
             </div>
 
@@ -693,30 +716,32 @@ export default function Communities(){
               {COMMUNITIES_GUIDE_STEPS.map((_, i) => (
                 <div
                   key={i}
-                  className={`w-1.5 h-1.5 rounded-full transition-colors ${i === communitiesGuideStep ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
+                  className={`h-1 rounded-full transition-all duration-300 ${i === communitiesGuideStep ? 'w-5 bg-[#4db6ac]' : 'w-1.5 bg-white/20'}`}
                 />
               ))}
             </div>
 
-            <div className="px-6 pb-6 flex items-center justify-between border-t border-white/10 pt-4">
+            <div className="px-5 pb-6 pt-5 flex items-center justify-between gap-2 border-t border-white/[0.08]">
               <button
                 type="button"
                 onClick={() => {
                   if (communitiesGuideStep > 0) setCommunitiesGuideStep(communitiesGuideStep - 1)
                   else dismissCommunitiesGuide()
                 }}
-                className="px-5 py-2.5 rounded-xl text-sm font-medium text-white/60 hover:text-white transition-colors"
+                className="px-4 py-2.5 rounded-xl text-sm font-medium text-white/50 hover:text-white/90 hover:bg-white/5 active:scale-[0.98] transition-all"
               >
                 {communitiesGuideStep > 0 ? 'Back' : 'Skip'}
               </button>
-              <div className="text-xs text-white/30">{communitiesGuideStep + 1} of {COMMUNITIES_GUIDE_STEPS.length}</div>
+              <div className="text-[11px] tabular-nums text-white/35 shrink-0">
+                {communitiesGuideStep + 1} / {COMMUNITIES_GUIDE_STEPS.length}
+              </div>
               <button
                 type="button"
                 onClick={() => {
                   if (communitiesGuideStep < COMMUNITIES_GUIDE_STEPS.length - 1) setCommunitiesGuideStep(communitiesGuideStep + 1)
                   else dismissCommunitiesGuide()
                 }}
-                className="px-6 py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110 transition-colors"
+                className="px-5 py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold shadow-lg shadow-[#4db6ac]/20 hover:brightness-110 active:scale-[0.98] transition-all"
               >
                 {communitiesGuideStep < COMMUNITIES_GUIDE_STEPS.length - 1 ? 'Next' : 'Got it'}
               </button>
