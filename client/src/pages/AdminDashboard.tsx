@@ -279,6 +279,11 @@ export default function AdminDashboard() {
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, currentUser: '' })
   const batchAbortRef = useRef(false)
 
+  // Steve profile editing
+  const [editingSteveProfile, setEditingSteveProfile] = useState<string | null>(null)
+  const [editSection, setEditSection] = useState<'professional' | 'personal' | null>(null)
+  const [editContent, setEditContent] = useState('')
+
   // New user form
   const [newUser, setNewUser] = useState({
     username: '',
@@ -634,6 +639,49 @@ export default function AdminDashboard() {
       }
     } catch {}
   }, [])
+
+  const openSteveEditModal = (username: string, section: 'professional' | 'personal') => {
+    const profile = steveProfiles.find(p => p.username === username)
+    const currentContent = section === 'professional'
+      ? JSON.stringify(profile?.analysis?.professional || {}, null, 2)
+      : JSON.stringify(profile?.analysis?.personal || {}, null, 2)
+    setEditingSteveProfile(username)
+    setEditSection(section)
+    setEditContent(currentContent || '')
+  }
+
+  const saveSteveEdit = async () => {
+    if (!editingSteveProfile || !editSection) return
+
+    try {
+      const res = await fetch(`/api/admin/steve_profiles/${encodeURIComponent(editingSteveProfile)}/edit`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          section: editSection,
+          content: editContent,
+        })
+      })
+      const data = await res.json()
+
+      if (data.success) {
+        setSteveProfiles(prev => prev.map(p =>
+          p.username === editingSteveProfile
+            ? { ...p, analysis: data.analysis }
+            : p
+        ))
+        setEditingSteveProfile(null)
+        setEditSection(null)
+        setEditContent('')
+      } else {
+        alert(`Failed to save: ${data.error}`)
+      }
+    } catch (err) {
+      console.error('Failed to save Steve edit:', err)
+      alert('Failed to save edit')
+    }
+  }
 
   const handleAdminUnblock = async (blockId: number) => {
     setUnblockingId(blockId)
@@ -2530,7 +2578,15 @@ export default function AdminDashboard() {
                                   <div className="space-y-3">
                                     <div className="text-[10px] text-white/40 uppercase tracking-wider flex items-center justify-between">
                                       <span><i className="fa-solid fa-briefcase mr-1" /> Professional</span>
-                                      <FbBtns s="professional" />
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          onClick={() => openSteveEditModal(profile.username, 'professional')}
+                                          className="text-[10px] px-2 py-0.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded text-white/70 hover:text-white transition-colors"
+                                        >
+                                          ✏️ Edit
+                                        </button>
+                                        <FbBtns s="professional" />
+                                      </div>
                                     </div>
                                     {pro ? (
                                       <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-2">
@@ -2596,7 +2652,15 @@ export default function AdminDashboard() {
                                   <div className="space-y-3">
                                     <div className="text-[10px] text-white/40 uppercase tracking-wider flex items-center justify-between">
                                       <span><i className="fa-solid fa-user mr-1" /> Personal</span>
-                                      <FbBtns s="personal" />
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          onClick={() => openSteveEditModal(profile.username, 'personal')}
+                                          className="text-[10px] px-2 py-0.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded text-white/70 hover:text-white transition-colors"
+                                        >
+                                          ✏️ Edit
+                                        </button>
+                                        <FbBtns s="personal" />
+                                      </div>
                                     </div>
                                     {personal ? (
                                       <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-2">
@@ -3311,6 +3375,67 @@ export default function AdminDashboard() {
                 }`}
               >
                 {deletePreserveData ? 'Delete Account Only' : 'Delete Everything'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Steve Profile Edit Modal */}
+      {editingSteveProfile && editSection && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#1a1a1a] rounded-xl w-full max-w-2xl border border-white/10 flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-gradient-to-br from-[#4db6ac] to-blue-500 rounded-lg flex items-center justify-center text-sm font-bold text-white">
+                  {editingSteveProfile[0]?.toUpperCase()}
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white">Edit {editSection === 'professional' ? 'Professional' : 'Personal'} Section</h3>
+                  <p className="text-xs text-white/40">@{editingSteveProfile}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingSteveProfile(null)
+                  setEditSection(null)
+                  setEditContent('')
+                }}
+                className="text-white/40 hover:text-white p-2"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-5 flex-1 overflow-auto">
+              <p className="text-xs text-white/50 mb-2">Edit the JSON below. You can add missing experience, correct information, or add new insights.</p>
+              <textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                className="w-full h-96 font-mono text-xs bg-black/50 border border-white/10 rounded-lg p-4 text-white/90 focus:outline-none focus:border-[#4db6ac] resize-none"
+                spellCheck={false}
+              />
+              <p className="text-[10px] text-white/30 mt-2">
+                Tip: Add fields like "manualExperience", "corrections", or "additionalContext". The synthesis engine will prioritize these.
+              </p>
+            </div>
+
+            <div className="flex gap-2 p-4 border-t border-white/10">
+              <button
+                onClick={() => {
+                  setEditingSteveProfile(null)
+                  setEditSection(null)
+                  setEditContent('')
+                }}
+                className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveSteveEdit}
+                className="flex-1 py-2.5 bg-[#4db6ac] hover:bg-[#45a099] text-black rounded-lg text-sm font-semibold"
+              >
+                Save Changes
               </button>
             </div>
           </div>

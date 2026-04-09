@@ -740,6 +740,11 @@ def _assemble_raw_text_for_synthesis(
         if career_lines:
             parts.append(f"CAREER HISTORY:\n" + "\n".join(career_lines))
 
+    # Manual edits have highest priority
+    manual_pro = pro.get("manualEdits") or pro.get("_manualEdits")
+    if manual_pro:
+        parts.append(f"MANUAL EDITS — PROFESSIONAL (ADMIN AUTHORITATIVE, USE THIS FIRST):\n{manual_pro}")
+
     loc = pro.get("location") or {}
     if loc.get("city") or loc.get("country"):
         parts.append(f"CURRENT LOCATION: {loc.get('city', '')} {loc.get('country', '')} — {loc.get('context', '')}")
@@ -763,6 +768,11 @@ def _assemble_raw_text_for_synthesis(
         parts.append(f"PERSONAL LIFESTYLE: {personal['lifestyle']}")
     if personal.get("webFindings"):
         parts.append(f"PERSONAL BACKGROUND: {personal['webFindings']}")
+
+    # Manual edits have highest priority
+    manual_personal = personal.get("manualEdits") or personal.get("_manualEdits")
+    if manual_personal:
+        parts.append(f"MANUAL EDITS — PERSONAL (ADMIN AUTHORITATIVE, USE THIS FIRST):\n{manual_personal}")
 
     interests = analysis.get("interests") or {}
     if interests:

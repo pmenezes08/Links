@@ -7628,6 +7628,71 @@ def admin_knowledge_base_feedback(target_username):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/admin/steve_profiles/<target_username>/edit', methods=['POST'])
+@login_required
+def admin_steve_profile_edit(target_username):
+    """Save manual edits to a Steve profile's professional or personal section.
+    Body: { "section": "professional"|"personal", "content": "JSON string or object" }
+    This allows admins to add missing experience (e.g. 7 years at Deloitte) that synthesis should prioritize."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        data = request.get_json(force=True) or {}
+        section = data.get('section')
+        content = data.get('content')
+
+        if section not in ('professional', 'personal'):
+            return jsonify({'success': False, 'error': 'section must be professional or personal'}), 400
+        if not content:
+            return jsonify({'success': False, 'error': 'content is required'}), 400
+
+        from backend.services.firestore_reads import get_steve_user_profile
+        from backend.services.firestore_writes import write_steve_user_profile
+
+        profile = get_steve_user_profile(target_username)
+        if not profile:
+            return jsonify({'success': False, 'error': 'Profile not found'}), 404
+
+        analysis = profile.get('analysis', {})
+
+        try:
+            if isinstance(content, str):
+                import json
+                parsed_content = json.loads(content)
+            else:
+                parsed_content = content
+        except Exception:
+            parsed_content = content
+
+        if section == 'professional':
+            if 'professional' not in analysis:
+                analysis['professional'] = {}
+            analysis['professional'].update(parsed_content)
+            analysis['professional']['_lastManualEdit'] = datetime.utcnow().isoformat() + 'Z'
+            analysis['professional']['_editedBy'] = username
+        else:
+            if 'personal' not in analysis:
+                analysis['personal'] = {}
+            analysis['personal'].update(parsed_content)
+            analysis['personal']['_lastManualEdit'] = datetime.utcnow().isoformat() + 'Z'
+            analysis['personal']['_editedBy'] = username
+
+        write_steve_user_profile(
+            target_username,
+            analysis=analysis,
+        )
+
+        refreshed = get_steve_user_profile(target_username) or {}
+        return jsonify({
+            'success': True,
+            'analysis': refreshed.get('analysis', {})
+        })
+    except Exception as e:
+        logger.error(f"Error editing Steve profile for {target_username}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/admin/knowledge_base/graph/<target_username>', methods=['GET'])
 @login_required
 def admin_knowledge_base_graph(target_username):
