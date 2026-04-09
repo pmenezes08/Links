@@ -34,14 +34,14 @@ const COMMUNITY_MGMT_CACHE_TTL_MS = 5 * 60 * 1000
 const COMMUNITY_DEVICE_CACHE_VERSION = 'community-mgmt-v2'
 const COMMUNITIES_GUIDE_STEPS = [
   {
-    title: 'Sub-communities',
-    description: 'Smaller sections inside your network, organized by topic, location, or purpose.',
+    title: 'Sub-Communities',
+    description: 'Micro-networks inside your network that you are a member of.',
     icon: 'fa-solid fa-diagram-project',
     tab: 'management' as const,
   },
   {
     title: 'Home Timeline',
-    description: 'The main feed for this community, showing the activity that happened in the last 48h.',
+    description: 'The main feed for this network, showing the activity that happened in the last 48h across all micro-networks you belong to.',
     icon: 'fa-solid fa-house',
     tab: 'timeline' as const,
   },
@@ -674,64 +674,55 @@ export default function Communities(){
         communityId={groupsModalCommunityId}
       />
       {communitiesGuideStep !== null && (
-        <>
-          <div
-            className="fixed left-0 right-0 bottom-0 z-[75] bg-black/55 pointer-events-auto"
-            style={{
-              top: 'calc(var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px))) + 48px)',
-            } as CSSProperties}
-            aria-hidden
-          />
-          <div
-            className="fixed left-0 right-0 z-[110] px-3 pointer-events-none max-w-2xl mx-auto"
-            style={{
-              bottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))',
-            } as CSSProperties}
+        <div className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center px-4" onClick={dismissCommunitiesGuide}>
+          <div 
+            className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#111] overflow-hidden shadow-2xl" 
+            onClick={e => e.stopPropagation()}
           >
-            <div className="pointer-events-auto rounded-2xl border border-white/10 bg-[#111] shadow-2xl px-4 pt-4 pb-4">
-              <div className="flex gap-3">
-                <div className="w-11 h-11 shrink-0 rounded-xl bg-[#4db6ac]/10 border border-[#4db6ac]/20 flex items-center justify-center">
-                  <i className={`${COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].icon} text-lg text-[#4db6ac]`} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-white mb-1">{COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].title}</div>
-                  <div className="text-xs text-white/60 leading-relaxed">{COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].description}</div>
-                </div>
+            <div className="px-6 pt-8 pb-6 flex flex-col items-center text-center">
+              <div className="w-16 h-16 rounded-2xl bg-[#4db6ac]/10 border border-[#4db6ac]/20 flex items-center justify-center mb-5">
+                <i className={`${COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].icon} text-3xl text-[#4db6ac]`} />
               </div>
-              <div className="flex justify-center gap-1.5 mt-3">
-                {COMMUNITIES_GUIDE_STEPS.map((_, i) => (
-                  <div
-                    key={i}
-                    className={`w-1.5 h-1.5 rounded-full transition-colors ${i === communitiesGuideStep ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
-                  />
-                ))}
-              </div>
-              <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (communitiesGuideStep > 0) setCommunitiesGuideStep(communitiesGuideStep - 1)
-                    else dismissCommunitiesGuide()
-                  }}
-                  className="px-3 py-2 rounded-lg text-xs font-medium text-white/50 hover:text-white/80 transition-colors"
-                >
-                  {communitiesGuideStep > 0 ? 'Back' : 'Skip'}
-                </button>
-                <div className="text-[10px] text-white/30">{communitiesGuideStep + 1} of {COMMUNITIES_GUIDE_STEPS.length}</div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (communitiesGuideStep < COMMUNITIES_GUIDE_STEPS.length - 1) setCommunitiesGuideStep(communitiesGuideStep + 1)
-                    else dismissCommunitiesGuide()
-                  }}
-                  className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-xs font-semibold hover:brightness-110 transition"
-                >
-                  {communitiesGuideStep < COMMUNITIES_GUIDE_STEPS.length - 1 ? 'Next' : 'Got it'}
-                </button>
+              <div className="text-xl font-semibold text-white mb-2">{COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].title}</div>
+              <div className="text-sm text-white/70 leading-relaxed max-w-[260px]">
+                {COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].description}
               </div>
             </div>
+
+            <div className="flex justify-center gap-1.5 pb-4">
+              {COMMUNITIES_GUIDE_STEPS.map((_, i) => (
+                <div
+                  key={i}
+                  className={`w-1.5 h-1.5 rounded-full transition-colors ${i === communitiesGuideStep ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
+                />
+              ))}
+            </div>
+
+            <div className="px-6 pb-6 flex items-center justify-between border-t border-white/10 pt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  if (communitiesGuideStep > 0) setCommunitiesGuideStep(communitiesGuideStep - 1)
+                  else dismissCommunitiesGuide()
+                }}
+                className="px-5 py-2.5 rounded-xl text-sm font-medium text-white/60 hover:text-white transition-colors"
+              >
+                {communitiesGuideStep > 0 ? 'Back' : 'Skip'}
+              </button>
+              <div className="text-xs text-white/30">{communitiesGuideStep + 1} of {COMMUNITIES_GUIDE_STEPS.length}</div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (communitiesGuideStep < COMMUNITIES_GUIDE_STEPS.length - 1) setCommunitiesGuideStep(communitiesGuideStep + 1)
+                  else dismissCommunitiesGuide()
+                }}
+                className="px-6 py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110 transition-colors"
+              >
+                {communitiesGuideStep < COMMUNITIES_GUIDE_STEPS.length - 1 ? 'Next' : 'Got it'}
+              </button>
+            </div>
           </div>
-        </>
+        </div>
       )}
 
       {/* Slide-out menu (90% width) same as feed */}

@@ -463,7 +463,7 @@ export default function MobileLogin() {
               }
             }}
           >
-            {Capacitor.getPlatform() !== 'web' && !inviteToken && authCheckDone && (
+            {Capacitor.getPlatform() !== 'web' && (inviteToken || sessionStorage.getItem('cpoint_pending_invite')) && authCheckDone && (
               <div className="space-y-2">
                 <button
                   type="button"
