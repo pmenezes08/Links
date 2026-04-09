@@ -241,6 +241,7 @@ export default function Communities(){
   const [availableFilter, setAvailableFilter] = useState<string>('all')
   const [joiningGroupId, setJoiningGroupId] = useState<number | null>(null)
   const [communitiesGuideStep, setCommunitiesGuideStep] = useState<number | null>(null)
+  // @ts-expect-error - used only via setCommunitiesGuideDismissed (TS complains due to noUnusedLocals)
   const [communitiesGuideDismissed, setCommunitiesGuideDismissed] = useState(false)
   
   // No auto-tab switch on URL change — user always lands on Sub-communities tab
