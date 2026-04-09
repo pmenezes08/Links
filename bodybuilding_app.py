@@ -7292,6 +7292,7 @@ def _execute_steve_profile_analysis(target_username: str, depth: str = 'standard
             onboarding_context=onboarding_context,
         )
         profiling_external_sources_payload = None
+        profiling_enriched_content_payload = None
         if depth in ('standard', 'deep'):
             try:
                 from backend.services.steve_content_enrichment import enrich_shared_activity_for_profile
@@ -7305,6 +7306,10 @@ def _execute_steve_profile_analysis(target_username: str, depth: str = 'standard
                 }
                 if enrich_block:
                     profile_text = profile_text + "\n\n" + enrich_block
+                    profiling_enriched_content_payload = {
+                        'updatedAt': datetime.utcnow().isoformat() + 'Z',
+                        'text': enrich_block,
+                    }
                 if ingest_errors:
                     profile_text += (
                         "\n\n--- CONTENT INGESTION FAILURES (factual; do not invent content for these URLs) ---\n"
@@ -7335,6 +7340,8 @@ def _execute_steve_profile_analysis(target_username: str, depth: str = 'standard
         write_kwargs = dict(_get_steve_profiling_write_payloads(target_username))
         if profiling_external_sources_payload is not None:
             write_kwargs['profiling_external_sources'] = profiling_external_sources_payload
+        if profiling_enriched_content_payload is not None:
+            write_kwargs['profiling_enriched_content'] = profiling_enriched_content_payload
         write_steve_user_profile(
             target_username,
             analysis=final,

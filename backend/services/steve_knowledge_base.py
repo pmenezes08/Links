@@ -743,15 +743,20 @@ def _assemble_raw_text_for_synthesis(
         if ext_lines:
             parts.append(f"SHARED EXTERNAL CONTENT:\n" + "\n".join(ext_lines))
 
-    ext_sources = profile_data.get("profilingExternalSources") or {}
-    ext_items = ext_sources.get("items") or []
-    if ext_items:
-        src_lines = []
-        for item in ext_items[:8]:
-            if isinstance(item, dict) and item.get("success"):
-                src_lines.append(f"[{item.get('kind', '?')}] {item.get('url', '')} — {item.get('detail', '')}")
-        if src_lines:
-            parts.append(f"ENRICHED EXTERNAL SOURCES:\n" + "\n".join(src_lines))
+    enriched_content = profile_data.get("profilingEnrichedContent") or {}
+    enriched_text = (enriched_content.get("text") or "").strip()
+    if enriched_text:
+        parts.append(f"ENRICHED CONTENT (articles, YouTube transcripts, podcast transcriptions):\n{enriched_text}")
+    else:
+        ext_sources = profile_data.get("profilingExternalSources") or {}
+        ext_items = ext_sources.get("items") or []
+        if ext_items:
+            src_lines = []
+            for item in ext_items[:8]:
+                if isinstance(item, dict) and item.get("success"):
+                    src_lines.append(f"[{item.get('kind', '?')}] {item.get('url', '')} — {item.get('detail', '')}")
+            if src_lines:
+                parts.append(f"ENRICHED EXTERNAL SOURCES (metadata only):\n" + "\n".join(src_lines))
 
     if group_interaction_counts:
         freq_lines = []
