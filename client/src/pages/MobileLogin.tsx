@@ -463,7 +463,9 @@ export default function MobileLogin() {
               }
             }}
           >
-            {Capacitor.getPlatform() !== 'web' && (inviteToken || sessionStorage.getItem('cpoint_pending_invite')) && authCheckDone && (
+            {/* Show when invite is not already in the URL: install-from-store + clipboard handoff, and after logout.
+                If ?invite= is present, user already has the token — no need for paste. */}
+            {Capacitor.getPlatform() !== 'web' && !inviteToken && authCheckDone && (
               <div className="space-y-2">
                 <button
                   type="button"
