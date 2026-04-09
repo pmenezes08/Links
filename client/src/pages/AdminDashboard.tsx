@@ -651,17 +651,20 @@ export default function AdminDashboard() {
   }
 
   const saveSteveEdit = async () => {
-    if (!editingSteveProfile || !editSection) return
+    if (!editingSteveProfile || !editSection || !editContent.trim()) return
 
     try {
+      const payload = {
+        section: editSection,
+        content: editContent.trim(),
+        type: 'manualEdits'
+      }
+
       const res = await fetch(`/api/admin/steve_profiles/${encodeURIComponent(editingSteveProfile)}/edit`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          section: editSection,
-          content: editContent,
-        })
+        body: JSON.stringify(payload)
       })
       const data = await res.json()
 
@@ -675,7 +678,7 @@ export default function AdminDashboard() {
         setEditSection(null)
         setEditContent('')
       } else {
-        alert(`Failed to save: ${data.error}`)
+        alert(`Failed to save: ${data.error || 'Unknown error'}`)
       }
     } catch (err) {
       console.error('Failed to save Steve edit:', err)
@@ -3384,15 +3387,15 @@ export default function AdminDashboard() {
       {/* Steve Profile Edit Modal */}
       {editingSteveProfile && editSection && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#1a1a1a] rounded-xl w-full max-w-2xl border border-white/10 flex flex-col max-h-[85vh]">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+          <div className="bg-[#1a1a1a] rounded-xl w-full max-w-2xl border border-white/10 flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-gradient-to-br from-[#4db6ac] to-blue-500 rounded-lg flex items-center justify-center text-sm font-bold text-white">
+                <div className="w-9 h-9 bg-gradient-to-br from-[#4db6ac] to-blue-500 rounded-xl flex items-center justify-center text-base font-bold text-white">
                   {editingSteveProfile[0]?.toUpperCase()}
                 </div>
                 <div>
-                  <h3 className="font-semibold text-white">Edit {editSection === 'professional' ? 'Professional' : 'Personal'} Section</h3>
-                  <p className="text-xs text-white/40">@{editingSteveProfile}</p>
+                  <h3 className="font-semibold text-lg text-white">Edit {editSection === 'professional' ? 'Professional' : 'Personal'} Information</h3>
+                  <p className="text-sm text-white/40">@{editingSteveProfile}</p>
                 </div>
               </div>
               <button
@@ -3401,41 +3404,69 @@ export default function AdminDashboard() {
                   setEditSection(null)
                   setEditContent('')
                 }}
-                className="text-white/40 hover:text-white p-2"
+                className="text-white/40 hover:text-white p-2 text-xl leading-none"
               >
                 ✕
               </button>
             </div>
 
-            <div className="p-5 flex-1 overflow-auto">
-              <p className="text-xs text-white/50 mb-2">Edit the JSON below. You can add missing experience, correct information, or add new insights.</p>
-              <textarea
-                value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
-                className="w-full h-96 font-mono text-xs bg-black/50 border border-white/10 rounded-lg p-4 text-white/90 focus:outline-none focus:border-[#4db6ac] resize-none"
-                spellCheck={false}
-              />
-              <p className="text-[10px] text-white/30 mt-2">
-                Tip: Add fields like "manualExperience", "corrections", or "additionalContext". The synthesis engine will prioritize these.
-              </p>
+            <div className="flex-1 overflow-auto p-6 space-y-6">
+              {editSection === 'professional' ? (
+                <>
+                  <div>
+                    <label className="block text-xs text-white/50 mb-1.5">ADDITIONAL EXPERIENCE</label>
+                    <p className="text-xs text-white/40 mb-3">Add experiences that Steve missed (like your 7 years at Deloitte).</p>
+                    <textarea
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      placeholder='Example:
+• Manager at Deloitte (2015-2022) - Financial Services, TelCo, M&A projects across Portugal, Angola, and Ireland
+• Led cost transformation and GDPR implementation programs'
+                      className="w-full h-52 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#4db6ac] resize-y"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-white/50 mb-1.5">ADDITIONAL CONTEXT OR CORRECTIONS</label>
+                    <textarea
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      placeholder="Any other context Steve should know about your professional background..."
+                      className="w-full h-32 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#4db6ac]"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-xs text-white/50 mb-1.5">PERSONAL CONTEXT / LIFE NOTES</label>
+                    <textarea
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      placeholder="Add any personal context, life experiences, values, or insights that Steve should know..."
+                      className="w-full h-64 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#4db6ac] resize-y"
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
-            <div className="flex gap-2 p-4 border-t border-white/10">
+            <div className="p-6 border-t border-white/10 flex gap-3">
               <button
                 onClick={() => {
                   setEditingSteveProfile(null)
                   setEditSection(null)
                   setEditContent('')
                 }}
-                className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm font-medium"
+                className="flex-1 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={saveSteveEdit}
-                className="flex-1 py-2.5 bg-[#4db6ac] hover:bg-[#45a099] text-black rounded-lg text-sm font-semibold"
+                className="flex-1 py-3 bg-[#4db6ac] hover:bg-[#45a099] text-black rounded-xl text-sm font-semibold transition-colors"
               >
-                Save Changes
+                Save Manual Edits
               </button>
             </div>
           </div>

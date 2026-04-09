@@ -743,7 +743,12 @@ def _assemble_raw_text_for_synthesis(
     # Manual edits have highest priority
     manual_pro = pro.get("manualEdits") or pro.get("_manualEdits")
     if manual_pro:
-        parts.append(f"MANUAL EDITS — PROFESSIONAL (ADMIN AUTHORITATIVE, USE THIS FIRST):\n{manual_pro}")
+        if isinstance(manual_pro, list):
+            for entry in manual_pro:
+                if isinstance(entry, dict) and entry.get("text"):
+                    parts.append(f"MANUAL EDIT — PROFESSIONAL (ADMIN AUTHORITATIVE):\n{entry['text']}")
+        else:
+            parts.append(f"MANUAL EDITS — PROFESSIONAL (ADMIN AUTHORITATIVE, USE THIS FIRST):\n{manual_pro}")
 
     loc = pro.get("location") or {}
     if loc.get("city") or loc.get("country"):
@@ -772,7 +777,12 @@ def _assemble_raw_text_for_synthesis(
     # Manual edits have highest priority
     manual_personal = personal.get("manualEdits") or personal.get("_manualEdits")
     if manual_personal:
-        parts.append(f"MANUAL EDITS — PERSONAL (ADMIN AUTHORITATIVE, USE THIS FIRST):\n{manual_personal}")
+        if isinstance(manual_personal, list):
+            for entry in manual_personal:
+                if isinstance(entry, dict) and entry.get("text"):
+                    parts.append(f"MANUAL EDIT — PERSONAL (ADMIN AUTHORITATIVE):\n{entry['text']}")
+        else:
+            parts.append(f"MANUAL EDITS — PERSONAL (ADMIN AUTHORITATIVE, USE THIS FIRST):\n{manual_personal}")
 
     interests = analysis.get("interests") or {}
     if interests:

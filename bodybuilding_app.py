@@ -7656,25 +7656,35 @@ def admin_steve_profile_edit(target_username):
 
         analysis = profile.get('analysis', {})
 
-        try:
-            if isinstance(content, str):
-                import json
-                parsed_content = json.loads(content)
-            else:
-                parsed_content = content
-        except Exception:
-            parsed_content = content
+        # Store as manualEdits with the raw text (much more admin-friendly)
+        manual_entry = {
+            "text": content,
+            "editedBy": username,
+            "editedAt": datetime.utcnow().isoformat() + 'Z',
+            "type": "manual_override"
+        }
 
         if section == 'professional':
             if 'professional' not in analysis:
                 analysis['professional'] = {}
-            analysis['professional'].update(parsed_content)
+            if 'manualEdits' not in analysis['professional']:
+                analysis['professional']['manualEdits'] = []
+            # Append to list of manual edits
+            if isinstance(analysis['professional']['manualEdits'], list):
+                analysis['professional']['manualEdits'].append(manual_entry)
+            else:
+                analysis['professional']['manualEdits'] = [manual_entry]
             analysis['professional']['_lastManualEdit'] = datetime.utcnow().isoformat() + 'Z'
             analysis['professional']['_editedBy'] = username
         else:
             if 'personal' not in analysis:
                 analysis['personal'] = {}
-            analysis['personal'].update(parsed_content)
+            if 'manualEdits' not in analysis['personal']:
+                analysis['personal']['manualEdits'] = []
+            if isinstance(analysis['personal']['manualEdits'], list):
+                analysis['personal']['manualEdits'].append(manual_entry)
+            else:
+                analysis['personal']['manualEdits'] = [manual_entry]
             analysis['personal']['_lastManualEdit'] = datetime.utcnow().isoformat() + 'Z'
             analysis['personal']['_editedBy'] = username
 
