@@ -539,6 +539,10 @@ KNOWLEDGE_SYNTHESIS_PROMPT = """You are an expert people analyst for a professio
 Given the raw profile data, platform activity, enriched content, and onboarding answers for a user,
 produce a structured JSON analysis that captures HOW THIS PERSON HAS EVOLVED OVER TIME.
 
+You may also receive a PREVIOUS SYNTHESIS section — this is the existing knowledge base from a prior run.
+Your job is to ENHANCE and REFINE it, not start from scratch. Preserve what's correct, add new evidence,
+and update anything that has changed.
+
 Focus on these 8 dimensions:
 1. LifeCareer — career stages, transitions, trajectory, turning points
 2. GeographyCulture — locations lived, cultural influences, geographic expertise
@@ -556,6 +560,14 @@ CRITICAL RULES:
 - For Network dimension: use FREQUENCY data only. Never reference DM content.
 - Geographic data should note both CURRENT location and HISTORICAL journey.
 - Opinions should track SHIFTS — what changed and what triggered the change.
+- When a PREVIOUS SYNTHESIS is provided, build on it: keep correct information, enrich with new data, refine language.
+
+ADMIN CORRECTIONS:
+- If an ADMIN CORRECTIONS section is provided, treat it as ABSOLUTE GROUND TRUTH.
+- Admin corrections override ALL other data sources including the raw profile and previous synthesis.
+- If an admin says "this person does NOT have X experience", you MUST remove X entirely.
+- If an admin says "this should be Y instead of Z", use Y.
+- Never re-infer information that an admin has explicitly corrected or removed.
 
 PRIVACY:
 - Never mention specific community or network names in output.
@@ -584,7 +596,9 @@ def synthesize_member_knowledge(
 
     Collects all available data (Firestore profile, SQL posts/replies,
     enrichment, group chat frequency) and calls Grok to produce structured
-    synthesis notes.  Results are saved as individual documents.
+    synthesis notes.  Reads any existing KB notes to enable incremental
+    enhancement rather than full overwrite.  Admin corrections are treated
+    as ground truth.
     """
     if not USE_KNOWLEDGE_BASE_V1:
         return False
@@ -597,16 +611,25 @@ def synthesize_member_knowledge(
             logger.warning("No profile data for %s, cannot synthesize", username)
             return False
 
+        existing_kb = get_member_knowledge(username, note_types=SYNTHESIS_NOTE_TYPES)
+
         raw_text = _assemble_raw_text_for_synthesis(username, profile_data, group_interaction_counts)
         if not raw_text:
             logger.warning("No raw text assembled for %s", username)
             return False
 
-        synthesis_json = _call_grok_for_synthesis(username, raw_text)
+        prior_synthesis = _format_prior_synthesis(existing_kb)
+        admin_corrections = _extract_admin_corrections(existing_kb)
+
+        synthesis_json = _call_grok_for_synthesis(
+            username, raw_text,
+            prior_synthesis=prior_synthesis,
+            admin_corrections=admin_corrections,
+        )
         if not synthesis_json:
             return False
 
-        _save_synthesis_results(username, synthesis_json)
+        _save_synthesis_results(username, synthesis_json, existing_kb)
         _extract_and_save_shared_nodes(username, synthesis_json)
 
         logger.info("Knowledge synthesis complete for %s", username)
@@ -614,6 +637,46 @@ def synthesize_member_knowledge(
     except Exception as e:
         logger.error("Knowledge synthesis failed for %s: %s", username, e, exc_info=True)
         return False
+
+
+def _format_prior_synthesis(existing_kb: Dict[str, Any]) -> str:
+    """Format existing KB notes into a text block for Grok context."""
+    import json as _json
+    if not existing_kb:
+        return ""
+    parts = []
+    for key, doc in existing_kb.items():
+        nt = doc.get("noteType", key)
+        content = doc.get("content")
+        if not content or not isinstance(content, dict):
+            continue
+        version = doc.get("version", 1)
+        parts.append(f"[{nt} v{version}]\n{_json.dumps(content, indent=1, default=str)}")
+    if not parts:
+        return ""
+    return "--- PREVIOUS SYNTHESIS (enhance, don't start from scratch) ---\n" + "\n\n".join(parts)
+
+
+def _extract_admin_corrections(existing_kb: Dict[str, Any]) -> str:
+    """Extract admin feedback marked as 'needs_correction' into a text block."""
+    corrections = []
+    for key, doc in existing_kb.items():
+        fb = doc.get("adminFeedback")
+        if not fb or not isinstance(fb, dict):
+            continue
+        status = fb.get("status", "")
+        note = fb.get("note", "").strip()
+        nt = doc.get("noteType", key)
+        if status == "needs_correction" and note:
+            corrections.append(f"- {nt}: {note}")
+        elif status == "needs_correction":
+            corrections.append(f"- {nt}: marked as needing correction (no specific detail provided)")
+    if not corrections:
+        return ""
+    return (
+        "--- ADMIN CORRECTIONS (treat as ABSOLUTE GROUND TRUTH, override all other data) ---\n"
+        + "\n".join(corrections)
+    )
 
 
 def _assemble_raw_text_for_synthesis(
@@ -770,7 +833,13 @@ def _assemble_raw_text_for_synthesis(
     return "\n\n".join(parts)
 
 
-def _call_grok_for_synthesis(username: str, raw_text: str) -> Optional[Dict[str, Any]]:
+def _call_grok_for_synthesis(
+    username: str,
+    raw_text: str,
+    *,
+    prior_synthesis: str = "",
+    admin_corrections: str = "",
+) -> Optional[Dict[str, Any]]:
     """Call Grok to produce the 8-dimension synthesis JSON."""
     import json as _json
 
@@ -783,11 +852,17 @@ def _call_grok_for_synthesis(username: str, raw_text: str) -> Optional[Dict[str,
         from openai import OpenAI
         client = OpenAI(api_key=xai_key, base_url="https://api.x.ai/v1")
 
+        user_content = f"Synthesize the knowledge base for @{username}:\n\n{raw_text}"
+        if prior_synthesis:
+            user_content += f"\n\n{prior_synthesis}"
+        if admin_corrections:
+            user_content += f"\n\n{admin_corrections}"
+
         response = client.responses.create(
             model="grok-4-1-fast-non-reasoning",
             input=[
                 {"role": "system", "content": KNOWLEDGE_SYNTHESIS_PROMPT},
-                {"role": "user", "content": f"Synthesize the knowledge base for @{username}:\n\n{raw_text}"},
+                {"role": "user", "content": user_content},
             ],
             max_output_tokens=4000,
             temperature=0.3,
@@ -807,12 +882,22 @@ def _call_grok_for_synthesis(username: str, raw_text: str) -> Optional[Dict[str,
         return None
 
 
-def _save_synthesis_results(username: str, synthesis: Dict[str, Any]) -> None:
-    """Persist the 8 synthesis documents from Grok output."""
+def _save_synthesis_results(
+    username: str,
+    synthesis: Dict[str, Any],
+    existing_kb: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Persist the 8 synthesis documents from Grok output.
+
+    Preserves admin feedback from existing notes so corrections survive re-synthesis.
+    """
+    existing_kb = existing_kb or {}
     for note_type in SYNTHESIS_NOTE_TYPES:
         content = synthesis.get(note_type)
         if content and isinstance(content, dict):
-            save_synthesis_note(username, note_type, content)
+            prior_doc = existing_kb.get(note_type, {})
+            prior_feedback = prior_doc.get("adminFeedback")
+            save_synthesis_note(username, note_type, content, admin_feedback=prior_feedback)
 
 
 def _extract_and_save_shared_nodes(username: str, synthesis: Dict[str, Any]) -> None:

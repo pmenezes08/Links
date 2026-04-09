@@ -84,6 +84,7 @@ export default function KnowledgeBaseGraph({ username, open, onClose }: { userna
   const [activeView, setActiveView] = useState<'graph' | 'notes'>('notes')
   const [feedbackNote, setFeedbackNote] = useState('')
   const [feedbackStatus, setFeedbackStatus] = useState<'approved' | 'needs_correction'>('approved')
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false)
 
   const loadKnowledge = useCallback(async () => {
     setLoading(true)
@@ -142,6 +143,8 @@ export default function KnowledgeBaseGraph({ username, open, onClose }: { userna
   }
 
   const submitFeedback = async (noteType: string) => {
+    if (feedbackStatus === 'needs_correction' && !feedbackNote.trim()) return
+    setFeedbackSubmitting(true)
     try {
       const resp = await fetch(`/api/admin/knowledge_base/${encodeURIComponent(username)}/feedback`, {
         method: 'POST',
@@ -155,11 +158,13 @@ export default function KnowledgeBaseGraph({ username, open, onClose }: { userna
       const data = await resp.json()
       if (data.success) {
         setFeedbackNote('')
+        setFeedbackStatus('approved')
         await loadKnowledge()
       }
     } catch (err) {
       console.error('Feedback error:', err)
     }
+    setFeedbackSubmitting(false)
   }
 
   if (!open) return null
@@ -337,30 +342,68 @@ export default function KnowledgeBaseGraph({ username, open, onClose }: { userna
                     </div>
 
                     {selected.adminFeedback && (
-                      <div className="mt-3 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-300/80">
-                        Admin feedback: {JSON.stringify(selected.adminFeedback)}
+                      <div className={`mt-3 px-3 py-2 rounded-lg text-xs border ${
+                        selected.adminFeedback.status === 'needs_correction'
+                          ? 'bg-red-500/10 border-red-500/20 text-red-300/80'
+                          : 'bg-green-500/10 border-green-500/20 text-green-300/80'
+                      }`}>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="font-medium">
+                            {selected.adminFeedback.status === 'needs_correction' ? 'Correction pending' : 'Approved'}
+                          </span>
+                        </div>
+                        {selected.adminFeedback.note && (
+                          <p className="text-white/60 mt-0.5">{String(selected.adminFeedback.note)}</p>
+                        )}
                       </div>
                     )}
 
-                    <div className="mt-4 flex gap-2 items-center">
-                      <select
-                        value={feedbackStatus}
-                        onChange={e => setFeedbackStatus(e.target.value as typeof feedbackStatus)}
-                        className="px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-white focus:outline-none focus:border-[#4db6ac]"
-                      >
-                        <option value="approved">Approved</option>
-                        <option value="needs_correction">Needs Correction</option>
-                      </select>
-                      <input
-                        value={feedbackNote}
-                        onChange={e => setFeedbackNote(e.target.value)}
-                        placeholder="Optional note..."
-                        className="flex-1 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-white/80 placeholder-white/30 focus:outline-none focus:border-[#4db6ac]"
-                      />
+                    <div className="mt-4 border-t border-white/5 pt-3">
+                      <p className="text-[10px] uppercase tracking-wider text-white/30 font-medium mb-2">Feedback</p>
+                      <div className="flex gap-1.5 mb-2">
+                        <button
+                          onClick={() => setFeedbackStatus('approved')}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                            feedbackStatus === 'approved'
+                              ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                              : 'bg-white/5 text-white/40 border border-white/10 hover:bg-white/10'
+                          }`}
+                        >Approve</button>
+                        <button
+                          onClick={() => setFeedbackStatus('needs_correction')}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                            feedbackStatus === 'needs_correction'
+                              ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                              : 'bg-white/5 text-white/40 border border-white/10 hover:bg-white/10'
+                          }`}
+                        >Needs Correction</button>
+                      </div>
+                      {feedbackStatus === 'needs_correction' && (
+                        <textarea
+                          value={feedbackNote}
+                          onChange={e => setFeedbackNote(e.target.value)}
+                          placeholder="What's wrong and what should it say instead? (required)"
+                          rows={3}
+                          className="w-full px-2.5 py-2 bg-white/5 border border-red-500/20 rounded-lg text-xs text-white/80 placeholder-white/25 focus:outline-none focus:border-red-500/40 resize-none mb-2"
+                        />
+                      )}
+                      {feedbackStatus === 'approved' && (
+                        <input
+                          value={feedbackNote}
+                          onChange={e => setFeedbackNote(e.target.value)}
+                          placeholder="Optional note..."
+                          className="w-full px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-white/80 placeholder-white/25 focus:outline-none focus:border-[#4db6ac] mb-2"
+                        />
+                      )}
                       <button
                         onClick={() => submitFeedback(selected.noteType)}
-                        className="px-3 py-1.5 bg-[#6366f1]/20 text-[#a5b4fc] border border-[#6366f1]/30 rounded-lg text-xs font-medium hover:bg-[#6366f1]/30 transition-colors"
-                      >Submit</button>
+                        disabled={feedbackSubmitting || (feedbackStatus === 'needs_correction' && !feedbackNote.trim())}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          feedbackSubmitting || (feedbackStatus === 'needs_correction' && !feedbackNote.trim())
+                            ? 'bg-white/5 text-white/20 cursor-not-allowed'
+                            : 'bg-[#6366f1]/20 text-[#a5b4fc] border border-[#6366f1]/30 hover:bg-[#6366f1]/30'
+                        }`}
+                      >{feedbackSubmitting ? 'Saving...' : 'Submit Feedback'}</button>
                     </div>
                   </div>
                 ) : (
