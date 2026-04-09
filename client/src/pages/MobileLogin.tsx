@@ -24,6 +24,7 @@ export default function MobileLogin() {
   const [googleLoading, setGoogleLoading] = useState(false)
   const [showComingSoonGoogle, setShowComingSoonGoogle] = useState(false)
   const [inviteFromInstallBusy, setInviteFromInstallBusy] = useState(false)
+  const [showInviteClipboardModal, setShowInviteClipboardModal] = useState(false)
   // PWA install state (removed install UI)
 
   // Check invitation token
@@ -38,6 +39,7 @@ export default function MobileLogin() {
       .then(r => r.json())
       .then(j => {
         if (j?.success) {
+          setError(null)
           const payload = {
             communityId: j.community_id ?? null,
             communityName: j.community_name,
@@ -91,6 +93,7 @@ export default function MobileLogin() {
       setError('Could not read your invite. Click on the invite link, then try again.')
     } finally {
       setInviteFromInstallBusy(false)
+      setShowInviteClipboardModal(false)
     }
   }, [navigate])
 
@@ -168,12 +171,11 @@ export default function MobileLogin() {
     check()
   }, [navigate, inviteToken, step, authCheckDone])
 
-  // Read error from query string (e.g., /?error=...)
+  // Sync error from query string when URL changes (e.g. /?error=... → /login?invite=...)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const e = params.get('error')
+    const e = searchParams.get('error')
     setError(e)
-  }, [])
+  }, [searchParams])
 
   // Check if there's a pending username (password step)
   useEffect(() => {
@@ -547,10 +549,10 @@ export default function MobileLogin() {
                 <button
                   type="button"
                   disabled={inviteFromInstallBusy}
-                  onClick={() => void tryInviteFromInstallTap()}
-                  className="w-full rounded-lg border border-[#4db6ac]/40 bg-[#4db6ac]/10 py-2.5 text-sm font-medium text-[#4db6ac] active:opacity-90 disabled:opacity-50"
+                  onClick={() => setShowInviteClipboardModal(true)}
+                  className="w-full rounded-lg border border-white/10 bg-white/5 py-2 text-sm text-center active:opacity-90 disabled:opacity-50"
                 >
-                  {inviteFromInstallBusy ? 'Checking…' : 'Use Community Invite'}
+                  Use Community Invite
                 </button>
                 <p className="text-white/40 text-[11px] text-center leading-snug">
                   After installing C-Point from an invite link, tap here before you sign in
@@ -586,6 +588,47 @@ export default function MobileLogin() {
 
         {/* Install app UI removed */}
       </div>
+
+      {showInviteClipboardModal && (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center p-4"
+          onClick={() => setShowInviteClipboardModal(false)}
+        >
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div
+            className="relative w-full max-w-[360px] rounded-2xl border border-white/10 bg-[#111] p-5 text-white shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="text-center mb-4">
+              <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-[#4db6ac]/10 flex items-center justify-center">
+                <i className="fa-solid fa-link text-[#4db6ac] text-xl" />
+              </div>
+              <h3 className="text-lg font-semibold m-0">Use your invite link</h3>
+            </div>
+            <p className="text-sm text-white/70 text-center mb-4 leading-relaxed">
+              We&apos;ll read your clipboard once to find your community invite. On the next step, iOS may ask you to allow paste — that&apos;s expected.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                disabled={inviteFromInstallBusy}
+                onClick={() => void tryInviteFromInstallTap()}
+                className="w-full rounded-xl bg-[#4db6ac] text-black font-semibold text-sm py-3 active:opacity-90 disabled:opacity-50"
+              >
+                {inviteFromInstallBusy ? 'Checking…' : 'Continue'}
+              </button>
+              <button
+                type="button"
+                disabled={inviteFromInstallBusy}
+                onClick={() => setShowInviteClipboardModal(false)}
+                className="w-full rounded-xl bg-white/5 text-white/60 text-sm py-3 border-0 active:opacity-90 disabled:opacity-50"
+              >
+                Not now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForgot && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
