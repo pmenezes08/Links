@@ -24,7 +24,10 @@ interface KnowledgeData {
     updatedAt?: string
     createdAt?: string
     version?: number
-    adminFeedback?: Record<string, unknown>
+    adminFeedback?: {
+      status?: string
+      note?: string | React.ReactNode
+    }
   }
 }
 
