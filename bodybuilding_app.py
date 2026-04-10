@@ -8927,6 +8927,24 @@ PHASE 3 — PERSONAL & SOCIAL DEEP DIVE (today is {today_str}, only after Phase 
         system_prompt = f"""You are an expert people analyst. Given a user's profile data from a private professional network, produce a structured JSON analysis that captures the WHOLE person.
 
 {base_rules}
+
+ADMIN MANUAL DATA AND USER APPROVED CONTENT — ABSOLUTE GROUND TRUTH (HIGHEST PRIORITY):
+
+The input may contain:
+- manualEdits and manualContext fields
+- careerHistory entries with _source: "admin_manual"
+- Social media links or other URLs added by the admin
+- User approved content (from _userReview, _acceptedSections, or approved feedback)
+
+These are AUTHORITATIVE. Treat them as highest-priority ground truth. They take precedence over public web sources.
+
+RULES:
+- Give EXTREMELY HIGH WEIGHT to this admin-provided and user-approved data when forming observations, making inferences, doing identity verification, and deciding what to search.
+- Observations MUST be heavily grounded in and explicitly reference admin edits, added links, and user approved content.
+- All inferences should flow from or be consistent with this authoritative data.
+- When admin-added links or social profiles are present, use them as primary anchors for identity confirmation (Phase 1) and prioritize searching those specific profiles.
+- If public sources conflict with admin edits or approved content, prioritize the admin/user-approved data and note the conflict in "notes".
+
 {research_rules}
 {deep_rules}
 
@@ -8942,7 +8960,7 @@ Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
 {personal_schema}
   "interests": {{"topic_name": {{"score": 0.85, "source": "where you found this", "type": "professional|personal|both"}}, ...}},
   "traits": ["trait1", "trait2", "trait3"],
-  "observations": "2-3 sentences of deeper insight — what makes this person tick",
+  "observations": "2-3 sentences of deeper insight — what makes this person tick. Ground these heavily in admin manual edits, added links, user approved content, and manualContext. Reference them explicitly.",
   "networkingValue": "1-2 sentences: what unique value they bring and what connections would benefit them",
   "notes": "If CONTENT INGESTION FAILURES appeared in the input, briefly list what could not be loaded or analyzed (e.g. paywall, transcript unavailable). Empty string if none.",
 {starters_schema}
