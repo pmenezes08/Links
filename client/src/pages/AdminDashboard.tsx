@@ -642,6 +642,31 @@ export default function AdminDashboard() {
     } catch {}
   }, [])
 
+  const parseEndDate = (dates: string): number => {
+    if (!dates || dates.toLowerCase() === 'unknown') return -Infinity
+    const lower = dates.toLowerCase()
+    if (lower.includes('present') || lower.includes('current') || lower.includes('now')) return Infinity
+
+    // Try to extract the end date (after " - " or "–")
+    const parts = dates.split(/\s*[-–]\s*/)
+    const endPart = (parts.length > 1 ? parts[parts.length - 1] : parts[0]).trim()
+
+    // Try full date like "Dec 2024"
+    const monthYear = endPart.match(/(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+(\d{4})/i)
+    if (monthYear) {
+      const months: Record<string, number> = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 }
+      const m = endPart.slice(0, 3).toLowerCase()
+      return new Date(parseInt(monthYear[1]), months[m] || 0).getTime()
+    }
+    // Try just a year like "2022"
+    const yearMatch = endPart.match(/(\d{4})/)
+    if (yearMatch) return new Date(parseInt(yearMatch[1]), 11).getTime()
+    return -Infinity
+  }
+
+  const sortExperiencesByDate = (exps: typeof editExperiences) =>
+    [...exps].sort((a, b) => parseEndDate(b.dates) - parseEndDate(a.dates))
+
   const openSteveEditModal = (username: string, section: 'professional' | 'personal') => {
     const profile = steveProfiles.find(p => p.username === username)
     setEditingSteveProfile(username)
@@ -655,7 +680,7 @@ export default function AdminDashboard() {
         dates: e?.period || e?.dates || '',
         description: e?.highlight || e?.description || '',
       }))
-      setEditExperiences(existingCareer.length > 0 ? existingCareer : [{ company: '', title: '', dates: '', description: '' }])
+      setEditExperiences(existingCareer.length > 0 ? sortExperiencesByDate(existingCareer) : [{ company: '', title: '', dates: '', description: '' }])
       setEditContent('')
     } else {
       const personal = (profile?.analysis?.personal || {}) as any
@@ -671,7 +696,7 @@ export default function AdminDashboard() {
       let payloadContent: any
 
       if (editSection === 'professional') {
-        const validExperiences = editExperiences.filter(e => e.company.trim() || e.title.trim())
+        const validExperiences = sortExperiencesByDate(editExperiences.filter(e => e.company.trim() || e.title.trim()))
         if (validExperiences.length === 0) return
         payloadContent = { experiences: validExperiences }
       } else {
