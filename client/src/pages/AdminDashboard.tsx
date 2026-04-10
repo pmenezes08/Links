@@ -612,6 +612,44 @@ export default function AdminDashboard() {
     setBatchProgress({ current: 0, total: 0, currentUser: '' })
   }, [steveProfiles, batchDepth])
 
+  const [kbBatchRunning, setKbBatchRunning] = useState(false)
+  const [kbBatchProgress, setKbBatchProgress] = useState({ current: 0, total: 0, currentUser: '', skipped: 0 })
+
+  const synthesizeAllKBs = useCallback(async () => {
+    const targets = steveProfiles.filter(p => p.analysis?.summary)
+    if (targets.length === 0) return
+    batchAbortRef.current = false
+    setKbBatchRunning(true)
+    setKbBatchProgress({ current: 0, total: targets.length, currentUser: '', skipped: 0 })
+    let skipped = 0
+
+    for (let i = 0; i < targets.length; i++) {
+      if (batchAbortRef.current) break
+      const u = targets[i]
+      setKbBatchProgress({ current: i + 1, total: targets.length, currentUser: u.username, skipped })
+
+      try {
+        const checkResp = await fetch(`/api/admin/knowledge_base/${encodeURIComponent(u.username)}`, { credentials: 'include' })
+        const checkData = await checkResp.json()
+        if (checkData.success && Object.keys(checkData.knowledge || {}).length > 0) {
+          skipped++
+          setKbBatchProgress(prev => ({ ...prev, skipped }))
+          continue
+        }
+
+        await fetch(`/api/admin/knowledge_base/${encodeURIComponent(u.username)}/synthesize`, {
+          method: 'POST',
+          credentials: 'include',
+        })
+      } catch (err) {
+        console.error(`KB synthesis failed for ${u.username}:`, err)
+      }
+    }
+
+    setKbBatchRunning(false)
+    setKbBatchProgress({ current: 0, total: 0, currentUser: '', skipped: 0 })
+  }, [steveProfiles])
+
   const clearProfile = useCallback(async (targetUsername: string) => {
     if (!confirm(`Clear all AI analysis for @${targetUsername}?`)) return
     try {
@@ -903,6 +941,11 @@ export default function AdminDashboard() {
       loadBlockedUsers()
     }
   }, [activeTab, loadBlockedUsers])
+
+  // Scroll to top when switching tabs
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [activeTab])
 
   // Load Steve profiles when steve_profiling tab is active
   useEffect(() => {
@@ -2239,9 +2282,17 @@ export default function AdminDashboard() {
                           New only ({steveProfiles.filter(p => !p.analysis?.summary).length})
                         </button>
                       )}
+                      <button
+                        onClick={synthesizeAllKBs}
+                        disabled={steveProfilesLoading || batchRunning || kbBatchRunning}
+                        className="px-3 py-2 bg-purple-500/20 border border-purple-500/30 hover:bg-purple-500/30 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50 text-purple-300"
+                      >
+                        <i className="fa-solid fa-layer-group" />
+                        Synthesize KBs
+                      </button>
                     </div>
                   )}
-                  {batchRunning && (
+                  {(batchRunning || kbBatchRunning) && (
                     <button
                       onClick={() => { batchAbortRef.current = true }}
                       className="px-3 py-2 bg-red-500/20 border border-red-500/30 hover:bg-red-500/30 rounded-lg text-sm flex items-center gap-2 text-red-400"
@@ -2317,6 +2368,21 @@ export default function AdminDashboard() {
                     <div
                       className="h-full bg-[#4db6ac] rounded-full transition-all duration-300"
                       style={{ width: `${batchProgress.total > 0 ? (batchProgress.current / batchProgress.total) * 100 : 0}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {kbBatchRunning && (
+                <div className="mb-4">
+                  <div className="flex items-center justify-between text-xs text-purple-300/80 mb-1">
+                    <span>Synthesizing KB for {kbBatchProgress.currentUser}...</span>
+                    <span>{kbBatchProgress.current}/{kbBatchProgress.total} ({kbBatchProgress.skipped} skipped)</span>
+                  </div>
+                  <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="h-full bg-purple-500 rounded-full transition-all duration-300"
+                      style={{ width: `${kbBatchProgress.total > 0 ? (kbBatchProgress.current / kbBatchProgress.total) * 100 : 0}%` }}
                     />
                   </div>
                 </div>
