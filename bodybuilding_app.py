@@ -7333,6 +7333,8 @@ def _execute_steve_profile_analysis(target_username: str, depth: str = 'standard
         if reset:
             if prior_feedback:
                 analysis['_feedback'] = prior_feedback
+            # Even on reset, preserve admin manual edits — these are authoritative
+            _preserve_admin_data(existing_analysis, analysis)
             final = analysis
         else:
             final = _merge_analyses(existing_analysis, analysis)
@@ -8194,9 +8196,11 @@ def _normalize_career_history_key(company: str, role: str) -> str:
 
 
 def _collapse_career_history_near_duplicates(entries: list) -> list:
-    """Within same employer (loose company match), drop near-duplicate roles; keep better tenure row."""
+    """Within same employer (loose company match), drop near-duplicate roles; keep better tenure row.
+    Admin-added entries (_source == 'admin_manual') are never removed."""
     if not entries or len(entries) < 2:
         return entries
+    admin_indices = {i for i, e in enumerate(entries) if isinstance(e, dict) and e.get('_source') == 'admin_manual'}
     by_comp = {}
     for i, e in enumerate(entries):
         if not isinstance(e, dict):
@@ -8220,6 +8224,18 @@ def _collapse_career_history_near_duplicates(entries: list) -> list:
                 ke = entries[kidx]
                 if _role_token_jaccard(e.get('role', ''), ke.get('role', '')) < 0.42:
                     continue
+                # Never remove admin entries
+                if i in admin_indices and kidx in admin_indices:
+                    continue
+                if kidx in admin_indices:
+                    remove.add(i)
+                    replaced = True
+                    break
+                if i in admin_indices:
+                    remove.add(kidx)
+                    keepers[j] = i
+                    replaced = True
+                    break
                 se, sk = _career_preference_score(e), _career_preference_score(ke)
                 if se > sk:
                     remove.add(kidx)
@@ -8235,12 +8251,84 @@ def _collapse_career_history_near_duplicates(entries: list) -> list:
     return [e for i, e in enumerate(entries) if i not in remove]
 
 
+def _preserve_admin_data(existing_analysis: dict, new_analysis: dict) -> None:
+    """Copy admin-authored fields from existing analysis into new analysis (mutates new_analysis).
+
+    Used by both the reset path and merge path to ensure manual edits,
+    admin-added career entries, and personal context are never lost.
+    """
+    _ADMIN_KEYS = ('manualEdits', 'manualContext', '_lastManualEdit', '_editedBy')
+
+    for section in ('professional', 'personal'):
+        old_sec = existing_analysis.get(section)
+        if not old_sec or not isinstance(old_sec, dict):
+            continue
+        if section not in new_analysis or not isinstance(new_analysis.get(section), dict):
+            new_analysis[section] = {}
+        for key in _ADMIN_KEYS:
+            if key in old_sec and old_sec[key]:
+                new_analysis[section][key] = old_sec[key]
+
+    # Preserve admin-added career history entries
+    old_pro = existing_analysis.get('professional') or {}
+    old_career = old_pro.get('careerHistory') or []
+    admin_entries = [e for e in old_career if isinstance(e, dict) and e.get('_source') == 'admin_manual']
+    if admin_entries:
+        new_pro = new_analysis.get('professional') or {}
+        new_career = new_pro.get('careerHistory') or []
+        new_analysis.setdefault('professional', {})['careerHistory'] = admin_entries + new_career
+
+
 def _merge_career_history_lists(new_hist: list, old_hist: list) -> list:
-    """Latest careerHistory wins when non-empty; fall back to old only if new is empty."""
+    """Merge new Grok-discovered career entries with existing ones.
+
+    Admin-added entries (_source == 'admin_manual') are ALWAYS preserved.
+    Grok entries are matched by company+role; new ones are added, existing
+    ones are updated only if the new version has better data (dates, highlights).
+    """
+    old_valid = [e for e in (old_hist or []) if isinstance(e, dict)]
     new_valid = [e for e in (new_hist or []) if isinstance(e, dict)]
-    if new_valid:
+
+    if not new_valid:
+        return old_valid
+    if not old_valid:
         return new_valid
-    return [e for e in (old_hist or []) if isinstance(e, dict)]
+
+    admin_entries = [e for e in old_valid if e.get('_source') == 'admin_manual']
+    grok_old = [e for e in old_valid if e.get('_source') != 'admin_manual']
+
+    old_keys = {}
+    for e in grok_old:
+        key = _normalize_career_history_key(e.get('company', ''), e.get('role', '') or e.get('title', ''))
+        old_keys[key] = e
+
+    merged_grok = dict(old_keys)
+    for e in new_valid:
+        key = _normalize_career_history_key(e.get('company', ''), e.get('role', '') or e.get('title', ''))
+        existing = merged_grok.get(key)
+        if not existing:
+            loose_match = None
+            for ok, oe in merged_grok.items():
+                if (_normalize_company_loose(e.get('company', '')) == _normalize_company_loose(oe.get('company', ''))
+                        and _role_token_jaccard(e.get('role', '') or e.get('title', ''), oe.get('role', '') or oe.get('title', '')) >= 0.42):
+                    loose_match = ok
+                    break
+            if loose_match:
+                existing = merged_grok[loose_match]
+                new_score = _career_preference_score(e)
+                old_score = _career_preference_score(existing)
+                if new_score >= old_score:
+                    merged_grok[loose_match] = e
+            else:
+                merged_grok[key] = e
+        else:
+            new_score = _career_preference_score(e)
+            old_score = _career_preference_score(existing)
+            if new_score >= old_score:
+                merged_grok[key] = e
+
+    result = admin_entries + list(merged_grok.values())
+    return _collapse_career_history_near_duplicates(result)
 
 
 def _merge_analyses(existing: dict, new: dict) -> dict:
@@ -8280,12 +8368,15 @@ def _merge_analyses(existing: dict, new: dict) -> dict:
                     merged_id[k] = v
         merged['identity'] = merged_id
 
+    # Fields that are admin-authored and must NEVER be overwritten by Grok output
+    _ADMIN_PROTECTED_KEYS = {'manualEdits', 'manualContext', '_lastManualEdit', '_editedBy', '_source'}
+
     if new.get('professional'):
         old_pro = existing.get('professional') or {}
         new_pro = new['professional'] or {}
         merged_pro = dict(old_pro)
         for k, v in new_pro.items():
-            if k == 'careerHistory':
+            if k == 'careerHistory' or k in _ADMIN_PROTECTED_KEYS:
                 continue
             if v and k not in merged_pro:
                 merged_pro[k] = v
@@ -8312,6 +8403,8 @@ def _merge_analyses(existing: dict, new: dict) -> dict:
         new_personal = new['personal'] or {}
         merged_personal = dict(old_personal)
         for k, v in new_personal.items():
+            if k in _ADMIN_PROTECTED_KEYS:
+                continue
             if v:
                 old_v = merged_personal.get(k)
                 if not old_v or (isinstance(v, str) and len(v) >= len(str(old_v)) * 0.7):
