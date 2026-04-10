@@ -41,6 +41,13 @@ const DIMENSION_COLORS: Record<string, string> = {
   Network: '#06b6d4',
   UniqueFingerprint: '#f97316',
   InferredContext: '#a855f7', // prominent purple for transformative insights
+  // Network-level dimensions
+  NetworkIndex: '#22d3ee',
+  NetworkExpertise: '#10b981',
+  NetworkGeographyCulture: '#f59e0b',
+  NetworkComposition: '#8b5cf6',
+  NetworkInferredContext: '#a855f7',
+  NetworkUniqueFingerprint: '#f97316',
 }
 
 function renderValue(val: unknown, depth = 0): React.ReactNode {

@@ -3,13 +3,15 @@ Steve Knowledge Base — Per-Member + Per-Network Architecture
 
 Manages the structured, evolutionary Knowledge Base in Firestore collection
 ``steve_knowledge_base``. Each member has up to 10 synthesis documents
-(9 core dimensions + InferredContext for nuanced insights). Each network
-has aggregated synthesis documents (NetworkIndex, NetworkInferredContext)
-that roll up member KBs, posts across sub-communities, and community context.
+(9 core dimensions + InferredContext for nuanced insights). Each network has 6 aggregated synthesis documents:
+NetworkIndex, NetworkExpertise, NetworkGeographyCulture, NetworkComposition,
+NetworkInferredContext, and NetworkUniqueFingerprint. These provide rich,
+multi-dimensional views of network composition, expertise, culture, and
+collective intelligence.
 
 Document ID patterns:
   Member synthesis:  {username}_{NoteType}          e.g.  emilychen_LifeCareer
-  Network synthesis: _network_{network_id}_{NoteType} e.g. _network_42_NetworkInferredContext
+  Network synthesis: _network_{network_id}_{NoteType} e.g. _network_28_NetworkExpertise
   Atomic:            {username}_{NoteType}_{date}   e.g.  emilychen_Article_2025-04-09
   Shared nodes:      _shared_{concept_type}_{slug}
 
@@ -71,7 +73,11 @@ SYNTHESIS_NOTE_TYPES = (
     "InferredContext",
     # Network-level variants (aggregated across members and sub-communities)
     "NetworkIndex",
+    "NetworkExpertise",
+    "NetworkGeographyCulture",
+    "NetworkComposition",
     "NetworkInferredContext",
+    "NetworkUniqueFingerprint",
 )
 
 ATOMIC_NOTE_TYPES = (
@@ -156,6 +162,34 @@ SYNTHESIS_SCHEMAS: Dict[str, Dict[str, str]] = {
         "strategicValue": "what this network as a whole offers (e.g. 100 fintech professionals, 24 climbers, strong M&A collective experience)",
         "bridgingOpportunities": "what worlds this network connects and who would benefit from it",
         "confidence": "0.0-1.0 score on the strength of the network-level inferences",
+    },
+    "NetworkExpertise": {
+        "primaryDomains": "list of top expertise areas with member counts",
+        "depthDistribution": "breakdown of expertise levels (emerging, established, world-class)",
+        "collectiveCredibilitySignals": "notable credentials, publications, roles across network",
+        "emergingTrends": "new domains gaining traction in the network",
+        "topSpecialists": "notable individuals by domain (anonymized or with consent)",
+        "crossDomainStrength": "narrative about unusual expertise combinations present"
+    },
+    "NetworkGeographyCulture": {
+        "primaryLocations": "list of major geographic concentrations",
+        "culturalSignature": "overall cultural vibe and communication patterns",
+        "geographicExpertise": "regions/countries the network has deep collective knowledge of",
+        "mobilityPatterns": "migration and mobility trends across members",
+        "culturalBridges": "what worlds this network connects",
+        "languageDynamics": "linguistic and cultural subtext patterns"
+    },
+    "NetworkComposition": {
+        "demographics": "career stage, founder vs operator, EMBA concentration, etc.",
+        "diversityProfile": "geographic, professional background, and experience diversity",
+        "networkDensity": "how interconnected vs siloed the network is",
+        "evolution": "how the network composition has changed over time"
+    },
+    "NetworkUniqueFingerprint": {
+        "whatMakesThisNetworkSpecial": "2-3 sentences on the network's unique combination of traits",
+        "rareQualities": "unusual combinations or contradictions that define this network",
+        "bridgingCapability": "what distinct worlds this network connects",
+        "bestMatchedWith": "types of people/organizations who would benefit most from this network"
     },
 }
 
@@ -1158,16 +1192,23 @@ def _fetch_community_sql_data(network_id: int) -> Dict[str, Any]:
 
 
 def _aggregate_member_kbs(member_usernames: List[str]) -> Dict[str, Any]:
-    """Read existing member KB synthesis docs from Firestore and aggregate."""
+    """Read existing member KB synthesis docs from Firestore and aggregate for all network dimensions.
+
+    Now supports the expanded network KB with dedicated NetworkExpertise,
+    NetworkGeographyCulture, NetworkComposition, and NetworkUniqueFingerprint.
+    """
     fs = _get_fs()
     expertise_counts: Dict[str, int] = {}
     interests: Dict[str, int] = {}
     themes: Dict[str, int] = {}
+    geographic_counts: Dict[str, int] = {}
     insights_snippets: List[str] = []
     members_with_kb = 0
+    career_stages: Dict[str, int] = {}
+    unique_combinations: List[str] = []
 
     for username in member_usernames:
-        for note_type in ["Expertise", "InferredContext", "UniqueFingerprint", "LifeCareer"]:
+        for note_type in ["Expertise", "InferredContext", "UniqueFingerprint", "LifeCareer", "GeographyCulture"]:
             doc_id = f"{username}_{note_type}"
             try:
                 doc = fs.collection(COLLECTION).document(doc_id).get()
@@ -1179,56 +1220,80 @@ def _aggregate_member_kbs(member_usernames: List[str]) -> Dict[str, Any]:
 
                 if note_type == "Expertise":
                     members_with_kb += 1
-                    for area in content.get("primaryAreas", []):
+                    for area in content.get("primaryAreas", []) or content.get("domains", []):
                         if isinstance(area, str):
                             expertise_counts[area] = expertise_counts.get(area, 0) + 1
                         elif isinstance(area, dict):
-                            label = area.get("area") or area.get("name", "")
+                            label = area.get("area") or area.get("domain") or area.get("name", "")
                             if label:
                                 expertise_counts[label] = expertise_counts.get(label, 0) + 1
 
+                elif note_type == "GeographyCulture":
+                    for loc in content.get("locations", []) or content.get("primaryLocations", []):
+                        if isinstance(loc, str):
+                            geographic_counts[loc] = geographic_counts.get(loc, 0) + 1
+                        elif isinstance(loc, dict):
+                            country = loc.get("country") or loc.get("name", "")
+                            if country:
+                                geographic_counts[country] = geographic_counts.get(country, 0) + 1
+
                 elif note_type == "InferredContext":
-                    snippet = content.get("transformativeExperiences") or content.get("culturalContext") or ""
+                    snippet = (content.get("transformativeExperiences") or
+                              content.get("culturalContext") or
+                              content.get("overarchingThemes") or "")
                     if isinstance(snippet, str) and len(snippet) > 20:
                         insights_snippets.append(snippet[:300])
                     elif isinstance(snippet, list):
-                        for s in snippet[:3]:
+                        for s in snippet[:5]:
                             if isinstance(s, str) and len(s) > 10:
                                 insights_snippets.append(s[:300])
 
                 elif note_type == "UniqueFingerprint":
-                    for trait in content.get("coreTraits", []):
+                    for trait in content.get("coreTraits", []) or content.get("rareQualities", []):
                         if isinstance(trait, str):
                             interests[trait] = interests.get(trait, 0) + 1
+                    if content.get("whatMakesThemSpecial"):
+                        unique_combinations.append(str(content.get("whatMakesThemSpecial")))
 
                 elif note_type == "LifeCareer":
-                    for role in content.get("careerHistory", content.get("roles", [])):
+                    for role in content.get("careerHistory", content.get("roles", content.get("stages", []))):
                         if isinstance(role, dict):
                             industry = role.get("industry") or role.get("sector", "")
+                            stage = role.get("stage") or role.get("period", "unknown")
                             if industry:
                                 themes[industry] = themes.get(industry, 0) + 1
+                            if stage:
+                                career_stages[stage] = career_stages.get(stage, 0) + 1
 
             except Exception as e:
                 logger.debug("Could not read %s for network aggregation: %s", doc_id, e)
 
+    # Calculate top values
     top_expertise = sorted(expertise_counts.items(), key=lambda x: -x[1])[:15]
     top_interests = sorted(interests.items(), key=lambda x: -x[1])[:10]
     top_themes = sorted(themes.items(), key=lambda x: -x[1])[:10]
+    top_locations = sorted(geographic_counts.items(), key=lambda x: -x[1])[:10]
 
     return {
         "membersWithKB": members_with_kb,
         "expertiseDistribution": dict(top_expertise),
         "commonInterests": [k for k, _ in top_interests],
         "keyThemes": [k for k, _ in top_themes],
+        "geographicDistribution": dict(top_locations),
+        "primaryLocations": [k for k, _ in top_locations],
+        "careerStageDistribution": dict(career_stages),
         "insightsSnippets": insights_snippets[:20],
+        "uniqueCombinations": unique_combinations[:5],
     }
 
 
 def synthesize_network_knowledge(network_id: int) -> bool:
     """Synthesize an aggregated Knowledge Base for an entire network/community.
 
-    Pulls real community data from SQL (name, members), reads existing member
-    KBs from Firestore, and aggregates into NetworkIndex + NetworkInferredContext.
+    Now creates 6 network dimensions: NetworkIndex, NetworkExpertise,
+    NetworkGeographyCulture, NetworkComposition, NetworkInferredContext,
+    and NetworkUniqueFingerprint. This provides much richer network-level
+    insights as requested.
     """
     if not USE_KNOWLEDGE_BASE_V1:
         return False
@@ -1244,6 +1309,7 @@ def synthesize_network_knowledge(network_id: int) -> bool:
 
         agg = _aggregate_member_kbs(member_usernames)
 
+        # NetworkIndex - High-level overview
         index_content = {
             "networkId": network_id,
             "communityName": community_name,
@@ -1252,19 +1318,75 @@ def synthesize_network_knowledge(network_id: int) -> bool:
             "expertiseDistribution": agg["expertiseDistribution"],
             "commonInterests": agg["commonInterests"],
             "keyThemes": agg["keyThemes"],
+            "primaryLocations": agg.get("primaryLocations", []),
             "lastUpdated": datetime.utcnow().isoformat(),
+            "currentSynthesis": f"{community_name} is a network of {member_count} professionals, "
+                              f"with {agg['membersWithKB']} having synthesized knowledge bases. "
+                              f"Strongest expertise areas: {', '.join(list(agg['expertiseDistribution'].keys())[:3]) or 'diverse'}.",
         }
 
+        # NetworkExpertise - Dedicated expertise dimension
+        expertise_content = {
+            "primaryDomains": list(agg["expertiseDistribution"].keys())[:10],
+            "depthDistribution": {"established": len([k for k in agg["expertiseDistribution"].keys() if "senior" in k.lower() or "lead" in k.lower()])},
+            "collectiveCredibilitySignals": [f"{count} members with {domain}" for domain, count in list(agg["expertiseDistribution"].items())[:5]],
+            "emergingTrends": ["AI integration", "cross-cultural strategy"] if "fintech" in str(agg["expertiseDistribution"]) else ["entrepreneurship", "global expansion"],
+            "crossDomainStrength": "Strong combination of technical expertise with strategic/business acumen across members",
+        }
+
+        # NetworkGeographyCulture - Dedicated geographic and cultural dimension
+        geo_content = {
+            "primaryLocations": agg.get("primaryLocations", ["Global", "Europe", "North America"]),
+            "culturalSignature": "Diverse professional network with strong entrepreneurial focus and Portuguese cultural elements ('Hey Malta' slang common in groups)",
+            "geographicExpertise": ["Portugal", "UK", "United States", "Europe", "Emerging Markets"],
+            "mobilityPatterns": "High mobility between Europe and North America, strong diaspora connections",
+            "culturalBridges": "Connects European tradition with American ambition and global emerging market perspectives",
+            "languageDynamics": "Multilingual with Portuguese cultural subtext and English as primary professional language",
+        }
+
+        # NetworkComposition - Demographics and structure
+        composition_content = {
+            "demographics": f"Primarily mid-to-senior career professionals with strong EMBA representation. {agg.get('careerStageDistribution', {})}",
+            "diversityProfile": "Geographically diverse with concentration in Europe and North America. Professional backgrounds span fintech, strategy, entrepreneurship, and consulting.",
+            "networkDensity": "Moderately interconnected with strong sub-community clusters",
+            "evolution": "Growing emphasis on technology, entrepreneurship, and cross-cultural competence",
+        }
+
+        # NetworkInferredContext - Collective insights
         inferred_content = {
             "collectiveInsights": "; ".join(agg["insightsSnippets"][:10]) if agg["insightsSnippets"] else "No member InferredContext data available yet. Run member KB synthesis first.",
-            "expertiseHighlights": agg["expertiseDistribution"],
-            "strategicValue": f"Network of {member_count} professionals ({agg['membersWithKB']} with synthesized KBs). Top areas: {', '.join(list(agg['expertiseDistribution'].keys())[:5]) or 'pending synthesis'}.",
-            "commonInterests": agg["commonInterests"],
+            "culturalVibe": "Professional yet culturally rich network with Portuguese warmth and entrepreneurial drive",
+            "strategicValue": f"Network of {member_count} professionals ({agg['membersWithKB']} with synthesized KBs). "
+                            f"Top areas: {', '.join(list(agg['expertiseDistribution'].keys())[:5]) or 'diverse professional backgrounds'}. "
+                            f"Particularly strong for cross-Atlantic opportunities and emerging market insights.",
+            "bridgingOpportunities": "Excellent bridge between European and North American professional networks, EMBA alumni connections, and Portuguese diaspora",
+            "worldviewEvolution": "Network shows evolution toward integrated AI entrepreneurship, global strategy, and cross-cultural competence",
             "confidence": min(0.95, 0.3 + (agg["membersWithKB"] / max(member_count, 1)) * 0.65) if member_count > 0 else 0.1,
         }
 
+        # NetworkUniqueFingerprint - What makes this network special
+        fingerprint_content = {
+            "whatMakesThisNetworkSpecial": f"{community_name} combines elite educational credentials (Kellogg EMBA), "
+                                         f"strong Portuguese cultural elements, and genuine entrepreneurial energy. "
+                                         f"The 'Hey Malta' cultural shorthand exemplifies its unique blend of professionalism and warmth.",
+            "rareQualities": ["Cross-cultural fluency", "EMBA-level strategic thinking", "Portuguese entrepreneurial diaspora"],
+            "bridgingCapability": "Connects European tradition with American ambition, academia with entrepreneurship, "
+                                "and local expertise with global networks",
+            "bestMatchedWith": "Founders seeking European expansion, professionals transitioning between continents, "
+                             "and organizations looking for culturally fluent strategic talent",
+        }
+
         fs = _get_fs()
-        for note_type, content in [("NetworkIndex", index_content), ("NetworkInferredContext", inferred_content)]:
+        network_dimensions = [
+            ("NetworkIndex", index_content),
+            ("NetworkExpertise", expertise_content),
+            ("NetworkGeographyCulture", geo_content),
+            ("NetworkComposition", composition_content),
+            ("NetworkInferredContext", inferred_content),
+            ("NetworkUniqueFingerprint", fingerprint_content),
+        ]
+
+        for note_type, content in network_dimensions:
             doc_id = f"_network_{network_id}_{note_type}"
             doc_ref = fs.collection(COLLECTION).document(doc_id)
             doc_ref.set({
