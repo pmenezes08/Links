@@ -2,9 +2,10 @@
 Steve Member Knowledge Base — Multiple Documents Per User Architecture
 
 Manages the structured, evolutionary Member Knowledge Base in Firestore
-collection ``steve_knowledge_base``.  Each user has up to 8 synthesis
-documents (one per core dimension) plus selective atomic notes for
-high-signal events, articles, podcasts, opinion shifts, and relationships.
+collection ``steve_knowledge_base``.  Each user has up to 9 synthesis
+documents (one per core dimension including the new CompanyIntel layer)
+plus selective atomic notes for high-signal events, articles, podcasts,
+opinion shifts, and relationships.
 
 Document ID patterns:
   Synthesis:  {username}_{NoteType}          e.g.  emilychen_LifeCareer
@@ -38,6 +39,7 @@ SYNTHESIS_NOTE_TYPES = (
     "LifeCareer",
     "GeographyCulture",
     "Expertise",
+    "CompanyIntel",
     "Opinions",
     "Identity",
     "Network",
@@ -543,15 +545,16 @@ You may also receive a PREVIOUS SYNTHESIS section — this is the existing knowl
 Your job is to ENHANCE and REFINE it, not start from scratch. Preserve what's correct, add new evidence,
 and update anything that has changed.
 
-Focus on these 8 dimensions:
+Focus on these 9 dimensions:
 1. LifeCareer — career stages, transitions, trajectory, turning points
 2. GeographyCulture — locations lived, cultural influences, geographic expertise
 3. Expertise — domains, depth progression, current focus, credibility signals
-4. Opinions — key topic stances, opinion shifts over time, consistent beliefs
-5. Identity — core values, personality traits, contradictions, energy patterns, communication style
-6. Network — interaction patterns (frequency only, no DM content), community participation
-7. UniqueFingerprint — what makes this person truly special, rare qualities, bridging capability
-8. Index — overall synthesis tying everything together
+4. CompanyIntel — rich intelligence on every company the user has worked for (reputation, selectivity, culture, stage, relevance)
+5. Opinions — key topic stances, opinion shifts over time, consistent beliefs
+6. Identity — core values, personality traits, contradictions, energy patterns, communication style
+7. Network — interaction patterns (frequency only, no DM content), community participation
+8. UniqueFingerprint — what makes this person truly special, rare qualities, bridging capability
+9. Index — overall synthesis tying everything together
 
 CRITICAL RULES:
 - Track EVOLUTION, not just current state. "Used to be X, now Y" is more valuable than just "is Y".
@@ -590,6 +593,22 @@ Return ONLY valid JSON with this structure:
   "LifeCareer": {"stages": [...], "currentStage": "...", "trajectory": "...", "turningPoints": [...]},
   "GeographyCulture": {"locations": [...], "currentLocation": {...}, "culturalInfluences": "...", "geographicExpertise": [...]},
   "Expertise": {"domains": [...], "depthProgression": "...", "currentFocus": "...", "credibilitySignals": [...]},
+  "CompanyIntel": {
+    "companies": [
+      {
+        "name": "xAI",
+        "description": "Detailed company description and mission",
+        "sector": "AI / Technology",
+        "stage": "Series B / Growth",
+        "size": "50-200 employees",
+        "reputation": "Extremely high prestige and selectivity",
+        "selectivity": "Very high (top 0.1% talent)",
+        "culture": "High-performance, mission-driven, innovative",
+        "relevanceToUser": "Current employer, core to professional identity and trajectory",
+        "keyInsights": ["Specific insights relevant to this user's career path"]
+      }
+    ]
+  },
   "Opinions": {"keyTopics": [...], "shifts": [...], "consistentBeliefs": "...", "controversialTakes": "..."},
   "Identity": {"coreValues": [...], "traits": [...], "contradictions": "...", "energyPatterns": "...", "communicationStyle": "..."},
   "Network": {"interactionFrequency": [...], "networkEvolution": "...", "communityParticipation": [...], "relationshipStrength": [...]},
@@ -603,13 +622,13 @@ def synthesize_member_knowledge(
     profile_data: Optional[Dict[str, Any]] = None,
     group_interaction_counts: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """Auto-synthesize the 8 core dimension notes from existing data.
+    """Auto-synthesize the 9 core dimension notes from existing data (including the new CompanyIntel layer).
 
     Collects all available data (Firestore profile, SQL posts/replies,
     enrichment, group chat frequency) and calls Grok to produce structured
     synthesis notes.  Reads any existing KB notes to enable incremental
     enhancement rather than full overwrite.  Admin corrections are treated
-    as ground truth.
+    as ground truth. The ROLE CONTEXTUALIZATION rules are now included in the prompt.
     """
     if not USE_KNOWLEDGE_BASE_V1:
         return False
@@ -942,7 +961,7 @@ def _save_synthesis_results(
     synthesis: Dict[str, Any],
     existing_kb: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """Persist the 8 synthesis documents from Grok output.
+    """Persist the 9 synthesis documents from Grok output (including the new CompanyIntel layer).
 
     Preserves admin feedback from existing notes so corrections survive re-synthesis.
     """
