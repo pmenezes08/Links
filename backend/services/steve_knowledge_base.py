@@ -731,7 +731,7 @@ def synthesize_member_knowledge(
 
         existing_kb = get_member_knowledge(username, note_types=SYNTHESIS_NOTE_TYPES)
 
-        raw_text = _assemble_raw_text_for_synthesis(username, profile_data, group_interaction_counts)
+        raw_text = _assemble_raw_text_for_synthesis(username, profile_data)
         if not raw_text:
             logger.warning("No raw text assembled for %s", username)
             return False
@@ -810,7 +810,6 @@ def _extract_admin_corrections(existing_kb: Dict[str, Any]) -> str:
 def _assemble_raw_text_for_synthesis(
     username: str,
     profile_data: Dict[str, Any],
-    group_interaction_counts: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Gather all available data into a text block for Grok synthesis."""
     from bodybuilding_app import _migrate_analysis_to_v3
