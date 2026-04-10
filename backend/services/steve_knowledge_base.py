@@ -994,3 +994,24 @@ def schedule_knowledge_synthesis(username: str) -> None:
 
     threading.Thread(target=_run, daemon=True).start()
     logger.info("Scheduled background knowledge synthesis for %s", username)
+
+
+def reset_member_knowledge_base(username: str) -> bool:
+    """Delete ALL knowledge base data for a user.
+    This removes all synthesis notes, atomic notes, shared nodes, and admin feedback."""
+    if not USE_KNOWLEDGE_BASE_V1:
+        return False
+    try:
+        fs = _get_fs()
+        # Delete all documents for this user
+        query = fs.collection(COLLECTION).where("username", "==", username)
+        docs = query.stream()
+        deleted_count = 0
+        for doc in docs:
+            doc.reference.delete()
+            deleted_count += 1
+        logger.info("Reset knowledge base for %s: deleted %d documents", username, deleted_count)
+        return True
+    except Exception as e:
+        logger.error("Failed to reset knowledge base for %s: %s", username, e)
+        return False

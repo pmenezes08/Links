@@ -7703,6 +7703,25 @@ def admin_steve_profile_edit(target_username):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/admin/knowledge_base/<target_username>/reset', methods=['DELETE'])
+@login_required
+def admin_knowledge_base_reset(target_username):
+    """Delete ALL synthesized knowledge base data for a user.
+    This removes all synthesis notes, atomic notes, shared nodes, and admin feedback."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        from backend.services.steve_knowledge_base import reset_member_knowledge_base
+        success = reset_member_knowledge_base(target_username)
+        if success:
+            return jsonify({'success': True, 'message': f'All knowledge base data for {target_username} has been deleted'})
+        return jsonify({'success': False, 'error': 'Failed to reset knowledge base'}), 500
+    except Exception as e:
+        logger.error(f"Error resetting knowledge base for {target_username}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/admin/knowledge_base/graph/<target_username>', methods=['GET'])
 @login_required
 def admin_knowledge_base_graph(target_username):

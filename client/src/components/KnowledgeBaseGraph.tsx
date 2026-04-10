@@ -145,6 +145,28 @@ export default function KnowledgeBaseGraph({ username, open, onClose }: { userna
     setSynthesizing(false)
   }
 
+  const resetKnowledgeBase = async () => {
+    if (!confirm(`Delete ALL synthesized knowledge for @${username}?\n\nThis cannot be undone.`)) return
+
+    try {
+      const resp = await fetch(`/api/admin/knowledge_base/${encodeURIComponent(username)}/reset`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      const data = await resp.json()
+      if (data.success) {
+        await loadKnowledge()
+        await loadGraph()
+        setSelectedNote(null)
+      } else {
+        alert(`Reset failed: ${data.error}`)
+      }
+    } catch (err) {
+      console.error('Reset error:', err)
+      alert('Failed to reset knowledge base')
+    }
+  }
+
   const submitFeedback = async (noteType: string) => {
     if ((feedbackStatus === 'needs_correction' || feedbackStatus === 'missing_info') && !feedbackNote.trim()) return
     setFeedbackSubmitting(true)
@@ -219,6 +241,13 @@ export default function KnowledgeBaseGraph({ username, open, onClose }: { userna
                   : 'bg-[#10b981]/20 text-[#6ee7b7] border border-[#10b981]/30 hover:bg-[#10b981]/30'
               }`}
             >{synthesizing ? 'Synthesizing...' : 'Synthesize'}</button>
+
+            <button
+              onClick={resetKnowledgeBase}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-400 hover:bg-red-500/10 border border-red-500/30 hover:border-red-500/50 transition-colors"
+            >
+              Reset KB
+            </button>
 
             <button onClick={onClose} className="ml-1 p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
