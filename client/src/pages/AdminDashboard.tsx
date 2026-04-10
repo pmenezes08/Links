@@ -658,7 +658,7 @@ export default function AdminDashboard() {
       setEditExperiences(existingCareer.length > 0 ? existingCareer : [{ company: '', title: '', dates: '', description: '' }])
       setEditContent('')
     } else {
-      const personal = profile?.analysis?.personal || {}
+      const personal = (profile?.analysis?.personal || {}) as any
       setEditContent(personal.manualContext || '')
       setEditExperiences([])
     }
