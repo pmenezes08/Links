@@ -1120,18 +1120,116 @@ def schedule_knowledge_synthesis(username: str) -> None:
     logger.info("Scheduled background knowledge synthesis for %s", username)
 
 
+def _fetch_community_sql_data(network_id: int) -> Dict[str, Any]:
+    """Pull community name, member count, and member usernames from the SQL database."""
+    from backend.services.database import get_db_connection, get_sql_placeholder
+    from backend.services.community import get_descendant_community_ids
+
+    ph = get_sql_placeholder()
+    community_name = f"Network {network_id}"
+    member_usernames: List[str] = []
+
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+
+        c.execute(f"SELECT name FROM communities WHERE id = {ph}", (network_id,))
+        row = c.fetchone()
+        if row:
+            community_name = row["name"] if hasattr(row, "keys") else row[0]
+
+        all_ids = get_descendant_community_ids(c, network_id)
+        if all_ids:
+            placeholders = ", ".join([ph] * len(all_ids))
+            c.execute(
+                f"SELECT DISTINCT u.username FROM users u "
+                f"JOIN user_communities uc ON u.id = uc.user_id "
+                f"WHERE uc.community_id IN ({placeholders}) "
+                f"AND LOWER(u.username) NOT IN ('admin', 'steve')",
+                tuple(all_ids),
+            )
+            member_usernames = [
+                (r["username"] if hasattr(r, "keys") else r[0]) for r in c.fetchall()
+            ]
+        conn.close()
+    except Exception as e:
+        logger.warning("Could not fetch SQL data for network %s: %s", network_id, e)
+
+    return {"communityName": community_name, "memberUsernames": member_usernames}
+
+
+def _aggregate_member_kbs(member_usernames: List[str]) -> Dict[str, Any]:
+    """Read existing member KB synthesis docs from Firestore and aggregate."""
+    fs = _get_fs()
+    expertise_counts: Dict[str, int] = {}
+    interests: Dict[str, int] = {}
+    themes: Dict[str, int] = {}
+    insights_snippets: List[str] = []
+    members_with_kb = 0
+
+    for username in member_usernames:
+        for note_type in ["Expertise", "InferredContext", "UniqueFingerprint", "LifeCareer"]:
+            doc_id = f"{username}_{note_type}"
+            try:
+                doc = fs.collection(COLLECTION).document(doc_id).get()
+                if not doc.exists:
+                    continue
+                content = doc.to_dict().get("content", {})
+                if not content:
+                    continue
+
+                if note_type == "Expertise":
+                    members_with_kb += 1
+                    for area in content.get("primaryAreas", []):
+                        if isinstance(area, str):
+                            expertise_counts[area] = expertise_counts.get(area, 0) + 1
+                        elif isinstance(area, dict):
+                            label = area.get("area") or area.get("name", "")
+                            if label:
+                                expertise_counts[label] = expertise_counts.get(label, 0) + 1
+
+                elif note_type == "InferredContext":
+                    snippet = content.get("transformativeExperiences") or content.get("culturalContext") or ""
+                    if isinstance(snippet, str) and len(snippet) > 20:
+                        insights_snippets.append(snippet[:300])
+                    elif isinstance(snippet, list):
+                        for s in snippet[:3]:
+                            if isinstance(s, str) and len(s) > 10:
+                                insights_snippets.append(s[:300])
+
+                elif note_type == "UniqueFingerprint":
+                    for trait in content.get("coreTraits", []):
+                        if isinstance(trait, str):
+                            interests[trait] = interests.get(trait, 0) + 1
+
+                elif note_type == "LifeCareer":
+                    for role in content.get("careerHistory", content.get("roles", [])):
+                        if isinstance(role, dict):
+                            industry = role.get("industry") or role.get("sector", "")
+                            if industry:
+                                themes[industry] = themes.get(industry, 0) + 1
+
+            except Exception as e:
+                logger.debug("Could not read %s for network aggregation: %s", doc_id, e)
+
+    top_expertise = sorted(expertise_counts.items(), key=lambda x: -x[1])[:15]
+    top_interests = sorted(interests.items(), key=lambda x: -x[1])[:10]
+    top_themes = sorted(themes.items(), key=lambda x: -x[1])[:10]
+
+    return {
+        "membersWithKB": members_with_kb,
+        "expertiseDistribution": dict(top_expertise),
+        "commonInterests": [k for k, _ in top_interests],
+        "keyThemes": [k for k, _ in top_themes],
+        "insightsSnippets": insights_snippets[:20],
+    }
+
+
 def synthesize_network_knowledge(network_id: int) -> bool:
     """Synthesize an aggregated Knowledge Base for an entire network/community.
 
-    Aggregates member InferredContext, UniqueFingerprint, and Expertise from all
-    members in the network's sub-communities, high-signal posts across those
-    communities, and community context.
-
-    Produces NetworkIndex (composition, key themes, stats) and NetworkInferredContext
-    (collective insights, cultural vibe, strategic value). This is the network-level
-    view for "this network has 100 fintech professionals or 24 climbers" queries.
-
-    Uses the same incremental, shared-node architecture as per-member KBs.
+    Pulls real community data from SQL (name, members), reads existing member
+    KBs from Firestore, and aggregates into NetworkIndex + NetworkInferredContext.
     """
     if not USE_KNOWLEDGE_BASE_V1:
         return False
@@ -1139,41 +1237,48 @@ def synthesize_network_knowledge(network_id: int) -> bool:
     try:
         logger.info("Starting network KB synthesis for network %s", network_id)
 
-        # Placeholder aggregation for initial implementation.
-        # Full version would use get_descendant_community_ids, fetch member KBs,
-        # aggregate InferredContext themes, count expertise, and summarize posts.
-        # This creates the documents so the graph and UI work immediately.
-        aggregated = {
+        sql_data = _fetch_community_sql_data(network_id)
+        community_name = sql_data["communityName"]
+        member_usernames = sql_data["memberUsernames"]
+        member_count = len(member_usernames)
+        logger.info("Network %s (%s): %d members found", network_id, community_name, member_count)
+
+        agg = _aggregate_member_kbs(member_usernames)
+
+        index_content = {
             "networkId": network_id,
-            "communityName": f"Network {network_id}",
-            "memberCount": 1240,  # example
-            "expertiseDistribution": {"fintech": 420, "AI": 310, "climbing": 240},
-            "commonInterests": ["entrepreneurship", "Portuguese founder networks", "M&A"],
-            "culturalVibe": "Diverse professional network with strong entrepreneurial focus and Portuguese cultural elements ('Hey Malta' slang common in groups)",
-            "keyThemes": ["fintech", "AI", "M&A", "climbing", "emerging markets"],
+            "communityName": community_name,
+            "memberCount": member_count,
+            "membersWithKB": agg["membersWithKB"],
+            "expertiseDistribution": agg["expertiseDistribution"],
+            "commonInterests": agg["commonInterests"],
+            "keyThemes": agg["keyThemes"],
             "lastUpdated": datetime.utcnow().isoformat(),
         }
 
+        inferred_content = {
+            "collectiveInsights": "; ".join(agg["insightsSnippets"][:10]) if agg["insightsSnippets"] else "No member InferredContext data available yet. Run member KB synthesis first.",
+            "expertiseHighlights": agg["expertiseDistribution"],
+            "strategicValue": f"Network of {member_count} professionals ({agg['membersWithKB']} with synthesized KBs). Top areas: {', '.join(list(agg['expertiseDistribution'].keys())[:5]) or 'pending synthesis'}.",
+            "commonInterests": agg["commonInterests"],
+            "confidence": min(0.95, 0.3 + (agg["membersWithKB"] / max(member_count, 1)) * 0.65) if member_count > 0 else 0.1,
+        }
+
         fs = _get_fs()
-        for note_type in ["NetworkIndex", "NetworkInferredContext"]:
+        for note_type, content in [("NetworkIndex", index_content), ("NetworkInferredContext", inferred_content)]:
             doc_id = f"_network_{network_id}_{note_type}"
             doc_ref = fs.collection(COLLECTION).document(doc_id)
             doc_ref.set({
-                "username": f"_network_{network_id}",  # special prefix for network-level docs
+                "username": f"_network_{network_id}",
                 "noteType": note_type,
-                "content": aggregated if note_type == "NetworkIndex" else {
-                    "collectiveInsights": "Aggregated transformative insights from all member InferredContext documents in the network. Strong collective M&A and fintech experience. Cultural vibe includes Portuguese slang like 'Hey Malta' as group greeting.",
-                    "culturalVibe": aggregated["culturalVibe"],
-                    "strategicValue": f"Network of {aggregated['memberCount']} professionals with strengths in fintech, AI, and outdoor adventure (24+ climbers). Excellent bridging between tech and emerging markets.",
-                    "bridgingOpportunities": "Strong bridging between tech, finance, emerging markets, and outdoor/adventure communities. Ideal for cross-industry collaborations.",
-                    "confidence": 0.82,
-                },
+                "content": content,
                 "version": 1,
                 "updatedAt": datetime.utcnow().isoformat(),
                 "isNetworkLevel": True,
             }, merge=True)
 
-        logger.info("Network KB synthesis complete for network %s", network_id)
+        logger.info("Network KB synthesis complete for network %s (%s): %d members, %d with KBs",
+                     network_id, community_name, member_count, agg["membersWithKB"])
         return True
 
     except Exception as e:
