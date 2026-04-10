@@ -79,7 +79,7 @@ function renderValue(val: unknown, depth = 0): React.ReactNode {
   return String(val)
 }
 
-export default function KnowledgeBaseGraph({ username, open, onClose }: { username: string; open: boolean; onClose: () => void }) {
+export default function KnowledgeBaseGraph({ username, networkId, open, onClose }: { username?: string; networkId?: number | null; open: boolean; onClose: () => void }) {
   const [knowledge, setKnowledge] = useState<KnowledgeData>({})
   const [graphData, setGraphData] = useState<{ nodes: KBNode[]; edges: KBEdge[] }>({ nodes: [], edges: [] })
   const [loading, setLoading] = useState(false)

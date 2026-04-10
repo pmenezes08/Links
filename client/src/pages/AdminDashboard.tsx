@@ -142,7 +142,7 @@ export default function AdminDashboard() {
     [communityChildrenMap]
   )
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities' | 'metrics' | 'content_review' | 'blocked_users' | 'steve_profiles'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities' | 'metrics' | 'content_review' | 'blocked_users' | 'steve_profiling' | 'network_profiling'>('overview')
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<'all' | 'premium' | 'free'>('all')
@@ -286,6 +286,24 @@ export default function AdminDashboard() {
   const [editContent, setEditContent] = useState('')
   const [editExperiences, setEditExperiences] = useState<Array<{ company: string; title: string; dates: string; description: string }>>([])
   const [editVerifiedLinks, setEditVerifiedLinks] = useState<Array<{ platform: string; url: string; notes?: string }>>([])
+
+  // Network Profiling state
+  interface NetworkProfile {
+    id: number
+    name: string
+    memberCount: number
+    keyThemes: string[]
+    analysis?: {
+      summary?: string
+      composition?: any
+      keyThemes?: string[]
+      culturalVibe?: string
+    }
+    lastUpdated?: string
+  }
+  const [networkProfiles, setNetworkProfiles] = useState<NetworkProfile[]>([])
+  const [networkProfilesLoading, setNetworkProfilesLoading] = useState(false)
+  const [selectedNetworkId, setSelectedNetworkId] = useState<number | null>(null)
 
 
   // New user form
@@ -497,6 +515,48 @@ export default function AdminDashboard() {
       setSteveProfiles([])
     } finally {
       setSteveProfilesLoading(false)
+    }
+  }, [])
+
+  const loadNetworkProfiles = useCallback(async () => {
+    setNetworkProfilesLoading(true)
+    try {
+      // Placeholder data for the new Network Profiling tab. In a full implementation,
+      // this would fetch from a network KB endpoint (e.g. /api/admin/network_profiles)
+      // or use the graph endpoint with network IDs to return aggregated NetworkIndex
+      // and NetworkInferredContext documents.
+      const placeholderNetworks: NetworkProfile[] = [
+        {
+          id: 1,
+          name: "Main Professional Network",
+          memberCount: 1240,
+          keyThemes: ["fintech", "AI", "M&A", "climbing"],
+          analysis: {
+            summary: "Strong fintech and AI focus with outdoor adventure community",
+            culturalVibe: "Portuguese founder culture with 'Hey Malta' slang in groups",
+            keyThemes: ["fintech", "AI", "climbing"]
+          },
+          lastUpdated: new Date().toISOString()
+        },
+        {
+          id: 2,
+          name: "Kellogg EMBA Cohort",
+          memberCount: 85,
+          keyThemes: ["strategy", "entrepreneurship", "global markets"],
+          analysis: {
+            summary: "Tier-1 EMBA network with strong US/North American market expertise",
+            culturalVibe: "High-ambition, cross-cultural leadership focus",
+            keyThemes: ["strategy", "global markets"]
+          },
+          lastUpdated: new Date().toISOString()
+        }
+      ]
+      setNetworkProfiles(placeholderNetworks)
+    } catch (error) {
+      console.error('Error loading network profiles:', error)
+      setNetworkProfiles([])
+    } finally {
+      setNetworkProfilesLoading(false)
     }
   }, [])
 
@@ -861,10 +921,12 @@ export default function AdminDashboard() {
     }
   }, [activeTab, loadBlockedUsers])
 
-  // Load Steve profiles when steve_profiles tab is active
+  // Load Steve profiles when steve_profiling tab is active
   useEffect(() => {
-    if (activeTab === 'steve_profiles') {
+    if (activeTab === 'steve_profiling') {
       loadSteveProfiles()
+    } else if (activeTab === 'network_profiling') {
+      loadNetworkProfiles()
     }
   }, [activeTab])
 
@@ -876,8 +938,10 @@ export default function AdminDashboard() {
       setActiveTab('content_review')
     } else if (tab === 'blocked_users') {
       setActiveTab('blocked_users')
-    } else if (tab === 'steve_profiles') {
-      setActiveTab('steve_profiles')
+    } else if (tab === 'steve_profiling') {
+      setActiveTab('steve_profiling')
+    } else if (tab === 'network_profiling') {
+      setActiveTab('network_profiling')
     }
   }, [])
 
@@ -1289,7 +1353,8 @@ export default function AdminDashboard() {
             ['metrics', 'Metrics'],
             ['content_review', 'Reports'],
             ['blocked_users', 'Blocks'],
-            ['steve_profiles', 'Steve'],
+            ['steve_profiling', 'Steve Profiling'],
+            ['network_profiling', 'Network Profiling'],
           ] as const).map(([key, label]) => (
             <button
               key={key}
@@ -2149,17 +2214,17 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Steve Profiles Tab - Phase 0 Simple Vector Interests */}
-        {activeTab === 'steve_profiles' && (
+        {/* Steve Profiling Tab */}
+        {activeTab === 'steve_profiling' && (
           <div className="space-y-4">
             <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h3 className="text-lg font-semibold text-[#4db6ac] flex items-center gap-2">
                     <i className="fa-solid fa-brain" />
-                    Steve User Profiles
+                    Steve Profiling
                   </h3>
-                  <p className="text-xs text-white/60 mt-1">Steve's AI profile analysis — select a user to analyze</p>
+                  <p className="text-xs text-white/60 mt-1">Per-user AI analysis and Knowledge Base — select a user to analyze</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-white/40">
@@ -3449,6 +3514,99 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+
+        {/* Network Profiling Tab */}
+        {activeTab === 'network_profiling' && (
+          <div className="space-y-4">
+            <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-[#4db6ac] flex items-center gap-2">
+                    <i className="fa-solid fa-globe" />
+                    Network Profiling
+                  </h3>
+                  <p className="text-xs text-white/60 mt-1">Aggregated insights from all member Knowledge Bases, posts across communities, and sub-community context</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => loadNetworkProfiles()}
+                    className="px-4 py-1.5 bg-white/10 hover:bg-white/20 text-white text-sm rounded-lg flex items-center gap-2 transition"
+                  >
+                    <i className="fa-solid fa-refresh" />
+                    Refresh
+                  </button>
+                  <button
+                    onClick={() => {
+                      // Trigger network KB synthesis (calls the backend endpoint added previously)
+                      fetch('/api/admin/knowledge_base/network/1/synthesize', {
+                        method: 'POST',
+                        credentials: 'include'
+                      }).then(() => loadNetworkProfiles())
+                    }}
+                    className="px-4 py-1.5 bg-[#4db6ac] hover:bg-[#3d9b8f] text-black text-sm rounded-lg flex items-center gap-2 transition"
+                  >
+                    <i className="fa-solid fa-sync" />
+                    Synthesize Network KB
+                  </button>
+                </div>
+              </div>
+
+              {networkProfilesLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin h-8 w-8 border-4 border-[#4db6ac] border-t-transparent rounded-full"></div>
+                </div>
+              ) : networkProfiles.length === 0 ? (
+                <div className="text-center py-12 text-white/50">No networks found. Run synthesis to populate.</div>
+              ) : (
+                <div className="grid gap-4">
+                  {networkProfiles.map((network) => (
+                    <div key={network.id} className="bg-white/5 rounded-xl p-5 border border-white/10 flex items-center justify-between group hover:border-white/20 transition-all">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-gradient-to-br from-[#4db6ac] to-purple-500 rounded-2xl flex items-center justify-center text-3xl shadow-inner">
+                          🌐
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-white text-lg">{network.name}</div>
+                          <div className="text-sm text-white/60 flex items-center gap-3">
+                            <span>{network.memberCount.toLocaleString()} members</span>
+                            <span className="text-xs">•</span>
+                            <span>Last updated {new Date(network.lastUpdated || Date.now()).toLocaleDateString()}</span>
+                          </div>
+                          <div className="flex gap-1.5 mt-2 flex-wrap">
+                            {network.keyThemes.slice(0, 4).map((theme, i) => (
+                              <span key={i} className="inline-flex items-center px-2.5 py-0.5 text-xs bg-white/10 rounded-full text-white/70">
+                                {theme}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-3">
+                        <div className="text-right max-w-[260px]">
+                          <div className="text-xs text-white/50 mb-0.5">NETWORK INSIGHT</div>
+                          <div className="text-sm text-white/80 line-clamp-3">{network.analysis?.summary}</div>
+                          {network.analysis?.culturalVibe && (
+                            <div className="text-xs text-purple-400 mt-1 italic">“{network.analysis.culturalVibe}”</div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => {
+                            setSelectedNetworkId(network.id)
+                            setShowKnowledgeBase(true)
+                          }}
+                          className="px-6 py-2.5 bg-white text-black hover:bg-white/90 text-sm font-medium rounded-2xl flex items-center gap-2 transition-all active:scale-[0.985]"
+                        >
+                          <i className="fa-solid fa-chart-network" />
+                          View Network KB
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
       {/* Steve Profile Edit Modal */}
       {editingSteveProfile && editSection && (
