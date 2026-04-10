@@ -8798,6 +8798,23 @@ DO THIS FOR EVERY THREAD. Do not stop at the first mention. Chase it down.
 Each thread should yield enough detail for a careerHistory entry (if professional)
 or a rich interest entry (if personal/hobby).
 
+COMPANY INTEL ENRICHMENT (CRITICAL — DO THIS FOR EVERY COMPANY IN careerHistory):
+
+The careerHistory array will contain entries added by admins (marked with _source: "admin_manual"). These are HIGH-PRIORITY and AUTHORITATIVE signals.
+
+For EVERY unique company appearing in the careerHistory array (including admin_manual ones):
+- Use your web_search tool to gather rich company intelligence. Include:
+  - Company description, mission, what they actually do at a high level
+  - Sector, stage (seed, Series A/B/C, public, acquired, etc.)
+  - Approximate size, growth trajectory, culture
+  - Recent notable news or developments
+  - Why this company would be relevant for networking with this person
+- If you have already researched a company earlier in this analysis run, DO NOT search it again — reuse what you found (deduplicate by normalized company name).
+- Put the richest company intel into the top-level professional.company object (for the person's current or most important role).
+- For every careerHistory entry, enrich the "highlight" field with 1-2 sentences of specific company context that would be useful when networking ("Deloitte is a global professional services leader with deep expertise in financial services, strategy consulting, and digital transformation across 150+ countries...").
+
+This is one of the highest-value things you can do with your tools. Admin-added companies should be treated as especially important signals.
+
 PHASE 2c — STRUCTURE EVERYTHING YOU FOUND:
 
 CAREER HISTORY RULES (ABSOLUTE):
@@ -8882,10 +8899,10 @@ PHASE 3 — PERSONAL & SOCIAL DEEP DIVE (today is {today_str}, only after Phase 
 - If Phase 1 confidence was "low", do NOT attempt personal research — the risk of wrong person is too high."""
 
         professional_schema = """  "professional": {
-    "company": {"name": "...", "description": "...", "sector": "...", "stage": "..."} or null,
+    "company": {"name": "...", "description": "...", "sector": "...", "stage": "..."} or null,  # richest intel from the most important company in careerHistory
     "role": {"title": "...", "seniority": "junior|mid|senior|executive|founder", "function": "...", "implication": "1 sentence"} or null,
     "careerHistory": [
-      {"company": "...", "role": "...", "period": "Explicit YYYY–YYYY or YYYY–present from a source, or Unknown if not stated", "duration": "ONLY if explicitly stated (e.g. 3 years); omit or Unknown — never guessed", "highlight": "Relevance for networking; add date provenance when period is known"}
+      {"company": "...", "role": "...", "period": "Explicit YYYY–YYYY or YYYY–present from a source, or Unknown if not stated", "duration": "ONLY if explicitly stated (e.g. 3 years); omit or Unknown — never guessed", "highlight": "Relevance for networking + enriched company context (sector, stage, culture, recent news)"}
     ] or [],
     "education": "degree + school if known, else null",
     "location": {"city": "...", "country": "...", "context": "1 sentence on local ecosystem relevance"} or null,
