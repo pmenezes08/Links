@@ -828,6 +828,16 @@ def _assemble_raw_text_for_synthesis(
     if personal.get("manualContext"):
         parts.append(f"MANUAL PERSONAL CONTEXT (ADMIN PROVIDED):\n{personal['manualContext']}")
 
+    # Verified links have the highest priority - primary source before any web search
+    if personal.get("verifiedLinks") and isinstance(personal["verifiedLinks"], list):
+        parts.append("VERIFIED LINKS (ADMIN CURATED - PRIMARY SOURCE, USE BEFORE ANY WEB SEARCH):")
+        for link in personal["verifiedLinks"]:
+            if isinstance(link, dict) and link.get("url"):
+                line = f"{link.get('platform', 'Link')}: {link['url']}"
+                if link.get("notes"):
+                    line += f" — {link['notes']}"
+                parts.append(line)
+
     # Manual edits have highest priority
     manual_personal = personal.get("manualEdits") or personal.get("_manualEdits")
     if manual_personal:

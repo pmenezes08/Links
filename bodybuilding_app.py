@@ -7669,8 +7669,8 @@ def admin_steve_profile_edit(target_username):
         section = data.get('section')
         content = data.get('content')
 
-        if section not in ('professional', 'personal'):
-            return jsonify({'success': False, 'error': 'section must be professional or personal'}), 400
+        if section not in ('professional', 'personal', 'links'):
+            return jsonify({'success': False, 'error': 'section must be professional, personal, or links'}), 400
         if not content:
             return jsonify({'success': False, 'error': 'content is required'}), 400
 
@@ -7730,6 +7730,19 @@ def admin_steve_profile_edit(target_username):
                 }]
             analysis['professional']['_lastManualEdit'] = datetime.utcnow().isoformat() + 'Z'
             analysis['professional']['_editedBy'] = username
+
+        elif section == 'links':
+            if 'personal' not in analysis:
+                analysis['personal'] = {}
+            if not isinstance(analysis['personal'], dict):
+                analysis['personal'] = {}
+
+            verified_links = content.get('verifiedLinks') if isinstance(content, dict) else content
+            if isinstance(verified_links, list):
+                analysis['personal']['verifiedLinks'] = verified_links
+
+            analysis['personal']['_lastManualEdit'] = datetime.utcnow().isoformat() + 'Z'
+            analysis['personal']['_editedBy'] = username
 
         else:
             # Personal edits - simple text storage
@@ -8944,6 +8957,7 @@ PHASE 3 — PERSONAL & SOCIAL DEEP DIVE (today is {today_str}, only after Phase 
         personal_schema = '  "personal": null,'
         if depth == 'deep':
             personal_schema = """  "personal": {
+    "verifiedLinks": [{"platform": "LinkedIn", "url": "...", "notes": "Primary professional profile - use as canonical source"}] or [],
     "socialProfiles": [{"platform": "Instagram|Facebook|TikTok|X|Blog|YouTube", "url": "...", "handle": "..."}] or [],
     "interests": ["running", "cooking", "travel"],
     "lifestyle": "1-2 sentences on personal life indicators found publicly" or "",

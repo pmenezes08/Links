@@ -247,6 +247,7 @@ export default function AdminDashboard() {
         publications?: { source?: string; date?: string; insight?: string; relevance?: string }[]
       } | null
       personal?: {
+        verifiedLinks?: { platform: string; url: string; notes?: string; verifiedBy?: string; verifiedAt?: string }[]
         socialProfiles?: { platform?: string; url?: string; handle?: string }[]
         interests?: string[]
         lifestyle?: string
@@ -281,9 +282,10 @@ export default function AdminDashboard() {
 
   // Steve profile editing
   const [editingSteveProfile, setEditingSteveProfile] = useState<string | null>(null)
-  const [editSection, setEditSection] = useState<'professional' | 'personal' | null>(null)
+  const [editSection, setEditSection] = useState<'professional' | 'personal' | 'links' | null>(null)
   const [editContent, setEditContent] = useState('')
   const [editExperiences, setEditExperiences] = useState<Array<{ company: string; title: string; dates: string; description: string }>>([])
+  const [editVerifiedLinks, setEditVerifiedLinks] = useState<Array<{ platform: string; url: string; notes?: string }>>([])
 
 
   // New user form
@@ -667,7 +669,7 @@ export default function AdminDashboard() {
   const sortExperiencesByDate = (exps: typeof editExperiences) =>
     [...exps].sort((a, b) => parseEndDate(b.dates) - parseEndDate(a.dates))
 
-  const openSteveEditModal = (username: string, section: 'professional' | 'personal') => {
+  const openSteveEditModal = (username: string, section: 'professional' | 'personal' | 'links') => {
     const profile = steveProfiles.find(p => p.username === username)
     setEditingSteveProfile(username)
     setEditSection(section)
@@ -682,10 +684,16 @@ export default function AdminDashboard() {
       }))
       setEditExperiences(existingCareer.length > 0 ? sortExperiencesByDate(existingCareer) : [{ company: '', title: '', dates: '', description: '' }])
       setEditContent('')
+    } else if (section === 'links') {
+      const personal = (profile?.analysis?.personal || {}) as any
+      setEditVerifiedLinks(personal.verifiedLinks || [])
+      setEditContent('')
+      setEditExperiences([])
     } else {
       const personal = (profile?.analysis?.personal || {}) as any
       setEditContent(personal.manualContext || '')
       setEditExperiences([])
+      setEditVerifiedLinks([])
     }
   }
 
@@ -699,6 +707,8 @@ export default function AdminDashboard() {
         const validExperiences = sortExperiencesByDate(editExperiences.filter(e => e.company.trim() || e.title.trim()))
         if (validExperiences.length === 0) return
         payloadContent = { experiences: validExperiences }
+      } else if (editSection === 'links') {
+        payloadContent = { verifiedLinks: editVerifiedLinks.filter(l => l.url.trim()) }
       } else {
         if (!editContent.trim()) return
         payloadContent = editContent.trim()
@@ -726,6 +736,7 @@ export default function AdminDashboard() {
         setEditSection(null)
         setEditContent('')
         setEditExperiences([])
+        setEditVerifiedLinks([])
       } else {
         alert(`Failed to save: ${data.error || 'Unknown error'}`)
       }
@@ -2711,6 +2722,12 @@ export default function AdminDashboard() {
                                         >
                                           ✏️ Edit
                                         </button>
+                                        <button
+                                          onClick={() => openSteveEditModal(profile.username, 'links')}
+                                          className="text-[10px] px-2 py-0.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded text-white/70 hover:text-white transition-colors"
+                                        >
+                                          🔗 Verified Links
+                                        </button>
                                         <FbBtns s="personal" />
                                       </div>
                                     </div>
@@ -3444,7 +3461,7 @@ export default function AdminDashboard() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-lg text-white">
-                    {editSection === 'professional' ? 'Professional Experience' : 'Personal Context'}
+                    {editSection === 'professional' ? 'Professional Experience' : editSection === 'links' ? 'Verified Links' : 'Personal Context'}
                   </h3>
                   <p className="text-sm text-white/40">@{editingSteveProfile}</p>
                 </div>
@@ -3455,6 +3472,7 @@ export default function AdminDashboard() {
                   setEditSection(null)
                   setEditContent('')
                   setEditExperiences([])
+                  setEditVerifiedLinks([])
                 }}
                 className="text-white/40 hover:text-white p-2 text-xl leading-none"
               >
@@ -3535,6 +3553,79 @@ export default function AdminDashboard() {
                     </div>
                   )}
                 </div>
+              ) : editSection === 'links' ? (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-xs text-white/50">Add verified links that Steve should use as the primary source before any web search.</p>
+                      <p className="text-xs text-[#4db6ac] mt-1">Particularly useful for LinkedIn to avoid access restrictions (status 999).</p>
+                    </div>
+                    <button
+                      onClick={() => setEditVerifiedLinks(prev => [{ platform: 'LinkedIn', url: '', notes: '' }, ...prev])}
+                      className="px-4 py-2 bg-[#4db6ac]/20 hover:bg-[#4db6ac]/30 text-[#4db6ac] text-sm rounded-xl border border-[#4db6ac]/30 transition-colors"
+                    >
+                      + Add Verified Link
+                    </button>
+                  </div>
+
+                  {editVerifiedLinks.map((link, idx) => (
+                    <div key={idx} className="bg-white/[0.03] border border-white/10 rounded-xl p-4 space-y-3 relative group">
+                      <button
+                        onClick={() => setEditVerifiedLinks(prev => prev.filter((_, i) => i !== idx))}
+                        className="absolute top-3 right-3 text-white/20 hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Remove link"
+                      >
+                        ✕
+                      </button>
+                      <div className="flex gap-3">
+                        <div className="w-40">
+                          <label className="block text-[10px] uppercase tracking-wider text-white/40 mb-1">Platform</label>
+                          <select
+                            value={link.platform}
+                            onChange={(e) => setEditVerifiedLinks(prev => prev.map((x, i) => i === idx ? { ...x, platform: e.target.value } : x))}
+                            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-[#4db6ac]"
+                          >
+                            <option value="LinkedIn">LinkedIn</option>
+                            <option value="X">X / Twitter</option>
+                            <option value="Instagram">Instagram</option>
+                            <option value="Medium">Medium</option>
+                            <option value="Blog">Blog / Personal Site</option>
+                            <option value="YouTube">YouTube</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+                        <div className="flex-1">
+                          <label className="block text-[10px] uppercase tracking-wider text-white/40 mb-1">URL</label>
+                          <input
+                            type="url"
+                            value={link.url}
+                            onChange={(e) => setEditVerifiedLinks(prev => prev.map((x, i) => i === idx ? { ...x, url: e.target.value } : x))}
+                            placeholder="https://www.linkedin.com/in/..."
+                            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#4db6ac]"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-wider text-white/40 mb-1">Notes (optional)</label>
+                        <textarea
+                          value={link.notes || ''}
+                          onChange={(e) => setEditVerifiedLinks(prev => prev.map((x, i) => i === idx ? { ...x, notes: e.target.value } : x))}
+                          placeholder="Primary professional profile, key article, personal blog, etc."
+                          rows={2}
+                          className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#4db6ac] resize-none"
+                        />
+                      </div>
+                    </div>
+                  ))}
+
+                  {editVerifiedLinks.length === 0 && (
+                    <div className="text-center py-10 text-white/30 text-sm border border-dashed border-white/20 rounded-2xl">
+                      No verified links yet. Add your LinkedIn, personal site, key articles, or social profiles.
+                      <br />
+                      <span className="text-[#4db6ac]">Steve will use these as the primary source before any web search.</span>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-4">
                   <div>
@@ -3557,6 +3648,7 @@ export default function AdminDashboard() {
                   setEditSection(null)
                   setEditContent('')
                   setEditExperiences([])
+                  setEditVerifiedLinks([])
                 }}
                 className="flex-1 py-3.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-sm font-medium transition-colors"
               >
