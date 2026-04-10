@@ -8969,6 +8969,34 @@ PHASE 3 — PERSONAL & SOCIAL DEEP DIVE (today is {today_str}, only after Phase 
         if depth == 'deep':
             starters_schema = """  "conversationStarters": ["1-2 natural ice-breakers that connect personal + professional"],"""
 
+        inference_engine = """HOLISTIC EXPERIENCE INFERENCE ENGINE (CRITICAL - APPLIES TO EVERY USER AND EVERY TYPE OF EXPERIENCE):
+
+Move beyond listing facts. For every significant experience (professional role, geographic move, educational program, personal event, volunteer work, cultural exposure, etc.), perform deep, nuanced inference. Ask:
+
+1. **Transformative Impact**: How did this change the person? What new perspectives, values, resilience, empathy, or worldviews did it create? (Example: 9 months in Angola = profound exposure to 3rd-world society → shifts in economic views, understanding of inequality, resilience, global citizenship, and empathy that influences all subsequent decisions).
+
+2. **Strategic Intent**: What deliberate choice does this reveal about the person's ambition, direction, or priorities? (Example: Choosing a Kellogg EMBA (tier-1 American program) = intentional pivot toward US/North American markets, access to elite networks, signaling high ambition and fluency in Western business frameworks. This implies expertise in American-style strategy, entrepreneurship, and cross-cultural leadership).
+
+3. **Capability & Credibility Signals**: What does this experience *actually confer* beyond the title? Be specific about skills, mindset, network, and credibility:
+   - M&A: High-stakes negotiation, deal structuring, strategic foresight, investor relations, risk assessment under pressure, ability to see value creation opportunities.
+   - Finance: Analytical rigor, quantitative thinking, capital allocation, risk management, understanding of economic cycles and incentives.
+   - Software Engineering: Systems thinking, scalability mindset, technical credibility, ability to translate business problems into technical solutions, iteration and experimentation culture.
+
+4. **Bridging & Uniqueness**: How does this experience connect different worlds (professional/personal, cultures, industries, socioeconomic backgrounds)? What rare combination of experiences makes this person unique? This should heavily inform bridgeInsight and UniqueFingerprint.
+
+5. **Evolution & Trajectory**: How does this fit into the person's life/career arc? What opinion shifts, depth progression, or identity evolution does it reveal? Look for contradictions and tensions — they are often the most revealing.
+
+Rules for all users:
+- Be SPECIFIC, EVIDENCE-BASED, and NUANCED. Always tie inferences to concrete details from verifiedLinks, manualContext, manualEdits, enriched content, or platform activity.
+- Be HOLISTIC. Connect professional, personal, geographic, cultural, educational, and volunteer experiences into a coherent identity narrative. No experience exists in isolation.
+- Avoid generic statements. "Has finance experience" is weak. "Finance experience in emerging markets shaped a risk-tolerant, capital-efficient mindset that now informs platform building at C-Point" is powerful.
+- For any experience, the core question is: "What does this *mean* about who this person is, what they bring to the table, and how they see the world?"
+- This inference must flow into identity, observations, bridgeInsight, UniqueFingerprint, LifeCareer.stages, Expertise.credibilitySignals, and the overall Index synthesis.
+- Use the PAULO-SPECIFIC OVERRIDE and verifiedLinks where applicable, but generalize the same depth of reasoning to all users.
+
+This engine is the core of building a rich, accurate member identity.
+"""
+
         system_prompt = f"""You are an expert people analyst. Given a user's profile data from a private professional network, produce a structured JSON analysis that captures the WHOLE person.
 
 {base_rules}
@@ -8993,6 +9021,8 @@ RULES:
 
 {research_rules}
 {deep_rules}
+
+|{inference_engine}
 
 Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
 {{

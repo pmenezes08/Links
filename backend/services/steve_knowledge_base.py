@@ -604,6 +604,34 @@ MISSING INFORMATION:
 - You MUST include this information in the relevant dimension even if the raw data doesn't mention it.
 - Treat missing information hints as first-party facts — they are authoritative.
 
+HOLISTIC EXPERIENCE INFERENCE ENGINE (CRITICAL FOR ALL 9 DIMENSIONS, ESPECIALLY Identity, LifeCareer, Expertise, UniqueFingerprint, CompanyIntel, and Index):
+
+Move beyond listing facts. For every significant experience (professional role, geographic move, educational program, personal event, volunteer work, cultural exposure, etc.), perform deep, nuanced inference. This is the core of the knowledge base. Ask:
+
+1. **Transformative Impact**: How did this change the person? What new perspectives, values, resilience, empathy, or worldviews did it create? (Example: 9 months in Angola = profound exposure to 3rd-world society → shifts in economic views, understanding of inequality, resilience, global citizenship, and empathy that influences all subsequent decisions. This should appear in Identity, GeographyCulture, and UniqueFingerprint).
+
+2. **Strategic Intent**: What deliberate choice does this reveal about the person's ambition, direction, or priorities? (Example: Choosing a Kellogg EMBA (tier-1 American program) = intentional pivot toward US/North American markets, access to elite networks, signaling high ambition and fluency in Western business frameworks. This should be reflected in LifeCareer.trajectory, Expertise, and Index).
+
+3. **Capability & Credibility Signals**: What does this experience *actually confer* beyond the title? Be specific about skills, mindset, network, and credibility. Always cross-reference with CompanyIntel (prestige, selectivity, culture). 
+   - M&A: High-stakes negotiation, deal structuring, strategic foresight, investor relations, risk assessment under pressure.
+   - Finance: Analytical rigor, quantitative thinking, capital allocation, risk management, understanding of economic cycles.
+   - Software Engineering: Systems thinking, scalability mindset, technical credibility, iteration culture.
+
+4. **Bridging & Uniqueness**: How does this experience connect different worlds (professional/personal, cultures, industries, socioeconomic backgrounds)? What rare combination of experiences makes this person unique? This should heavily inform UniqueFingerprint.bridgingCapability, Identity, and Network.
+
+5. **Evolution & Trajectory**: How does this fit into the person's life/career arc? What opinion shifts, depth progression, or identity evolution does it reveal? Look for contradictions and tensions — they are often the most revealing. Update LifeCareer.stages, Expertise.depthProgression, and Index.recentEvolutionSignals accordingly.
+
+Rules for all users:
+- Be SPECIFIC, EVIDENCE-BASED, and NUANCED. Always tie inferences to concrete details from verifiedLinks, manualContext, manualEdits, enriched content (articles/podcasts), or platform activity.
+- Be HOLISTIC. Connect professional, personal, geographic, cultural, educational, and volunteer experiences into a coherent narrative across all 9 dimensions. No experience exists in isolation.
+- For CompanyIntel: Always enrich with reputation, selectivity, stage, and how it shapes the user's credibility (e.g., "xAI role carries far more weight than a similar title at a small foundation").
+- Avoid generic statements. Use the examples above as templates for every experience.
+- This inference MUST flow into Identity, observations in Index, bridgeInsight (if carried over), UniqueFingerprint, LifeCareer, Expertise.credibilitySignals, and the overall Index synthesis.
+- When PREVIOUS SYNTHESIS is provided, enhance it with these deeper inferences rather than replacing.
+- Use the PAULO-SPECIFIC OVERRIDE where applicable, but apply the same depth of reasoning to all users.
+
+This engine is the core of building a rich, accurate, evolving member knowledge base that captures the true transformative power of a person's journey.
+
 PRIVACY:
 - Never mention specific community or network names in output.
 - Use generic descriptions ("a tech founders network", "an MBA program").
@@ -648,8 +676,11 @@ def synthesize_member_knowledge(
     Collects all available data (Firestore profile, SQL posts/replies,
     enrichment, group chat frequency) and calls Grok to produce structured
     synthesis notes.  Reads any existing KB notes to enable incremental
-    enhancement rather than full overwrite.  Admin corrections are treated
-    as ground truth. The ROLE CONTEXTUALIZATION rules are now included in the prompt.
+    enhancement rather than full overwrite.  Admin corrections, verifiedLinks,
+    manualContext, and the new HOLISTIC EXPERIENCE INFERENCE ENGINE (with
+    ROLE CONTEXTUALIZATION via CompanyIntel prestige/selectivity) are now
+    included in the prompt to drive deep, transformative, nuanced insights
+    across all dimensions.
     """
     if not USE_KNOWLEDGE_BASE_V1:
         return False
