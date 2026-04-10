@@ -40,6 +40,7 @@ const DIMENSION_COLORS: Record<string, string> = {
   Identity: '#ec4899',
   Network: '#06b6d4',
   UniqueFingerprint: '#f97316',
+  InferredContext: '#a855f7', // prominent purple for transformative insights
 }
 
 function renderValue(val: unknown, depth = 0): React.ReactNode {

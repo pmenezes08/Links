@@ -2,10 +2,11 @@
 Steve Member Knowledge Base — Multiple Documents Per User Architecture
 
 Manages the structured, evolutionary Member Knowledge Base in Firestore
-collection ``steve_knowledge_base``.  Each user has up to 9 synthesis
-documents (one per core dimension including the new CompanyIntel layer)
-plus selective atomic notes for high-signal events, articles, podcasts,
-opinion shifts, and relationships.
+collection ``steve_knowledge_base``.  Each user has up to 10 synthesis
+documents (the original 9 core dimensions plus the new InferredContext
+layer that isolates holistic/transformative insights) plus selective
+atomic notes for high-signal events, articles, podcasts, opinion shifts,
+and relationships.
 
 Document ID patterns:
   Synthesis:  {username}_{NoteType}          e.g.  emilychen_LifeCareer
@@ -65,6 +66,7 @@ SYNTHESIS_NOTE_TYPES = (
     "Identity",
     "Network",
     "UniqueFingerprint",
+    "InferredContext",
 )
 
 ATOMIC_NOTE_TYPES = (
@@ -128,6 +130,13 @@ SYNTHESIS_SCHEMAS: Dict[str, Dict[str, str]] = {
         "bridgingCapability": "what worlds they connect",
         "rareQualities": "list of unusual combinations or contradictions",
         "bestMatchedWith": "types of people who would benefit from connecting with them",
+    },
+    "InferredContext": {
+        "experiences": "list of {experience, transformativeImpact, strategicIntent, capabilitySignals, bridgingValue, implicationsForIdentity}",
+        "overarchingThemes": "list of recurring patterns and contradictions across the entire journey",
+        "worldviewEvolution": "narrative of how fundamental perspectives have shifted over time",
+        "strategicImplications": "what this means for future trajectory, networking value, and platform fit",
+        "confidence": "0.0-1.0 score on the strength/evidence of these inferences",
     },
 }
 
@@ -217,10 +226,10 @@ def save_synthesis_note(
     *,
     admin_feedback: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """Save or update a synthesis note (one of the 8 core dimensions).
+    """Save or update a synthesis note (one of the 10 core dimensions, including InferredContext).
 
     Uses Firestore ``set(merge=True)`` so partial updates are safe.
-    Increments ``version`` on every write.
+    Increments ``version`` on every write. Validates against SYNTHESIS_NOTE_TYPES.
     """
     if note_type not in SYNTHESIS_NOTE_TYPES:
         logger.error("Invalid synthesis note type: %s", note_type)
@@ -566,7 +575,7 @@ You may also receive a PREVIOUS SYNTHESIS section — this is the existing knowl
 Your job is to ENHANCE and REFINE it, not start from scratch. Preserve what's correct, add new evidence,
 and update anything that has changed.
 
-Focus on these 9 dimensions:
+Focus on these 10 dimensions:
 1. LifeCareer — career stages, transitions, trajectory, turning points
 2. GeographyCulture — locations lived, cultural influences, geographic expertise
 3. Expertise — domains, depth progression, current focus, credibility signals
@@ -576,6 +585,7 @@ Focus on these 9 dimensions:
 7. Network — interaction patterns (frequency only, no DM content), community participation
 8. UniqueFingerprint — what makes this person truly special, rare qualities, bridging capability
 9. Index — overall synthesis tying everything together
+10. InferredContext — dedicated home for deep holistic/transformative inferences (the "what does this *mean* about who this person is" layer). This is where the HOLISTIC EXPERIENCE INFERENCE ENGINE output should be primarily captured.
 
 CRITICAL RULES:
 - Track EVOLUTION, not just current state. "Used to be X, now Y" is more valuable than just "is Y".
@@ -604,9 +614,9 @@ MISSING INFORMATION:
 - You MUST include this information in the relevant dimension even if the raw data doesn't mention it.
 - Treat missing information hints as first-party facts — they are authoritative.
 
-HOLISTIC EXPERIENCE INFERENCE ENGINE (CRITICAL FOR ALL 9 DIMENSIONS, ESPECIALLY Identity, LifeCareer, Expertise, UniqueFingerprint, CompanyIntel, and Index):
+HOLISTIC EXPERIENCE INFERENCE ENGINE (CRITICAL — PRIMARILY POPULATES InferredContext WHILE ALSO ENRICHING THE OTHER 9 DIMENSIONS):
 
-Move beyond listing facts. For every significant experience (professional role, geographic move, educational program, personal event, volunteer work, cultural exposure, etc.), perform deep, nuanced inference. This is the core of the knowledge base. Ask:
+Move beyond listing facts. For every significant experience (professional role, geographic move, educational program, personal event, volunteer work, cultural exposure, etc.), perform deep, nuanced inference. **This output belongs primarily in the new InferredContext dimension.** This is the core of the knowledge base. Ask:
 
 1. **Transformative Impact**: How did this change the person? What new perspectives, values, resilience, empathy, or worldviews did it create? (Example: 9 months in Angola = profound exposure to 3rd-world society → shifts in economic views, understanding of inequality, resilience, global citizenship, and empathy that influences all subsequent decisions. This should appear in Identity, GeographyCulture, and UniqueFingerprint).
 
@@ -623,14 +633,14 @@ Move beyond listing facts. For every significant experience (professional role, 
 
 Rules for all users:
 - Be SPECIFIC, EVIDENCE-BASED, and NUANCED. Always tie inferences to concrete details from verifiedLinks, manualContext, manualEdits, enriched content (articles/podcasts), or platform activity.
-- Be HOLISTIC. Connect professional, personal, geographic, cultural, educational, and volunteer experiences into a coherent narrative across all 9 dimensions. No experience exists in isolation.
-- For CompanyIntel: Always enrich with reputation, selectivity, stage, and how it shapes the user's credibility (e.g., "xAI role carries far more weight than a similar title at a small foundation").
+- Be HOLISTIC. Connect professional, personal, geographic, cultural, educational, and volunteer experiences into a coherent narrative. **Populate InferredContext as the primary home for these insights** while cross-referencing relevant dimensions (Identity, UniqueFingerprint, LifeCareer, etc.).
+- For CompanyIntel: Always enrich with reputation, selectivity, stage, and how it shapes the user's credibility (e.g., "xAI role carries far more weight than a similar title at a small foundation"). Surface the valuation insight in InferredContext.
 - Avoid generic statements. Use the examples above as templates for every experience.
-- This inference MUST flow into Identity, observations in Index, bridgeInsight (if carried over), UniqueFingerprint, LifeCareer, Expertise.credibilitySignals, and the overall Index synthesis.
-- When PREVIOUS SYNTHESIS is provided, enhance it with these deeper inferences rather than replacing.
+- This inference MUST be prominently captured in InferredContext.experiences and InferredContext.overarchingThemes. It should also flow into Identity, observations in Index, UniqueFingerprint, LifeCareer, Expertise.credibilitySignals, and the overall Index synthesis.
+- When PREVIOUS SYNTHESIS is provided, enhance the existing InferredContext rather than replacing it.
 - Use the PAULO-SPECIFIC OVERRIDE where applicable, but apply the same depth of reasoning to all users.
 
-This engine is the core of building a rich, accurate, evolving member knowledge base that captures the true transformative power of a person's journey.
+This engine is the core of building a rich, accurate, evolving member knowledge base that captures the true transformative power of a person's journey. The InferredContext dimension makes these insights obvious and first-class for both admins and Steve.
 
 PRIVACY:
 - Never mention specific community or network names in output.
@@ -661,7 +671,14 @@ Return ONLY valid JSON with this structure:
   "Opinions": {"keyTopics": [...], "shifts": [...], "consistentBeliefs": "...", "controversialTakes": "..."},
   "Identity": {"coreValues": [...], "traits": [...], "contradictions": "...", "energyPatterns": "...", "communicationStyle": "..."},
   "Network": {"interactionFrequency": [...], "networkEvolution": "...", "communityParticipation": [...], "relationshipStrength": [...]},
-  "UniqueFingerprint": {"whatMakesThemSpecial": "...", "bridgingCapability": "...", "rareQualities": [...], "bestMatchedWith": "..."}
+  "UniqueFingerprint": {"whatMakesThemSpecial": "...", "bridgingCapability": "...", "rareQualities": [...], "bestMatchedWith": "..."},
+  "InferredContext": {
+    "experiences": [{"experience": "...", "transformativeImpact": "...", "strategicIntent": "...", "capabilitySignals": "...", "bridgingValue": "...", "implicationsForIdentity": "..."}],
+    "overarchingThemes": ["..."],
+    "worldviewEvolution": "...",
+    "strategicImplications": "...",
+    "confidence": 0.85
+  }
 }"""
 
 
@@ -671,16 +688,17 @@ def synthesize_member_knowledge(
     profile_data: Optional[Dict[str, Any]] = None,
     group_interaction_counts: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """Auto-synthesize the 9 core dimension notes from existing data (including the new CompanyIntel layer).
+    """Auto-synthesize the 10 core dimension notes from existing data (including the new InferredContext layer).
 
     Collects all available data (Firestore profile, SQL posts/replies,
     enrichment, group chat frequency) and calls Grok to produce structured
     synthesis notes.  Reads any existing KB notes to enable incremental
     enhancement rather than full overwrite.  Admin corrections, verifiedLinks,
-    manualContext, and the new HOLISTIC EXPERIENCE INFERENCE ENGINE (with
-    ROLE CONTEXTUALIZATION via CompanyIntel prestige/selectivity) are now
-    included in the prompt to drive deep, transformative, nuanced insights
-    across all dimensions.
+    manualContext, and the HOLISTIC EXPERIENCE INFERENCE ENGINE (with
+    ROLE CONTEXTUALIZATION via CompanyIntel prestige/selectivity) now
+    explicitly populate the new InferredContext dimension to make
+    transformative insights (Angola, EMBA strategic intent, role prestige,
+    etc.) first-class and obvious.
     """
     if not USE_KNOWLEDGE_BASE_V1:
         return False
@@ -1029,9 +1047,11 @@ def _save_synthesis_results(
     synthesis: Dict[str, Any],
     existing_kb: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """Persist the 9 synthesis documents from Grok output (including the new CompanyIntel layer).
+    """Persist the 10 synthesis documents from Grok output (including the new InferredContext layer).
 
     Preserves admin feedback from existing notes so corrections survive re-synthesis.
+    The new InferredContext dimension receives the primary output of the HOLISTIC
+    EXPERIENCE INFERENCE ENGINE.
     """
     existing_kb = existing_kb or {}
     for note_type in SYNTHESIS_NOTE_TYPES:
