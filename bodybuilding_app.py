@@ -7662,38 +7662,45 @@ def admin_steve_profile_edit(target_username):
             if not isinstance(analysis['professional'], dict):
                 analysis['professional'] = {}
 
-            # Parse structured experience data
+            # Parse structured experience data from the frontend form
+            experiences = []
             try:
-                if isinstance(content, str) and content.strip().startswith('{'):
+                if isinstance(content, dict) and 'experiences' in content:
+                    experiences = content['experiences']
+                elif isinstance(content, str) and content.strip().startswith('{'):
                     import json
                     parsed = json.loads(content)
                     experiences = parsed.get('experiences', [])
-                else:
-                    experiences = content if isinstance(content, list) else []
+                elif isinstance(content, list):
+                    experiences = content
             except Exception:
                 experiences = []
 
             if experiences and isinstance(experiences, list):
-                if 'careerHistory' not in analysis['professional']:
-                    analysis['professional']['careerHistory'] = []
-                # Merge new experiences into career history (avoid duplicates by company+role)
-                existing = analysis['professional']['careerHistory']
+                # Full replacement: the frontend sends the complete list of experiences
+                normalized = []
                 for exp in experiences:
-                    if isinstance(exp, dict) and exp.get('company') and exp.get('title'):
-                        # Check if similar entry already exists
-                        exists = any(
-                            e.get('company') == exp.get('company') and e.get('title') == exp.get('title')
-                            for e in existing if isinstance(e, dict)
-                        )
-                        if not exists:
-                            existing.append(exp)
-                # Sort by date (most recent first)
-                analysis['professional']['careerHistory'] = sorted(
-                    analysis['professional']['careerHistory'],
-                    key=lambda x: x.get('dates', '') if isinstance(x, dict) else '',
-                    reverse=True
-                )
+                    if isinstance(exp, dict) and (exp.get('company') or exp.get('title')):
+                        normalized.append({
+                            'company': exp.get('company', ''),
+                            'title': exp.get('title', ''),
+                            'role': exp.get('title', ''),
+                            'dates': exp.get('dates', ''),
+                            'period': exp.get('dates', ''),
+                            'description': exp.get('description', ''),
+                            'highlight': exp.get('description', ''),
+                            '_source': 'admin_manual',
+                        })
+                analysis['professional']['careerHistory'] = normalized
 
+            # Also store as manualEdits for KB synthesis to pick up
+            if experiences and isinstance(experiences, list):
+                analysis['professional']['manualEdits'] = [{
+                    'experiences': experiences,
+                    'editedBy': username,
+                    'editedAt': datetime.utcnow().isoformat() + 'Z',
+                    'type': 'structured_experience'
+                }]
             analysis['professional']['_lastManualEdit'] = datetime.utcnow().isoformat() + 'Z'
             analysis['professional']['_editedBy'] = username
 

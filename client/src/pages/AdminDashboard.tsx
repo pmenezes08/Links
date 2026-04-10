@@ -283,6 +283,8 @@ export default function AdminDashboard() {
   const [editingSteveProfile, setEditingSteveProfile] = useState<string | null>(null)
   const [editSection, setEditSection] = useState<'professional' | 'personal' | null>(null)
   const [editContent, setEditContent] = useState('')
+  const [editExperiences, setEditExperiences] = useState<Array<{ company: string; title: string; dates: string; description: string }>>([])
+
 
   // New user form
   const [newUser, setNewUser] = useState({
@@ -642,41 +644,50 @@ export default function AdminDashboard() {
 
   const openSteveEditModal = (username: string, section: 'professional' | 'personal') => {
     const profile = steveProfiles.find(p => p.username === username)
-    const currentContent = section === 'professional'
-      ? JSON.stringify(profile?.analysis?.professional || {}, null, 2)
-      : JSON.stringify(profile?.analysis?.personal || {}, null, 2)
     setEditingSteveProfile(username)
     setEditSection(section)
-    setEditContent(currentContent || '')
+
+    if (section === 'professional') {
+      const pro = profile?.analysis?.professional || {}
+      const existingCareer = (pro.careerHistory || []).map((e: any) => ({
+        company: e?.company || '',
+        title: e?.role || e?.title || '',
+        dates: e?.period || e?.dates || '',
+        description: e?.highlight || e?.description || '',
+      }))
+      setEditExperiences(existingCareer.length > 0 ? existingCareer : [{ company: '', title: '', dates: '', description: '' }])
+      setEditContent('')
+    } else {
+      const personal = profile?.analysis?.personal || {}
+      setEditContent(personal.manualContext || '')
+      setEditExperiences([])
+    }
   }
 
   const saveSteveEdit = async () => {
-    if (!editingSteveProfile || !editSection || !editContent.trim()) return
+    if (!editingSteveProfile || !editSection) return
 
     try {
-      let payloadContent = editContent.trim()
+      let payloadContent: any
 
-      // If it's professional and looks like JSON, parse and structure it properly
-      if (editSection === 'professional' && payloadContent.includes('{')) {
-        try {
-          const parsed = JSON.parse(payloadContent)
-          payloadContent = parsed
-        } catch (e) {
-          // If parsing fails, send as raw text
-        }
-      }
-
-      const payload = {
-        section: editSection,
-        content: payloadContent,
-        type: 'manualEdits'
+      if (editSection === 'professional') {
+        const validExperiences = editExperiences.filter(e => e.company.trim() || e.title.trim())
+        if (validExperiences.length === 0) return
+        payloadContent = { experiences: validExperiences }
+      } else {
+        if (!editContent.trim()) return
+        payloadContent = editContent.trim()
       }
 
       const res = await fetch(`/api/admin/steve_profiles/${encodeURIComponent(editingSteveProfile)}/edit`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          section: editSection,
+          content: payloadContent,
+          type: 'manualEdits'
+        })
       })
       const data = await res.json()
 
@@ -689,6 +700,7 @@ export default function AdminDashboard() {
         setEditingSteveProfile(null)
         setEditSection(null)
         setEditContent('')
+        setEditExperiences([])
       } else {
         alert(`Failed to save: ${data.error || 'Unknown error'}`)
       }
@@ -3417,6 +3429,7 @@ export default function AdminDashboard() {
                   setEditingSteveProfile(null)
                   setEditSection(null)
                   setEditContent('')
+                  setEditExperiences([])
                 }}
                 className="text-white/40 hover:text-white p-2 text-xl leading-none"
               >
@@ -3426,53 +3439,76 @@ export default function AdminDashboard() {
 
             <div className="flex-1 overflow-auto p-6">
               {editSection === 'professional' ? (
-                <div className="space-y-6">
-                  <div>
-                    <div className="flex justify-between items-center mb-3">
-                      <div>
-                        <h4 className="font-medium text-white">Experience History</h4>
-                        <p className="text-xs text-white/50">Add or update positions. Timeline will be automatically sorted by date (most recent first).</p>
-                      </div>
-                      <button
-                        onClick={() => {
-                          const current = editContent && editContent.trim() ? JSON.parse(editContent) : { experiences: [] }
-                          if (!current.experiences) current.experiences = []
-                          current.experiences.push({
-                            company: '',
-                            title: '',
-                            dates: '',
-                            description: ''
-                          })
-                          setEditContent(JSON.stringify(current, null, 2))
-                        }}
-                        className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded-xl flex items-center gap-2"
-                      >
-                        + Add Position
-                      </button>
-                    </div>
-
-                    <textarea
-                      value={editContent}
-                      onChange={(e) => setEditContent(e.target.value)}
-                      className="w-full h-96 font-mono text-xs bg-black/70 border border-white/10 rounded-2xl p-5 text-white/90 focus:outline-none focus:border-[#4db6ac] resize-y leading-relaxed"
-                      placeholder={`{
-  "experiences": [
-    {
-      "company": "xAI",
-      "title": "Sr. Revenue Strategy & Operations Manager",
-      "dates": "Dec 2024 - Present",
-      "description": "Leading revenue strategy for cutting-edge AI company focused on scientific discovery."
-    },
-    {
-      "company": "Deloitte",
-      "title": "Manager",
-      "dates": "2015 - 2022",
-      "description": "7 years in Financial Services and TelCo. Led cost transformation, M&A, and GDPR programs across Portugal, Angola, and Ireland."
-    }
-  ]
-}`}
-                    />
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <p className="text-xs text-white/50">Edit positions below. Grok will enrich company details automatically.</p>
+                    <button
+                      onClick={() => setEditExperiences(prev => [{ company: '', title: '', dates: '', description: '' }, ...prev])}
+                      className="px-4 py-2 bg-[#4db6ac]/20 hover:bg-[#4db6ac]/30 text-[#4db6ac] text-sm rounded-xl border border-[#4db6ac]/30 transition-colors"
+                    >
+                      + Add Position
+                    </button>
                   </div>
+
+                  {editExperiences.map((exp, idx) => (
+                    <div key={idx} className="bg-white/[0.03] border border-white/10 rounded-xl p-4 space-y-3 relative group">
+                      <button
+                        onClick={() => setEditExperiences(prev => prev.filter((_, i) => i !== idx))}
+                        className="absolute top-3 right-3 text-white/20 hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Remove position"
+                      >
+                        ✕
+                      </button>
+                      <div className="flex gap-3">
+                        <div className="flex-1">
+                          <label className="block text-[10px] uppercase tracking-wider text-white/40 mb-1">Company</label>
+                          <input
+                            type="text"
+                            value={exp.company}
+                            onChange={(e) => setEditExperiences(prev => prev.map((x, i) => i === idx ? { ...x, company: e.target.value } : x))}
+                            placeholder="e.g. Deloitte"
+                            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#4db6ac]"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <label className="block text-[10px] uppercase tracking-wider text-white/40 mb-1">Title / Role</label>
+                          <input
+                            type="text"
+                            value={exp.title}
+                            onChange={(e) => setEditExperiences(prev => prev.map((x, i) => i === idx ? { ...x, title: e.target.value } : x))}
+                            placeholder="e.g. Manager"
+                            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#4db6ac]"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-wider text-white/40 mb-1">Dates</label>
+                        <input
+                          type="text"
+                          value={exp.dates}
+                          onChange={(e) => setEditExperiences(prev => prev.map((x, i) => i === idx ? { ...x, dates: e.target.value } : x))}
+                          placeholder="e.g. 2015 - 2022  or  Dec 2024 - Present"
+                          className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#4db6ac]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-wider text-white/40 mb-1">Description</label>
+                        <textarea
+                          value={exp.description}
+                          onChange={(e) => setEditExperiences(prev => prev.map((x, i) => i === idx ? { ...x, description: e.target.value } : x))}
+                          placeholder="Brief description of role, achievements, focus areas..."
+                          rows={2}
+                          className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#4db6ac] resize-none"
+                        />
+                      </div>
+                    </div>
+                  ))}
+
+                  {editExperiences.length === 0 && (
+                    <div className="text-center py-10 text-white/30 text-sm">
+                      No positions yet. Click "+ Add Position" to start.
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -3495,6 +3531,7 @@ export default function AdminDashboard() {
                   setEditingSteveProfile(null)
                   setEditSection(null)
                   setEditContent('')
+                  setEditExperiences([])
                 }}
                 className="flex-1 py-3.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-sm font-medium transition-colors"
               >
