@@ -2926,13 +2926,15 @@ export default function AdminDashboard() {
 
                             {/* Knowledge Base */}
                             <button
-                              onClick={() => setShowKnowledgeBase(true)}
+                              onClick={() => {
+                                setSelectedProfileUsername(profile.username)
+                                setShowKnowledgeBase(true)
+                              }}
                               className="mt-4 w-full py-2 px-3 bg-[#6366f1]/15 text-[#a5b4fc] border border-[#6366f1]/20 rounded-lg text-xs font-medium hover:bg-[#6366f1]/25 transition-colors flex items-center justify-center gap-2"
                             >
                               <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.2"/><circle cx="8" cy="5.5" r="1.5" fill="currentColor"/><circle cx="5" cy="10" r="1.5" fill="currentColor"/><circle cx="11" cy="10" r="1.5" fill="currentColor"/><line x1="8" y1="7" x2="5.5" y2="9" stroke="currentColor" strokeWidth="0.8"/><line x1="8" y1="7" x2="10.5" y2="9" stroke="currentColor" strokeWidth="0.8"/></svg>
                               View Knowledge Base
                             </button>
-                            <KnowledgeBaseGraph username={profile.username} open={showKnowledgeBase} onClose={() => setShowKnowledgeBase(false)} />
                           </div>
                         );
                       })()
@@ -3821,6 +3823,20 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Knowledge Base Modal (supports both users and networks) */}
+      {showKnowledgeBase && (
+        <KnowledgeBaseGraph
+          username={selectedProfileUsername || undefined}
+          networkId={selectedNetworkId}
+          open={showKnowledgeBase}
+          onClose={() => {
+            setShowKnowledgeBase(false)
+            setSelectedProfileUsername('')
+            setSelectedNetworkId(null)
+          }}
+        />
       )}
     </div>
   )

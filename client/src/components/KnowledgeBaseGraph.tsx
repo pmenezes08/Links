@@ -80,6 +80,10 @@ function renderValue(val: unknown, depth = 0): React.ReactNode {
 }
 
 export default function KnowledgeBaseGraph({ username, networkId, open, onClose }: { username?: string; networkId?: number | null; open: boolean; onClose: () => void }) {
+  const isNetwork = !!networkId
+  const displayName = isNetwork ? `Network ${networkId}` : (username || 'Unknown')
+  const target = isNetwork ? `network/${networkId}` : (username || '')
+
   const [knowledge, setKnowledge] = useState<KnowledgeData>({})
   const [graphData, setGraphData] = useState<{ nodes: KBNode[]; edges: KBEdge[] }>({ nodes: [], edges: [] })
   const [loading, setLoading] = useState(false)
@@ -91,9 +95,10 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false)
 
   const loadKnowledge = useCallback(async () => {
+    if (!target) return
     setLoading(true)
     try {
-      const resp = await fetch(`/api/admin/knowledge_base/${encodeURIComponent(username)}`, { credentials: 'include' })
+      const resp = await fetch(`/api/admin/knowledge_base/${encodeURIComponent(target)}`, { credentials: 'include' })
       const data = await resp.json()
       if (data.success) {
         const k = data.knowledge || {}
@@ -105,11 +110,12 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
       console.error('Failed to load knowledge base:', err)
     }
     setLoading(false)
-  }, [username, selectedNote])
+  }, [target, selectedNote])
 
   const loadGraph = useCallback(async () => {
+    if (!target) return
     try {
-      const resp = await fetch(`/api/admin/knowledge_base/graph/${encodeURIComponent(username)}`, { credentials: 'include' })
+      const resp = await fetch(`/api/admin/knowledge_base/graph/${encodeURIComponent(target)}`, { credentials: 'include' })
       const data = await resp.json()
       if (data.success) {
         setGraphData({ nodes: data.nodes || [], edges: data.edges || [] })
@@ -117,19 +123,20 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
     } catch (err) {
       console.error('Failed to load graph:', err)
     }
-  }, [username])
+  }, [target])
 
   useEffect(() => {
-    if (open && username) {
+    if (open && (username || networkId)) {
       loadKnowledge()
       loadGraph()
     }
-  }, [open, username, loadKnowledge, loadGraph])
+  }, [open, username, networkId, loadKnowledge, loadGraph])
 
   const triggerSynthesis = async () => {
+    if (!target) return
     setSynthesizing(true)
     try {
-      const resp = await fetch(`/api/admin/knowledge_base/${encodeURIComponent(username)}/synthesize`, {
+      const resp = await fetch(`/api/admin/knowledge_base/${encodeURIComponent(target)}/synthesize`, {
         method: 'POST',
         credentials: 'include',
       })
@@ -147,10 +154,13 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
   }
 
   const resetKnowledgeBase = async () => {
-    if (!confirm(`Delete ALL synthesized knowledge for @${username}?\n\nThis cannot be undone.`)) return
+    const confirmMsg = isNetwork
+      ? `Delete ALL synthesized knowledge for Network ${networkId}?\n\nThis cannot be undone.`
+      : `Delete ALL synthesized knowledge for @${username}?\n\nThis cannot be undone.`
+    if (!confirm(confirmMsg)) return
 
     try {
-      const resp = await fetch(`/api/admin/knowledge_base/${encodeURIComponent(username)}/reset`, {
+      const resp = await fetch(`/api/admin/knowledge_base/${encodeURIComponent(target)}/reset`, {
         method: 'DELETE',
         credentials: 'include',
       })
@@ -169,10 +179,11 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
   }
 
   const submitFeedback = async (noteType: string) => {
+    if (!target) return
     if ((feedbackStatus === 'needs_correction' || feedbackStatus === 'missing_info') && !feedbackNote.trim()) return
     setFeedbackSubmitting(true)
     try {
-      const resp = await fetch(`/api/admin/knowledge_base/${encodeURIComponent(username)}/feedback`, {
+      const resp = await fetch(`/api/admin/knowledge_base/${encodeURIComponent(target)}/feedback`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -209,11 +220,11 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
         <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-7 h-7 bg-[#6366f1] rounded-full flex items-center justify-center text-[11px] font-bold text-white">
-              {username[0]?.toUpperCase()}
+              {isNetwork ? '🌐' : (username?.[0]?.toUpperCase() || '?')}
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">Knowledge Base</h2>
-              <p className="text-[11px] text-white/40">@{username}</p>
+              <h2 className="text-sm font-semibold text-white">{isNetwork ? 'Network Knowledge Base' : 'Knowledge Base'}</h2>
+              <p className="text-[11px] text-white/40">@{displayName}</p>
             </div>
           </div>
 
