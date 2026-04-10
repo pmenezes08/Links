@@ -7656,7 +7656,7 @@ def admin_steve_profile_edit(target_username):
 
         analysis = profile.get('analysis', {})
 
-        if section === 'professional':
+        if section == 'professional':
             if 'professional' not in analysis:
                 analysis['professional'] = {}
             if not isinstance(analysis['professional'], dict):
