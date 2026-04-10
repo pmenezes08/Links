@@ -7656,35 +7656,55 @@ def admin_steve_profile_edit(target_username):
 
         analysis = profile.get('analysis', {})
 
-        # Store as manualEdits with the raw text (much more admin-friendly)
-        manual_entry = {
-            "text": content,
-            "editedBy": username,
-            "editedAt": datetime.utcnow().isoformat() + 'Z',
-            "type": "manual_override"
-        }
-
-        if section == 'professional':
+        if section === 'professional':
             if 'professional' not in analysis:
                 analysis['professional'] = {}
-            if 'manualEdits' not in analysis['professional']:
-                analysis['professional']['manualEdits'] = []
-            # Append to list of manual edits
-            if isinstance(analysis['professional']['manualEdits'], list):
-                analysis['professional']['manualEdits'].append(manual_entry)
-            else:
-                analysis['professional']['manualEdits'] = [manual_entry]
+            if not isinstance(analysis['professional'], dict):
+                analysis['professional'] = {}
+
+            # Parse structured experience data
+            try:
+                if isinstance(content, str) and content.strip().startswith('{'):
+                    import json
+                    parsed = json.loads(content)
+                    experiences = parsed.get('experiences', [])
+                else:
+                    experiences = content if isinstance(content, list) else []
+            except Exception:
+                experiences = []
+
+            if experiences and isinstance(experiences, list):
+                if 'careerHistory' not in analysis['professional']:
+                    analysis['professional']['careerHistory'] = []
+                # Merge new experiences into career history (avoid duplicates by company+role)
+                existing = analysis['professional']['careerHistory']
+                for exp in experiences:
+                    if isinstance(exp, dict) and exp.get('company') and exp.get('title'):
+                        # Check if similar entry already exists
+                        exists = any(
+                            e.get('company') == exp.get('company') and e.get('title') == exp.get('title')
+                            for e in existing if isinstance(e, dict)
+                        )
+                        if not exists:
+                            existing.append(exp)
+                # Sort by date (most recent first)
+                analysis['professional']['careerHistory'] = sorted(
+                    analysis['professional']['careerHistory'],
+                    key=lambda x: x.get('dates', '') if isinstance(x, dict) else '',
+                    reverse=True
+                )
+
             analysis['professional']['_lastManualEdit'] = datetime.utcnow().isoformat() + 'Z'
             analysis['professional']['_editedBy'] = username
+
         else:
+            # Personal edits - simple text storage
             if 'personal' not in analysis:
                 analysis['personal'] = {}
-            if 'manualEdits' not in analysis['personal']:
-                analysis['personal']['manualEdits'] = []
-            if isinstance(analysis['personal']['manualEdits'], list):
-                analysis['personal']['manualEdits'].append(manual_entry)
-            else:
-                analysis['personal']['manualEdits'] = [manual_entry]
+            if not isinstance(analysis['personal'], dict):
+                analysis['personal'] = {}
+
+            analysis['personal']['manualContext'] = content if isinstance(content, str) else str(content)
             analysis['personal']['_lastManualEdit'] = datetime.utcnow().isoformat() + 'Z'
             analysis['personal']['_editedBy'] = username
 

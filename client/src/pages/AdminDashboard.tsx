@@ -3399,7 +3399,7 @@ export default function AdminDashboard() {
       {/* Steve Profile Edit Modal */}
       {editingSteveProfile && editSection && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#1a1a1a] rounded-2xl w-full max-w-2xl border border-white/10 flex flex-col max-h-[90vh]">
+          <div className="bg-[#1a1a1a] rounded-2xl w-full max-w-3xl border border-white/10 flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 bg-gradient-to-br from-[#4db6ac] to-blue-500 rounded-xl flex items-center justify-center text-base font-bold text-white">
@@ -3407,7 +3407,7 @@ export default function AdminDashboard() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-lg text-white">
-                    Add to {editSection === 'professional' ? 'Professional' : 'Personal'} Profile
+                    {editSection === 'professional' ? 'Professional Experience' : 'Personal Context'}
                   </h3>
                   <p className="text-sm text-white/40">@{editingSteveProfile}</p>
                 </div>
@@ -3426,69 +3426,83 @@ export default function AdminDashboard() {
 
             <div className="flex-1 overflow-auto p-6">
               {editSection === 'professional' ? (
-                <div className="space-y-8">
+                <div className="space-y-6">
                   <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <label className="text-sm font-medium text-white">Experience Entries</label>
+                    <div className="flex justify-between items-center mb-3">
+                      <div>
+                        <h4 className="font-medium text-white">Experience History</h4>
+                        <p className="text-xs text-white/50">Add or update positions. Timeline will be automatically sorted by date (most recent first).</p>
+                      </div>
                       <button
                         onClick={() => {
-                          const current = editContent ? JSON.parse(editContent) : { experiences: [] }
-                          current.experiences = current.experiences || []
-                          current.experiences.push({ company: '', title: '', dates: '', description: '' })
+                          const current = editContent && editContent.trim() ? JSON.parse(editContent) : { experiences: [] }
+                          if (!current.experiences) current.experiences = []
+                          current.experiences.push({
+                            company: '',
+                            title: '',
+                            dates: '',
+                            description: ''
+                          })
                           setEditContent(JSON.stringify(current, null, 2))
                         }}
-                        className="text-xs px-3 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-white/70"
+                        className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded-xl flex items-center gap-2"
                       >
-                        + Add Experience
+                        + Add Position
                       </button>
                     </div>
+
                     <textarea
                       value={editContent}
                       onChange={(e) => setEditContent(e.target.value)}
-                      className="w-full h-80 font-mono text-xs bg-black/60 border border-white/10 rounded-xl p-4 text-white/90 focus:outline-none focus:border-[#4db6ac] resize-y"
+                      className="w-full h-96 font-mono text-xs bg-black/70 border border-white/10 rounded-2xl p-5 text-white/90 focus:outline-none focus:border-[#4db6ac] resize-y leading-relaxed"
                       placeholder={`{
   "experiences": [
     {
+      "company": "xAI",
+      "title": "Sr. Revenue Strategy & Operations Manager",
+      "dates": "Dec 2024 - Present",
+      "description": "Leading revenue strategy for cutting-edge AI company focused on scientific discovery."
+    },
+    {
       "company": "Deloitte",
       "title": "Manager",
-      "dates": "2015-2022",
-      "description": "Financial Services and TelCo consulting. Led cost transformation, M&A carve-outs, and GDPR implementation across Portugal, Angola, and Ireland."
+      "dates": "2015 - 2022",
+      "description": "7 years in Financial Services and TelCo. Led cost transformation, M&A, and GDPR programs across Portugal, Angola, and Ireland."
     }
   ]
 }`}
                     />
-                    <p className="text-[10px] text-white/40 mt-2">
-                      Add one or more experiences. Grok will automatically enrich with company intelligence when you save.
-                    </p>
                   </div>
                 </div>
               ) : (
-                <div>
-                  <label className="block text-sm font-medium text-white mb-2">Personal Context &amp; Life Notes</label>
-                  <textarea
-                    value={editContent}
-                    onChange={(e) => setEditContent(e.target.value)}
-                    placeholder="Add any personal background, life experiences, values, or context that Steve should know about you..."
-                    className="w-full h-80 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm leading-relaxed text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac] resize-y"
-                  />
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-white mb-2">Personal Context & Life Notes</label>
+                    <textarea
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      placeholder="Share any personal background, life experiences, values, interests, or context that would help Steve understand you better..."
+                      className="w-full h-80 px-5 py-4 bg-white/5 border border-white/10 rounded-2xl text-sm leading-relaxed text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac] resize-y"
+                    />
+                  </div>
                 </div>
               )}
             </div>
 
-            <div className="p-6 border-t border-white/10 flex gap-3 bg-[#161618]">
+            <div className="p-6 border-t border-white/10 bg-[#161618] flex gap-3">
               <button
                 onClick={() => {
                   setEditingSteveProfile(null)
                   setEditSection(null)
                   setEditContent('')
                 }}
-                className="flex-1 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-sm font-medium transition-colors"
+                className="flex-1 py-3.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-sm font-medium transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={saveSteveEdit}
-                className="flex-1 py-3 bg-[#4db6ac] hover:bg-[#45a099] text-black rounded-2xl text-sm font-semibold transition-colors"
+                className="flex-1 py-3.5 bg-[#4db6ac] hover:bg-[#45a099] text-black rounded-2xl text-sm font-semibold transition-colors"
               >
                 Save to Steve's Knowledge
               </button>

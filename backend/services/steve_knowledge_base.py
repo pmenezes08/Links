@@ -784,6 +784,10 @@ def _assemble_raw_text_for_synthesis(
     if personal.get("webFindings"):
         parts.append(f"PERSONAL BACKGROUND: {personal['webFindings']}")
 
+    # Manual personal context
+    if personal.get("manualContext"):
+        parts.append(f"MANUAL PERSONAL CONTEXT (ADMIN PROVIDED):\n{personal['manualContext']}")
+
     # Manual edits have highest priority
     manual_personal = personal.get("manualEdits") or personal.get("_manualEdits")
     if manual_personal:
