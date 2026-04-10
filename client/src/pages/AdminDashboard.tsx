@@ -1320,10 +1320,10 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-black text-white lg:ml-64">
       {/* Secondary nav like Communities page */}
       <div
-        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+        className="fixed left-0 lg:left-64 right-0 h-10 bg-black/70 backdrop-blur z-40"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
       >
         <div className="max-w-4xl mx-auto h-full flex overflow-x-auto scrollbar-hide">
@@ -1353,7 +1353,7 @@ export default function AdminDashboard() {
 
       {/* Content */}
       <div
-        className="app-subnav-offset max-w-6xl mx-auto pb-6 px-3 overflow-y-auto no-scrollbar"
+        className="app-subnav-offset max-w-4xl mx-auto pb-6 px-3 overflow-y-auto no-scrollbar"
         style={{
           WebkitOverflowScrolling: 'touch' as any,
           minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))',
