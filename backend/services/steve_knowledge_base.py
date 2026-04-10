@@ -582,16 +582,16 @@ Focus on these 10 dimensions:
 4. CompanyIntel — rich intelligence on every company the user has worked for (reputation, selectivity, culture, stage, relevance)
 5. Opinions — key topic stances, opinion shifts over time, consistent beliefs
 6. Identity — core values, personality traits, contradictions, energy patterns, communication style
-7. Network — interaction patterns (frequency only, no DM content), community participation
+7. Network — connections and interactions inferred exclusively from public posts, comments, and shared external sources (no private DM or group chat content)
 8. UniqueFingerprint — what makes this person truly special, rare qualities, bridging capability
 9. Index — overall synthesis tying everything together
-10. InferredContext — dedicated home for deep holistic/transformative inferences (the "what does this *mean* about who this person is" layer). This is where the HOLISTIC EXPERIENCE INFERENCE ENGINE output should be primarily captured.
+10. InferredContext — dedicated home for deep holistic/transformative inferences (the "what does this *mean* about who this person is" layer, including cultural/slang context from posts and comments). This is where the HOLISTIC EXPERIENCE INFERENCE ENGINE output should be primarily captured.
 
 CRITICAL RULES:
 - Track EVOLUTION, not just current state. "Used to be X, now Y" is more valuable than just "is Y".
 - Look for CONTRADICTIONS and TENSIONS — they reveal uniqueness.
-- Be SPECIFIC with evidence — cite dates, posts, events where possible.
-- For Network dimension: use FREQUENCY data only. Never reference DM content.
+- Be SPECIFIC with evidence — cite dates, posts, comments, and external sources where possible.
+- Network insights must come exclusively from public posts, comments, and shared external sources. Never reference private DM or group chat content (removed per current requirements).
 - Geographic data should note both CURRENT location and HISTORICAL journey.
 - Opinions should track SHIFTS — what changed and what triggered the change.
 
@@ -632,15 +632,16 @@ Move beyond listing facts. For every significant experience (professional role, 
 5. **Evolution & Trajectory**: How does this fit into the person's life/career arc? What opinion shifts, depth progression, or identity evolution does it reveal? Look for contradictions and tensions — they are often the most revealing. Update LifeCareer.stages, Expertise.depthProgression, and Index.recentEvolutionSignals accordingly.
 
 Rules for all users:
-- Be SPECIFIC, EVIDENCE-BASED, and NUANCED. Always tie inferences to concrete details from verifiedLinks, manualContext, manualEdits, enriched content (articles/podcasts), or platform activity.
+- Be SPECIFIC, EVIDENCE-BASED, and NUANCED. Always tie inferences to concrete details from verifiedLinks, manualContext, manualEdits, enriched content (articles/podcasts), authored posts, replies, and shared external sources with captions. These are now the *only* sources for network and cultural insights.
 - Be HOLISTIC. Connect professional, personal, geographic, cultural, educational, and volunteer experiences into a coherent narrative. **Populate InferredContext as the primary home for these insights** while cross-referencing relevant dimensions (Identity, UniqueFingerprint, LifeCareer, etc.).
+- CULTURAL & SLANG CONTEXT (CRITICAL FOR POSTS/COMMENTS): Pay special attention to native-language nuances. E.g. Portuguese "Hey Malta", "E aí malta", or "Malta vai" is colloquial for "Hey guys/folks" in group settings — not a literal reference to the country of Malta. Use surrounding comment thread and user background to disambiguate. Surface these interpretations prominently in InferredContext.
 - For CompanyIntel: Always enrich with reputation, selectivity, stage, and how it shapes the user's credibility (e.g., "xAI role carries far more weight than a similar title at a small foundation"). Surface the valuation insight in InferredContext.
 - Avoid generic statements. Use the examples above as templates for every experience.
-- This inference MUST be prominently captured in InferredContext.experiences and InferredContext.overarchingThemes. It should also flow into Identity, observations in Index, UniqueFingerprint, LifeCareer, Expertise.credibilitySignals, and the overall Index synthesis.
+- This inference MUST be prominently captured in InferredContext.experiences, InferredContext.overarchingThemes, and InferredContext.strategicImplications. It should also flow into Identity, observations in Index, UniqueFingerprint, LifeCareer, Expertise.credibilitySignals, and the overall Index synthesis.
 - When PREVIOUS SYNTHESIS is provided, enhance the existing InferredContext rather than replacing it.
 - Use the PAULO-SPECIFIC OVERRIDE where applicable, but apply the same depth of reasoning to all users.
 
-This engine is the core of building a rich, accurate, evolving member knowledge base that captures the true transformative power of a person's journey. The InferredContext dimension makes these insights obvious and first-class for both admins and Steve.
+This engine is the core of building a rich, accurate, evolving member knowledge base that captures the true transformative power of a person's journey. The InferredContext dimension makes cultural, slang, and contextual insights from posts and comments obvious and first-class for both admins and Steve. Group chat ingestion has been fully removed.
 
 PRIVACY:
 - Never mention specific community or network names in output.
@@ -686,19 +687,17 @@ def synthesize_member_knowledge(
     username: str,
     *,
     profile_data: Optional[Dict[str, Any]] = None,
-    group_interaction_counts: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """Auto-synthesize the 10 core dimension notes from existing data (including the new InferredContext layer).
 
     Collects all available data (Firestore profile, SQL posts/replies,
-    enrichment, group chat frequency) and calls Grok to produce structured
-    synthesis notes.  Reads any existing KB notes to enable incremental
-    enhancement rather than full overwrite.  Admin corrections, verifiedLinks,
-    manualContext, and the HOLISTIC EXPERIENCE INFERENCE ENGINE (with
-    ROLE CONTEXTUALIZATION via CompanyIntel prestige/selectivity) now
-    explicitly populate the new InferredContext dimension to make
-    transformative insights (Angola, EMBA strategic intent, role prestige,
-    etc.) first-class and obvious.
+    enriched external content) and calls Grok to produce structured synthesis
+    notes. Group chat content has been removed per current requirements.
+    Reads any existing KB notes to enable incremental enhancement rather than
+    full overwrite. Admin corrections, verifiedLinks, manualContext, and the
+    HOLISTIC EXPERIENCE INFERENCE ENGINE now explicitly populate the new
+    InferredContext dimension to make transformative insights (including
+    cultural/slang context from posts and comments) first-class and obvious.
     """
     if not USE_KNOWLEDGE_BASE_V1:
         return False
@@ -932,33 +931,33 @@ def _assemble_raw_text_for_synthesis(
     authored = platform.get("authoredPosts") or []
     if authored:
         post_lines = []
-        for p in authored[:15]:
+        for p in authored[:20]:  # Increased limit for better context
             if isinstance(p, dict) and p.get("snippet"):
-                post_lines.append(f"[{p.get('date', '?')}] {p['snippet'][:200]}")
+                post_lines.append(f"[{p.get('date', '?')}] {p['snippet'][:300]}")
         if post_lines:
-            parts.append(f"AUTHORED POSTS:\n" + "\n".join(post_lines))
+            parts.append(f"AUTHORED POSTS AND COMMENTS (high-signal platform activity):\n" + "\n".join(post_lines))
 
     replies_data = platform.get("replies") or []
     if replies_data:
         reply_lines = []
-        for r in replies_data[:10]:
+        for r in replies_data[:15]:  # Increased for better thread context
             if isinstance(r, dict) and r.get("content"):
-                ctx = f" (replying to: '{r['replyingTo'][:80]}')" if r.get("replyingTo") else ""
-                reply_lines.append(f"[{r.get('date', '?')}]{ctx} {r['content'][:150]}")
+                ctx = f" (replying to: '{r.get('replyingTo', '')[:100]}')" if r.get("replyingTo") else ""
+                reply_lines.append(f"[{r.get('date', '?')}]{ctx} {r['content'][:250]}")
         if reply_lines:
-            parts.append(f"REPLIES:\n" + "\n".join(reply_lines))
+            parts.append(f"REPLIES AND COMMENTS (critical for cultural/slang context):\n" + "\n".join(reply_lines))
 
     externals = profile_data.get("profilingSharedExternals") or {}
     shared_items = externals.get("items") or []
     if shared_items:
         ext_lines = []
-        for item in shared_items[:10]:
+        for item in shared_items[:12]:
             if isinstance(item, dict):
                 urls = item.get("urls", [])
-                caption = item.get("userCaption", "")[:150]
-                ext_lines.append(f"[{item.get('date', '?')}] {', '.join(urls[:2])} — {caption}")
+                caption = item.get("userCaption", "")[:200]
+                ext_lines.append(f"[{item.get('date', '?')}] {', '.join(urls[:3])} — {caption}")
         if ext_lines:
-            parts.append(f"SHARED EXTERNAL CONTENT:\n" + "\n".join(ext_lines))
+            parts.append(f"SHARED EXTERNAL SOURCES WITH USER CAPTIONS (key for intent and expertise):\n" + "\n".join(ext_lines))
 
     enriched_content = profile_data.get("profilingEnrichedContent") or {}
     enriched_text = (enriched_content.get("text") or "").strip()
@@ -975,15 +974,10 @@ def _assemble_raw_text_for_synthesis(
             if src_lines:
                 parts.append(f"ENRICHED EXTERNAL SOURCES (metadata only):\n" + "\n".join(src_lines))
 
-    if group_interaction_counts:
-        freq_lines = []
-        for target_user, count in sorted(
-            group_interaction_counts.items(), key=lambda x: x[1], reverse=True
-        )[:20]:
-            freq_lines.append(f"@{target_user}: {count} group chat interactions")
-        if freq_lines:
-            parts.append(f"GROUP CHAT INTERACTION FREQUENCY (privacy-safe, no content):\n" + "\n".join(freq_lines))
-
+    # Group chat ingestion has been completely removed (per current requirements).
+    # All network and contextual insights now come exclusively from posts,
+    # comments, and external sources shared in them. This eliminates
+    # ambiguity from isolated comments (e.g. Portuguese slang like "Hey Malta").
     return "\n\n".join(parts)
 
 
@@ -994,7 +988,7 @@ def _call_grok_for_synthesis(
     prior_synthesis: str = "",
     admin_corrections: str = "",
 ) -> Optional[Dict[str, Any]]:
-    """Call Grok to produce the 8-dimension synthesis JSON."""
+    """Call Grok to produce the 10-dimension synthesis JSON (with InferredContext as the primary home for nuanced post/comment interpretation)."""
     import json as _json
 
     xai_key = os.environ.get("XAI_API_KEY", "")

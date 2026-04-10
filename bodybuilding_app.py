@@ -8775,15 +8775,18 @@ PLATFORM ACTIVITY (if provided):
 - SHARED CONTENT (posts with links): These URLs reveal the user's information diet and professional focus.
   When ENRICHED SHARED LINKS already includes text for a URL, prefer that over generic web search for that URL.
   Otherwise USE YOUR WEB SEARCH to visit/analyze each URL. Understand what the content is about and what sharing
-  it says about the user's interests and expertise. The user's comment alongside the link adds context.
+  it says about the user's interests and expertise. The user's comment alongside the link adds critical context.
 - OWN THOUGHTS (text-only posts): These reveal the user's voice — opinions, reflections, experiences, humor.
   Pay special attention to recurring themes.
-- REPLIES & COMMENTS: These show what topics the user engages with and how they think.
-  Look for patterns in what they respond to.
-- Recent posts matter more than older ones. If a user's posts show a clear evolution, note it.
-- REQUIREMENT: If platform activity is provided, you MUST incorporate specific themes and insights from it
-  in your summary and observations. Platform activity is PRIMARY data — it shows what the user actually
-  cares about RIGHT NOW. Do not ignore it."""
+- REPLIES & COMMENTS: These show what topics the user engages with and how they think. Look for patterns in what
+  they respond to. **Pay special attention to cultural and slang nuances in native languages.** E.g. Portuguese
+  "Hey Malta", "E aí malta", or similar phrases in group/professional contexts are colloquial for "Hey guys/folks"
+  — not literal references to the country of Malta. Use thread context and user background to disambiguate and
+  capture the true meaning in observations and InferredContext.
+- Recent posts and comments matter more than older ones. If a user's activity shows a clear evolution, note it.
+- REQUIREMENT: If platform activity is provided, you MUST incorporate specific themes, cultural context, and
+  insights from posts, comments, and shared externals in your summary, observations, identity, and InferredContext.
+  Platform activity is PRIMARY data — it shows what the user actually cares about RIGHT NOW. Do not ignore it."""
 
         research_rules = ""
         if depth in ('standard', 'deep'):
