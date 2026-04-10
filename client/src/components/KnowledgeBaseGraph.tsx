@@ -36,6 +36,7 @@ const DIMENSION_COLORS: Record<string, string> = {
   LifeCareer: '#ef4444',
   GeographyCulture: '#f59e0b',
   Expertise: '#10b981',
+  CompanyIntel: '#14b8a6',
   Opinions: '#8b5cf6',
   Identity: '#ec4899',
   Network: '#06b6d4',

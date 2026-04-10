@@ -15,9 +15,10 @@ Document ID patterns:
   Atomic:            {username}_{NoteType}_{date}   e.g.  emilychen_Article_2025-04-09
   Shared nodes:      _shared_{concept_type}_{slug}
 
-This enables both high-context individual networking and aggregated network
-insights ("this network has 100 fintech professionals, 24 climbers, strong
-Portuguese founder culture where 'Hey Malta' is common slang").
+Network isolation is enforced: each network KB aggregates ONLY from direct
+members of that specific community (no descendant community leakage).
+Member KB documents are tagged with ``networkIds`` for future query filtering.
+All network dimension content is dynamically generated from real member data.
 """
 
 from __future__ import annotations
@@ -269,6 +270,53 @@ def _slugify(text: str) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+#  NETWORK ISOLATION HELPERS
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _get_user_network_ids(username: str) -> List[int]:
+    """Return the root-level community (network) IDs this user belongs to.
+
+    Walks each community membership up to its root via parent_community_id.
+    Used to tag member KB documents for network-isolated aggregation.
+    """
+    try:
+        from backend.services.database import get_db_connection, get_sql_placeholder
+        ph = get_sql_placeholder()
+        conn = get_db_connection()
+        c = conn.cursor()
+
+        c.execute(
+            f"SELECT uc.community_id FROM user_communities uc "
+            f"JOIN users u ON u.id = uc.user_id "
+            f"WHERE u.username = {ph} AND LOWER(u.username) NOT IN ('admin', 'steve')",
+            (username,),
+        )
+        community_ids = [(r["community_id"] if hasattr(r, "keys") else r[0]) for r in c.fetchall()]
+
+        root_ids: set = set()
+        for cid in community_ids:
+            current = cid
+            visited: set = set()
+            while current and current not in visited:
+                visited.add(current)
+                c.execute(f"SELECT parent_community_id FROM communities WHERE id = {ph}", (current,))
+                row = c.fetchone()
+                if not row:
+                    break
+                parent = row["parent_community_id"] if hasattr(row, "keys") else row[0]
+                if parent is None:
+                    root_ids.add(current)
+                    break
+                current = parent
+
+        conn.close()
+        return sorted(root_ids)
+    except Exception as e:
+        logger.debug("Could not fetch network IDs for %s: %s", username, e)
+        return []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 #  WRITE OPERATIONS
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -310,6 +358,10 @@ def save_synthesis_note(
         }
         if admin_feedback is not None:
             doc_data["adminFeedback"] = admin_feedback
+
+        # Tag member KBs with their network memberships for isolation
+        if not note_type.startswith("Network"):
+            doc_data["networkIds"] = _get_user_network_ids(username)
 
         doc_ref.set(doc_data, merge=True)
         logger.info("Synthesis note saved: %s/%s (v%d)", username, note_type, version)
@@ -1154,9 +1206,13 @@ def schedule_knowledge_synthesis(username: str) -> None:
 
 
 def _fetch_community_sql_data(network_id: int) -> Dict[str, Any]:
-    """Pull community name, member count, and member usernames from the SQL database."""
+    """Pull community name and current member usernames for this specific community.
+
+    Uses only direct membership in the target community (network_id) to enforce
+    strict network isolation. Members of sub-communities are NOT included unless
+    they are also direct members of this community.
+    """
     from backend.services.database import get_db_connection, get_sql_placeholder
-    from backend.services.community import get_descendant_community_ids
 
     ph = get_sql_placeholder()
     community_name = f"Network {network_id}"
@@ -1171,19 +1227,16 @@ def _fetch_community_sql_data(network_id: int) -> Dict[str, Any]:
         if row:
             community_name = row["name"] if hasattr(row, "keys") else row[0]
 
-        all_ids = get_descendant_community_ids(c, network_id)
-        if all_ids:
-            placeholders = ", ".join([ph] * len(all_ids))
-            c.execute(
-                f"SELECT DISTINCT u.username FROM users u "
-                f"JOIN user_communities uc ON u.id = uc.user_id "
-                f"WHERE uc.community_id IN ({placeholders}) "
-                f"AND LOWER(u.username) NOT IN ('admin', 'steve')",
-                tuple(all_ids),
-            )
-            member_usernames = [
-                (r["username"] if hasattr(r, "keys") else r[0]) for r in c.fetchall()
-            ]
+        c.execute(
+            f"SELECT DISTINCT u.username FROM users u "
+            f"JOIN user_communities uc ON u.id = uc.user_id "
+            f"WHERE uc.community_id = {ph} "
+            f"AND LOWER(u.username) NOT IN ('admin', 'steve')",
+            (network_id,),
+        )
+        member_usernames = [
+            (r["username"] if hasattr(r, "keys") else r[0]) for r in c.fetchall()
+        ]
         conn.close()
     except Exception as e:
         logger.warning("Could not fetch SQL data for network %s: %s", network_id, e)
@@ -1192,23 +1245,52 @@ def _fetch_community_sql_data(network_id: int) -> Dict[str, Any]:
 
 
 def _aggregate_member_kbs(member_usernames: List[str]) -> Dict[str, Any]:
-    """Read existing member KB synthesis docs from Firestore and aggregate for all network dimensions.
+    """Read member KB synthesis docs from Firestore and aggregate for network dimensions.
 
-    Now supports the expanded network KB with dedicated NetworkExpertise,
-    NetworkGeographyCulture, NetworkComposition, and NetworkUniqueFingerprint.
+    Aligned to actual member KB schemas (SYNTHESIS_SCHEMAS): uses ``domains``
+    (not primaryAreas), ``locations`` (not primaryLocations), ``rareQualities``
+    (not coreTraits), ``experiences``/``overarchingThemes`` (not legacy keys),
+    and ``stages`` (not careerHistory). Only counts a member as "having KB" if
+    their Index document exists (the master synthesis).
+
+    Extracts richer data for all 6 network dimensions: expertise depth &
+    credibility signals, geographic locations with cultural influences,
+    career trajectories, inferred context experiences, unique fingerprints,
+    and composition demographics.
     """
     fs = _get_fs()
+
+    # Expertise
     expertise_counts: Dict[str, int] = {}
-    interests: Dict[str, int] = {}
-    themes: Dict[str, int] = {}
-    geographic_counts: Dict[str, int] = {}
-    insights_snippets: List[str] = []
+    credibility_signals: List[str] = []
+    depth_snippets: List[str] = []
+
+    # Geography & Culture
+    location_counts: Dict[str, int] = {}
+    cultural_influences: List[str] = []
+    geographic_expertise: Dict[str, int] = {}
+
+    # InferredContext
+    inferred_experiences: List[str] = []
+    overarching_themes: List[str] = []
+    worldview_snippets: List[str] = []
+
+    # UniqueFingerprint
+    rare_qualities: Dict[str, int] = {}
+    unique_descriptions: List[str] = []
+    bridging_snippets: List[str] = []
+
+    # LifeCareer / Composition
+    industry_counts: Dict[str, int] = {}
+    company_counts: Dict[str, int] = {}
+    trajectory_snippets: List[str] = []
+
     members_with_kb = 0
-    career_stages: Dict[str, int] = {}
-    unique_combinations: List[str] = []
 
     for username in member_usernames:
-        for note_type in ["Expertise", "InferredContext", "UniqueFingerprint", "LifeCareer", "GeographyCulture"]:
+        user_has_kb = False
+        for note_type in ["Index", "Expertise", "GeographyCulture", "InferredContext",
+                          "UniqueFingerprint", "LifeCareer", "Identity", "Opinions"]:
             doc_id = f"{username}_{note_type}"
             try:
                 doc = fs.collection(COLLECTION).document(doc_id).get()
@@ -1218,82 +1300,142 @@ def _aggregate_member_kbs(member_usernames: List[str]) -> Dict[str, Any]:
                 if not content:
                     continue
 
-                if note_type == "Expertise":
-                    members_with_kb += 1
-                    for area in content.get("primaryAreas", []) or content.get("domains", []):
-                        if isinstance(area, str):
-                            expertise_counts[area] = expertise_counts.get(area, 0) + 1
-                        elif isinstance(area, dict):
-                            label = area.get("area") or area.get("domain") or area.get("name", "")
+                if note_type == "Index":
+                    user_has_kb = True
+
+                elif note_type == "Expertise":
+                    # Schema: domains (list of {domain, level, trajectory, evidence})
+                    for domain in content.get("domains", []):
+                        if isinstance(domain, str):
+                            expertise_counts[domain] = expertise_counts.get(domain, 0) + 1
+                        elif isinstance(domain, dict):
+                            label = domain.get("domain") or domain.get("area") or domain.get("name", "")
                             if label:
                                 expertise_counts[label] = expertise_counts.get(label, 0) + 1
+                    for signal in content.get("credibilitySignals", []):
+                        if isinstance(signal, str) and len(signal) > 10:
+                            credibility_signals.append(signal[:200])
+                    if content.get("depthProgression"):
+                        depth_snippets.append(str(content["depthProgression"])[:200])
+                    if content.get("currentFocus"):
+                        depth_snippets.append(f"Focus: {content['currentFocus']}")
 
                 elif note_type == "GeographyCulture":
-                    for loc in content.get("locations", []) or content.get("primaryLocations", []):
+                    # Schema: locations (list of {period, city, country, context, culturalInfluence})
+                    for loc in content.get("locations", []):
                         if isinstance(loc, str):
-                            geographic_counts[loc] = geographic_counts.get(loc, 0) + 1
+                            location_counts[loc] = location_counts.get(loc, 0) + 1
                         elif isinstance(loc, dict):
-                            country = loc.get("country") or loc.get("name", "")
-                            if country:
-                                geographic_counts[country] = geographic_counts.get(country, 0) + 1
+                            country = loc.get("country", "")
+                            city = loc.get("city", "")
+                            name = f"{city}, {country}".strip(", ") if city else country
+                            if name:
+                                location_counts[name] = location_counts.get(name, 0) + 1
+                            if loc.get("culturalInfluence"):
+                                cultural_influences.append(str(loc["culturalInfluence"])[:200])
+                    cur = content.get("currentLocation", {})
+                    if isinstance(cur, dict) and cur.get("city"):
+                        loc_name = f"{cur['city']}, {cur.get('country', '')}".strip(", ")
+                        location_counts[loc_name] = location_counts.get(loc_name, 0) + 1
+                    if content.get("culturalInfluences"):
+                        cultural_influences.append(str(content["culturalInfluences"])[:300])
+                    for region in content.get("geographicExpertise", []):
+                        if isinstance(region, str):
+                            geographic_expertise[region] = geographic_expertise.get(region, 0) + 1
 
                 elif note_type == "InferredContext":
-                    snippet = (content.get("transformativeExperiences") or
-                              content.get("culturalContext") or
-                              content.get("overarchingThemes") or "")
-                    if isinstance(snippet, str) and len(snippet) > 20:
-                        insights_snippets.append(snippet[:300])
-                    elif isinstance(snippet, list):
-                        for s in snippet[:5]:
-                            if isinstance(s, str) and len(s) > 10:
-                                insights_snippets.append(s[:300])
+                    # Schema: experiences (list of dicts), overarchingThemes (list), worldviewEvolution (str)
+                    for exp in content.get("experiences", []):
+                        if isinstance(exp, dict):
+                            impact = exp.get("transformativeImpact") or exp.get("experience", "")
+                            if isinstance(impact, str) and len(impact) > 15:
+                                inferred_experiences.append(impact[:300])
+                        elif isinstance(exp, str) and len(exp) > 15:
+                            inferred_experiences.append(exp[:300])
+                    for theme in content.get("overarchingThemes", []):
+                        if isinstance(theme, str) and len(theme) > 10:
+                            overarching_themes.append(theme[:200])
+                    if content.get("worldviewEvolution"):
+                        worldview_snippets.append(str(content["worldviewEvolution"])[:300])
+                    if content.get("strategicImplications"):
+                        worldview_snippets.append(str(content["strategicImplications"])[:300])
 
                 elif note_type == "UniqueFingerprint":
-                    for trait in content.get("coreTraits", []) or content.get("rareQualities", []):
-                        if isinstance(trait, str):
-                            interests[trait] = interests.get(trait, 0) + 1
+                    # Schema: rareQualities (list), whatMakesThemSpecial (str), bridgingCapability (str)
+                    for quality in content.get("rareQualities", []):
+                        if isinstance(quality, str):
+                            rare_qualities[quality] = rare_qualities.get(quality, 0) + 1
                     if content.get("whatMakesThemSpecial"):
-                        unique_combinations.append(str(content.get("whatMakesThemSpecial")))
+                        unique_descriptions.append(str(content["whatMakesThemSpecial"])[:300])
+                    if content.get("bridgingCapability"):
+                        bridging_snippets.append(str(content["bridgingCapability"])[:200])
 
                 elif note_type == "LifeCareer":
-                    for role in content.get("careerHistory", content.get("roles", content.get("stages", []))):
-                        if isinstance(role, dict):
-                            industry = role.get("industry") or role.get("sector", "")
-                            stage = role.get("stage") or role.get("period", "unknown")
-                            if industry:
-                                themes[industry] = themes.get(industry, 0) + 1
-                            if stage:
-                                career_stages[stage] = career_stages.get(stage, 0) + 1
+                    # Schema: stages (list of {period, role, company, description, significance})
+                    for stage in content.get("stages", []):
+                        if isinstance(stage, dict):
+                            company = stage.get("company", "")
+                            if company:
+                                company_counts[company] = company_counts.get(company, 0) + 1
+                            role = stage.get("role", "")
+                            if role:
+                                for keyword in ["consulting", "finance", "tech", "strategy",
+                                                "engineering", "healthcare", "education", "legal",
+                                                "marketing", "operations", "entrepreneurship"]:
+                                    if keyword in role.lower() or keyword in company.lower():
+                                        industry_counts[keyword] = industry_counts.get(keyword, 0) + 1
+                    if content.get("trajectory"):
+                        trajectory_snippets.append(str(content["trajectory"])[:200])
 
             except Exception as e:
                 logger.debug("Could not read %s for network aggregation: %s", doc_id, e)
 
-    # Calculate top values
-    top_expertise = sorted(expertise_counts.items(), key=lambda x: -x[1])[:15]
-    top_interests = sorted(interests.items(), key=lambda x: -x[1])[:10]
-    top_themes = sorted(themes.items(), key=lambda x: -x[1])[:10]
-    top_locations = sorted(geographic_counts.items(), key=lambda x: -x[1])[:10]
+        if user_has_kb:
+            members_with_kb += 1
+
+    top_expertise = sorted(expertise_counts.items(), key=lambda x: -x[1])[:20]
+    top_locations = sorted(location_counts.items(), key=lambda x: -x[1])[:15]
+    top_geo_expertise = sorted(geographic_expertise.items(), key=lambda x: -x[1])[:10]
+    top_rare = sorted(rare_qualities.items(), key=lambda x: -x[1])[:15]
+    top_industries = sorted(industry_counts.items(), key=lambda x: -x[1])[:15]
+    top_companies = sorted(company_counts.items(), key=lambda x: -x[1])[:15]
 
     return {
         "membersWithKB": members_with_kb,
+        # Expertise
         "expertiseDistribution": dict(top_expertise),
-        "commonInterests": [k for k, _ in top_interests],
-        "keyThemes": [k for k, _ in top_themes],
-        "geographicDistribution": dict(top_locations),
+        "credibilitySignals": credibility_signals[:15],
+        "depthSnippets": depth_snippets[:10],
+        # Geography & Culture
+        "locationDistribution": dict(top_locations),
         "primaryLocations": [k for k, _ in top_locations],
-        "careerStageDistribution": dict(career_stages),
-        "insightsSnippets": insights_snippets[:20],
-        "uniqueCombinations": unique_combinations[:5],
+        "culturalInfluences": cultural_influences[:10],
+        "geographicExpertise": [k for k, _ in top_geo_expertise],
+        # InferredContext
+        "inferredExperiences": inferred_experiences[:20],
+        "overarchingThemes": overarching_themes[:15],
+        "worldviewSnippets": worldview_snippets[:10],
+        # UniqueFingerprint
+        "rareQualities": dict(top_rare),
+        "uniqueDescriptions": unique_descriptions[:10],
+        "bridgingSnippets": bridging_snippets[:10],
+        # Composition
+        "industryDistribution": dict(top_industries),
+        "topCompanies": dict(top_companies),
+        "trajectorySnippets": trajectory_snippets[:10],
     }
 
 
 def synthesize_network_knowledge(network_id: int) -> bool:
-    """Synthesize an aggregated Knowledge Base for an entire network/community.
+    """Synthesize an aggregated Knowledge Base for a specific network/community.
 
-    Now creates 6 network dimensions: NetworkIndex, NetworkExpertise,
-    NetworkGeographyCulture, NetworkComposition, NetworkInferredContext,
-    and NetworkUniqueFingerprint. This provides much richer network-level
-    insights as requested.
+    Creates 6 network dimensions entirely from real member KB data:
+    NetworkIndex, NetworkExpertise, NetworkGeographyCulture,
+    NetworkComposition, NetworkInferredContext, NetworkUniqueFingerprint.
+
+    Enforces strict network isolation: only direct members of this community
+    are included (no descendant communities, no cross-network leakage).
+    All content is dynamically generated from aggregated member data.
     """
     if not USE_KNOWLEDGE_BASE_V1:
         return False
@@ -1305,75 +1447,131 @@ def synthesize_network_knowledge(network_id: int) -> bool:
         community_name = sql_data["communityName"]
         member_usernames = sql_data["memberUsernames"]
         member_count = len(member_usernames)
-        logger.info("Network %s (%s): %d members found", network_id, community_name, member_count)
+        logger.info("Network %s (%s): %d direct members found (isolated)", network_id, community_name, member_count)
 
         agg = _aggregate_member_kbs(member_usernames)
+        kb_count = agg["membersWithKB"]
+        top_expertise = list(agg["expertiseDistribution"].keys())
+        top_locations = agg["primaryLocations"]
+        top_industries = list(agg["industryDistribution"].keys())
 
-        # NetworkIndex - High-level overview
+        # --- NetworkIndex ---
         index_content = {
             "networkId": network_id,
             "communityName": community_name,
             "memberCount": member_count,
-            "membersWithKB": agg["membersWithKB"],
+            "membersWithKB": kb_count,
             "expertiseDistribution": agg["expertiseDistribution"],
-            "commonInterests": agg["commonInterests"],
-            "keyThemes": agg["keyThemes"],
-            "primaryLocations": agg.get("primaryLocations", []),
+            "primaryLocations": top_locations,
+            "industryDistribution": agg["industryDistribution"],
             "lastUpdated": datetime.utcnow().isoformat(),
-            "currentSynthesis": f"{community_name} is a network of {member_count} professionals, "
-                              f"with {agg['membersWithKB']} having synthesized knowledge bases. "
-                              f"Strongest expertise areas: {', '.join(list(agg['expertiseDistribution'].keys())[:3]) or 'diverse'}.",
+            "currentSynthesis": (
+                f"{community_name} is a network of {member_count} professionals"
+                f" ({kb_count} with synthesized knowledge bases)."
+                f" Top expertise: {', '.join(top_expertise[:4]) or 'pending synthesis'}."
+                f" Primary locations: {', '.join(top_locations[:3]) or 'global'}."
+            ),
         }
 
-        # NetworkExpertise - Dedicated expertise dimension
+        # --- NetworkExpertise ---
         expertise_content = {
-            "primaryDomains": list(agg["expertiseDistribution"].keys())[:10],
-            "depthDistribution": {"established": len([k for k in agg["expertiseDistribution"].keys() if "senior" in k.lower() or "lead" in k.lower()])},
-            "collectiveCredibilitySignals": [f"{count} members with {domain}" for domain, count in list(agg["expertiseDistribution"].items())[:5]],
-            "emergingTrends": ["AI integration", "cross-cultural strategy"] if "fintech" in str(agg["expertiseDistribution"]) else ["entrepreneurship", "global expansion"],
-            "crossDomainStrength": "Strong combination of technical expertise with strategic/business acumen across members",
+            "primaryDomains": agg["expertiseDistribution"],
+            "depthProgression": "; ".join(agg["depthSnippets"][:5]) if agg["depthSnippets"] else "Pending deeper member KB synthesis.",
+            "collectiveCredibilitySignals": agg["credibilitySignals"][:10],
+            "emergingTrends": top_expertise[:5],
+            "crossDomainStrength": (
+                f"Network spans {len(top_expertise)} identified domains"
+                f" across {len(top_industries)} industries."
+                f" Top industries: {', '.join(top_industries[:5]) or 'diverse'}."
+            ) if top_expertise else "Pending member KB synthesis.",
         }
 
-        # NetworkGeographyCulture - Dedicated geographic and cultural dimension
+        # --- NetworkGeographyCulture ---
         geo_content = {
-            "primaryLocations": agg.get("primaryLocations", ["Global", "Europe", "North America"]),
-            "culturalSignature": "Diverse professional network with strong entrepreneurial focus and Portuguese cultural elements ('Hey Malta' slang common in groups)",
-            "geographicExpertise": ["Portugal", "UK", "United States", "Europe", "Emerging Markets"],
-            "mobilityPatterns": "High mobility between Europe and North America, strong diaspora connections",
-            "culturalBridges": "Connects European tradition with American ambition and global emerging market perspectives",
-            "languageDynamics": "Multilingual with Portuguese cultural subtext and English as primary professional language",
+            "primaryLocations": agg["locationDistribution"],
+            "culturalSignature": (
+                "; ".join(agg["culturalInfluences"][:5])
+                if agg["culturalInfluences"]
+                else f"Cultural data pending — {kb_count} members synthesized so far."
+            ),
+            "geographicExpertise": agg["geographicExpertise"],
+            "mobilityPatterns": (
+                f"Members concentrated in: {', '.join(top_locations[:5])}."
+                if top_locations
+                else "Geographic data pending member KB synthesis."
+            ),
+            "culturalBridges": (
+                "; ".join(agg["culturalInfluences"][5:10])
+                if len(agg["culturalInfluences"]) > 5
+                else "Cultural bridge data pending deeper member synthesis."
+            ),
+            "languageDynamics": "Derived from member cultural profiles once sufficient data is available.",
         }
 
-        # NetworkComposition - Demographics and structure
+        # --- NetworkComposition ---
         composition_content = {
-            "demographics": f"Primarily mid-to-senior career professionals with strong EMBA representation. {agg.get('careerStageDistribution', {})}",
-            "diversityProfile": "Geographically diverse with concentration in Europe and North America. Professional backgrounds span fintech, strategy, entrepreneurship, and consulting.",
-            "networkDensity": "Moderately interconnected with strong sub-community clusters",
-            "evolution": "Growing emphasis on technology, entrepreneurship, and cross-cultural competence",
+            "demographics": (
+                f"{member_count} members, {kb_count} with synthesized KBs."
+                f" Top industries: {', '.join(top_industries[:5]) or 'diverse'}."
+                f" Top companies: {', '.join(list(agg['topCompanies'].keys())[:5]) or 'diverse'}."
+            ),
+            "diversityProfile": (
+                f"Geographic spread: {', '.join(top_locations[:5]) or 'pending'}."
+                f" Professional domains: {', '.join(top_expertise[:5]) or 'pending'}."
+            ),
+            "topCompanies": agg["topCompanies"],
+            "industryDistribution": agg["industryDistribution"],
+            "trajectoryInsights": "; ".join(agg["trajectorySnippets"][:5]) if agg["trajectorySnippets"] else "Career trajectory data pending member synthesis.",
         }
 
-        # NetworkInferredContext - Collective insights
+        # --- NetworkInferredContext ---
         inferred_content = {
-            "collectiveInsights": "; ".join(agg["insightsSnippets"][:10]) if agg["insightsSnippets"] else "No member InferredContext data available yet. Run member KB synthesis first.",
-            "culturalVibe": "Professional yet culturally rich network with Portuguese warmth and entrepreneurial drive",
-            "strategicValue": f"Network of {member_count} professionals ({agg['membersWithKB']} with synthesized KBs). "
-                            f"Top areas: {', '.join(list(agg['expertiseDistribution'].keys())[:5]) or 'diverse professional backgrounds'}. "
-                            f"Particularly strong for cross-Atlantic opportunities and emerging market insights.",
-            "bridgingOpportunities": "Excellent bridge between European and North American professional networks, EMBA alumni connections, and Portuguese diaspora",
-            "worldviewEvolution": "Network shows evolution toward integrated AI entrepreneurship, global strategy, and cross-cultural competence",
-            "confidence": min(0.95, 0.3 + (agg["membersWithKB"] / max(member_count, 1)) * 0.65) if member_count > 0 else 0.1,
+            "collectiveInsights": (
+                "; ".join(agg["inferredExperiences"][:8])
+                if agg["inferredExperiences"]
+                else "No member InferredContext data yet. Run member KB synthesis first."
+            ),
+            "overarchingThemes": agg["overarchingThemes"][:10],
+            "worldviewEvolution": (
+                "; ".join(agg["worldviewSnippets"][:5])
+                if agg["worldviewSnippets"]
+                else "Worldview data pending member synthesis."
+            ),
+            "strategicValue": (
+                f"Network of {member_count} professionals ({kb_count} with KBs)."
+                f" Top areas: {', '.join(top_expertise[:5]) or 'diverse'}."
+                f" Located primarily in: {', '.join(top_locations[:3]) or 'global'}."
+            ),
+            "bridgingOpportunities": (
+                "; ".join(agg["bridgingSnippets"][:5])
+                if agg["bridgingSnippets"]
+                else "Bridging data pending member synthesis."
+            ),
+            "confidence": min(0.95, 0.3 + (kb_count / max(member_count, 1)) * 0.65) if member_count > 0 else 0.1,
         }
 
-        # NetworkUniqueFingerprint - What makes this network special
+        # --- NetworkUniqueFingerprint ---
+        top_rare = list(agg["rareQualities"].keys())
         fingerprint_content = {
-            "whatMakesThisNetworkSpecial": f"{community_name} combines elite educational credentials (Kellogg EMBA), "
-                                         f"strong Portuguese cultural elements, and genuine entrepreneurial energy. "
-                                         f"The 'Hey Malta' cultural shorthand exemplifies its unique blend of professionalism and warmth.",
-            "rareQualities": ["Cross-cultural fluency", "EMBA-level strategic thinking", "Portuguese entrepreneurial diaspora"],
-            "bridgingCapability": "Connects European tradition with American ambition, academia with entrepreneurship, "
-                                "and local expertise with global networks",
-            "bestMatchedWith": "Founders seeking European expansion, professionals transitioning between continents, "
-                             "and organizations looking for culturally fluent strategic talent",
+            "whatMakesThisNetworkSpecial": (
+                "; ".join(agg["uniqueDescriptions"][:3])
+                if agg["uniqueDescriptions"]
+                else f"{community_name}: {member_count} members, top domains: {', '.join(top_expertise[:3]) or 'diverse'}."
+            ),
+            "rareQualities": top_rare[:10],
+            "bridgingCapability": (
+                "; ".join(agg["bridgingSnippets"][:3])
+                if agg["bridgingSnippets"]
+                else f"Connects {', '.join(top_expertise[:3])} expertise across {', '.join(top_locations[:3])}."
+                if top_expertise and top_locations
+                else "Bridging data pending member synthesis."
+            ),
+            "bestMatchedWith": (
+                f"Professionals in {', '.join(top_expertise[:3])} seeking connections in "
+                f"{', '.join(top_locations[:3])}."
+                if top_expertise and top_locations
+                else "Match data pending member synthesis."
+            ),
         }
 
         fs = _get_fs()
@@ -1386,20 +1584,26 @@ def synthesize_network_knowledge(network_id: int) -> bool:
             ("NetworkUniqueFingerprint", fingerprint_content),
         ]
 
+        now = datetime.utcnow().isoformat()
         for note_type, content in network_dimensions:
             doc_id = f"_network_{network_id}_{note_type}"
             doc_ref = fs.collection(COLLECTION).document(doc_id)
+            existing = doc_ref.get()
+            version = 1
+            if existing.exists:
+                version = (existing.to_dict() or {}).get("version", 0) + 1
             doc_ref.set({
                 "username": f"_network_{network_id}",
                 "noteType": note_type,
                 "content": content,
-                "version": 1,
-                "updatedAt": datetime.utcnow().isoformat(),
+                "version": version,
+                "updatedAt": now,
                 "isNetworkLevel": True,
+                "networkId": network_id,
             }, merge=True)
 
-        logger.info("Network KB synthesis complete for network %s (%s): %d members, %d with KBs",
-                     network_id, community_name, member_count, agg["membersWithKB"])
+        logger.info("Network KB synthesis complete for network %s (%s): %d members, %d with KBs (isolated)",
+                     network_id, community_name, member_count, kb_count)
         return True
 
     except Exception as e:
