@@ -7628,6 +7628,24 @@ def admin_knowledge_base_synthesize(target_username):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/admin/knowledge_base/network/<int:network_id>/synthesize', methods=['POST'])
+@login_required
+def admin_network_knowledge_base_synthesize(network_id):
+    """Trigger network-level KB synthesis (aggregated member KBs + posts + community context)."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        from backend.services.steve_knowledge_base import synthesize_network_knowledge
+        ok = synthesize_network_knowledge(network_id)
+        if ok:
+            return jsonify({'success': True, 'message': f'Network KB synthesized for network {network_id}'})
+        return jsonify({'success': False, 'error': 'Network synthesis failed'}), 400
+    except Exception as e:
+        logger.error(f"Error synthesizing network KB for {network_id}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/admin/knowledge_base/<target_username>/feedback', methods=['POST'])
 @login_required
 def admin_knowledge_base_feedback(target_username):
