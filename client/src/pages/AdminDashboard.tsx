@@ -2997,6 +2997,185 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* Network Profiling Tab — matches Steve Profiling layout exactly */}
+        {activeTab === 'network_profiling' && (
+          <div className="space-y-4">
+            <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-[#4db6ac] flex items-center gap-2">
+                    <i className="fa-solid fa-globe" />
+                    Network Profiling
+                  </h3>
+                  <p className="text-xs text-white/60 mt-1">Community Knowledge Bases — select a community to synthesize and explore aggregated insights</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-white/40">
+                    {flatCommunities.length} communities
+                  </span>
+                  <button
+                    onClick={() => loadAdminData()}
+                    className="px-3 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-sm flex items-center gap-2"
+                  >
+                    <i className="fa-solid fa-refresh" />
+                    Refresh
+                  </button>
+                </div>
+              </div>
+
+              {/* Status banner */}
+              {networkSynthesisStatus && (
+                <div className={`mb-6 px-4 py-3 rounded-xl text-sm flex items-center justify-between border ${
+                  networkSynthesisStatus.status === 'ok'
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                    : 'bg-red-500/10 border-red-500/30 text-red-400'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <i className={`fa-solid ${networkSynthesisStatus.status === 'ok' ? 'fa-check-circle' : 'fa-exclamation-triangle'}`} />
+                    <span>{networkSynthesisStatus.message}</span>
+                  </div>
+                  <button
+                    onClick={() => setNetworkSynthesisStatus(null)}
+                    className="text-white/40 hover:text-white text-xs px-2 py-1 rounded hover:bg-white/10"
+                  >
+                    dismiss
+                  </button>
+                </div>
+              )}
+
+              <div className="flex flex-col lg:flex-row gap-4">
+                {/* Left: search + community list */}
+                <div className="lg:w-64 flex-shrink-0">
+                  <input
+                    type="text"
+                    value={networkSearchQuery}
+                    onChange={(e) => setNetworkSearchQuery(e.target.value)}
+                    placeholder="Search communities..."
+                    className="w-full bg-white/5 border border-white/10 rounded-md px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]"
+                  />
+                  <div className="text-[10px] text-white/30 mt-1 mb-2">{flatCommunities.length} communities</div>
+
+                  <div className="max-h-[520px] overflow-y-auto space-y-0.5 pr-1">
+                    {flatCommunities
+                      .filter(c => !networkSearchQuery ||
+                        c.name.toLowerCase().includes(networkSearchQuery.toLowerCase()) ||
+                        (c.creator_username || '').toLowerCase().includes(networkSearchQuery.toLowerCase()))
+                      .map((community) => (
+                        <button
+                          key={community.id}
+                          onClick={() => setSelectedNetworkId(community.id)}
+                          className={`w-full text-left px-3 py-2.5 rounded-lg transition-all flex items-center gap-3 group ${
+                            selectedNetworkId === community.id
+                              ? 'bg-[#4db6ac]/10 border border-[#4db6ac]/30'
+                              : 'hover:bg-white/5 border border-transparent'
+                          }`}
+                        >
+                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm flex-shrink-0 transition-colors ${
+                            selectedNetworkId === community.id
+                              ? 'bg-[#4db6ac]/20 text-[#4db6ac]'
+                              : 'bg-white/5 text-white/40 group-hover:text-white/70'
+                          }`}>
+                            <i className="fa-solid fa-users" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium text-white truncate">{community.name}</div>
+                            <div className="text-[11px] text-white/50 flex items-center gap-2">
+                              <span>{community.member_count || 0} members</span>
+                              {community.parent_community_id != null && (
+                                <span className="px-1.5 py-px bg-purple-500/10 text-purple-400 text-[9px] rounded">sub</span>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    {flatCommunities.length === 0 && (
+                      <div className="text-center py-8 text-white/40 text-xs">No communities found</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right: selected community detail */}
+                <div className="flex-1 min-w-0">
+                  {selectedNetworkId ? (() => {
+                    const community = flatCommunities.find(c => c.id === selectedNetworkId);
+                    if (!community) return <div className="text-white/40 text-sm p-8">Community not found</div>;
+
+                    return (
+                      <div className="space-y-6">
+                        <div className="bg-white/[0.03] rounded-2xl border border-white/10 p-6">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-gradient-to-br from-[#4db6ac] to-blue-500 rounded-2xl flex items-center justify-center text-2xl">
+                                  🌐
+                                </div>
+                                <div>
+                                  <h4 className="text-xl font-semibold text-white">{community.name}</h4>
+                                  <div className="flex items-center gap-4 text-sm text-white/60 mt-1">
+                                    <span>{community.member_count || 0} members</span>
+                                    <span className="text-white/30">•</span>
+                                    <span>ID: {community.id}</span>
+                                    {community.parent_community_id && (
+                                      <span className="text-purple-400">Sub-community of #{community.parent_community_id}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={() => synthesizeNetworkKB(community.id)}
+                                disabled={synthesizingNetworkId === community.id}
+                                className="px-5 py-2.5 bg-[#4db6ac] hover:bg-[#3d9b8f] disabled:bg-white/20 text-black text-sm font-semibold rounded-2xl flex items-center gap-2 transition-all active:scale-[0.985]"
+                              >
+                                {synthesizingNetworkId === community.id ? (
+                                  <><i className="fa-solid fa-spinner fa-spin" /> Synthesizing...</>
+                                ) : (
+                                  <><i className="fa-solid fa-sync" /> Synthesize KB</>
+                                )}
+                              </button>
+
+                              <button
+                                onClick={() => setShowKnowledgeBase(true)}
+                                className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-2xl flex items-center gap-2 border border-white/10 transition-all"
+                              >
+                                <i className="fa-solid fa-diagram-project" /> View Knowledge Base
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-8 text-center">
+                          <div className="mx-auto w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-6">
+                            <i className="fa-solid fa-layer-group text-4xl text-white/30" />
+                          </div>
+                          <div className="text-white/70 text-lg font-medium mb-2">Network Knowledge Base</div>
+                          <p className="text-white/50 max-w-md mx-auto">
+                            Click "Synthesize KB" to aggregate member knowledge bases, posts, and community context into
+                            NetworkIndex and NetworkInferredContext documents.
+                          </p>
+                          <p className="text-[11px] text-white/40 mt-6">
+                            Once synthesized, click "View Knowledge Base" to explore the full graph, stats, and insights.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })() : (
+                    <div className="h-[420px] flex items-center justify-center border border-dashed border-white/10 rounded-3xl">
+                      <div className="text-center">
+                        <div className="text-white/30 text-6xl mb-4">🌐</div>
+                        <div className="text-white/60">Select a community from the list</div>
+                        <div className="text-white/30 text-xs mt-2">to view or synthesize its Network Knowledge Base</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* Add User to Community Modal */}
@@ -3563,187 +3742,6 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
-
-        {/* Network Profiling Tab — matches Steve Profiling layout exactly */}
-        {activeTab === 'network_profiling' && (
-          <div className="space-y-4">
-            <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-[#4db6ac] flex items-center gap-2">
-                    <i className="fa-solid fa-globe" />
-                    Network Profiling
-                  </h3>
-                  <p className="text-xs text-white/60 mt-1">Community Knowledge Bases — select a community to synthesize and explore aggregated insights</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-white/40">
-                    {flatCommunities.length} communities
-                  </span>
-                  <button
-                    onClick={() => loadAdminData()}
-                    className="px-3 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-sm flex items-center gap-2"
-                  >
-                    <i className="fa-solid fa-refresh" />
-                    Refresh
-                  </button>
-                </div>
-              </div>
-
-              {/* Status banner */}
-              {networkSynthesisStatus && (
-                <div className={`mb-6 px-4 py-3 rounded-xl text-sm flex items-center justify-between border ${
-                  networkSynthesisStatus.status === 'ok'
-                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                    : 'bg-red-500/10 border-red-500/30 text-red-400'
-                }`}>
-                  <div className="flex items-center gap-2">
-                    <i className={`fa-solid ${networkSynthesisStatus.status === 'ok' ? 'fa-check-circle' : 'fa-exclamation-triangle'}`} />
-                    <span>{networkSynthesisStatus.message}</span>
-                  </div>
-                  <button
-                    onClick={() => setNetworkSynthesisStatus(null)}
-                    className="text-white/40 hover:text-white text-xs px-2 py-1 rounded hover:bg-white/10"
-                  >
-                    dismiss
-                  </button>
-                </div>
-              )}
-
-              <div className="flex flex-col lg:flex-row gap-4">
-                {/* Left: search + community list (exact same structure as Steve Profiling) */}
-                <div className="lg:w-64 flex-shrink-0">
-                  <input
-                    type="text"
-                    value={networkSearchQuery}
-                    onChange={(e) => setNetworkSearchQuery(e.target.value)}
-                    placeholder="Search communities..."
-                    className="w-full bg-white/5 border border-white/10 rounded-md px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]"
-                  />
-                  <div className="text-[10px] text-white/30 mt-1 mb-2">{flatCommunities.length} communities</div>
-
-                  <div className="max-h-[520px] overflow-y-auto space-y-0.5 pr-1">
-                    {flatCommunities
-                      .filter(c => !networkSearchQuery ||
-                        c.name.toLowerCase().includes(networkSearchQuery.toLowerCase()) ||
-                        (c.creator_username || '').toLowerCase().includes(networkSearchQuery.toLowerCase()))
-                      .map((community) => (
-                        <button
-                          key={community.id}
-                          onClick={() => setSelectedNetworkId(community.id)}
-                          className={`w-full text-left px-3 py-2.5 rounded-lg transition-all flex items-center gap-3 group ${
-                            selectedNetworkId === community.id
-                              ? 'bg-[#4db6ac]/10 border border-[#4db6ac]/30'
-                              : 'hover:bg-white/5 border border-transparent'
-                          }`}
-                        >
-                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm flex-shrink-0 transition-colors ${
-                            selectedNetworkId === community.id
-                              ? 'bg-[#4db6ac]/20 text-[#4db6ac]'
-                              : 'bg-white/5 text-white/40 group-hover:text-white/70'
-                          }`}>
-                            <i className="fa-solid fa-users" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-sm font-medium text-white truncate">{community.name}</div>
-                            <div className="text-[11px] text-white/50 flex items-center gap-2">
-                              <span>{community.member_count || 0} members</span>
-                              {community.parent_community_id != null && (
-                                <span className="px-1.5 py-px bg-purple-500/10 text-purple-400 text-[9px] rounded">sub</span>
-                              )}
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                    {flatCommunities.length === 0 && (
-                      <div className="text-center py-8 text-white/40 text-xs">No communities found</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Right: selected community detail (mirrors Steve right panel) */}
-                <div className="flex-1 min-w-0">
-                  {selectedNetworkId ? (() => {
-                    const community = flatCommunities.find(c => c.id === selectedNetworkId);
-                    if (!community) return <div className="text-white/40 text-sm p-8">Community not found</div>;
-
-                    return (
-                      <div className="space-y-6">
-                        {/* Community Header */}
-                        <div className="bg-white/[0.03] rounded-2xl border border-white/10 p-6">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-gradient-to-br from-[#4db6ac] to-blue-500 rounded-2xl flex items-center justify-center text-2xl">
-                                  🌐
-                                </div>
-                                <div>
-                                  <h4 className="text-xl font-semibold text-white">{community.name}</h4>
-                                  <div className="flex items-center gap-4 text-sm text-white/60 mt-1">
-                                    <span>{community.member_count || 0} members</span>
-                                    <span className="text-white/30">•</span>
-                                    <span>ID: {community.id}</span>
-                                    {community.parent_community_id && (
-                                      <span className="text-purple-400">Sub-community of #{community.parent_community_id}</span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-3">
-                              <button
-                                onClick={() => synthesizeNetworkKB(community.id)}
-                                disabled={synthesizingNetworkId === community.id}
-                                className="px-5 py-2.5 bg-[#4db6ac] hover:bg-[#3d9b8f] disabled:bg-white/20 text-black text-sm font-semibold rounded-2xl flex items-center gap-2 transition-all active:scale-[0.985]"
-                              >
-                                {synthesizingNetworkId === community.id ? (
-                                  <><i className="fa-solid fa-spinner fa-spin" /> Synthesizing...</>
-                                ) : (
-                                  <><i className="fa-solid fa-sync" /> Synthesize KB</>
-                                )}
-                              </button>
-
-                              <button
-                                onClick={() => setShowKnowledgeBase(true)}
-                                className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-2xl flex items-center gap-2 border border-white/10 transition-all"
-                              >
-                                <i className="fa-solid fa-diagram-project" /> View Knowledge Base
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* KB Status / Instructions */}
-                        <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-8 text-center">
-                          <div className="mx-auto w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-6">
-                            <i className="fa-solid fa-layer-group text-4xl text-white/30" />
-                          </div>
-                          <div className="text-white/70 text-lg font-medium mb-2">Network Knowledge Base</div>
-                          <p className="text-white/50 max-w-md mx-auto">
-                            Click "Synthesize KB" to aggregate member knowledge bases, posts, and community context into
-                            NetworkIndex and NetworkInferredContext documents.
-                          </p>
-                          <p className="text-[11px] text-white/40 mt-6">
-                            Once synthesized, click "View Knowledge Base" to explore the full graph, stats, and insights.
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })() : (
-                    <div className="h-[420px] flex items-center justify-center border border-dashed border-white/10 rounded-3xl">
-                      <div className="text-center">
-                        <div className="text-white/30 text-6xl mb-4">🌐</div>
-                        <div className="text-white/60">Select a community from the list</div>
-                        <div className="text-white/30 text-xs mt-2">to view or synthesize its Network Knowledge Base</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
       {/* Steve Profile Edit Modal */}
       {editingSteveProfile && editSection && (
