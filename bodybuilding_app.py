@@ -15907,7 +15907,8 @@ def api_networking_steve_match():
             sub_names = [n for cid, n in community_names.items() if cid != community_id]
             hierarchy_ctx = f"Parent community: {parent_name}"
             if sub_names:
-                hierarchy_ctx += f"\nSub-communities: {', '.join(sub_names)}"
+                hierarchy_ctx += f"\nSub-communities (cohorts): {', '.join(sub_names)}"
+            hierarchy_ctx += f"\n\nSCOPE: The user selected the parent network \"{parent_name}\". Your recommendations MUST span the ENTIRE parent network — consider all members across every cohort/sub-community equally. A shared sub-community with the requester is only a minor bonus, never a primary matching reason."
 
             requester_profile_ctx = get_steve_context_for_user(username)
             enriched_user_profile = user_profile
@@ -15925,9 +15926,10 @@ COMMUNITY STRUCTURE:
 HOW TO MATCH:
 1. Start with people who clearly match what the user asked for. If they ask about a location, lead with people connected to that location. If they ask about an industry, lead with people in that industry.
 2. Always try to help. If no one is a perfect match, look for the closest connections — people who might be able to help the user achieve their goal. Every recommendation must have a sound rationale tied to the request.
-3. Sub-community membership is a strong signal (e.g., being in "India Field Trip" means a real connection to India).
+3. Sub-community (cohort) membership is MINOR background context, NOT a matching criterion. Being in the same sub-community as the requester should never be the reason you recommend someone. Match based on relevance to the request — skills, expertise, location, industry, interests. A shared sub-community is at most a tiebreaker between otherwise equal candidates.
 4. Use everything you know about each member — their background, company, role, location, interests, what they've posted, and any deeper context provided. The richer profile data is your best source of truth.
 5. Never recommend someone with zero connection to the ask. If someone shares an interest in AI but the user asked about Lisbon, that person is not relevant.
+6. CRITICAL: Your recommendations must draw from the ENTIRE network, not cluster around members from any single sub-community or cohort. Ensure diversity across the full network.
 
 KNOWLEDGE BASE CONTEXT (when available):
 - Some members will have a [MEMBER KNOWLEDGE BASE] section in their AI insight. This is a high-quality, structured analysis of the member across multiple dimensions: life/career evolution, geographic journey, expertise depth, opinion evolution, identity traits, network relationships, and unique fingerprint.
@@ -16069,7 +16071,8 @@ def api_networking_steve_auto_match():
             sub_names = [n for cid, n in community_names.items() if cid != community_id]
             hierarchy_ctx = f"Parent community: {parent_name}"
             if sub_names:
-                hierarchy_ctx += f"\nSub-communities: {', '.join(sub_names)}"
+                hierarchy_ctx += f"\nSub-communities (cohorts): {', '.join(sub_names)}"
+            hierarchy_ctx += f"\n\nSCOPE: Recommendations MUST span the ENTIRE parent network \"{parent_name}\" — consider all members across every cohort/sub-community equally. A shared sub-community is only a minor bonus, never a primary matching reason."
 
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
@@ -16082,10 +16085,10 @@ COMMUNITY STRUCTURE:
 {hierarchy_ctx}
 
 HOW TO MATCH:
-1. Find the most relevant connections for this person based on their profile, interests, role, industry, and location.
-2. Sub-community membership is a strong signal of shared experience or interest.
+1. Find the most relevant connections for this person based on their profile, interests, role, industry, and location. Draw from the ENTIRE parent network, not just one sub-community or cohort.
+2. Sub-community (cohort) membership is MINOR background context, NOT a matching criterion. Being in the same cohort as the requester should never be the reason you recommend someone. Match based on relevance — skills, expertise, location, industry, interests. A shared sub-community is at most a tiebreaker between otherwise equal candidates.
 3. Use everything you know about each member — their background, company, role, location, interests, what they've posted, and any deeper context provided. The richer profile data is your best source of truth.
-4. Every recommendation must have a clear rationale — why would these two people benefit from connecting?
+4. Every recommendation must have a clear rationale — why would these two people benefit from connecting? Ensure diversity across the full network.
 
 LOAD BALANCING & QUALITY SIGNALS — VERY IMPORTANT:
 - Some members are tagged "Recommended Nx recently". This means Steve has already recommended them N times in the past 30 days. High-frequency members risk being overloaded with connection requests.
