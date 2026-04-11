@@ -74,12 +74,51 @@ def compute_embedding(text: str) -> Optional[List[float]]:
 # Chunk assembly — split a profile into semantic facets
 # ---------------------------------------------------------------------------
 
-def build_profile_chunks(profile: dict) -> Dict[str, str]:
-    """Build up to 4 text chunks from a raw steve_user_profiles document.
+def _kb_text_for_field(content: dict, key: str, max_items: int = 8) -> str:
+    """Extract a flat text string from a KB content field (str, list, or dict)."""
+    val = content.get(key)
+    if not val:
+        return ''
+    if isinstance(val, str):
+        return val
+    if isinstance(val, list):
+        parts = []
+        for item in val[:max_items]:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                parts.append(', '.join(f"{k}: {v}" for k, v in item.items() if v))
+        return '; '.join(parts)
+    if isinstance(val, dict):
+        return '; '.join(f"{k}: {v}" for k, v in list(val.items())[:max_items] if v)
+    return str(val)
+
+
+def _load_kb_for_embedding(username: str) -> Dict[str, dict]:
+    """Load KB dimension contents for a user. Returns {noteType: content_dict}."""
+    try:
+        from backend.services.steve_knowledge_base import (
+            USE_KNOWLEDGE_BASE_V1, get_member_knowledge,
+        )
+        if not USE_KNOWLEDGE_BASE_V1:
+            return {}
+        kb = get_member_knowledge(username, [
+            "Index", "LifeCareer", "Expertise", "CompanyIntel",
+            "GeographyCulture", "Identity", "Opinions",
+            "UniqueFingerprint", "InferredContext", "Network",
+        ])
+        return {nt: doc.get("content", {}) for nt, doc in kb.items() if doc.get("content")}
+    except Exception:
+        return {}
+
+
+def build_profile_chunks(profile: dict, username: str = None) -> Dict[str, str]:
+    """Build up to 4 text chunks from profile data + knowledge base.
 
     Each chunk groups semantically related fields so that niche signals
     (e.g. "climbed Kilimanjaro") are concentrated rather than diluted.
-    Data may appear in multiple chunks when relevant to both.
+    KB data is merged as the primary source; legacy profile data is kept
+    to preserve granular details that may not survive KB synthesis.
     Returns {chunk_type: text} — empty chunks are omitted.
     """
     from bodybuilding_app import _migrate_analysis_to_v3
@@ -88,11 +127,41 @@ def build_profile_chunks(profile: dict) -> Dict[str, str]:
     ob = profile.get('onboardingIdentity') or {}
     platform = profile.get('profilingPlatformActivity') or {}
 
+    kb = _load_kb_for_embedding(username) if username else {}
+
     chunks: Dict[str, str] = {}
 
-    # --- professional chunk ---
+    # --- professional chunk (KB: Index + LifeCareer + Expertise + CompanyIntel) ---
     prof_parts = []
-    if analysis.get('summary'):
+    idx = kb.get("Index", {})
+    if idx.get("currentSynthesis"):
+        prof_parts.append(idx["currentSynthesis"])
+    lc = kb.get("LifeCareer", {})
+    if lc.get("trajectory"):
+        prof_parts.append(f"Trajectory: {lc['trajectory']}")
+    if lc.get("currentStage"):
+        prof_parts.append(f"Current: {lc['currentStage']}")
+    for stage in (lc.get("stages") or [])[:6]:
+        if isinstance(stage, dict):
+            s = f"{stage.get('role', '?')} at {stage.get('company', '?')}"
+            if stage.get('period'):
+                s += f" [{stage['period']}]"
+            if stage.get('significance'):
+                s += f" — {stage['significance']}"
+            prof_parts.append(s)
+    exp_kb = kb.get("Expertise", {})
+    for d in (exp_kb.get("domains") or [])[:6]:
+        if isinstance(d, dict):
+            prof_parts.append(f"{d.get('domain', '?')} ({d.get('level', '?')})")
+    if exp_kb.get("currentFocus"):
+        prof_parts.append(f"Focus: {exp_kb['currentFocus']}")
+    ci = kb.get("CompanyIntel", {})
+    ci_text = _kb_text_for_field(ci, "globalPresence") or _kb_text_for_field(ci, "publicStatus")
+    if ci_text:
+        prof_parts.append(f"Company intel: {ci_text}")
+
+    # Legacy professional data (preserves granular details like niche career entries)
+    if analysis.get('summary') and not idx.get("currentSynthesis"):
         prof_parts.append(analysis['summary'])
     pro = analysis.get('professional') or {}
     co = pro.get('company') or {}
@@ -138,8 +207,26 @@ def build_profile_chunks(profile: dict) -> Dict[str, str]:
     if prof_parts:
         chunks['professional'] = ' | '.join(prof_parts)
 
-    # --- personality chunk ---
+    # --- personality chunk (KB: Identity + Opinions) ---
     pers_parts = []
+    ident_kb = kb.get("Identity", {})
+    if ident_kb.get("traits"):
+        pers_parts.append(f"Traits: {_kb_text_for_field(ident_kb, 'traits', 8)}")
+    if ident_kb.get("coreValues"):
+        pers_parts.append(f"Values: {_kb_text_for_field(ident_kb, 'coreValues', 6)}")
+    if ident_kb.get("energyPatterns"):
+        pers_parts.append(f"Energy: {_kb_text_for_field(ident_kb, 'energyPatterns')}")
+    if ident_kb.get("contradictions"):
+        pers_parts.append(f"Contradictions: {_kb_text_for_field(ident_kb, 'contradictions')}")
+    if ident_kb.get("communicationStyle"):
+        pers_parts.append(f"Style: {_kb_text_for_field(ident_kb, 'communicationStyle')}")
+    op_kb = kb.get("Opinions", {})
+    if op_kb.get("consistentBeliefs"):
+        pers_parts.append(f"Beliefs: {_kb_text_for_field(op_kb, 'consistentBeliefs')}")
+    if op_kb.get("controversialTakes"):
+        pers_parts.append(f"Controversial: {_kb_text_for_field(op_kb, 'controversialTakes')}")
+
+    # Legacy personality data
     identity = analysis.get('identity') or {}
     if identity.get('bridgeInsight'):
         pers_parts.append(identity['bridgeInsight'])
@@ -148,7 +235,7 @@ def build_profile_chunks(profile: dict) -> Dict[str, str]:
     if identity.get('roles'):
         pers_parts.append(f"Roles: {', '.join(identity['roles'][:5])}")
     traits = analysis.get('traits') or []
-    if traits:
+    if traits and not ident_kb.get("traits"):
         pers_parts.append(f"Traits: {', '.join(traits[:6])}")
     personal = analysis.get('personal') or {}
     if personal.get('lifestyle'):
@@ -160,8 +247,31 @@ def build_profile_chunks(profile: dict) -> Dict[str, str]:
     if pers_parts:
         chunks['personality'] = ' | '.join(pers_parts)
 
-    # --- experiences chunk ---
+    # --- experiences chunk (KB: GeographyCulture + UniqueFingerprint + InferredContext) ---
     exp_parts = []
+    geo = kb.get("GeographyCulture", {})
+    if geo.get("culturalInfluences"):
+        exp_parts.append(f"Cultural influences: {geo['culturalInfluences']}")
+    if geo.get("geographicExpertise"):
+        exp_parts.append(f"Geographic expertise: {_kb_text_for_field(geo, 'geographicExpertise')}")
+    for loc_entry in (geo.get("locations") or [])[:5]:
+        if isinstance(loc_entry, dict):
+            exp_parts.append(f"{loc_entry.get('city', '?')}, {loc_entry.get('country', '?')}: {loc_entry.get('context', '')}")
+    uf = kb.get("UniqueFingerprint", {})
+    if uf.get("whatMakesThemSpecial"):
+        exp_parts.append(f"Unique: {uf['whatMakesThemSpecial']}")
+    if uf.get("rareQualities"):
+        exp_parts.append(f"Rare: {_kb_text_for_field(uf, 'rareQualities')}")
+    if uf.get("bridgingCapability"):
+        exp_parts.append(f"Bridges: {_kb_text_for_field(uf, 'bridgingCapability')}")
+    ic = kb.get("InferredContext", {})
+    for ix in (ic.get("experiences") or [])[:6]:
+        if isinstance(ix, dict):
+            exp_parts.append(f"{ix.get('experience', '')}: {ix.get('transformativeImpact', '')}")
+        elif isinstance(ix, str):
+            exp_parts.append(ix)
+
+    # Legacy experiences data (preserves niche interests like "chef course")
     if (ob.get('journey') or '').strip():
         exp_parts.append(f"Journey: {ob['journey'].strip()}")
     interests = analysis.get('interests') or {}
@@ -184,8 +294,15 @@ def build_profile_chunks(profile: dict) -> Dict[str, str]:
     if exp_parts:
         chunks['experiences'] = ' | '.join(exp_parts)
 
-    # --- social chunk ---
+    # --- social chunk (KB: Network + platform activity) ---
     soc_parts = []
+    net_kb = kb.get("Network", {})
+    if net_kb.get("networkEvolution"):
+        soc_parts.append(f"Network: {_kb_text_for_field(net_kb, 'networkEvolution')}")
+    if net_kb.get("communityParticipation"):
+        soc_parts.append(f"Communities: {_kb_text_for_field(net_kb, 'communityParticipation')}")
+
+    # Legacy social data
     if (ob.get('reachOut') or '').strip():
         soc_parts.append(f"Wants reach-outs about: {ob['reachOut'].strip()}")
     public_posts = personal.get('publicPosts') or []
@@ -445,7 +562,7 @@ def compute_and_store_embeddings(username: str, chunk_types: List[str] = None) -
         if not profile:
             return False
 
-        all_chunks = build_profile_chunks(profile)
+        all_chunks = build_profile_chunks(profile, username=username)
         if not all_chunks:
             return False
 

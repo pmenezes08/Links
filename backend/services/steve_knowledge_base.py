@@ -661,6 +661,36 @@ def build_knowledge_context_for_steve(
     return "\n".join(parts)
 
 
+def build_knowledge_context_slim(username: str) -> str:
+    """Return a compact KB summary for the networking roster prompt.
+
+    Uses only the Index.currentSynthesis (one paragraph) plus the
+    UniqueFingerprint.bestMatchedWith field.  This keeps the per-member
+    token count low while giving Grok enough to write a recommendation.
+    """
+    try:
+        fs = _get_fs()
+        idx_doc = fs.collection(COLLECTION).document(f"{username}_Index").get()
+        if not idx_doc.exists:
+            return ""
+        idx = (idx_doc.to_dict() or {}).get("content", {})
+        synthesis = (idx.get("currentSynthesis") or "").strip()
+        if not synthesis:
+            return ""
+        uf_doc = fs.collection(COLLECTION).document(f"{username}_UniqueFingerprint").get()
+        if uf_doc.exists:
+            uf = (uf_doc.to_dict() or {}).get("content", {})
+            matched = uf.get("bestMatchedWith")
+            if matched:
+                if isinstance(matched, list):
+                    matched = "; ".join(str(m) for m in matched[:4])
+                synthesis += f" | Best matched with: {matched}"
+        return synthesis
+    except Exception as e:
+        logger.debug("Slim KB context unavailable for %s: %s", username, e)
+        return ""
+
+
 def _flatten_item(item: Any) -> str:
     """Convert a list item (str or dict) to a flat string."""
     if isinstance(item, str):
@@ -840,6 +870,13 @@ def synthesize_member_knowledge(
 
         _save_synthesis_results(username, synthesis_json, existing_kb)
         _extract_and_save_shared_nodes(username, synthesis_json)
+
+        try:
+            from backend.services.embedding_service import compute_and_store_embeddings_background
+            compute_and_store_embeddings_background(username)
+            logger.info("Triggered embedding recomputation for %s after KB synthesis", username)
+        except Exception as emb_err:
+            logger.warning("Embedding recomputation failed for %s (non-fatal): %s", username, emb_err)
 
         logger.info("Knowledge synthesis complete for %s", username)
         return True

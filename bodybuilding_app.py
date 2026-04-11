@@ -9236,28 +9236,33 @@ def _onboarding_identity_from_steve_profile(username: str) -> dict:
 STEVE_CTX_CACHE_TTL = 600  # 10 minutes
 
 
-def _build_context_from_profile(profile: dict, username: str) -> str:
+def _build_context_from_profile(profile: dict, username: str, *, networking: bool = False) -> str:
     """Build a context string from a pre-loaded steve_user_profiles document.
     This is the pure computation step — no Firestore reads, no caching.
 
-    When the Knowledge Base V1 feature flag is enabled, the knowledge base
-    context is prepended (higher priority) with the legacy context as fallback.
+    When *networking* is True, returns a compact summary (KB currentSynthesis)
+    suitable for the member roster prompt where token budget is tight.
+    Otherwise returns the full KB context for deep individual queries.
     """
     if not profile:
         return ''
 
     try:
-        from backend.services.steve_knowledge_base import (
-            USE_KNOWLEDGE_BASE_V1,
-            build_knowledge_context_for_steve,
-        )
+        from backend.services.steve_knowledge_base import USE_KNOWLEDGE_BASE_V1
         if USE_KNOWLEDGE_BASE_V1:
-            kb_context = build_knowledge_context_for_steve(username)
-            if kb_context:
-                legacy = _build_legacy_context_from_profile(profile, username)
-                if legacy:
-                    return f"[MEMBER KNOWLEDGE BASE — PREFERRED SOURCE]\n{kb_context}\n\n[LEGACY PROFILE — SUPPLEMENTARY]\n{legacy}"
-                return kb_context
+            if networking:
+                from backend.services.steve_knowledge_base import build_knowledge_context_slim
+                slim = build_knowledge_context_slim(username)
+                if slim:
+                    return slim
+            else:
+                from backend.services.steve_knowledge_base import build_knowledge_context_for_steve
+                kb_context = build_knowledge_context_for_steve(username)
+                if kb_context:
+                    legacy = _build_legacy_context_from_profile(profile, username)
+                    if legacy:
+                        return f"[MEMBER KNOWLEDGE BASE — PREFERRED SOURCE]\n{kb_context}\n\n[LEGACY PROFILE — SUPPLEMENTARY]\n{legacy}"
+                    return kb_context
     except Exception as e:
         logger.debug("Knowledge base context unavailable for %s: %s", username, e)
 
@@ -15742,8 +15747,14 @@ def _ensure_embedding_index():
         load_index_from_firestore()
 
 
-def _get_or_build_context(username: str, profile: dict) -> str:
-    """Return cached context string for *username*, building from *profile* on miss."""
+def _get_or_build_context(username: str, profile: dict, *, networking: bool = False) -> str:
+    """Return cached context string for *username*, building from *profile* on miss.
+
+    When *networking* is True a compact summary is returned (not cached
+    separately — the slim variant is cheap to build from two Firestore reads).
+    """
+    if networking:
+        return _build_context_from_profile(profile, username, networking=True) or ''
     cache_key = f"steve_ctx:{username}"
     cached = cache.get(cache_key)
     if cached is not None and isinstance(cached, str):
@@ -15783,7 +15794,7 @@ def _networking_build_members_text(
     for uname in enriched_usernames:
         prof = profiles_raw.get(uname)
         if prof:
-            ctx = _get_or_build_context(uname, prof)
+            ctx = _get_or_build_context(uname, prof, networking=True)
             if viewer_username and ctx:
                 ctx = _scrub_community_names(ctx, uname, viewer_username)
             ctx_map[uname] = ctx
@@ -38768,25 +38779,34 @@ except Exception as e:
 @app.route('/api/admin/embeddings/backfill', methods=['POST'])
 @login_required
 def admin_embeddings_backfill():
-    """Backfill chunked embeddings for profiles missing any chunks.
-    Runs in a background thread."""
+    """Backfill chunked embeddings for all profiles (or only missing ones).
+
+    Pass ``{"force": true}`` in the JSON body to re-embed ALL profiles
+    (needed after changing what data feeds into the embedding chunks,
+    e.g. adding KB data).  Default behaviour only embeds profiles that
+    are missing one or more chunks.
+    """
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     try:
+        force = (request.get_json() or {}).get('force', False)
         from backend.services.firestore_reads import _get_client as _get_fs_client
         from backend.services.embedding_service import CHUNK_TYPES, EMBEDDING_DIMS
         fs = _get_fs_client()
         to_embed = []
         for doc in fs.collection('steve_user_profiles').stream():
-            data = doc.to_dict()
-            embs = data.get('embeddings') or {}
-            has_all = all(
-                isinstance(embs.get(ct), list) and len(embs.get(ct, [])) == EMBEDDING_DIMS
-                for ct in CHUNK_TYPES
-            )
-            if not has_all:
+            if force:
                 to_embed.append(doc.id)
+            else:
+                data = doc.to_dict()
+                embs = data.get('embeddings') or {}
+                has_all = all(
+                    isinstance(embs.get(ct), list) and len(embs.get(ct, [])) == EMBEDDING_DIMS
+                    for ct in CHUNK_TYPES
+                )
+                if not has_all:
+                    to_embed.append(doc.id)
 
         if not to_embed:
             return jsonify({'success': True, 'message': 'All profiles already have full chunked embeddings', 'count': 0})
@@ -38805,7 +38825,8 @@ def admin_embeddings_backfill():
 
         t = threading.Thread(target=_run_backfill, args=(to_embed,), daemon=True)
         t.start()
-        return jsonify({'success': True, 'message': f'Backfill started for {len(to_embed)} profiles', 'count': len(to_embed)})
+        mode = "force re-embed (KB-aware)" if force else "missing-only backfill"
+        return jsonify({'success': True, 'message': f'{mode} started for {len(to_embed)} profiles', 'count': len(to_embed)})
     except Exception as e:
         logger.error(f"Embedding backfill error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
