@@ -2331,6 +2331,24 @@ export default function AdminDashboard() {
                   </button>
                   <button
                     onClick={async () => {
+                      if (!confirm('Re-embed ALL profiles from KB + legacy data? This will recompute every vector.')) return
+                      try {
+                        const r = await fetch('/api/admin/embeddings/backfill', {
+                          method: 'POST', credentials: 'include',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ force: true })
+                        })
+                        const d = await r.json()
+                        alert(d.message || JSON.stringify(d))
+                      } catch { alert('Request failed') }
+                    }}
+                    className="px-3 py-1.5 bg-orange-500/20 border border-orange-500/30 hover:bg-orange-500/30 rounded-lg text-xs flex items-center gap-1.5 text-orange-300"
+                  >
+                    <i className="fa-solid fa-arrows-rotate" />
+                    Re-embed All (KB)
+                  </button>
+                  <button
+                    onClick={async () => {
                       try {
                         const r = await fetch('/api/admin/embeddings/status', { credentials: 'include' })
                         const d = await r.json()
