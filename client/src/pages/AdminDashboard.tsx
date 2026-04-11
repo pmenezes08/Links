@@ -2259,7 +2259,7 @@ export default function AdminDashboard() {
                       <select
                         value={batchDepth}
                         onChange={e => setBatchDepth(e.target.value as 'quick' | 'standard' | 'deep')}
-                        className="bg-[#1a1a1a] border border-white/10 rounded-lg text-xs text-white/80 px-2 py-2 outline-none"
+                        className="bg-[#1a1a1a] border border-white/10 rounded-xl text-[11px] text-white/80 px-2 py-1.5 outline-none"
                       >
                         <option value="quick">Quick</option>
                         <option value="standard">Standard</option>
@@ -2268,16 +2268,16 @@ export default function AdminDashboard() {
                       <button
                         onClick={() => analyzeAllProfiles(false)}
                         disabled={steveProfilesLoading || batchRunning}
-                        className="px-3 py-2 bg-[#4db6ac]/20 border border-[#4db6ac]/30 hover:bg-[#4db6ac]/30 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50 text-[#4db6ac]"
+                        className="px-2.5 py-1 bg-[#4db6ac]/20 border border-[#4db6ac]/30 hover:bg-[#4db6ac]/30 rounded-xl text-xs flex items-center gap-1.5 disabled:opacity-50 text-[#4db6ac]"
                       >
-                        <i className="fa-solid fa-bolt" />
+                        <i className="fa-solid fa-bolt text-[10px]" />
                         Enhance All ({steveProfiles.length})
                       </button>
                       {steveProfiles.filter(p => !p.analysis?.summary).length > 0 && (
                         <button
                           onClick={() => analyzeAllProfiles(true)}
                           disabled={steveProfilesLoading || batchRunning}
-                          className="px-3 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50 text-white/60"
+                          className="px-2.5 py-1 bg-white/5 border border-white/10 hover:bg-white/10 rounded-xl text-xs flex items-center gap-1.5 disabled:opacity-50 text-white/60"
                         >
                           New only ({steveProfiles.filter(p => !p.analysis?.summary).length})
                         </button>
@@ -2285,9 +2285,9 @@ export default function AdminDashboard() {
                       <button
                         onClick={synthesizeAllKBs}
                         disabled={steveProfilesLoading || batchRunning || kbBatchRunning}
-                        className="px-3 py-2 bg-purple-500/20 border border-purple-500/30 hover:bg-purple-500/30 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50 text-purple-300"
+                        className="px-2.5 py-1 bg-purple-500/20 border border-purple-500/30 hover:bg-purple-500/30 rounded-xl text-xs flex items-center gap-1.5 disabled:opacity-50 text-purple-300"
                       >
-                        <i className="fa-solid fa-layer-group" />
+                        <i className="fa-solid fa-layer-group text-[10px]" />
                         Synthesize KBs
                       </button>
                     </div>
@@ -2295,18 +2295,18 @@ export default function AdminDashboard() {
                   {(batchRunning || kbBatchRunning) && (
                     <button
                       onClick={() => { batchAbortRef.current = true }}
-                      className="px-3 py-2 bg-red-500/20 border border-red-500/30 hover:bg-red-500/30 rounded-lg text-sm flex items-center gap-2 text-red-400"
+                      className="px-2.5 py-1 bg-red-500/20 border border-red-500/30 hover:bg-red-500/30 rounded-xl text-xs flex items-center gap-1.5 text-red-400"
                     >
-                      <i className="fa-solid fa-stop" />
+                      <i className="fa-solid fa-stop text-[10px]" />
                       Stop
                     </button>
                   )}
                   <button
                     onClick={loadSteveProfiles}
                     disabled={steveProfilesLoading || batchRunning}
-                    className="px-3 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50"
+                    className="px-2.5 py-1 bg-white/5 border border-white/10 hover:bg-white/10 rounded-xl text-xs flex items-center gap-1.5 disabled:opacity-50"
                   >
-                    <i className="fa-solid fa-refresh" />
+                    <i className="fa-solid fa-refresh text-[10px]" />
                     {steveProfilesLoading ? 'Loading...' : 'Refresh'}
                   </button>
                 </div>
@@ -3007,7 +3007,7 @@ export default function AdminDashboard() {
                     <i className="fa-solid fa-globe" />
                     Network Profiling
                   </h3>
-                  <p className="text-xs text-white/60 mt-1">Community Knowledge Bases — select a community to synthesize and explore aggregated insights</p>
+                  <p className="text-xs text-white/60 mt-1">Network intelligence — company intel, professional/personal analytics, geographic & trait distributions</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-white/40">
@@ -3015,9 +3015,9 @@ export default function AdminDashboard() {
                   </span>
                   <button
                     onClick={() => loadAdminData()}
-                    className="px-3 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-sm flex items-center gap-2"
+                    className="px-2.5 py-1 bg-white/5 border border-white/10 hover:bg-white/10 rounded-xl text-xs flex items-center gap-1.5"
                   >
-                    <i className="fa-solid fa-refresh" />
+                    <i className="fa-solid fa-refresh text-[10px]" />
                     Refresh
                   </button>
                 </div>
@@ -3123,24 +3123,24 @@ export default function AdminDashboard() {
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
                               <button
                                 onClick={() => synthesizeNetworkKB(community.id)}
                                 disabled={synthesizingNetworkId === community.id}
-                                className="px-5 py-2.5 bg-[#4db6ac] hover:bg-[#3d9b8f] disabled:bg-white/20 text-black text-sm font-semibold rounded-2xl flex items-center gap-2 transition-all active:scale-[0.985]"
+                                className="px-3 py-1.5 bg-[#4db6ac] hover:bg-[#3d9b8f] disabled:bg-white/20 text-black text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all active:scale-[0.985]"
                               >
                                 {synthesizingNetworkId === community.id ? (
-                                  <><i className="fa-solid fa-spinner fa-spin" /> Synthesizing...</>
+                                  <><i className="fa-solid fa-spinner fa-spin text-[10px]" /> Synthesizing...</>
                                 ) : (
-                                  <><i className="fa-solid fa-sync" /> Synthesize KB</>
+                                  <><i className="fa-solid fa-sync text-[10px]" /> Synthesize KB</>
                                 )}
                               </button>
 
                               <button
                                 onClick={() => setShowKnowledgeBase(true)}
-                                className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-2xl flex items-center gap-2 border border-white/10 transition-all"
+                                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-medium rounded-xl flex items-center gap-1.5 border border-white/10 transition-all"
                               >
-                                <i className="fa-solid fa-diagram-project" /> View Knowledge Base
+                                <i className="fa-solid fa-diagram-project text-[10px]" /> View Knowledge Base
                               </button>
                             </div>
                           </div>
@@ -3148,15 +3148,16 @@ export default function AdminDashboard() {
 
                         <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-8 text-center">
                           <div className="mx-auto w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-6">
-                            <i className="fa-solid fa-layer-group text-4xl text-white/30" />
+                            <i className="fa-solid fa-chart-pie text-4xl text-white/30" />
                           </div>
-                          <div className="text-white/70 text-lg font-medium mb-2">Network Knowledge Base</div>
-                          <p className="text-white/50 max-w-md mx-auto">
-                            Click "Synthesize KB" to aggregate member knowledge bases, posts, and community context into
-                            NetworkIndex and NetworkInferredContext documents.
+                          <div className="text-white/70 text-lg font-medium mb-2">Network Analytics</div>
+                          <p className="text-white/50 max-w-md mx-auto text-sm">
+                            Click "Synthesize KB" to aggregate member knowledge into network-level intelligence:
+                            company intel (size, valuation, global presence), expertise & industry distributions,
+                            geographic spread, personality traits, and core values.
                           </p>
-                          <p className="text-[11px] text-white/40 mt-6">
-                            Once synthesized, click "View Knowledge Base" to explore the full graph, stats, and insights.
+                          <p className="text-[11px] text-white/40 mt-4">
+                            Then click "View Knowledge Base" to explore interactive charts, KPIs, and synthesized narratives.
                           </p>
                         </div>
                       </div>
@@ -3166,7 +3167,7 @@ export default function AdminDashboard() {
                       <div className="text-center">
                         <div className="text-white/30 text-6xl mb-4">🌐</div>
                         <div className="text-white/60">Select a community from the list</div>
-                        <div className="text-white/30 text-xs mt-2">to view or synthesize its Network Knowledge Base</div>
+                        <div className="text-white/30 text-xs mt-2">to view analytics or synthesize its Network Knowledge Base</div>
                       </div>
                     </div>
                   )}

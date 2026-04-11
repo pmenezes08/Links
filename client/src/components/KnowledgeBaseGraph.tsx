@@ -1,4 +1,19 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  ArcElement,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js'
+import { Bar, Doughnut } from 'react-chartjs-2'
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, PointElement, LineElement, Title, Tooltip, Legend)
 
 interface KBNode {
   id: string
@@ -99,7 +114,7 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
   const [loading, setLoading] = useState(false)
   const [synthesizing, setSynthesizing] = useState(false)
   const [selectedNote, setSelectedNote] = useState<string | null>(null)
-  const [activeView, setActiveView] = useState<'graph' | 'notes'>('notes')
+  const [activeView, setActiveView] = useState<'graph' | 'notes' | 'analytics'>(isNetwork ? 'analytics' : 'notes')
   const [feedbackNote, setFeedbackNote] = useState('')
   const [feedbackStatus, setFeedbackStatus] = useState<'approved' | 'needs_correction' | 'missing_info'>('approved')
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false)
@@ -233,6 +248,28 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
   const hasKnowledge = noteKeys.length > 0
   const selected = selectedNote && knowledge[selectedNote] ? knowledge[selectedNote] : null
 
+  const networkAnalytics = useMemo(() => {
+    if (!isNetwork || !hasKnowledge) return null
+    const compositionKey = noteKeys.find(k => knowledge[k]?.noteType === 'NetworkComposition')
+    const indexKey = noteKeys.find(k => knowledge[k]?.noteType === 'NetworkIndex')
+    const expertiseKey = noteKeys.find(k => knowledge[k]?.noteType === 'NetworkExpertise')
+    const geoKey = noteKeys.find(k => knowledge[k]?.noteType === 'NetworkGeographyCulture')
+    const fingerprintKey = noteKeys.find(k => knowledge[k]?.noteType === 'NetworkUniqueFingerprint')
+    const inferredKey = noteKeys.find(k => knowledge[k]?.noteType === 'NetworkInferredContext')
+
+    const comp = compositionKey ? (knowledge[compositionKey].content as Record<string, any>) : {}
+    const idx = indexKey ? (knowledge[indexKey].content as Record<string, any>) : {}
+    const exp = expertiseKey ? (knowledge[expertiseKey].content as Record<string, any>) : {}
+    const geo = geoKey ? (knowledge[geoKey].content as Record<string, any>) : {}
+    const fp = fingerprintKey ? (knowledge[fingerprintKey].content as Record<string, any>) : {}
+    const inf = inferredKey ? (knowledge[inferredKey].content as Record<string, any>) : {}
+
+    const ci = comp.companyIntel || {}
+    const pp = comp.personalProfile || {}
+
+    return { comp, idx, exp, geo, fp, inf, ci, pp }
+  }, [isNetwork, hasKnowledge, knowledge, noteKeys])
+
   return (
     <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
@@ -253,6 +290,14 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
 
           <div className="flex items-center gap-2">
             <div className="flex bg-white/5 rounded-lg p-0.5 border border-white/10">
+              {isNetwork && (
+                <button
+                  onClick={() => setActiveView('analytics')}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                    activeView === 'analytics' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'
+                  }`}
+                >Analytics</button>
+              )}
               <button
                 onClick={() => setActiveView('graph')}
                 className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
@@ -307,6 +352,305 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
               <p className="text-xs text-white/30 mt-1">Click Synthesize to generate from existing profile data</p>
             </div>
           )}
+
+          {/* Analytics View (Network only) */}
+          {!loading && hasKnowledge && activeView === 'analytics' && isNetwork && networkAnalytics && (() => {
+            const { comp, idx, exp, geo, fp, inf, ci, pp } = networkAnalytics
+            const memberCount = idx.memberCount || 0
+            const kbCount = idx.membersWithKB || 0
+
+            const chartOpts = {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: { backgroundColor: '#1a1a1a', titleColor: '#fff', bodyColor: '#ccc', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1 },
+              },
+              scales: {
+                x: { ticks: { color: 'rgba(255,255,255,0.5)', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                y: { ticks: { color: 'rgba(255,255,255,0.5)', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+              },
+            }
+            const doughnutOpts = {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { position: 'right' as const, labels: { color: 'rgba(255,255,255,0.6)', font: { size: 10 }, boxWidth: 10, padding: 8 } },
+                tooltip: { backgroundColor: '#1a1a1a', titleColor: '#fff', bodyColor: '#ccc' },
+              },
+            }
+            const palette = ['#4db6ac', '#6366f1', '#ef4444', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#f97316', '#06b6d4', '#22d3ee', '#a855f7', '#14b8a6']
+
+            const expertiseDist = exp.primaryDomains || idx.expertiseDistribution || {}
+            const expertiseLabels = Object.keys(expertiseDist).slice(0, 10)
+            const expertiseValues = expertiseLabels.map(k => expertiseDist[k])
+
+            const locDist = geo.primaryLocations || idx.primaryLocations || {}
+            const locLabels = typeof locDist === 'object' && !Array.isArray(locDist) ? Object.keys(locDist).slice(0, 10) : []
+            const locValues = locLabels.map(k => (locDist as Record<string, number>)[k])
+
+            const industryDist = comp.industryDistribution || idx.industryDistribution || {}
+            const industryLabels = Object.keys(industryDist).slice(0, 10)
+            const industryValues = industryLabels.map(k => industryDist[k])
+
+            const globalPresence = ci.globalPresence || {}
+            const gpLabels = Object.keys(globalPresence)
+            const gpValues = gpLabels.map(k => globalPresence[k])
+
+            const ppSplit = ci.publicPrivateSplit || {}
+            const ppLabels = Object.keys(ppSplit)
+            const ppValues = ppLabels.map(k => ppSplit[k])
+
+            const valDist = ci.valuationDistribution || {}
+            const valLabels = Object.keys(valDist)
+            const valValues = valLabels.map(k => valDist[k])
+
+            const sectorDist = ci.sectorBreakdown || {}
+            const sectorLabels = Object.keys(sectorDist).slice(0, 10)
+            const sectorValues = sectorLabels.map(k => sectorDist[k])
+
+            const traitDist = pp.traitDistribution || {}
+            const traitLabels = Object.keys(traitDist).slice(0, 12)
+            const traitValues = traitLabels.map(k => traitDist[k])
+
+            const valueDist = pp.coreValueDistribution || {}
+            const valueLabels = Object.keys(valueDist).slice(0, 10)
+            const valueValues = valueLabels.map(k => valueDist[k])
+
+            return (
+              <div className="h-full overflow-y-auto p-5 space-y-6">
+                {/* KPI Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                    <div className="text-2xl font-bold text-[#4db6ac]">{memberCount}</div>
+                    <div className="text-[11px] text-white/50 mt-1">Total Members</div>
+                  </div>
+                  <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                    <div className="text-2xl font-bold text-[#6366f1]">{kbCount}</div>
+                    <div className="text-[11px] text-white/50 mt-1">With Knowledge Base</div>
+                  </div>
+                  <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                    <div className="text-2xl font-bold text-[#f59e0b]">{ci.totalCompanies || '—'}</div>
+                    <div className="text-[11px] text-white/50 mt-1">Companies Tracked</div>
+                  </div>
+                  <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                    <div className="text-2xl font-bold text-[#10b981]">{ci.avgSize != null ? `~${ci.avgSize}` : '—'}</div>
+                    <div className="text-[11px] text-white/50 mt-1">Avg Company Size</div>
+                  </div>
+                </div>
+
+                {/* Synthesis narrative */}
+                {idx.currentSynthesis && (
+                  <div className="bg-white/[0.03] rounded-xl border border-white/10 p-4">
+                    <div className="text-[10px] uppercase tracking-wider text-white/30 font-medium mb-2">Network Overview</div>
+                    <p className="text-sm text-white/70 leading-relaxed">{String(idx.currentSynthesis)}</p>
+                  </div>
+                )}
+
+                {/* Professional Section */}
+                <div>
+                  <div className="text-xs font-semibold text-white/50 uppercase tracking-wide mb-3">Professional Intelligence</div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Expertise Distribution */}
+                    {expertiseLabels.length > 0 && (
+                      <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-3">Expertise Domains</div>
+                        <div className="h-48">
+                          <Bar data={{
+                            labels: expertiseLabels,
+                            datasets: [{ data: expertiseValues, backgroundColor: palette.slice(0, expertiseLabels.length), borderRadius: 4 }],
+                          }} options={chartOpts} />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Industry Distribution */}
+                    {industryLabels.length > 0 && (
+                      <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-3">Industry Mix</div>
+                        <div className="h-48">
+                          <Bar data={{
+                            labels: industryLabels.map(l => l.charAt(0).toUpperCase() + l.slice(1)),
+                            datasets: [{ data: industryValues, backgroundColor: palette.slice(2, 2 + industryLabels.length), borderRadius: 4 }],
+                          }} options={chartOpts} />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Company Intel: Global vs Regional vs Local */}
+                    {gpLabels.length > 0 && (
+                      <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-3">Global Presence</div>
+                        <div className="h-48">
+                          <Doughnut data={{
+                            labels: gpLabels.map(l => l.charAt(0).toUpperCase() + l.slice(1)),
+                            datasets: [{ data: gpValues, backgroundColor: ['#4db6ac', '#6366f1', '#f59e0b'], borderWidth: 0 }],
+                          }} options={doughnutOpts} />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Company Intel: Public vs Private */}
+                    {ppLabels.length > 0 && (
+                      <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-3">Public vs Private</div>
+                        <div className="h-48">
+                          <Doughnut data={{
+                            labels: ppLabels.map(l => l.charAt(0).toUpperCase() + l.slice(1)),
+                            datasets: [{ data: ppValues, backgroundColor: ['#10b981', '#8b5cf6', '#f97316', '#06b6d4'], borderWidth: 0 }],
+                          }} options={doughnutOpts} />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Valuation Tiers */}
+                    {valLabels.length > 0 && (
+                      <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-3">Valuation Tiers</div>
+                        <div className="h-48">
+                          <Bar data={{
+                            labels: valLabels.map(l => l.replace(/_/g, ' ')),
+                            datasets: [{ data: valValues, backgroundColor: palette.slice(4, 4 + valLabels.length), borderRadius: 4 }],
+                          }} options={chartOpts} />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Sector Breakdown */}
+                    {sectorLabels.length > 0 && (
+                      <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-3">Sector Breakdown</div>
+                        <div className="h-48">
+                          <Bar data={{
+                            labels: sectorLabels,
+                            datasets: [{ data: sectorValues, backgroundColor: palette.slice(1, 1 + sectorLabels.length), borderRadius: 4 }],
+                          }} options={chartOpts} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Geography Section */}
+                {locLabels.length > 0 && (
+                  <div>
+                    <div className="text-xs font-semibold text-white/50 uppercase tracking-wide mb-3">Geographic Distribution</div>
+                    <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                      <div className="h-52">
+                        <Bar data={{
+                          labels: locLabels,
+                          datasets: [{ data: locValues, backgroundColor: '#f59e0b', borderRadius: 4 }],
+                        }} options={chartOpts} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Personal Section */}
+                <div>
+                  <div className="text-xs font-semibold text-white/50 uppercase tracking-wide mb-3">Personal Intelligence</div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Trait Distribution */}
+                    {traitLabels.length > 0 && (
+                      <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-3">Personality Traits</div>
+                        <div className="h-52">
+                          <Bar data={{
+                            labels: traitLabels,
+                            datasets: [{ data: traitValues, backgroundColor: '#ec4899', borderRadius: 4 }],
+                          }} options={{
+                            ...chartOpts,
+                            indexAxis: 'y' as const,
+                          }} />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Core Values */}
+                    {valueLabels.length > 0 && (
+                      <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-3">Core Values</div>
+                        <div className="h-52">
+                          <Bar data={{
+                            labels: valueLabels,
+                            datasets: [{ data: valueValues, backgroundColor: '#a855f7', borderRadius: 4 }],
+                          }} options={{
+                            ...chartOpts,
+                            indexAxis: 'y' as const,
+                          }} />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Energy Patterns */}
+                    {(pp.energyPatterns || []).length > 0 && (
+                      <div className="bg-white/5 rounded-xl border border-white/10 p-4 lg:col-span-2">
+                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-2">Collective Energy Patterns</div>
+                        <div className="space-y-1.5">
+                          {(pp.energyPatterns as string[]).slice(0, 6).map((ep: string, i: number) => (
+                            <div key={i} className="text-xs text-white/60 pl-3 border-l-2 border-[#ec4899]/30">{ep}</div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Unique Fingerprint & Bridging */}
+                {(fp.whatMakesThisNetworkSpecial || fp.bridgingCapability) && (
+                  <div className="bg-gradient-to-r from-[#6366f1]/10 to-[#4db6ac]/10 rounded-xl border border-white/10 p-5">
+                    <div className="text-xs font-semibold text-white/50 uppercase tracking-wide mb-3">Network Fingerprint</div>
+                    {fp.whatMakesThisNetworkSpecial && (
+                      <p className="text-sm text-white/70 leading-relaxed mb-3">{String(fp.whatMakesThisNetworkSpecial)}</p>
+                    )}
+                    {fp.bridgingCapability && (
+                      <div>
+                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-1">Bridging Capability</div>
+                        <p className="text-xs text-white/60">{String(fp.bridgingCapability)}</p>
+                      </div>
+                    )}
+                    {fp.rareQualities && Array.isArray(fp.rareQualities) && fp.rareQualities.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {(fp.rareQualities as string[]).slice(0, 8).map((q: string, i: number) => (
+                          <span key={i} className="px-2 py-0.5 bg-white/5 border border-white/10 rounded-full text-[10px] text-white/50">{q}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Strategic Value & Inferred Context */}
+                {(inf.strategicValue || inf.bridgingOpportunities) && (
+                  <div className="bg-white/[0.03] rounded-xl border border-white/10 p-5">
+                    <div className="text-xs font-semibold text-white/50 uppercase tracking-wide mb-3">Strategic Intelligence</div>
+                    {inf.strategicValue && (
+                      <p className="text-sm text-white/70 leading-relaxed mb-3">{String(inf.strategicValue)}</p>
+                    )}
+                    {inf.bridgingOpportunities && (
+                      <div>
+                        <div className="text-[11px] text-white/40 uppercase tracking-wide mb-1">Bridging Opportunities</div>
+                        <p className="text-xs text-white/60">{String(inf.bridgingOpportunities)}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Top Companies */}
+                {comp.topCompanies && Object.keys(comp.topCompanies).length > 0 && (
+                  <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+                    <div className="text-[11px] text-white/40 uppercase tracking-wide mb-3">Top Companies in Network</div>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(comp.topCompanies as Record<string, number>).slice(0, 12).map(([name, count]) => (
+                        <span key={name} className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-lg text-xs text-white/60">
+                          {name} <span className="text-white/30">({count})</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {/* Graph View */}
           {!loading && hasKnowledge && activeView === 'graph' && (

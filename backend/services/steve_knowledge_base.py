@@ -184,7 +184,9 @@ SYNTHESIS_SCHEMAS: Dict[str, Dict[str, str]] = {
         "demographics": "career stage, founder vs operator, EMBA concentration, etc.",
         "diversityProfile": "geographic, professional background, and experience diversity",
         "networkDensity": "how interconnected vs siloed the network is",
-        "evolution": "how the network composition has changed over time"
+        "evolution": "how the network composition has changed over time",
+        "companyIntel": "aggregated company intelligence: globalCount, avgSize, valuationDistribution, publicPrivateSplit, sectorBreakdown",
+        "personalProfile": "aggregated personal traits distribution, lifestyle patterns, interests overlap, energy/motivation profile",
     },
     "NetworkUniqueFingerprint": {
         "whatMakesThisNetworkSpecial": "2-3 sentences on the network's unique combination of traits",
@@ -766,6 +768,9 @@ Return ONLY valid JSON with this structure:
         "sector": "AI / Technology",
         "stage": "Series B / Growth",
         "size": "50-200 employees",
+        "globalPresence": "global | regional | local",
+        "publicStatus": "public | private | non-profit | government",
+        "valuationTier": "unicorn_plus | mid_cap | growth | early_stage | established_enterprise | unknown",
         "reputation": "Extremely high prestige and selectivity",
         "selectivity": "Very high (top 0.1% talent)",
         "culture": "High-performance, mission-driven, innovative",
@@ -1285,12 +1290,27 @@ def _aggregate_member_kbs(member_usernames: List[str]) -> Dict[str, Any]:
     company_counts: Dict[str, int] = {}
     trajectory_snippets: List[str] = []
 
+    # CompanyIntel aggregation
+    company_sizes: List[str] = []
+    company_global_counts: Dict[str, int] = {"global": 0, "regional": 0, "local": 0}
+    company_public_private: Dict[str, int] = {"public": 0, "private": 0, "non-profit": 0, "government": 0}
+    company_valuation_tiers: Dict[str, int] = {}
+    company_sectors: Dict[str, int] = {}
+    company_stages: Dict[str, int] = {}
+
+    # Personal / Identity aggregation
+    trait_counts: Dict[str, int] = {}
+    value_counts: Dict[str, int] = {}
+    energy_snippets: List[str] = []
+    interest_counts: Dict[str, int] = {}
+
     members_with_kb = 0
 
     for username in member_usernames:
         user_has_kb = False
         for note_type in ["Index", "Expertise", "GeographyCulture", "InferredContext",
-                          "UniqueFingerprint", "LifeCareer", "Identity", "Opinions"]:
+                          "UniqueFingerprint", "LifeCareer", "Identity", "Opinions",
+                          "CompanyIntel"]:
             doc_id = f"{username}_{note_type}"
             try:
                 doc = fs.collection(COLLECTION).document(doc_id).get()
@@ -1371,7 +1391,6 @@ def _aggregate_member_kbs(member_usernames: List[str]) -> Dict[str, Any]:
                         bridging_snippets.append(str(content["bridgingCapability"])[:200])
 
                 elif note_type == "LifeCareer":
-                    # Schema: stages (list of {period, role, company, description, significance})
                     for stage in content.get("stages", []):
                         if isinstance(stage, dict):
                             company = stage.get("company", "")
@@ -1387,6 +1406,40 @@ def _aggregate_member_kbs(member_usernames: List[str]) -> Dict[str, Any]:
                     if content.get("trajectory"):
                         trajectory_snippets.append(str(content["trajectory"])[:200])
 
+                elif note_type == "CompanyIntel":
+                    for co in content.get("companies", []):
+                        if not isinstance(co, dict):
+                            continue
+                        size = co.get("size", "")
+                        if size:
+                            company_sizes.append(size)
+                        gp = (co.get("globalPresence") or "").lower()
+                        if gp in company_global_counts:
+                            company_global_counts[gp] += 1
+                        ps = (co.get("publicStatus") or "").lower()
+                        if ps in company_public_private:
+                            company_public_private[ps] += 1
+                        vt = co.get("valuationTier") or ""
+                        if vt:
+                            company_valuation_tiers[vt] = company_valuation_tiers.get(vt, 0) + 1
+                        sector = co.get("sector") or ""
+                        if sector:
+                            company_sectors[sector] = company_sectors.get(sector, 0) + 1
+                        stage = co.get("stage") or ""
+                        if stage:
+                            company_stages[stage] = company_stages.get(stage, 0) + 1
+
+                elif note_type == "Identity":
+                    for trait in content.get("traits", []):
+                        if isinstance(trait, str):
+                            trait_counts[trait] = trait_counts.get(trait, 0) + 1
+                    for val in content.get("coreValues", []):
+                        label = val if isinstance(val, str) else (val.get("value", "") if isinstance(val, dict) else "")
+                        if label:
+                            value_counts[label] = value_counts.get(label, 0) + 1
+                    if content.get("energyPatterns"):
+                        energy_snippets.append(str(content["energyPatterns"])[:200])
+
             except Exception as e:
                 logger.debug("Could not read %s for network aggregation: %s", doc_id, e)
 
@@ -1399,6 +1452,18 @@ def _aggregate_member_kbs(member_usernames: List[str]) -> Dict[str, Any]:
     top_rare = sorted(rare_qualities.items(), key=lambda x: -x[1])[:15]
     top_industries = sorted(industry_counts.items(), key=lambda x: -x[1])[:15]
     top_companies = sorted(company_counts.items(), key=lambda x: -x[1])[:15]
+    top_traits = sorted(trait_counts.items(), key=lambda x: -x[1])[:20]
+    top_values = sorted(value_counts.items(), key=lambda x: -x[1])[:15]
+    top_sectors = sorted(company_sectors.items(), key=lambda x: -x[1])[:15]
+    top_stages = sorted(company_stages.items(), key=lambda x: -x[1])[:10]
+
+    # Parse company size strings into numeric estimates for averaging
+    size_estimates: List[int] = []
+    for s in company_sizes:
+        s_lower = s.lower().replace(",", "").replace("+", "")
+        nums = [int(n) for n in re.findall(r"\d+", s_lower)]
+        if nums:
+            size_estimates.append(sum(nums) // len(nums))
 
     return {
         "membersWithKB": members_with_kb,
@@ -1423,6 +1488,24 @@ def _aggregate_member_kbs(member_usernames: List[str]) -> Dict[str, Any]:
         "industryDistribution": dict(top_industries),
         "topCompanies": dict(top_companies),
         "trajectorySnippets": trajectory_snippets[:10],
+        # CompanyIntel aggregates
+        "companyIntel": {
+            "totalCompanies": len(company_sizes),
+            "avgSize": round(sum(size_estimates) / max(len(size_estimates), 1)) if size_estimates else None,
+            "sizeDistribution": company_sizes[:30],
+            "globalPresence": {k: v for k, v in company_global_counts.items() if v > 0},
+            "publicPrivateSplit": {k: v for k, v in company_public_private.items() if v > 0},
+            "valuationDistribution": dict(sorted(company_valuation_tiers.items(), key=lambda x: -x[1])),
+            "sectorBreakdown": dict(top_sectors),
+            "stageBreakdown": dict(top_stages),
+        },
+        # Personal / Identity aggregates
+        "personalProfile": {
+            "traitDistribution": dict(top_traits),
+            "coreValueDistribution": dict(top_values),
+            "energyPatterns": energy_snippets[:10],
+            "interestDistribution": dict(sorted(interest_counts.items(), key=lambda x: -x[1])[:20]),
+        },
     }
 
 
@@ -1509,6 +1592,8 @@ def synthesize_network_knowledge(network_id: int) -> bool:
         }
 
         # --- NetworkComposition ---
+        ci = agg.get("companyIntel", {})
+        pp = agg.get("personalProfile", {})
         composition_content = {
             "demographics": (
                 f"{member_count} members, {kb_count} with synthesized KBs."
@@ -1522,6 +1607,8 @@ def synthesize_network_knowledge(network_id: int) -> bool:
             "topCompanies": agg["topCompanies"],
             "industryDistribution": agg["industryDistribution"],
             "trajectoryInsights": "; ".join(agg["trajectorySnippets"][:5]) if agg["trajectorySnippets"] else "Career trajectory data pending member synthesis.",
+            "companyIntel": ci,
+            "personalProfile": pp,
         }
 
         # --- NetworkInferredContext ---
