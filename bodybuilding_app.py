@@ -370,6 +370,10 @@ STORY_MAX_COMMENT_LENGTH = 2000
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Allow OPTIONS preflight for CORS on any protected route
+        if request.method == 'OPTIONS':
+            return f(*args, **kwargs)
+        
         if 'username' not in session:
             try:
                 logger.info("No username in session, redirecting to login")
@@ -1504,6 +1508,9 @@ CANONICAL_SCHEME = os.getenv('CANONICAL_SCHEME', 'https')
 
 @app.before_request
 def enforce_canonical_host():
+    # Skip OPTIONS preflight requests (CORS) - redirects are not valid preflight responses
+    if request.method == 'OPTIONS':
+        return None
     try:
         req_host = request.headers.get('Host', '').split(':')[0]
         req_scheme = request.headers.get('X-Forwarded-Proto') or request.scheme
