@@ -16,6 +16,8 @@ steps:
       - '--region=europe-west1'
       - '--platform=managed'
       - '--allow-unauthenticated'
+      - '--timeout=600'
+      - '--cpu-boost'
 
 options:
   machineType: 'E2_HIGHCPU_8'

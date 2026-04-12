@@ -17,6 +17,8 @@ steps:
       - '--region=europe-west1'
       - '--platform=managed'
       - '--allow-unauthenticated'
+      - '--timeout=600'
+      - '--cpu-boost'
 
 options:
   # More CPU/memory for npm install (default can OOM)
