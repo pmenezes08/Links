@@ -43,15 +43,19 @@ export default function Communities() {
   const generateInsights = async (community: Community) => {
     setSelectedCommunity(community)
     setInsightsLoading(true)
+    setError('')  // Clear previous errors
     try {
       const result = await apiPost(`/api/admin/knowledge_base/network/${community.id}/insights`, {})
       if (result.success && result.insights) {
         setInsights(result.insights)
       } else {
         setError(result.error || 'Failed to generate insights')
+        setInsights(null)
       }
-    } catch (err) {
-      setError('Failed to generate insights')
+    } catch (err: any) {
+      const errorMsg = err?.message || err?.error || 'Failed to generate insights'
+      setError(errorMsg)
+      setInsights(null)
     } finally {
       setInsightsLoading(false)
     }
@@ -96,12 +100,9 @@ export default function Communities() {
           {communities.map(c => (
             <div
               key={c.id}
-              onClick={() => generateInsights(c)}
-              className={`bg-surface-2 border border-white/10 rounded-xl p-4 cursor-pointer hover:border-[#4db6ac]/50 transition-all ${
-                selectedCommunity?.id === c.id ? 'border-[#4db6ac] bg-surface-3' : ''
-              }`}
+              className="bg-surface-2 border border-white/10 rounded-xl p-4 hover:border-white/30 transition-all group"
             >
-              <div className="flex items-start justify-between">
+              <div className="flex items-start justify-between mb-3">
                 <div>
                   <h3 className="font-semibold">{c.name}</h3>
                   {c.creator && <p className="text-muted text-xs mt-0.5">by {c.creator}</p>}
@@ -113,16 +114,23 @@ export default function Communities() {
                 </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); handleDelete(c.id, c.name) }}
-                  className="text-red-400 hover:text-red-300 text-xs p-1"
+                  className="text-red-400 hover:text-red-300 text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                   title="Delete"
                 >
                   <i className="fa-solid fa-trash" />
                 </button>
               </div>
-              <div className="mt-4 flex items-center justify-between text-xs text-muted">
+              <div className="flex items-center justify-between text-xs text-muted mb-4">
                 <span><i className="fa-solid fa-users mr-1" />{c.member_count ?? 0} members</span>
                 {c.created_at && <span>{new Date(c.created_at).toLocaleDateString()}</span>}
               </div>
+              <button
+                onClick={() => generateInsights(c)}
+                className="w-full py-2 text-sm bg-[#4db6ac] hover:bg-[#3da89a] text-black font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
+              >
+                <i className="fa-solid fa-brain" />
+                Generate Insights
+              </button>
             </div>
           ))}
         </div>
