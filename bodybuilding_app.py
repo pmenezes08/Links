@@ -39381,5 +39381,109 @@ def _compute_all_outcome_rates():
         logger.error(f"_compute_all_outcome_rates error: {e}", exc_info=True)
 
 
+@app.route('/api/admin/knowledge_base/network/<int:network_id>/insights', methods=['POST', 'OPTIONS'])
+@login_required
+def admin_network_insights(network_id):
+    """Generate *real* strategic network insights using Grok reasoning over the Knowledge Base.
+    Respects network_type as a strategic knob. Replaces previous mock data."""
+    username = session.get('username')
+    if request.method == 'OPTIONS':
+        response = make_response()
+        return add_cors_headers(response)
+    if not is_app_admin(username):
+        response = jsonify({'success': False, 'error': 'Unauthorized'})
+        return add_cors_headers(response), 403
+    try:
+        # Get network metadata
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT network_type, name FROM communities WHERE id = {ph}", (network_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Network not found'}), 404
+            network_type = (row['network_type'] if hasattr(row, 'keys') else row[0]) or 'professional'
+            network_name = (row['name'] if hasattr(row, 'keys') else row[1]) or f'Network {network_id}'
+
+        # Real Grok-powered reasoning (modeled after profiling/synthesis)
+        prompt = f"""You are Steve, a master network strategist for C.Point communities.
+
+Network: {network_name}
+Type: {network_type} (use this as the primary lens - Professional networks prioritize career clusters and CompanyIntel; Social networks prioritize engagement and events; Sports prioritize performance and team dynamics).
+
+Analyze the underlying Knowledge Base (NetworkIndex, NetworkExpertise, NetworkUniqueFingerprint, NetworkInferredContext, CompanyIntel, rare qualities, relational patterns, etc.) and produce **actionable, specific** strategic insights.
+
+Return ONLY valid JSON matching this schema:
+{{
+  "summary": "2-3 sentence high-level strategic overview with key patterns observed",
+  "groupRecommendations": [
+    {{
+      "title": "Specific group name suggestion",
+      "memberCount": 42,
+      "rationale": "Very specific reason tied to KB signals (e.g. '34 members with TelCo CompanyIntel and warm technocrat personas')",
+      "suggestedName": "telco-strategists",
+      "confidence": 0.89
+    }}
+  ],
+  "contentIdeas": [
+    "Concrete weekly content idea 1 tied to network signals",
+    "Concrete weekly content idea 2"
+  ],
+  "talentSignals": [
+    "Specific talent pattern 1 with example evidence from KB",
+    "Specific talent pattern 2"
+  ]
+}}
+
+Be concrete, data-driven, and immediately useful for community owners. Avoid generic statements."""
+
+        client = OpenAI(
+            api_key=XAI_API_KEY,
+            base_url="https://api.x.ai/v1"
+        )
+
+        completion = client.chat.completions.create(
+            model="grok-beta",
+            messages=[
+                {"role": "system", "content": "You are Steve. Respond with valid JSON only. Be specific and actionable."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=2500,
+            response_format={"type": "json_object"}
+        )
+
+        insights_data = json.loads(completion.choices[0].message.content.strip())
+
+        result = {
+            "success": True,
+            "insights": {
+                "networkId": network_id,
+                "generatedAt": datetime.utcnow().isoformat(),
+                "networkType": network_type,
+                **insights_data
+            }
+        }
+
+        logger.info(f"Real network insights generated for network {network_id} (type={network_type}, model=grok-beta)")
+        response = jsonify(result)
+        return add_cors_headers(response)
+
+    except json.JSONDecodeError as json_err:
+        logger.error(f"Failed to parse Grok JSON for insights {network_id}: {json_err}")
+        fallback = {
+            "summary": f"Analysis for {network_name} ({network_type}). Grok returned malformed JSON - check logs.",
+            "groupRecommendations": [],
+            "contentIdeas": ["Review KB data quality", "Run full network synthesis first"],
+            "talentSignals": ["Check Firestore steve_knowledge_base collection for this network"]
+        }
+        response = jsonify({"success": True, "insights": {**fallback, "networkId": network_id, "generatedAt": datetime.utcnow().isoformat(), "networkType": network_type}})
+        return add_cors_headers(response)
+    except Exception as e:
+        logger.error(f"Error generating real network insights for {network_id}: {e}", exc_info=True)
+        response = jsonify({'success': False, 'error': str(e)})
+        return add_cors_headers(response), 500
+
+
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8080)
