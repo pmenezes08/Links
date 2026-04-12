@@ -15835,6 +15835,10 @@ def _networking_build_members_text(
         uname = str(_v(r, 0))
         member_row_map[uname] = r
 
+    viewer_cohorts = set()
+    if viewer_username:
+        viewer_cohorts = {s for s in (user_subcommunities.get(viewer_username) or []) if s}
+
     members_lines = []
     if tiered_preamble:
         members_lines.append(tiered_preamble.rstrip())
@@ -15852,9 +15856,13 @@ def _networking_build_members_text(
         resp_rate = (profiles_raw.get(uname) or {}).get('introductionResponseRate')
         if resp_rate is not None and resp_rate >= 0.7:
             line += " | Highly responsive to introductions"
-        subcoms = user_subcommunities.get(uname, [])
-        if subcoms:
-            line += f" | Groups: {', '.join(subcoms)}"
+        # Only expose cohort overlap verified in SQL — never list member-only cohort names
+        # (prevents the model from falsely claiming someone is in a sub-community the requester names).
+        if viewer_cohorts:
+            member_subs = user_subcommunities.get(uname) or []
+            shared_subs = sorted({s for s in member_subs if s in viewer_cohorts})
+            if shared_subs:
+                line += f" | Shared cohorts with requester (C-Point, verified): {', '.join(shared_subs)}"
         recent = recent_posts_map.get(uname, [])
         if recent:
             line += f" | Recent posts: {'; '.join(recent)}"
@@ -15960,6 +15968,9 @@ def api_networking_steve_match():
 COMMUNITY STRUCTURE:
 {hierarchy_ctx}
 
+DATA SOURCE (CRITICAL):
+- Use ONLY the community member roster in this conversation (including embedded AI / knowledge-base insight) and the user's messages. Do NOT use the web, news, or outside databases. Do NOT invent people or @usernames.
+
 HOW TO MATCH:
 1. Start with people who clearly match what the user asked for. If they ask about a location, lead with people connected to that location. If they ask about an industry, lead with people in that industry.
 2. DIRECT vs STRETCH: Recommend as primary matches ONLY people whose roster text (summary, traits, experiences, expertise, posts) shows a DIRECT connection to the ask. If you also want to suggest a looser angle (adjacent skill, metaphorical similarity, "same discipline" without the exact credential), put those in a SHORT clearly labeled follow-on such as "If you're open to a broader angle:" and state honestly that the link is indirect — never present a stretch as equivalent to a direct match.
@@ -15974,7 +15985,7 @@ HOW TO MATCH:
 KNOWLEDGE BASE CONTEXT (when available):
 - Some members will have a [MEMBER KNOWLEDGE BASE] section in their AI insight. This is a high-quality, structured analysis of the member across multiple dimensions: life/career evolution, geographic journey, expertise depth, opinion evolution, identity traits, network relationships, and unique fingerprint.
 - ALWAYS prioritize knowledge base insights over basic profile data. The knowledge base tracks how people EVOLVE over time — opinion shifts, career transitions, geographic moves, and contradictions.
-- When matching for locations (e.g. "UK knowledge"), look at the GEOGRAPHIC & CULTURAL JOURNEY dimension — it distinguishes between "currently lives there" vs "has deep historical knowledge".
+- When matching for locations (e.g. "Miami", "UK knowledge"), look at the GEOGRAPHIC & CULTURAL JOURNEY dimension — it distinguishes between "currently lives there" vs "has lived there before" vs "has deep historical knowledge" without living there now.
 - When matching for expertise, look at EXPERTISE & DEPTH for progression and credibility signals.
 - The UNIQUE FINGERPRINT dimension reveals rare qualities and bridging capabilities that make someone an exceptional match.
 
@@ -15999,7 +16010,8 @@ RULES:
 - Always use @username format.
 - Speak naturally and conversationally — like a helpful friend, not a search engine.
 - NEVER reference internal data, field names, system terminology, or analysis methods. Don't say things like "City: Lisbon", "AI insight", "profile data", "structured data", "recommendation count", or "no members list X as their location". Just speak naturally about what you know.
-- C-POINT COMMUNITY PRIVACY: Only mention someone's membership in an on-platform (C-Point) community if both they and the requester share that community. The roster "Groups:" field lists sub-communities within THIS session's community tree only; do not name or infer other C-Point communities the requester does not share. External / off-platform affiliations may be mentioned when helpful and clearly grounded in the provided context.
+- ON-PLATFORM COHORTS (CRITICAL): A roster line may include "Shared cohorts with requester (C-Point, verified):" — those cohorts are verified in the database for BOTH people. If that segment is ABSENT for someone, you MUST NOT state or imply they belong to any named C-Point cohort or sub-community (e.g. do not say they are in "Kellogg Miami" unless that exact cohort appears there for them). Never infer cohort membership from geography, job, school brands, or AI insight alone.
+- C-POINT COMMUNITY PRIVACY: Do not name or imply on-platform C-Point communities the requester does not share. External / off-platform affiliations (e.g. university chapters not on C-Point) may only be mentioned when clearly grounded in the roster text — never as a substitute for verified C-Point cohort lines.
 - NEVER say "I won't recommend" or explain what you're choosing not to do. Focus on what you CAN offer.
 - This is a multi-turn conversation. Pay close attention to what was discussed previously. If the user asks a follow-up (e.g., "suggest a message to send him", "tell me more about her"), refer back to the person or topic from the prior exchange. Do NOT start a new unrelated recommendation unless the user explicitly asks for something different.
 - The requester's profile is provided as background context ONLY — so you know who they are and can craft better introductions. When the user makes a specific request, match ONLY based on what they asked for. Do NOT bring the requester's own interests, industry, or background into the recommendation rationale unless they explicitly ask for connections related to their own profile (e.g., "people in my industry", "people with similar interests"). If the user asks about race cars, recommend people connected to race cars — not people who share the requester's AI interests."""}
@@ -16014,7 +16026,6 @@ RULES:
         response = client.responses.create(
             model=GROK_MODEL_FAST,
             input=grok_input,
-            tools=[{"type": "web_search"}],
             max_output_tokens=800, temperature=0.5
         )
         ai_response = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
@@ -16022,6 +16033,7 @@ RULES:
         recommended = _extract_recommended_usernames(ai_response, member_names)
         _record_recommendations_background(recommended, username, community_id, context=message)
         ai_response = inject_member_mentions(ai_response, member_names)
+        ai_response = _sanitize_networking_response_mentions(ai_response, member_names)
         return jsonify({'success': True, 'response': format_steve_response_links(ai_response)})
     except Exception as e:
         logger.error(f"Error in steve_match: {e}", exc_info=True)
@@ -16125,6 +16137,9 @@ def api_networking_steve_auto_match():
 COMMUNITY STRUCTURE:
 {hierarchy_ctx}
 
+DATA SOURCE (CRITICAL):
+- Use ONLY the community member roster below (including embedded AI / knowledge-base insight). Do NOT use the web or outside databases. Do NOT invent people or @usernames.
+
 HOW TO MATCH:
 1. Find the most relevant connections for this person based on their profile, interests, role, industry, and location. Draw from the ENTIRE parent network, not just one sub-community or cohort.
 2. DIRECT vs STRETCH: Primary recommendations must be grounded in clear overlap (complementary skills, shared domains, geography, values, or explicit traits in the roster). If you suggest a looser fit, label it as optional and say honestly why it is indirect.
@@ -16152,7 +16167,8 @@ RULES:
 - Only reference members from the provided list.
 - Always use @username format.
 - NEVER reference internal data, field names, system terminology, or analysis methods. Don't say things like "AI insight", "profile data", "structured data", "recommendation count", or similar. Just speak naturally about what you know.
-- C-POINT COMMUNITY PRIVACY: Only mention someone's membership in an on-platform (C-Point) community if both they and the requester share that community. The roster "Groups:" field lists sub-communities within THIS session's community tree only; do not name or infer other C-Point communities the requester does not share. External / off-platform affiliations may be mentioned when helpful and clearly grounded in the provided context.
+- ON-PLATFORM COHORTS (CRITICAL): A roster line may include "Shared cohorts with requester (C-Point, verified):" for cohorts both people are in. If that segment is ABSENT for someone, you MUST NOT state or imply they belong to any named C-Point cohort or sub-community. Never infer cohort membership from geography, job, or AI insight alone.
+- C-POINT COMMUNITY PRIVACY: Do not name on-platform C-Point communities the requester does not share. External affiliations only when clearly grounded in roster text — never as a substitute for verified cohort lines.
 - Be concise and friendly."""},
                 {"role": "user", "content": f"My profile:\n{enriched_user_profile}\n\nCommunity members:\n{members_text}\n\nPlease suggest my best networking matches."}
             ],
@@ -16163,6 +16179,7 @@ RULES:
         recommended = _extract_recommended_usernames(ai_response, member_names)
         _record_recommendations_background(recommended, username, community_id, context='auto_match')
         ai_response = inject_member_mentions(ai_response, member_names)
+        ai_response = _sanitize_networking_response_mentions(ai_response, member_names)
         return jsonify({'success': True, 'response': format_steve_response_links(ai_response)})
     except Exception as e:
         logger.error(f"Error in steve_auto_match: {e}", exc_info=True)
@@ -25467,6 +25484,22 @@ You CAN be helpful, but wrapped in so much verbal abuse they'll question asking 
 Keep it short, keep it BRUTAL, and make them regret tagging you. 💀🔥'''
     }
 }
+
+def _sanitize_networking_response_mentions(text: str, member_names: list) -> str:
+    """Strip @ from handles not in the community roster so the client does not link to fake profiles."""
+    import re
+    if not text or not member_names:
+        return text
+    valid = {u.lower() for u, _ in member_names}
+
+    def _repl(m):
+        handle = m.group(1)
+        if handle.lower() in valid:
+            return m.group(0)
+        return handle
+
+    return re.sub(r'@([a-zA-Z0-9_]{1,30})\b', _repl, text)
+
 
 def _extract_recommended_usernames(text: str, member_names: list) -> list:
     """Extract the list of @usernames that Steve actually recommended in his response."""
