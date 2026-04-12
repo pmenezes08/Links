@@ -543,15 +543,23 @@ export default function AdminDashboard() {
     }
   }, [loadAdminData])
 
+  const [batchDepth, setBatchDepth] = useState<'quick' | 'standard' | 'deep'>('quick')
+  /** Used when depth is Deep — clamped server-side between env floor and ceiling. */
+  const [adminDeepMaxOutputTokens, setAdminDeepMaxOutputTokens] = useState(4000)
+
   const analyzeUser = useCallback(async (targetUsername: string, depth: 'quick' | 'standard' | 'deep' = 'standard', reset = false) => {
     if (reset && !confirm(`This will discard existing data and run a fresh analysis for @${targetUsername}. Continue?`)) return
     setAnalyzingUser(targetUsername)
     try {
+      const body: Record<string, unknown> = { depth, reset }
+      if (depth === 'deep') {
+        body.max_output_tokens = adminDeepMaxOutputTokens
+      }
       const response = await fetch(`/api/admin/steve_profiles/${encodeURIComponent(targetUsername)}/analyze`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ depth, reset })
+        body: JSON.stringify(body)
       })
       const data = await response.json()
       if (data?.success && data.analysis) {
@@ -573,9 +581,7 @@ export default function AdminDashboard() {
     } finally {
       setAnalyzingUser(null)
     }
-  }, [])
-
-  const [batchDepth, setBatchDepth] = useState<'quick' | 'standard' | 'deep'>('quick')
+  }, [adminDeepMaxOutputTokens])
 
   const analyzeAllProfiles = useCallback(async (onlyNew = false) => {
     const targets = onlyNew ? steveProfiles.filter(p => !p.analysis?.summary) : steveProfiles
@@ -588,10 +594,14 @@ export default function AdminDashboard() {
       const u = targets[i]
       setBatchProgress({ current: i + 1, total: targets.length, currentUser: u.username })
       try {
+        const batchBody: Record<string, unknown> = { depth: batchDepth }
+        if (batchDepth === 'deep') {
+          batchBody.max_output_tokens = adminDeepMaxOutputTokens
+        }
         const res = await fetch(`/api/admin/steve_profiles/${encodeURIComponent(u.username)}/analyze`, {
           method: 'POST', credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ depth: batchDepth })
+          body: JSON.stringify(batchBody)
         })
         const data = await res.json()
         if (data?.success && data.analysis) {
@@ -610,7 +620,7 @@ export default function AdminDashboard() {
     }
     setBatchRunning(false)
     setBatchProgress({ current: 0, total: 0, currentUser: '' })
-  }, [steveProfiles, batchDepth])
+  }, [steveProfiles, batchDepth, adminDeepMaxOutputTokens])
 
   const [kbBatchRunning, setKbBatchRunning] = useState(false)
   const [kbBatchProgress, setKbBatchProgress] = useState({ current: 0, total: 0, currentUser: '', skipped: 0 })
@@ -2270,6 +2280,30 @@ export default function AdminDashboard() {
                         <option value="standard">Standard</option>
                         <option value="deep">Deep</option>
                       </select>
+                      {batchDepth === 'deep' && (
+                        <div className="flex items-center gap-1 flex-wrap" title="Max output tokens for deep runs (server clamps to configured range)">
+                          <span className="text-[10px] text-white/45">Deep tokens</span>
+                          {([4000, 6000, 8000] as const).map(n => (
+                            <button
+                              key={n}
+                              type="button"
+                              onClick={() => setAdminDeepMaxOutputTokens(n)}
+                              className={`px-1.5 py-0.5 rounded text-[10px] border ${adminDeepMaxOutputTokens === n ? 'bg-[#4db6ac]/25 border-[#4db6ac]/40 text-[#4db6ac]' : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10'}`}
+                            >
+                              {n}
+                            </button>
+                          ))}
+                          <input
+                            type="number"
+                            min={4000}
+                            max={8192}
+                            step={256}
+                            value={adminDeepMaxOutputTokens}
+                            onChange={e => setAdminDeepMaxOutputTokens(Math.max(4000, Math.min(8192, parseInt(e.target.value, 10) || 4000)))}
+                            className="w-16 bg-[#1a1a1a] border border-white/10 rounded-lg text-[10px] text-white/80 px-1 py-0.5"
+                          />
+                        </div>
+                      )}
                       <button
                         onClick={() => analyzeAllProfiles(false)}
                         disabled={steveProfilesLoading || batchRunning}

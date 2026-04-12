@@ -22,6 +22,7 @@ type Stage =
   | 'fix_company'
   | 'recommend'
   | 'linkedin'
+  | 'optional_social'
   | 'journey'
   | 'compose'
   | 'gibberish_check'
@@ -114,6 +115,7 @@ function stageProgress(stage: Stage): number {
     fix_role: 6,
     fix_company: 6,
     linkedin: 7,
+    optional_social: 7,
     journey: 8,
     recommend: 9,
     compose: 9,
@@ -169,6 +171,27 @@ function profileSummaryBlock(c: Collected): string {
   if (c.linkedin?.trim()) lines.push('• **LinkedIn:** on file')
   if (lines.length === 0) return 'Nothing is on your public profile yet — we’ll build it together.'
   return lines.join('\n')
+}
+
+/** Parse optional social URLs (Instagram / TikTok / Snapchat / Facebook) for Firestore onboardingIdentity.socialProvidedLinks. */
+function parseSocialUrlsFromInput(raw: string): { platform: string; url: string }[] {
+  const out: { platform: string; url: string }[] = []
+  for (const line of raw.split(/\n/).map(l => l.trim()).filter(Boolean)) {
+    try {
+      const u = new URL(line.startsWith('http') ? line : `https://${line}`)
+      const host = u.hostname.toLowerCase()
+      let platform = ''
+      if (host.includes('instagram')) platform = 'Instagram'
+      else if (host.includes('tiktok')) platform = 'TikTok'
+      else if (host.includes('snapchat')) platform = 'Snapchat'
+      else if (host.includes('facebook') || host === 'fb.com' || host.endsWith('.facebook.com')) platform = 'Facebook'
+      else continue
+      out.push({ platform, url: u.toString() })
+    } catch {
+      continue
+    }
+  }
+  return out
 }
 
 function looksLikeMeaninglessInput(val: string): boolean {
@@ -627,6 +650,19 @@ export default function OnboardingChat({
         })
         break
       }
+      case 'optional_social': {
+        const soOpts: ChatMessage['options'] = [{ label: 'Skip', value: 'skip_optional_social', icon: '⏭️' }]
+        if (stageHistory.current.length > 1) soOpts.push({ label: '← Go back', value: 'go_back', icon: '↩️' })
+        addSteveMessage(
+          'Optional: share profile links for **Instagram**, **TikTok**, or **Snapchat** if you want Steve to use them when profiling you. We only use these when you provide a link.\n\nPaste one URL per line, or skip.',
+          {
+            inputType: 'textarea',
+            inputPlaceholder: 'https://instagram.com/yourprofile\nhttps://www.tiktok.com/@you',
+            options: soOpts,
+          }
+        )
+        break
+      }
       case 'journey':
         addSteveMessage(`What should your network remember about your journey?\n\n${'Totally optional. Share a highlight from work or life—something you’re proud of or that shapes how you show up today.'}\n\nExamples: “Consulting background • Two marathons • Former competitive athlete”`, {
           inputType: 'textarea',
@@ -659,7 +695,7 @@ export default function OnboardingChat({
 
   function advanceTo(next: Stage, data?: Collected) {
     const c = data || collected
-    const mainStages: Stage[] = ['name', 'location', 'photo', 'talk_all_day', 'reach_out', 'professional', 'linkedin', 'journey', 'recommend', 'compose']
+    const mainStages: Stage[] = ['name', 'location', 'photo', 'talk_all_day', 'reach_out', 'professional', 'linkedin', 'optional_social', 'journey', 'recommend', 'compose']
     if (mainStages.includes(next)) {
       const hist = stageHistory.current
       if (hist[hist.length - 1] !== next) hist.push(next)
@@ -912,8 +948,10 @@ export default function OnboardingChat({
           talk_all_day: 'reach_out',
           reach_out: 'professional',
           professional: 'linkedin',
+          linkedin: 'optional_social',
           recommend: 'compose',
           journey: 'recommend',
+          optional_social: 'journey',
         }
         const returnStage = gibberishReturnStage.current
         gibberishReturnStage.current = null
@@ -938,6 +976,10 @@ export default function OnboardingChat({
         setTimeout(() => advanceTo('talk_all_day'), 600)
         break
       case 'skip_linkedin':
+        addUserMessage('Skip')
+        advanceTo('optional_social')
+        break
+      case 'skip_optional_social':
         addUserMessage('Skip')
         advanceTo('journey')
         break
@@ -1179,7 +1221,25 @@ export default function OnboardingChat({
         setCollected(newCollected)
         await saveField('linkedin', val)
         addSteveMessage('Perfect, that will help me learn more about your background!')
-        setTimeout(() => advanceTo('journey', newCollected), 600)
+        setTimeout(() => advanceTo('optional_social', newCollected), 600)
+        break
+      }
+      case 'optional_social': {
+        const links = parseSocialUrlsFromInput(val)
+        if (links.length > 0) {
+          try {
+            await fetch('/api/onboarding/social_links', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ socialProvidedLinks: links }),
+            })
+          } catch {}
+          addSteveMessage("Saved — I'll only use those profile URLs when you want richer profiling.")
+        } else {
+          addSteveMessage('No problem — you can add links later from your profile.')
+        }
+        setTimeout(() => advanceTo('journey', collected), 600)
         break
       }
       case 'journey': {
@@ -1217,6 +1277,10 @@ export default function OnboardingChat({
       if (lower.includes('linkedin.com') || lower.includes('skip')) return false
       return lower.includes('?') || /^(hey|what|how|can|tell)/.test(lower)
     }
+    if (currentStage === 'optional_social') {
+      if (/instagram\.|tiktok\.|snapchat\.|facebook\.|fb\.com/i.test(lower) || lower.includes('skip')) return false
+      return lower.includes('?') || /^(hey|what|how|can|tell)/.test(lower)
+    }
     return false
   }
 
@@ -1228,6 +1292,7 @@ export default function OnboardingChat({
         location: 'Where are you based?',
         professional: 'What do you do professionally?',
         linkedin: 'Got a LinkedIn URL?',
+        optional_social: 'Optional social profile URLs?',
         journey: 'What should your network remember about your journey?',
         talk_all_day: 'What are the things you could talk about all day?',
         recommend: 'Recommend a book, movie, or TV show to your network.',

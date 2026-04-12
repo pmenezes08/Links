@@ -722,8 +722,14 @@ def onboarding_enrich_profile():
             _fetch_onboarding_identity_context,
             _fetch_user_communities,
             _fetch_user_recent_activity,
+            _migrate_analysis_to_v3,
         )
+        from backend.services.firestore_reads import get_steve_user_profile
         from backend.services.steve_content_enrichment import enrich_shared_activity_for_profile
+        from backend.services.steve_profiling_gates import (
+            collect_social_links_for_profiling,
+            format_user_provided_social_block,
+        )
 
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -743,6 +749,22 @@ def onboarding_enrich_profile():
             if not row:
                 return jsonify({"success": False, "error": "User not found"}), 404
 
+        existing_profile = get_steve_user_profile(username)
+        existing_analysis_pre = _migrate_analysis_to_v3((existing_profile or {}).get("analysis", {})) or {}
+
+        def _gv_row(key: str) -> str:
+            try:
+                val = row[key] if hasattr(row, "keys") else None
+                return (str(val).strip() if val else "")
+            except Exception:
+                return ""
+
+        allow_norm, social_rows = collect_social_links_for_profiling(
+            linkedin_sql=_gv_row("linkedin"),
+            firestore_profile=existing_profile or {},
+            existing_analysis=existing_analysis_pre,
+        )
+
         communities = _fetch_user_communities(username)
         onboarding_context = _fetch_onboarding_identity_context(username)
         activity = _fetch_user_recent_activity(username)
@@ -752,12 +774,16 @@ def onboarding_enrich_profile():
             activity=activity,
             onboarding_context=onboarding_context,
         )
+        _social_block = format_user_provided_social_block(social_rows)
+        if _social_block:
+            profile_text = profile_text + "\n\n" + _social_block
+
         profiling_external_sources_payload = None
         try:
             from datetime import datetime as _dt
 
             enrich_block, ingest_errors, external_sources = enrich_shared_activity_for_profile(
-                activity or {}, "standard"
+                activity or {}, "standard", allowlist_normalized=allow_norm
             )
             profiling_external_sources_payload = {
                 "updatedAt": _dt.utcnow().isoformat() + "Z",
@@ -774,15 +800,13 @@ def onboarding_enrich_profile():
         except Exception as enrich_err:
             logger.warning("Onboarding enrichment content ingest skipped: %s", enrich_err)
 
-        analysis = _analyze_profile_with_grok(username, profile_text, depth='standard')
+        analysis = _analyze_profile_with_grok(username, profile_text, depth="standard")
 
         if not analysis:
             return jsonify({"success": True, "enrichment": None})
 
         # Save to Firestore (steve_user_profiles — the canonical collection)
-        from backend.services.firestore_reads import get_steve_user_profile
         from backend.services.firestore_writes import write_steve_user_profile
-        existing_profile = get_steve_user_profile(username)
         if existing_profile and existing_profile.get("analysis"):
             from bodybuilding_app import _merge_analyses, _get_steve_profiling_write_payloads
 
@@ -918,6 +942,23 @@ def onboarding_save_field():
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Onboarding save_field error for {username}: {e}")
+        return jsonify({"success": False, "error": "Failed to save"}), 500
+
+
+@onboarding_bp.route("/api/onboarding/social_links", methods=["POST"])
+@_login_required
+def onboarding_save_social_links():
+    """Persist optional Instagram/TikTok/Snapchat URLs to Firestore (onboardingIdentity.socialProvidedLinks)."""
+    username = session["username"]
+    data = request.get_json(silent=True) or {}
+    links = data.get("socialProvidedLinks")
+    if not isinstance(links, list):
+        return jsonify({"success": False, "error": "socialProvidedLinks must be a list"}), 400
+    try:
+        merge_onboarding_identity_to_steve_profile(username, {"socialProvidedLinks": links})
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error("onboarding_save_social_links error for %s: %s", username, e)
         return jsonify({"success": False, "error": "Failed to save"}), 500
 
 

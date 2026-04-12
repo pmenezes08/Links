@@ -321,7 +321,8 @@ def merge_steve_user_profiling_fields(
 def merge_onboarding_identity_to_steve_profile(username: str, collected: Optional[dict]):
     """Merge verbatim onboarding answers onto steve_user_profiles for Steve (networking, context).
 
-    Keys match OnboardingChat collected: journey, talkAllDay, reachOut, recommend.
+    Keys match OnboardingChat collected: journey, talkAllDay, reachOut, recommend,
+    socialProvidedLinks (list of {platform, url}).
     """
     if not USE_FIRESTORE_WRITES or not username:
         return
@@ -330,17 +331,33 @@ def merge_onboarding_identity_to_steve_profile(username: str, collected: Optiona
     try:
         fs = _get_client()
         now = datetime.utcnow()
+        doc_ref = fs.collection('steve_user_profiles').document(username)
+        snap = doc_ref.get()
+        existing_ob = (snap.to_dict() or {}).get('onboardingIdentity') or {}
+        if not isinstance(existing_ob, dict):
+            existing_ob = {}
+        ob_id = dict(existing_ob)
+        for k in ('journey', 'talkAllDay', 'reachOut', 'recommend'):
+            if k in collected:
+                ob_id[k] = (collected.get(k) or '').strip()
+        raw_social = collected.get('socialProvidedLinks')
+        if isinstance(raw_social, list) and raw_social:
+            cleaned = []
+            for item in raw_social:
+                if not isinstance(item, dict):
+                    continue
+                plat = (item.get('platform') or '').strip()
+                url = (item.get('url') or '').strip()
+                if url.startswith('http'):
+                    cleaned.append({'platform': plat or 'Social', 'url': url})
+            if cleaned:
+                ob_id['socialProvidedLinks'] = cleaned
+        ob_id['updatedAt'] = now
         payload = {
             'username': username,
-            'onboardingIdentity': {
-                'journey': (collected.get('journey') or '').strip(),
-                'talkAllDay': (collected.get('talkAllDay') or '').strip(),
-                'reachOut': (collected.get('reachOut') or '').strip(),
-                'recommend': (collected.get('recommend') or '').strip(),
-                'updatedAt': now,
-            },
+            'onboardingIdentity': ob_id,
         }
-        fs.collection('steve_user_profiles').document(username).set(payload, merge=True)
+        doc_ref.set(payload, merge=True)
         logger.debug(f"Firestore onboardingIdentity merged for {username}")
 
         _invalidate_and_reembed(username)

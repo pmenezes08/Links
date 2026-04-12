@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import parse_qs, urlparse
 
 import requests
@@ -320,6 +320,7 @@ def _collect_urls_from_activity(activity: Dict[str, Any]) -> List[Tuple[str, str
 def enrich_shared_activity_for_profile(
     activity: Optional[Dict[str, Any]],
     depth: str,
+    allowlist_normalized: Optional[Set[str]] = None,
 ) -> Tuple[str, List[Dict[str, str]], List[Dict[str, Any]]]:
     """
     Build an extra text block for Grok, ingestion errors, and external source records.
@@ -327,11 +328,26 @@ def enrich_shared_activity_for_profile(
     external_sources: one entry per URL attempted (order = processing order), for UI / Firestore.
 
     Only standard/deep should call this (caller responsibility).
+    Gated social hosts (LinkedIn, Instagram, TikTok, etc.) are only fetched when the URL
+    appears in allowlist_normalized (user-supplied). X/Twitter URLs are not gated here.
     """
+    from backend.services.steve_profiling_gates import (
+        load_gated_social_hosts,
+        url_allowed_for_activity_prefetch,
+    )
+
     if not activity or depth not in ("standard", "deep"):
         return "", [], []
 
+    allowlist_normalized = allowlist_normalized or set()
+    gated_hosts = load_gated_social_hosts()
+
     items = _collect_urls_from_activity(activity)
+    items = [
+        t
+        for t in items
+        if url_allowed_for_activity_prefetch(t[0], allowlist_normalized, gated_hosts)
+    ]
     if not items:
         return "", [], []
 

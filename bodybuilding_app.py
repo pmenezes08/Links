@@ -7275,7 +7275,12 @@ def admin_steve_profiles():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-def _execute_steve_profile_analysis(target_username: str, depth: str = 'standard', reset: bool = False):
+def _execute_steve_profile_analysis(
+    target_username: str,
+    depth: str = 'standard',
+    reset: bool = False,
+    max_output_tokens_override: Optional[int] = None,
+):
     """Run Grok Steve analysis for one user and persist to Firestore.
     Returns (success, payload, http_status). On success payload is dict with username and analysis.
     On failure payload is an error string and http_status is the suggested HTTP code."""
@@ -7306,6 +7311,26 @@ def _execute_steve_profile_analysis(target_username: str, depth: str = 'standard
         if not user:
             return False, 'User not found', 404
 
+        existing_profile = get_steve_user_profile(target_username)
+        existing_analysis_early = _migrate_analysis_to_v3((existing_profile or {}).get('analysis', {})) or {}
+        from backend.services.steve_profiling_gates import (
+            collect_social_links_for_profiling,
+            format_user_provided_social_block,
+        )
+
+        def _gv_user_row(key: str) -> str:
+            try:
+                val = user[key] if hasattr(user, 'keys') else None
+                return (str(val).strip() if val else '')
+            except Exception:
+                return ''
+
+        allow_norm, social_rows = collect_social_links_for_profiling(
+            linkedin_sql=_gv_user_row('linkedin'),
+            firestore_profile=existing_profile or {},
+            existing_analysis=existing_analysis_early,
+        )
+
         communities = _fetch_user_communities(target_username)
         onboarding_context = _fetch_onboarding_identity_context(target_username)
 
@@ -7316,6 +7341,10 @@ def _execute_steve_profile_analysis(target_username: str, depth: str = 'standard
             activity=activity,
             onboarding_context=onboarding_context,
         )
+        social_block = format_user_provided_social_block(social_rows)
+        if social_block:
+            profile_text = profile_text + "\n\n" + social_block
+
         profiling_external_sources_payload = None
         profiling_enriched_content_payload = None
         if depth in ('standard', 'deep'):
@@ -7323,7 +7352,7 @@ def _execute_steve_profile_analysis(target_username: str, depth: str = 'standard
                 from backend.services.steve_content_enrichment import enrich_shared_activity_for_profile
 
                 enrich_block, ingest_errors, external_sources = enrich_shared_activity_for_profile(
-                    activity or {}, depth
+                    activity or {}, depth, allowlist_normalized=allow_norm
                 )
                 profiling_external_sources_payload = {
                     'updatedAt': datetime.utcnow().isoformat() + 'Z',
@@ -7347,11 +7376,16 @@ def _execute_steve_profile_analysis(target_username: str, depth: str = 'standard
         if not profile_text.strip():
             return False, 'No profile data to analyze', 400
 
-        existing_profile = get_steve_user_profile(target_username)
-        existing_analysis = _migrate_analysis_to_v3((existing_profile or {}).get('analysis', {})) or {}
+        existing_analysis = existing_analysis_early
         prior_feedback = existing_analysis.get('_feedback', {})
 
-        analysis = _analyze_profile_with_grok(target_username, profile_text, prior_feedback=prior_feedback, depth=depth)
+        analysis = _analyze_profile_with_grok(
+            target_username,
+            profile_text,
+            prior_feedback=prior_feedback,
+            depth=depth,
+            max_output_tokens_override=max_output_tokens_override,
+        )
         if not analysis:
             return False, 'Grok analysis returned empty', 502
 
@@ -7411,8 +7445,24 @@ def admin_steve_profile_analyze(target_username):
     if depth not in ('quick', 'standard', 'deep'):
         depth = 'standard'
     reset = data.get('reset', False)
+    max_output_tokens_override = None
+    if depth == 'deep':
+        raw = data.get('max_output_tokens')
+        if raw is not None:
+            try:
+                mo = int(raw)
+                floor = STEVE_DEEP_MAX_OUTPUT_TOKENS
+                ceil = STEVE_ADMIN_DEEP_MAX_OUTPUT_TOKENS_CEILING
+                max_output_tokens_override = max(floor, min(mo, ceil))
+            except (TypeError, ValueError):
+                max_output_tokens_override = None
 
-    ok, payload, err_status = _execute_steve_profile_analysis(target_username, depth=depth, reset=reset)
+    ok, payload, err_status = _execute_steve_profile_analysis(
+        target_username,
+        depth=depth,
+        reset=reset,
+        max_output_tokens_override=max_output_tokens_override,
+    )
     if not ok:
         return jsonify({'success': False, 'error': payload}), err_status
     return jsonify({'success': True, **payload})
@@ -7971,7 +8021,26 @@ def api_profile_ai_review():
 
 
 STEVE_SELF_REFRESH_COOLDOWN_SECONDS = int(os.environ.get('STEVE_SELF_REFRESH_COOLDOWN_SECONDS', '86400'))
+STEVE_SELF_REFRESH_COOLDOWN_SECONDS_FREE = int(
+    os.environ.get('STEVE_SELF_REFRESH_COOLDOWN_SECONDS_FREE', str(STEVE_SELF_REFRESH_COOLDOWN_SECONDS))
+)
+STEVE_SELF_REFRESH_COOLDOWN_SECONDS_PREMIUM = int(os.environ.get('STEVE_SELF_REFRESH_COOLDOWN_SECONDS_PREMIUM', '21600'))
 STEVE_SELF_ANALYZE_LOCK_SECONDS = int(os.environ.get('STEVE_SELF_ANALYZE_LOCK_SECONDS', '900'))
+STEVE_STANDARD_MAX_OUTPUT_TOKENS = int(os.environ.get('STEVE_STANDARD_MAX_OUTPUT_TOKENS', '2400'))
+STEVE_DEEP_MAX_OUTPUT_TOKENS = int(os.environ.get('STEVE_DEEP_MAX_OUTPUT_TOKENS', '4000'))
+STEVE_ADMIN_DEEP_MAX_OUTPUT_TOKENS_CEILING = int(os.environ.get('STEVE_ADMIN_DEEP_MAX_OUTPUT_TOKENS_CEILING', '8192'))
+
+
+def _steve_self_refresh_cooldown_seconds(username: str) -> int:
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            sub = fetch_user_subscription(c, username)
+        if is_free_subscription(sub):
+            return STEVE_SELF_REFRESH_COOLDOWN_SECONDS_FREE
+        return STEVE_SELF_REFRESH_COOLDOWN_SECONDS_PREMIUM
+    except Exception:
+        return STEVE_SELF_REFRESH_COOLDOWN_SECONDS_FREE
 
 
 def _steve_analysis_payload_json_safe(obj):
@@ -8008,6 +8077,7 @@ def api_profile_steve_analysis():
         lock_key = f"steve_self_analyze_lock:{username}"
         can_refresh = cache.get(cooldown_key) is None
         in_progress = cache.get(lock_key) is not None
+        _cd = _steve_self_refresh_cooldown_seconds(username)
 
         profile = get_steve_user_profile(username)
         if not profile or profile.get('username') != username:
@@ -8017,7 +8087,7 @@ def api_profile_steve_analysis():
                 'forUser': username,
                 'canRequestRefresh': can_refresh,
                 'analysisInProgress': in_progress,
-                'refreshCooldownSeconds': STEVE_SELF_REFRESH_COOLDOWN_SECONDS,
+                'refreshCooldownSeconds': _cd,
             }))
 
         analysis = dict(_migrate_analysis_to_v3(profile.get('analysis', {})) or {})
@@ -8039,7 +8109,7 @@ def api_profile_steve_analysis():
             'forUser': username,
             'canRequestRefresh': can_refresh,
             'analysisInProgress': in_progress,
-            'refreshCooldownSeconds': STEVE_SELF_REFRESH_COOLDOWN_SECONDS,
+            'refreshCooldownSeconds': _cd,
         }))
     except Exception as e:
         logger.error(f"Error in api_profile_steve_analysis for {username}: {e}", exc_info=True)
@@ -8053,6 +8123,7 @@ def api_profile_steve_request_refresh():
     username = session.get('username')
     cooldown_key = f"steve_self_refresh_cooldown:{username}"
     lock_key = f"steve_self_analyze_lock:{username}"
+    cd_sec = _steve_self_refresh_cooldown_seconds(username)
 
     if cache.get(lock_key):
         return jsonify({
@@ -8065,11 +8136,11 @@ def api_profile_steve_request_refresh():
         return jsonify({
             'success': False,
             'error': 'Please wait before requesting another refresh',
-            'retryAfterSeconds': STEVE_SELF_REFRESH_COOLDOWN_SECONDS,
+            'retryAfterSeconds': cd_sec,
         }), 429
 
     cache.set(lock_key, '1', ttl=STEVE_SELF_ANALYZE_LOCK_SECONDS)
-    cache.set(cooldown_key, '1', ttl=STEVE_SELF_REFRESH_COOLDOWN_SECONDS)
+    cache.set(cooldown_key, '1', ttl=cd_sec)
 
     def _run():
         try:
@@ -8197,6 +8268,20 @@ def _migrate_analysis_to_v3(analysis: dict) -> dict:
             v3[meta_key] = analysis[meta_key]
 
     return v3
+
+
+def _linkedin_field_looks_like_profile_url(raw: Optional[str]) -> bool:
+    """True when the user supplied a concrete LinkedIn member profile URL (not company/job pages)."""
+    s = (raw or "").strip().lower()
+    if not s:
+        return False
+    if "lnkd.in" in s:
+        return True
+    if "linkedin.com" not in s and not s.startswith("linkedin."):
+        return False
+    if any(p in s for p in ("/company/", "/school/", "/jobs/", "/posts/", "/feed/", "/pulse/")):
+        return False
+    return "/in/" in s or "/pub/" in s
 
 
 def _career_entry_has_guessed_tenure(entry: dict) -> bool:
@@ -8756,9 +8841,16 @@ def _build_profile_text_for_grok(
     return '\n'.join(parts)
 
 
-def _analyze_profile_with_grok(username: str, profile_text: str, prior_feedback: dict = None, depth: str = 'standard') -> dict:
+def _analyze_profile_with_grok(
+    username: str,
+    profile_text: str,
+    prior_feedback: dict = None,
+    depth: str = 'standard',
+    max_output_tokens_override: Optional[int] = None,
+) -> dict:
     """Call Grok to analyze a user's profile. Returns v3 schema dict.
-    depth: 'quick' (platform data only), 'standard' (+ professional web), 'deep' (full web + social + posts)."""
+    depth: 'quick' (platform only), 'standard' (web_search: company intel + narrow scope),
+    'deep' (web_search + x_search, full research)."""
     if not XAI_API_KEY:
         logger.warning("XAI_API_KEY not set, skipping profile analysis")
         return {}
@@ -8773,7 +8865,29 @@ def _analyze_profile_with_grok(username: str, profile_text: str, prior_feedback:
         if override and "identity_override" in override:
             identity_override = f"\n\n{override['identity_override']}\n\n"
 
-        base_rules = """IMPORTANT RULES:
+        community_internal_line = (
+            "- You MAY use community names in your internal reasoning and web searches — just keep them out of the output."
+            if depth in ('standard', 'deep')
+            else "- You MAY use community names in your internal reasoning — just keep them out of the output."
+        )
+        shared_links_line = (
+            """- SHARED CONTENT (posts with links): These URLs reveal the user's information diet and professional focus.
+  When ENRICHED SHARED LINKS already includes text for a URL, prefer that over generic web search for that URL.
+  Otherwise USE YOUR WEB SEARCH to visit/analyze each URL. Understand what the content is about and what sharing
+  it says about the user's interests and expertise. The user's comment alongside the link adds critical context."""
+            if depth in ('standard', 'deep')
+            else """- SHARED CONTENT (posts with links): These URLs reveal the user's information diet and professional focus.
+  This run does NOT include web_search: rely ONLY on ENRICHED SHARED LINKS excerpts when provided for a URL;
+  do not claim you fetched or read URLs that were not prefetched. The user's comment alongside the link adds critical context."""
+        )
+
+        walled_social_carve_out = """
+WALLED SOCIAL NETWORKS (CRITICAL):
+- Do NOT use web_search to treat as authoritative or to browse member profiles on: LinkedIn, Instagram, TikTok, Snapchat, Facebook, Threads, or similar gated sites UNLESS that exact user-supplied URL appears in the "USER-PROVIDED SOCIAL" section of the input (if present).
+- X/Twitter: on depth "deep" you may use the x_search tool without a user link. On "standard" depth, x_search is not available.
+- For company websites, news, sports orgs, and open-web pages, web_search is allowed."""
+
+        base_rules = f"""IMPORTANT RULES:
 - Read the FULL text holistically. Understand tone, sarcasm, humor, and career context.
 - There is no wall between personal and professional — build a UNIFIED picture of the whole person.
 - If someone says "recovering lawyer turned developer", they are in TECH, not law.
@@ -8789,16 +8903,13 @@ COMMUNITY PRIVACY (CRITICAL):
 - Instead use generic descriptions: "an MBA program", "a tech founders network", "an executive peer group",
   "a professional community", "a startup cohort", etc.
 - This protects the exclusivity and privacy of private networks. Violating this is a critical failure.
-- You MAY use community names in your internal reasoning and web searches — just keep them out of the output.
+{community_internal_line}
 
 PLATFORM ACTIVITY (if provided):
 - ENRICHED SHARED LINKS (if provided): Pre-fetched article text, YouTube transcripts, or audio transcriptions
   from URLs the user shared in the last 12 months. Treat this as PRIMARY evidence for what the linked content says.
   If CONTENT INGESTION FAILURES are listed, summarize them in "notes" and do not invent facts for those URLs.
-- SHARED CONTENT (posts with links): These URLs reveal the user's information diet and professional focus.
-  When ENRICHED SHARED LINKS already includes text for a URL, prefer that over generic web search for that URL.
-  Otherwise USE YOUR WEB SEARCH to visit/analyze each URL. Understand what the content is about and what sharing
-  it says about the user's interests and expertise. The user's comment alongside the link adds critical context.
+{shared_links_line}
 - OWN THOUGHTS (text-only posts): These reveal the user's voice — opinions, reflections, experiences, humor.
   Pay special attention to recurring themes.
 - REPLIES & COMMENTS: These show what topics the user engages with and how they think. Look for patterns in what
@@ -8811,8 +8922,21 @@ PLATFORM ACTIVITY (if provided):
   insights from posts, comments, and shared externals in your summary, observations, identity, and InferredContext.
   Platform activity is PRIMARY data — it shows what the user actually cares about RIGHT NOW. Do not ignore it."""
 
+        research_rules_standard = f"""
+STANDARD PROFILE RESEARCH (today is {today_str}):
+- The user confirmed name, role, and company on-platform where provided. Use those as GROUND TRUTH; do not replace them from the web.
+- Use web_search for: (1) COMPANY INTEL for the stated employer — description, sector, stage, news; (2) what the stated ROLE means in the context of that company and industry; (3) topics clearly evidenced in platform text, onboarding, or ENRICHED SHARED LINKS / article excerpts.
+- Do NOT run the full wide-to-vertical personal sweep used in "deep" analysis. Do NOT chase every hobby thread unless it is tied to evidence in the input (platform, onboarding, enrichment).
+- Do NOT use x_search at standard depth (tool not available).
+- Set "personal" to null unless personal detail is explicit in platform input or USER-PROVIDED SOCIAL URLs.
+- Keep webFindings and interests grounded; prefer fewer, higher-confidence interests over speculative breadth.
+{walled_social_carve_out}
+"""
+
         research_rules = ""
-        if depth in ('standard', 'deep'):
+        if depth == 'standard':
+            research_rules = research_rules_standard
+        elif depth == 'deep':
             research_rules = f"""
 WEB RESEARCH — TWO-PHASE STRATEGY (today is {today_str}):
 
@@ -8946,7 +9070,8 @@ IDENTITY CONFIDENCE RULES (STRICT):
 - "medium": Found the person online AND exactly 1 data point matches.
 - "low": Found someone online but ZERO data points could be verified. A name-only match is ALWAYS "low".
 - NEVER set confidence to "high" or "medium" based solely on a name match.
-- A recognizable network membership (e.g. "Kellogg EMBA") counts as a corroborating data point when matched online."""
+- A recognizable network membership (e.g. "Kellogg EMBA") counts as a corroborating data point when matched online.
+{walled_social_carve_out}"""
 
         deep_rules = ""
         if depth == 'deep':
@@ -9072,7 +9197,7 @@ Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
 
 If the company or role fields are empty, set professional.company and professional.role to null.
 If no location is provided, set professional.location to null.
-If you cannot find the person online or depth is "quick", set personal to null.
+If depth is "quick", set personal to null. If depth is "standard", set personal to null unless personal detail is explicit in the input or USER-PROVIDED SOCIAL URLs. If depth is "deep", populate personal when evidence supports it.
 Set any field to null rather than guessing with no basis."""
 
         user_msg = f"Analyze this user's profile (@{username}):\n\n{profile_text}"
@@ -9109,10 +9234,13 @@ Set any field to null rather than guessing with no basis."""
         max_tokens = 1000
         if depth == 'standard':
             tools = [{"type": "web_search"}]
-            max_tokens = 3000
+            max_tokens = STEVE_STANDARD_MAX_OUTPUT_TOKENS
         elif depth == 'deep':
             tools = [{"type": "web_search"}, {"type": "x_search"}]
-            max_tokens = 4000
+            max_tokens = STEVE_DEEP_MAX_OUTPUT_TOKENS
+
+        if max_output_tokens_override is not None and depth == 'deep':
+            max_tokens = max_output_tokens_override
 
         create_kwargs = {
             "model": GROK_MODEL_MULTI_AGENT,
@@ -9126,7 +9254,22 @@ Set any field to null rather than guessing with no basis."""
         if tools:
             create_kwargs["tools"] = tools
 
+        _t0 = time.perf_counter()
         response = client.responses.create(**create_kwargs)
+        _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+        _usage = getattr(response, "usage", None)
+        try:
+            logger.info(
+                "steve_profile_grok username=%s depth=%s max_output_tokens=%s tools=%s ms=%s usage=%s",
+                username,
+                depth,
+                max_tokens,
+                tools,
+                _elapsed_ms,
+                _usage,
+            )
+        except Exception:
+            pass
         raw = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
         if not raw:
             logger.warning(f"Grok returned empty response for {username}")
