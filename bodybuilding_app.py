@@ -15737,7 +15737,11 @@ def api_networking_community_members(community_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-NETWORKING_ENRICHMENT_CAP = 40  # max members to send with full AI insight to the LLM
+# Networking retrieval for large communities (wide recall, bounded Grok prompt).
+NETWORKING_ANN_RECALL_CAP = 200  # FAISS pool size (high recall)
+NETWORKING_PROMPT_MEMBER_CAP = 40  # max rows in the "Community members" block for Grok
+NETWORKING_GROK_FULL_CONTEXT_CAP = 12  # top N by embedding score get full KB + legacy
+NETWORKING_ENRICHMENT_CAP = NETWORKING_PROMPT_MEMBER_CAP  # backward-compatible alias
 
 
 def _ensure_embedding_index():
@@ -15771,30 +15775,46 @@ def _networking_build_members_text(
 ):
     """Build the members block for the Grok prompt.
 
-    When the community is large (> NETWORKING_ENRICHMENT_CAP), uses chunked
-    embedding search to select the most relevant subset.  Does a SINGLE
-    Firestore batch read and derives context strings, recommendation counts,
-    and feedback scores from the same data.
+    Small communities (<= NETWORKING_PROMPT_MEMBER_CAP): all members, slim AI insight each.
+
+    Large communities: FAISS recall up to NETWORKING_ANN_RECALL_CAP users, then the top
+    NETWORKING_PROMPT_MEMBER_CAP by score are listed; the first NETWORKING_GROK_FULL_CONTEXT_CAP
+    get full KB + legacy, the rest slim summaries only.
     """
-    from backend.services.embedding_service import search_similar_profiles, profile_index
+    from backend.services.embedding_service import search_similar_profiles_ranked, profile_index
     from backend.services.firestore_reads import batch_get_steve_user_profiles
 
     _ensure_embedding_index()
 
-    enriched_usernames = set(all_member_usernames)
-    if len(all_member_usernames) > NETWORKING_ENRICHMENT_CAP and query_text and profile_index.is_ready:
-        top_usernames = search_similar_profiles(query_text, all_member_usernames, k=NETWORKING_ENRICHMENT_CAP)
-        enriched_usernames = set(top_usernames)
+    n = len(all_member_usernames)
+    tiered_preamble = ''
+    ordered_prompt: list = []
+    full_ctx_users: set = set()
 
-    profiles_raw = batch_get_steve_user_profiles(list(enriched_usernames))
+    if n <= NETWORKING_PROMPT_MEMBER_CAP:
+        ordered_prompt = list(all_member_usernames)
+    elif query_text and profile_index.is_ready:
+        ann_k = min(NETWORKING_ANN_RECALL_CAP, n)
+        ranked = search_similar_profiles_ranked(query_text, all_member_usernames, k=ann_k)
+        ordered_prompt = [u for u, _ in ranked[:NETWORKING_PROMPT_MEMBER_CAP]]
+        full_ctx_users = set(ordered_prompt[:NETWORKING_GROK_FULL_CONTEXT_CAP])
+        tiered_preamble = (
+            f"Roster note: The first {NETWORKING_GROK_FULL_CONTEXT_CAP} members below have "
+            "FULL profile context; any additional rows have brief summaries only.\n\n"
+        )
+    else:
+        ordered_prompt = list(all_member_usernames[:NETWORKING_PROMPT_MEMBER_CAP])
+
+    profiles_raw = batch_get_steve_user_profiles(ordered_prompt)
 
     ctx_map = {}
     rec_counts = {}
     feedback_scores = {}
-    for uname in enriched_usernames:
+    for uname in ordered_prompt:
         prof = profiles_raw.get(uname)
         if prof:
-            ctx = _get_or_build_context(uname, prof, networking=True)
+            use_slim = uname not in full_ctx_users
+            ctx = _get_or_build_context(uname, prof, networking=use_slim)
             if viewer_username and ctx:
                 ctx = _scrub_community_names(ctx, uname, viewer_username)
             ctx_map[uname] = ctx
@@ -15811,8 +15831,9 @@ def _networking_build_members_text(
         member_row_map[uname] = r
 
     members_lines = []
-    ordered = list(enriched_usernames) if enriched_usernames != set(all_member_usernames) else all_member_usernames
-    for uname in ordered:
+    if tiered_preamble:
+        members_lines.append(tiered_preamble.rstrip())
+    for uname in ordered_prompt:
         r = member_row_map.get(uname)
         if not r:
             continue
@@ -15936,11 +15957,14 @@ COMMUNITY STRUCTURE:
 
 HOW TO MATCH:
 1. Start with people who clearly match what the user asked for. If they ask about a location, lead with people connected to that location. If they ask about an industry, lead with people in that industry.
-2. Always try to help. If no one is a perfect match, look for the closest connections — people who might be able to help the user achieve their goal. Every recommendation must have a sound rationale tied to the request.
-3. Sub-community (cohort) membership is MINOR background context, NOT a matching criterion. Being in the same sub-community as the requester should never be the reason you recommend someone. Match based on relevance to the request — skills, expertise, location, industry, interests. A shared sub-community is at most a tiebreaker between otherwise equal candidates.
-4. Use everything you know about each member — their background, company, role, location, interests, what they've posted, and any deeper context provided. The richer profile data is your best source of truth.
-5. Never recommend someone with zero connection to the ask. If someone shares an interest in AI but the user asked about Lisbon, that person is not relevant.
-6. CRITICAL: Your recommendations must draw from the ENTIRE network, not cluster around members from any single sub-community or cohort. Ensure diversity across the full network.
+2. DIRECT vs STRETCH: Recommend as primary matches ONLY people whose roster text (summary, traits, experiences, expertise, posts) shows a DIRECT connection to the ask. If you also want to suggest a looser angle (adjacent skill, metaphorical similarity, "same discipline" without the exact credential), put those in a SHORT clearly labeled follow-on such as "If you're open to a broader angle:" and state honestly that the link is indirect — never present a stretch as equivalent to a direct match.
+3. AMBIGUOUS OR POLYSEMOUS ASKS: Short or vague requests, or words with multiple meanings (e.g. "climbing" = outdoor sport vs career ladder; "security"; "culture"; "capital"; "network"), require ONE focused clarifying question before you rely on stretched matches — unless prior messages in this thread or the roster already disambiguates.
+4. TRAIT AND PERSONALITY ASKS (e.g. "goal-driven", "collaborative"): Base recommendations ONLY on traits, values, identity, or explicit personality signals in the roster. Do NOT infer personality from job title, industry, or employer alone unless the roster explicitly supports it.
+5. VAGUE PEOPLE-FINDING ASKS (e.g. "military background", "someone in healthcare") without why they need them: Prefer ONE brief clarifying question (what they want to achieve or discuss) before listing many names — unless the ask is already specific enough to search.
+6. Sub-community (cohort) membership is MINOR background context, NOT a matching criterion. Being in the same sub-community as the requester should never be the reason you recommend someone. Match based on relevance to the request — skills, expertise, location, industry, interests. A shared sub-community is at most a tiebreaker between otherwise equal candidates.
+7. Use everything you know about each member — their background, company, role, location, interests, what they've posted, and any deeper context provided. The richer profile data is your best source of truth.
+8. Never recommend someone with zero connection to the ask. If someone shares an interest in AI but the user asked about Lisbon, that person is not relevant.
+9. CRITICAL: Your recommendations must draw from the ENTIRE network, not cluster around members from any single sub-community or cohort. Ensure diversity across the full network.
 
 KNOWLEDGE BASE CONTEXT (when available):
 - Some members will have a [MEMBER KNOWLEDGE BASE] section in their AI insight. This is a high-quality, structured analysis of the member across multiple dimensions: life/career evolution, geographic journey, expertise depth, opinion evolution, identity traits, network relationships, and unique fingerprint.
@@ -15958,11 +15982,12 @@ LOAD BALANCING & QUALITY SIGNALS — VERY IMPORTANT:
 - NEVER mention recommendation counts, load balancing, feedback scores, response rates, or frequency to the user. This is internal logic only.
 
 HOW TO RESPOND:
-- For each recommendation, give the person's @username and a brief, natural rationale explaining WHY they're relevant to the request.
-- If someone is a strong match, say so confidently. If someone is a potential match based on background clues (e.g., a Portuguese name when looking for Lisbon connections), explain the reasoning naturally — don't label it as "inference" or use technical language.
-- When you recommend someone who is less obvious (e.g., you chose them over a more well-known member to distribute load), give a slightly richer rationale so the user understands their value. For example, mention a specific experience, shared interest, or recent activity that makes them a great fit.
-- Quality over quantity. Recommend 1-5 people. If only 1 person is relevant, recommend just that 1.
-- If nobody has any connection to the request, say so briefly and offer to help with a different angle.
+- Lead with direct matches (if any): for each, give @username and a brief, natural rationale tied to evidence in the roster.
+- If you asked a clarifying question (ambiguous ask or vague people search), you may answer with ONLY that question and no recommendations — that is helpful.
+- If you include stretch or optional matches, separate them clearly and label them as optional; do not use the same confident tone as for direct matches.
+- If someone is a strong match, say so confidently. If the match relies on a soft clue, say so plainly without sounding technical.
+- Quality over quantity. Recommend 1-5 people for direct matches. If only 1 person is directly relevant, recommend just that 1.
+- If nobody has a direct connection to the request, say so briefly and offer to help with a different angle or ask one clarifying question.
 
 RULES:
 - Only reference members from the provided list.
@@ -16097,9 +16122,11 @@ COMMUNITY STRUCTURE:
 
 HOW TO MATCH:
 1. Find the most relevant connections for this person based on their profile, interests, role, industry, and location. Draw from the ENTIRE parent network, not just one sub-community or cohort.
-2. Sub-community (cohort) membership is MINOR background context, NOT a matching criterion. Being in the same cohort as the requester should never be the reason you recommend someone. Match based on relevance — skills, expertise, location, industry, interests. A shared sub-community is at most a tiebreaker between otherwise equal candidates.
-3. Use everything you know about each member — their background, company, role, location, interests, what they've posted, and any deeper context provided. The richer profile data is your best source of truth.
-4. Every recommendation must have a clear rationale — why would these two people benefit from connecting? Ensure diversity across the full network.
+2. DIRECT vs STRETCH: Primary recommendations must be grounded in clear overlap (complementary skills, shared domains, geography, values, or explicit traits in the roster). If you suggest a looser fit, label it as optional and say honestly why it is indirect.
+3. TRAIT AND PERSONALITY: When highlighting character fit, use only traits or identity signals present in the roster — do not infer personality from job title or industry alone unless the text supports it.
+4. Sub-community (cohort) membership is MINOR background context, NOT a matching criterion. Being in the same cohort as the requester should never be the reason you recommend someone. Match based on relevance — skills, expertise, location, industry, interests. A shared sub-community is at most a tiebreaker between otherwise equal candidates.
+5. Use everything you know about each member — their background, company, role, location, interests, what they've posted, and any deeper context provided. The richer profile data is your best source of truth.
+6. Every recommendation must have a clear rationale — why would these two people benefit from connecting? Ensure diversity across the full network.
 
 LOAD BALANCING & QUALITY SIGNALS — VERY IMPORTANT:
 - Some members are tagged "Recommended Nx recently". This means Steve has already recommended them N times in the past 30 days. High-frequency members risk being overloaded with connection requests.
@@ -16110,8 +16137,9 @@ LOAD BALANCING & QUALITY SIGNALS — VERY IMPORTANT:
 - NEVER mention recommendation counts, load balancing, feedback scores, response rates, or frequency to the user. This is internal logic only.
 
 HOW TO RESPOND:
-- For each recommendation, give the person's @username and a brief, natural rationale.
-- When you recommend someone who is less obvious (e.g., you chose them over a more well-known member to distribute load), give a slightly richer rationale so the user understands their value — mention a specific experience, project, or shared interest.
+- Lead with the strongest direct matches; give @username and a brief, natural rationale each.
+- Optional or stretch fits go in a short clearly labeled follow-on; do not present them as equally strong as direct matches.
+- When you recommend someone who is less obvious, give a slightly richer rationale — mention a specific experience, project, or shared interest from the roster.
 - Quality over quantity. Recommend 3-5 of the strongest matches.
 - Speak naturally and conversationally — like a helpful friend, not a search engine.
 

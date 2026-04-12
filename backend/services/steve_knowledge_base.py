@@ -664,9 +664,9 @@ def build_knowledge_context_for_steve(
 def build_knowledge_context_slim(username: str) -> str:
     """Return a compact KB summary for the networking roster prompt.
 
-    Uses only the Index.currentSynthesis (one paragraph) plus the
-    UniqueFingerprint.bestMatchedWith field.  This keeps the per-member
-    token count low while giving Grok enough to write a recommendation.
+    Uses Index.currentSynthesis, optional Identity traits (truncated),
+    and UniqueFingerprint.bestMatchedWith. Keeps per-member tokens low
+    while preserving trait-level signals for personality-style asks.
     """
     try:
         fs = _get_fs()
@@ -677,6 +677,19 @@ def build_knowledge_context_slim(username: str) -> str:
         synthesis = (idx.get("currentSynthesis") or "").strip()
         if not synthesis:
             return ""
+        id_doc = fs.collection(COLLECTION).document(f"{username}_Identity").get()
+        if id_doc.exists:
+            ident = (id_doc.to_dict() or {}).get("content", {})
+            traits = ident.get("traits")
+            if traits:
+                if isinstance(traits, list):
+                    t_str = ", ".join(str(t) for t in traits[:8])
+                else:
+                    t_str = str(traits).strip()
+                if t_str:
+                    if len(t_str) > 180:
+                        t_str = t_str[:177] + "..."
+                    synthesis += f" | Traits: {t_str}"
         uf_doc = fs.collection(COLLECTION).document(f"{username}_UniqueFingerprint").get()
         if uf_doc.exists:
             uf = (uf_doc.to_dict() or {}).get("content", {})

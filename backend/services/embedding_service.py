@@ -12,8 +12,9 @@ Write path:
     onboarding identity merge, or post creation.
 
 Read path:
-    search_similar_profiles(query_text, candidate_usernames, k)
-    — returns top-k usernames whose best-matching chunk is most similar.
+    search_similar_profiles_ranked(query_text, candidate_usernames, k)
+    — returns top-k (username, score) pairs (best chunk per user).
+    search_similar_profiles(...) — usernames only (backward compatible).
 """
 
 import os
@@ -623,6 +624,33 @@ compute_and_store_embedding_background = compute_and_store_embeddings_background
 # High-level search for networking endpoints
 # ---------------------------------------------------------------------------
 
+def search_similar_profiles_ranked(
+    query_text: str,
+    candidate_usernames: List[str],
+    k: int = 30,
+) -> List[Tuple[str, float]]:
+    """Embed *query_text* and return the top-k (username, score) pairs.
+
+    Score is cosine similarity of the query to each user's best-matching
+    chunk. When embeddings are unavailable, returns the first *k*
+    candidates with score 0.0 (unranked tie).
+    """
+    if not candidate_usernames:
+        return []
+    cap = min(k, len(candidate_usernames))
+    if not profile_index.is_ready or not OPENAI_API_KEY:
+        return [(candidate_usernames[i], 0.0) for i in range(cap)]
+
+    qvec = compute_embedding(query_text)
+    if not qvec:
+        return [(candidate_usernames[i], 0.0) for i in range(cap)]
+
+    results = profile_index.search(qvec, candidate_usernames=candidate_usernames, k=k)
+    if not results:
+        return [(candidate_usernames[i], 0.0) for i in range(cap)]
+    return results
+
+
 def search_similar_profiles(
     query_text: str,
     candidate_usernames: List[str],
@@ -638,14 +666,6 @@ def search_similar_profiles(
     Falls back to returning all candidates (unranked) if embeddings are
     unavailable.
     """
-    if not profile_index.is_ready or not OPENAI_API_KEY:
-        return candidate_usernames[:k] if len(candidate_usernames) > k else candidate_usernames
-
-    qvec = compute_embedding(query_text)
-    if not qvec:
-        return candidate_usernames[:k] if len(candidate_usernames) > k else candidate_usernames
-
-    results = profile_index.search(qvec, candidate_usernames=candidate_usernames, k=k)
-    if not results:
-        return candidate_usernames[:k] if len(candidate_usernames) > k else candidate_usernames
-    return [uname for uname, _score in results]
+    return [uname for uname, _ in search_similar_profiles_ranked(
+        query_text, candidate_usernames, k=k,
+    )]
