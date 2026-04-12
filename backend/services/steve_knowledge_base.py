@@ -729,7 +729,7 @@ Focus on these 10 dimensions:
 1. LifeCareer — career stages, transitions, trajectory, turning points
 2. GeographyCulture — locations lived, cultural influences, geographic expertise
 3. Expertise — domains, depth progression, current focus, credibility signals
-4. CompanyIntel — rich intelligence on every company the user has worked for (reputation, selectivity, culture, stage, relevance)
+4. CompanyIntel — rich intelligence on every company the user has worked for (reputation, selectivity, culture, stage, reach, relevance)
 5. Opinions — key topic stances, opinion shifts over time, consistent beliefs
 6. Identity — core values, personality traits, contradictions, energy patterns, communication style
 7. Network — connections and interactions inferred exclusively from public posts, comments, and shared external sources (no private DM or group chat content)
@@ -786,6 +786,10 @@ Rules for all users:
 - Be HOLISTIC. Connect professional, personal, geographic, cultural, educational, and volunteer experiences into a coherent narrative. **Populate InferredContext as the primary home for these insights** while cross-referencing relevant dimensions (Identity, UniqueFingerprint, LifeCareer, etc.).
 - CULTURAL & SLANG CONTEXT (CRITICAL FOR POSTS/COMMENTS): Pay special attention to native-language nuances. E.g. Portuguese "Hey Malta", "E aí malta", or "Malta vai" is colloquial for "Hey guys/folks" in group settings — not a literal reference to the country of Malta. Use surrounding comment thread and user background to disambiguate. Surface these interpretations prominently in InferredContext.
 - For CompanyIntel: Always enrich with reputation, selectivity, stage, and how it shapes the user's credibility (e.g., "xAI role carries far more weight than a similar title at a small foundation"). Surface the valuation insight in InferredContext.
+- For each company you MUST set globalPresence to exactly one of: "global", "regional", or "local" (lowercase strings):
+  • global — meaningful operations, clients, or revenue footprint across multiple continents, or clearly worldwide.
+  • regional — primary footprint within one continent or adjacent region (multiple countries in that region, or continent-wide), but not worldwide.
+  • local — essentially single-country or single-metro / domestic focus; no meaningful international reach. Do not use job-title metaphors; judge actual company reach.
 - Avoid generic statements. Use the examples above as templates for every experience.
 - This inference MUST be prominently captured in InferredContext.experiences, InferredContext.overarchingThemes, and InferredContext.strategicImplications. It should also flow into Identity, observations in Index, UniqueFingerprint, LifeCareer, Expertise.credibilitySignals, and the overall Index synthesis.
 - When PREVIOUS SYNTHESIS is provided, enhance the existing InferredContext rather than replacing it.
@@ -796,6 +800,8 @@ This engine is the core of building a rich, accurate, evolving member knowledge 
 PRIVACY:
 - Never mention specific community or network names in output.
 - Use generic descriptions ("a tech founders network", "an MBA program").
+
+In the JSON output, each CompanyIntel entry's globalPresence field must be exactly the string "global", "regional", or "local" (one token, lowercase) — never a pipe list or prose.
 
 Return ONLY valid JSON with this structure:
 {
@@ -811,7 +817,7 @@ Return ONLY valid JSON with this structure:
         "sector": "AI / Technology",
         "stage": "Series B / Growth",
         "size": "50-200 employees",
-        "globalPresence": "global | regional | local",
+        "globalPresence": "global",
         "publicStatus": "public | private | non-profit | government",
         "valuationTier": "unicorn_plus | mid_cap | growth | early_stage | established_enterprise | unknown",
         "reputation": "Extremely high prestige and selectivity",
@@ -840,7 +846,7 @@ def synthesize_member_knowledge(
     username: str,
     *,
     profile_data: Optional[Dict[str, Any]] = None,
-) -> bool:
+) -> Tuple[bool, Optional[Dict[str, str]]]:
     """Auto-synthesize the 10 core dimension notes from existing data (including the new InferredContext layer).
 
     Collects all available data (Firestore profile, SQL posts/replies,
@@ -851,9 +857,17 @@ def synthesize_member_knowledge(
     HOLISTIC EXPERIENCE INFERENCE ENGINE now explicitly populate the new
     InferredContext dimension to make transformative insights (including
     cultural/slang context from posts and comments) first-class and obvious.
+
+    Returns:
+        (True, None) on success.
+        (False, {"code": str, "error": str}) on failure — ``code`` is a stable
+        machine-readable reason for APIs and logs.
     """
     if not USE_KNOWLEDGE_BASE_V1:
-        return False
+        return False, {
+            "code": "kb_disabled",
+            "error": "Knowledge base synthesis is disabled (USE_KNOWLEDGE_BASE_V1 is not true).",
+        }
 
     try:
         if profile_data is None:
@@ -861,25 +875,42 @@ def synthesize_member_knowledge(
             profile_data = get_steve_user_profile(username)
         if not profile_data:
             logger.warning("No profile data for %s, cannot synthesize", username)
-            return False
+            return False, {
+                "code": "no_profile",
+                "error": (
+                    f"No Firestore steve_user_profiles document for '{username}'. "
+                    "Confirm the username matches the profile document id exactly (including case)."
+                ),
+            }
 
         existing_kb = get_member_knowledge(username, note_types=SYNTHESIS_NOTE_TYPES)
 
         raw_text = _assemble_raw_text_for_synthesis(username, profile_data)
         if not raw_text:
             logger.warning("No raw text assembled for %s", username)
-            return False
+            return False, {
+                "code": "no_input_text",
+                "error": (
+                    "Nothing could be assembled for synthesis (empty analysis, posts, replies, "
+                    "and profiling fields). Run profiling or add manual context first."
+                ),
+            }
 
         prior_synthesis = _format_prior_synthesis(existing_kb)
         admin_corrections = _extract_admin_corrections(existing_kb)
 
-        synthesis_json = _call_grok_for_synthesis(
+        synthesis_json, grok_err = _call_grok_for_synthesis(
             username, raw_text,
             prior_synthesis=prior_synthesis,
             admin_corrections=admin_corrections,
         )
+        if grok_err:
+            return False, grok_err
         if not synthesis_json:
-            return False
+            return False, {
+                "code": "grok_failed",
+                "error": "Grok synthesis returned no usable JSON (see server logs).",
+            }
 
         _save_synthesis_results(username, synthesis_json, existing_kb)
         _extract_and_save_shared_nodes(username, synthesis_json)
@@ -892,10 +923,10 @@ def synthesize_member_knowledge(
             logger.warning("Embedding recomputation failed for %s (non-fatal): %s", username, emb_err)
 
         logger.info("Knowledge synthesis complete for %s", username)
-        return True
+        return True, None
     except Exception as e:
         logger.error("Knowledge synthesis failed for %s: %s", username, e, exc_info=True)
-        return False
+        return False, {"code": "exception", "error": str(e)}
 
 
 def _format_prior_synthesis(existing_kb: Dict[str, Any]) -> str:
@@ -1146,14 +1177,22 @@ def _call_grok_for_synthesis(
     *,
     prior_synthesis: str = "",
     admin_corrections: str = "",
-) -> Optional[Dict[str, Any]]:
-    """Call Grok to produce the 10-dimension synthesis JSON (with InferredContext as the primary home for nuanced post/comment interpretation)."""
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, str]]]:
+    """Call Grok to produce the 10-dimension synthesis JSON (with InferredContext as the primary home for nuanced post/comment interpretation).
+
+    Returns:
+        (parsed_dict, None) on success.
+        (None, {"code": str, "error": str}) on failure.
+    """
     import json as _json
 
     xai_key = os.environ.get("XAI_API_KEY", "")
     if not xai_key:
         logger.warning("XAI_API_KEY not set, cannot synthesize knowledge base")
-        return None
+        return None, {
+            "code": "xai_not_configured",
+            "error": "XAI_API_KEY is not set on the server; Grok synthesis cannot run.",
+        }
 
     try:
         from openai import OpenAI
@@ -1184,15 +1223,39 @@ def _call_grok_for_synthesis(
         raw = (response.output_text or "").strip() if hasattr(response, "output_text") else ""
         if not raw:
             logger.warning("Grok returned empty synthesis for %s", username)
-            return None
+            return None, {
+                "code": "grok_empty",
+                "error": "The model returned an empty response for synthesis.",
+            }
 
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
 
-        return _json.loads(raw)
+        try:
+            parsed = _json.loads(raw)
+        except _json.JSONDecodeError as je:
+            prefix = raw[:400].replace("\n", " ")
+            logger.error(
+                "Grok synthesis JSON parse failed for %s: %s; raw_prefix=%r",
+                username,
+                je,
+                prefix,
+            )
+            return None, {
+                "code": "grok_invalid_json",
+                "error": f"Model output was not valid JSON ({je}). Check server logs for a raw_prefix snippet.",
+            }
+
+        if not isinstance(parsed, dict):
+            return None, {
+                "code": "grok_invalid_json",
+                "error": "Model output JSON was not an object at the root.",
+            }
+
+        return parsed, None
     except Exception as e:
         logger.error("Grok synthesis call failed for %s: %s", username, e, exc_info=True)
-        return None
+        return None, {"code": "grok_exception", "error": str(e)}
 
 
 def _save_synthesis_results(
@@ -1252,7 +1315,14 @@ def schedule_knowledge_synthesis(username: str) -> None:
     """Run knowledge synthesis asynchronously in a background thread."""
     def _run():
         try:
-            synthesize_member_knowledge(username)
+            ok, detail = synthesize_member_knowledge(username)
+            if not ok and detail:
+                logger.warning(
+                    "Background knowledge synthesis failed for %s: %s (%s)",
+                    username,
+                    detail.get("error"),
+                    detail.get("code"),
+                )
         except Exception as e:
             logger.error("Background knowledge synthesis failed for %s: %s", username, e)
 

@@ -7619,10 +7619,15 @@ def admin_knowledge_base_synthesize(target_username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     try:
         from backend.services.steve_knowledge_base import synthesize_member_knowledge
-        ok = synthesize_member_knowledge(target_username)
+        ok, detail = synthesize_member_knowledge(target_username)
         if ok:
             return jsonify({'success': True, 'message': f'Knowledge base synthesized for {target_username}'})
-        return jsonify({'success': False, 'error': 'Synthesis failed or no data available'}), 400
+        err = (detail or {}).get('error') or 'Synthesis failed'
+        reason = (detail or {}).get('code')
+        payload = {'success': False, 'error': err}
+        if reason:
+            payload['reason'] = reason
+        return jsonify(payload), 400
     except Exception as e:
         logger.error(f"Error synthesizing knowledge base for {target_username}: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500

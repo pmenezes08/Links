@@ -180,7 +180,8 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
         await loadKnowledge()
         await loadGraph()
       } else {
-        alert(`Synthesis failed: ${data.error || 'Unknown error'}`)
+        const reason = data.reason ? ` [${data.reason}]` : ''
+        alert(`Synthesis failed: ${data.error || 'Unknown error'}${reason}`)
       }
     } catch (err) {
       console.error('Synthesis error:', err)
