@@ -102,6 +102,85 @@ function renderValue(val: unknown, depth = 0): React.ReactNode {
   return String(val)
 }
 
+const COMPANY_INTEL_FIELD_ORDER = [
+  'description',
+  'sector',
+  'stage',
+  'size',
+  'globalPresence',
+  'publicStatus',
+  'valuationTier',
+  'reputation',
+  'selectivity',
+  'culture',
+  'relevanceToUser',
+  'keyInsights',
+] as const
+
+function humanizeFieldLabel(key: string): string {
+  return key
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/_/g, ' ')
+    .trim()
+    .replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function formatCompanyIntelField(val: unknown): React.ReactNode {
+  if (val === null || val === undefined || val === '') return '—'
+  if (Array.isArray(val)) {
+    if (val.length === 0) return '—'
+    if (val.every(x => typeof x === 'string')) {
+      return (
+        <ul className="list-disc list-inside space-y-0.5 text-white/80">
+          {(val as string[]).map((s, i) => (
+            <li key={i}>{s}</li>
+          ))}
+        </ul>
+      )
+    }
+    return renderValue(val, 1)
+  }
+  return renderValue(val, 1)
+}
+
+/** One card per company; stable field order + any extra keys from the model. */
+function renderCompanyIntelContent(content: Record<string, unknown>): React.ReactNode {
+  const raw = content.companies
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return renderValue(content)
+  }
+  const companies = raw.filter(c => c && typeof c === 'object') as Record<string, unknown>[]
+  if (companies.length === 0) return renderValue(content)
+
+  return (
+    <div className="space-y-4">
+      {companies.map((co, idx) => {
+        const nameRaw = co.name
+        const title =
+          typeof nameRaw === 'string' && nameRaw.trim() ? nameRaw.trim() : `Company ${idx + 1}`
+        const orderSet = new Set<string>(COMPANY_INTEL_FIELD_ORDER as unknown as string[])
+        const ordered = [...COMPANY_INTEL_FIELD_ORDER.filter(k => k in co && co[k] != null && co[k] !== '')]
+        const extras = Object.keys(co).filter(k => k !== 'name' && !orderSet.has(k))
+        const keys = [...ordered, ...extras]
+        return (
+          <div
+            key={`${title}-${idx}`}
+            className="rounded-lg border border-teal-500/25 bg-teal-950/20 p-3.5 space-y-2.5"
+          >
+            <div className="text-sm font-semibold text-teal-200/95 border-b border-white/10 pb-2">{title}</div>
+            {keys.map(key => (
+              <div key={key}>
+                <div className="text-[10px] uppercase tracking-wide text-white/45">{humanizeFieldLabel(key)}</div>
+                <div className="text-xs text-white/85 mt-0.5 leading-relaxed">{formatCompanyIntelField(co[key])}</div>
+              </div>
+            ))}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function KnowledgeBaseGraph({ username, networkId, open, onClose }: { username?: string; networkId?: number | null; open: boolean; onClose: () => void }) {
   const isNetwork = !!networkId
   const displayName = isNetwork ? `Network ${networkId}` : (username || 'Unknown')
@@ -750,7 +829,9 @@ export default function KnowledgeBaseGraph({ username, networkId, open, onClose 
                     </p>
 
                     <div className="bg-white/5 rounded-lg border border-white/10 p-4 max-h-[50vh] overflow-y-auto">
-                      {renderValue(selected.content)}
+                      {selected.noteType === 'CompanyIntel' && selected.content && typeof selected.content === 'object'
+                        ? renderCompanyIntelContent(selected.content as Record<string, unknown>)
+                        : renderValue(selected.content)}
                     </div>
 
                     {selected.adminFeedback && (

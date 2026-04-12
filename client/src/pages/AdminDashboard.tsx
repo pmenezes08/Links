@@ -614,10 +614,13 @@ export default function AdminDashboard() {
 
   const [kbBatchRunning, setKbBatchRunning] = useState(false)
   const [kbBatchProgress, setKbBatchProgress] = useState({ current: 0, total: 0, currentUser: '', skipped: 0 })
+  /** new_only: skip members who already have any KB note; all: POST synthesize for everyone */
+  const [kbSynthesizeMode, setKbSynthesizeMode] = useState<'new_only' | 'all'>('new_only')
 
   const synthesizeAllKBs = useCallback(async () => {
     const targets = steveProfiles.filter(p => p.analysis?.summary)
     if (targets.length === 0) return
+    const skipExisting = kbSynthesizeMode === 'new_only'
     batchAbortRef.current = false
     setKbBatchRunning(true)
     setKbBatchProgress({ current: 0, total: targets.length, currentUser: '', skipped: 0 })
@@ -629,12 +632,14 @@ export default function AdminDashboard() {
       setKbBatchProgress({ current: i + 1, total: targets.length, currentUser: u.username, skipped })
 
       try {
-        const checkResp = await fetch(`/api/admin/knowledge_base/${encodeURIComponent(u.username)}`, { credentials: 'include' })
-        const checkData = await checkResp.json()
-        if (checkData.success && Object.keys(checkData.knowledge || {}).length > 0) {
-          skipped++
-          setKbBatchProgress(prev => ({ ...prev, skipped }))
-          continue
+        if (skipExisting) {
+          const checkResp = await fetch(`/api/admin/knowledge_base/${encodeURIComponent(u.username)}`, { credentials: 'include' })
+          const checkData = await checkResp.json()
+          if (checkData.success && Object.keys(checkData.knowledge || {}).length > 0) {
+            skipped++
+            setKbBatchProgress(prev => ({ ...prev, skipped }))
+            continue
+          }
         }
 
         await fetch(`/api/admin/knowledge_base/${encodeURIComponent(u.username)}/synthesize`, {
@@ -648,7 +653,7 @@ export default function AdminDashboard() {
 
     setKbBatchRunning(false)
     setKbBatchProgress({ current: 0, total: 0, currentUser: '', skipped: 0 })
-  }, [steveProfiles])
+  }, [steveProfiles, kbSynthesizeMode])
 
   const clearProfile = useCallback(async (targetUsername: string) => {
     if (!confirm(`Clear all AI analysis for @${targetUsername}?`)) return
@@ -2282,8 +2287,18 @@ export default function AdminDashboard() {
                           New only ({steveProfiles.filter(p => !p.analysis?.summary).length})
                         </button>
                       )}
+                      <select
+                        value={kbSynthesizeMode}
+                        onChange={e => setKbSynthesizeMode(e.target.value as 'new_only' | 'all')}
+                        disabled={steveProfilesLoading || batchRunning || kbBatchRunning}
+                        className="px-2 py-1 bg-white/5 border border-white/15 rounded-lg text-[11px] text-white/80 max-w-[220px] disabled:opacity-50"
+                        title="Batch KB synthesis scope"
+                      >
+                        <option value="new_only">Only new (no KB yet)</option>
+                        <option value="all">Including existing (re-synthesize)</option>
+                      </select>
                       <button
-                        onClick={synthesizeAllKBs}
+                        onClick={() => void synthesizeAllKBs()}
                         disabled={steveProfilesLoading || batchRunning || kbBatchRunning}
                         className="px-2.5 py-1 bg-purple-500/20 border border-purple-500/30 hover:bg-purple-500/30 rounded-xl text-xs flex items-center gap-1.5 disabled:opacity-50 text-purple-300"
                       >
