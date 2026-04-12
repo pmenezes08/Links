@@ -39370,6 +39370,7 @@ def admin_network_insights(network_id):
     if not is_app_admin(username):
         response = jsonify({'success': False, 'error': 'Unauthorized'})
         return add_cors_headers(response), 403
+    _BUILD_MARKER = "v2-real-kb-20260413"
     try:
         from backend.services.steve_knowledge_base import fetch_network_kb_data
 
@@ -39461,6 +39462,7 @@ Return ONLY valid JSON matching this schema:
 
         result = {
             "success": True,
+            "buildMarker": _BUILD_MARKER,
             "insights": {
                 "networkId": network_id,
                 "generatedAt": datetime.utcnow().isoformat(),
@@ -39468,12 +39470,13 @@ Return ONLY valid JSON matching this schema:
                 "memberCount": member_count,
                 "membersWithKB": kb_count,
                 "kbDimensions": dims_available,
+                "buildMarker": _BUILD_MARKER,
                 **insights_data
             }
         }
 
-        logger.info("Real network insights generated for network %s (type=%s, members=%d, kb=%d, dims=%d, model=%s)",
-                     network_id, network_type, member_count, kb_count, dims_available, GROK_MODEL_FAST)
+        logger.info("Real network insights generated for network %s (type=%s, members=%d, kb=%d, dims=%d, model=%s, build=%s)",
+                     network_id, network_type, member_count, kb_count, dims_available, GROK_MODEL_FAST, _BUILD_MARKER)
         response = jsonify(result)
         return add_cors_headers(response)
 
@@ -39485,11 +39488,11 @@ Return ONLY valid JSON matching this schema:
             "contentIdeas": ["Review KB data quality", "Run full network synthesis first"],
             "talentSignals": ["Check Firestore steve_knowledge_base collection for this network"]
         }
-        response = jsonify({"success": True, "insights": {**fallback, "networkId": network_id, "generatedAt": datetime.utcnow().isoformat(), "networkType": network_type}})
+        response = jsonify({"success": True, "buildMarker": _BUILD_MARKER, "insights": {**fallback, "buildMarker": _BUILD_MARKER, "networkId": network_id, "generatedAt": datetime.utcnow().isoformat(), "networkType": network_type}})
         return add_cors_headers(response)
     except Exception as e:
         logger.error(f"Error generating real network insights for {network_id}: {e}", exc_info=True)
-        response = jsonify({'success': False, 'error': str(e)})
+        response = jsonify({'success': False, 'error': str(e), 'buildMarker': _BUILD_MARKER})
         return add_cors_headers(response), 500
 
 
