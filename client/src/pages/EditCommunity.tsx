@@ -8,6 +8,7 @@ export default function EditCommunity(){
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const [type, setType] = useState('public')
+  const [networkType, setNetworkType] = useState('professional')
   const [imageFile, setImageFile] = useState<File|null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
@@ -46,6 +47,7 @@ export default function EditCommunity(){
         if (jc?.success && jc.community){
           setName(jc.community.name || '')
           setType(jc.community.type || 'public')
+          setNetworkType(jc.community.network_type || 'professional')
           const pid = jc.community.parent_community_id
           if (pid){ setIsChild(true); setSelectedParentId(String(pid)) }
           setNotifyOnNewMember(!!jc.community.notify_on_new_member)
@@ -93,6 +95,7 @@ export default function EditCommunity(){
     fd.append('community_id', String(community_id))
     fd.append('name', name.trim())
     fd.append('type', type)
+    fd.append('network_type', networkType)
     // Parent setting
     fd.append('parent_community_id', isChild && selectedParentId !== 'none' ? selectedParentId : 'none')
     fd.append('notify_on_new_member', notifyOnNewMember ? 'true' : 'false')
@@ -211,6 +214,25 @@ export default function EditCommunity(){
               <option value="private">Private</option>
               <option value="closed">Closed</option>
             </select>
+          </div>
+          <div>
+            <label className="block text-sm text-[#9fb0b5] mb-1">Network Type <span className="text-[#4db6ac] text-xs">(Parent owners &amp; @Admin only)</span></label>
+            <select 
+              className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none" 
+              value={networkType} 
+              onChange={e => setNetworkType(e.target.value)}
+            >
+              <option value="professional">Professional / Industry</option>
+              <option value="social">Social / Community</option>
+              <option value="sports">Sports &amp; Recreation</option>
+              <option value="alumni">Alumni &amp; Classmates</option>
+              <option value="corporate">Corporate / Internal</option>
+              <option value="interest">Interest &amp; Hobby</option>
+              <option value="geographic">Geographic / Local</option>
+              <option value="cause">Cause &amp; Advocacy</option>
+              <option value="hybrid">Hybrid (Mixed Purpose)</option>
+            </select>
+            <div className="text-xs text-[#9fb0b5] mt-1">This controls Steve&apos;s insights, content recommendations, and group suggestions for the network.</div>
           </div>
           <div>
             <label className="block text-sm text-[#9fb0b5] mb-2">Notifications</label>

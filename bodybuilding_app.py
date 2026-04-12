@@ -2655,7 +2655,8 @@ def add_missing_tables():
                 ('text_color', 'TEXT'),
                 ('accent_color', 'TEXT'),
                 ('card_color', 'TEXT'),
-                ('parent_community_id', 'INTEGER')
+                ('parent_community_id', 'INTEGER'),
+                ('network_type', 'VARCHAR(50)')
             ]
 
             for column_name, column_type in columns_to_add:
@@ -4573,6 +4574,36 @@ def ensure_community_type_column():
                     c.execute("UPDATE communities SET community_type = type WHERE community_type IS NULL")
             except Exception as e:
                 logger.warning(f"Failed backfilling community_type from type: {e}")
+
+            # Ensure network_type column and set default for existing communities
+            try:
+                has_network_col = False
+                if USE_MYSQL:
+                    c.execute("SHOW COLUMNS FROM communities LIKE 'network_type'")
+                    has_network_col = c.fetchone() is not None
+                else:
+                    c.execute("PRAGMA table_info(communities)")
+                    rows = c.fetchall()
+                    for r in rows:
+                        col_name = r['name'] if hasattr(r, 'keys') else r[1]
+                        if col_name == 'network_type':
+                            has_network_col = True
+                            break
+                if not has_network_col:
+                    if USE_MYSQL:
+                        c.execute("ALTER TABLE communities ADD COLUMN network_type VARCHAR(50) NULL")
+                    else:
+                        c.execute("ALTER TABLE communities ADD COLUMN network_type TEXT")
+                    logger.info("Added network_type column to communities table")
+                
+                # Backfill default for existing communities (Professional is safe default for most networks)
+                if USE_MYSQL:
+                    c.execute("UPDATE communities SET network_type = 'professional' WHERE network_type IS NULL OR network_type = ''")
+                else:
+                    c.execute("UPDATE communities SET network_type = 'professional' WHERE network_type IS NULL")
+                logger.info("Backfilled network_type defaults")
+            except Exception as e:
+                logger.warning(f"Failed to ensure network_type column: {e}")
 
             # Ensure 'Gym' community row has type/community_type set to 'Gym'
             try:
@@ -27941,6 +27972,7 @@ def update_community():
     name = request.form.get('name', '').strip()
     description = request.form.get('description', '').strip()
     community_type = request.form.get('type', '').strip()
+    network_type = request.form.get('network_type', '').strip()
     template = request.form.get('template', 'dark')
     background_color = request.form.get('background_color', '#2d3839')
     card_color = request.form.get('card_color', '#1a2526')
@@ -28008,6 +28040,15 @@ def update_community():
                 admin_ok = False
             if not (admin_ok or is_app_admin):
                 return jsonify({'success': False, 'error': 'Only community admins or owner can edit the community'}), 403
+
+            # Stricter permission for network_type: only Parent Network owner or @Admin
+            if network_type:
+                # Check if this is a parent community
+                c.execute(f"SELECT parent_community_id FROM communities WHERE id = {ph}", (community_id,))
+                parent_row = c.fetchone()
+                is_parent = not parent_row or (parent_row['parent_community_id'] if hasattr(parent_row, 'keys') else parent_row[0]) is None
+                if not (is_parent and (is_owner or is_app_admin)):
+                    return jsonify({'success': False, 'error': 'Only Parent Network owners or platform admin (@Admin) can set network_type'}), 403
             
             # Handle background file upload or removal (restrict to owner or app admin)
             background_path = None
@@ -28031,14 +28072,14 @@ def update_community():
                 c.execute(
                     f"""
                     UPDATE communities 
-                    SET name = {ph}, description = {ph}, type = {ph}, background_path = NULL, template = {ph},
+                    SET name = {ph}, description = {ph}, type = {ph}, network_type = {ph}, background_path = NULL, template = {ph},
                         background_color = {ph}, card_color = {ph}, accent_color = {ph}, text_color = {ph},
                         parent_community_id = {ph}, notify_on_new_member = {ph}, max_members = {ph},
                         allow_nsfw_imagine = {ph}
                     WHERE id = {ph}
                     """,
                     (
-                        name, description, community_type, template,
+                        name, description, community_type, network_type or None, template,
                         background_color, card_color, accent_color, text_color,
                         (parent_community_id if parent_community_id and parent_community_id != 'none' else None),
                         notify_on_new_member,
@@ -28051,14 +28092,14 @@ def update_community():
                 c.execute(
                     f"""
                     UPDATE communities 
-                    SET name = {ph}, description = {ph}, type = {ph}, background_path = {ph}, template = {ph},
+                    SET name = {ph}, description = {ph}, type = {ph}, network_type = {ph}, background_path = {ph}, template = {ph},
                         background_color = {ph}, card_color = {ph}, accent_color = {ph}, text_color = {ph},
                         parent_community_id = {ph}, notify_on_new_member = {ph}, max_members = {ph},
                         allow_nsfw_imagine = {ph}
                     WHERE id = {ph}
                     """,
                     (
-                        name, description, community_type, background_path, template,
+                        name, description, community_type, network_type or None, background_path, template,
                         background_color, card_color, accent_color, text_color,
                         (parent_community_id if parent_community_id and parent_community_id != 'none' else None),
                         notify_on_new_member,
@@ -28071,14 +28112,14 @@ def update_community():
                 c.execute(
                     f"""
                     UPDATE communities 
-                    SET name = {ph}, description = {ph}, type = {ph}, template = {ph},
+                    SET name = {ph}, description = {ph}, type = {ph}, network_type = {ph}, template = {ph},
                         background_color = {ph}, card_color = {ph}, accent_color = {ph}, text_color = {ph},
                         parent_community_id = {ph}, notify_on_new_member = {ph}, max_members = {ph},
                         allow_nsfw_imagine = {ph}
                     WHERE id = {ph}
                     """,
                     (
-                        name, description, community_type, template,
+                        name, description, community_type, network_type or None, template,
                         background_color, card_color, accent_color, text_color,
                         (parent_community_id if parent_community_id and parent_community_id != 'none' else None),
                         notify_on_new_member,
