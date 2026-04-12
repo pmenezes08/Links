@@ -28131,6 +28131,16 @@ def update_community():
             
             conn.commit()
             
+            # Cascade network_type to all direct sub-communities when parent network_type changes
+            if network_type and network_type.strip():
+                try:
+                    c.execute(f"UPDATE communities SET network_type = {ph} WHERE parent_community_id = {ph}",
+                             (network_type.strip(), community_id))
+                    conn.commit()
+                    logger.info(f"Cascaded network_type='{network_type}' to {c.rowcount} sub-communities of parent {community_id}")
+                except Exception as cascade_err:
+                    logger.warning(f"Failed to cascade network_type for parent {community_id}: {cascade_err}")
+            
             # Invalidate community feed cache so changes appear immediately
             try:
                 invalidate_community_cache(community_id)
