@@ -126,9 +126,8 @@ export default function Communities() {
               </div>
               <button
                 onClick={() => generateInsights(c)}
-                className="w-full py-2 text-sm bg-[#4db6ac] hover:bg-[#3da89a] text-black font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
+                className="w-full py-2 text-sm bg-[#4db6ac] hover:bg-[#3da89a] text-black font-medium rounded-xl transition-colors"
               >
-                <i className="fa-solid fa-brain" />
                 Generate Insights
               </button>
             </div>

@@ -2259,8 +2259,7 @@ export default function AdminDashboard() {
             <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h3 className="text-lg font-semibold text-[#4db6ac] flex items-center gap-2">
-                    <i className="fa-solid fa-brain" />
+                  <h3 className="text-lg font-semibold text-[#4db6ac]">
                     Steve Profiling
                   </h3>
                   <p className="text-xs text-white/60 mt-1">Per-user AI analysis and Knowledge Base — select a user to analyze</p>
@@ -2618,7 +2617,7 @@ export default function AdminDashboard() {
                                     {isAnalyzing ? (
                                       <><i className="fa-solid fa-spinner fa-spin" /> Analyzing...</>
                                     ) : (
-                                      <><i className="fa-solid fa-brain" /> {hasAnalysis ? 'Enhance' : 'Analyze'}</>
+                                      <>{hasAnalysis ? 'Enhance' : 'Analyze'}</>
                                     )}
                                   </button>
                                 </div>
@@ -2630,7 +2629,7 @@ export default function AdminDashboard() {
                                     <i className="fa-solid fa-chevron-down text-[9px]" />
                                   </button>
                                   <div className="absolute right-0 top-full mt-1 bg-[#1a1a1a] border border-white/10 rounded-lg shadow-xl z-50 w-44 hidden peer-focus:block hover:block">
-                                    {([['quick', 'Quick', 'fa-bolt'], ['standard', 'Standard', 'fa-brain'], ['deep', 'Deep', 'fa-microscope']] as const).map(([d, label, icon]) => (
+                                    {([['quick', 'Quick', 'fa-bolt'], ['standard', 'Standard', 'fa-magnifying-glass'], ['deep', 'Deep', 'fa-microscope']] as const).map(([d, label, icon]) => (
                                       <button
                                         key={d}
                                         onClick={() => analyzeUser(profile.username, d)}
@@ -2710,7 +2709,7 @@ export default function AdminDashboard() {
                                       depthLabel === 'standard' ? 'bg-[#4db6ac]/10 text-[#4db6ac] border-[#4db6ac]/20' :
                                       'bg-white/5 text-white/50 border-white/10'
                                     }`}>
-                                      <i className={`fa-solid ${depthLabel === 'deep' ? 'fa-microscope' : depthLabel === 'standard' ? 'fa-brain' : 'fa-bolt'} mr-1`} />
+                                      <i className={`fa-solid ${depthLabel === 'deep' ? 'fa-microscope' : depthLabel === 'standard' ? 'fa-magnifying-glass' : 'fa-bolt'} mr-1`} />
                                       {depthLabel}
                                     </span>
                                   )}

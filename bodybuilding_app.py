@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response, g
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response, g, make_response
 from collections import deque, defaultdict
 # from flask_wtf.csrf import CSRFProtect, generate_csrf, validate_csrf as wtf_validate_csrf
 import errno
@@ -7732,21 +7732,27 @@ def admin_network_knowledge_base_synthesize(network_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/admin/knowledge_base/network/<int:network_id>/insights', methods=['POST'])
+@app.route('/api/admin/knowledge_base/network/<int:network_id>/insights', methods=['POST', 'OPTIONS'])
 @login_required
 def admin_network_insights(network_id):
     """Generate strategic network insights for admins using the reasoning layer.
     This is the admin-only view of the new insights system."""
     username = session.get('username')
+    if request.method == 'OPTIONS':
+        response = make_response()
+        return add_cors_headers(response)
     if not is_app_admin(username):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        response = jsonify({'success': False, 'error': 'Unauthorized'})
+        return add_cors_headers(response), 403
     try:
         from backend.services.steve_knowledge_base import generate_network_insights
         result = generate_network_insights(network_id)
-        return jsonify(result)
+        response = jsonify(result)
+        return add_cors_headers(response)
     except Exception as e:
         logger.error(f"Error generating network insights for {network_id}: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        response = jsonify({'success': False, 'error': str(e)})
+        return add_cors_headers(response), 500
 
 
 @app.route('/api/admin/knowledge_base/<target_username>/feedback', methods=['POST'])
