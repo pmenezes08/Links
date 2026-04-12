@@ -36,6 +36,26 @@ USE_KNOWLEDGE_BASE_V1 = os.environ.get(
     "USE_KNOWLEDGE_BASE_V1", "true"
 ).lower() == "true"
 
+# Grok KB synthesis returns a large JSON object (10 dimensions). 4k output tokens routinely
+# truncates mid-JSON and causes JSONDecodeError. Override via KNOWLEDGE_SYNTHESIS_MAX_OUTPUT_TOKENS.
+_KB_SYNTHESIS_MAX_OUT_DEFAULT = 32768
+_KB_SYNTHESIS_MAX_OUT_MIN = 8192
+_KB_SYNTHESIS_MAX_OUT_CAP = 131072
+
+
+def _kb_synthesis_max_output_tokens() -> int:
+    try:
+        v = int(
+            os.environ.get(
+                "KNOWLEDGE_SYNTHESIS_MAX_OUTPUT_TOKENS",
+                str(_KB_SYNTHESIS_MAX_OUT_DEFAULT),
+            )
+        )
+    except ValueError:
+        v = _KB_SYNTHESIS_MAX_OUT_DEFAULT
+    return max(_KB_SYNTHESIS_MAX_OUT_MIN, min(v, _KB_SYNTHESIS_MAX_OUT_CAP))
+
+
 # User-specific overrides for Steve profiling and KB synthesis (shared with bodybuilding_app.py)
 # This centralized approach avoids scattered `if username == "Paulo"` checks and makes
 # maintenance much easier.
@@ -1210,17 +1230,26 @@ def _call_grok_for_synthesis(
         if admin_corrections:
             user_content += f"\n\n{admin_corrections}"
 
+        max_out = _kb_synthesis_max_output_tokens()
         response = client.responses.create(
             model="grok-4-1-fast-non-reasoning",
             input=[
                 {"role": "system", "content": KNOWLEDGE_SYNTHESIS_PROMPT},
                 {"role": "user", "content": user_content},
             ],
-            max_output_tokens=4000,
+            max_output_tokens=max_out,
             temperature=0.3,
         )
 
         raw = (response.output_text or "").strip() if hasattr(response, "output_text") else ""
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            logger.info(
+                "KB synthesis Grok usage for %s: %s (max_output_tokens=%s)",
+                username,
+                usage,
+                max_out,
+            )
         if not raw:
             logger.warning("Grok returned empty synthesis for %s", username)
             return None, {
@@ -1235,15 +1264,24 @@ def _call_grok_for_synthesis(
             parsed = _json.loads(raw)
         except _json.JSONDecodeError as je:
             prefix = raw[:400].replace("\n", " ")
+            suffix = raw[-350:].replace("\n", " ") if len(raw) > 350 else raw.replace("\n", " ")
             logger.error(
-                "Grok synthesis JSON parse failed for %s: %s; raw_prefix=%r",
+                "Grok synthesis JSON parse failed for %s: %s; raw_len=%s max_output_tokens=%s; "
+                "raw_prefix=%r raw_suffix=%r",
                 username,
                 je,
+                len(raw),
+                max_out,
                 prefix,
+                suffix,
             )
             return None, {
                 "code": "grok_invalid_json",
-                "error": f"Model output was not valid JSON ({je}). Check server logs for a raw_prefix snippet.",
+                "error": (
+                    f"Model output was not valid JSON ({je}). "
+                    "If raw_len is large but JSON ends abruptly in logs, increase "
+                    "KNOWLEDGE_SYNTHESIS_MAX_OUTPUT_TOKENS or shorten inputs."
+                ),
             }
 
         if not isinstance(parsed, dict):
