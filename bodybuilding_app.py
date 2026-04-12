@@ -39420,7 +39420,7 @@ Be concrete, data-driven, and immediately useful for community owners. Avoid gen
         )
 
         completion = client.chat.completions.create(
-            model="grok-beta",
+            model=GROK_MODEL_FAST,
             messages=[
                 {"role": "system", "content": "You are Steve. Respond with valid JSON only. Be specific and actionable."},
                 {"role": "user", "content": prompt}
@@ -39442,7 +39442,7 @@ Be concrete, data-driven, and immediately useful for community owners. Avoid gen
             }
         }
 
-        logger.info(f"Real network insights generated for network {network_id} (type={network_type}, model=grok-beta)")
+        logger.info(f"Real network insights generated for network {network_id} (type={network_type}, model={GROK_MODEL_FAST})")
         response = jsonify(result)
         return add_cors_headers(response)
 
