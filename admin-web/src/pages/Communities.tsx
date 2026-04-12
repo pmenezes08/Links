@@ -21,6 +21,11 @@ interface NetworkInsights {
   }>
   contentIdeas: string[]
   talentSignals: string[]
+  memberCount?: number
+  membersWithKB?: number
+  kbDimensions?: number
+  generatedAt?: string
+  networkType?: string
 }
 
 export default function Communities() {
@@ -172,6 +177,32 @@ export default function Communities() {
 
             {insights && !insightsLoading && (
               <div className="space-y-8">
+                {/* KB Coverage */}
+                <div className="bg-surface-2 border border-white/10 rounded-2xl p-4 flex items-center gap-6 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[#4db6ac]">📊</span>
+                    <span className="text-muted">Data Coverage:</span>
+                  </div>
+                  <div className="flex gap-4">
+                    <span className="text-white/80">
+                      <strong className="text-white">{insights.membersWithKB ?? '?'}</strong>/{insights.memberCount ?? '?'} members with KB
+                    </span>
+                    <span className="text-white/80">
+                      <strong className="text-white">{insights.kbDimensions ?? '?'}</strong>/6 dimensions
+                    </span>
+                    {insights.networkType && (
+                      <span className="px-2 py-0.5 bg-[#4db6ac]/10 text-[#4db6ac] rounded text-xs">
+                        {insights.networkType}
+                      </span>
+                    )}
+                  </div>
+                  {insights.generatedAt && (
+                    <span className="text-muted ml-auto text-xs">
+                      {new Date(insights.generatedAt).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+
                 {/* Summary */}
                 <div className="bg-surface-2 border border-white/10 rounded-2xl p-6">
                   <h3 className="font-medium mb-3 flex items-center gap-2">

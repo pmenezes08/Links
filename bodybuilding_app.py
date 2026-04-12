@@ -39371,6 +39371,8 @@ def admin_network_insights(network_id):
         response = jsonify({'success': False, 'error': 'Unauthorized'})
         return add_cors_headers(response), 403
     try:
+        from backend.services.steve_knowledge_base import fetch_network_kb_data
+
         # Get network metadata
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -39382,37 +39384,62 @@ def admin_network_insights(network_id):
             network_type = (row['network_type'] if hasattr(row, 'keys') else row[0]) or 'professional'
             network_name = (row['name'] if hasattr(row, 'keys') else row[1]) or f'Network {network_id}'
 
-        # Real Grok-powered reasoning (modeled after profiling/synthesis)
+        # Fetch real KB data (auto-synthesizes if none exists yet)
+        kb_data = fetch_network_kb_data(network_id, auto_synthesize=True)
+        meta = kb_data.get("_meta", {})
+        member_count = meta.get("memberCount", 0)
+        kb_count = meta.get("membersWithKB", 0)
+        dims_available = meta.get("hasDimensions", 0)
+
+        # Build a structured KB dump for the prompt
+        kb_sections = []
+        for dim_name in ("NetworkIndex", "NetworkExpertise", "NetworkGeographyCulture",
+                         "NetworkComposition", "NetworkInferredContext", "NetworkUniqueFingerprint"):
+            dim_data = kb_data.get(dim_name, {})
+            if dim_data:
+                kb_sections.append(f"### {dim_name}\n{json.dumps(dim_data, indent=1, default=str)[:3000]}")
+
+        kb_block = "\n\n".join(kb_sections) if kb_sections else "No Knowledge Base data available yet. Run member profiling first."
+
         prompt = f"""You are Steve, a master network strategist for C.Point communities.
 
 Network: {network_name}
-Type: {network_type} (use this as the primary lens - Professional networks prioritize career clusters and CompanyIntel; Social networks prioritize engagement and events; Sports prioritize performance and team dynamics).
+Type: {network_type}
+Members: {member_count} total, {kb_count} with synthesized Knowledge Bases
+KB Dimensions Available: {dims_available}/6
 
-Analyze the underlying Knowledge Base (NetworkIndex, NetworkExpertise, NetworkUniqueFingerprint, NetworkInferredContext, CompanyIntel, rare qualities, relational patterns, etc.) and produce **actionable, specific** strategic insights.
+=== REAL KNOWLEDGE BASE DATA ===
+{kb_block}
+=== END KB DATA ===
+
+Using ONLY the real Knowledge Base data above, produce **actionable, specific** strategic insights.
+Use {network_type} as the primary lens — Professional networks prioritize career clusters and CompanyIntel; Social networks prioritize engagement and events; Sports prioritize performance and team dynamics.
+
+Rules:
+- Every claim MUST be backed by data from the KB above. Do NOT hallucinate or invent data.
+- memberCount in group recommendations must reflect actual numbers from the KB.
+- If data is sparse, say so honestly rather than fabricating patterns.
+- Reference real expertise domains, locations, companies, and traits from the KB data.
 
 Return ONLY valid JSON matching this schema:
 {{
-  "summary": "2-3 sentence high-level strategic overview with key patterns observed",
+  "summary": "2-3 sentence high-level strategic overview referencing specific KB patterns",
   "groupRecommendations": [
     {{
-      "title": "Specific group name suggestion",
-      "memberCount": 42,
-      "rationale": "Very specific reason tied to KB signals (e.g. '34 members with TelCo CompanyIntel and warm technocrat personas')",
-      "suggestedName": "telco-strategists",
-      "confidence": 0.89
+      "title": "Specific group name based on real KB clusters",
+      "memberCount": <actual count from KB data>,
+      "rationale": "Reason tied to specific KB signals you can see in the data above",
+      "suggestedName": "slug-name",
+      "confidence": 0.0-1.0
     }}
   ],
   "contentIdeas": [
-    "Concrete weekly content idea 1 tied to network signals",
-    "Concrete weekly content idea 2"
+    "Concrete content idea tied to real network data"
   ],
   "talentSignals": [
-    "Specific talent pattern 1 with example evidence from KB",
-    "Specific talent pattern 2"
+    "Specific talent pattern with evidence from the KB data above"
   ]
-}}
-
-Be concrete, data-driven, and immediately useful for community owners. Avoid generic statements."""
+}}"""
 
         client = OpenAI(
             api_key=XAI_API_KEY,
@@ -39422,11 +39449,11 @@ Be concrete, data-driven, and immediately useful for community owners. Avoid gen
         completion = client.chat.completions.create(
             model=GROK_MODEL_FAST,
             messages=[
-                {"role": "system", "content": "You are Steve. Respond with valid JSON only. Be specific and actionable."},
+                {"role": "system", "content": "You are Steve. Respond with valid JSON only. Ground every claim in the provided Knowledge Base data. Never invent data."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.7,
-            max_tokens=2500,
+            temperature=0.4,
+            max_tokens=3000,
             response_format={"type": "json_object"}
         )
 
@@ -39438,11 +39465,15 @@ Be concrete, data-driven, and immediately useful for community owners. Avoid gen
                 "networkId": network_id,
                 "generatedAt": datetime.utcnow().isoformat(),
                 "networkType": network_type,
+                "memberCount": member_count,
+                "membersWithKB": kb_count,
+                "kbDimensions": dims_available,
                 **insights_data
             }
         }
 
-        logger.info(f"Real network insights generated for network {network_id} (type={network_type}, model={GROK_MODEL_FAST})")
+        logger.info("Real network insights generated for network %s (type=%s, members=%d, kb=%d, dims=%d, model=%s)",
+                     network_id, network_type, member_count, kb_count, dims_available, GROK_MODEL_FAST)
         response = jsonify(result)
         return add_cors_headers(response)
 

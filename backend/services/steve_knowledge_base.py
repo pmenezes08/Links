@@ -1881,60 +1881,67 @@ def reset_member_knowledge_base(username: str) -> bool:
         return False
 
 
-def generate_network_insights(network_id: int) -> dict:
-    """Generate high-level strategic insights for network owners/admins using the Network KB.
-    
-    This is the 'reasoning layer' on top of the KB. It respects network_type and produces
-    actionable recommendations (group ideas, content calendar, talent signals, etc).
-    Used by the admin-web Communities page (Network Communities tab).
+NETWORK_KB_NOTE_TYPES = (
+    "NetworkIndex",
+    "NetworkExpertise",
+    "NetworkGeographyCulture",
+    "NetworkComposition",
+    "NetworkInferredContext",
+    "NetworkUniqueFingerprint",
+)
+
+
+def fetch_network_kb_data(network_id: int, auto_synthesize: bool = True) -> Dict[str, Any]:
+    """Fetch all 6 network-level KB dimension documents from Firestore.
+
+    Returns a dict keyed by note type (e.g. ``NetworkIndex``) whose values are
+    the ``content`` dicts stored in Firestore.  If no network KB documents exist
+    and ``auto_synthesize`` is True, triggers ``synthesize_network_knowledge``
+    first so the caller always gets real data when available.
+
+    The result also includes ``_meta`` with member count, KB coverage, and
+    last-updated timestamp so the reasoning layer can judge data freshness.
     """
     if not USE_KNOWLEDGE_BASE_V1:
-        return {"success": False, "error": "KB V1 not enabled"}
+        return {}
 
-    try:
-        logger.info("Generating network insights for network %s", network_id)
+    fs = _get_fs()
+    result: Dict[str, Any] = {}
+    any_found = False
 
-        # In a full implementation we would fetch the Network KB documents here.
-        # For this admin-view phase we return rich mock data that matches the frontend expectations.
-        # The real Grok-powered reasoning layer (with network_type weighting) will be added next.
+    for note_type in NETWORK_KB_NOTE_TYPES:
+        doc_id = f"_network_{network_id}_{note_type}"
+        try:
+            doc = fs.collection(COLLECTION).document(doc_id).get()
+            if doc.exists:
+                data = doc.to_dict() or {}
+                result[note_type] = data.get("content", {})
+                any_found = True
+            else:
+                result[note_type] = {}
+        except Exception as e:
+            logger.warning("Could not read network KB doc %s: %s", doc_id, e)
+            result[note_type] = {}
 
-        insights = {
-            "networkId": network_id,
-            "generatedAt": datetime.utcnow().isoformat(),
-            "networkType": "professional",  # Will be populated from DB/community in full version
-            "summary": "This network shows strong professional clustering with bridging potential between industries. Strong `CompanyIntel` and `rareQualities` signals detected.",
-            "groupRecommendations": [
-                {
-                    "title": "TelCo Professionals",
-                    "memberCount": 34,
-                    "rationale": "Strong CompanyIntel cluster in telecommunications. 34 members would benefit from a dedicated group for knowledge sharing and collaboration.",
-                    "suggestedName": "telco-professionals",
-                    "confidence": 0.92
-                },
-                {
-                    "title": "Decarbonization PMs",
-                    "memberCount": 18,
-                    "rationale": "Rare qualities cluster: Proactive PMs in decarbonization with 'warm technocrat' personas. High potential for cross-industry mentorship.",
-                    "suggestedName": "decarb-pms",
-                    "confidence": 0.87
-                }
-            ],
-            "contentIdeas": [
-                "Weekly industry news roundup focused on energy transition",
-                "Member spotlight on rare qualities (Padel + teddy bear affection archetype)",
-                "Short-form challenge: 'One lesson from your career transition this month'"
-            ],
-            "talentSignals": [
-                "18 members with 'platform power-user experimenter in pro PM role'",
-                "Strong Portugal relational slang fluency cluster ('Oi giro', 'Que giro!!')",
-                "Sudden 2026 expressiveness atop reserved professionalism pattern"
-            ]
-        }
+    if not any_found and auto_synthesize:
+        logger.info("No network KB found for %s — running synthesis first", network_id)
+        synthesize_network_knowledge(network_id)
+        for note_type in NETWORK_KB_NOTE_TYPES:
+            doc_id = f"_network_{network_id}_{note_type}"
+            try:
+                doc = fs.collection(COLLECTION).document(doc_id).get()
+                if doc.exists:
+                    result[note_type] = (doc.to_dict() or {}).get("content", {})
+            except Exception as e:
+                logger.warning("Post-synthesis read failed for %s: %s", doc_id, e)
 
-        logger.info("Network insights generated for %s (network_type=%s)", network_id, insights.get("networkType"))
-        return {"success": True, "insights": insights}
-
-    except Exception as e:
-        logger.error("Network insights generation failed for %s: %s", network_id, e, exc_info=True)
-        return {"success": False, "error": str(e)}
+    idx = result.get("NetworkIndex", {})
+    result["_meta"] = {
+        "memberCount": idx.get("memberCount", 0),
+        "membersWithKB": idx.get("membersWithKB", 0),
+        "communityName": idx.get("communityName", f"Network {network_id}"),
+        "lastUpdated": idx.get("lastUpdated"),
+        "hasDimensions": sum(1 for nt in NETWORK_KB_NOTE_TYPES if result.get(nt)),
+    }
+    return result
 
