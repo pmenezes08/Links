@@ -763,6 +763,9 @@ def _tenant_filter(column='tenant_id'):
 @app.before_request
 def _block_unverified_users():
     try:
+        # Allow all OPTIONS preflight requests for CORS (critical for admin-web cross-origin calls)
+        if request.method == 'OPTIONS':
+            return None
         # Allow static and auth endpoints
         path = request.path or ''
         if path.startswith('/static') or path.startswith('/assets'):
