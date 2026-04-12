@@ -805,11 +805,15 @@ Rules for all users:
 - Be SPECIFIC, EVIDENCE-BASED, and NUANCED. Always tie inferences to concrete details from verifiedLinks, manualContext, manualEdits, enriched content (articles/podcasts), authored posts, replies, and shared external sources with captions. These are now the *only* sources for network and cultural insights.
 - Be HOLISTIC. Connect professional, personal, geographic, cultural, educational, and volunteer experiences into a coherent narrative. **Populate InferredContext as the primary home for these insights** while cross-referencing relevant dimensions (Identity, UniqueFingerprint, LifeCareer, etc.).
 - CULTURAL & SLANG CONTEXT (CRITICAL FOR POSTS/COMMENTS): Pay special attention to native-language nuances. E.g. Portuguese "Hey Malta", "E aí malta", or "Malta vai" is colloquial for "Hey guys/folks" in group settings — not a literal reference to the country of Malta. Use surrounding comment thread and user background to disambiguate. Surface these interpretations prominently in InferredContext.
-- For CompanyIntel: Always enrich with reputation, selectivity, stage, and how it shapes the user's credibility (e.g., "xAI role carries far more weight than a similar title at a small foundation"). Surface the valuation insight in InferredContext.
-- For each company you MUST set globalPresence to exactly one of: "global", "regional", or "local" (lowercase strings):
-  • global — meaningful operations, clients, or revenue footprint across multiple continents, or clearly worldwide.
-  • regional — primary footprint within one continent or adjacent region (multiple countries in that region, or continent-wide), but not worldwide.
-  • local — essentially single-country or single-metro / domestic focus; no meaningful international reach. Do not use job-title metaphors; judge actual company reach.
+- For CompanyIntel: Always enrich with reputation, selectivity, stage, globalPresence, and how it shapes the user's credibility (e.g., "xAI role carries far more weight than a similar title at a small foundation"). Surface the valuation insight in InferredContext.
+- globalPresence (CompanyIntel — judge the **named organization only**, not halo reach):
+  • It reflects **that entity's own** legal/operational footprint (offices, staff, programs, revenue geography). Do NOT infer from prestige, "European" framing, an affiliated university's rankings, international students, or multinational partners unless **this** organization itself operates in those jurisdictions.
+  • Do NOT upgrade to regional or global because a linked school or brand is world-famous; that is reputation, not this company's geographic span.
+  • You MUST set globalPresence to exactly one of: "global", "regional", or "local" (lowercase strings):
+  • global — this organization's own operations, clients, or revenue footprint across **multiple continents**, or clearly worldwide.
+  • regional — this organization's own **ongoing footprint in two or more countries** within the same continent or adjacent region (e.g. subsidiaries or offices), OR it is explicitly a cross-border regional body. **Single-country** operations are **not** regional, even if partners or alumni are international.
+  • local — **default** for organizations whose own footprint is **one country** (including national nonprofits, single-campus or university-linked foundations, domestic SMBs) or single-metro focus; use local when cross-border **organizational** presence is not evidenced. No meaningful international **organizational** reach.
+  • Do not use job-title metaphors; judge **actual** reach of the named company only.
 - Avoid generic statements. Use the examples above as templates for every experience.
 - This inference MUST be prominently captured in InferredContext.experiences, InferredContext.overarchingThemes, and InferredContext.strategicImplications. It should also flow into Identity, observations in Index, UniqueFingerprint, LifeCareer, Expertise.credibilitySignals, and the overall Index synthesis.
 - When PREVIOUS SYNTHESIS is provided, enhance the existing InferredContext rather than replacing it.
