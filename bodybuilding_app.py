@@ -7732,6 +7732,23 @@ def admin_network_knowledge_base_synthesize(network_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/admin/knowledge_base/network/<int:network_id>/insights', methods=['POST'])
+@login_required
+def admin_network_insights(network_id):
+    """Generate strategic network insights for admins using the reasoning layer.
+    This is the admin-only view of the new insights system."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        from backend.services.steve_knowledge_base import generate_network_insights
+        result = generate_network_insights(network_id)
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error generating network insights for {network_id}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/admin/knowledge_base/<target_username>/feedback', methods=['POST'])
 @login_required
 def admin_knowledge_base_feedback(target_username):
