@@ -7,6 +7,7 @@ ENV VITE_API_BASE=${VITE_API_BASE}
 
 COPY package.json package-lock.json* ./
 RUN npm install
+RUN chmod -R +x node_modules/.bin/ 2>/dev/null || true
 COPY . .
 RUN npm run build
 
