@@ -157,6 +157,18 @@ def build_profile_chunks(profile: dict, username: str = None) -> Dict[str, str]:
     if exp_kb.get("currentFocus"):
         prof_parts.append(f"Focus: {exp_kb['currentFocus']}")
     ci = kb.get("CompanyIntel", {})
+    ci_companies = ci.get("companies")
+    if ci_companies and isinstance(ci_companies, list):
+        for co in ci_companies[:4]:
+            if isinstance(co, dict):
+                co_str = co.get("name", "?")
+                sector = co.get("sector") or co.get("industry", "")
+                if sector:
+                    co_str += f" ({sector})"
+                culture = co.get("culture", "")
+                if culture:
+                    co_str += f" — {culture}"
+                prof_parts.append(f"Company: {co_str}")
     ci_text = _kb_text_for_field(ci, "globalPresence") or _kb_text_for_field(ci, "publicStatus")
     if ci_text:
         prof_parts.append(f"Company intel: {ci_text}")
@@ -222,6 +234,8 @@ def build_profile_chunks(profile: dict, username: str = None) -> Dict[str, str]:
     if ident_kb.get("communicationStyle"):
         pers_parts.append(f"Style: {_kb_text_for_field(ident_kb, 'communicationStyle')}")
     op_kb = kb.get("Opinions", {})
+    if op_kb.get("keyTopics"):
+        pers_parts.append(f"Key topics: {_kb_text_for_field(op_kb, 'keyTopics', 6)}")
     if op_kb.get("consistentBeliefs"):
         pers_parts.append(f"Beliefs: {_kb_text_for_field(op_kb, 'consistentBeliefs')}")
     if op_kb.get("controversialTakes"):
@@ -248,11 +262,13 @@ def build_profile_chunks(profile: dict, username: str = None) -> Dict[str, str]:
     if pers_parts:
         chunks['personality'] = ' | '.join(pers_parts)
 
-    # --- experiences chunk (KB: GeographyCulture + UniqueFingerprint + InferredContext) ---
+    # --- experiences chunk (KB: GeographyCulture + UniqueFingerprint + InferredContext + LifeCareer turning points) ---
     exp_parts = []
     geo = kb.get("GeographyCulture", {})
     if geo.get("culturalInfluences"):
         exp_parts.append(f"Cultural influences: {geo['culturalInfluences']}")
+    if geo.get("culturalBridges"):
+        exp_parts.append(f"Cultural bridges: {_kb_text_for_field(geo, 'culturalBridges')}")
     if geo.get("geographicExpertise"):
         exp_parts.append(f"Geographic expertise: {_kb_text_for_field(geo, 'geographicExpertise')}")
     for loc_entry in (geo.get("locations") or [])[:5]:
@@ -271,6 +287,11 @@ def build_profile_chunks(profile: dict, username: str = None) -> Dict[str, str]:
             exp_parts.append(f"{ix.get('experience', '')}: {ix.get('transformativeImpact', '')}")
         elif isinstance(ix, str):
             exp_parts.append(ix)
+    for tp in (lc.get("turningPoints") or [])[:3]:
+        if isinstance(tp, dict):
+            exp_parts.append(f"Turning point: {tp.get('description', tp.get('event', ''))}")
+        elif isinstance(tp, str):
+            exp_parts.append(f"Turning point: {tp}")
 
     # Legacy experiences data (preserves niche interests like "chef course")
     if (ob.get('journey') or '').strip():
