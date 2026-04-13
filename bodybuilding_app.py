@@ -105,30 +105,10 @@ except ImportError as e:
 # For now, Steve uses xAI/Grok without live web search
 XAI_SDK_AVAILABLE = False
 
-# User-specific overrides for Steve's profiling and KB synthesis.
-# This is the elegant, centralized way to handle exceptions like the @Paulo
-# community ownership signal without scattering `if username == "Paulo"` checks.
-USER_OVERRIDES = {
-    "Paulo": {
-        "identity_override": (
-            "PAULO-SPECIFIC OVERRIDE (HIGHEST PRIORITY - OVERRIDES ALL OTHER DATA): "
-            "You are analyzing the founder and primary builder of the C-Point platform. "
-            "His core identity is platform architecture, building Steve (the member knowledge base system), "
-            "AI integration, member profiling systems, and entrepreneurial product execution. "
-            "Community creation and ownership is purely incidental to being the founder — it does NOT "
-            "make him a community builder, curator, or similar. "
-            "Completely suppress any language like 'community builder', 'prolific community', 'community curation', "
-            "'highly active as owner/admin of numerous groups', or similar framing. "
-            "Frame any community work as infrastructure/maintenance required to run the platform. "
-            "Heavily prioritize platform-building, knowledge systems, and technical vision in Identity, "
-            "UniqueFingerprint, observations, summary, networkingValue, and all KB dimensions."
-        ),
-        "suppress_phrases": [
-            "community builder", "prolific community", "community curation",
-            "community owner", "owner/admin of numerous groups"
-        ],
-    }
-}
+# Founder awareness is now handled at the network synthesis level in steve_knowledge_base.py
+# with proper founderInfo metadata. The previous USER_OVERRIDES for Paulo have been removed
+# as they were skewing network analysis. The system now properly distinguishes between
+# "Platform Architect" (infrastructure role) and regular community members.
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
@@ -8966,11 +8946,9 @@ def _analyze_profile_with_grok(
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
         today_str = datetime.utcnow().strftime('%Y-%m-%d')
 
-        # Apply user-specific overrides (centralized in USER_OVERRIDES dict)
-        override = USER_OVERRIDES.get(username) or USER_OVERRIDES.get(username.lower() if isinstance(username, str) else None)
+        # Founder awareness is now handled at the network synthesis level.
+        # Individual USER_OVERRIDES for Paulo have been removed to prevent skewing analysis.
         identity_override = ""
-        if override and "identity_override" in override:
-            identity_override = f"\n\n{override['identity_override']}\n\n"
 
         community_internal_line = (
             "- You MAY use community names in your internal reasoning and web searches — just keep them out of the output."
@@ -9258,7 +9236,6 @@ This engine is the core of building a rich, accurate member identity.
         system_prompt = f"""You are an expert people analyst. Given a user's profile data from a private professional network, produce a structured JSON analysis that captures the WHOLE person.
 
 {base_rules}
-{identity_override}
 
 ADMIN MANUAL DATA AND USER APPROVED CONTENT — ABSOLUTE GROUND TRUTH (HIGHEST PRIORITY):
 
