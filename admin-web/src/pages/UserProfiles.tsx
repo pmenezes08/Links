@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { apiJson, api } from '../utils/api'
+import { apiJson, api, apiPost } from '../utils/api'
 
 interface Analysis {
   _schemaVersion?: number
@@ -35,6 +35,33 @@ interface Profile {
   analysis: Analysis
   lastUpdated?: string
 }
+
+interface KBDimension {
+  noteType: string
+  content: Record<string, any>
+  version?: number
+  updatedAt?: string
+  adminFeedback?: { status?: string; note?: string; by?: string; at?: string }
+}
+
+const KB_DIMENSION_LABELS: Record<string, { label: string; icon: string }> = {
+  Index: { label: 'Overview', icon: 'fa-solid fa-layer-group' },
+  Identity: { label: 'Identity & Traits', icon: 'fa-solid fa-fingerprint' },
+  UniqueFingerprint: { label: 'Unique Fingerprint', icon: 'fa-solid fa-star' },
+  LifeCareer: { label: 'Life & Career', icon: 'fa-solid fa-road' },
+  GeographyCulture: { label: 'Geography & Culture', icon: 'fa-solid fa-globe' },
+  Expertise: { label: 'Expertise', icon: 'fa-solid fa-microscope' },
+  Opinions: { label: 'Opinions', icon: 'fa-solid fa-comment-dots' },
+  CompanyIntel: { label: 'Company Intel', icon: 'fa-solid fa-building' },
+  InferredContext: { label: 'Inferred Experiences', icon: 'fa-solid fa-lightbulb' },
+  Network: { label: 'Network & Relationships', icon: 'fa-solid fa-people-arrows' },
+}
+
+const KB_DIMENSION_ORDER = [
+  'Index', 'Identity', 'UniqueFingerprint', 'LifeCareer',
+  'GeographyCulture', 'Expertise', 'Opinions', 'CompanyIntel',
+  'InferredContext', 'Network',
+]
 
 /** Merge `_userEdits` from Firestore so admin sees the same wording as the member after they save suggestions. */
 function mergeSteveAnalysisForDisplay(a: Analysis) {
@@ -91,6 +118,17 @@ export default function UserProfiles() {
   const [batchRunning, setBatchRunning] = useState(false)
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, currentUser: '' })
   const batchAbortRef = useRef(false)
+
+  // KB viewer state
+  const [kbData, setKbData] = useState<Record<string, KBDimension>>({})
+  const [kbLoading, setKbLoading] = useState(false)
+  const [kbOpen, setKbOpen] = useState(false)
+  const [expandedDim, setExpandedDim] = useState<string | null>(null)
+  const [correctionDim, setCorrectionDim] = useState<string | null>(null)
+  const [correctionNote, setCorrectionNote] = useState('')
+  const [correctionType, setCorrectionType] = useState<'needs_correction' | 'missing_info'>('needs_correction')
+  const [correctionSaving, setCorrectionSaving] = useState(false)
+  const [synthesizing, setSynthesizing] = useState(false)
 
   // Auto-poll: refresh list every 15s while any analysis is in flight
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -169,6 +207,59 @@ export default function UserProfiles() {
   }
 
   const stopBatch = () => { batchAbortRef.current = true }
+
+  const loadKB = useCallback(async (username: string) => {
+    setKbLoading(true)
+    try {
+      const d = await apiJson(`/api/admin/knowledge_base/${encodeURIComponent(username)}`)
+      if (d?.success && d.knowledge) {
+        const dims: Record<string, KBDimension> = {}
+        for (const [key, doc] of Object.entries(d.knowledge as Record<string, any>)) {
+          const nt = doc.noteType || key
+          if (KB_DIMENSION_ORDER.includes(nt)) {
+            dims[nt] = {
+              noteType: nt,
+              content: doc.content || {},
+              version: doc.version,
+              updatedAt: doc.updatedAt,
+              adminFeedback: doc.adminFeedback,
+            }
+          }
+        }
+        setKbData(dims)
+      }
+    } catch {} finally { setKbLoading(false) }
+  }, [])
+
+  useEffect(() => {
+    if (selected && kbOpen) loadKB(selected)
+  }, [selected, kbOpen, loadKB])
+
+  const submitCorrection = async () => {
+    if (!selected || !correctionDim || !correctionNote.trim()) return
+    setCorrectionSaving(true)
+    try {
+      const d = await apiPost(`/api/admin/knowledge_base/${encodeURIComponent(selected)}/feedback`, {
+        noteType: correctionDim,
+        feedback: { status: correctionType, note: correctionNote.trim() },
+      })
+      if (d?.success) {
+        setCorrectionDim(null)
+        setCorrectionNote('')
+        await loadKB(selected)
+      }
+    } catch {} finally { setCorrectionSaving(false) }
+  }
+
+  const reSynthesize = async () => {
+    if (!selected) return
+    setSynthesizing(true)
+    try {
+      await apiPost(`/api/admin/knowledge_base/${encodeURIComponent(selected)}/synthesize`, {})
+      await loadKB(selected)
+      await load(true)
+    } catch {} finally { setSynthesizing(false) }
+  }
 
   const filtered = profiles.filter(p => {
     if (!search) return true
@@ -470,6 +561,164 @@ export default function UserProfiles() {
                   )}
                 </div>
               )}
+
+              {/* Knowledge Base Dimensions */}
+              <div className="mt-6 border-t border-white/10 pt-4">
+                <button
+                  onClick={() => setKbOpen(!kbOpen)}
+                  className="flex items-center gap-2 text-sm text-white/80 hover:text-white transition w-full"
+                >
+                  <i className={`fa-solid fa-chevron-${kbOpen ? 'down' : 'right'} text-[10px] text-muted`} />
+                  <i className="fa-solid fa-database text-accent/60" />
+                  <span className="font-medium">Knowledge Base</span>
+                  <span className="text-[10px] text-muted ml-auto">
+                    {Object.keys(kbData).length > 0 ? `${Object.keys(kbData).length} dimensions` : 'Click to load'}
+                  </span>
+                </button>
+
+                {kbOpen && (
+                  <div className="mt-3 space-y-2">
+                    {kbLoading ? (
+                      <div className="text-center py-4 text-muted text-xs">
+                        <i className="fa-solid fa-spinner fa-spin mr-1" /> Loading knowledge base...
+                      </div>
+                    ) : Object.keys(kbData).length === 0 ? (
+                      <div className="text-center py-4 text-muted text-xs">
+                        No KB data yet. Run analysis first, then synthesize.
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2 mb-2">
+                          <button
+                            onClick={reSynthesize}
+                            disabled={synthesizing}
+                            className="px-3 py-1 bg-accent/10 hover:bg-accent/20 border border-accent/30 rounded-lg text-[10px] text-accent flex items-center gap-1.5 disabled:opacity-50 transition"
+                          >
+                            {synthesizing ? (
+                              <><i className="fa-solid fa-spinner fa-spin" /> Re-synthesizing...</>
+                            ) : (
+                              <><i className="fa-solid fa-arrows-rotate" /> Re-synthesize KB</>
+                            )}
+                          </button>
+                          {Object.values(kbData).some(d => d.adminFeedback?.status) && (
+                            <span className="text-[10px] text-yellow-400 flex items-center gap-1">
+                              <i className="fa-solid fa-triangle-exclamation" />
+                              Corrections pending — re-synthesize to apply
+                            </span>
+                          )}
+                        </div>
+
+                        {KB_DIMENSION_ORDER.map(dimKey => {
+                          const dim = kbData[dimKey]
+                          if (!dim) return null
+                          const meta = KB_DIMENSION_LABELS[dimKey] || { label: dimKey, icon: 'fa-solid fa-cube' }
+                          const isExpanded = expandedDim === dimKey
+                          const isCorrecting = correctionDim === dimKey
+                          const fb = dim.adminFeedback
+
+                          return (
+                            <div key={dimKey} className="bg-white/[0.03] border border-white/8 rounded-lg overflow-hidden">
+                              <div className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-white/[0.03] transition"
+                                onClick={() => setExpandedDim(isExpanded ? null : dimKey)}>
+                                <i className={`${meta.icon} text-[10px] text-accent/60 w-4 text-center`} />
+                                <span className="text-xs font-medium text-white/80 flex-1">{meta.label}</span>
+                                {fb?.status === 'needs_correction' && (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/20">Correction</span>
+                                )}
+                                {fb?.status === 'missing_info' && (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-yellow-500/15 text-yellow-400 border border-yellow-500/20">Missing info</span>
+                                )}
+                                {dim.version && <span className="text-[9px] text-muted">v{dim.version}</span>}
+                                <i className={`fa-solid fa-chevron-${isExpanded ? 'down' : 'right'} text-[9px] text-muted`} />
+                              </div>
+
+                              {isExpanded && (
+                                <div className="border-t border-white/5 px-3 py-2.5 space-y-2">
+                                  {Object.entries(dim.content).map(([field, value]) => (
+                                    <div key={field}>
+                                      <div className="text-[10px] text-accent/50 font-medium mb-0.5">{field}</div>
+                                      <div className="text-[11px] text-white/60 leading-relaxed break-words">
+                                        {typeof value === 'string' ? value
+                                          : Array.isArray(value) ? (
+                                            <ul className="list-disc list-inside space-y-0.5">
+                                              {value.slice(0, 10).map((item: any, i: number) => (
+                                                <li key={i}>{typeof item === 'string' ? item : JSON.stringify(item)}</li>
+                                              ))}
+                                              {value.length > 10 && <li className="text-muted">...and {value.length - 10} more</li>}
+                                            </ul>
+                                          ) : typeof value === 'object' && value !== null ? (
+                                            <pre className="text-[10px] bg-white/[0.03] rounded px-2 py-1 overflow-x-auto whitespace-pre-wrap">{JSON.stringify(value, null, 2)}</pre>
+                                          ) : String(value)}
+                                      </div>
+                                    </div>
+                                  ))}
+
+                                  {fb?.note && (
+                                    <div className="mt-2 bg-yellow-500/5 border border-yellow-500/15 rounded-md px-2.5 py-2">
+                                      <div className="text-[9px] text-yellow-400/80 font-medium mb-0.5">
+                                        Admin correction {fb.by ? `by @${fb.by}` : ''} {fb.at ? `· ${new Date(fb.at).toLocaleDateString()}` : ''}
+                                      </div>
+                                      <div className="text-[11px] text-yellow-200/70">{fb.note}</div>
+                                    </div>
+                                  )}
+
+                                  {!isCorrecting ? (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setCorrectionDim(dimKey); setCorrectionNote(''); setCorrectionType('needs_correction') }}
+                                      className="text-[10px] text-white/40 hover:text-accent flex items-center gap-1 mt-1 transition"
+                                    >
+                                      <i className="fa-solid fa-pen-to-square" /> Correct this dimension
+                                    </button>
+                                  ) : (
+                                    <div className="mt-2 bg-white/[0.03] border border-accent/20 rounded-lg p-2.5 space-y-2" onClick={e => e.stopPropagation()}>
+                                      <div className="flex gap-2">
+                                        <button
+                                          onClick={() => setCorrectionType('needs_correction')}
+                                          className={`text-[10px] px-2 py-1 rounded-md border transition ${correctionType === 'needs_correction' ? 'bg-red-500/15 border-red-500/30 text-red-400' : 'border-white/10 text-muted hover:border-white/20'}`}
+                                        >
+                                          Fix / Remove
+                                        </button>
+                                        <button
+                                          onClick={() => setCorrectionType('missing_info')}
+                                          className={`text-[10px] px-2 py-1 rounded-md border transition ${correctionType === 'missing_info' ? 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400' : 'border-white/10 text-muted hover:border-white/20'}`}
+                                        >
+                                          Add missing info
+                                        </button>
+                                      </div>
+                                      <textarea
+                                        value={correctionNote}
+                                        onChange={e => setCorrectionNote(e.target.value)}
+                                        placeholder={correctionType === 'needs_correction' ? 'What needs to be fixed? e.g. "Bhutan was a 1-week volunteer program, not 9 years"' : 'What information is missing? e.g. "Member also worked at Google for 3 years (2018-2021)"'}
+                                        className="w-full bg-white/5 border border-white/10 rounded-md px-2.5 py-2 text-xs text-white focus:border-accent focus:outline-none resize-none"
+                                        rows={3}
+                                      />
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          onClick={submitCorrection}
+                                          disabled={correctionSaving || !correctionNote.trim()}
+                                          className="px-3 py-1 bg-accent/20 hover:bg-accent/30 border border-accent/30 rounded-md text-[10px] text-accent disabled:opacity-50 transition flex items-center gap-1"
+                                        >
+                                          {correctionSaving ? <><i className="fa-solid fa-spinner fa-spin" /> Saving...</> : <><i className="fa-solid fa-check" /> Submit</>}
+                                        </button>
+                                        <button
+                                          onClick={() => setCorrectionDim(null)}
+                                          className="px-3 py-1 border border-white/10 rounded-md text-[10px] text-muted hover:text-white transition"
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="h-48 flex items-center justify-center text-muted text-sm">
