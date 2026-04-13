@@ -14592,17 +14592,84 @@ def send_message():
         logger.error(f"Error sending message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send message'})
 
-def _detect_and_apply_kb_correction(
+def _send_steve_dm(receiver: str, text: str):
+    """Send a DM from Steve to a user (MySQL + Firestore dual-write)."""
+    from datetime import datetime as _dt
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if USE_MYSQL:
+                c.execute("INSERT INTO messages (sender, receiver, message, timestamp) VALUES (%s, %s, %s, NOW())",
+                          ('steve', receiver, text))
+            else:
+                _ts = _dt.now().strftime('%Y-%m-%d %H:%M:%S')
+                c.execute("INSERT INTO messages (sender, receiver, message, timestamp) VALUES (?, ?, ?, ?)",
+                          ('steve', receiver, text, _ts))
+            conn.commit()
+            msg_id = getattr(c, 'lastrowid', None)
+            try:
+                from backend.services.firestore_writes import write_dm_message
+                write_dm_message(sender='steve', receiver=receiver, message_id=msg_id, text=text)
+            except Exception:
+                pass
+    except Exception as e:
+        logger.error("Failed to send Steve DM to %s: %s", receiver, e)
+
+
+def _resolve_canonical_username(username: str) -> str:
+    """Resolve a username to its canonical case from the database.
+
+    Firestore document IDs are case-sensitive, so we need the exact case
+    used when the profile was originally created.
+    """
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM users WHERE LOWER(username) = LOWER({ph})", (username,))
+            row = c.fetchone()
+            if row:
+                return row['username'] if hasattr(row, 'keys') else row[0]
+    except Exception as e:
+        logger.debug("Could not resolve canonical username for %s: %s", username, e)
+    return username
+
+
+# Profile fields the user can see on their Edit Profile page
+_PROFILE_FIELDS_PERSONAL = {
+    'first_name': 'first name',
+    'last_name': 'last name',
+    'city': 'city',
+    'country': 'country',
+    'bio': 'bio',
+    'display_name': 'display name',
+}
+_PROFILE_FIELDS_PROFESSIONAL = {
+    'role': 'job title / role',
+    'company': 'company',
+    'industry': 'industry',
+    'about': 'professional background',
+    'linkedin': 'LinkedIn URL',
+}
+
+
+def _detect_and_apply_profile_update(
     sender_username: str, user_message: str, conversation_context: str
 ) -> str | None:
-    """Detect if the user wants to correct their KB data and apply the correction.
+    """Detect if the user wants to update their profile and handle it.
 
-    Returns Steve's confirmation message if a correction was detected and applied,
-    or None if the message is not a correction request.
+    This is a profile-field-first approach: Steve speaks in terms the user
+    understands (company, city, bio, professional background) — never KB
+    dimensions. Updates go to the actual SQL profile fields the user sees on
+    their Edit Profile page. The KB is updated silently in the background.
 
-    Permission model:
-      - Admin users can correct any member's KB (target via @mention)
-      - Regular users can only correct their own KB
+    Two modes:
+      1. PROPOSE: If the update hasn't been confirmed yet, Steve asks for
+         confirmation and tells the user exactly what will change.
+      2. APPLY: If the conversation shows Steve already proposed a change and
+         the user confirmed ("yes", "go ahead", etc.), apply it now.
+
+    Returns Steve's response if a profile update was detected, or None.
     """
     import json as _json
 
@@ -14615,32 +14682,47 @@ def _detect_and_apply_kb_correction(
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
+        all_fields = {**_PROFILE_FIELDS_PERSONAL, **_PROFILE_FIELDS_PROFESSIONAL}
+        fields_list = ", ".join(f'"{k}" ({v})' for k, v in all_fields.items())
+
         classification = client.responses.create(
             model=GROK_MODEL_FAST,
             input=[
-                {"role": "system", "content": """You classify whether a user message is requesting a correction to their profile/knowledge base data.
+                {"role": "system", "content": f"""You determine whether a user message is requesting a change to their profile.
 
-A correction request is when someone says things like:
-- "That's wrong, I actually..."
-- "My Bhutan experience was only 1 week, not 9 years"
-- "Update my profile - I now work at X"
-- "Remove the part about Y, that's incorrect"
-- "I didn't work at Z for that long"
-- "Can you fix my data? I actually..."
-- "correct this: ..."
+A profile update is when someone says things like:
+- "Update my profile — I now work at Google"
+- "Change my city to London"
+- "My title is now VP of Engineering"
+- "I ran a marathon last year, can you add that?"
+- "That's wrong about me, I actually..."
+- "Remove the part about me working at Deloitte"
+- "Yes" / "go ahead" / "do it" (confirming a previously proposed update by Steve)
 
-An admin might also correct another member: "Fix @username's profile — their role is X not Y"
+An admin might also update another member: "Update @username's company to Google"
 
-If it IS a correction, extract:
-- target_username: who is being corrected (null if self)
-- dimension: the most likely KB dimension (one of: Index, Identity, UniqueFingerprint, LifeCareer, GeographyCulture, Expertise, Opinions, CompanyIntel, InferredContext, Network)
-- correction_type: "needs_correction" (fix wrong data) or "missing_info" (add new data)
-- correction_note: clear description of what needs to change
+PROFILE FIELDS (these are the actual fields on the user's Edit Profile page):
+{fields_list}
 
-Respond in JSON only: {"is_correction": true/false, "target_username": null or "username", "dimension": "...", "correction_type": "...", "correction_note": "..."}"""},
-                {"role": "user", "content": f"Conversation context:\n{conversation_context[-2000:]}\n\nLatest message from @{sender_username}:\n{user_message}"},
+CLASSIFICATION RULES:
+1. If the user is requesting a change to a known profile field, set "field_updates" with the field name and new value.
+2. If the change doesn't map to a specific field (e.g. "I ran a marathon"), set "free_text" with the content and "suggested_section" as either "bio" or "about" (professional background).
+3. If the user is confirming a PREVIOUSLY PROPOSED update by Steve (look at the conversation — did Steve just ask "Should I go ahead?" or similar), set "is_confirmation" to true and "confirmed_updates" with the field/value pairs from Steve's proposal. If Steve proposed two sections (bio vs professional background) and the user chose one, use the chosen section field ("bio" or "about").
+4. If the message is NOT a profile update request at all, set "is_update" to false.
+
+Respond in JSON only:
+{{
+  "is_update": true/false,
+  "is_confirmation": true/false,
+  "target_username": null or "username",
+  "field_updates": [{{"field": "company", "value": "Google"}}],
+  "free_text": null or {{"text": "Marathon runner", "suggested_section": "bio", "alternative_section": "about"}},
+  "confirmed_updates": [],
+  "kb_correction": null or "description of what to correct in Steve's deeper understanding"
+}}"""},
+                {"role": "user", "content": f"Conversation context:\n{conversation_context[-3000:]}\n\nLatest message from @{sender_username}:\n{user_message}"},
             ],
-            max_output_tokens=300,
+            max_output_tokens=400,
             temperature=0.1,
             response_format={"type": "json_object"},
         )
@@ -14650,75 +14732,205 @@ Respond in JSON only: {"is_correction": true/false, "target_username": null or "
             return None
 
         parsed = _json.loads(raw)
-        if not parsed.get('is_correction'):
+        if not parsed.get('is_update'):
             return None
 
         target = (parsed.get('target_username') or '').strip() or sender_username
-        dimension = parsed.get('dimension', '')
-        correction_type = parsed.get('correction_type', 'needs_correction')
-        correction_note = (parsed.get('correction_note') or '').strip()
-
-        if not dimension or not correction_note:
-            return None
+        target = _resolve_canonical_username(target)
 
         if not is_admin and target.lower() != sender_username.lower():
             return (
-                f"I can only update your own profile data. "
-                f"If you think @{target}'s information needs correcting, "
-                f"please let a community admin know and they can fix it. 🙏"
+                "I can only update your own profile. "
+                "If you think someone else's information needs correcting, "
+                "please let a community admin know. 🙏"
             )
 
-        from backend.services.steve_knowledge_base import (
-            save_admin_feedback, SYNTHESIS_NOTE_TYPES, synthesize_member_knowledge,
-        )
+        is_confirmation = parsed.get('is_confirmation', False)
+        field_updates = parsed.get('field_updates') or []
+        confirmed_updates = parsed.get('confirmed_updates') or []
+        free_text = parsed.get('free_text')
+        kb_correction = (parsed.get('kb_correction') or '').strip()
 
-        if dimension not in SYNTHESIS_NOTE_TYPES:
-            return None
+        if is_confirmation and confirmed_updates:
+            return _apply_profile_updates(
+                target, sender_username, confirmed_updates, kb_correction, is_admin
+            )
 
-        feedback = {
-            'status': correction_type,
-            'note': correction_note,
-            'by': sender_username,
-            'source': 'steve_dm_correction',
-        }
-        ok = save_admin_feedback(target, dimension, feedback)
-        if not ok:
-            return "I tried to save that correction but something went wrong. Please try again or contact an admin. 😕"
-
-        import threading
-        def _bg_resynth():
-            try:
-                synthesize_member_knowledge(target)
-                logger.info("KB re-synthesis complete for %s after DM correction by %s", target, sender_username)
-            except Exception as e:
-                logger.error("KB re-synthesis failed for %s: %s", target, e)
-        threading.Thread(target=_bg_resynth, daemon=True).start()
-
-        dim_label = dimension
-        dim_meta = {
-            'GeographyCulture': 'Geography & Culture', 'LifeCareer': 'Life & Career',
-            'CompanyIntel': 'Company Intel', 'UniqueFingerprint': 'Unique Fingerprint',
-            'InferredContext': 'Inferred Experiences', 'Index': 'Overview',
-        }
-        dim_label = dim_meta.get(dimension, dimension)
-
-        if target.lower() == sender_username.lower():
+        if field_updates:
+            labels = []
+            for u in field_updates:
+                fname = u.get('field', '')
+                fval = u.get('value', '')
+                label = all_fields.get(fname, fname)
+                labels.append(f"**{label}** → *{fval}*")
+            changes_text = "\n".join(f"• {l}" for l in labels)
+            is_self = target.lower() == sender_username.lower()
+            who = "your" if is_self else f"@{target}'s"
             return (
-                f"Got it! ✅ I've noted your correction on **{dim_label}**: "
-                f"*\"{correction_note}\"*\n\n"
-                f"I'm re-synthesizing your profile now with this update. "
-                f"It should be reflected in a few moments. 🔄"
+                f"I'd like to update {who} profile with the following:\n\n"
+                f"{changes_text}\n\n"
+                f"Should I go ahead? 🤔"
+            )
+
+        if free_text:
+            text = free_text.get('text', '')
+            suggested = free_text.get('suggested_section', 'bio')
+            alternative = free_text.get('alternative_section', 'about')
+            suggested_label = 'bio' if suggested == 'bio' else 'professional background'
+            alt_label = 'bio' if alternative == 'bio' else 'professional background'
+            return (
+                f"Nice! I think this fits best in your **{suggested_label}**:\n\n"
+                f"*\"{text}\"*\n\n"
+                f"Should I add it there, or would you prefer it in your **{alt_label}**?"
+            )
+
+        return None
+
+    except Exception as e:
+        logger.debug("Profile update detection failed: %s", e)
+        return None
+
+
+def _apply_profile_updates(
+    target: str, sender_username: str,
+    updates: list, kb_correction: str, is_admin: bool,
+):
+    """Apply confirmed profile field updates to SQL and sync KB in the background."""
+    import threading
+
+    personal_updates = {}
+    professional_updates = {}
+
+    for u in updates:
+        field = u.get('field', '')
+        value = u.get('value', '')
+        if field in _PROFILE_FIELDS_PERSONAL:
+            personal_updates[field] = value
+        elif field in _PROFILE_FIELDS_PROFESSIONAL:
+            professional_updates[field] = value
+
+    if not personal_updates and not professional_updates:
+        return None
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            if personal_updates:
+                set_clauses = []
+                values = []
+                for field, value in personal_updates.items():
+                    if field in ('bio', 'display_name'):
+                        continue
+                    set_clauses.append(f"{field} = {ph}")
+                    values.append(value or None)
+                if set_clauses:
+                    values.append(target)
+                    c.execute(
+                        f"UPDATE users SET {', '.join(set_clauses)} WHERE username = {ph}",
+                        tuple(values),
+                    )
+
+                if 'bio' in personal_updates:
+                    bio_val = personal_updates['bio'] or None
+                    if USE_MYSQL:
+                        c.execute(
+                            "INSERT INTO user_profiles (username, bio) VALUES (%s, %s) "
+                            "ON DUPLICATE KEY UPDATE bio = VALUES(bio)",
+                            (target, bio_val),
+                        )
+                    else:
+                        c.execute(
+                            "INSERT INTO user_profiles (username, bio) VALUES (?, ?) "
+                            "ON CONFLICT(username) DO UPDATE SET bio = excluded.bio",
+                            (target, bio_val),
+                        )
+
+                if 'display_name' in personal_updates:
+                    dn = personal_updates['display_name'] or ''
+                    if dn:
+                        if USE_MYSQL:
+                            c.execute(
+                                "INSERT INTO user_profiles (username, display_name) VALUES (%s, %s) "
+                                "ON DUPLICATE KEY UPDATE display_name = VALUES(display_name)",
+                                (target, dn),
+                            )
+                        else:
+                            c.execute(
+                                "INSERT INTO user_profiles (username, display_name) VALUES (?, ?) "
+                                "ON CONFLICT(username) DO UPDATE SET display_name = excluded.display_name",
+                                (target, dn),
+                            )
+
+            if professional_updates:
+                set_clauses = []
+                values = []
+                field_to_col = {
+                    'role': 'role', 'company': 'company', 'industry': 'industry',
+                    'linkedin': 'linkedin', 'about': 'professional_about',
+                }
+                for field, value in professional_updates.items():
+                    col = field_to_col.get(field)
+                    if col:
+                        set_clauses.append(f"{col} = {ph}")
+                        values.append(value or None)
+                if set_clauses:
+                    values.append(target)
+                    c.execute(
+                        f"UPDATE users SET {', '.join(set_clauses)} WHERE username = {ph}",
+                        tuple(values),
+                    )
+
+            conn.commit()
+
+        try:
+            invalidate_user_cache(target)
+        except Exception:
+            pass
+
+        applied_labels = []
+        all_fields = {**_PROFILE_FIELDS_PERSONAL, **_PROFILE_FIELDS_PROFESSIONAL}
+        for u in updates:
+            label = all_fields.get(u.get('field', ''), u.get('field', ''))
+            applied_labels.append(f"**{label}** → *{u.get('value', '')}*")
+        changes_text = ", ".join(applied_labels)
+
+        def _bg_sync():
+            try:
+                _trigger_background_profile_analysis(target)
+            except Exception:
+                pass
+            if kb_correction:
+                try:
+                    from backend.services.steve_knowledge_base import save_admin_feedback, synthesize_member_knowledge
+                    canonical = _resolve_canonical_username(target)
+                    save_admin_feedback(canonical, 'Index', {
+                        'status': 'needs_correction',
+                        'note': kb_correction,
+                        'by': sender_username,
+                        'source': 'steve_dm_profile_update',
+                    })
+                    synthesize_member_knowledge(canonical)
+                except Exception as e:
+                    logger.debug("KB sync after profile update failed for %s: %s", target, e)
+
+        threading.Thread(target=_bg_sync, daemon=True).start()
+
+        is_self = target.lower() == sender_username.lower()
+        if is_self:
+            return (
+                f"Done! ✅ I've updated your profile: {changes_text}.\n\n"
+                f"You can see the changes on your profile page."
             )
         else:
             return (
-                f"Done! ✅ I've applied the correction to **@{target}**'s **{dim_label}**: "
-                f"*\"{correction_note}\"*\n\n"
-                f"Re-synthesizing their profile now. 🔄"
+                f"Done! ✅ I've updated @{target}'s profile: {changes_text}."
             )
 
     except Exception as e:
-        logger.debug("KB correction detection failed: %s", e)
-        return None
+        logger.error("Failed to apply profile updates for %s: %s", target, e, exc_info=True)
+        return "Something went wrong while updating the profile. Please try again or update it manually from your Edit Profile page. 😕"
 
 
 def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_username: str = None):
@@ -14858,9 +15070,9 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
         
         context += f"\n\n[Current date and time: {current_date}]"
 
-        # ── Check for KB correction intent before normal reply ──
+        # ── Check for profile update intent before normal reply ──
         try:
-            correction_reply = _detect_and_apply_kb_correction(
+            correction_reply = _detect_and_apply_profile_update(
                 sender_username, user_message, context
             )
             if correction_reply:
@@ -14882,10 +15094,10 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
                         write_dm_message(sender='steve', receiver=reply_receiver, message_id=steve_msg_id, text=ai_response)
                     except Exception:
                         pass
-                logger.info("Steve KB correction reply sent to %s", sender_username)
+                logger.info("Steve profile update reply sent to %s", sender_username)
                 return
         except Exception as corr_err:
-            logger.debug("KB correction check failed, proceeding with normal reply: %s", corr_err)
+            logger.debug("Profile update check failed, proceeding with normal reply: %s", corr_err)
 
         is_admin = is_app_admin(sender_username)
 
@@ -14896,7 +15108,7 @@ CURRENT DATE AND TIME: {current_date}
 YOUR CAPABILITIES:
 - You have access to the FULL conversation history of this chat
 - You can search the web and X/Twitter for information
-- {"As an admin, you have full platform access. You can also correct any member's profile data." if is_admin else "You can correct your own profile data if something is wrong — just tell me what needs fixing."}
+- {"As an admin, you have full platform access. You can update any member's profile (company, role, city, bio, professional background, etc.)." if is_admin else "You can update your profile info (like company, role, city, bio) — just tell me what needs changing and I'll walk you through it."}
 
 CONVERSATION INTELLIGENCE:
 - You have two context sections: OLDER CONTEXT (background) and CURRENT CONVERSATION (active).
