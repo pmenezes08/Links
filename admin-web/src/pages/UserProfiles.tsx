@@ -600,7 +600,11 @@ export default function UserProfiles() {
                               <><i className="fa-solid fa-arrows-rotate" /> Re-synthesize KB</>
                             )}
                           </button>
-                          {Object.values(kbData).some(d => d.adminFeedback?.status) && (
+                          {Object.values(kbData).some(d => {
+                            const fb = d.adminFeedback
+                            if (!fb?.status || !fb?.at) return false
+                            return !d.updatedAt || new Date(fb.at) > new Date(d.updatedAt)
+                          }) && (
                             <span className="text-[10px] text-yellow-400 flex items-center gap-1">
                               <i className="fa-solid fa-triangle-exclamation" />
                               Corrections pending — re-synthesize to apply
@@ -623,10 +627,14 @@ export default function UserProfiles() {
                                 <i className={`${meta.icon} text-[10px] text-accent/60 w-4 text-center`} />
                                 <span className="text-xs font-medium text-white/80 flex-1">{meta.label}</span>
                                 {fb?.status === 'needs_correction' && (
-                                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/20">Correction</span>
+                                  fb.at && dim.updatedAt && new Date(fb.at) <= new Date(dim.updatedAt)
+                                    ? <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-400 border border-green-500/20">Corrected</span>
+                                    : <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/20">Correction</span>
                                 )}
                                 {fb?.status === 'missing_info' && (
-                                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-yellow-500/15 text-yellow-400 border border-yellow-500/20">Missing info</span>
+                                  fb.at && dim.updatedAt && new Date(fb.at) <= new Date(dim.updatedAt)
+                                    ? <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-400 border border-green-500/20">Added</span>
+                                    : <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-yellow-500/15 text-yellow-400 border border-yellow-500/20">Missing info</span>
                                 )}
                                 {dim.version && <span className="text-[9px] text-muted">v{dim.version}</span>}
                                 <i className={`fa-solid fa-chevron-${isExpanded ? 'down' : 'right'} text-[9px] text-muted`} />
