@@ -14592,6 +14592,135 @@ def send_message():
         logger.error(f"Error sending message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send message'})
 
+def _detect_and_apply_kb_correction(
+    sender_username: str, user_message: str, conversation_context: str
+) -> str | None:
+    """Detect if the user wants to correct their KB data and apply the correction.
+
+    Returns Steve's confirmation message if a correction was detected and applied,
+    or None if the message is not a correction request.
+
+    Permission model:
+      - Admin users can correct any member's KB (target via @mention)
+      - Regular users can only correct their own KB
+    """
+    import json as _json
+
+    if not XAI_API_KEY:
+        return None
+
+    is_admin = is_app_admin(sender_username)
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+
+        classification = client.responses.create(
+            model=GROK_MODEL_FAST,
+            input=[
+                {"role": "system", "content": """You classify whether a user message is requesting a correction to their profile/knowledge base data.
+
+A correction request is when someone says things like:
+- "That's wrong, I actually..."
+- "My Bhutan experience was only 1 week, not 9 years"
+- "Update my profile - I now work at X"
+- "Remove the part about Y, that's incorrect"
+- "I didn't work at Z for that long"
+- "Can you fix my data? I actually..."
+- "correct this: ..."
+
+An admin might also correct another member: "Fix @username's profile — their role is X not Y"
+
+If it IS a correction, extract:
+- target_username: who is being corrected (null if self)
+- dimension: the most likely KB dimension (one of: Index, Identity, UniqueFingerprint, LifeCareer, GeographyCulture, Expertise, Opinions, CompanyIntel, InferredContext, Network)
+- correction_type: "needs_correction" (fix wrong data) or "missing_info" (add new data)
+- correction_note: clear description of what needs to change
+
+Respond in JSON only: {"is_correction": true/false, "target_username": null or "username", "dimension": "...", "correction_type": "...", "correction_note": "..."}"""},
+                {"role": "user", "content": f"Conversation context:\n{conversation_context[-2000:]}\n\nLatest message from @{sender_username}:\n{user_message}"},
+            ],
+            max_output_tokens=300,
+            temperature=0.1,
+            response_format={"type": "json_object"},
+        )
+
+        raw = (classification.output_text or '').strip()
+        if not raw:
+            return None
+
+        parsed = _json.loads(raw)
+        if not parsed.get('is_correction'):
+            return None
+
+        target = (parsed.get('target_username') or '').strip() or sender_username
+        dimension = parsed.get('dimension', '')
+        correction_type = parsed.get('correction_type', 'needs_correction')
+        correction_note = (parsed.get('correction_note') or '').strip()
+
+        if not dimension or not correction_note:
+            return None
+
+        if not is_admin and target.lower() != sender_username.lower():
+            return (
+                f"I can only update your own profile data. "
+                f"If you think @{target}'s information needs correcting, "
+                f"please let a community admin know and they can fix it. 🙏"
+            )
+
+        from backend.services.steve_knowledge_base import (
+            save_admin_feedback, SYNTHESIS_NOTE_TYPES, synthesize_member_knowledge,
+        )
+
+        if dimension not in SYNTHESIS_NOTE_TYPES:
+            return None
+
+        feedback = {
+            'status': correction_type,
+            'note': correction_note,
+            'by': sender_username,
+            'source': 'steve_dm_correction',
+        }
+        ok = save_admin_feedback(target, dimension, feedback)
+        if not ok:
+            return "I tried to save that correction but something went wrong. Please try again or contact an admin. 😕"
+
+        import threading
+        def _bg_resynth():
+            try:
+                synthesize_member_knowledge(target)
+                logger.info("KB re-synthesis complete for %s after DM correction by %s", target, sender_username)
+            except Exception as e:
+                logger.error("KB re-synthesis failed for %s: %s", target, e)
+        threading.Thread(target=_bg_resynth, daemon=True).start()
+
+        dim_label = dimension
+        dim_meta = {
+            'GeographyCulture': 'Geography & Culture', 'LifeCareer': 'Life & Career',
+            'CompanyIntel': 'Company Intel', 'UniqueFingerprint': 'Unique Fingerprint',
+            'InferredContext': 'Inferred Experiences', 'Index': 'Overview',
+        }
+        dim_label = dim_meta.get(dimension, dimension)
+
+        if target.lower() == sender_username.lower():
+            return (
+                f"Got it! ✅ I've noted your correction on **{dim_label}**: "
+                f"*\"{correction_note}\"*\n\n"
+                f"I'm re-synthesizing your profile now with this update. "
+                f"It should be reflected in a few moments. 🔄"
+            )
+        else:
+            return (
+                f"Done! ✅ I've applied the correction to **@{target}**'s **{dim_label}**: "
+                f"*\"{correction_note}\"*\n\n"
+                f"Re-synthesizing their profile now. 🔄"
+            )
+
+    except Exception as e:
+        logger.debug("KB correction detection failed: %s", e)
+        return None
+
+
 def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_username: str = None):
     """Generate and send Steve's AI reply in a 1:1 DM. Runs in a background thread.
     
@@ -14729,6 +14858,35 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
         
         context += f"\n\n[Current date and time: {current_date}]"
 
+        # ── Check for KB correction intent before normal reply ──
+        try:
+            correction_reply = _detect_and_apply_kb_correction(
+                sender_username, user_message, context
+            )
+            if correction_reply:
+                ai_response = format_steve_response_links(correction_reply)
+                reply_receiver = sender_username
+                with get_db_connection() as conn:
+                    c = conn.cursor()
+                    if USE_MYSQL:
+                        c.execute("INSERT INTO messages (sender, receiver, message, timestamp) VALUES (%s, %s, %s, NOW())",
+                                  ('steve', reply_receiver, ai_response))
+                    else:
+                        _ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        c.execute("INSERT INTO messages (sender, receiver, message, timestamp) VALUES (?, ?, ?, ?)",
+                                  ('steve', reply_receiver, ai_response, _ts))
+                    conn.commit()
+                    steve_msg_id = getattr(c, 'lastrowid', None)
+                    try:
+                        from backend.services.firestore_writes import write_dm_message
+                        write_dm_message(sender='steve', receiver=reply_receiver, message_id=steve_msg_id, text=ai_response)
+                    except Exception:
+                        pass
+                logger.info("Steve KB correction reply sent to %s", sender_username)
+                return
+        except Exception as corr_err:
+            logger.debug("KB correction check failed, proceeding with normal reply: %s", corr_err)
+
         is_admin = is_app_admin(sender_username)
 
         system_prompt = f"""You are Steve, a helpful, witty, and intelligent AI assistant in a private 1:1 chat.
@@ -14738,7 +14896,7 @@ CURRENT DATE AND TIME: {current_date}
 YOUR CAPABILITIES:
 - You have access to the FULL conversation history of this chat
 - You can search the web and X/Twitter for information
-- {"As an admin, you have full platform access." if is_admin else "You have access to general information and web search."}
+- {"As an admin, you have full platform access. You can also correct any member's profile data." if is_admin else "You can correct your own profile data if something is wrong — just tell me what needs fixing."}
 
 CONVERSATION INTELLIGENCE:
 - You have two context sections: OLDER CONTEXT (background) and CURRENT CONVERSATION (active).
