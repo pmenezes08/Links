@@ -56,11 +56,12 @@ def _kb_synthesis_max_output_tokens() -> int:
     return max(_KB_SYNTHESIS_MAX_OUT_MIN, min(v, _KB_SYNTHESIS_MAX_OUT_CAP))
 
 
-# Founder awareness is now handled at the network synthesis level (see synthesize_network_knowledge()
-# and the founderInfo metadata in NetworkIndex/NetworkInferredContext). Individual USER_OVERRIDES
-# for Paulo have been removed as they were skewing network analysis. The network synthesis now
-# properly distinguishes between "Platform Architect" (infrastructure role) and regular community
-# members to prevent bias while preserving historical accuracy.
+# Founder awareness is now handled consistently at BOTH individual profile synthesis
+# AND network synthesis levels (see synthesize_network_knowledge() and founderInfo
+# metadata in NetworkIndex/NetworkInferredContext). All references to
+# USER_OVERRIDES and PAULO-SPECIFIC OVERRIDE have been removed. The platform
+# founder is treated neutrally as "Platform Architect / Steve Creator" at both
+# levels to prevent bias while preserving historical accuracy.
 
 COLLECTION = "steve_knowledge_base"
 
@@ -802,7 +803,7 @@ Rules for all users:
 - Avoid generic statements. Use the examples above as templates for every experience.
 - This inference MUST be prominently captured in InferredContext.experiences, InferredContext.overarchingThemes, and InferredContext.strategicImplications. It should also flow into Identity, observations in Index, UniqueFingerprint, LifeCareer, Expertise.credibilitySignals, and the overall Index synthesis.
 - When PREVIOUS SYNTHESIS is provided, enhance the existing InferredContext rather than replacing it.
-- Use the PAULO-SPECIFIC OVERRIDE where applicable, but apply the same depth of reasoning to all users.
+- Founder awareness is handled consistently at both individual profile and network synthesis levels with proper founderInfo metadata. Treat the platform founder neutrally as "Platform Architect / Steve Creator" providing infrastructure. Focus on genuine patterns from all community members rather than letting any single profile dominate.
 
 This engine is the core of building a rich, accurate, evolving member knowledge base that captures the true transformative power of a person's journey. The InferredContext dimension makes cultural, slang, and contextual insights from posts and comments obvious and first-class for both admins and Steve. Group chat ingestion has been fully removed.
 
@@ -1207,8 +1208,9 @@ def _call_grok_for_synthesis(
         from openai import OpenAI
         client = OpenAI(api_key=xai_key, base_url="https://api.x.ai/v1")
 
-        # Founder awareness is now handled at the network synthesis level (see synthesize_network_knowledge()
-        # and founderInfo metadata). Individual USER_OVERRIDES for Paulo have been removed.
+        # Founder awareness is now handled consistently at both individual and network
+        # synthesis levels with proper founderInfo metadata. No special USER_OVERRIDES
+        # are applied for any user.
         user_content = f"Synthesize the knowledge base for @{username}:\n\n{raw_text}"
         if prior_synthesis:
             user_content += f"\n\n{prior_synthesis}"
@@ -1395,9 +1397,9 @@ def _fetch_community_sql_data(network_id: int) -> Dict[str, Any]:
 def _aggregate_member_kbs(member_usernames: List[str], exclude_founder: bool = False) -> Dict[str, Any]:
     """Read member KB synthesis docs from Firestore and aggregate for network dimensions.
 
-    If exclude_founder=True, Paulo is excluded from regular aggregates to prevent
-    his rich profile from dominating network analysis. He is handled separately
-    as "Platform Architect" via founderInfo metadata.
+    If exclude_founder=True, the platform founder (Paulo) is excluded from regular
+    aggregates to prevent his profile from dominating network analysis. He is handled
+    separately via founderInfo metadata with neutral treatment as "Platform Architect".
 
     Aligned to actual member KB schemas (SYNTHESIS_SCHEMAS): uses ``domains``
     (not primaryAreas), ``locations`` (not primaryLocations), ``rareQualities``
@@ -1685,9 +1687,10 @@ def synthesize_network_knowledge(network_id: int) -> bool:
         member_count = len(member_usernames)
         logger.info("Network %s (%s): %d direct members found (isolated)", network_id, community_name, member_count)
 
-        # COMPREHENSIVE FOUNDER AWARENESS - prevents Paulo bias in network analysis
-        # When the platform founder is a member, we treat them as "Platform Architect"
-        # rather than a typical community member to avoid skewing network insights
+        # COMPREHENSIVE FOUNDER AWARENESS - applied consistently at both individual
+        # and network levels. When the platform founder is a member, we treat them
+        # neutrally as "Platform Architect / Steve Creator" providing infrastructure
+        # rather than a typical community member to avoid skewing analysis.
         has_founder = any(u.lower() == "paulo" for u in member_usernames)
         founder_info = None
         if has_founder:

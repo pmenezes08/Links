@@ -4495,7 +4495,19 @@ def _deferred_startup_init():
             logger.info("Background: migrate_community_ownership_from_paulo_to_admin completed")
         except Exception as e:
             logger.warning(f"Background: migrate_community_ownership_from_paulo_to_admin failed: {e}")
-        
+
+        # Reset Paulo's knowledge base to clear any cached synthesis containing old
+        # PAULO-SPECIFIC OVERRIDE text. This ensures fresh analysis with the updated
+        # neutral founder awareness instructions.
+        try:
+            from backend.services.steve_knowledge_base import reset_member_knowledge_base
+            if reset_member_knowledge_base('Paulo'):
+                logger.info("Successfully reset Paulo's knowledge base to clear old override text")
+            else:
+                logger.warning("Failed to reset Paulo's knowledge base")
+        except Exception as e:
+            logger.warning(f"Background: reset_member_knowledge_base for Paulo failed: {e}")
+
         logger.info("Background startup init completed")
     except Exception as e:
         logger.error(f"Background startup init failed: {e}")
@@ -8946,8 +8958,10 @@ def _analyze_profile_with_grok(
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
         today_str = datetime.utcnow().strftime('%Y-%m-%d')
 
-        # Founder awareness is now handled at the network synthesis level.
-        # Individual USER_OVERRIDES for Paulo have been removed to prevent skewing analysis.
+        # Founder awareness is now handled consistently at BOTH individual profile
+        # analysis AND network synthesis levels with proper founderInfo metadata.
+        # No special USER_OVERRIDES or PAULO-SPECIFIC overrides are applied for
+        # any user. The platform founder is treated neutrally as "Platform Architect".
         identity_override = ""
 
         community_internal_line = (
@@ -9228,7 +9242,7 @@ Rules for all users:
 - Avoid generic statements. "Has finance experience" is weak. "Finance experience in emerging markets shaped a risk-tolerant, capital-efficient mindset that now informs platform building at C-Point" is powerful.
 - For any experience, the core question is: "What does this *mean* about who this person is, what they bring to the table, and how they see the world?"
 - This inference must flow into identity, observations, bridgeInsight, UniqueFingerprint, LifeCareer.stages, Expertise.credibilitySignals, and the overall Index synthesis.
-- Use the PAULO-SPECIFIC OVERRIDE and verifiedLinks where applicable, but generalize the same depth of reasoning to all users.
+- Founder awareness is handled consistently at both individual profile and network synthesis levels with proper founderInfo metadata. Treat the platform founder neutrally as "Platform Architect / Steve Creator" providing infrastructure. Focus on genuine patterns from all community members rather than letting any single profile dominate.
 
 This engine is the core of building a rich, accurate member identity.
 """
