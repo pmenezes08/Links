@@ -56,26 +56,11 @@ def _kb_synthesis_max_output_tokens() -> int:
     return max(_KB_SYNTHESIS_MAX_OUT_MIN, min(v, _KB_SYNTHESIS_MAX_OUT_CAP))
 
 
-# User-specific overrides for Steve profiling and KB synthesis (shared with bodybuilding_app.py)
-# This centralized approach avoids scattered `if username == "Paulo"` checks and makes
-# maintenance much easier.
-USER_OVERRIDES = {
-    "Paulo": {
-        "identity_override": (
-            "PAULO-SPECIFIC OVERRIDE (HIGHEST PRIORITY - OVERRIDES ALL OTHER DATA): "
-            "You are analyzing the founder and primary builder of the C-Point platform. "
-            "His core identity is platform architecture, building Steve (the member knowledge base system), "
-            "AI integration, member profiling systems, and entrepreneurial product execution. "
-            "Community creation and ownership is purely incidental to being the founder — it does NOT "
-            "make him a 'community builder', 'prolific community curator', or similar. "
-            "Completely suppress any language like 'community builder', 'prolific community', 'community curation', "
-            "'highly active as owner/admin of numerous groups', or similar framing. "
-            "Frame any community work as infrastructure/maintenance required to run the platform. "
-            "Heavily prioritize platform-building, knowledge systems, and technical vision in Identity, "
-            "UniqueFingerprint, observations, summary, networkingValue, and all KB dimensions."
-        ),
-    }
-}
+# Founder awareness is now handled at the network synthesis level (see synthesize_network_knowledge()
+# and the founderInfo metadata in NetworkIndex/NetworkInferredContext). Individual USER_OVERRIDES
+# for Paulo have been removed as they were skewing network analysis. The network synthesis now
+# properly distinguishes between "Platform Architect" (infrastructure role) and regular community
+# members to prevent bias while preserving historical accuracy.
 
 COLLECTION = "steve_knowledge_base"
 
@@ -1222,13 +1207,9 @@ def _call_grok_for_synthesis(
         from openai import OpenAI
         client = OpenAI(api_key=xai_key, base_url="https://api.x.ai/v1")
 
-        # Apply USER_OVERRIDES (centralized exception handling for @Paulo, etc.)
-        override = USER_OVERRIDES.get(username) or USER_OVERRIDES.get(
-            username.lower() if isinstance(username, str) else None
-        )
+        # Founder awareness is now handled at the network synthesis level (see synthesize_network_knowledge()
+        # and founderInfo metadata). Individual USER_OVERRIDES for Paulo have been removed.
         user_content = f"Synthesize the knowledge base for @{username}:\n\n{raw_text}"
-        if override and "identity_override" in override:
-            user_content = f"{override['identity_override']}\n\n{user_content}"
         if prior_synthesis:
             user_content += f"\n\n{prior_synthesis}"
         if admin_corrections:
