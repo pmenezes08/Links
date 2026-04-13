@@ -19,6 +19,7 @@ import VoiceNotePlayer from '../components/VoiceNotePlayer'
 import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
+import LinkPreview, { extractUrls } from '../components/LinkPreview'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
 
@@ -2131,6 +2132,11 @@ export default function GroupChatThread() {
                                       )}
                                     </div>
                                   )}
+                                  {displayText && extractUrls(displayText).map(u => (
+                                    <div key={u} className="px-2 pb-2">
+                                      <LinkPreview url={u} sent={isSentByMe} />
+                                    </div>
+                                  ))}
                                 </div>
                               )}
                               {/* Grouped media display */}

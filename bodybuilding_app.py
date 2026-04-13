@@ -13939,6 +13939,167 @@ def delete_chat():
     except Exception as e:
         logger.error(f"Error in delete_chat for {username}: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to delete chat'}), 500
+
+# ── Link Preview API ──────────────────────────────────────────────────
+
+_link_preview_cache: dict = {}
+_LINK_PREVIEW_TTL = 86400
+_LINK_PREVIEW_MAX_CACHE = 2000
+
+_LINK_PREVIEW_ALLOWED_DOMAINS = {
+    'youtube.com', 'youtu.be', 'www.youtube.com', 'm.youtube.com',
+    'vimeo.com', 'www.vimeo.com',
+    'instagram.com', 'www.instagram.com',
+    'linkedin.com', 'www.linkedin.com',
+    'twitter.com', 'www.twitter.com', 'x.com', 'www.x.com',
+    'tiktok.com', 'www.tiktok.com', 'vm.tiktok.com',
+    'facebook.com', 'www.facebook.com', 'm.facebook.com',
+    'github.com', 'www.github.com',
+    'medium.com', 'www.medium.com',
+    'reddit.com', 'www.reddit.com', 'old.reddit.com',
+    'spotify.com', 'open.spotify.com',
+    'bbc.com', 'www.bbc.com', 'bbc.co.uk', 'www.bbc.co.uk',
+    'nytimes.com', 'www.nytimes.com',
+    'theguardian.com', 'www.theguardian.com',
+    'reuters.com', 'www.reuters.com',
+    'bloomberg.com', 'www.bloomberg.com',
+    'ft.com', 'www.ft.com',
+    'techcrunch.com', 'www.techcrunch.com',
+    'arxiv.org', 'www.arxiv.org',
+    'cnbc.com', 'www.cnbc.com',
+    'forbes.com', 'www.forbes.com',
+    'wsj.com', 'www.wsj.com',
+}
+
+
+def _extract_og_metadata(url: str) -> dict | None:
+    """Fetch and parse Open Graph metadata from a URL."""
+    import re as _re
+    import time as _time
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    domain = (parsed.hostname or '').lower()
+
+    if domain not in _LINK_PREVIEW_ALLOWED_DOMAINS:
+        tld2 = '.'.join(domain.split('.')[-2:]) if domain.count('.') >= 1 else domain
+        if tld2 not in _LINK_PREVIEW_ALLOWED_DOMAINS:
+            return None
+
+    cache_key = url.strip().rstrip('/')
+    cached = _link_preview_cache.get(cache_key)
+    if cached:
+        if _time.time() - cached['_ts'] < _LINK_PREVIEW_TTL:
+            return cached
+        del _link_preview_cache[cache_key]
+
+    try:
+        import requests as _req
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (compatible; CPointBot/1.0; +https://c-point.co)',
+            'Accept': 'text/html,application/xhtml+xml',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
+        resp = _req.get(url, headers=headers, timeout=5, allow_redirects=True,
+                        stream=True)
+        if resp.status_code != 200:
+            return None
+
+        content = b''
+        for chunk in resp.iter_content(chunk_size=8192):
+            content += chunk
+            if len(content) > 200_000:
+                break
+        resp.close()
+        html = content.decode('utf-8', errors='replace')
+    except Exception:
+        return None
+
+    def _og(prop):
+        m = _re.search(
+            rf'<meta[^>]*property=["\']og:{prop}["\'][^>]*content=["\'](.*?)["\']',
+            html, _re.IGNORECASE | _re.DOTALL)
+        if not m:
+            m = _re.search(
+                rf'<meta[^>]*content=["\'](.*?)["\'][^>]*property=["\']og:{prop}["\']',
+                html, _re.IGNORECASE | _re.DOTALL)
+        return (m.group(1).strip() if m else '').replace('&amp;', '&').replace('&#x27;', "'")
+
+    def _meta(name):
+        m = _re.search(
+            rf'<meta[^>]*name=["\'](?:twitter:)?{name}["\'][^>]*content=["\'](.*?)["\']',
+            html, _re.IGNORECASE | _re.DOTALL)
+        if not m:
+            m = _re.search(
+                rf'<meta[^>]*content=["\'](.*?)["\'][^>]*name=["\'](?:twitter:)?{name}["\']',
+                html, _re.IGNORECASE | _re.DOTALL)
+        return (m.group(1).strip() if m else '').replace('&amp;', '&').replace('&#x27;', "'")
+
+    title = _og('title') or _meta('title')
+    if not title:
+        tm = _re.search(r'<title[^>]*>(.*?)</title>', html, _re.IGNORECASE | _re.DOTALL)
+        title = (tm.group(1).strip() if tm else '')
+    title = _re.sub(r'<[^>]+>', '', title).strip()
+
+    description = _og('description') or _meta('description')
+    description = _re.sub(r'<[^>]+>', '', description).strip()
+    if len(description) > 300:
+        description = description[:297] + '...'
+
+    image = _og('image') or _meta('image')
+    if image and not image.startswith('http'):
+        image = f"{parsed.scheme}://{parsed.hostname}{image}" if image.startswith('/') else ''
+
+    site_name = _og('site_name') or domain
+    og_type = _og('type') or ''
+
+    yt_match = _re.search(
+        r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})',
+        url)
+    video_id = yt_match.group(1) if yt_match else None
+    if video_id and not image:
+        image = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+
+    result = {
+        'title': title[:200] if title else '',
+        'description': description,
+        'image': image,
+        'site_name': site_name,
+        'domain': domain,
+        'type': og_type,
+        'url': url,
+        '_ts': _time.time(),
+    }
+
+    if not title and not description and not image:
+        return None
+
+    if len(_link_preview_cache) >= _LINK_PREVIEW_MAX_CACHE:
+        oldest_key = min(_link_preview_cache, key=lambda k: _link_preview_cache[k]['_ts'])
+        del _link_preview_cache[oldest_key]
+    _link_preview_cache[cache_key] = result
+    return result
+
+
+@app.route('/api/link-preview', methods=['GET', 'OPTIONS'])
+@login_required
+def get_link_preview():
+    """Return Open Graph metadata for a URL (cached, allowlisted domains only)."""
+    if request.method == 'OPTIONS':
+        return make_response('', 204)
+    url = (request.args.get('url') or '').strip()
+    if not url:
+        return jsonify({'success': False, 'error': 'url param required'}), 400
+    if not url.startswith('http'):
+        url = 'https://' + url
+
+    meta = _extract_og_metadata(url)
+    if not meta:
+        return jsonify({'success': False, 'error': 'no preview available'}), 404
+
+    safe = {k: v for k, v in meta.items() if not k.startswith('_')}
+    return jsonify({'success': True, 'preview': safe})
+
 @app.route('/api/chat/media', methods=['GET'])
 @login_required
 def get_chat_media():

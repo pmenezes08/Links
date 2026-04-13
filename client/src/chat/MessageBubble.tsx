@@ -14,6 +14,7 @@ import { memo } from 'react'
 import type { ChatMessage } from '../types/chat'
 import MessageImage from '../components/MessageImage'
 import MessageVideo from '../components/MessageVideo'
+import LinkPreview, { extractUrls } from '../components/LinkPreview'
 import { normalizeMediaPath, formatMessageTime, parseMessageTime } from './utils'
 import AudioMessage from './AudioMessage'
 import LongPressActionable from './LongPressActionable'
@@ -462,24 +463,28 @@ function MessageBubbleInner({
               </div>
             </div>
           ) : m.text ? (
-            <div
-              className="inline"
-              onDoubleClick={() => {
-                if (!m.sent || !onEdit) return
-                // Enforce 5-minute window on client
-                const dt = parseMessageTime(m.time)
-                if (dt && Date.now() - dt.getTime() > 5 * 60 * 1000) return
-                onEdit()
-              }}
-            >
-              {linkifyText(m.text)}
-              {m.edited_at ? (
-                <span className="text-[10px] text-white/50 ml-1">edited</span>
-              ) : null}
-              <span className={`text-[10px] ml-2 ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
-                {formatMessageTime(m.time)}
-              </span>
-            </div>
+            <>
+              <div
+                className="inline"
+                onDoubleClick={() => {
+                  if (!m.sent || !onEdit) return
+                  const dt = parseMessageTime(m.time)
+                  if (dt && Date.now() - dt.getTime() > 5 * 60 * 1000) return
+                  onEdit()
+                }}
+              >
+                {linkifyText(m.text)}
+                {m.edited_at ? (
+                  <span className="text-[10px] text-white/50 ml-1">edited</span>
+                ) : null}
+                <span className={`text-[10px] ml-2 ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
+                  {formatMessageTime(m.time)}
+                </span>
+              </div>
+              {extractUrls(m.text).map(u => (
+                <LinkPreview key={u} url={u} sent={m.sent} />
+              ))}
+            </>
           ) : (
             <span className={`text-[10px] ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
               {formatMessageTime(m.time)}

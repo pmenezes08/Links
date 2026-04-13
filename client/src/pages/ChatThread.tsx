@@ -571,8 +571,8 @@ export default function ChatThread(){
           href={href} 
           target={(isInternal && !isLanding) ? undefined : "_blank"} 
           rel={(isInternal && !isLanding) ? undefined : "noopener noreferrer"} 
-          className="underline text-[#4db6ac] hover:text-[#45a99c] inline-block py-0.5"
-          style={{ minHeight: '32px', lineHeight: '1.6' }}
+          className="underline text-[#4db6ac] hover:text-[#45a99c] inline py-0.5 break-all"
+          style={{ lineHeight: '1.6' }}
           onClick={(e) => {
             if (isInternal && !isLanding) {
               e.preventDefault()
