@@ -39413,7 +39413,7 @@ def admin_network_insights(network_id):
     if not is_app_admin(username):
         response = jsonify({'success': False, 'error': 'Unauthorized'})
         return add_cors_headers(response), 403
-    _BUILD_MARKER = "v3-founder-awareness-20260413"
+    _BUILD_MARKER = "v4-routing-fix-20260413"
     try:
         from backend.services.steve_knowledge_base import fetch_network_kb_data
 
