@@ -1411,8 +1411,12 @@ def _fetch_community_sql_data(network_id: int) -> Dict[str, Any]:
     return {"communityName": community_name, "memberUsernames": member_usernames}
 
 
-def _aggregate_member_kbs(member_usernames: List[str]) -> Dict[str, Any]:
+def _aggregate_member_kbs(member_usernames: List[str], exclude_founder: bool = False) -> Dict[str, Any]:
     """Read member KB synthesis docs from Firestore and aggregate for network dimensions.
+
+    If exclude_founder=True, Paulo is excluded from regular aggregates to prevent
+    his rich profile from dominating network analysis. He is handled separately
+    as "Platform Architect" via founderInfo metadata.
 
     Aligned to actual member KB schemas (SYNTHESIS_SCHEMAS): uses ``domains``
     (not primaryAreas), ``locations`` (not primaryLocations), ``rareQualities``
@@ -1426,6 +1430,12 @@ def _aggregate_member_kbs(member_usernames: List[str]) -> Dict[str, Any]:
     and composition demographics.
     """
     fs = _get_fs()
+    
+    # Filter out founder if requested to prevent bias
+    if exclude_founder:
+        regular_members = [u for u in member_usernames if u.lower() != "paulo"]
+        logger.info(f"Excluding founder from regular aggregation. Processing {len(regular_members)}/{len(member_usernames)} members")
+        member_usernames = regular_members
 
     # Expertise
     expertise_counts: Dict[str, int] = {}
@@ -1694,13 +1704,23 @@ def synthesize_network_knowledge(network_id: int) -> bool:
         member_count = len(member_usernames)
         logger.info("Network %s (%s): %d direct members found (isolated)", network_id, community_name, member_count)
 
-        # Special founder awareness to prevent Paulo bias - he should be treated as Platform Architect,
-        # not a typical community member that dominates network aggregates
+        # COMPREHENSIVE FOUNDER AWARENESS - prevents Paulo bias in network analysis
+        # When the platform founder is a member, we treat them as "Platform Architect"
+        # rather than a typical community member to avoid skewing network insights
         has_founder = any(u.lower() == "paulo" for u in member_usernames)
+        founder_info = None
         if has_founder:
-            logger.info("Network %s contains platform founder - applying special network-level handling to avoid bias", network_id)
+            logger.info("Network %s contains platform founder - applying comprehensive founder awareness", network_id)
+            founder_info = {
+                "username": "Paulo",
+                "role": "Platform Architect",
+                "contributionType": "infrastructure",  # vs "community_member"
+                "shouldNotDominate": True,
+                "note": "Paulo's presence provides Steve (KB system) infrastructure. Focus analysis on organic community dynamics."
+            }
 
-        agg = _aggregate_member_kbs(member_usernames)
+        # Filter founder from regular aggregation to prevent bias
+        agg = _aggregate_member_kbs(member_usernames, exclude_founder=has_founder)
         kb_count = agg["membersWithKB"]
         top_expertise = list(agg["expertiseDistribution"].keys())
         top_locations = agg["primaryLocations"]
@@ -1716,10 +1736,11 @@ def synthesize_network_knowledge(network_id: int) -> bool:
             "primaryLocations": top_locations,
             "industryDistribution": agg["industryDistribution"],
             "lastUpdated": datetime.utcnow().isoformat(),
+            "founderInfo": founder_info,  # Comprehensive founder awareness metadata
             "currentSynthesis": (
                 f"{community_name} is a network of {member_count} professionals"
                 f" ({kb_count} with synthesized knowledge bases)."
-                + (f" The platform founder is a member, providing infrastructure and Steve (the KB system) — this should be acknowledged but not dominate the community's collective identity." if has_founder else "")
+                + (f" The platform founder is a member, providing infrastructure and Steve (the KB system). Analysis focuses on organic community dynamics rather than founder influence." if has_founder else "")
                 + f" Top expertise: {', '.join(top_expertise[:4]) or 'pending synthesis'}."
                 f" Primary locations: {', '.join(top_locations[:3]) or 'global'}."
             ),
@@ -1803,6 +1824,7 @@ def synthesize_network_knowledge(network_id: int) -> bool:
                 if agg["bridgingSnippets"]
                 else "Bridging data pending member synthesis."
             ),
+            "founderContext": founder_info,  # Comprehensive founder awareness for insights layer
             "confidence": min(0.95, 0.3 + (kb_count / max(member_count, 1)) * 0.65) if member_count > 0 else 0.1,
         }
 

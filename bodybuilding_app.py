@@ -39482,11 +39482,11 @@ KB Dimensions Available: {dims_available}/6
 Using ONLY the real Knowledge Base data above, produce **actionable, specific** strategic insights.
 Use {network_type} as the primary lens — Professional networks prioritize career clusters and CompanyIntel; Social networks prioritize engagement and events; Sports prioritize performance and team dynamics.
 
-CRITICAL RULES:
-- If the platform founder (Paulo) is a member, acknowledge this but DO NOT let his individual profile dominate the network analysis. Treat him as "Platform Architect / Steve Creator" providing infrastructure, not as a typical community member. Focus on the collective intelligence of the other members.
-- For posts and comments: Show deep reasoning. Understand original post context vs replies, semantic intent, thread structure, and cultural/slang nuances. Link insights to genuine patterns in identity, expertise, values, or network dynamics. Avoid random or superficial observations.
-- Every claim MUST be backed by specific data from the KB above. Do NOT hallucinate or invent data.
-- memberCount in group recommendations must reflect actual numbers from the KB.
+CRITICAL RULES - FOUNDER AWARENESS & POST REASONING:
+- Use the "founderInfo" section from NetworkIndex if present. If the platform founder (Paulo) is a member, acknowledge this but DO NOT let his individual profile dominate the network analysis. Treat him as "Platform Architect / Steve Creator" providing infrastructure. Focus analysis on the organic community dynamics and collective intelligence of regular members.
+- For posts and comments: Show DEEP reasoning. Understand original post vs reply context, semantic intent, thread structure (direct reply vs reply-to-reply), and cultural/slang nuances. Link insights to genuine patterns in identity, expertise, values, or network dynamics. Avoid random or superficial observations.
+- Every claim MUST be backed by specific data from the KB above. Do NOT hallucinate or invent data or communities.
+- memberCount in group recommendations must reflect actual numbers from the KB (excluding founder inflation).
 - If data is sparse, say so honestly rather than fabricating patterns.
 - Reference real expertise domains, locations, companies, rare qualities, and relational patterns from the KB data.
 
@@ -39518,7 +39518,7 @@ Return ONLY valid JSON matching this schema:
         completion = client.chat.completions.create(
             model=GROK_MODEL_FAST,
             messages=[
-                {"role": "system", "content": "You are Steve, a master network strategist. Respond with valid JSON only. Ground EVERY claim in the provided Knowledge Base data. Never hallucinate or invent patterns. If the platform founder is a member, acknowledge this but focus on the collective intelligence of the community rather than letting his profile dominate. Show deep reasoning about posts and comments - understand context, reply chains, semantic intent, and cultural nuances."},
+                {"role": "system", "content": "You are Steve, a master network strategist. Respond with valid JSON only. Ground EVERY claim in the provided Knowledge Base data. Never hallucinate, invent patterns, or reference non-existent communities. Use founderInfo from NetworkIndex if present. If the platform founder is a member, acknowledge this but focus analysis on organic community dynamics rather than letting his profile dominate. Show deep reasoning about posts and comments - understand context, reply chains, semantic intent, and cultural nuances."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.4,
