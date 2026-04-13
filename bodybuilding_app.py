@@ -39401,7 +39401,7 @@ def _compute_all_outcome_rates():
         logger.error(f"_compute_all_outcome_rates error: {e}", exc_info=True)
 
 
-@app.route('/api/admin/knowledge_base/network/<int:network_id>/insights', methods=['POST', 'OPTIONS'])
+@app.route('/api/admin/knowledge_base/network/<int:network_id>/insights', methods=['POST', 'OPTIONS'], endpoint='admin_network_insights')
 @login_required
 def admin_network_insights(network_id):
     """Generate *real* strategic network insights using Grok reasoning over the Knowledge Base.
