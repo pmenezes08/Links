@@ -9482,25 +9482,35 @@ def _onboarding_identity_from_steve_profile(username: str) -> dict:
 STEVE_CTX_CACHE_TTL = 600  # 10 minutes
 
 
-def _build_context_from_profile(profile: dict, username: str, *, networking: bool = False) -> str:
+def _build_context_from_profile(profile: dict, username: str, *, networking: bool = False, context_tier: str = "full") -> str:
     """Build a context string from a pre-loaded steve_user_profiles document.
-    This is the pure computation step — no Firestore reads, no caching.
 
-    When *networking* is True, returns a compact summary (KB currentSynthesis)
-    suitable for the member roster prompt where token budget is tight.
-    Otherwise returns the full KB context for deep individual queries.
+    *context_tier* controls KB richness:
+      - "full"  — all dimensions, all fields (deep 1:1 queries)
+      - "mid"   — structured summary across all dimensions (~300-500 tokens)
+      - "slim"  — 3 dimensions only (~100 tokens, large-roster fallback)
+
+    The legacy *networking* flag maps to "slim" for backward compatibility.
     """
     if not profile:
         return ''
 
+    if networking and context_tier == "full":
+        context_tier = "slim"
+
     try:
         from backend.services.steve_knowledge_base import USE_KNOWLEDGE_BASE_V1
         if USE_KNOWLEDGE_BASE_V1:
-            if networking:
+            if context_tier == "slim":
                 from backend.services.steve_knowledge_base import build_knowledge_context_slim
                 slim = build_knowledge_context_slim(username)
                 if slim:
                     return slim
+            elif context_tier == "mid":
+                from backend.services.steve_knowledge_base import build_knowledge_context_mid
+                mid = build_knowledge_context_mid(username)
+                if mid:
+                    return mid
             else:
                 from backend.services.steve_knowledge_base import build_knowledge_context_for_steve
                 kb_context = build_knowledge_context_for_steve(username)
@@ -15997,19 +16007,22 @@ def _ensure_embedding_index():
         load_index_from_firestore()
 
 
-def _get_or_build_context(username: str, profile: dict, *, networking: bool = False) -> str:
+def _get_or_build_context(username: str, profile: dict, *, networking: bool = False, context_tier: str = "full") -> str:
     """Return cached context string for *username*, building from *profile* on miss.
 
-    When *networking* is True a compact summary is returned (not cached
-    separately — the slim variant is cheap to build from two Firestore reads).
+    *context_tier* ("full" | "mid" | "slim") controls KB richness.
+    The legacy *networking* boolean maps to "slim" for backward compat.
+    Mid/slim variants are not cached (cheap Firestore reads).
     """
-    if networking:
-        return _build_context_from_profile(profile, username, networking=True) or ''
+    if networking and context_tier == "full":
+        context_tier = "slim"
+    if context_tier in ("slim", "mid"):
+        return _build_context_from_profile(profile, username, context_tier=context_tier) or ''
     cache_key = f"steve_ctx:{username}"
     cached = cache.get(cache_key)
     if cached is not None and isinstance(cached, str):
         return cached
-    ctx = _build_context_from_profile(profile, username)
+    ctx = _build_context_from_profile(profile, username, context_tier="full")
     if ctx:
         cache.set(cache_key, ctx, STEVE_CTX_CACHE_TTL)
     return ctx or ''
@@ -16021,11 +16034,10 @@ def _networking_build_members_text(
 ):
     """Build the members block for the Grok prompt.
 
-    Small communities (<= NETWORKING_PROMPT_MEMBER_CAP): all members, slim AI insight each.
-
-    Large communities: FAISS recall up to NETWORKING_ANN_RECALL_CAP users, then the top
-    NETWORKING_PROMPT_MEMBER_CAP by score are listed; the first NETWORKING_GROK_FULL_CONTEXT_CAP
-    get full KB + legacy, the rest slim summaries only.
+    3-tier context strategy based on community size:
+      - Small  (<=40):  mid context for ALL members (all KB dimensions)
+      - Medium (41-100): full for top 12 FAISS, mid for the rest
+      - Large  (>100):   full for top 12 FAISS, slim for the rest
     """
     from backend.services.embedding_service import search_similar_profiles_ranked, profile_index
     from backend.services.firestore_reads import batch_get_steve_user_profiles
@@ -16046,10 +16058,12 @@ def _networking_build_members_text(
         full_ctx_users = set(ordered_prompt[:NETWORKING_GROK_FULL_CONTEXT_CAP])
         tiered_preamble = (
             f"Roster note: The first {NETWORKING_GROK_FULL_CONTEXT_CAP} members below have "
-            "FULL profile context; any additional rows have brief summaries only.\n\n"
+            "FULL profile context; remaining members have structured summaries.\n\n"
         )
     else:
         ordered_prompt = list(all_member_usernames[:NETWORKING_PROMPT_MEMBER_CAP])
+
+    default_tier = "mid" if n <= 100 else "slim"
 
     profiles_raw = batch_get_steve_user_profiles(ordered_prompt)
 
@@ -16059,8 +16073,11 @@ def _networking_build_members_text(
     for uname in ordered_prompt:
         prof = profiles_raw.get(uname)
         if prof:
-            use_slim = uname not in full_ctx_users
-            ctx = _get_or_build_context(uname, prof, networking=use_slim)
+            if uname in full_ctx_users:
+                tier = "full"
+            else:
+                tier = default_tier
+            ctx = _get_or_build_context(uname, prof, context_tier=tier)
             if viewer_username and ctx:
                 ctx = _scrub_community_names(ctx, uname, viewer_username)
             ctx_map[uname] = ctx

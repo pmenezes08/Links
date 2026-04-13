@@ -710,6 +710,167 @@ def build_knowledge_context_slim(username: str) -> str:
         return ""
 
 
+def _mid_field_text(content: dict, key: str, max_items: int = 5, max_chars: int = 250) -> str:
+    """Extract a concise text string from a KB content field for mid-tier context."""
+    val = content.get(key)
+    if not val:
+        return ""
+    if isinstance(val, str):
+        return val[:max_chars] + ("..." if len(val) > max_chars else "")
+    if isinstance(val, list):
+        parts = []
+        for item in val[:max_items]:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                parts.append(", ".join(f"{k}: {v}" for k, v in item.items() if v))
+        result = "; ".join(parts)
+        return result[:max_chars] + ("..." if len(result) > max_chars else "")
+    if isinstance(val, dict):
+        result = "; ".join(f"{k}: {v}" for k, v in list(val.items())[:max_items] if v)
+        return result[:max_chars] + ("..." if len(result) > max_chars else "")
+    return str(val)[:max_chars]
+
+
+_MID_DIMENSIONS = [
+    "Index", "Identity", "UniqueFingerprint", "LifeCareer",
+    "GeographyCulture", "Expertise", "InferredContext",
+    "CompanyIntel", "Opinions",
+]
+
+
+def build_knowledge_context_mid(username: str) -> str:
+    """Return a mid-tier KB summary covering ALL dimensions for networking.
+
+    Sits between slim (3 dimensions, ~100 tokens) and full (~1500 tokens).
+    Pulls the most searchable/distinctive signal from every KB dimension so
+    that any query type — geography, career pivots, expertise, opinions,
+    company intel, experiential learning — has signal to match against.
+    Target: ~300-500 tokens per member.
+    """
+    try:
+        fs = _get_fs()
+        refs = [
+            fs.collection(COLLECTION).document(f"{username}_{dim}")
+            for dim in _MID_DIMENSIONS
+        ]
+        docs_raw = fs.get_all(refs)
+        dims: Dict[str, dict] = {}
+        for doc in docs_raw:
+            if doc.exists:
+                data = doc.to_dict() or {}
+                nt = data.get("noteType", "")
+                dims[nt] = data.get("content", {})
+
+        if not dims:
+            return ""
+
+        parts: list = []
+
+        idx = dims.get("Index", {})
+        synthesis = (idx.get("currentSynthesis") or "").strip()
+        if not synthesis:
+            return ""
+        parts.append(synthesis)
+
+        ident = dims.get("Identity", {})
+        traits = ident.get("traits")
+        if traits:
+            t_str = ", ".join(str(t) for t in traits[:8]) if isinstance(traits, list) else str(traits).strip()
+            if t_str:
+                parts.append(f"Traits: {t_str[:200]}")
+        if ident.get("coreValues"):
+            parts.append(f"Values: {_mid_field_text(ident, 'coreValues', 5, 150)}")
+
+        uf = dims.get("UniqueFingerprint", {})
+        if uf.get("whatMakesThemSpecial"):
+            parts.append(f"Unique: {_mid_field_text(uf, 'whatMakesThemSpecial', 3, 200)}")
+        if uf.get("rareQualities"):
+            parts.append(f"Rare: {_mid_field_text(uf, 'rareQualities', 4, 150)}")
+        if uf.get("bridgingCapability"):
+            parts.append(f"Bridges: {_mid_field_text(uf, 'bridgingCapability', 3, 150)}")
+        matched = uf.get("bestMatchedWith")
+        if matched:
+            if isinstance(matched, list):
+                matched = "; ".join(str(m) for m in matched[:4])
+            parts.append(f"Best matched with: {matched}")
+
+        lc = dims.get("LifeCareer", {})
+        if lc.get("trajectory"):
+            parts.append(f"Trajectory: {_mid_field_text(lc, 'trajectory', 1, 200)}")
+        if lc.get("currentStage"):
+            parts.append(f"Current stage: {_mid_field_text(lc, 'currentStage', 1, 150)}")
+        turning = lc.get("turningPoints")
+        if turning and isinstance(turning, list):
+            tp_strs = []
+            for tp in turning[:3]:
+                if isinstance(tp, str):
+                    tp_strs.append(tp)
+                elif isinstance(tp, dict):
+                    tp_strs.append(tp.get("description", tp.get("event", str(tp))))
+            if tp_strs:
+                parts.append(f"Turning points: {'; '.join(tp_strs)[:200]}")
+
+        geo = dims.get("GeographyCulture", {})
+        if geo.get("culturalInfluences"):
+            parts.append(f"Cultural influences: {_mid_field_text(geo, 'culturalInfluences', 3, 200)}")
+        if geo.get("geographicExpertise"):
+            parts.append(f"Geographic expertise: {_mid_field_text(geo, 'geographicExpertise', 5, 150)}")
+        for loc_entry in (geo.get("locations") or [])[:3]:
+            if isinstance(loc_entry, dict):
+                ctx = loc_entry.get("context", "")
+                parts.append(f"{loc_entry.get('city', '?')}, {loc_entry.get('country', '?')}: {ctx[:80]}")
+
+        exp_kb = dims.get("Expertise", {})
+        domains = exp_kb.get("domains")
+        if domains and isinstance(domains, list):
+            d_strs = []
+            for d in domains[:5]:
+                if isinstance(d, dict):
+                    d_strs.append(f"{d.get('domain', '?')} ({d.get('level', '?')})")
+                elif isinstance(d, str):
+                    d_strs.append(d)
+            if d_strs:
+                parts.append(f"Expertise: {'; '.join(d_strs)}")
+        if exp_kb.get("currentFocus"):
+            parts.append(f"Focus: {_mid_field_text(exp_kb, 'currentFocus', 1, 120)}")
+
+        ic = dims.get("InferredContext", {})
+        experiences = ic.get("experiences")
+        if experiences and isinstance(experiences, list):
+            ix_strs = []
+            for ix in experiences[:5]:
+                if isinstance(ix, dict):
+                    name = ix.get("experience", "")
+                    impact = ix.get("transformativeImpact", "")
+                    ix_strs.append(f"{name}: {impact}" if impact else name)
+                elif isinstance(ix, str):
+                    ix_strs.append(ix)
+            if ix_strs:
+                parts.append(f"Experiences: {'; '.join(ix_strs)[:250]}")
+
+        ci = dims.get("CompanyIntel", {})
+        companies = ci.get("companies")
+        if companies and isinstance(companies, list):
+            co_strs = []
+            for co in companies[:3]:
+                if isinstance(co, dict):
+                    co_strs.append(f"{co.get('name', '?')} ({co.get('sector', co.get('industry', '?'))})")
+            if co_strs:
+                parts.append(f"Companies: {'; '.join(co_strs)}")
+        elif ci.get("globalPresence"):
+            parts.append(f"Company: {_mid_field_text(ci, 'globalPresence', 2, 120)}")
+
+        op = dims.get("Opinions", {})
+        if op.get("consistentBeliefs"):
+            parts.append(f"Beliefs: {_mid_field_text(op, 'consistentBeliefs', 3, 150)}")
+
+        return " | ".join(parts)
+    except Exception as e:
+        logger.debug("Mid KB context unavailable for %s: %s", username, e)
+        return ""
+
+
 def _flatten_item(item: Any) -> str:
     """Convert a list item (str or dict) to a flat string."""
     if isinstance(item, str):
