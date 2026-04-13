@@ -1694,6 +1694,12 @@ def synthesize_network_knowledge(network_id: int) -> bool:
         member_count = len(member_usernames)
         logger.info("Network %s (%s): %d direct members found (isolated)", network_id, community_name, member_count)
 
+        # Special founder awareness to prevent Paulo bias - he should be treated as Platform Architect,
+        # not a typical community member that dominates network aggregates
+        has_founder = any(u.lower() == "paulo" for u in member_usernames)
+        if has_founder:
+            logger.info("Network %s contains platform founder - applying special network-level handling to avoid bias", network_id)
+
         agg = _aggregate_member_kbs(member_usernames)
         kb_count = agg["membersWithKB"]
         top_expertise = list(agg["expertiseDistribution"].keys())
@@ -1713,7 +1719,8 @@ def synthesize_network_knowledge(network_id: int) -> bool:
             "currentSynthesis": (
                 f"{community_name} is a network of {member_count} professionals"
                 f" ({kb_count} with synthesized knowledge bases)."
-                f" Top expertise: {', '.join(top_expertise[:4]) or 'pending synthesis'}."
+                + (f" The platform founder is a member, providing infrastructure and Steve (the KB system) — this should be acknowledged but not dominate the community's collective identity." if has_founder else "")
+                + f" Top expertise: {', '.join(top_expertise[:4]) or 'pending synthesis'}."
                 f" Primary locations: {', '.join(top_locations[:3]) or 'global'}."
             ),
         }
