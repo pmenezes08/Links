@@ -4507,6 +4507,14 @@ def _deferred_startup_init():
             logger.info("Background: _ensure_tenant_id_columns completed")
         except Exception as e:
             logger.warning(f"Background: _ensure_tenant_id_columns failed: {e}")
+
+        # One-time migration: Move community ownership from Paulo to Admin
+        # This prevents Paulo's rich profile from dominating network analysis in every community
+        try:
+            migrate_community_ownership_from_paulo_to_admin()
+            logger.info("Background: migrate_community_ownership_from_paulo_to_admin completed")
+        except Exception as e:
+            logger.warning(f"Background: migrate_community_ownership_from_paulo_to_admin failed: {e}")
         
         logger.info("Background startup init completed")
     except Exception as e:
@@ -4697,8 +4705,66 @@ def ensure_paulo_member_of_gym():
     except Exception as e:
         logger.error(f"ensure_paulo_member_of_gym error: {e}")
 
-# MOVED TO BACKGROUND: ensure_paulo_member_of_gym()
-# Now called in _deferred_db_bootstrap() for faster cold starts
+
+def migrate_community_ownership_from_paulo_to_admin():
+    """One-time migration: Move all community ownership from Paulo to Admin.
+    
+    This addresses the network profiling bias where Paulo's rich profile data
+    was dominating every community he created. After this migration, Paulo
+    will be treated purely as platform founder rather than community owner.
+    """
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            logger.info("Starting community ownership migration from Paulo to Admin...")
+            
+            # Count communities owned by Paulo
+            c.execute(f"SELECT COUNT(*) as cnt FROM communities WHERE creator_username = {ph}", ('Paulo',))
+            paulo_count = c.fetchone()
+            paulo_count = paulo_count['cnt'] if hasattr(paulo_count, 'keys') else paulo_count[0] if paulo_count else 0
+            
+            if paulo_count == 0:
+                logger.info("No communities found owned by Paulo. Migration not needed.")
+                return True
+            
+            logger.info(f"Found {paulo_count} communities owned by Paulo. Migrating to Admin...")
+            
+            # Update communities table
+            c.execute(f"UPDATE communities SET creator_username = 'Admin' WHERE creator_username = {ph}", ('Paulo',))
+            updated = c.rowcount
+            logger.info(f"Updated {updated} communities to be owned by Admin")
+            
+            # Ensure Admin has admin role in these communities
+            c.execute("""
+                INSERT IGNORE INTO user_communities (user_id, community_id, role, joined_at)
+                SELECT 
+                    (SELECT id FROM users WHERE username = 'Admin'),
+                    c.id,
+                    'admin',
+                    CURRENT_TIMESTAMP
+                FROM communities c
+                WHERE c.creator_username = 'Admin'
+                AND NOT EXISTS (
+                    SELECT 1 FROM user_communities uc 
+                    WHERE uc.user_id = (SELECT id FROM users WHERE username = 'Admin')
+                    AND uc.community_id = c.id
+                )
+            """)
+            logger.info("Ensured Admin has admin role in migrated communities")
+            
+            conn.commit()
+            logger.info("✅ Community ownership migration completed successfully")
+            return True
+            
+    except Exception as e:
+        logger.error(f"❌ Community ownership migration failed: {e}", exc_info=True)
+        return False
+
+
+# MOVED TO BACKGROUND: ensure_paulo_member_of_gym(), migrate_community_ownership_from_paulo_to_admin()
+# Now called in _deferred_startup_init() for faster cold starts
 
 # Register the format_date Jinja2 filter
 @app.template_filter('format_date')
