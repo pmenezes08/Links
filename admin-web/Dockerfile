@@ -8,7 +8,7 @@ ENV VITE_API_BASE=${VITE_API_BASE}
 COPY package.json package-lock.json* ./
 RUN npm install
 COPY . .
-RUN npx tsc -b && npx vite build
+RUN npm run build
 
 # Serve stage
 FROM nginx:alpine
