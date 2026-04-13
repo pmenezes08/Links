@@ -3,6 +3,7 @@
 
 steps:
   - name: 'gcr.io/cloud-builders/docker'
+    dir: 'admin-web'
     args:
       - 'build'
       - '--build-arg=VITE_API_BASE=https://app.c-point.co'
@@ -21,6 +22,8 @@ steps:
       - '--region=europe-west1'
       - '--platform=managed'
       - '--allow-unauthenticated'
+      - '--timeout=600'
+      - '--cpu-boost'
 
 options:
   machineType: 'E2_HIGHCPU_8'
