@@ -17,6 +17,45 @@ async function clearCapacitorStorage(): Promise<void> {
   }
 }
 
+/** Deactivate server-side push mappings and browser subscription before session cookies are cleared. */
+async function unregisterPushBeforeLogout(): Promise<void> {
+  const w = typeof window !== 'undefined' ? (window as unknown as { __fcmToken?: string }) : null
+  const fcmToken = w?.__fcmToken?.trim() || ''
+
+  try {
+    const res = await fetch('/api/push/unregister_fcm', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: fcmToken }),
+    })
+    if (!res.ok) {
+      console.warn('unregister_fcm response:', res.status)
+    }
+  } catch (e) {
+    console.warn('unregister_fcm failed:', e)
+  }
+
+  try {
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.getSubscription()
+      if (sub) {
+        const endpoint = sub.endpoint
+        await fetch('/api/push/unsubscribe_web', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint }),
+        })
+        await sub.unsubscribe()
+      }
+    }
+  } catch (e) {
+    console.warn('web push unsubscribe failed:', e)
+  }
+}
+
 export async function performLogout(): Promise<void> {
   console.log('🚪 Starting logout process...')
   
@@ -141,9 +180,12 @@ export async function performLogout(): Promise<void> {
     console.warn('Error clearing service worker caches:', e)
   }
 
-  // 6. Clear any cached data in memory by reloading the page after logout
+  // 6. Unregister push tokens while session cookie is still valid (stops post-logout notifications)
+  await unregisterPushBeforeLogout()
+
+  // 7. Clear any cached data in memory by reloading the page after logout
   console.log('🚪 Navigating to /logout endpoint...')
-  
+
   // Navigate to logout endpoint - use replace to prevent back button issues
   window.location.replace('/logout')
 }

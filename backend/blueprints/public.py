@@ -213,6 +213,91 @@ def register_fcm_token():
         return jsonify({"error": str(e)}), 500
 
 
+@public_bp.route("/api/push/unregister_fcm", methods=["POST"])
+def unregister_fcm_token():
+    """Deactivate FCM/native push tokens for the current session user (call on logout).
+
+    Body JSON: { "token": "<optional device token>" }.
+    If token is provided, only that device row is deactivated; otherwise all tokens for the user.
+    """
+    from backend.services.database import get_db_connection, get_sql_placeholder, USE_MYSQL
+
+    logger = current_app.logger
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "not logged in"}), 401
+
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        token = (data.get("token") or "").strip()
+    except Exception:
+        token = ""
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        ph = get_sql_placeholder()
+
+        if token:
+            if USE_MYSQL:
+                cursor.execute(
+                    f"UPDATE fcm_tokens SET is_active = 0 WHERE token = {ph} AND username = {ph}",
+                    (token, username),
+                )
+            else:
+                cursor.execute(
+                    "UPDATE fcm_tokens SET is_active = 0 WHERE token = ? AND username = ?",
+                    (token, username),
+                )
+            try:
+                if USE_MYSQL:
+                    cursor.execute(
+                        f"UPDATE native_push_tokens SET is_active = 0 WHERE token = {ph} AND username = {ph}",
+                        (token, username),
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE native_push_tokens SET is_active = 0 WHERE token = ? AND username = ?",
+                        (token, username),
+                    )
+            except Exception as ne:
+                logger.warning("native_push_tokens deactivate on logout: %s", ne)
+            logger.info("📴 Deactivated push token for %s (matched device)", username)
+        else:
+            if USE_MYSQL:
+                cursor.execute(
+                    f"UPDATE fcm_tokens SET is_active = 0 WHERE username = {ph}",
+                    (username,),
+                )
+            else:
+                cursor.execute(
+                    "UPDATE fcm_tokens SET is_active = 0 WHERE username = ?",
+                    (username,),
+                )
+            try:
+                if USE_MYSQL:
+                    cursor.execute(
+                        f"UPDATE native_push_tokens SET is_active = 0 WHERE username = {ph}",
+                        (username,),
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE native_push_tokens SET is_active = 0 WHERE username = ?",
+                        (username,),
+                    )
+            except Exception as ne:
+                logger.warning("native_push_tokens bulk deactivate on logout: %s", ne)
+            logger.info("📴 Deactivated all push tokens for %s (no token in body)", username)
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error("unregister_fcm error: %s", e)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @public_bp.route("/api/push/register_native", methods=["POST"])
 def register_native_push_token():
     """Register a native iOS/Android push notification token (legacy - redirects to FCM)."""

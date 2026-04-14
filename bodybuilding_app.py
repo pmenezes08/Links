@@ -774,6 +774,15 @@ def _block_unverified_users():
             '/api/push/register_fcm',  # FCM token registration (can be anonymous initially)
             '/api/admin/login-by-email',  # Phase 2: tenant lookup by email (no auth)
         ]
+        # Session required, but must run even if email not verified (logout cleanup)
+        session_auth_unverified_ok = (
+            '/api/push/unregister_fcm',
+            '/api/push/unsubscribe_web',
+        )
+        if path.startswith('/api/') and path in session_auth_unverified_ok:
+            if not session.get('username'):
+                return jsonify({'success': False, 'error': 'unauthenticated'}), 401
+            return None
         if path.startswith('/api/') and path not in public_api_endpoints:
             username = session.get('username')
             if not username:
@@ -39081,6 +39090,28 @@ def api_push_subscribe():
     except Exception as e:
         logger.error(f"push subscribe error: {e}")
         return jsonify({ 'success': False }), 500
+
+@app.route('/api/push/unsubscribe_web', methods=['POST'])
+def api_push_unsubscribe_web():
+    """Remove web push subscription rows for the current user (logout). Optional endpoint in body."""
+    try:
+        username = session.get('username')
+        if not username:
+            return jsonify({'success': False, 'error': 'unauthenticated'}), 401
+        data = request.get_json(force=True, silent=True) or {}
+        endpoint = (data.get('endpoint') or '').strip() or None
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if endpoint:
+                c.execute(f"DELETE FROM push_subscriptions WHERE username = {ph} AND endpoint = {ph}", (username, endpoint))
+            else:
+                c.execute(f"DELETE FROM push_subscriptions WHERE username = {ph}", (username,))
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"push unsubscribe_web error: {e}")
+        return jsonify({'success': False}), 500
 
 @app.route('/api/push/status')
 @login_required
