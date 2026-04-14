@@ -2438,6 +2438,33 @@ export default function ChatThread(){
                   <i className="fa-solid fa-photo-film text-xs text-[#4db6ac]" />
                   <span>View Media</span>
                 </button>
+                {username.toLowerCase() === 'steve' && (
+                  <button
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                    onClick={() => {
+                      setHeaderMenuOpen(false)
+                      if (!confirm("Reset Steve's conversation context? Steve will still have the full chat history but will stop referencing older discussions.")) return
+                      fetch('/api/steve/reset_dm_context', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ other_username: username })
+                      })
+                        .then(r => r.json())
+                        .then(d => {
+                          if (d?.success) {
+                            alert("Steve's context has been reset.")
+                          } else {
+                            alert(d?.error || 'Failed to reset')
+                          }
+                        })
+                        .catch(() => alert('Failed to reset context'))
+                    }}
+                  >
+                    <i className="fa-solid fa-rotate text-xs text-[#4db6ac]" />
+                    <span>Reset Steve</span>
+                  </button>
+                )}
                 <button
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/10 transition-colors"
                   onClick={() => {

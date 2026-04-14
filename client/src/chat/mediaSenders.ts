@@ -473,7 +473,20 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
 
     onProgress?.({ stage: 'done', progress: 100, message: 'Sent!' })
 
-    setMessages((prev: ChatMessage[]) => prev.filter(m => (m.clientKey || m.id) !== tempId))
+    setMessages((prev: ChatMessage[]) =>
+      prev.map((message: ChatMessage) => {
+        if ((message.clientKey || message.id) !== tempId) return message
+        return {
+          ...message,
+          id: payload.id || message.id,
+          media_paths: payload.media_paths || message.media_paths,
+          image_path: payload.image_path || message.image_path,
+          video_path: payload.video_path || message.video_path,
+          isOptimistic: false,
+          time: payload.time || message.time,
+        }
+      })
+    )
     finalizeOptimisticEntry(recentOptimisticRef, tempId)
   } catch (error) {
     console.error('Multi-media upload failed', error)
