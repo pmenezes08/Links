@@ -1118,35 +1118,33 @@ export default function GroupChatThread() {
     const mediaToSend = [...pendingMedia]
     console.log('[GroupChat] Sending media, count:', mediaToSend.length)
     
-    // Clear previews immediately (without revoking - will be done in sender)
-    setPendingMedia([])
-    setPreviewIndex(0)
-    
-    // Send all media
     setUploadingMedia(true)
     
-    // Always use sendGroupMultiMedia for consistent grouped handling
-    console.log('[GroupChat] Using sendGroupMultiMedia for', mediaToSend.length, 'files')
-    await sendGroupMultiMedia({
-      files: mediaToSend.map(item => ({ file: item.file, type: item.type })),
-      groupId: group_id,
-      currentUsername,
-      setServerMessages,
-      loadMessages,
-      onProgress: setUploadProgress,
-      onError: (msg) => alert(msg),
-      onComplete: () => {
-        setUploadingMedia(false)
-        setUploadProgress(null)
-      }
-    })
-    
-    // Cleanup preview URLs
-    mediaToSend.forEach(item => {
-      if (item.previewUrl.startsWith('blob:')) {
-        try { URL.revokeObjectURL(item.previewUrl) } catch {}
-      }
-    })
+    try {
+      console.log('[GroupChat] Using sendGroupMultiMedia for', mediaToSend.length, 'files')
+      await sendGroupMultiMedia({
+        files: mediaToSend.map(item => ({ file: item.file, type: item.type })),
+        groupId: group_id,
+        currentUsername,
+        setServerMessages,
+        loadMessages,
+        onProgress: setUploadProgress,
+        onError: (msg) => alert(msg),
+        onComplete: () => {
+          setUploadProgress(null)
+        }
+      })
+    } finally {
+      mediaToSend.forEach(item => {
+        if (item.previewUrl.startsWith('blob:')) {
+          try { URL.revokeObjectURL(item.previewUrl) } catch {}
+        }
+      })
+      setPendingMedia([])
+      setPreviewIndex(0)
+      setUploadingMedia(false)
+      setUploadProgress(null)
+    }
   }
   
   // Cancel all pending media
@@ -3386,7 +3384,7 @@ export default function GroupChatThread() {
       {pendingMedia.length > 0 && (
         <div 
           className="fixed inset-0 bg-black z-[9999] flex flex-col"
-          onClick={cancelMediaPreview}
+          onClick={() => { if (!uploadingMedia) cancelMediaPreview() }}
         >
           {/* Header */}
           <div 
@@ -3394,8 +3392,10 @@ export default function GroupChatThread() {
             style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
           >
             <button
+              type="button"
+              disabled={uploadingMedia}
               onClick={cancelMediaPreview}
-              className="text-white p-2 -ml-2"
+              className="text-white p-2 -ml-2 disabled:opacity-40 disabled:pointer-events-none"
             >
               <i className="fa-solid fa-xmark text-xl" />
             </button>
@@ -3404,11 +3404,13 @@ export default function GroupChatThread() {
             </span>
             {/* Remove current media button */}
             <button
+              type="button"
+              disabled={uploadingMedia}
               onClick={(e) => {
                 e.stopPropagation()
                 removeMediaFromPreview(previewIndex)
               }}
-              className="text-white/60 p-2 -mr-2 hover:text-white"
+              className="text-white/60 p-2 -mr-2 hover:text-white disabled:opacity-40 disabled:pointer-events-none"
             >
               <i className="fa-solid fa-trash text-sm" />
             </button>
@@ -3416,13 +3418,23 @@ export default function GroupChatThread() {
 
           {/* Media preview with swipe navigation */}
           <div 
-            className="flex-1 flex items-center justify-center overflow-hidden relative"
+            className={`flex-1 flex items-center justify-center overflow-hidden relative ${uploadingMedia ? 'pointer-events-none' : ''}`}
             onClick={(e) => e.stopPropagation()}
           >
+            {uploadingMedia && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/55 pointer-events-auto">
+                <i className="fa-solid fa-spinner fa-spin text-3xl text-[#4db6ac]" />
+                {uploadProgress?.message && (
+                  <p className="mt-3 px-4 text-center text-sm text-white/85">{uploadProgress.message}</p>
+                )}
+              </div>
+            )}
             {/* Previous button */}
             {pendingMedia.length > 1 && previewIndex > 0 && (
               <button
-                className="absolute left-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
+                type="button"
+                disabled={uploadingMedia}
+                className="absolute left-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70 disabled:opacity-40 disabled:pointer-events-none"
                 onClick={() => setPreviewIndex(i => i - 1)}
               >
                 <i className="fa-solid fa-chevron-left" />
@@ -3451,7 +3463,9 @@ export default function GroupChatThread() {
             {/* Next button */}
             {pendingMedia.length > 1 && previewIndex < pendingMedia.length - 1 && (
               <button
-                className="absolute right-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
+                type="button"
+                disabled={uploadingMedia}
+                className="absolute right-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70 disabled:opacity-40 disabled:pointer-events-none"
                 onClick={() => setPreviewIndex(i => i + 1)}
               >
                 <i className="fa-solid fa-chevron-right" />
@@ -3461,15 +3475,17 @@ export default function GroupChatThread() {
 
           {/* Thumbnail strip for multiple media */}
           {pendingMedia.length > 1 && (
-            <div className="flex justify-center gap-2 px-4 py-2 bg-black/80 overflow-x-auto">
+            <div className={`flex justify-center gap-2 px-4 py-2 bg-black/80 overflow-x-auto ${uploadingMedia ? 'pointer-events-none' : ''}`}>
               {pendingMedia.map((item, i) => (
                 <button
+                  type="button"
                   key={i}
+                  disabled={uploadingMedia}
                   onClick={(e) => {
                     e.stopPropagation()
                     setPreviewIndex(i)
                   }}
-                  className={`w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border-2 transition ${
+                  className={`w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border-2 transition disabled:opacity-40 ${
                     i === previewIndex ? 'border-[#4db6ac]' : 'border-transparent opacity-60'
                   }`}
                 >
@@ -3491,20 +3507,24 @@ export default function GroupChatThread() {
             style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
           >
             <button
+              type="button"
+              disabled={uploadingMedia}
               onClick={(e) => {
                 e.stopPropagation()
                 cancelMediaPreview()
               }}
-              className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition"
+              className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition disabled:opacity-40 disabled:pointer-events-none"
             >
               Cancel
             </button>
             <button
+              type="button"
+              disabled={uploadingMedia}
               onClick={(e) => {
                 e.stopPropagation()
                 confirmSendMedia()
               }}
-              className="px-8 py-3 bg-[#4db6ac] text-black rounded-full font-medium hover:bg-[#45a89c] transition flex items-center gap-2"
+              className="px-8 py-3 bg-[#4db6ac] text-black rounded-full font-medium hover:bg-[#45a89c] transition flex items-center gap-2 disabled:opacity-40 disabled:pointer-events-none"
             >
               <i className="fa-solid fa-paper-plane" />
               Send {pendingMedia.length > 1 ? `(${pendingMedia.length})` : ''}

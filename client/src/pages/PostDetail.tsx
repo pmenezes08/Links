@@ -17,12 +17,23 @@ import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import EditableAISummary from '../components/EditableAISummary'
-import { clearDeviceCache } from '../utils/deviceCache'
+import { clearDeviceCache, readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 import { colorizeMentions, preserveRichTextNewlines } from '../utils/linkUtils'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, reply_count?: number, view_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
 type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}>; view_count?: number; media_paths?: MediaItem[] | string | null }
+
+const POST_DETAIL_CACHE_VERSION = 'post-detail-v1'
+const POST_DETAIL_CACHE_TTL_MS = 3 * 60 * 1000
+
+type PostDetailCachePayload = { post: Post; isGroupPost: boolean }
+
+function readCachedPostDetail(postId: string | undefined): { post: Post | null; isGroupPost: boolean } {
+  if (!postId) return { post: null, isGroupPost: false }
+  const c = readDeviceCache<PostDetailCachePayload>(`post-${postId}`, POST_DETAIL_CACHE_VERSION)
+  return { post: c?.post ?? null, isGroupPost: !!c?.isGroupPost }
+}
 
 // old formatTimestamp removed; using formatSmartTime
 
@@ -665,17 +676,23 @@ export default function PostDetail(){
   }, [file, replyGif])
 
   const refreshPost = useCallback(async () => {
-    try{
-      let r = await fetch(`/api/group_post?post_id=${post_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
-      let j = await r.json().catch(()=>null)
-      if (j?.success){
-        setPost(j.post); setIsGroupPost(true)
-      } else {
-        r = await fetch(`/get_post?post_id=${post_id}`, { credentials: 'include' })
-        j = await r.json().catch(()=>null)
-        if (j?.success) { setPost(j.post); setIsGroupPost(false) }
+    try {
+      const [gRes, pRes] = await Promise.all([
+        fetch(`/api/group_post?post_id=${post_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } }),
+        fetch(`/get_post?post_id=${post_id}`, { credentials: 'include' }),
+      ])
+      const gJson = await gRes.json().catch(() => null)
+      const pJson = await pRes.json().catch(() => null)
+      if (gJson?.success && gJson.post) {
+        setPost(gJson.post)
+        setIsGroupPost(true)
+        writeDeviceCache(`post-${post_id}`, { post: gJson.post, isGroupPost: true }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
+      } else if (pJson?.success && pJson.post) {
+        setPost(pJson.post)
+        setIsGroupPost(false)
+        writeDeviceCache(`post-${post_id}`, { post: pJson.post, isGroupPost: false }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
       }
-    }catch{}
+    } catch {}
   }, [post_id])
 
   useEffect(() => {
@@ -726,50 +743,72 @@ export default function PostDetail(){
 
   // (inline) top refresh hint UI rendered conditionally in JSX below
 
+  useLayoutEffect(() => {
+    const c = readCachedPostDetail(post_id)
+    setPost(c.post)
+    setIsGroupPost(c.isGroupPost)
+    setLoading(!c.post)
+    setError(null)
+  }, [post_id])
+
   useEffect(() => {
     let mounted = true
-    async function load(){
-      try{
-        let r = await fetch(`/api/group_post?post_id=${post_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
-        let j = await r.json().catch(()=>null)
-        let groupPost = false
-        if (j?.success){
-          groupPost = true
-        } else {
-          r = await fetch(`/get_post?post_id=${post_id}`, { credentials: 'include' })
-          j = await r.json().catch(()=>null)
-        }
+    async function load() {
+      try {
+        const [gRes, pRes] = await Promise.all([
+          fetch(`/api/group_post?post_id=${post_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } }),
+          fetch(`/get_post?post_id=${post_id}`, { credentials: 'include' }),
+        ])
+        const gJson = await gRes.json().catch(() => null)
+        const pJson = await pRes.json().catch(() => null)
         if (!mounted) return
-        if (j?.success) { setPost(j.post); setIsGroupPost(groupPost) }
-        else setError(j?.error || 'Error')
-      }catch{
+        if (gJson?.success && gJson.post) {
+          setPost(gJson.post)
+          setIsGroupPost(true)
+          setError(null)
+          writeDeviceCache(`post-${post_id}`, { post: gJson.post, isGroupPost: true }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
+        } else if (pJson?.success && pJson.post) {
+          setPost(pJson.post)
+          setIsGroupPost(false)
+          setError(null)
+          writeDeviceCache(`post-${post_id}`, { post: pJson.post, isGroupPost: false }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
+        } else {
+          setError(gJson?.error || pJson?.error || 'Error')
+        }
+      } catch {
         if (mounted) setError('Error loading post')
       } finally {
         if (mounted) setLoading(false)
       }
     }
     load()
-    return () => { mounted = false }
+    return () => {
+      mounted = false
+    }
   }, [post_id])
 
-  // Load current username for ownership checks (lightweight usage of existing endpoint)
+  // Load current username for ownership checks — defer until after first paint to avoid competing with post fetch
   useEffect(() => {
     let mounted = true
-    async function loadUser(){
-      try{
-        const r = await fetch('/api/home_timeline', { credentials:'include', headers: { 'Accept': 'application/json' } })
-        const j = await r.json().catch(()=>null)
-        if (!mounted) return
-        if (j?.success && j.username) {
-          setCurrentUser({
-            username: j.username,
-            profile_picture: j.profile_picture || null
-          })
-        }
-      }catch{}
+    const t = window.setTimeout(() => {
+      ;(async () => {
+        try {
+          const r = await fetch('/api/home_timeline', { credentials: 'include', headers: { 'Accept': 'application/json' } })
+          const j = await r.json().catch(() => null)
+          if (!mounted) return
+          if (j?.success && j.username) {
+            setCurrentUser({
+              username: j.username,
+              profile_picture: j.profile_picture || null,
+            })
+          }
+        } catch {}
+      })()
+    }, 0)
+    return () => {
+      mounted = false
+      window.clearTimeout(t)
     }
-    loadUser()
-    return () => { mounted = false }
   }, [])
 
   async function toggleReaction(reaction: string){

@@ -45,7 +45,7 @@ export default function AccountSettings(){
     }
   }, [])
 
-  const saveNotificationPreviewPref = useCallback(async (show: boolean) => {
+  const saveNotificationPreviewPref = useCallback(async (show: boolean, previousValue: boolean | undefined) => {
     try {
       const r = await fetch('/api/account/notification_preferences', {
         method: 'POST',
@@ -56,11 +56,21 @@ export default function AccountSettings(){
       const j = await r.json().catch(() => null)
       if (!j?.success) {
         setMessage({ type: 'error', text: j?.error || 'Could not update notification preferences' })
-        loadProfile()
+        setProfile(prev =>
+          prev ? { ...prev, notification_show_previews: previousValue } : null
+        )
+        return
+      }
+      if (typeof j.show_content_previews === 'boolean') {
+        setProfile(prev =>
+          prev ? { ...prev, notification_show_previews: j.show_content_previews } : null
+        )
       }
     } catch {
       setMessage({ type: 'error', text: 'Network error updating preferences' })
-      loadProfile()
+      setProfile(prev =>
+        prev ? { ...prev, notification_show_previews: previousValue } : null
+      )
     }
   }, [])
 
@@ -91,21 +101,24 @@ export default function AccountSettings(){
     loadProfile()
   }, [])
 
-  function loadProfile() {
-    setLoading(true)
+  function loadProfile(opts?: { silent?: boolean }) {
+    const silent = !!opts?.silent
+    if (!silent) setLoading(true)
     fetch('/api/profile_me', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(j => {
         if (j?.success && j.profile) {
           setProfile(j.profile)
-        } else {
+        } else if (!silent) {
           setMessage({ type: 'error', text: 'Failed to load profile' })
         }
       })
       .catch(() => {
-        setMessage({ type: 'error', text: 'Error loading profile' })
+        if (!silent) setMessage({ type: 'error', text: 'Error loading profile' })
       })
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (!silent) setLoading(false)
+      })
   }
 
   function handleSave(e: React.FormEvent) {
@@ -170,7 +183,7 @@ export default function AccountSettings(){
           <div>Failed to load profile</div>
           <button 
             className="mt-4 px-4 py-2 bg-[#4db6ac] text-black rounded-lg hover:bg-[#45a99c]"
-            onClick={loadProfile}
+            onClick={() => loadProfile()}
           >
             Try Again
           </button>
@@ -328,12 +341,13 @@ export default function AccountSettings(){
               <label className="flex cursor-pointer items-start gap-3">
                 <input
                   type="checkbox"
-                  className="mt-1 h-4 w-4 shrink-0 rounded border-white/30 bg-black/40 text-[#4db6ac] focus:ring-[#4db6ac]"
+                  className="mt-1 h-4 w-4 shrink-0 rounded border-white/30 bg-black/40 text-[#4db6ac] [accent-color:#4db6ac] focus:ring-[#4db6ac]"
                   checked={profile.notification_show_previews !== false}
                   onChange={e => {
                     const v = e.target.checked
+                    const previousValue = profile.notification_show_previews
                     setProfile(prev => (prev ? { ...prev, notification_show_previews: v } : null))
-                    void saveNotificationPreviewPref(v)
+                    void saveNotificationPreviewPref(v, previousValue)
                   }}
                 />
                 <div>

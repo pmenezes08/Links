@@ -14715,24 +14715,30 @@ def send_message():
                 pass
             
             # Create or update notification for the recipient (truly atomic)
+            _dm_link = f"/user_chat/chat/{username}"
+            if is_encrypted:
+                _dm_preview = "New encrypted message"
+            else:
+                _dm_preview = _truncate_notif_preview((message or "").strip()) or f"Message from {username}"
             try:
                 if USE_MYSQL:
                     c.execute("""
-                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
-                        VALUES (?, ?, 'message', NULL, NULL, ?, NOW(), 0, ?)
+                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                        VALUES (?, ?, 'message', NULL, NULL, ?, NOW(), 0, ?, ?)
                         ON DUPLICATE KEY UPDATE
                             created_at = NOW(),
                             message = VALUES(message),
                             is_read = 0,
-                            link = VALUES(link)
-                    """, (recipient_username, username, f"You have new messages from {username}", f"/user_chat/chat/{username}"))
+                            link = VALUES(link),
+                            preview_text = VALUES(preview_text)
+                    """, (recipient_username, username, f"You have new messages from {username}", _dm_link, _dm_preview))
                 else:
                     c.execute("""
-                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
-                        VALUES (?, ?, 'message', NULL, NULL, ?, datetime('now'), 0, ?)
+                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                        VALUES (?, ?, 'message', NULL, NULL, ?, datetime('now'), 0, ?, ?)
                         ON CONFLICT(user_id, from_user, type, post_id, community_id)
-                        DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link
-                    """, (recipient_username, username, f"You have new messages from {username}", f"/user_chat/chat/{username}"))
+                        DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link, preview_text = excluded.preview_text
+                    """, (recipient_username, username, f"You have new messages from {username}", _dm_link, _dm_preview))
                 conn.commit()
             except Exception as notif_e:
                 logger.warning(f"Could not create/update message notification: {notif_e}")
@@ -14774,7 +14780,7 @@ def send_message():
                 if should_push:
                     send_push_to_user(recipient_username, {
                         'title': f'Message from {username}',
-                        'body': f'You have new messages from {username}',
+                        'body': _dm_preview,
                         'url': f'/user_chat/chat/{username}',
                         'tag': f'message-{username}-{inserted_id}',
                     })
@@ -15440,16 +15446,32 @@ def send_photo_message():
 
             invalidate_message_cache(username, recipient_username)
             
+            _photo_dm_link = f"/user_chat/chat/{username}"
+            _photo_preview = (
+                _truncate_notif_preview((message or "").strip())
+                if (message or "").strip()
+                else "Photo"
+            )
             # Create or update notification for the recipient (truly atomic)
             try:
-                c.execute("""
-                    INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read)
-                    VALUES (?, ?, 'message', ?, NOW(), 0)
-                    ON DUPLICATE KEY UPDATE
-                        created_at = NOW(),
-                        message = VALUES(message),
-                        is_read = 0
-                """, (recipient_username, username, f"You have new messages from {username}"))
+                if USE_MYSQL:
+                    c.execute("""
+                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                        VALUES (?, ?, 'message', NULL, NULL, ?, NOW(), 0, ?, ?)
+                        ON DUPLICATE KEY UPDATE
+                            created_at = NOW(),
+                            message = VALUES(message),
+                            is_read = 0,
+                            link = VALUES(link),
+                            preview_text = VALUES(preview_text)
+                    """, (recipient_username, username, f"You have new messages from {username}", _photo_dm_link, _photo_preview))
+                else:
+                    c.execute("""
+                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                        VALUES (?, ?, 'message', NULL, NULL, ?, datetime('now'), 0, ?, ?)
+                        ON CONFLICT(user_id, from_user, type, post_id, community_id)
+                        DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link, preview_text = excluded.preview_text
+                    """, (recipient_username, username, f"You have new messages from {username}", _photo_dm_link, _photo_preview))
                 conn.commit()
             except Exception as notif_e:
                 logger.warning(f"Could not create/update photo message notification: {notif_e}")
@@ -15491,7 +15513,7 @@ def send_photo_message():
                 if should_push:
                     send_push_to_user(recipient_username, {
                         'title': f'Photo from {username}',
-                        'body': f'{username} sent you a photo',
+                        'body': _photo_preview,
                         'url': f'/user_chat/chat/{username}',
                         'tag': f'message-{username}-{inserted_id}',  # Unique tag per message
                     })
@@ -15625,15 +15647,32 @@ def send_dm_media():
 
             invalidate_message_cache(username, recipient_username)
 
+            count = len(uploaded_paths)
+            if count > 1:
+                _dm_media_preview = _truncate_notif_preview(f"{count} media files")
+            else:
+                _dm_media_preview = "Photo" if first_image else "Video"
+            _dm_media_link = f"/user_chat/chat/{username}"
+
             try:
-                c.execute(f"""
-                    INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read)
-                    VALUES ({ph}, {ph}, 'message', {ph}, NOW(), 0)
-                    ON DUPLICATE KEY UPDATE
-                        created_at = NOW(),
-                        message = VALUES(message),
-                        is_read = 0
-                """, (recipient_username, username, f"You have new messages from {username}"))
+                if USE_MYSQL:
+                    c.execute(f"""
+                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                        VALUES ({ph}, {ph}, 'message', NULL, NULL, {ph}, NOW(), 0, {ph}, {ph})
+                        ON DUPLICATE KEY UPDATE
+                            created_at = NOW(),
+                            message = VALUES(message),
+                            is_read = 0,
+                            link = VALUES(link),
+                            preview_text = VALUES(preview_text)
+                    """, (recipient_username, username, f"You have new messages from {username}", _dm_media_link, _dm_media_preview))
+                else:
+                    c.execute(f"""
+                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                        VALUES ({ph}, {ph}, 'message', NULL, NULL, {ph}, datetime('now'), 0, {ph}, {ph})
+                        ON CONFLICT(user_id, from_user, type, post_id, community_id)
+                        DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link, preview_text = excluded.preview_text
+                    """, (recipient_username, username, f"You have new messages from {username}", _dm_media_link, _dm_media_preview))
                 conn.commit()
             except Exception:
                 pass
@@ -15669,11 +15708,9 @@ def send_dm_media():
                     except Exception:
                         pass
                 if should_push:
-                    count = len(uploaded_paths)
-                    label = f'{count} media files' if count > 1 else ('a photo' if first_image else 'a video')
                     send_push_to_user(recipient_username, {
                         'title': f'Media from {username}',
-                        'body': f'{username} sent you {label}',
+                        'body': _dm_media_preview,
                         'url': f'/user_chat/chat/{username}',
                         'tag': f'message-{username}-{inserted_id}',
                     })
@@ -15838,15 +15875,31 @@ def send_video_message():
 
             invalidate_message_cache(username, recipient_username)
             
+            _video_dm_link = f"/user_chat/chat/{username}"
+            _video_preview = (
+                _truncate_notif_preview((message or "").strip())
+                if (message or "").strip()
+                else "Video"
+            )
             try:
-                c.execute("""
-                    INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read)
-                    VALUES (?, ?, 'message', ?, NOW(), 0)
-                    ON DUPLICATE KEY UPDATE
-                        created_at = NOW(),
-                        message = VALUES(message),
-                        is_read = 0
-                """, (recipient_username, username, f"You have new messages from {username}"))
+                if USE_MYSQL:
+                    c.execute("""
+                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                        VALUES (?, ?, 'message', NULL, NULL, ?, NOW(), 0, ?, ?)
+                        ON DUPLICATE KEY UPDATE
+                            created_at = NOW(),
+                            message = VALUES(message),
+                            is_read = 0,
+                            link = VALUES(link),
+                            preview_text = VALUES(preview_text)
+                    """, (recipient_username, username, f"You have new messages from {username}", _video_dm_link, _video_preview))
+                else:
+                    c.execute("""
+                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                        VALUES (?, ?, 'message', NULL, NULL, ?, datetime('now'), 0, ?, ?)
+                        ON CONFLICT(user_id, from_user, type, post_id, community_id)
+                        DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link, preview_text = excluded.preview_text
+                    """, (recipient_username, username, f"You have new messages from {username}", _video_dm_link, _video_preview))
                 conn.commit()
             except Exception as notif_e:
                 logger.warning(f"Could not create/update video message notification: {notif_e}")
@@ -15875,7 +15928,7 @@ def send_video_message():
                 if should_push:
                     send_push_to_user(recipient_username, {
                         'title': f'Video from {username}',
-                        'body': f'{username} sent you a video',
+                        'body': _video_preview,
                         'url': f'/user_chat/chat/{username}',
                         'tag': f'message-{username}-{inserted_id}',  # Unique tag per message
                     })
@@ -16011,18 +16064,33 @@ def send_audio_message():
             invalidate_message_cache(username, recipient_username)
 
             # Notification (same as text/photo)
+            _audio_dm_link = f"/user_chat/chat/{username}"
+            _audio_preview = "Voice message"
             try:
-                c.execute(
-                    """
-                    INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read)
-                    VALUES (?, ?, 'message', ?, NOW(), 0)
-                    ON DUPLICATE KEY UPDATE
-                        created_at = NOW(),
-                        message = VALUES(message),
-                        is_read = 0
-                    """,
-                    (recipient_username, username, f"You have new messages from {username}")
-                )
+                if USE_MYSQL:
+                    c.execute(
+                        """
+                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                        VALUES (?, ?, 'message', NULL, NULL, ?, NOW(), 0, ?, ?)
+                        ON DUPLICATE KEY UPDATE
+                            created_at = NOW(),
+                            message = VALUES(message),
+                            is_read = 0,
+                            link = VALUES(link),
+                            preview_text = VALUES(preview_text)
+                        """,
+                        (recipient_username, username, f"You have new messages from {username}", _audio_dm_link, _audio_preview)
+                    )
+                else:
+                    c.execute(
+                        """
+                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                        VALUES (?, ?, 'message', NULL, NULL, ?, datetime('now'), 0, ?, ?)
+                        ON CONFLICT(user_id, from_user, type, post_id, community_id)
+                        DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link, preview_text = excluded.preview_text
+                        """,
+                        (recipient_username, username, f"You have new messages from {username}", _audio_dm_link, _audio_preview)
+                    )
                 conn.commit()
             except Exception as notif_e:
                 logger.warning(f"Could not create/update audio message notification: {notif_e}")
@@ -16071,7 +16139,7 @@ def send_audio_message():
                     import time
                     send_push_to_user(recipient_username, {
                         'title': f'Voice message from {username}',
-                        'body': f'{username} sent you a voice message',
+                        'body': _audio_preview,
                         'url': f'/user_chat/chat/{username}',
                         'tag': f'message-{username}-audio-{int(time.time()*1000)}',  # Unique tag
                     })

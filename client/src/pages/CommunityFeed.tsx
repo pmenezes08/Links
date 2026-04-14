@@ -84,6 +84,9 @@ type StoryGroup = {
 type StoryViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
 const COMMUNITY_FEED_CACHE_TTL_MS = 2 * 60 * 1000
 const COMMUNITY_FEED_CACHE_VERSION = 'community-feed-v3'
+/** Matches PostDetail `post-detail-v1` for feed → post navigation hydrate */
+const POST_DETAIL_CACHE_VERSION = 'post-detail-v1'
+const POST_DETAIL_CACHE_TTL_MS = 3 * 60 * 1000
 
 function normalizeMediaPath(p?: string | null){
   if (!p) return ''
@@ -2385,7 +2388,7 @@ export default function CommunityFeed() {
           overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto',
           overscrollBehaviorY: 'auto',
           touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y',
-          paddingTop: `calc(env(safe-area-inset-top, 0px) + 48px + ${pullPx}px)`,
+          paddingTop: `calc(env(safe-area-inset-top, 0px) + 42px + ${pullPx}px)`,
         }}
       >
         <div className="space-y-3">
@@ -2513,6 +2516,16 @@ export default function CommunityFeed() {
                   highlightStep={highlightStep}
                   onOpen={() => {
                     markPostViewed(p.id, p.has_viewed)
+                    try {
+                      writeDeviceCache(
+                        `post-${p.id}`,
+                        { post: p, isGroupPost: true },
+                        POST_DETAIL_CACHE_TTL_MS,
+                        POST_DETAIL_CACHE_VERSION
+                      )
+                    } catch {
+                      /* ignore */
+                    }
                     navigate(`/post/${p.id}`)
                   }}
                   onToggleReaction={handleToggleReaction}
