@@ -162,7 +162,6 @@ export default function ChatThread(){
   const [pastedImage, setPastedImage] = useState<File | null>(null)
   const [videoUploadProgress, setVideoUploadProgress] = useState<UploadProgress | null>(null)
   const [pendingMedia, setPendingMedia] = useState<Array<{ file: File; previewUrl: string; type: 'image' | 'video' }>>([])
-  const [multiMediaSending, setMultiMediaSending] = useState(false)
   const [previewIndex, setPreviewIndex] = useState(0)
   const [viewingMedia, setViewingMedia] = useState<{ urls: string[]; index: number } | null>(null)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
@@ -1295,10 +1294,10 @@ export default function ChatThread(){
                 }
               }
               
-              // Clean up very old UNCONFIRMED optimistic messages (30s timeout)
+              // Clean up very old UNCONFIRMED optimistic messages (30s timeout) — never drop failed/outbox bubbles
               const now = Date.now()
               for (const [key, msg] of messagesByKey.entries()) {
-                if (msg.isOptimistic) {
+                if (msg.isOptimistic && !msg.sendFailed) {
                   const ts = getMessageTimestamp(msg.time)
                   if (ts !== null) {
                     const age = now - ts
@@ -1494,6 +1493,11 @@ export default function ChatThread(){
     } catch { /* IndexedDB unavailable */ }
 
     const markFailed = (key: string) => {
+      try {
+        recentOptimisticRef.current.delete(key)
+      } catch {
+        /* ignore */
+      }
       setMessages(prev => prev.map(m =>
         (m.clientKey || m.id) === key ? { ...m, sendFailed: true, isOptimistic: true } : m
       ))
@@ -1724,35 +1728,30 @@ export default function ChatThread(){
       return
     }
 
-    setMultiMediaSending(true)
-    try {
-      await sendMultiMediaMessage({
-        files: mediaToSend.map(item => ({ file: item.file, type: item.type })),
-        otherUserId,
-        username,
-        setMessages,
-        scrollToBottom,
-        recentOptimisticRef,
-        idBridgeRef,
-        setSending,
-        onProgress: (progress) => {
-          setVideoUploadProgress(progress)
-          if (progress.stage === 'done' || progress.stage === 'error') {
-            setTimeout(() => setVideoUploadProgress(null), 2000)
-          }
-        },
-      })
-    } finally {
-      mediaToSend.forEach(item => {
-        if (item.previewUrl.startsWith('blob:')) {
-          try { URL.revokeObjectURL(item.previewUrl) } catch {}
+    setPendingMedia([])
+    setPreviewIndex(0)
+    mediaToSend.forEach(item => {
+      if (item.previewUrl.startsWith('blob:')) {
+        try { URL.revokeObjectURL(item.previewUrl) } catch {}
+      }
+    })
+    void sendMultiMediaMessage({
+      files: mediaToSend.map(item => ({ file: item.file, type: item.type })),
+      otherUserId,
+      username,
+      setMessages,
+      scrollToBottom,
+      recentOptimisticRef,
+      idBridgeRef,
+      setSending,
+      lockComposer: false,
+      onProgress: (progress) => {
+        setVideoUploadProgress(progress)
+        if (progress.stage === 'done' || progress.stage === 'error') {
+          setTimeout(() => setVideoUploadProgress(null), 2000)
         }
-      })
-      setPendingMedia([])
-      setPreviewIndex(0)
-      setMultiMediaSending(false)
-      setVideoUploadProgress(null)
-    }
+      },
+    })
   }
 
   function cancelMediaPreview() {
@@ -3785,6 +3784,7 @@ export default function ChatThread(){
                   alt="Media"
                   className="w-full h-full"
                   onRequestClose={() => setViewingMedia(null)}
+                  disableTapToClose
                 />
               )}
             </div>
@@ -3827,7 +3827,7 @@ export default function ChatThread(){
       {pendingMedia.length > 0 && (
         <div
           className="fixed inset-0 bg-black z-[9999] flex flex-col"
-          onClick={() => { if (!multiMediaSending) cancelMediaPreview() }}
+          onClick={cancelMediaPreview}
         >
           <div
             className="flex items-center justify-between px-4 py-3 bg-black/80"
@@ -3835,9 +3835,8 @@ export default function ChatThread(){
           >
             <button
               type="button"
-              disabled={multiMediaSending}
               onClick={cancelMediaPreview}
-              className="text-white p-2 -ml-2 disabled:opacity-40 disabled:pointer-events-none"
+              className="text-white p-2 -ml-2"
             >
               <i className="fa-solid fa-xmark text-xl" />
             </button>
@@ -3846,31 +3845,21 @@ export default function ChatThread(){
             </span>
             <button
               type="button"
-              disabled={multiMediaSending}
               onClick={(e) => { e.stopPropagation(); removeMediaFromPreview(previewIndex) }}
-              className="text-white/60 p-2 -mr-2 hover:text-white disabled:opacity-40 disabled:pointer-events-none"
+              className="text-white/60 p-2 -mr-2 hover:text-white"
             >
               <i className="fa-solid fa-trash text-sm" />
             </button>
           </div>
 
           <div
-            className={`flex-1 flex items-center justify-center overflow-hidden relative ${multiMediaSending ? 'pointer-events-none' : ''}`}
+            className="flex-1 flex items-center justify-center overflow-hidden relative"
             onClick={(e) => e.stopPropagation()}
           >
-            {multiMediaSending && (
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/55 pointer-events-auto">
-                <i className="fa-solid fa-spinner fa-spin text-3xl text-[#4db6ac]" />
-                {videoUploadProgress?.message && (
-                  <p className="mt-3 px-4 text-center text-sm text-white/85">{videoUploadProgress.message}</p>
-                )}
-              </div>
-            )}
             {pendingMedia.length > 1 && previewIndex > 0 && (
               <button
                 type="button"
-                disabled={multiMediaSending}
-                className="absolute left-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70 disabled:opacity-40 disabled:pointer-events-none"
+                className="absolute left-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
                 onClick={() => setPreviewIndex(i => i - 1)}
               >
                 <i className="fa-solid fa-chevron-left" />
@@ -3891,6 +3880,7 @@ export default function ChatThread(){
                   alt="Preview"
                   className="w-full h-full"
                   onRequestClose={cancelMediaPreview}
+                  disableTapToClose
                 />
               )}
             </div>
@@ -3898,8 +3888,7 @@ export default function ChatThread(){
             {pendingMedia.length > 1 && previewIndex < pendingMedia.length - 1 && (
               <button
                 type="button"
-                disabled={multiMediaSending}
-                className="absolute right-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70 disabled:opacity-40 disabled:pointer-events-none"
+                className="absolute right-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
                 onClick={() => setPreviewIndex(i => i + 1)}
               >
                 <i className="fa-solid fa-chevron-right" />
@@ -3908,14 +3897,13 @@ export default function ChatThread(){
           </div>
 
           {pendingMedia.length > 1 && (
-            <div className={`flex justify-center gap-2 px-4 py-2 bg-black/80 overflow-x-auto ${multiMediaSending ? 'pointer-events-none' : ''}`}>
+            <div className="flex justify-center gap-2 px-4 py-2 bg-black/80 overflow-x-auto">
               {pendingMedia.map((item, i) => (
                 <button
                   type="button"
                   key={i}
-                  disabled={multiMediaSending}
                   onClick={(e) => { e.stopPropagation(); setPreviewIndex(i) }}
-                  className={`w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border-2 transition disabled:opacity-40 ${
+                  className={`w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border-2 transition ${
                     i === previewIndex ? 'border-[#4db6ac]' : 'border-transparent opacity-60'
                   }`}
                 >
@@ -3937,17 +3925,15 @@ export default function ChatThread(){
           >
             <button
               type="button"
-              disabled={multiMediaSending}
               onClick={(e) => { e.stopPropagation(); cancelMediaPreview() }}
-              className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition disabled:opacity-40 disabled:pointer-events-none"
+              className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition"
             >
               Cancel
             </button>
             <button
               type="button"
-              disabled={multiMediaSending}
               onClick={(e) => { e.stopPropagation(); confirmSendMedia() }}
-              className="px-8 py-3 bg-[#4db6ac] text-black rounded-full font-medium hover:bg-[#45a89c] transition flex items-center gap-2 disabled:opacity-40 disabled:pointer-events-none"
+              className="px-8 py-3 bg-[#4db6ac] text-black rounded-full font-medium hover:bg-[#45a89c] transition flex items-center gap-2"
             >
               <i className="fa-solid fa-paper-plane" />
               Send {pendingMedia.length > 1 ? `(${pendingMedia.length})` : ''}

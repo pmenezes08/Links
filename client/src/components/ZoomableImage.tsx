@@ -7,6 +7,8 @@ interface ZoomableImageProps {
   maxScale?: number
   // Called when the user requests to close (e.g., ESC when scale=1)
   onRequestClose?: () => void
+  /** When true, single-tap-to-close is disabled (e.g. multi-image chat preview carousel) */
+  disableTapToClose?: boolean
 }
 
 // A self-contained zoomable image with:
@@ -15,7 +17,7 @@ interface ZoomableImageProps {
 // - Pinch to zoom (multi-pointer)
 // - Drag to pan when zoomed
 // - ESC to reset (or close if already at 1x)
-export default function ZoomableImage({ src, alt = 'image', className = '', maxScale = 3, onRequestClose }: ZoomableImageProps) {
+export default function ZoomableImage({ src, alt = 'image', className = '', maxScale = 3, onRequestClose, disableTapToClose = false }: ZoomableImageProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
 
@@ -321,6 +323,7 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
       onClick={(e) => {
         e.stopPropagation()
         // Single tap to close when not zoomed (with delay to allow double-tap)
+        if (disableTapToClose) return
         if (scale <= minScale + 0.001 && onRequestClose) {
           // Clear any existing timer
           if (singleTapTimerRef.current) {

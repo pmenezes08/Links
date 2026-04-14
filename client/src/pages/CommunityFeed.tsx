@@ -2388,7 +2388,7 @@ export default function CommunityFeed() {
           overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto',
           overscrollBehaviorY: 'auto',
           touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y',
-          paddingTop: `calc(env(safe-area-inset-top, 0px) + 30px + ${pullPx}px)`,
+          paddingTop: `calc(env(safe-area-inset-top, 0px) + 20px + ${pullPx}px)`,
         }}
       >
         <div className="space-y-3">
@@ -2400,8 +2400,8 @@ export default function CommunityFeed() {
             className="hidden"
             onChange={handleStoryFileChange}
           />
-          {/* Banner + stories: minimal gap; stories card border is the visual separator */}
-          <div className="flex flex-col gap-1">
+          {/* Banner + stories: ~12px gap so stories aren’t flush on the header image */}
+          <div className="flex flex-col gap-3">
           {/* Top header image from legacy template */}
           {data.community?.background_path ? (
             <div className="community-header-image overflow-hidden rounded-xl border border-white/10 relative">

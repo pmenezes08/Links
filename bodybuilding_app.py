@@ -14852,47 +14852,76 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
             chat_user_a = sender_username
             chat_user_b = 'steve'
         
+        def _steve_parse_dt(val):
+            """Parse Firestore Timestamp, datetime, or ISO string to naive UTC datetime."""
+            from datetime import datetime, timezone
+            if val is None:
+                return None
+            try:
+                if hasattr(val, 'timestamp') and callable(getattr(val, 'timestamp')):
+                    return datetime.utcfromtimestamp(val.timestamp())
+                if isinstance(val, datetime):
+                    if val.tzinfo is not None:
+                        return val.astimezone(timezone.utc).replace(tzinfo=None)
+                    return val
+                if isinstance(val, str):
+                    s = val.strip().replace('Z', '+00:00')
+                    dt = datetime.fromisoformat(s)
+                    if dt.tzinfo is not None:
+                        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+                    return dt
+            except Exception:
+                pass
+            return None
+
         # ── Load full conversation history from Firestore (fall back to MySQL) ──
         recent_messages = []
         context_reset_at = None
+        reset_dt = None
+        firestore_context_ok = False
         try:
             import os
             FIRESTORE_DATABASE = os.environ.get('FIRESTORE_DATABASE', 'cpoint')
             from google.cloud import firestore as _firestore
             project = os.environ.get('GOOGLE_CLOUD_PROJECT') or os.environ.get('GCP_PROJECT')
             fs = _firestore.Client(project=project, database=FIRESTORE_DATABASE) if project else _firestore.Client(database=FIRESTORE_DATABASE)
-            
+
             from backend.services.firestore_reads import _find_dm_conv_id
             conv_id = _find_dm_conv_id(fs, chat_user_a, chat_user_b)
             if conv_id:
-                msgs_ref = fs.collection('dm_conversations').document(conv_id).collection('messages')
-                docs = msgs_ref.order_by('created_at').stream()
-                for doc in docs:
-                    d = doc.to_dict()
-                    sender = d.get('sender', '')
-                    text = d.get('text', '')
-                    if text and sender:
-                        recent_messages.append(f"{sender}: {text}")
-                logger.info(f"Steve DM context from Firestore: {len(recent_messages)} messages for {chat_user_a}<->{chat_user_b}")
-
-                # Load conversation document for Steve context reset timestamp
                 try:
                     conv_doc = fs.collection('dm_conversations').document(conv_id).get()
                     if conv_doc.exists:
-                        d = conv_doc.to_dict() or {}
-                        context_reset_at = d.get('steve_context_reset_at')
+                        cd = conv_doc.to_dict() or {}
+                        context_reset_at = cd.get('steve_context_reset_at')
+                        reset_dt = _steve_parse_dt(context_reset_at)
                         if context_reset_at:
-                            logger.info(f"Steve DM context was reset at {context_reset_at} for {chat_user_a}<->{chat_user_b}")
+                            logger.info(f"Steve DM context reset timestamp: {context_reset_at} for {chat_user_a}<->{chat_user_b}")
                 except Exception as reset_err:
                     logger.warning(f"Failed to load DM conversation reset timestamp: {reset_err}")
-                    context_reset_at = None
+
+                msgs_ref = fs.collection('dm_conversations').document(conv_id).collection('messages')
+                docs = msgs_ref.order_by('created_at').stream()
+                for doc in docs:
+                    d = doc.to_dict() or {}
+                    sender = d.get('sender', '')
+                    text = d.get('text', '')
+                    if not text or not sender:
+                        continue
+                    msg_ts = _steve_parse_dt(d.get('created_at'))
+                    if reset_dt and msg_ts and msg_ts < reset_dt:
+                        continue
+                    # Include messages without created_at (legacy) when we have a reset (cannot prove they're old)
+                    recent_messages.append(f"{sender}: {text}")
+                firestore_context_ok = True
+                logger.info(f"Steve DM context from Firestore: {len(recent_messages)} messages for {chat_user_a}<->{chat_user_b}")
         except Exception as fs_err:
             logger.warning(f"Steve DM Firestore context failed, falling back to MySQL: {fs_err}")
             recent_messages = []
-            context_reset_at = None
-        
-        # MySQL fallback if Firestore returned nothing
-        if not recent_messages:
+            reset_dt = None
+
+        # MySQL fallback only if Firestore did not load the thread (avoid duplicating full history after a filtered Firestore load)
+        if not firestore_context_ok:
             with get_db_connection() as conn:
                 c = conn.cursor()
                 ph = get_sql_placeholder()
@@ -14905,8 +14934,13 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
                 for row in c.fetchall():
                     s = row['sender'] if hasattr(row, 'keys') else row[0]
                     m = row['message'] if hasattr(row, 'keys') else row[1]
-                    if m:
-                        recent_messages.append(f"{s}: {m}")
+                    ts_raw = row['timestamp'] if hasattr(row, 'keys') else row[2]
+                    if not m:
+                        continue
+                    row_ts = _steve_parse_dt(ts_raw) if ts_raw is not None else None
+                    if reset_dt and row_ts and row_ts < reset_dt:
+                        continue
+                    recent_messages.append(f"{s}: {m}")
         
         current_date = datetime.now().strftime('%A, %B %d, %Y at %H:%M UTC')
         

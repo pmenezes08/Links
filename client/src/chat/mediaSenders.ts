@@ -311,6 +311,8 @@ export async function sendVideoMessage(options: VideoMediaOptions) {
 interface MultiMediaOptions extends BaseMediaOptions {
   files: Array<{ file: File; type: 'image' | 'video' }>
   onProgress?: (progress: UploadProgress) => void
+  /** When false, do not toggle global sending/composer lock — upload continues in background after preview closes */
+  lockComposer?: boolean
 }
 
 export async function sendMultiMediaMessage(options: MultiMediaOptions) {
@@ -326,10 +328,11 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
     notifyError = defaultNotify,
     cleanup,
     onProgress,
+    lockComposer = true,
   } = options
 
   if (files.length === 0) return
-  setSending(true)
+  if (lockComposer) setSending(true)
 
   const tempId = `temp_multi_${Date.now()}_${Math.random()}`
   const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
@@ -511,6 +514,6 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
   } finally {
     previewUrls.forEach(url => { try { URL.revokeObjectURL(url) } catch {} })
     cleanup?.()
-    setSending(false)
+    if (lockComposer) setSending(false)
   }
 }
