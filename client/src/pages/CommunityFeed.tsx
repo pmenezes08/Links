@@ -3852,6 +3852,9 @@ export default function CommunityFeed() {
 // Ad components removed
 
 function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate, onMarkViewed, onDeletePost, onDeletePoll, onHidePost, onReportPost, onBlockUser }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void, onMarkViewed?: (postId: number, alreadyViewed?: boolean) => void, onDeletePost?: (postId: number) => void, onDeletePoll?: (postId: number, pollId: number) => void, onHidePost?: (post: Post) => void, onReportPost?: (post: Post) => void, onBlockUser?: (data: { username: string; postId?: number }) => void }) {
+  const mentionToProfile = useCallback((u: string) => {
+    navigate?.(`/profile/${encodeURIComponent(u)}`)
+  }, [navigate])
   const cardRef = useRef<HTMLDivElement | null>(null)
   const mediaInputRef = useRef<HTMLInputElement | null>(null)
   const [isEditing, setIsEditing] = useState(false)
@@ -4273,7 +4276,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               const displayContent = videoEmbed ? removeVideoUrlFromText(post.content, videoEmbed) : post.content
               return (
                 <>
-                  {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">{renderTextWithLinks(displayContent)}</div>}
+                  {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">{renderTextWithLinks(displayContent, undefined, mentionToProfile)}</div>}
                   {videoEmbed && <VideoEmbed embed={videoEmbed} />}
                 </>
               )
@@ -4685,7 +4688,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   </div>
                   {r.content ? (
                     <div className="text-[#dfe6e9] whitespace-pre-wrap break-words">
-                      {renderTextWithSourceLinks(r.content, false)}
+                      {renderTextWithSourceLinks(r.content, false, mentionToProfile)}
                     </div>
                   ) : null}
                   {r.image_path ? (

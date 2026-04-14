@@ -15,6 +15,8 @@ type ProfileData = {
   twitter: string
   profile_picture: string
   cover_photo: string
+  /** When true, in-app notifications include a short text preview of the post or reply */
+  notification_show_previews?: boolean
 }
 
 export default function AccountSettings(){
@@ -40,6 +42,25 @@ export default function AccountSettings(){
       }
     } catch {
       setNotifStatus('denied')
+    }
+  }, [])
+
+  const saveNotificationPreviewPref = useCallback(async (show: boolean) => {
+    try {
+      const r = await fetch('/api/account/notification_preferences', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ show_content_previews: show }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!j?.success) {
+        setMessage({ type: 'error', text: j?.error || 'Could not update notification preferences' })
+        loadProfile()
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Network error updating preferences' })
+      loadProfile()
     }
   }, [])
 
@@ -303,6 +324,26 @@ export default function AccountSettings(){
                 </p>
               </div>
             )}
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3">
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 shrink-0 rounded border-white/30 bg-black/40 text-[#4db6ac] focus:ring-[#4db6ac]"
+                  checked={profile.notification_show_previews !== false}
+                  onChange={e => {
+                    const v = e.target.checked
+                    setProfile(prev => (prev ? { ...prev, notification_show_previews: v } : null))
+                    void saveNotificationPreviewPref(v)
+                  }}
+                />
+                <div>
+                  <div className="text-sm font-medium text-white">Show content previews in notifications</div>
+                  <div className="text-xs text-white/50 mt-0.5">
+                    When enabled, the notifications list includes a short snippet of the related post or reply. Turn off for a more private summary (who did what, without the text).
+                  </div>
+                </div>
+              </label>
+            </div>
           </div>
 
           {/* Danger Zone */}

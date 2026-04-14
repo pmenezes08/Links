@@ -32,7 +32,7 @@ class UploadQueue {
       const mockPayload = {
         success: true,
         id: Date.now(),
-        media_paths: task.files.map((f, i) => `uploads/mock/${task.tempId}_${i}.jpg`),
+        media_paths: task.files.map((_, i) => `uploads/mock/${task.tempId}_${i}.jpg`),
         image_path: task.files[0].type === 'image' ? `uploads/mock/${task.tempId}_0.jpg` : undefined,
         video_path: task.files[0].type === 'video' ? `uploads/mock/${task.tempId}_0.mp4` : undefined,
         time: new Date().toISOString(),

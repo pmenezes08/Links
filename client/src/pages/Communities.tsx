@@ -1419,6 +1419,7 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
 
 function ParentTimeline({ parentId }:{ parentId:number }){
   const navigate = useNavigate()
+  const mentionToProfile = useCallback((u: string) => { navigate(`/profile/${encodeURIComponent(u)}`) }, [navigate])
   const [posts, setPosts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|undefined>()
@@ -1679,7 +1680,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                   const displayContent = videoEmbed ? removeVideoUrlFromText(p.content, videoEmbed) : p.content
                   return (
                     <>
-                      {displayContent && <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{renderTextWithLinks(displayContent)}</div>}
+                      {displayContent && <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{renderTextWithLinks(displayContent, undefined, mentionToProfile)}</div>}
                       {videoEmbed && <VideoEmbed embed={videoEmbed} />}
                     </>
                   )

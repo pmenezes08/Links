@@ -153,9 +153,9 @@ function SmartLink({
 
 /**
  * Colorizes @mentions in an array of React nodes.
- * When onMentionClick is provided, mentions become clickable.
+ * When onMentionClick is provided, mentions become clickable (e.g. navigate to public profile).
  */
-function colorizeMentions(nodes: React.ReactNode[], onMentionClick?: (username: string) => void): React.ReactNode[] {
+export function colorizeMentions(nodes: React.ReactNode[], onMentionClick?: (username: string) => void): React.ReactNode[] {
   const out: React.ReactNode[] = []
   const mentionRe = /(^|\s)(@([a-zA-Z0-9_]{1,30}))/g
   nodes.forEach((n, idx) => {
@@ -194,7 +194,7 @@ function colorizeMentions(nodes: React.ReactNode[], onMentionClick?: (username: 
 /**
  * Preserves newlines in text by converting them to <br> elements
  */
-function preserveNewlines(text: string): React.ReactNode[] {
+export function preserveRichTextNewlines(text: string): React.ReactNode[] {
   const parts = text.split(/\n/)
   const out: React.ReactNode[] = []
   parts.forEach((p, i) => {
@@ -230,7 +230,7 @@ export function renderTextWithSourceLinks(
     
     if (effectiveStart > lastIndex) {
       const textBefore = text.substring(lastIndex, effectiveStart)
-      parts.push(...colorizeMentions(preserveNewlines(textBefore), onMentionClick))
+      parts.push(...colorizeMentions(preserveRichTextNewlines(textBefore), onMentionClick))
     }
     
     let url: string
@@ -279,7 +279,7 @@ export function renderTextWithSourceLinks(
   // Add remaining text
   if (lastIndex < text.length) {
     const remainingText = text.substring(lastIndex)
-    parts.push(...colorizeMentions(preserveNewlines(remainingText), onMentionClick))
+    parts.push(...colorizeMentions(preserveRichTextNewlines(remainingText), onMentionClick))
   }
   
   return parts.length > 0 ? <>{parts}</> : text
@@ -292,7 +292,8 @@ export function renderTextWithSourceLinks(
  */
 export function renderTextWithLinks(
   text: string,
-  onJoinCommunity?: (communityName: string, communityId: number) => void
+  onJoinCommunity?: (communityName: string, communityId: number) => void,
+  onMentionClick?: (username: string) => void
 ): React.ReactNode {
   if (!text) return null
   
@@ -307,7 +308,7 @@ export function renderTextWithLinks(
     // Add text before the link (with mentions colorized)
     if (match.index > lastIndex) {
       const textBefore = text.substring(lastIndex, match.index)
-      parts.push(...colorizeMentions(preserveNewlines(textBefore)))
+      parts.push(...colorizeMentions(preserveRichTextNewlines(textBefore), onMentionClick))
     }
     
     // Add the link as a clickable element
@@ -330,7 +331,7 @@ export function renderTextWithLinks(
   // Add remaining text (with mentions colorized)
   if (lastIndex < text.length) {
     const remainingText = text.substring(lastIndex)
-    parts.push(...colorizeMentions(preserveNewlines(remainingText)))
+    parts.push(...colorizeMentions(preserveRichTextNewlines(remainingText), onMentionClick))
   }
   
   return parts.length > 0 ? parts : text

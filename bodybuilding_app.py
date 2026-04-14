@@ -4199,6 +4199,13 @@ def init_db():
             if not c.fetchone():
                 c.execute("ALTER TABLE users ADD COLUMN is_active TINYINT(1) DEFAULT 1")
                 logger.info("Added is_active column to users table")
+            try:
+                c.execute("SHOW COLUMNS FROM users LIKE 'notification_show_previews'")
+                if not c.fetchone():
+                    c.execute("ALTER TABLE users ADD COLUMN notification_show_previews TINYINT(1) DEFAULT 1")
+                    logger.info("Added notification_show_previews column to users table")
+            except Exception as ue:
+                logger.warning(f"Could not add notification_show_previews to users: {ue}")
             
             # Ensure notifications table has required columns
             try:
@@ -4213,6 +4220,11 @@ def init_db():
                 if not c.fetchone():
                     c.execute("ALTER TABLE notifications ADD COLUMN link TEXT")
                     logger.info("Added link column to notifications table")
+                # Optional short preview of post/reply content for in-app notifications
+                c.execute("SHOW COLUMNS FROM notifications LIKE 'preview_text'")
+                if not c.fetchone():
+                    c.execute("ALTER TABLE notifications ADD COLUMN preview_text VARCHAR(512) NULL")
+                    logger.info("Added preview_text column to notifications table")
             except Exception as e:
                 logger.error(f"Failed to update notifications table: {e}")
             
@@ -5457,7 +5469,14 @@ def create_imagine_reply(job_row: Dict[str, Any], video_path: str, style: str) -
             if not USE_MYSQL:
                 conn.commit()
         try:
-            notify_post_reply_recipients(post_id=post_id, from_user=username, community_id=community_id, parent_reply_id=parent_reply_id, reply_id=reply_id)
+            notify_post_reply_recipients(
+                post_id=post_id,
+                from_user=username,
+                community_id=community_id,
+                parent_reply_id=parent_reply_id,
+                reply_id=reply_id,
+                reply_content=content,
+            )
         except Exception as notify_err:
             logger.warning(f"Imagine reply notification error: {notify_err}")
         return reply_id
@@ -12942,19 +12961,34 @@ def api_profile_me():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Include professional fields in the query
-            c.execute("""
-                SELECT u.username, u.email, u.subscription, u.email_verified, u.email_verified_at,
-                       u.first_name, u.last_name, u.gender, u.country, u.city, u.date_of_birth, u.age,
-                       p.display_name, p.bio, p.location, p.website,
-                       p.instagram, p.twitter, p.profile_picture, p.cover_photo,
-                       u.role, u.company, u.industry, u.linkedin, u.professional_about, u.professional_interests,
-                       u.professional_company_intel
-                FROM users u
-                LEFT JOIN user_profiles p ON u.username = p.username
-                WHERE u.username = ?
-            """, (username,))
-            row = c.fetchone()
+            # Include professional fields in the query (notification_show_previews added in migration)
+            row = None
+            try:
+                c.execute("""
+                    SELECT u.username, u.email, u.subscription, u.email_verified, u.email_verified_at,
+                           u.first_name, u.last_name, u.gender, u.country, u.city, u.date_of_birth, u.age,
+                           p.display_name, p.bio, p.location, p.website,
+                           p.instagram, p.twitter, p.profile_picture, p.cover_photo,
+                           u.role, u.company, u.industry, u.linkedin, u.professional_about, u.professional_interests,
+                           u.professional_company_intel, u.notification_show_previews
+                    FROM users u
+                    LEFT JOIN user_profiles p ON u.username = p.username
+                    WHERE u.username = ?
+                """, (username,))
+                row = c.fetchone()
+            except Exception:
+                c.execute("""
+                    SELECT u.username, u.email, u.subscription, u.email_verified, u.email_verified_at,
+                           u.first_name, u.last_name, u.gender, u.country, u.city, u.date_of_birth, u.age,
+                           p.display_name, p.bio, p.location, p.website,
+                           p.instagram, p.twitter, p.profile_picture, p.cover_photo,
+                           u.role, u.company, u.industry, u.linkedin, u.professional_about, u.professional_interests,
+                           u.professional_company_intel
+                    FROM users u
+                    LEFT JOIN user_profiles p ON u.username = p.username
+                    WHERE u.username = ?
+                """, (username,))
+                row = c.fetchone()
             if not row:
                 return jsonify({ 'success': False, 'error': 'not found' }), 404
             def get_val(key_or_idx):
@@ -13017,7 +13051,12 @@ def api_profile_me():
                     'about': get_val('professional_about') if hasattr(row, 'keys') else get_val(24),
                     'interests': interests_list,
                     'company_intel': (str(company_intel_val).strip() if company_intel_val is not None else ''),
-                }
+                },
+                'notification_show_previews': (
+                    True
+                    if get_val('notification_show_previews') is None
+                    else bool(int(get_val('notification_show_previews')))
+                ),
             }
             
             # Cache profile for faster future requests
@@ -13037,6 +13076,34 @@ def api_profile_me():
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
+
+
+@app.route('/api/account/notification_preferences', methods=['POST'])
+@login_required
+def api_account_notification_preferences():
+    """Toggle whether notification list shows a snippet of post/reply content."""
+    try:
+        data = request.get_json(silent=True) or {}
+        show = data.get('show_content_previews')
+        if show is None:
+            return jsonify({'success': False, 'error': 'show_content_previews required'}), 400
+        username = session['username']
+        val = 1 if bool(show) else 0
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                'UPDATE users SET notification_show_previews = ? WHERE username = ?',
+                (val, username),
+            )
+            conn.commit()
+        try:
+            cache.delete(f'profile:{username}')
+        except Exception:
+            pass
+        return jsonify({'success': True, 'show_content_previews': bool(val)})
+    except Exception as e:
+        logger.error(f'api_account_notification_preferences: {e}')
+        return jsonify({'success': False, 'error': 'server error'}), 500
 
 
 @app.route('/api/geo/countries')
@@ -18962,7 +19029,15 @@ def add_reaction():
 
 
 
-def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: int|None, parent_reply_id: int|None, reply_id: int|None = None):
+def notify_post_reply_recipients(
+    *,
+    post_id: int,
+    from_user: str,
+    community_id: int | None,
+    parent_reply_id: int | None,
+    reply_id: int | None = None,
+    reply_content: str | None = None,
+):
     """Create in-app notifications and web push for post reply recipients.
     Recipients: post owner (ALWAYS unless they are the sender), parent reply author, and prior engagers.
     
@@ -19015,6 +19090,7 @@ def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: 
             except Exception as qe2:
                 logger.warning(f"collect prior reactors failed: {qe2}")
 
+            preview_snip = _truncate_notif_preview(reply_content or "")
             # Insert notifications (dedupe 10s by same from_user/post/type/recipient)
             for target in recipients:
                 try:
@@ -19041,14 +19117,15 @@ def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: 
                             notif_link = f'/post/{post_id}'
                         
                         c.execute("""
-                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
-                            VALUES (?, ?, 'reply', ?, ?, ?, NOW(), 0, ?)
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                            VALUES (?, ?, 'reply', ?, ?, ?, NOW(), 0, ?, ?)
                             ON DUPLICATE KEY UPDATE
                                 created_at = NOW(),
                                 message = VALUES(message),
                                 is_read = 0,
-                                link = VALUES(link)
-                        """, (target, from_user, post_id, community_id, f"{from_user} replied", notif_link))
+                                link = VALUES(link),
+                                preview_text = VALUES(preview_text)
+                        """, (target, from_user, post_id, community_id, f"{from_user} replied", notif_link, preview_snip or None))
                         conn.commit()
                 except Exception as ne:
                     logger.warning(f"reply notify db error to {target}: {ne}")
@@ -19062,9 +19139,10 @@ def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: 
                     notification_url = f'/post/{post_id}'
                 
                 try:
+                    push_body = preview_snip or 'Tap to view the conversation'
                     send_push_to_user(target, {
                         'title': f'New reply from {from_user}',
-                        'body': 'Tap to view the conversation',
+                        'body': push_body,
                         'url': notification_url,
                         'tag': f'post-reply-{post_id}-{target}'
                     })
@@ -20187,6 +20265,7 @@ def post_status():
                     f"{username} made a new post on {community_name}" if community_name else f"{username} made a new post"
                 )
                 notif_link = f"/community_feed_react/{community_id}"
+                post_preview = _truncate_notif_preview(content or "")
 
                 for member in members:
                     logger.info(f"Attempting to notify member: {member}")
@@ -20195,25 +20274,26 @@ def post_status():
                         if 'USE_MYSQL' in globals() and USE_MYSQL:
                             c.execute(
                                 """
-                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
-                                VALUES (?, ?, 'community_post', ?, ?, ?, NOW(), 0, ?)
+                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                                VALUES (?, ?, 'community_post', ?, ?, ?, NOW(), 0, ?, ?)
                                 ON DUPLICATE KEY UPDATE
                                   created_at = NOW(),
                                   message = VALUES(message),
                                   is_read = 0,
-                                  link = VALUES(link)
+                                  link = VALUES(link),
+                                  preview_text = VALUES(preview_text)
                                 """,
-                                (member, username, post_id, community_id, notif_message, notif_link),
+                                (member, username, post_id, community_id, notif_message, notif_link, post_preview or None),
                             )
                         else:
                             c.execute(
                                 """
-                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
-                                VALUES (?, ?, 'community_post', ?, ?, ?, datetime('now'), 0, ?)
+                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                                VALUES (?, ?, 'community_post', ?, ?, ?, datetime('now'), 0, ?, ?)
                                 ON CONFLICT(user_id, from_user, type, post_id, community_id)
-                                DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link
+                                DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link, preview_text = excluded.preview_text
                                 """,
-                                (member, username, post_id, community_id, notif_message, notif_link),
+                                (member, username, post_id, community_id, notif_message, notif_link, post_preview or None),
                             )
                         conn.commit()
                     except Exception as ne:
@@ -20221,10 +20301,10 @@ def post_status():
                             # Fallback simple insert (best effort)
                             c.execute(
                                 """
-                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
-                                VALUES (?, ?, 'community_post', ?, ?, ?, datetime('now'), 0, ?)
+                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                                VALUES (?, ?, 'community_post', ?, ?, ?, datetime('now'), 0, ?, ?)
                                 """,
-                                (member, username, post_id, community_id, notif_message, notif_link),
+                                (member, username, post_id, community_id, notif_message, notif_link, post_preview or None),
                             )
                             conn.commit()
                         except Exception as ne2:
@@ -20243,7 +20323,7 @@ def post_status():
                             member,
                             {
                                 'title': 'New community post',
-                                'body': f"{username}: {content[:100]}",
+                                'body': f"{username}: {post_preview or (content[:100] if content else '')}",
                                 'url': notif_link,
                                 'tag': f"community-post-{community_id}-{post_id}",
                             },
@@ -20451,7 +20531,14 @@ def post_reply():
 
             # Notify recipients (post owner and parent reply author)
             try:
-                notify_post_reply_recipients(post_id=post_id, from_user=username, community_id=community_id, parent_reply_id=parent_reply_id, reply_id=reply_id)
+                notify_post_reply_recipients(
+                    post_id=post_id,
+                    from_user=username,
+                    community_id=community_id,
+                    parent_reply_id=parent_reply_id,
+                    reply_id=reply_id,
+                    reply_content=content,
+                )
             except Exception as ne:
                 logger.warning(f"notify recipients failed: {ne}")
             
@@ -39117,6 +39204,17 @@ def _collect_mentions(text: str) -> list:
     except Exception:
         return []
 
+
+def _truncate_notif_preview(text: str, max_len: int = 160) -> str:
+    """Single-line truncated snippet for in-app / push notification previews."""
+    if not text:
+        return ""
+    s = " ".join(str(text).replace("\r", " ").split())
+    if len(s) <= max_len:
+        return s
+    return s[: max_len - 1].rstrip() + "…"
+
+
 def process_mentions_for_post(post_id: int, author_username: str):
     """
     Process @mentions in a post and notify ALL mentioned users who exist on the platform.
@@ -39131,6 +39229,7 @@ def process_mentions_for_post(post_id: int, author_username: str):
                 return
             content = row['content'] if hasattr(row, 'keys') else row[0]
             community_id = row['community_id'] if hasattr(row, 'keys') else row[1]
+            mention_preview = _truncate_notif_preview(content or "")
             mentions = _collect_mentions(content)
             if not mentions:
                 return
@@ -39161,23 +39260,23 @@ def process_mentions_for_post(post_id: int, author_username: str):
                     notif_link = f"/post/{post_id}"
                     if USE_MYSQL:
                         c.execute("""
-                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
-                            VALUES (?, ?, 'mention_post', ?, ?, ?, NOW(), 0, ?)
-                            ON DUPLICATE KEY UPDATE created_at = NOW(), is_read = 0, message = VALUES(message), link = VALUES(link)
-                        """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a post", notif_link))
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                            VALUES (?, ?, 'mention_post', ?, ?, ?, NOW(), 0, ?, ?)
+                            ON DUPLICATE KEY UPDATE created_at = NOW(), is_read = 0, message = VALUES(message), link = VALUES(link), preview_text = VALUES(preview_text)
+                        """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a post", notif_link, mention_preview or None))
                     else:
                         now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                         c.execute("""
-                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
-                            VALUES (?, ?, 'mention_post', ?, ?, ?, ?, 0, ?)
-                        """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a post", now_ts, notif_link))
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                            VALUES (?, ?, 'mention_post', ?, ?, ?, ?, 0, ?, ?)
+                        """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a post", now_ts, notif_link, mention_preview or None))
                     conn.commit()
                     
                     # Send push notification
                     try:
                         send_push_to_user(target, {
                             'title': 'You were mentioned',
-                            'body': f"{author_username} mentioned you in a post",
+                            'body': mention_preview or f"{author_username} mentioned you in a post",
                             'url': notif_link,
                             'tag': f"mention-post-{post_id}-{target}"
                         })
@@ -39213,6 +39312,7 @@ def process_mentions_for_reply(post_id: int, author_username: str, community_id:
             if not row:
                 return
             content = row['content'] if hasattr(row, 'keys') else row[0]
+            reply_preview = _truncate_notif_preview(content or "")
             mentions = _collect_mentions(content)
             if not mentions:
                 return
@@ -39244,23 +39344,23 @@ def process_mentions_for_reply(post_id: int, author_username: str, community_id:
                 try:
                     if USE_MYSQL:
                         c.execute("""
-                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
-                            VALUES (?, ?, 'mention_reply', ?, ?, ?, NOW(), 0, ?)
-                            ON DUPLICATE KEY UPDATE created_at = NOW(), is_read = 0, message = VALUES(message), link = VALUES(link)
-                        """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a reply", notif_link))
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                            VALUES (?, ?, 'mention_reply', ?, ?, ?, NOW(), 0, ?, ?)
+                            ON DUPLICATE KEY UPDATE created_at = NOW(), is_read = 0, message = VALUES(message), link = VALUES(link), preview_text = VALUES(preview_text)
+                        """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a reply", notif_link, reply_preview or None))
                     else:
                         now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                         c.execute("""
-                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
-                            VALUES (?, ?, 'mention_reply', ?, ?, ?, ?, 0, ?)
-                        """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a reply", now_ts, notif_link))
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                            VALUES (?, ?, 'mention_reply', ?, ?, ?, ?, 0, ?, ?)
+                        """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a reply", now_ts, notif_link, reply_preview or None))
                     conn.commit()
                     
                     # Send push notification
                     try:
                         send_push_to_user(target, {
                             'title': 'You were mentioned',
-                            'body': f"{author_username} mentioned you in a reply",
+                            'body': reply_preview or f"{author_username} mentioned you in a reply",
                             'url': notif_link,
                             'tag': f"mention-reply-{reply_id or post_id}-{target}"
                         })

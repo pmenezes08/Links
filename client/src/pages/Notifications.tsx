@@ -14,6 +14,8 @@ type Notif = {
   created_at?: string
   link?: string|null
   avatar?: string|null
+  /** Short snippet of post/reply when server stored preview_text and user allows previews */
+  preview?: string|null
 }
 
 type CalendarEvent = {
@@ -390,6 +392,9 @@ export default function Notifications(){
                               )
                             )}
                           </div>
+                          {n.preview ? (
+                            <div className="text-xs text-white/55 mt-1 line-clamp-2 break-words">{n.preview}</div>
+                          ) : null}
                           <div className="text-[11px] text-[#9fb0b5] mt-0.5">{timeAgo(n.created_at)}</div>
                         </div>
                         {!n.is_read && (

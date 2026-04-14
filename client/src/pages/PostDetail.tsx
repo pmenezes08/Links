@@ -18,6 +18,7 @@ import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import EditableAISummary from '../components/EditableAISummary'
 import { clearDeviceCache } from '../utils/deviceCache'
+import { colorizeMentions, preserveRichTextNewlines } from '../utils/linkUtils'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, reply_count?: number, view_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
@@ -25,7 +26,11 @@ type Post = { id: number; username: string; content: string; image_path?: string
 
 // old formatTimestamp removed; using formatSmartTime
 
-function renderRichText(input: string, shortenUrls: boolean = false){
+function renderRichText(
+  input: string,
+  shortenUrls: boolean = false,
+  onMentionClick?: (username: string) => void
+){
   const nodes: Array<React.ReactNode> = []
   const markdownRe = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g
   let lastIndex = 0
@@ -34,7 +39,7 @@ function renderRichText(input: string, shortenUrls: boolean = false){
   // First, process markdown links
   while ((match = markdownRe.exec(input))){
     if (match.index > lastIndex){
-      nodes.push(...preserveNewlines(input.slice(lastIndex, match.index)))
+      nodes.push(...colorizeMentions(preserveRichTextNewlines(input.slice(lastIndex, match.index)), onMentionClick))
     }
     const label = match[1]
     const url = match[2]
@@ -49,7 +54,7 @@ function renderRichText(input: string, shortenUrls: boolean = false){
   while ((m = urlRe.exec(rest))){
     if (m.index > urlLast){
       // Before URLs, also colorize @mentions in the chunk
-      nodes.push(...colorizeMentions(preserveNewlines(rest.slice(urlLast, m.index))))
+      nodes.push(...colorizeMentions(preserveRichTextNewlines(rest.slice(urlLast, m.index)), onMentionClick))
     }
     const urlText = m[0]
     const href = urlText.startsWith('http') ? urlText : `https://${urlText}`
@@ -63,43 +68,9 @@ function renderRichText(input: string, shortenUrls: boolean = false){
     urlLast = urlRe.lastIndex
   }
   if (urlLast < rest.length){
-    nodes.push(...colorizeMentions(preserveNewlines(rest.slice(urlLast))))
+    nodes.push(...colorizeMentions(preserveRichTextNewlines(rest.slice(urlLast)), onMentionClick))
   }
   return <>{nodes}</>
-}
-
-function preserveNewlines(text: string){
-  const parts = text.split(/\n/)
-  const out: Array<React.ReactNode> = []
-  parts.forEach((p, i) => {
-    if (i > 0) out.push(<br key={`br-${i}-${p.length}-${Math.random()}`} />)
-    if (p) out.push(p)
-  })
-  return out
-}
-
-function colorizeMentions(nodes: Array<React.ReactNode>): Array<React.ReactNode> {
-  // Transform plain-text strings in nodes to add color for @mentions
-  const out: Array<React.ReactNode> = []
-  const mentionRe = /(^|\s)(@([a-zA-Z0-9_]{1,30}))/g
-  nodes.forEach((n, idx) => {
-    if (typeof n !== 'string'){ out.push(n); return }
-    const segs: Array<React.ReactNode> = []
-    let last = 0
-    let m: RegExpExecArray | null
-    while ((m = mentionRe.exec(n))){
-      const start = m.index
-      const lead = m[1]
-      const full = m[2]
-      if (start > last){ segs.push(n.slice(last, start)) }
-      if (lead){ segs.push(lead) }
-      segs.push(<span key={`men-${idx}-${start}`} className="text-[#4db6ac]">{full}</span>)
-      last = start + lead.length + full.length
-    }
-    if (last < n.length){ segs.push(n.slice(last)) }
-    out.push(...segs)
-  })
-  return out
 }
 
 function normalizePath(p?: string | null): string {
@@ -1527,7 +1498,7 @@ export default function PostDetail(){
                   const displayContent = videoEmbed ? removeVideoUrlFromText(post.content, videoEmbed) : post.content
                   return (
                     <>
-                      {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] break-words">{renderRichText(displayContent)}</div>}
+                      {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] break-words">{renderRichText(displayContent, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`))}</div>}
                       {videoEmbed && <VideoEmbed embed={videoEmbed} />}
                     </>
                   )
@@ -2412,6 +2383,7 @@ const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
 })
 
 function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, activeInlineReplyFor, onSetActiveInlineReply, onNavigateToReply, onOpenReactors }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, activeInlineReplyFor?: number | null, onSetActiveInlineReply?: (id: number | null) => void, onNavigateToReply?: (id: number) => void, onOpenReactors?: (id: number) => void }){
+  const navigate = useNavigate()
   const currentUser = currentUserName
   // Use parent's activeInlineReplyFor if provided, otherwise use local state
   const [localShowComposer, setLocalShowComposer] = useState(false)
@@ -2497,7 +2469,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             ) : null}
           </div>
           {!isEditing ? (
-            <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words">{renderRichText(reply.content, false)}</div>
+            <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words">{renderRichText(reply.content, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`))}</div>
           ) : (
             <div className="mt-1" onClick={(e) => e.stopPropagation()}>
               <textarea

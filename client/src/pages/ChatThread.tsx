@@ -2438,7 +2438,7 @@ export default function ChatThread(){
                   <i className="fa-solid fa-photo-film text-xs text-[#4db6ac]" />
                   <span>View Media</span>
                 </button>
-                {username.toLowerCase() === 'steve' && (
+                {(username || '').toLowerCase() === 'steve' && (
                   <button
                     className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
                     onClick={() => {

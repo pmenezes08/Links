@@ -424,6 +424,14 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
 
     const progressBase = 50
     const progressRange = 45
+    /** Last successful /send_dm_media JSON (batch final or URL-only send) for optimistic message merge */
+    let lastServerPayload: {
+      id?: number
+      media_paths?: string[]
+      image_path?: string
+      video_path?: string
+      time?: string
+    } | null = null
     for (let bi = 0; bi < batches.length; bi++) {
       const batch = batches[bi]
       const isLastBatch = bi === batches.length - 1
@@ -456,6 +464,9 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
         idBridgeRef.current.tempToServer.set(tempId, batchPayload.id)
         idBridgeRef.current.serverToTemp.set(batchPayload.id, tempId)
       }
+      if (isLastBatch) {
+        lastServerPayload = batchPayload
+      }
     }
 
     if (batches.length === 0 && allUploadedUrls.length > 0) {
@@ -469,21 +480,23 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
         idBridgeRef.current.tempToServer.set(tempId, payload.id)
         idBridgeRef.current.serverToTemp.set(payload.id, tempId)
       }
+      lastServerPayload = payload
     }
 
     onProgress?.({ stage: 'done', progress: 100, message: 'Sent!' })
 
+    const p = lastServerPayload
     setMessages((prev: ChatMessage[]) =>
       prev.map((message: ChatMessage) => {
         if ((message.clientKey || message.id) !== tempId) return message
         return {
           ...message,
-          id: payload.id || message.id,
-          media_paths: payload.media_paths || message.media_paths,
-          image_path: payload.image_path || message.image_path,
-          video_path: payload.video_path || message.video_path,
+          id: p?.id ?? message.id,
+          media_paths: p?.media_paths ?? message.media_paths,
+          image_path: p?.image_path ?? message.image_path,
+          video_path: p?.video_path ?? message.video_path,
           isOptimistic: false,
-          time: payload.time || message.time,
+          time: p?.time ?? message.time,
         }
       })
     )

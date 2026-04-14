@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
@@ -170,6 +170,7 @@ function PostMediaCarousel({ post }: { post: Post }) {
 
 export default function HomeTimeline(){
   const navigate = useNavigate()
+  const mentionToProfile = useCallback((u: string) => { navigate(`/profile/${encodeURIComponent(u)}`) }, [navigate])
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
@@ -335,7 +336,7 @@ export default function HomeTimeline(){
                     if (!videoEmbed && !displayContent) return null
                     return (
                       <>
-                        {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] leading-relaxed">{renderTextWithLinks(displayContent)}</div>}
+                        {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] leading-relaxed">{renderTextWithLinks(displayContent, undefined, mentionToProfile)}</div>}
                         {videoEmbed && <VideoEmbed embed={videoEmbed} />}
                       </>
                     )

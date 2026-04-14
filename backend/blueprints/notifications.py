@@ -460,12 +460,14 @@ def get_notifications():
             except Exception as cleanup_err:
                 current_app.logger.warning("Notification cleanup failed (non-fatal): %s", cleanup_err)
 
-            # Try query with link column, fallback if column doesn't exist
+            # Prefer link + preview_text; fall back if older schema
+            has_link_column = True
+            has_preview_column = True
             try:
                 if show_all:
                     c.execute(
                         """
-                        SELECT id, from_user, type, post_id, community_id, message, is_read, created_at, link
+                        SELECT id, from_user, type, post_id, community_id, message, is_read, created_at, link, preview_text
                         FROM notifications
                         WHERE user_id = ?
                         ORDER BY created_at DESC
@@ -476,7 +478,7 @@ def get_notifications():
                 else:
                     c.execute(
                         """
-                        SELECT id, from_user, type, post_id, community_id, message, is_read, created_at, link
+                        SELECT id, from_user, type, post_id, community_id, message, is_read, created_at, link, preview_text
                         FROM notifications
                         WHERE user_id = ? AND is_read = 0
                         ORDER BY created_at DESC
@@ -484,32 +486,74 @@ def get_notifications():
                         """,
                         (username,),
                     )
-                has_link_column = True
             except Exception as col_err:
-                current_app.logger.warning("Link column may not exist, using fallback query: %s", col_err)
-                if show_all:
-                    c.execute(
-                        """
-                        SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
-                        FROM notifications
-                        WHERE user_id = ?
-                        ORDER BY created_at DESC
-                        LIMIT 50
-                        """,
-                        (username,),
-                    )
-                else:
-                    c.execute(
-                        """
-                        SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
-                        FROM notifications
-                        WHERE user_id = ? AND is_read = 0
-                        ORDER BY created_at DESC
-                        LIMIT 50
-                        """,
-                        (username,),
-                    )
-                has_link_column = False
+                current_app.logger.warning("Notifications query without preview_text: %s", col_err)
+                has_preview_column = False
+                try:
+                    if show_all:
+                        c.execute(
+                            """
+                            SELECT id, from_user, type, post_id, community_id, message, is_read, created_at, link
+                            FROM notifications
+                            WHERE user_id = ?
+                            ORDER BY created_at DESC
+                            LIMIT 50
+                            """,
+                            (username,),
+                        )
+                    else:
+                        c.execute(
+                            """
+                            SELECT id, from_user, type, post_id, community_id, message, is_read, created_at, link
+                            FROM notifications
+                            WHERE user_id = ? AND is_read = 0
+                            ORDER BY created_at DESC
+                            LIMIT 50
+                            """,
+                            (username,),
+                        )
+                except Exception as col_err2:
+                    current_app.logger.warning("Link column may not exist, using fallback query: %s", col_err2)
+                    has_link_column = False
+                    if show_all:
+                        c.execute(
+                            """
+                            SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
+                            FROM notifications
+                            WHERE user_id = ?
+                            ORDER BY created_at DESC
+                            LIMIT 50
+                            """,
+                            (username,),
+                        )
+                    else:
+                        c.execute(
+                            """
+                            SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
+                            FROM notifications
+                            WHERE user_id = ? AND is_read = 0
+                            ORDER BY created_at DESC
+                            LIMIT 50
+                            """,
+                            (username,),
+                        )
+
+            show_content_previews = True
+            try:
+                c.execute(
+                    "SELECT notification_show_previews FROM users WHERE username = ? LIMIT 1",
+                    (username,),
+                )
+                prow = c.fetchone()
+                if prow is not None:
+                    pv = prow["notification_show_previews"] if hasattr(prow, "keys") else prow[0]
+                    if pv is not None:
+                        try:
+                            show_content_previews = bool(int(pv))
+                        except (TypeError, ValueError):
+                            show_content_previews = bool(pv)
+            except Exception as pref_err:
+                current_app.logger.debug("notification_show_previews not available: %s", pref_err)
 
             # First pass: collect notifications and unique from_users
             raw_notifications = []
@@ -533,7 +577,14 @@ def get_notifications():
                     created_at_val = created_at_val.strftime("%Y-%m-%d %H:%M:%S")
                 elif created_at_val is None:
                     created_at_val = ""
-                
+
+                preview_val = None
+                if has_preview_column and show_content_previews:
+                    try:
+                        preview_val = row.get("preview_text") if hasattr(row, "get") else row["preview_text"]
+                    except (KeyError, IndexError, TypeError):
+                        preview_val = None
+
                 raw_notifications.append({
                     "id": row["id"],
                     "from_user": from_user,
@@ -544,6 +595,7 @@ def get_notifications():
                     "link": link_value,
                     "is_read": bool(row["is_read"]),
                     "created_at": created_at_val,
+                    "preview": preview_val,
                 })
             
             # Batch fetch avatars for all from_users

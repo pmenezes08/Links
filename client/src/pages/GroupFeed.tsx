@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
@@ -25,6 +25,7 @@ function ManageGroupButton({ groupId, onClose }:{ groupId: string, onClose: ()=>
 export default function GroupFeed(){
   const { group_id } = useParams()
   const navigate = useNavigate()
+  const mentionToProfile = useCallback((u: string) => { navigate(`/profile/${encodeURIComponent(u)}`) }, [navigate])
   const { setTitle } = useHeader()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
@@ -344,7 +345,7 @@ export default function GroupFeed(){
                 </div>
                 <div className="px-3 py-2 space-y-2" onClick={(e)=> e.stopPropagation()}>
                   {editingId !== p.id ? (
-                    <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{renderTextWithLinks(p.content)}</div>
+                    <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{renderTextWithLinks(p.content, undefined, mentionToProfile)}</div>
                   ) : (
                     <div className="space-y-2">
                       <textarea className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" value={editText} onChange={(e)=> { setEditText(e.target.value); setDetectedLinks(detectLinks(e.target.value)) }} />

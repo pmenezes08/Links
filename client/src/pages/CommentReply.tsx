@@ -11,6 +11,7 @@ import MentionTextarea from '../components/MentionTextarea'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
+import { colorizeMentions, preserveRichTextNewlines } from '../utils/linkUtils'
 
 type Reply = {
   id: number
@@ -51,7 +52,7 @@ type ParentReply = {
   parent_reply_id?: number | null
 }
 
-function renderRichText(input: string) {
+function renderRichText(input: string, onMentionClick?: (username: string) => void) {
   const nodes: Array<React.ReactNode> = []
   const markdownRe = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g
   let lastIndex = 0
@@ -59,7 +60,7 @@ function renderRichText(input: string) {
 
   while ((match = markdownRe.exec(input))) {
     if (match.index > lastIndex) {
-      nodes.push(...preserveNewlines(input.slice(lastIndex, match.index)))
+      nodes.push(...colorizeMentions(preserveRichTextNewlines(input.slice(lastIndex, match.index)), onMentionClick))
     }
     const label = match[1]
     const url = match[2]
@@ -84,7 +85,7 @@ function renderRichText(input: string) {
 
   while ((m = urlRe.exec(rest))) {
     if (m.index > urlLast) {
-      nodes.push(...colorizeMentions(preserveNewlines(rest.slice(urlLast, m.index))))
+      nodes.push(...colorizeMentions(preserveRichTextNewlines(rest.slice(urlLast, m.index)), onMentionClick))
     }
     const urlText = m[0]
     const href = urlText.startsWith('http') ? urlText : `https://${urlText}`
@@ -103,50 +104,10 @@ function renderRichText(input: string) {
   }
 
   if (urlLast < rest.length) {
-    nodes.push(...colorizeMentions(preserveNewlines(rest.slice(urlLast))))
+    nodes.push(...colorizeMentions(preserveRichTextNewlines(rest.slice(urlLast)), onMentionClick))
   }
 
   return <>{nodes}</>
-}
-
-function preserveNewlines(text: string) {
-  const parts = text.split(/\n/)
-  const out: Array<React.ReactNode> = []
-  parts.forEach((p, i) => {
-    if (i > 0) out.push(<br key={`br-${i}-${p.length}-${Math.random()}`} />)
-    if (p) out.push(p)
-  })
-  return out
-}
-
-function colorizeMentions(nodes: Array<React.ReactNode>): Array<React.ReactNode> {
-  const out: Array<React.ReactNode> = []
-  const mentionRe = /(^|\s)(@([a-zA-Z0-9_]{1,30}))/g
-  nodes.forEach((n, idx) => {
-    if (typeof n !== 'string') {
-      out.push(n)
-      return
-    }
-    const segs: Array<React.ReactNode> = []
-    let last = 0
-    let m: RegExpExecArray | null
-    while ((m = mentionRe.exec(n))) {
-      const start = m.index
-      const lead = m[1]
-      const full = m[2]
-      if (start > last) segs.push(n.slice(last, start))
-      if (lead) segs.push(lead)
-      segs.push(
-        <span key={`men-${idx}-${start}`} className="text-[#4db6ac]">
-          {full}
-        </span>
-      )
-      last = start + lead.length + full.length
-    }
-    if (last < n.length) segs.push(n.slice(last))
-    out.push(...segs)
-  })
-  return out
 }
 
 export default function CommentReply() {
@@ -717,7 +678,7 @@ export default function CommentReply() {
                     <span className="text-xs text-white/40">{formatSmartTime(post.timestamp)}</span>
                   </div>
                   <div className="mt-1 text-[14px] text-white/70 line-clamp-3">
-                    {renderRichText(post.content)}
+                    {renderRichText(post.content, (u) => navigate(`/profile/${encodeURIComponent(u)}`))}
                   </div>
                   {post.image_path && (
                     <div className="mt-2">
@@ -752,7 +713,7 @@ export default function CommentReply() {
                     <span className="text-xs text-white/40">{formatSmartTime(parent.timestamp)}</span>
                   </div>
                   <div className="mt-1 text-[13px] text-white/60 line-clamp-2">
-                    {renderRichText(parent.content)}
+                    {renderRichText(parent.content, (u) => navigate(`/profile/${encodeURIComponent(u)}`))}
                   </div>
                   {parent.image_path && (
                     <div className="mt-2">
@@ -805,7 +766,7 @@ export default function CommentReply() {
                   <>
                     {reply.content && (
                       <div className="mt-2 text-[15px] whitespace-pre-wrap break-words text-white/90">
-                        {renderRichText(reply.content)}
+                        {renderRichText(reply.content, (u) => navigate(`/profile/${encodeURIComponent(u)}`))}
                       </div>
                     )}
                   </>
@@ -965,7 +926,7 @@ export default function CommentReply() {
                           <>
                             {nr.content && (
                               <div className="mt-1 text-[14px] whitespace-pre-wrap break-words text-white/80">
-                                {renderRichText(nr.content)}
+                                {renderRichText(nr.content, (u) => navigate(`/profile/${encodeURIComponent(u)}`))}
                               </div>
                             )}
                           </>
