@@ -1548,7 +1548,7 @@ GROK_MODEL_FAST = "grok-4-1-fast-non-reasoning"          # Default for most inte
 GROK_MODEL_REASONING = "grok-4-1-fast-reasoning"         # For group chat reasoning
 GROK_MODEL_MULTI_AGENT = "grok-4.20-multi-agent-0309"    # Only for profile analysis (web_search tool use)
 
-
+_BUILD_MARKER = "v5-guardrail-hardened-20260414"
 
 # Logging setup
 logging.basicConfig(level=logging.DEBUG)
@@ -40085,7 +40085,6 @@ def admin_network_insights(network_id):
     if not is_app_admin(username):
         response = jsonify({'success': False, 'error': 'Unauthorized'})
         return add_cors_headers(response), 403
-    _BUILD_MARKER = "v5-guardrail-hardened-20260414"
     try:
         from backend.services.steve_knowledge_base import fetch_network_kb_data
 
