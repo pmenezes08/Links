@@ -105,6 +105,11 @@ export function removeVideoUrlFromText(text: string, videoEmbed: VideoEmbed | nu
 
   const patterns: Record<string, RegExp[]> = {
     youtube: [
+      /\[[^\]]+\]\(https?:\/\/(?:www\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
+      /\[[^\]]+\]\(https?:\/\/(?:www\.)?youtu\.be\/[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
+      /\[[^\]]+\]\(https?:\/\/(?:www\.)?youtube\.com\/embed\/[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
+      /\[[^\]]+\]\(https?:\/\/(?:www\.)?youtube\.com\/shorts\/[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
+      /\[[^\]]+\]\(https?:\/\/(?:www\.)?youtube\.com\/live\/[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
       /https?:\/\/(?:www\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11}[^\s]*/g,
       /https?:\/\/(?:www\.)?youtu\.be\/[a-zA-Z0-9_-]{11}[^\s]*/g,
       /https?:\/\/(?:www\.)?youtube\.com\/embed\/[a-zA-Z0-9_-]{11}[^\s]*/g,
@@ -112,10 +117,14 @@ export function removeVideoUrlFromText(text: string, videoEmbed: VideoEmbed | nu
       /https?:\/\/(?:www\.)?youtube\.com\/live\/[a-zA-Z0-9_-]{11}[^\s]*/g,
     ],
     vimeo: [
+      /\[[^\]]+\]\(https?:\/\/(?:www\.)?vimeo\.com\/\d+[^\s)]*\)/g,
+      /\[[^\]]+\]\(https?:\/\/player\.vimeo\.com\/video\/\d+[^\s)]*\)/g,
       /https?:\/\/(?:www\.)?vimeo\.com\/\d+[^\s]*/g,
       /https?:\/\/player\.vimeo\.com\/video\/\d+[^\s]*/g,
     ],
     tiktok: [
+      /\[[^\]]+\]\(https?:\/\/(?:www\.)?tiktok\.com\/@[\w.-]+\/video\/\d+[^\s)]*\)/g,
+      /\[[^\]]+\]\(https?:\/\/(?:vm\.)?tiktok\.com\/[a-zA-Z0-9]+[^\s)]*\)/g,
       /https?:\/\/(?:www\.)?tiktok\.com\/@[\w.-]+\/video\/\d+[^\s]*/g,
       /https?:\/\/(?:vm\.)?tiktok\.com\/[a-zA-Z0-9]+[^\s]*/g,
     ],
@@ -134,4 +143,7 @@ export function removeVideoUrlFromText(text: string, videoEmbed: VideoEmbed | nu
   }
 
   return cleanedText
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim()
 }

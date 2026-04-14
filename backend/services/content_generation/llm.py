@@ -40,6 +40,10 @@ NEWS_PUBLIC_DOMAINS = {
 OPINION_PUBLIC_DOMAINS = {
     "medium.com",
     "www.medium.com",
+    "youtube.com",
+    "www.youtube.com",
+    "m.youtube.com",
+    "youtu.be",
 }
 
 
@@ -73,6 +77,16 @@ def format_response_links(response_text: str) -> str:
     if not response_text:
         return response_text
 
+    # Grok web search may leak proprietary inline citation tags into output.
+    # Strip them before we normalize markdown so feed posts stay readable.
+    formatted = re.sub(
+        r"<grok:render\b[^>]*>.*?</grok:render>",
+        "",
+        response_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    formatted = re.sub(r"</?grok:[^>]+>", "", formatted, flags=re.IGNORECASE)
+
     def get_domain_display(url: str) -> str:
         try:
             parsed = urlparse(url)
@@ -89,7 +103,7 @@ def format_response_links(response_text: str) -> str:
         url = _clean_url(match.group(2))
         return f"[{get_domain_display(url)}]({url})"
 
-    formatted = re.sub(citation_pattern, replace_citation, response_text)
+    formatted = re.sub(citation_pattern, replace_citation, formatted)
     std_md_pattern = r"\[([^\]]+)\]\((https?://[^)]+)\)"
 
     def clean_markdown_link(match: re.Match[str]) -> str:
@@ -108,7 +122,12 @@ def format_response_links(response_text: str) -> str:
         url = _clean_url(match.group(1))
         return f"[{get_domain_display(url)}]({url})"
 
-    return re.sub(bare_url_pattern, replace_bare_url, formatted)
+    formatted = re.sub(bare_url_pattern, replace_bare_url, formatted)
+
+    # Clean up spacing left behind after citation stripping.
+    formatted = re.sub(r"[ \t]{2,}", " ", formatted)
+    formatted = re.sub(r"\n{3,}", "\n\n", formatted)
+    return formatted.strip()
 
 
 def extract_links(text: str) -> List[str]:

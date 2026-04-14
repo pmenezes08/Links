@@ -47,12 +47,15 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             f"{allowed_list}. "
             "Return JSON with keys: intro, bullets, closing, source_links. "
             "bullets must be an array of 2-4 short markdown bullet strings. "
+            "Do not include citation tags, XML-like markup, inline source markers, or raw URLs in intro/bullets/closing. "
+            "Keep each bullet to one short sentence focused on the key update. "
             "source_links must be an array of the exact article URLs you used."
         ),
         user_prompt=(
             f"Topic: {topic}\n"
             "Write a community-friendly news update with clear takeaways. "
-            "Do not mention any paywalled article. Include only public sources."
+            "Do not mention any paywalled article. Include only public sources. "
+            "Keep the intro to 1-2 sentences and the closing to one short line."
         ),
     )
     links = filter_links(result.get("source_links") or [], NEWS_PUBLIC_DOMAINS)

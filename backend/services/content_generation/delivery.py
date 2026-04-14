@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from typing import Iterable, Optional
+from urllib.parse import urlparse
 
 from redis_cache import cache, invalidate_community_cache, invalidate_message_cache
 
@@ -32,11 +33,25 @@ def ensure_steve_user(cursor) -> None:
         logger.warning("Unable to ensure Steve user exists: %s", exc)
 
 
+def _source_label(url: str, fallback_index: int) -> str:
+    """Use short, readable source labels while keeping the full URL intact."""
+    try:
+        domain = urlparse(url).netloc.lower().strip()
+        if domain.startswith("www."):
+            domain = domain[4:]
+        return domain or f"source {fallback_index}"
+    except Exception:
+        return f"source {fallback_index}"
+
+
 def _append_sources(content: str, source_links: Optional[Iterable[str]]) -> str:
     links = [str(url).strip() for url in (source_links or []) if str(url).strip()]
     if not links:
         return content.strip()
-    source_lines = "\n".join(f"- {url}" for url in links)
+    source_lines = "\n".join(
+        f"- [{_source_label(url, idx)}]({url})"
+        for idx, url in enumerate(links, start=1)
+    )
     return f"{content.strip()}\n\nSources\n{source_lines}"
 
 
