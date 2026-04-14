@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
-from backend.services.database import get_db_connection
+from backend.services.database import USE_MYSQL, get_db_connection
 
 
 def _utc_now_str() -> str:
@@ -26,6 +26,30 @@ def _json_load(raw: Any, fallback: Any) -> Any:
         return json.loads(raw)
     except Exception:
         return fallback
+
+
+def _ensure_index(cursor, table_name: str, index_name: str, columns_sql: str) -> None:
+    """Create an index if missing across SQLite and MySQL."""
+    if USE_MYSQL:
+        cursor.execute(
+            """
+            SELECT 1
+            FROM information_schema.statistics
+            WHERE table_schema = DATABASE()
+              AND table_name = ?
+              AND index_name = ?
+            LIMIT 1
+            """,
+            (table_name, index_name),
+        )
+        if cursor.fetchone():
+            return
+        cursor.execute(f"CREATE INDEX {index_name} ON {table_name} ({columns_sql})")
+        return
+
+    cursor.execute(
+        f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({columns_sql})"
+    )
 
 
 def ensure_tables() -> None:
@@ -78,18 +102,10 @@ def ensure_tables() -> None:
             )
             """
         )
-        c.execute(
-            "CREATE INDEX IF NOT EXISTS idx_content_jobs_community ON content_generation_jobs (community_id, created_at)"
-        )
-        c.execute(
-            "CREATE INDEX IF NOT EXISTS idx_content_jobs_target_username ON content_generation_jobs (target_username, created_at)"
-        )
-        c.execute(
-            "CREATE INDEX IF NOT EXISTS idx_content_runs_job ON content_generation_runs (job_id, created_at)"
-        )
-        c.execute(
-            "CREATE INDEX IF NOT EXISTS idx_content_runs_community ON content_generation_runs (community_id, created_at)"
-        )
+        _ensure_index(c, "content_generation_jobs", "idx_content_jobs_community", "community_id, created_at")
+        _ensure_index(c, "content_generation_jobs", "idx_content_jobs_target_username", "target_username, created_at")
+        _ensure_index(c, "content_generation_runs", "idx_content_runs_job", "job_id, created_at")
+        _ensure_index(c, "content_generation_runs", "idx_content_runs_community", "community_id, created_at")
         try:
             conn.commit()
         except Exception:
