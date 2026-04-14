@@ -23,7 +23,7 @@ import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
-import { sendImageMessage, sendVideoMessage, sendMultiMediaMessage, type UploadProgress } from '../chat/mediaSenders'
+import { sendImageMessage, sendVideoMessage, sendMultiMediaMessage, SENDING_MEDIA_LABEL, type UploadProgress } from '../chat/mediaSenders'
 import type { ChatMessage } from '../types/chat'
 import { isInternalLink, isLandingPageLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from '../utils/internalLinkHandler'
 
@@ -2909,7 +2909,11 @@ export default function ChatThread(){
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm text-white/80 truncate">
-                    {videoUploadProgress.message || 'Processing video...'}
+                    {videoUploadProgress.stage === 'uploading'
+                      ? SENDING_MEDIA_LABEL
+                      : videoUploadProgress.stage === 'done'
+                        ? (videoUploadProgress.message || 'Sent!')
+                        : (videoUploadProgress.message || 'Could not send')}
                   </div>
                   <div className="mt-1.5 h-1.5 bg-white/10 rounded-full overflow-hidden">
                     <div 

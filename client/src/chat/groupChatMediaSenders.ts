@@ -4,6 +4,7 @@
  */
 
 import type { Dispatch, SetStateAction } from 'react'
+import { SENDING_MEDIA_LABEL } from './mediaSenders'
 
 export interface GroupMessage {
   id: number
@@ -69,7 +70,7 @@ async function sendGroupMedia(
   formData.append(mediaType, file)
   formData.append('group_id', String(groupId))
 
-  onProgress?.({ stage: 'uploading', progress: 10, message: 'Uploading...' })
+  onProgress?.({ stage: 'uploading', progress: 10, message: SENDING_MEDIA_LABEL })
 
   try {
     console.log('[GroupMedia] Sending', mediaType, 'to group', groupId)
@@ -297,7 +298,7 @@ export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<b
       const item = directUploadFiles[i]
       console.log(`[GroupMedia] Direct R2 upload for large video: ${item.file.name} (${(item.file.size / 1024 / 1024).toFixed(1)}MB)`)
       
-      onProgress?.({ stage: 'uploading', progress: 5 + (i / files.length) * 40, message: `Uploading video ${i + 1}...` })
+      onProgress?.({ stage: 'uploading', progress: 5 + (i / files.length) * 40, message: SENDING_MEDIA_LABEL })
       
       // Get presigned URL
       const urlRes = await fetch(`/api/group_chat/${groupId}/video_upload_url`, {
@@ -318,7 +319,7 @@ export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<b
           if (e.lengthComputable) {
             const base = 5 + (i / files.length) * 40
             const pct = base + (e.loaded / e.total) * (40 / files.length)
-            onProgress?.({ stage: 'uploading', progress: pct, message: `Uploading video... ${Math.round((e.loaded / e.total) * 100)}%` })
+            onProgress?.({ stage: 'uploading', progress: pct, message: SENDING_MEDIA_LABEL })
           }
         }
         xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300)
@@ -360,7 +361,7 @@ export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<b
       const batch = batches[bi]
       const isLastBatch = bi === batches.length - 1
       const batchProgress = progressBase + (bi / Math.max(batches.length, 1)) * progressRange
-      onProgress?.({ stage: 'uploading', progress: batchProgress, message: `Uploading batch ${bi + 1}/${batches.length}...` })
+      onProgress?.({ stage: 'uploading', progress: batchProgress, message: SENDING_MEDIA_LABEL })
 
       const fd = new FormData()
       for (const item of batch) {
@@ -419,6 +420,7 @@ export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<b
     setServerMessages(prev => prev.filter(m => (m as any).clientKey !== tempId))
     
     const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+    onProgress?.({ stage: 'error', progress: 0, message: errorMsg })
     onError(`Failed to send media: ${errorMsg}`)
     return false
   } finally {

@@ -19,6 +19,9 @@ export interface UploadProgress {
   message?: string
 }
 
+/** User-facing label for DM/group media upload progress (avoid internal terms like "batch"). */
+export const SENDING_MEDIA_LABEL = 'Sending Media'
+
 interface BaseMediaOptions {
   otherUserId: number | ''
   username?: string
@@ -203,13 +206,13 @@ export async function sendVideoMessage(options: VideoMediaOptions) {
       }
 
       // Step 2: Upload directly to R2
-      onProgress?.({ stage: 'uploading', progress: 5, message: 'Uploading...' })
+      onProgress?.({ stage: 'uploading', progress: 5, message: SENDING_MEDIA_LABEL })
       const putOk = await new Promise<boolean>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
             const pct = 5 + (e.loaded / e.total) * 90
-            onProgress?.({ stage: 'uploading', progress: pct, message: `Uploading... ${Math.round((e.loaded / e.total) * 100)}%` })
+            onProgress?.({ stage: 'uploading', progress: pct, message: SENDING_MEDIA_LABEL })
           }
         }
         xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300)
@@ -226,7 +229,7 @@ export async function sendVideoMessage(options: VideoMediaOptions) {
       }
 
       // Step 3: Notify backend to create message
-      onProgress?.({ stage: 'uploading', progress: 98, message: 'Sending...' })
+      onProgress?.({ stage: 'uploading', progress: 98, message: SENDING_MEDIA_LABEL })
       const fd = new FormData()
       fd.append('recipient_id', String(otherUserId))
       fd.append('message', '')
@@ -235,7 +238,7 @@ export async function sendVideoMessage(options: VideoMediaOptions) {
       payload = await msgRes.json().catch(() => null) || {}
     } else {
       // Traditional form upload (smaller videos)
-      onProgress?.({ stage: 'uploading', progress: 0, message: 'Uploading...' })
+      onProgress?.({ stage: 'uploading', progress: 0, message: SENDING_MEDIA_LABEL })
       const formData = new FormData()
       formData.append('video', file)
       formData.append('recipient_id', String(otherUserId))
@@ -246,7 +249,7 @@ export async function sendVideoMessage(options: VideoMediaOptions) {
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
             const uploadProgress = (e.loaded / e.total) * 95
-            onProgress?.({ stage: 'uploading', progress: uploadProgress, message: `Uploading... ${Math.round((e.loaded / e.total) * 100)}%` })
+            onProgress?.({ stage: 'uploading', progress: uploadProgress, message: SENDING_MEDIA_LABEL })
           }
         }
         xhr.onload = () => {
@@ -355,7 +358,7 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
   setTimeout(scrollToBottom, 50)
 
   try {
-    onProgress?.({ stage: 'uploading', progress: 5, message: `Uploading ${files.length} items...` })
+    onProgress?.({ stage: 'uploading', progress: 5, message: SENDING_MEDIA_LABEL })
 
     const LARGE_VIDEO_THRESHOLD = 25 * 1024 * 1024
     const directUploadFiles: Array<{ file: File; type: 'image' | 'video' }> = []
@@ -373,7 +376,7 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
 
     for (let i = 0; i < directUploadFiles.length; i++) {
       const item = directUploadFiles[i]
-      onProgress?.({ stage: 'uploading', progress: 5 + (i / files.length) * 40, message: `Uploading video ${i + 1}...` })
+      onProgress?.({ stage: 'uploading', progress: 5 + (i / files.length) * 40, message: SENDING_MEDIA_LABEL })
 
       const urlRes = await fetch('/api/video_upload_url', {
         method: 'POST',
@@ -392,7 +395,7 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
           if (e.lengthComputable) {
             const base = 5 + (i / files.length) * 40
             const pct = base + (e.loaded / e.total) * (40 / files.length)
-            onProgress?.({ stage: 'uploading', progress: pct, message: `Uploading video... ${Math.round((e.loaded / e.total) * 100)}%` })
+            onProgress?.({ stage: 'uploading', progress: pct, message: SENDING_MEDIA_LABEL })
           }
         }
         xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300)
@@ -439,7 +442,7 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
       const batch = batches[bi]
       const isLastBatch = bi === batches.length - 1
       const batchProgress = progressBase + (bi / Math.max(batches.length, 1)) * progressRange
-      onProgress?.({ stage: 'uploading', progress: batchProgress, message: `Uploading batch ${bi + 1}/${batches.length}...` })
+      onProgress?.({ stage: 'uploading', progress: batchProgress, message: SENDING_MEDIA_LABEL })
 
       const fd = new FormData()
       for (const item of batch) {

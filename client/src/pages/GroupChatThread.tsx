@@ -18,6 +18,7 @@ import MessageImage from '../components/MessageImage'
 import VoiceNotePlayer from '../components/VoiceNotePlayer'
 import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
+import { SENDING_MEDIA_LABEL } from '../chat/mediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
 import LinkPreview, { extractUrls } from '../components/LinkPreview'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
@@ -1710,6 +1711,9 @@ export default function GroupChatThread() {
     }
   }
 
+  const mediaUploadBanner: UploadProgress | null =
+    uploadProgress ?? (uploadingMedia ? { stage: 'uploading', progress: 0 } : null)
+
   if (loading && !group) {
     return (
       <div className="min-h-screen chat-thread-bg text-white flex flex-col">
@@ -2546,6 +2550,45 @@ export default function GroupChatThread() {
             </div>
           )}
 
+          {/* Media upload progress (same pattern as DM ChatThread — above composer) */}
+          {mediaUploadBanner && (
+            <div className="mb-2 px-3 py-2.5 bg-white/5 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="flex-shrink-0">
+                  {mediaUploadBanner.stage === 'uploading' && (
+                    <i className="fa-solid fa-cloud-arrow-up text-[#4db6ac] animate-bounce" />
+                  )}
+                  {mediaUploadBanner.stage === 'done' && (
+                    <i className="fa-solid fa-check-circle text-green-400" />
+                  )}
+                  {mediaUploadBanner.stage === 'error' && (
+                    <i className="fa-solid fa-exclamation-circle text-red-400" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-white/80 truncate">
+                    {mediaUploadBanner.stage === 'uploading'
+                      ? SENDING_MEDIA_LABEL
+                      : mediaUploadBanner.stage === 'done'
+                        ? (mediaUploadBanner.message || 'Sent!')
+                        : (mediaUploadBanner.message || 'Could not send')}
+                  </div>
+                  <div className="mt-1.5 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${
+                        mediaUploadBanner.stage === 'error' ? 'bg-red-400' : 'bg-[#4db6ac]'
+                      }`}
+                      style={{ width: `${mediaUploadBanner.progress}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="flex-shrink-0 text-xs text-white/50">
+                  {Math.round(mediaUploadBanner.progress)}%
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Message input row */}
           <div className="flex items-end gap-2">
             {/* Plus/Attachment button */}
@@ -2599,16 +2642,6 @@ export default function GroupChatThread() {
                   style={{ boxShadow: '0 0 8px 2px rgba(239, 68, 68, 0.6)' }}
                 />
                 <span className="text-red-400 text-xs font-semibold tracking-wide">REC</span>
-              </div>
-            )}
-
-            {/* Uploading indicator with progress (incl. background multi-media without uploadingMedia) */}
-            {(uploadingMedia || uploadProgress?.stage === 'uploading') && (
-              <div className="flex items-center gap-1.5 flex-shrink-0 pr-2">
-                <i className="fa-solid fa-spinner fa-spin text-[#4db6ac]" />
-                <span className="text-[#4db6ac] text-xs">
-                  {uploadProgress?.message || 'Uploading...'}
-                </span>
               </div>
             )}
 
