@@ -234,6 +234,15 @@ export default function PublicProfile() {
       </div>
       <div className="glass-card glass-card--plain max-w-3xl mx-auto px-4 py-4 space-y-4">
 
+        {profile.username.toLowerCase() === 'steve' && (
+          <div className="rounded-lg border border-[#4db6ac]/30 bg-[#4db6ac]/10 px-4 py-3 text-sm">
+            <p className="font-medium text-[#7fe7df]">C.Point assistant</p>
+            <p className="text-xs text-white/70 mt-1">
+              This is Steve&apos;s public profile. You can message Steve from your inbox like any other member.
+            </p>
+          </div>
+        )}
+
         <section className="glass-section">
           <div className="flex flex-wrap items-center gap-4">
             <button
@@ -306,7 +315,7 @@ export default function PublicProfile() {
             <button
               type="button"
               className="w-full flex items-center justify-center gap-2 py-2 text-sm font-medium bg-[#4db6ac]/15 border border-[#4db6ac]/35 text-[#4db6ac] rounded hover:bg-[#4db6ac]/25 transition"
-              onClick={() => navigate('/profile/steve')}
+              onClick={() => navigate('/steve-knows-me')}
             >
               What does Steve know about me?
             </button>

@@ -61,11 +61,15 @@ export default function AccountSettings(){
         )
         return
       }
-      if (typeof j.show_content_previews === 'boolean') {
-        setProfile(prev =>
-          prev ? { ...prev, notification_show_previews: j.show_content_previews } : null
-        )
-      }
+      setProfile(prev =>
+        prev
+          ? {
+              ...prev,
+              notification_show_previews:
+                typeof j.show_content_previews === 'boolean' ? j.show_content_previews : show,
+            }
+          : null
+      )
     } catch {
       setMessage({ type: 'error', text: 'Network error updating preferences' })
       setProfile(prev =>
@@ -297,7 +301,10 @@ export default function AccountSettings(){
             </div>
           </div>
 
-          {/* Notifications */}
+        </form>
+
+        <div className="space-y-6">
+          {/* Notifications — outside the account form so the preview toggle cannot submit the form or conflict with Enter-to-save */}
           <div className="glass-section space-y-4">
             <div>
               <h2 className="text-lg font-semibold">Notifications</h2>
@@ -342,7 +349,10 @@ export default function AccountSettings(){
                 <input
                   type="checkbox"
                   className="mt-1 h-4 w-4 shrink-0 rounded border-white/30 bg-black/40 text-[#4db6ac] [accent-color:#4db6ac] focus:ring-[#4db6ac]"
-                  checked={profile.notification_show_previews !== false}
+                  checked={(() => {
+                    const raw = profile.notification_show_previews as boolean | number | string | undefined
+                    return raw !== false && raw !== 0 && raw !== '0'
+                  })()}
                   onChange={e => {
                     const v = e.target.checked
                     const previousValue = profile.notification_show_previews
@@ -376,7 +386,7 @@ export default function AccountSettings(){
               Go to Danger Zone
             </button>
           </div>
-        </form>
+        </div>
 
         {showVerifyModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">

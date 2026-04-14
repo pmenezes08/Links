@@ -333,6 +333,16 @@ export default function SteveKnowsMe() {
         This is Steve&apos;s understanding of you — not your public profile. Use it to check accuracy and suggest corrections.
       </p>
 
+      <div className="mb-4">
+        <button
+          type="button"
+          onClick={() => navigate('/profile/steve')}
+          className="text-sm text-[#4db6ac] hover:underline"
+        >
+          View Steve&apos;s public profile
+        </button>
+      </div>
+
       {meta.analysisInProgress ? (
         <div className="mb-4 rounded-lg border border-[#4db6ac]/40 bg-[#4db6ac]/10 px-3 py-2 text-sm text-[#4db6ac]">
           <i className="fa-solid fa-spinner fa-spin mr-2" />
