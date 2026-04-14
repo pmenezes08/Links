@@ -25835,13 +25835,14 @@ def delete_reply():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT username, image_path, community_id FROM replies WHERE id= ?", (reply_id,))
+            c.execute("SELECT username, image_path, community_id, post_id FROM replies WHERE id= ?", (reply_id,))
             reply = c.fetchone()
             if not reply:
                 return jsonify({'success': False, 'error': 'Reply not found!'}), 404
             
             reply_owner = reply['username'] if hasattr(reply, 'keys') else reply[0]
             reply_community_id = reply['community_id'] if hasattr(reply, 'keys') else reply[2]
+            reply_post_id = reply['post_id'] if hasattr(reply, 'keys') else reply[3]
             
             # Check if user can delete this reply:
             # 1. Reply owner can delete their own reply
@@ -25879,6 +25880,17 @@ def delete_reply():
             
             c.execute("DELETE FROM replies WHERE id= ?", (reply_id,))
             conn.commit()
+
+            # Invalidate caches so deleted comment no longer appears in post detail or feed
+            try:
+                if reply_community_id:
+                    invalidate_community_cache(reply_community_id)
+                if reply_post_id:
+                    cache.delete(f"post:{reply_post_id}")
+                invalidate_user_cache(reply_owner)
+            except Exception as cache_err:
+                logger.warning(f"Cache invalidation after reply delete failed: {cache_err}")
+
         logger.info(f"Reply {reply_id} deleted successfully by {username}")
         return jsonify({'success': True, 'message': 'Reply deleted!'}), 200
     except Exception as e:

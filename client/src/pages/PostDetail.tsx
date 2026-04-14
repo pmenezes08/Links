@@ -975,6 +975,9 @@ export default function PostDetail(){
         }
         return { ...p, replies: removeById(p.replies) }
       })
+      // Clear cache so post detail and feed reflect the deletion immediately
+      clearDeviceCache(`post-${post_id}`)
+      clearDeviceCache('home-timeline')
     }catch{}
   }
 
