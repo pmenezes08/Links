@@ -113,7 +113,8 @@ def write_dm_reaction(sender: str, receiver: str, message_id: int,
 def write_group_chat_message(group_id: int, message_id: int, sender: str,
                              text: str = None, image_path: str = None,
                              voice_path: str = None, video_path: str = None,
-                             audio_summary: str = None, media_paths=None, timestamp=None):
+                             audio_summary: str = None, media_paths=None, timestamp=None,
+                             client_key: str = None):
     """Write a group chat message to Firestore after MySQL insert."""
     if not USE_FIRESTORE_WRITES:
         return
@@ -134,6 +135,7 @@ def write_group_chat_message(group_id: int, message_id: int, sender: str,
             'video_path': video_path,
             'audio_summary': audio_summary,
             'media_paths': media_paths,
+            'client_key': client_key,
             'created_at': ts,
         })
         logger.debug(f"Firestore group chat write: msg {message_id} in group {group_id}")

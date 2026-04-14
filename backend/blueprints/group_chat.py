@@ -868,7 +868,7 @@ def get_group_messages(group_id: int):
             # Get messages
             if before_id:
                 c.execute(f"""
-                    SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.created_at,
+                    SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.client_key, m.created_at,
                            up.profile_picture, m.is_edited, m.audio_summary
                     FROM group_chat_messages m
                     LEFT JOIN user_profiles up ON m.sender_username = up.username
@@ -878,7 +878,7 @@ def get_group_messages(group_id: int):
                 """, (group_id, before_id, limit))
             else:
                 c.execute(f"""
-                    SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.created_at,
+                    SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.client_key, m.created_at,
                            up.profile_picture, m.is_edited, m.audio_summary
                     FROM group_chat_messages m
                     LEFT JOIN user_profiles up ON m.sender_username = up.username
@@ -901,9 +901,9 @@ def get_group_messages(group_id: int):
                         logger.warning(f"Failed to parse media_paths: {media_paths_raw}, error: {e}")
                 
                 msg_id = row["id"] if hasattr(row, "keys") else row[0]
-                is_edited_raw = row["is_edited"] if hasattr(row, "keys") else row[9]
+                is_edited_raw = row["is_edited"] if hasattr(row, "keys") else row[10]
                 is_edited = bool(is_edited_raw) if is_edited_raw is not None else False
-                audio_summary = row["audio_summary"] if hasattr(row, "keys") else row[10]
+                audio_summary = row["audio_summary"] if hasattr(row, "keys") else row[11]
                 
                 msg_data = {
                     "id": msg_id,
@@ -913,8 +913,9 @@ def get_group_messages(group_id: int):
                     "voice": row["voice_path"] if hasattr(row, "keys") else row[4],
                     "video": row["video_path"] if hasattr(row, "keys") else row[5],
                     "media_paths": media_paths,
-                    "created_at": row["created_at"] if hasattr(row, "keys") else row[7],
-                    "profile_picture": row["profile_picture"] if hasattr(row, "keys") else row[8],
+                    "client_key": row["client_key"] if hasattr(row, "keys") else row[7],
+                    "created_at": row["created_at"] if hasattr(row, "keys") else row[8],
+                    "profile_picture": row["profile_picture"] if hasattr(row, "keys") else row[9],
                     "is_edited": is_edited,
                     "audio_summary": audio_summary,
                     "reaction": None,  # Will be filled below
@@ -1394,7 +1395,7 @@ def send_group_message(group_id: int):
                         c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (username,))
                         pp_row = c.fetchone()
                         pp = (pp_row["profile_picture"] if hasattr(pp_row, "keys") else pp_row[0]) if pp_row else None
-                        return jsonify({"success": True, "message": {"id": eid, "sender": username, "text": message_text, "image": image_path, "voice": voice_path, "video": video_path, "audio_summary": None, "created_at": eat, "profile_picture": pp}})
+                        return jsonify({"success": True, "message": {"id": eid, "sender": username, "text": message_text, "image": image_path, "voice": voice_path, "video": video_path, "audio_summary": None, "client_key": client_key, "created_at": eat, "profile_picture": pp}})
                 except Exception as ik_err:
                     logger.warning(f"client_key idempotency check failed (non-fatal): {ik_err}")
             
@@ -1436,7 +1437,7 @@ def send_group_message(group_id: int):
                 write_group_chat_message(
                     group_id=group_id, message_id=message_id, sender=username,
                     text=message_text, image_path=image_path, voice_path=voice_path,
-                    video_path=video_path, audio_summary=audio_summary,
+                    video_path=video_path, audio_summary=audio_summary, client_key=client_key,
                 )
             except Exception as fs_err:
                 logger.warning(f"Firestore group chat dual-write failed (non-fatal): {fs_err}")
@@ -1521,6 +1522,7 @@ def send_group_message(group_id: int):
                     "voice": voice_path,
                     "video": video_path,
                     "audio_summary": audio_summary,
+                    "client_key": client_key,
                     "created_at": now,
                     "profile_picture": profile_picture,
                 }

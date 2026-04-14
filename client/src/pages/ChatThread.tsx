@@ -1272,6 +1272,7 @@ export default function ChatThread(){
                   text: finalText,
                   image_path: m.image_path,
                   video_path: m.video_path,
+                  media_paths: m.media_paths ?? existing?.media_paths,
                   audio_path: m.audio_path,
                   audio_duration_seconds: m.audio_duration_seconds,
                   audio_summary: existing?.audio_summary || m.audio_summary || null,

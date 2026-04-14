@@ -372,7 +372,7 @@ function MessageBubbleInner({
                 {m.media_paths.length > 1 && (
                   <div className="absolute inset-0 bg-black/30 rounded-lg flex items-center justify-center">
                     <span className="text-white text-2xl font-semibold">
-                      +{m.media_paths.length - 1}
+                      {m.media_paths.length}
                     </span>
                   </div>
                 )}

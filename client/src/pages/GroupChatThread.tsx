@@ -32,6 +32,7 @@ type Message = {
   voice: string | null
   video?: string | null
   media_paths?: string[] | null  // For grouped media
+  client_key?: string | null
   audio_duration_seconds?: number
   audio_summary?: string | null
   created_at: string
@@ -58,6 +59,26 @@ type GroupInfo = {
   members: Member[]
   community_id?: number
   community_name?: string
+}
+
+const GROUP_SEND_CONFIRM_TIMEOUT_MS = 30000
+
+function isConfirmedGroupMessage(
+  serverMessage: Message,
+  optimisticMessage: Message & { clientKey?: string }
+) {
+  const serverClientKey = (serverMessage.client_key || '').trim()
+  const optimisticClientKey = ((optimisticMessage as any).clientKey || '').trim()
+
+  if (serverClientKey && optimisticClientKey && serverClientKey === optimisticClientKey) {
+    return true
+  }
+
+  return (
+    serverMessage.sender === optimisticMessage.sender &&
+    serverMessage.text === optimisticMessage.text &&
+    Math.abs(new Date(serverMessage.created_at).getTime() - new Date(optimisticMessage.created_at).getTime()) < GROUP_SEND_CONFIRM_TIMEOUT_MS
+  )
 }
 
 export default function GroupChatThread() {
@@ -533,10 +554,7 @@ export default function GroupChatThread() {
               if (!changed) {
                 // Still filter out confirmed optimistic
                 const unconfirmed = optimistic.filter(opt =>
-                  !newServerMessages.some(nm =>
-                    nm.sender === opt.sender && nm.text === opt.text &&
-                    Math.abs(new Date(nm.created_at).getTime() - new Date(opt.created_at).getTime()) < 10000
-                  )
+                  !newServerMessages.some(nm => isConfirmedGroupMessage(nm, opt))
                 )
                 if (unconfirmed.length !== optimistic.length) {
                   return [...prevServer, ...unconfirmed]
@@ -550,10 +568,7 @@ export default function GroupChatThread() {
           const olderMessages = silent ? prevServer.filter(m => m.id < minNewId && !newServerMessages.some(n => n.id === m.id)) : []
           // Keep optimistic messages not yet confirmed by server
           const unconfirmedOptimistic = optimistic.filter(opt =>
-            !newServerMessages.some(nm =>
-              nm.sender === opt.sender && nm.text === opt.text &&
-              Math.abs(new Date(nm.created_at).getTime() - new Date(opt.created_at).getTime()) < 10000
-            )
+            !newServerMessages.some(nm => isConfirmedGroupMessage(nm, opt))
           )
           return [...olderMessages, ...newServerMessages, ...unconfirmedOptimistic]
         })
@@ -823,7 +838,7 @@ export default function GroupChatThread() {
       return
     }
 
-    const sendTimeout = setTimeout(() => markFailed(tempId), 10000)
+    const sendTimeout = setTimeout(() => markFailed(tempId), GROUP_SEND_CONFIRM_TIMEOUT_MS)
 
     fetch(`/api/group_chat/${group_id}/send`, {
       method: 'POST',
@@ -885,7 +900,7 @@ export default function GroupChatThread() {
       }).catch(() => {})
     }
 
-    const retryTimeout = setTimeout(markRetryFailed, 10000)
+    const retryTimeout = setTimeout(markRetryFailed, GROUP_SEND_CONFIRM_TIMEOUT_MS)
 
     fetch(`/api/group_chat/${group_id}/send`, {
       method: 'POST',
@@ -2194,7 +2209,7 @@ export default function GroupChatThread() {
                                     {msg.media_paths.length > 1 && (
                                       <div className="absolute inset-0 bg-black/30 rounded-lg flex items-center justify-center">
                                         <span className="text-white text-2xl font-semibold">
-                                          +{msg.media_paths.length - 1}
+                                          {msg.media_paths.length}
                                         </span>
                                       </div>
                                     )}
