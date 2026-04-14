@@ -2388,7 +2388,7 @@ export default function CommunityFeed() {
           overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto',
           overscrollBehaviorY: 'auto',
           touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y',
-          paddingTop: `calc(env(safe-area-inset-top, 0px) + 42px + ${pullPx}px)`,
+          paddingTop: `calc(env(safe-area-inset-top, 0px) + 30px + ${pullPx}px)`,
         }}
       >
         <div className="space-y-3">
@@ -2400,9 +2400,11 @@ export default function CommunityFeed() {
             className="hidden"
             onChange={handleStoryFileChange}
           />
+          {/* Banner + stories: minimal gap; stories card border is the visual separator */}
+          <div className="flex flex-col gap-1">
           {/* Top header image from legacy template */}
           {data.community?.background_path ? (
-            <div className="community-header-image overflow-hidden rounded-xl border border-white/10 mb-3 relative">
+            <div className="community-header-image overflow-hidden rounded-xl border border-white/10 relative">
               {/* Dark overlay during reaction highlight */}
               {highlightStep === 'reaction' && (
                 <div className="absolute inset-0 bg-black/90 z-[45] pointer-events-none" />
@@ -2483,6 +2485,7 @@ export default function CommunityFeed() {
             {storyError && (
               <div className="text-[10px] text-red-400 mt-1">{storyError}</div>
             )}
+          </div>
           </div>
 
             {/* Feed items */}
