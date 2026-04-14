@@ -29,7 +29,7 @@ export default function FindAdmin() {
     <div className="min-h-screen bg-black flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <img src={`${import.meta.env.VITE_API_BASE || 'https://app.c-point.co'}/api/public/logo`} alt="C.Point" className="w-16 h-16 mx-auto mb-4 rounded-2xl" />
+          <img src="/api/public/logo" alt="C.Point" className="w-16 h-16 mx-auto mb-4 rounded-2xl" />
           <h1 className="text-xl font-semibold">Find Your Admin</h1>
           <p className="text-muted text-sm mt-1">Enter your email to find your admin dashboard</p>
         </div>
