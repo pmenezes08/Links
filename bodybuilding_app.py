@@ -9820,7 +9820,8 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
-        'version': '2025.01.18'
+        'version': '2025.01.18',
+        'build': _BUILD_MARKER,
     })
 
 @app.route('/keep-warm', methods=['GET', 'POST'])
@@ -14846,9 +14847,9 @@ def _detect_and_apply_profile_update(
         all_fields = {**_PROFILE_FIELDS_PERSONAL, **_PROFILE_FIELDS_PROFESSIONAL}
         fields_list = "\n".join(f'  - "{k}" → {v}' for k, v in all_fields.items())
 
-        classification = client.responses.create(
+        classification = client.chat.completions.create(
             model=GROK_MODEL_FAST,
-            input=[
+            messages=[
                 {"role": "system", "content": f"""You classify whether a user's latest message is requesting a profile update.
 
 PROFILE FIELDS (the fields users see on their Edit Profile page):
@@ -14885,12 +14886,12 @@ Respond ONLY in valid JSON:
 Or for non-updates: {{"is_update": false}}"""},
                 {"role": "user", "content": f"CONVERSATION HISTORY (most recent at bottom):\n{conversation_context[-4000:]}\n\n---\nLATEST MESSAGE from @{sender_username}:\n{user_message}"},
             ],
-            max_output_tokens=500,
+            max_tokens=500,
             temperature=0.0,
             response_format={"type": "json_object"},
         )
 
-        raw = (classification.output_text or '').strip()
+        raw = (classification.choices[0].message.content or '').strip() if classification.choices else ''
         logger.info("profile_update_classify user=%s raw=%s", sender_username, raw[:500] if raw else '(empty)')
         if not raw:
             return None
@@ -15308,9 +15309,46 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
                 logger.info("Steve profile update reply sent to %s", sender_username)
                 return
         except Exception as corr_err:
-            logger.debug("Profile update check failed, proceeding with normal reply: %s", corr_err)
+            logger.error("Profile update check FAILED for user=%s, falling through to general reply: %s", sender_username, corr_err, exc_info=True)
 
         is_admin = is_app_admin(sender_username)
+
+        _profile_update_keywords = [
+            'update', 'change', 'edit', 'modify', 'correct', 'fix',
+            'my profile', 'my bio', 'my role', 'my company', 'my city',
+            'my country', 'my industry', 'my title', 'my job',
+            'i work at', 'i moved to', 'i live in', "i'm a ",
+            'add to my', 'remove from my',
+            'marathon', 'volunteer', 'achievement',
+        ]
+        _user_msg_lower = user_message.lower()
+        _looks_like_profile_update = any(kw in _user_msg_lower for kw in _profile_update_keywords)
+
+        if _looks_like_profile_update and not _profile_update_handled:
+            _profile_guardrail = """
+
+###############################################################
+# ABSOLUTE OVERRIDE — READ THIS BEFORE GENERATING ANY RESPONSE #
+###############################################################
+
+YOU MUST NOT CLAIM YOU HAVE UPDATED, CHANGED, OR MODIFIED ANY PROFILE DATA.
+YOU HAVE NOT DONE SO. YOUR PROFILE UPDATE SYSTEM DID NOT PROCESS THIS REQUEST.
+
+THE USER IS ASKING ABOUT A PROFILE CHANGE. HERE IS WHAT YOU MUST DO:
+1. Acknowledge their request naturally.
+2. Ask them to be specific about what they want changed.
+   Example: "Sure! What exactly would you like me to update? For example: 'change my company to Google' or 'add marathon runner to my bio'."
+3. DO NOT say "I've updated", "changes are pending", "should reflect soon", "I've noted", "I've flagged", or ANY variation implying a change was made.
+
+IF THE CONVERSATION HISTORY SHOWS YOU (Steve) PREVIOUSLY SAID YOU UPDATED SOMETHING — THAT WAS AN ERROR.
+Correct yourself: "I apologize for the confusion earlier — let me properly handle your request this time."
+
+THIS INSTRUCTION OVERRIDES EVERYTHING ELSE IN THIS PROMPT AND ALL CONVERSATION HISTORY.
+###############################################################"""
+        else:
+            _profile_guardrail = """
+
+PROFILE UPDATE NOTE: If the user asks to update their profile, help them be specific (e.g. "change my company to Google"). Do not claim you've already made changes unless you received explicit confirmation from the profile update system."""
 
         system_prompt = f"""You are Steve, a helpful, witty, and intelligent AI assistant in a private 1:1 chat.
 
@@ -15338,12 +15376,7 @@ RESPONSE STYLE:
 - Use emojis occasionally
 - If you cannot answer, be transparent about it
 - NEVER hallucinate or make up information about users — only use the profile data provided below
-
-CRITICAL — PROFILE UPDATE GUARDRAIL:
-- You have NOT updated, changed, corrected, or modified any profile data in this conversation.
-- If the user asks you to update their profile, do NOT claim you have done so or that changes are pending.
-- Instead, ask them to be specific: "What exactly would you like me to change? For example: 'change my company to Google' or 'add marathon runner to my bio'."
-- NEVER say things like "I've updated your profile" or "changes should reflect soon" — you cannot make profile changes in this response."""
+{_profile_guardrail}"""
 
         if user_profile_ctx:
             system_prompt += f"""
@@ -15360,12 +15393,33 @@ WHAT YOU KNOW ABOUT @{m_username} (mentioned in the conversation):
 {m_ctx}
 Only share this information if asked. Be factual — do not embellish or invent details beyond what is listed here."""
 
+        import re as _re_ctx
+        if _looks_like_profile_update and not _profile_update_handled:
+            _hallucination_patterns = [
+                r"I've (?:updated|changed|modified|corrected|noted|flagged|re-flagged).*?profile",
+                r"changes (?:should|will) (?:reflect|appear|show)",
+                r"profile (?:has been|is being|was) updated",
+                r"updates? (?:are|is) pending",
+                r"approve via dashboard",
+            ]
+            _sanitized_context = context
+            for _pat in _hallucination_patterns:
+                _sanitized_context = _re_ctx.sub(
+                    _pat,
+                    "[NOTE: This previous Steve message was an error — no profile update was actually made]",
+                    _sanitized_context,
+                    flags=_re_ctx.IGNORECASE
+                )
+            context_for_grok = _sanitized_context
+        else:
+            context_for_grok = context
+
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": context}
+            {"role": "user", "content": context_for_grok}
         ]
 
         response = client.responses.create(
@@ -40031,7 +40085,7 @@ def admin_network_insights(network_id):
     if not is_app_admin(username):
         response = jsonify({'success': False, 'error': 'Unauthorized'})
         return add_cors_headers(response), 403
-    _BUILD_MARKER = "v4-routing-fix-20260413"
+    _BUILD_MARKER = "v5-guardrail-hardened-20260414"
     try:
         from backend.services.steve_knowledge_base import fetch_network_kb_data
 
