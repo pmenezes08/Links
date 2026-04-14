@@ -14844,60 +14844,67 @@ def _detect_and_apply_profile_update(
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
         all_fields = {**_PROFILE_FIELDS_PERSONAL, **_PROFILE_FIELDS_PROFESSIONAL}
-        fields_list = ", ".join(f'"{k}" ({v})' for k, v in all_fields.items())
+        fields_list = "\n".join(f'  - "{k}" → {v}' for k, v in all_fields.items())
 
         classification = client.responses.create(
             model=GROK_MODEL_FAST,
             input=[
-                {"role": "system", "content": f"""You determine whether a user message is requesting a change to their profile.
+                {"role": "system", "content": f"""You classify whether a user's latest message is requesting a profile update.
 
-A profile update is when someone says things like:
-- "Update my profile — I now work at Google"
-- "Change my city to London"
-- "My title is now VP of Engineering"
-- "I ran a marathon last year, can you add that?"
-- "That's wrong about me, I actually..."
-- "Remove the part about me working at Deloitte"
-- "Yes" / "go ahead" / "do it" (confirming a previously proposed update by Steve)
-
-An admin might also update another member: "Update @username's company to Google"
-
-PROFILE FIELDS (these are the actual fields on the user's Edit Profile page):
+PROFILE FIELDS (the fields users see on their Edit Profile page):
 {fields_list}
 
-CLASSIFICATION RULES:
-1. If the user is requesting a change to a known profile field, set "field_updates" with the field name and new value.
-2. If the change doesn't map to a specific field (e.g. "I ran a marathon"), set "free_text" with the content and "suggested_section" as either "bio" or "about" (professional background).
-3. If the user is confirming a PREVIOUSLY PROPOSED update by Steve (look at the conversation — did Steve just ask "Should I go ahead?" or similar), set "is_confirmation" to true and "confirmed_updates" with the field/value pairs from Steve's proposal. If Steve proposed two sections (bio vs professional background) and the user chose one, use the chosen section field ("bio" or "about").
-4. If the message is NOT a profile update request at all, set "is_update" to false.
+FIELD MAPPING EXAMPLES:
+- "I work at Google" / "my company is Google" → field "company", value "Google"
+- "I'm a Product Manager" / "my role is PM" / "my title is VP" → field "role", value as stated
+- "I live in London" / "I moved to NYC" → field "city", value as stated
+- "I'm in the UK" / "I moved to Portugal" → field "country", value as stated
+- "I work in fintech" / "my industry is healthcare" → field "industry", value as stated
+- "Update my bio to ..." → field "bio", value as stated
+- "I ran a marathon" / "I volunteer at X" → free_text (doesn't map to a specific field)
+- "yes" / "go ahead" / "do it" / "perfect" / "sure" → confirmation of a previous proposal
 
-Respond in JSON only:
+CLASSIFICATION RULES:
+1. If the user is requesting a change to a KNOWN profile field, return "field_updates" with the field key and new value. Multiple fields can be updated at once.
+2. If the user wants to add information that doesn't map to a specific field (e.g. "I ran a marathon", "I'm a chess player"), return "free_text" with the content and your best guess for "suggested_section" ("bio" for personal/lifestyle, "about" for professional achievements).
+3. If the user is CONFIRMING a previously proposed update by Steve (look at recent conversation — did Steve just ask "Should I go ahead?" or propose a change?), return "is_confirmation": true with "confirmed_updates" containing the field/value pairs that Steve proposed. Extract the field names and values from Steve's proposal message in the conversation.
+4. If the message is NOT about updating a profile at all (e.g. general questions, chitchat), return "is_update": false.
+5. When in doubt, set "is_update": true — it's better to ask the user for confirmation than to miss a legitimate request.
+
+Respond ONLY in valid JSON:
 {{
-  "is_update": true/false,
-  "is_confirmation": true/false,
-  "target_username": null or "username",
+  "is_update": true,
+  "is_confirmation": false,
+  "target_username": null,
   "field_updates": [{{"field": "company", "value": "Google"}}],
-  "free_text": null or {{"text": "Marathon runner", "suggested_section": "bio", "alternative_section": "about"}},
+  "free_text": null,
   "confirmed_updates": [],
-  "kb_correction": null or "description of what to correct in Steve's deeper understanding"
-}}"""},
-                {"role": "user", "content": f"Conversation context:\n{conversation_context[-3000:]}\n\nLatest message from @{sender_username}:\n{user_message}"},
+  "kb_correction": null
+}}
+
+Or for non-updates: {{"is_update": false}}"""},
+                {"role": "user", "content": f"CONVERSATION HISTORY (most recent at bottom):\n{conversation_context[-4000:]}\n\n---\nLATEST MESSAGE from @{sender_username}:\n{user_message}"},
             ],
-            max_output_tokens=400,
-            temperature=0.1,
+            max_output_tokens=500,
+            temperature=0.0,
             response_format={"type": "json_object"},
         )
 
         raw = (classification.output_text or '').strip()
+        logger.info("profile_update_classify user=%s raw=%s", sender_username, raw[:500] if raw else '(empty)')
         if not raw:
             return None
 
         parsed = _json.loads(raw)
         if not parsed.get('is_update'):
+            logger.info("profile_update_classify user=%s result=not_an_update", sender_username)
             return None
 
         target = (parsed.get('target_username') or '').strip() or sender_username
         target = _resolve_canonical_username(target)
+        logger.info("profile_update_classify user=%s target=%s confirmation=%s fields=%s free_text=%s confirmed=%s",
+                     sender_username, target, parsed.get('is_confirmation'),
+                     parsed.get('field_updates'), parsed.get('free_text'), parsed.get('confirmed_updates'))
 
         if not is_admin and target.lower() != sender_username.lower():
             return (
@@ -14913,24 +14920,58 @@ Respond in JSON only:
         kb_correction = (parsed.get('kb_correction') or '').strip()
 
         if is_confirmation and confirmed_updates:
+            logger.info("profile_update_apply user=%s target=%s updates=%s", sender_username, target, confirmed_updates)
             return _apply_profile_updates(
                 target, sender_username, confirmed_updates, kb_correction, is_admin
             )
 
+        if is_confirmation and not confirmed_updates and field_updates:
+            logger.info("profile_update_apply user=%s confirmation with field_updates fallback=%s", sender_username, field_updates)
+            return _apply_profile_updates(
+                target, sender_username, field_updates, kb_correction, is_admin
+            )
+
+        if is_confirmation and not confirmed_updates and not field_updates:
+            import re as _re
+            tag_match = _re.search(r'\[pending_update:([^\]]+)\]', conversation_context)
+            if tag_match:
+                tag_str = tag_match.group(1)
+                parsed_updates = []
+                if tag_str.startswith('suggested='):
+                    parts = tag_str.split('|', 1)
+                    section = parts[0].split('=', 1)[1] if '=' in parts[0] else 'bio'
+                    text_val = parts[1].split('=', 1)[1] if len(parts) > 1 and '=' in parts[1] else ''
+                    if text_val:
+                        parsed_updates.append({'field': section, 'value': text_val})
+                else:
+                    for pair in tag_str.split('|'):
+                        if '=' in pair:
+                            k, v = pair.split('=', 1)
+                            parsed_updates.append({'field': k.strip(), 'value': v.strip()})
+                if parsed_updates:
+                    logger.info("profile_update_apply user=%s confirmation from pending_update tag=%s", sender_username, parsed_updates)
+                    return _apply_profile_updates(
+                        target, sender_username, parsed_updates, kb_correction, is_admin
+                    )
+
         if field_updates:
             labels = []
+            data_tag_parts = []
             for u in field_updates:
                 fname = u.get('field', '')
                 fval = u.get('value', '')
                 label = all_fields.get(fname, fname)
                 labels.append(f"**{label}** → *{fval}*")
+                data_tag_parts.append(f"{fname}={fval}")
             changes_text = "\n".join(f"• {l}" for l in labels)
+            data_tag = "|".join(data_tag_parts)
             is_self = target.lower() == sender_username.lower()
             who = "your" if is_self else f"@{target}'s"
             return (
                 f"I'd like to update {who} profile with the following:\n\n"
                 f"{changes_text}\n\n"
-                f"Should I go ahead? 🤔"
+                f"Should I go ahead?\n"
+                f"[pending_update:{data_tag}]"
             )
 
         if free_text:
@@ -14940,15 +14981,16 @@ Respond in JSON only:
             suggested_label = 'bio' if suggested == 'bio' else 'professional background'
             alt_label = 'bio' if alternative == 'bio' else 'professional background'
             return (
-                f"Nice! I think this fits best in your **{suggested_label}**:\n\n"
+                f"I think this fits best in your **{suggested_label}**:\n\n"
                 f"*\"{text}\"*\n\n"
-                f"Should I add it there, or would you prefer it in your **{alt_label}**?"
+                f"Should I add it there, or would you prefer it in your **{alt_label}**?\n"
+                f"[pending_update:suggested={suggested}|text={text}]"
             )
 
         return None
 
     except Exception as e:
-        logger.debug("Profile update detection failed: %s", e)
+        logger.warning("Profile update detection failed for %s: %s", sender_username, e, exc_info=True)
         return None
 
 
@@ -14970,7 +15012,11 @@ def _apply_profile_updates(
         elif field in _PROFILE_FIELDS_PROFESSIONAL:
             professional_updates[field] = value
 
+    logger.info("profile_update_sql target=%s personal=%s professional=%s",
+                target, personal_updates, professional_updates)
+
     if not personal_updates and not professional_updates:
+        logger.warning("profile_update_sql target=%s NO fields matched from updates=%s", target, updates)
         return None
 
     try:
@@ -15044,6 +15090,8 @@ def _apply_profile_updates(
                     )
 
             conn.commit()
+            logger.info("profile_update_sql COMMITTED target=%s personal=%s professional=%s",
+                        target, list(personal_updates.keys()), list(professional_updates.keys()))
 
         try:
             invalidate_user_cache(target)
@@ -15232,11 +15280,13 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
         context += f"\n\n[Current date and time: {current_date}]"
 
         # ── Check for profile update intent before normal reply ──
+        _profile_update_handled = False
         try:
             correction_reply = _detect_and_apply_profile_update(
                 sender_username, user_message, context
             )
             if correction_reply:
+                _profile_update_handled = True
                 ai_response = format_steve_response_links(correction_reply)
                 reply_receiver = sender_username
                 with get_db_connection() as conn:
@@ -15287,7 +15337,13 @@ RESPONSE STYLE:
 - Be helpful and concise (2-5 sentences for casual, longer for detailed questions)
 - Use emojis occasionally
 - If you cannot answer, be transparent about it
-- NEVER hallucinate or make up information about users — only use the profile data provided below"""
+- NEVER hallucinate or make up information about users — only use the profile data provided below
+
+CRITICAL — PROFILE UPDATE GUARDRAIL:
+- You have NOT updated, changed, corrected, or modified any profile data in this conversation.
+- If the user asks you to update their profile, do NOT claim you have done so or that changes are pending.
+- Instead, ask them to be specific: "What exactly would you like me to change? For example: 'change my company to Google' or 'add marathon runner to my bio'."
+- NEVER say things like "I've updated your profile" or "changes should reflect soon" — you cannot make profile changes in this response."""
 
         if user_profile_ctx:
             system_prompt += f"""
