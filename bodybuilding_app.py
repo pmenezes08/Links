@@ -14821,9 +14821,6 @@ def send_message():
         logger.error(f"Error sending message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send message'})
 
-    target: str, sender_username: str,
-    updates: list, kb_correction: str, is_admin: bool,
-):
 def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_username: str = None):
     """Generate and send Steve's AI reply in a 1:1 DM. Runs in a background thread.
     
