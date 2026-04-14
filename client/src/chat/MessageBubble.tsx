@@ -352,7 +352,6 @@ function MessageBubbleInner({
                     <video
                       src={normalizeMediaPath(m.media_paths[0]) + '#t=0.1'}
                       className="w-full rounded-lg"
-                      style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
                       muted
                       preload="metadata"
                       playsInline

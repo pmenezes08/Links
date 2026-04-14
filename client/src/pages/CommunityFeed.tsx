@@ -144,8 +144,20 @@ export default function CommunityFeed() {
   const navigate = useNavigate()
   const routerLocation = useLocation()
   const deviceFeedCacheKey = useMemo(() => (community_id ? `community-feed:${community_id}` : null), [community_id])
-  const [data, setData] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState<any>(() => {
+    if (deviceFeedCacheKey) {
+      const cached = readDeviceCache<any>(deviceFeedCacheKey, COMMUNITY_FEED_CACHE_VERSION)
+      if (cached?.success) return cached
+    }
+    return null
+  })
+  const [loading, setLoading] = useState(() => {
+    if (deviceFeedCacheKey) {
+      const cached = readDeviceCache<any>(deviceFeedCacheKey, COMMUNITY_FEED_CACHE_VERSION)
+      if (cached?.success) return false
+    }
+    return true
+  })
   const [error, setError] = useState<string| null>(null)
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
   const [hasUnansweredPolls, setHasUnansweredPolls] = useState(false)
@@ -2366,6 +2378,7 @@ export default function CommunityFeed() {
       {/* Scrollable content area below fixed header */}
       <div
         ref={scrollRef}
+        data-preserve-scroll="true"
         className={`max-w-2xl mx-auto ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar pb-24 px-3`}
         style={{
           WebkitOverflowScrolling: 'touch' as any,

@@ -14754,395 +14754,9 @@ def send_message():
         logger.error(f"Error sending message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send message'})
 
-def _send_steve_dm(receiver: str, text: str):
-    """Send a DM from Steve to a user (MySQL + Firestore dual-write)."""
-    from datetime import datetime as _dt
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            if USE_MYSQL:
-                c.execute("INSERT INTO messages (sender, receiver, message, timestamp) VALUES (%s, %s, %s, NOW())",
-                          ('steve', receiver, text))
-            else:
-                _ts = _dt.now().strftime('%Y-%m-%d %H:%M:%S')
-                c.execute("INSERT INTO messages (sender, receiver, message, timestamp) VALUES (?, ?, ?, ?)",
-                          ('steve', receiver, text, _ts))
-            conn.commit()
-            msg_id = getattr(c, 'lastrowid', None)
-            try:
-                from backend.services.firestore_writes import write_dm_message
-                write_dm_message(sender='steve', receiver=receiver, message_id=msg_id, text=text)
-            except Exception:
-                pass
-    except Exception as e:
-        logger.error("Failed to send Steve DM to %s: %s", receiver, e)
-
-
-def _resolve_canonical_username(username: str) -> str:
-    """Resolve a username to its canonical case from the database.
-
-    Firestore document IDs are case-sensitive, so we need the exact case
-    used when the profile was originally created.
-    """
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            c.execute(f"SELECT username FROM users WHERE LOWER(username) = LOWER({ph})", (username,))
-            row = c.fetchone()
-            if row:
-                return row['username'] if hasattr(row, 'keys') else row[0]
-    except Exception as e:
-        logger.debug("Could not resolve canonical username for %s: %s", username, e)
-    return username
-
-
-# Profile fields the user can see on their Edit Profile page
-_PROFILE_FIELDS_PERSONAL = {
-    'first_name': 'first name',
-    'last_name': 'last name',
-    'city': 'city',
-    'country': 'country',
-    'bio': 'bio',
-    'display_name': 'display name',
-}
-_PROFILE_FIELDS_PROFESSIONAL = {
-    'role': 'job title / role',
-    'company': 'company',
-    'industry': 'industry',
-    'about': 'professional background',
-    'linkedin': 'LinkedIn URL',
-}
-
-
-def _detect_and_apply_profile_update(
-    sender_username: str, user_message: str, conversation_context: str
-) -> str | None:
-    """Detect if the user wants to update their profile and handle it.
-
-    This is a profile-field-first approach: Steve speaks in terms the user
-    understands (company, city, bio, professional background) — never KB
-    dimensions. Updates go to the actual SQL profile fields the user sees on
-    their Edit Profile page. The KB is updated silently in the background.
-
-    Two modes:
-      1. PROPOSE: If the update hasn't been confirmed yet, Steve asks for
-         confirmation and tells the user exactly what will change.
-      2. APPLY: If the conversation shows Steve already proposed a change and
-         the user confirmed ("yes", "go ahead", etc.), apply it now.
-
-    Returns Steve's response if a profile update was detected, or None.
-    """
-    import json as _json
-
-    if not XAI_API_KEY:
-        return None
-
-    is_admin = is_app_admin(sender_username)
-
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
-
-        all_fields = {**_PROFILE_FIELDS_PERSONAL, **_PROFILE_FIELDS_PROFESSIONAL}
-        fields_list = "\n".join(f'  - "{k}" → {v}' for k, v in all_fields.items())
-
-        classification = client.chat.completions.create(
-            model=GROK_MODEL_FAST,
-            messages=[
-                {"role": "system", "content": f"""You classify whether a user's latest message is requesting a profile update.
-
-PROFILE FIELDS (the fields users see on their Edit Profile page):
-{fields_list}
-
-FIELD MAPPING EXAMPLES:
-- "I work at Google" / "my company is Google" → field "company", value "Google"
-- "I'm a Product Manager" / "my role is PM" / "my title is VP" → field "role", value as stated
-- "I live in London" / "I moved to NYC" → field "city", value as stated
-- "I'm in the UK" / "I moved to Portugal" → field "country", value as stated
-- "I work in fintech" / "my industry is healthcare" → field "industry", value as stated
-- "Update my bio to ..." → field "bio", value as stated
-- "I ran a marathon" / "I volunteer at X" → free_text (doesn't map to a specific field)
-- "yes" / "go ahead" / "do it" / "perfect" / "sure" → confirmation of a previous proposal
-
-CLASSIFICATION RULES:
-1. If the user is requesting a change to a KNOWN profile field, return "field_updates" with the field key and new value. Multiple fields can be updated at once.
-2. If the user wants to add information that doesn't map to a specific field (e.g. "I ran a marathon", "I'm a chess player"), return "free_text" with the content and your best guess for "suggested_section" ("bio" for personal/lifestyle, "about" for professional achievements).
-3. If the user is CONFIRMING a previously proposed update by Steve (look at recent conversation — did Steve just ask "Should I go ahead?" or propose a change?), return "is_confirmation": true with "confirmed_updates" containing the field/value pairs that Steve proposed. Extract the field names and values from Steve's proposal message in the conversation.
-4. If the message is NOT about updating a profile at all (e.g. general questions, chitchat), return "is_update": false.
-5. When in doubt, set "is_update": true — it's better to ask the user for confirmation than to miss a legitimate request.
-
-Respond ONLY in valid JSON:
-{{
-  "is_update": true,
-  "is_confirmation": false,
-  "target_username": null,
-  "field_updates": [{{"field": "company", "value": "Google"}}],
-  "free_text": null,
-  "confirmed_updates": [],
-  "kb_correction": null
-}}
-
-Or for non-updates: {{"is_update": false}}"""},
-                {"role": "user", "content": f"CONVERSATION HISTORY (most recent at bottom):\n{conversation_context[-4000:]}\n\n---\nLATEST MESSAGE from @{sender_username}:\n{user_message}"},
-            ],
-            max_tokens=500,
-            temperature=0.0,
-            response_format={"type": "json_object"},
-        )
-
-        raw = (classification.choices[0].message.content or '').strip() if classification.choices else ''
-        logger.info("profile_update_classify user=%s raw=%s", sender_username, raw[:500] if raw else '(empty)')
-        if not raw:
-            return None
-
-        parsed = _json.loads(raw)
-        if not parsed.get('is_update'):
-            logger.info("profile_update_classify user=%s result=not_an_update", sender_username)
-            return None
-
-        target = (parsed.get('target_username') or '').strip() or sender_username
-        target = _resolve_canonical_username(target)
-        logger.info("profile_update_classify user=%s target=%s confirmation=%s fields=%s free_text=%s confirmed=%s",
-                     sender_username, target, parsed.get('is_confirmation'),
-                     parsed.get('field_updates'), parsed.get('free_text'), parsed.get('confirmed_updates'))
-
-        if not is_admin and target.lower() != sender_username.lower():
-            return (
-                "I can only update your own profile. "
-                "If you think someone else's information needs correcting, "
-                "please let a community admin know. 🙏"
-            )
-
-        is_confirmation = parsed.get('is_confirmation', False)
-        field_updates = parsed.get('field_updates') or []
-        confirmed_updates = parsed.get('confirmed_updates') or []
-        free_text = parsed.get('free_text')
-        kb_correction = (parsed.get('kb_correction') or '').strip()
-
-        if is_confirmation and confirmed_updates:
-            logger.info("profile_update_apply user=%s target=%s updates=%s", sender_username, target, confirmed_updates)
-            return _apply_profile_updates(
-                target, sender_username, confirmed_updates, kb_correction, is_admin
-            )
-
-        if is_confirmation and not confirmed_updates and field_updates:
-            logger.info("profile_update_apply user=%s confirmation with field_updates fallback=%s", sender_username, field_updates)
-            return _apply_profile_updates(
-                target, sender_username, field_updates, kb_correction, is_admin
-            )
-
-        if is_confirmation and not confirmed_updates and not field_updates:
-            import re as _re
-            tag_match = _re.search(r'\[pending_update:([^\]]+)\]', conversation_context)
-            if tag_match:
-                tag_str = tag_match.group(1)
-                parsed_updates = []
-                if tag_str.startswith('suggested='):
-                    parts = tag_str.split('|', 1)
-                    section = parts[0].split('=', 1)[1] if '=' in parts[0] else 'bio'
-                    text_val = parts[1].split('=', 1)[1] if len(parts) > 1 and '=' in parts[1] else ''
-                    if text_val:
-                        parsed_updates.append({'field': section, 'value': text_val})
-                else:
-                    for pair in tag_str.split('|'):
-                        if '=' in pair:
-                            k, v = pair.split('=', 1)
-                            parsed_updates.append({'field': k.strip(), 'value': v.strip()})
-                if parsed_updates:
-                    logger.info("profile_update_apply user=%s confirmation from pending_update tag=%s", sender_username, parsed_updates)
-                    return _apply_profile_updates(
-                        target, sender_username, parsed_updates, kb_correction, is_admin
-                    )
-
-        if field_updates:
-            labels = []
-            data_tag_parts = []
-            for u in field_updates:
-                fname = u.get('field', '')
-                fval = u.get('value', '')
-                label = all_fields.get(fname, fname)
-                labels.append(f"**{label}** → *{fval}*")
-                data_tag_parts.append(f"{fname}={fval}")
-            changes_text = "\n".join(f"• {l}" for l in labels)
-            data_tag = "|".join(data_tag_parts)
-            is_self = target.lower() == sender_username.lower()
-            who = "your" if is_self else f"@{target}'s"
-            return (
-                f"I'd like to update {who} profile with the following:\n\n"
-                f"{changes_text}\n\n"
-                f"Should I go ahead?\n"
-                f"[pending_update:{data_tag}]"
-            )
-
-        if free_text:
-            text = free_text.get('text', '')
-            suggested = free_text.get('suggested_section', 'bio')
-            alternative = free_text.get('alternative_section', 'about')
-            suggested_label = 'bio' if suggested == 'bio' else 'professional background'
-            alt_label = 'bio' if alternative == 'bio' else 'professional background'
-            return (
-                f"I think this fits best in your **{suggested_label}**:\n\n"
-                f"*\"{text}\"*\n\n"
-                f"Should I add it there, or would you prefer it in your **{alt_label}**?\n"
-                f"[pending_update:suggested={suggested}|text={text}]"
-            )
-
-        return None
-
-    except Exception as e:
-        logger.warning("Profile update detection failed for %s: %s", sender_username, e, exc_info=True)
-        return None
-
-
-def _apply_profile_updates(
     target: str, sender_username: str,
     updates: list, kb_correction: str, is_admin: bool,
 ):
-    """Apply confirmed profile field updates to SQL and sync KB in the background."""
-    import threading
-
-    personal_updates = {}
-    professional_updates = {}
-
-    for u in updates:
-        field = u.get('field', '')
-        value = u.get('value', '')
-        if field in _PROFILE_FIELDS_PERSONAL:
-            personal_updates[field] = value
-        elif field in _PROFILE_FIELDS_PROFESSIONAL:
-            professional_updates[field] = value
-
-    logger.info("profile_update_sql target=%s personal=%s professional=%s",
-                target, personal_updates, professional_updates)
-
-    if not personal_updates and not professional_updates:
-        logger.warning("profile_update_sql target=%s NO fields matched from updates=%s", target, updates)
-        return None
-
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-
-            if personal_updates:
-                set_clauses = []
-                values = []
-                for field, value in personal_updates.items():
-                    if field in ('bio', 'display_name'):
-                        continue
-                    set_clauses.append(f"{field} = {ph}")
-                    values.append(value or None)
-                if set_clauses:
-                    values.append(target)
-                    c.execute(
-                        f"UPDATE users SET {', '.join(set_clauses)} WHERE username = {ph}",
-                        tuple(values),
-                    )
-
-                if 'bio' in personal_updates:
-                    bio_val = personal_updates['bio'] or None
-                    if USE_MYSQL:
-                        c.execute(
-                            "INSERT INTO user_profiles (username, bio) VALUES (%s, %s) "
-                            "ON DUPLICATE KEY UPDATE bio = VALUES(bio)",
-                            (target, bio_val),
-                        )
-                    else:
-                        c.execute(
-                            "INSERT INTO user_profiles (username, bio) VALUES (?, ?) "
-                            "ON CONFLICT(username) DO UPDATE SET bio = excluded.bio",
-                            (target, bio_val),
-                        )
-
-                if 'display_name' in personal_updates:
-                    dn = personal_updates['display_name'] or ''
-                    if dn:
-                        if USE_MYSQL:
-                            c.execute(
-                                "INSERT INTO user_profiles (username, display_name) VALUES (%s, %s) "
-                                "ON DUPLICATE KEY UPDATE display_name = VALUES(display_name)",
-                                (target, dn),
-                            )
-                        else:
-                            c.execute(
-                                "INSERT INTO user_profiles (username, display_name) VALUES (?, ?) "
-                                "ON CONFLICT(username) DO UPDATE SET display_name = excluded.display_name",
-                                (target, dn),
-                            )
-
-            if professional_updates:
-                set_clauses = []
-                values = []
-                field_to_col = {
-                    'role': 'role', 'company': 'company', 'industry': 'industry',
-                    'linkedin': 'linkedin', 'about': 'professional_about',
-                }
-                for field, value in professional_updates.items():
-                    col = field_to_col.get(field)
-                    if col:
-                        set_clauses.append(f"{col} = {ph}")
-                        values.append(value or None)
-                if set_clauses:
-                    values.append(target)
-                    c.execute(
-                        f"UPDATE users SET {', '.join(set_clauses)} WHERE username = {ph}",
-                        tuple(values),
-                    )
-
-            conn.commit()
-            logger.info("profile_update_sql COMMITTED target=%s personal=%s professional=%s",
-                        target, list(personal_updates.keys()), list(professional_updates.keys()))
-
-        try:
-            invalidate_user_cache(target)
-        except Exception:
-            pass
-
-        applied_labels = []
-        all_fields = {**_PROFILE_FIELDS_PERSONAL, **_PROFILE_FIELDS_PROFESSIONAL}
-        for u in updates:
-            label = all_fields.get(u.get('field', ''), u.get('field', ''))
-            applied_labels.append(f"**{label}** → *{u.get('value', '')}*")
-        changes_text = ", ".join(applied_labels)
-
-        def _bg_sync():
-            try:
-                _trigger_background_profile_analysis(target)
-            except Exception:
-                pass
-            if kb_correction:
-                try:
-                    from backend.services.steve_knowledge_base import save_admin_feedback, synthesize_member_knowledge
-                    canonical = _resolve_canonical_username(target)
-                    save_admin_feedback(canonical, 'Index', {
-                        'status': 'needs_correction',
-                        'note': kb_correction,
-                        'by': sender_username,
-                        'source': 'steve_dm_profile_update',
-                    })
-                    synthesize_member_knowledge(canonical)
-                except Exception as e:
-                    logger.debug("KB sync after profile update failed for %s: %s", target, e)
-
-        threading.Thread(target=_bg_sync, daemon=True).start()
-
-        is_self = target.lower() == sender_username.lower()
-        if is_self:
-            return (
-                f"Done! ✅ I've updated your profile: {changes_text}.\n\n"
-                f"You can see the changes on your profile page."
-            )
-        else:
-            return (
-                f"Done! ✅ I've updated @{target}'s profile: {changes_text}."
-            )
-
-    except Exception as e:
-        logger.error("Failed to apply profile updates for %s: %s", target, e, exc_info=True)
-        return "Something went wrong while updating the profile. Please try again or update it manually from your Edit Profile page. 😕"
-
-
 def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_username: str = None):
     """Generate and send Steve's AI reply in a 1:1 DM. Runs in a background thread.
     
@@ -15170,6 +14784,7 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
         
         # ── Load full conversation history from Firestore (fall back to MySQL) ──
         recent_messages = []
+        context_reset_at = None
         try:
             import os
             FIRESTORE_DATABASE = os.environ.get('FIRESTORE_DATABASE', 'cpoint')
@@ -15189,9 +14804,22 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
                     if text and sender:
                         recent_messages.append(f"{sender}: {text}")
                 logger.info(f"Steve DM context from Firestore: {len(recent_messages)} messages for {chat_user_a}<->{chat_user_b}")
+
+                # Load conversation document for Steve context reset timestamp
+                try:
+                    conv_doc = fs.collection('dm_conversations').document(conv_id).get()
+                    if conv_doc.exists:
+                        d = conv_doc.to_dict() or {}
+                        context_reset_at = d.get('steve_context_reset_at')
+                        if context_reset_at:
+                            logger.info(f"Steve DM context was reset at {context_reset_at} for {chat_user_a}<->{chat_user_b}")
+                except Exception as reset_err:
+                    logger.warning(f"Failed to load DM conversation reset timestamp: {reset_err}")
+                    context_reset_at = None
         except Exception as fs_err:
             logger.warning(f"Steve DM Firestore context failed, falling back to MySQL: {fs_err}")
             recent_messages = []
+            context_reset_at = None
         
         # MySQL fallback if Firestore returned nothing
         if not recent_messages:
@@ -15280,75 +14908,12 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
         
         context += f"\n\n[Current date and time: {current_date}]"
 
-        # ── Check for profile update intent before normal reply ──
-        _profile_update_handled = False
-        try:
-            correction_reply = _detect_and_apply_profile_update(
-                sender_username, user_message, context
-            )
-            if correction_reply:
-                _profile_update_handled = True
-                ai_response = format_steve_response_links(correction_reply)
-                reply_receiver = sender_username
-                with get_db_connection() as conn:
-                    c = conn.cursor()
-                    if USE_MYSQL:
-                        c.execute("INSERT INTO messages (sender, receiver, message, timestamp) VALUES (%s, %s, %s, NOW())",
-                                  ('steve', reply_receiver, ai_response))
-                    else:
-                        _ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                        c.execute("INSERT INTO messages (sender, receiver, message, timestamp) VALUES (?, ?, ?, ?)",
-                                  ('steve', reply_receiver, ai_response, _ts))
-                    conn.commit()
-                    steve_msg_id = getattr(c, 'lastrowid', None)
-                    try:
-                        from backend.services.firestore_writes import write_dm_message
-                        write_dm_message(sender='steve', receiver=reply_receiver, message_id=steve_msg_id, text=ai_response)
-                    except Exception:
-                        pass
-                logger.info("Steve profile update reply sent to %s", sender_username)
-                return
-        except Exception as corr_err:
-            logger.error("Profile update check FAILED for user=%s, falling through to general reply: %s", sender_username, corr_err, exc_info=True)
+        context_reset_note = ""
+        if context_reset_at:
+            context_reset_note = f"\n\nIMPORTANT: Your conversation context was reset on {context_reset_at}. Treat messages in OLDER CONTEXT that predate this reset as background only. Focus on the CURRENT CONVERSATION."
+        context += context_reset_note
 
         is_admin = is_app_admin(sender_username)
-
-        _profile_update_keywords = [
-            'update', 'change', 'edit', 'modify', 'correct', 'fix',
-            'my profile', 'my bio', 'my role', 'my company', 'my city',
-            'my country', 'my industry', 'my title', 'my job',
-            'i work at', 'i moved to', 'i live in', "i'm a ",
-            'add to my', 'remove from my',
-            'marathon', 'volunteer', 'achievement',
-        ]
-        _user_msg_lower = user_message.lower()
-        _looks_like_profile_update = any(kw in _user_msg_lower for kw in _profile_update_keywords)
-
-        if _looks_like_profile_update and not _profile_update_handled:
-            _profile_guardrail = """
-
-###############################################################
-# ABSOLUTE OVERRIDE — READ THIS BEFORE GENERATING ANY RESPONSE #
-###############################################################
-
-YOU MUST NOT CLAIM YOU HAVE UPDATED, CHANGED, OR MODIFIED ANY PROFILE DATA.
-YOU HAVE NOT DONE SO. YOUR PROFILE UPDATE SYSTEM DID NOT PROCESS THIS REQUEST.
-
-THE USER IS ASKING ABOUT A PROFILE CHANGE. HERE IS WHAT YOU MUST DO:
-1. Acknowledge their request naturally.
-2. Ask them to be specific about what they want changed.
-   Example: "Sure! What exactly would you like me to update? For example: 'change my company to Google' or 'add marathon runner to my bio'."
-3. DO NOT say "I've updated", "changes are pending", "should reflect soon", "I've noted", "I've flagged", or ANY variation implying a change was made.
-
-IF THE CONVERSATION HISTORY SHOWS YOU (Steve) PREVIOUSLY SAID YOU UPDATED SOMETHING — THAT WAS AN ERROR.
-Correct yourself: "I apologize for the confusion earlier — let me properly handle your request this time."
-
-THIS INSTRUCTION OVERRIDES EVERYTHING ELSE IN THIS PROMPT AND ALL CONVERSATION HISTORY.
-###############################################################"""
-        else:
-            _profile_guardrail = """
-
-PROFILE UPDATE NOTE: If the user asks to update their profile, help them be specific (e.g. "change my company to Google"). Do not claim you've already made changes unless you received explicit confirmation from the profile update system."""
 
         system_prompt = f"""You are Steve, a helpful, witty, and intelligent AI assistant in a private 1:1 chat.
 
@@ -15357,7 +14922,7 @@ CURRENT DATE AND TIME: {current_date}
 YOUR CAPABILITIES:
 - You have access to the FULL conversation history of this chat
 - You can search the web and X/Twitter for information
-- {"As an admin, you have full platform access. You can update any member's profile (company, role, city, bio, professional background, etc.)." if is_admin else "You can update your profile info (like company, role, city, bio) — just tell me what needs changing and I'll walk you through it."}
+- {"As an admin, you have full platform access." if is_admin else ""}
 
 CONVERSATION INTELLIGENCE:
 - You have two context sections: OLDER CONTEXT (background) and CURRENT CONVERSATION (active).
@@ -15375,8 +14940,7 @@ RESPONSE STYLE:
 - Be helpful and concise (2-5 sentences for casual, longer for detailed questions)
 - Use emojis occasionally
 - If you cannot answer, be transparent about it
-- NEVER hallucinate or make up information about users — only use the profile data provided below
-{_profile_guardrail}"""
+- NEVER hallucinate or make up information about users — only use the profile data provided below"""
 
         if user_profile_ctx:
             system_prompt += f"""
@@ -15393,26 +14957,7 @@ WHAT YOU KNOW ABOUT @{m_username} (mentioned in the conversation):
 {m_ctx}
 Only share this information if asked. Be factual — do not embellish or invent details beyond what is listed here."""
 
-        import re as _re_ctx
-        if _looks_like_profile_update and not _profile_update_handled:
-            _hallucination_patterns = [
-                r"I've (?:updated|changed|modified|corrected|noted|flagged|re-flagged).*?profile",
-                r"changes (?:should|will) (?:reflect|appear|show)",
-                r"profile (?:has been|is being|was) updated",
-                r"updates? (?:are|is) pending",
-                r"approve via dashboard",
-            ]
-            _sanitized_context = context
-            for _pat in _hallucination_patterns:
-                _sanitized_context = _re_ctx.sub(
-                    _pat,
-                    "[NOTE: This previous Steve message was an error — no profile update was actually made]",
-                    _sanitized_context,
-                    flags=_re_ctx.IGNORECASE
-                )
-            context_for_grok = _sanitized_context
-        else:
-            context_for_grok = context
+        context_for_grok = context
 
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
@@ -15486,6 +15031,46 @@ Only share this information if asked. Be factual — do not embellish or invent 
     
     except Exception as e:
         logger.error(f"Error in Steve DM reply: {e}", exc_info=True)
+
+
+@app.route('/api/steve/reset_dm_context', methods=['POST'])
+@login_required
+def reset_steve_dm_context():
+    """Reset Steve's conversation context for a DM thread.
+
+    Updates the Firestore dm_conversations document with steve_context_reset_at.
+    """
+    username = session.get('username')
+    data = request.get_json(silent=True) or {}
+    other_username = data.get('other_username') or 'steve'
+
+    if not other_username:
+        return jsonify({"success": False, "error": "other_username required"}), 400
+
+    try:
+        import os
+        from datetime import datetime
+        FIRESTORE_DATABASE = os.environ.get('FIRESTORE_DATABASE', 'cpoint')
+        from google.cloud import firestore as _firestore
+        project = os.environ.get('GOOGLE_CLOUD_PROJECT') or os.environ.get('GCP_PROJECT')
+        fs = _firestore.Client(project=project, database=FIRESTORE_DATABASE) if project else _firestore.Client(database=FIRESTORE_DATABASE)
+
+        from backend.services.firestore_reads import _find_dm_conv_id
+        conv_id = _find_dm_conv_id(fs, username, other_username)
+        if not conv_id:
+            return jsonify({"success": False, "error": "Conversation not found"}), 404
+
+        now = datetime.now().isoformat()
+        conv_ref = fs.collection('dm_conversations').document(conv_id)
+        conv_ref.update({
+            'steve_context_reset_at': now
+        })
+
+        logger.info(f"Steve DM context reset for {username} <-> {other_username} at {now}")
+        return jsonify({"success": True, "reset_at": now})
+    except Exception as e:
+        logger.error(f"Error resetting Steve DM context for {username} and {other_username}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route('/api/chat/edit_message', methods=['POST'])

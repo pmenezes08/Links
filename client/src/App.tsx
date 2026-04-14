@@ -411,6 +411,7 @@ function AppRoutes(){
       try {
         const nodes = scrollRegionRef.current.querySelectorAll<HTMLElement>(scrollableSelectors.join(','))
         nodes.forEach(node => {
+          if (node.dataset && node.dataset.preserveScroll === 'true') return
           const style = window.getComputedStyle(node)
           const overflowY = style.overflowY || style.overflow
           const isScrollable = /auto|scroll/i.test(overflowY)

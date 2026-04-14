@@ -1859,6 +1859,29 @@ export default function GroupChatThread() {
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
                   onClick={() => {
                     setHeaderMenuOpen(false)
+                    if (!confirm("Reset Steve's conversation context? Steve will still have the full chat history but will stop referencing older discussions.")) return
+                    fetch(`/api/group_chat/${group_id}/steve_reset_context`, {
+                      method: 'POST',
+                      credentials: 'include'
+                    })
+                      .then(r => r.json())
+                      .then(d => {
+                        if (d?.success) {
+                          alert("Steve's context has been reset.")
+                        } else {
+                          alert(d?.error || 'Failed to reset')
+                        }
+                      })
+                      .catch(() => alert('Failed to reset context'))
+                  }}
+                >
+                  <i className="fa-solid fa-rotate text-xs text-[#4db6ac]" />
+                  <span>Reset Steve</span>
+                </button>
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                  onClick={() => {
+                    setHeaderMenuOpen(false)
                     setShowAddMembers(true)
                     loadAvailableMembers()
                   }}
@@ -2155,7 +2178,6 @@ export default function GroupChatThread() {
                                         <video
                                           src={normalizeMediaPath(msg.media_paths[0]) + '#t=0.1'}
                                           className="w-full rounded-lg"
-                                          style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
                                           muted
                                           preload="metadata"
                                           playsInline
@@ -2214,7 +2236,6 @@ export default function GroupChatThread() {
                                         playsInline
                                         muted
                                         className="w-full rounded-lg"
-                                        style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
                                       />
                                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                         <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
@@ -3083,29 +3104,6 @@ export default function GroupChatThread() {
                     Save
                   </button>
                 </div>
-              </div>
-
-              {/* Reset Steve Context */}
-              <div>
-                <label className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-2 block">Steve Context</label>
-                <button
-                  onClick={async () => {
-                    if (!confirm('Reset Steve\'s conversation context? Steve will still have the full chat history but will stop referencing older discussions.')) return
-                    try {
-                      const r = await fetch(`/api/group_chat/${group_id}/steve_reset_context`, {
-                        method: 'POST', credentials: 'include'
-                      })
-                      const d = await r.json().catch(() => null)
-                      if (d?.success) { alert('Steve\'s context has been reset.') }
-                      else { alert(d?.error || 'Failed to reset') }
-                    } catch { alert('Failed to reset context') }
-                  }}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/10 text-white/80 rounded-lg text-sm hover:bg-white/10 transition flex items-center justify-center gap-2"
-                >
-                  <i className="fa-solid fa-rotate text-[#4db6ac]" />
-                  Reset Steve's Context
-                </button>
-                <p className="text-[10px] text-white/40 mt-1">Steve keeps the full chat history but stops referencing older discussions.</p>
               </div>
 
               {/* Delete Group */}
