@@ -10,6 +10,7 @@ import Reports from './pages/Reports'
 import Blocked from './pages/Blocked'
 import Invites from './pages/Invites'
 import Broadcast from './pages/Broadcast'
+import ContentGeneration from './pages/ContentGeneration'
 import Settings from './pages/Settings'
 import FindAdmin from './pages/FindAdmin'
 import Tenants from './pages/Tenants'
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="blocked" element={<Blocked />} />
         <Route path="invites" element={<Invites />} />
         <Route path="broadcast" element={<Broadcast />} />
+        <Route path="content-generation" element={<ContentGeneration />} />
         <Route path="settings" element={<Settings />} />
         <Route path="tenants" element={<Tenants />} />
       </Route>

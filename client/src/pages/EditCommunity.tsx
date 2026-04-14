@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import ContentGenerationModal from '../components/ContentGenerationModal'
 import { clearDeviceCache } from '../utils/deviceCache'
 import { invalidateDashboardCache } from '../utils/dashboardCache'
 
@@ -24,6 +25,7 @@ export default function EditCommunity(){
   const [aiPersonality, setAiPersonality] = useState('friendly')
   const [aiPersonalities, setAiPersonalities] = useState<Array<{key: string, name: string}>>([])
   const [savingAiPersonality, setSavingAiPersonality] = useState(false)
+  const [showContentGeneration, setShowContentGeneration] = useState(false)
   const formRef = useRef<HTMLFormElement|null>(null)
 
   useEffect(() => {
@@ -414,6 +416,25 @@ export default function EditCommunity(){
               )}
             </div>
           </div>
+
+          <div>
+            <label className="block text-sm text-[#9fb0b5] mb-2">Content Generation</label>
+            <div className="rounded-lg border border-white/15 bg-black p-4 flex items-center justify-between gap-4">
+              <div>
+                <div className="text-sm font-medium text-white">Steve automations</div>
+                <div className="text-xs text-[#9fb0b5] mt-1">
+                  Configure saved jobs for Steve to publish community content. Schedules are stored now and can be automated later.
+                </div>
+              </div>
+              <button
+                type="button"
+                className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110 whitespace-nowrap"
+                onClick={() => setShowContentGeneration(true)}
+              >
+                Open
+              </button>
+            </div>
+          </div>
           
           <div className="flex justify-end gap-2">
             <button type="button" className="px-3 py-2 rounded-md border border-white/10 hover:bg-white/5" onClick={()=> navigate(-1)}>Cancel</button>
@@ -439,6 +460,11 @@ export default function EditCommunity(){
           </div>
         )}
       </div>
+      <ContentGenerationModal
+        communityId={String(community_id || '')}
+        open={showContentGeneration}
+        onClose={() => setShowContentGeneration(false)}
+      />
     </div>
   )
 }

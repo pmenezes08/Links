@@ -12,6 +12,7 @@ def register_blueprints(app: Flask) -> None:
     from .onboarding import onboarding_bp
     from .notifications import notifications_bp
     from .communities import communities_bp
+    from .content_generation import content_generation_bp
     from .group_chat import group_chat_bp
 
     app.register_blueprint(public_bp)
@@ -19,4 +20,5 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(onboarding_bp)
     app.register_blueprint(notifications_bp)
     app.register_blueprint(communities_bp)
+    app.register_blueprint(content_generation_bp)
     app.register_blueprint(group_chat_bp)

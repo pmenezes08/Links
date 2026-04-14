@@ -19,6 +19,7 @@ from flask import (
     url_for,
 )
 
+from backend.services.content_generation.permissions import can_manage_community_jobs
 from backend.services.database import get_db_connection, get_sql_placeholder
 
 
@@ -193,6 +194,7 @@ def get_community_members():
                 "members": members,
                 "current_user_role": current_user_role,
                 "community_name": community["name"] if hasattr(community, "keys") else community[1],
+                "can_manage_content_generation": can_manage_community_jobs(username, int(community_id)),
             }
         )
     except Exception as exc:

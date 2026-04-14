@@ -7,6 +7,7 @@ import type { DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, horizontalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import Avatar from '../components/Avatar'
+import ContentGenerationModal from '../components/ContentGenerationModal'
 import MentionTextarea from '../components/MentionTextarea'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import ImageLoader from '../components/ImageLoader'
@@ -173,6 +174,7 @@ export default function CommunityFeed() {
   const [savingAnn, setSavingAnn] = useState(false)
   // Ads removed
   const [moreOpen, setMoreOpen] = useState(false)
+  const [showContentGeneration, setShowContentGeneration] = useState(false)
   const [communityMuted, setCommunityMuted] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
   const [q, setQ] = useState('#')
@@ -3387,6 +3389,12 @@ export default function CommunityFeed() {
         </div>
       )}
 
+      <ContentGenerationModal
+        communityId={String(community_id || '')}
+        open={showContentGeneration}
+        onClose={() => setShowContentGeneration(false)}
+      />
+
       {/* Highlight overlay - Reaction Step */}
       {highlightStep === 'reaction' && (
         <>
@@ -3554,6 +3562,11 @@ export default function CommunityFeed() {
             <p className="text-[10px] text-white/30 text-right px-4 pb-1">
               {communityMuted ? 'Push notifications disabled. In-app notifications continue.' : 'Muting disables push notifications only.'}
             </p>
+            <ContentGenerationButton
+              communityId={String(community_id)}
+              onClose={() => setMoreOpen(false)}
+              onOpen={() => setShowContentGeneration(true)}
+            />
             <EditCommunityButton communityId={String(community_id)} onClose={()=> setMoreOpen(false)} />
           </div>
         </div>
@@ -5206,7 +5219,7 @@ function EditCommunityButton({ communityId, onClose }:{ communityId: string, onC
         const j = await r.json()
         if (!mounted) return
         const role = (j?.current_user_role || '').toLowerCase()
-        const can = role === 'app_admin' || role === 'owner' || role === 'admin'
+        const can = role === 'app_admin' || role === 'owner'
         setAllowed(!!can)
       }catch{ setAllowed(false) }
     }
@@ -5217,6 +5230,34 @@ function EditCommunityButton({ communityId, onClose }:{ communityId: string, onC
   return (
     <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { onClose(); navigate(`/community/${communityId}/edit`) }}>
       Manage Community
+    </button>
+  )
+}
+
+function ContentGenerationButton({ communityId, onClose, onOpen }:{ communityId: string, onClose: ()=>void, onOpen: ()=>void }){
+  const [allowed, setAllowed] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    async function check() {
+      try {
+        const fd = new URLSearchParams({ community_id: String(communityId) })
+        const r = await fetch('/get_community_members', { method: 'POST', credentials: 'include', body: fd })
+        const j = await r.json()
+        if (!mounted) return
+        setAllowed(!!j?.can_manage_content_generation)
+      } catch {
+        if (mounted) setAllowed(false)
+      }
+    }
+    check()
+    return () => { mounted = false }
+  }, [communityId])
+
+  if (!allowed) return null
+  return (
+    <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={() => { onClose(); onOpen() }}>
+      Content Generation
     </button>
   )
 }

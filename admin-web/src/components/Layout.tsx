@@ -12,6 +12,7 @@ const navItems = [
   { to: '/blocked', icon: 'fa-ban', label: 'Blocked' },
   { to: '/invites', icon: 'fa-envelope', label: 'Invites' },
   { to: '/broadcast', icon: 'fa-bullhorn', label: 'Broadcast' },
+  { to: '/content-generation', icon: 'fa-wand-magic-sparkles', label: 'Content Gen' },
   { to: '/settings', icon: 'fa-gear', label: 'Settings' },
   { to: '/tenants', icon: 'fa-building', label: 'Tenants' },
 ]
