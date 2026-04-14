@@ -1555,7 +1555,10 @@ TYPING_TTL_SECONDS = 5
 # Using 4.20 multi-agent only for complex networking/community analysis to control costs
 GROK_MODEL_FAST = "grok-4-1-fast-non-reasoning"          # Default for most interactions
 GROK_MODEL_REASONING = "grok-4-1-fast-reasoning"         # For group chat reasoning
+GROK_MODEL_420_REASONING = "grok-4.20-0309-reasoning"    # Premium reasoning for flagship networking
 GROK_MODEL_MULTI_AGENT = "grok-4.20-multi-agent-0309"    # Only for profile analysis (web_search tool use)
+STEVE_NETWORKING_MODEL = os.getenv('STEVE_NETWORKING_MODEL', GROK_MODEL_REASONING)
+STEVE_NETWORKING_MULTI_AGENT = os.getenv('STEVE_NETWORKING_MULTI_AGENT', 'false').strip().lower() in ('1', 'true', 'yes', 'on')
 
 _BUILD_MARKER = "v5-guardrail-hardened-20260414"
 
@@ -16431,7 +16434,7 @@ def _get_or_build_context(username: str, profile: dict, *, networking: bool = Fa
 
 def _networking_build_members_text(
     member_rows, all_member_usernames, user_subcommunities, recent_posts_map,
-    viewer_username, query_text=None, _v=None,
+    viewer_username, query_text=None, _v=None, preordered_usernames=None,
 ):
     """Build the members block for the Grok prompt.
 
@@ -16450,7 +16453,20 @@ def _networking_build_members_text(
     ordered_prompt: list = []
     full_ctx_users: set = set()
 
-    if n <= NETWORKING_PROMPT_MEMBER_CAP:
+    valid_usernames = {str(u) for u in all_member_usernames}
+
+    if preordered_usernames:
+        ordered_prompt = [
+            str(u) for u in preordered_usernames
+            if u and str(u) in valid_usernames
+        ][:NETWORKING_PROMPT_MEMBER_CAP]
+        full_ctx_users = set(ordered_prompt[:NETWORKING_GROK_FULL_CONTEXT_CAP])
+        if len(all_member_usernames) > NETWORKING_PROMPT_MEMBER_CAP and ordered_prompt:
+            tiered_preamble = (
+                f"Roster note: The first {NETWORKING_GROK_FULL_CONTEXT_CAP} members below have "
+                "FULL profile context; remaining members have structured summaries.\n\n"
+            )
+    elif n <= NETWORKING_PROMPT_MEMBER_CAP:
         ordered_prompt = list(all_member_usernames)
     elif query_text and profile_index.is_ready:
         ann_k = min(NETWORKING_ANN_RECALL_CAP, n)
@@ -16532,6 +16548,62 @@ def _networking_build_members_text(
     return "\n".join(members_lines)
 
 
+_NETWORKING_NO_MATCH_MARKERS = (
+    "couldn't find matching members",
+    "couldn't generate matches",
+    "nobody in the network",
+    "no direct matches",
+    "no one in the network",
+    "try refining your request",
+)
+
+
+def _networking_should_retry_multi_agent(ai_response: str, recommended: list[str]) -> bool:
+    if not STEVE_NETWORKING_MULTI_AGENT:
+        return False
+    text = (ai_response or '').strip().lower()
+    if not text:
+        return True
+    if recommended:
+        return False
+    return any(marker in text for marker in _NETWORKING_NO_MATCH_MARKERS)
+
+
+def _run_networking_completion(client, *, prompt_input, member_names, context_label: str):
+    response = client.responses.create(
+        model=STEVE_NETWORKING_MODEL,
+        input=prompt_input,
+        max_output_tokens=800,
+        temperature=0.5,
+    )
+    ai_response = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
+    recommended = _extract_recommended_usernames(ai_response, member_names)
+    model_used = STEVE_NETWORKING_MODEL
+
+    if _networking_should_retry_multi_agent(ai_response, recommended):
+        logger.info("Networking fallback: retrying with multi-agent for %s", context_label)
+        retry = client.responses.create(
+            model=GROK_MODEL_MULTI_AGENT,
+            input=prompt_input,
+            max_output_tokens=800,
+            temperature=0.4,
+        )
+        retry_text = (retry.output_text or '').strip() if hasattr(retry, 'output_text') else ''
+        retry_recommended = _extract_recommended_usernames(retry_text, member_names)
+        if retry_text:
+            ai_response = retry_text
+            recommended = retry_recommended
+            model_used = GROK_MODEL_MULTI_AGENT
+
+    logger.info(
+        "Steve networking completion context=%s model=%s recommended=%s",
+        context_label,
+        model_used,
+        len(recommended),
+    )
+    return ai_response, recommended, model_used
+
+
 @app.route('/api/networking/steve_match', methods=['POST'])
 @login_required
 def api_networking_steve_match():
@@ -16546,6 +16618,12 @@ def api_networking_steve_match():
     if not XAI_API_KEY:
         return jsonify({'success': False, 'error': 'AI service not available'}), 503
     try:
+        from backend.services.networking_retrieval import (
+            fuse_roster,
+            semantic_candidates,
+            structured_candidates,
+        )
+
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
@@ -16579,10 +16657,29 @@ def api_networking_steve_match():
             if _ob_prompt:
                 user_profile = f"{user_profile}\nUser-stated onboarding (verbatim):\n{_ob_prompt}" if user_profile else f"User-stated onboarding (verbatim):\n{_ob_prompt}"
 
-            c.execute(f"SELECT DISTINCT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
+            c.execute(f"SELECT DISTINCT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, p.location, u.professional_about FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
             member_rows = c.fetchall()
             all_member_usernames = [str(_v(r, 0)) for r in member_rows]
             member_names = [(str(_v(r, 0)), str(_v(r, 1))) for r in member_rows]
+            structured_ids = structured_candidates(member_rows, message, _v)
+            semantic_ids = semantic_candidates(
+                message,
+                all_member_usernames,
+                k_recall=NETWORKING_ANN_RECALL_CAP,
+                k_final=NETWORKING_PROMPT_MEMBER_CAP,
+            )
+            ordered_usernames = fuse_roster(
+                structured_ids,
+                semantic_ids,
+                cap=NETWORKING_PROMPT_MEMBER_CAP,
+            )
+            logger.info(
+                "Steve networking retrieval mode=match structured=%s semantic=%s fused=%s model=%s",
+                len(structured_ids),
+                len(semantic_ids),
+                len(ordered_usernames),
+                STEVE_NETWORKING_MODEL,
+            )
 
             recent_posts_map = {}
             try:
@@ -16605,6 +16702,7 @@ def api_networking_steve_match():
             members_text = _networking_build_members_text(
                 member_rows, all_member_usernames, user_subcommunities,
                 recent_posts_map, viewer_username=username, query_text=message, _v=_v,
+                preordered_usernames=ordered_usernames,
             )
 
             parent_name = community_names.get(community_id, '')
@@ -16682,14 +16780,14 @@ RULES:
                 if role in ('user', 'assistant') and content:
                     grok_input.append({"role": role, "content": content})
         grok_input.append({"role": "user", "content": f"(Background context about me — use only if relevant to my request):\n{enriched_user_profile}\n\nMy request: {message}\n\nCommunity members:\n{members_text}"})
-        response = client.responses.create(
-            model=GROK_MODEL_FAST,
-            input=grok_input,
-            max_output_tokens=800, temperature=0.5
+        ai_response, recommended, _model_used = _run_networking_completion(
+            client,
+            prompt_input=grok_input,
+            member_names=member_names,
+            context_label="steve_match",
         )
-        ai_response = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
-        if not ai_response: ai_response = "I couldn't find matching members. Try refining your request."
-        recommended = _extract_recommended_usernames(ai_response, member_names)
+        if not ai_response:
+            ai_response = "I couldn't find matching members. Try refining your request."
         _record_recommendations_background(recommended, username, community_id, context=message)
         ai_response = inject_member_mentions(ai_response, member_names)
         ai_response = _sanitize_networking_response_mentions(ai_response, member_names)
@@ -16711,6 +16809,12 @@ def api_networking_steve_auto_match():
     if not XAI_API_KEY:
         return jsonify({'success': False, 'error': 'AI service not available'}), 503
     try:
+        from backend.services.networking_retrieval import (
+            fuse_roster,
+            semantic_candidates,
+            structured_candidates,
+        )
+
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
@@ -16749,7 +16853,7 @@ def api_networking_steve_auto_match():
             if requester_profile_ctx:
                 enriched_user_profile += f"\nAI insight: {requester_profile_ctx}"
 
-            c.execute(f"SELECT DISTINCT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, u.professional_about FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
+            c.execute(f"SELECT DISTINCT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, p.location, u.professional_about FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
             member_rows = c.fetchall()
             all_member_usernames = [str(_v(r, 0)) for r in member_rows]
             member_names = [(str(_v(r, 0)), str(_v(r, 1))) for r in member_rows]
@@ -16773,10 +16877,30 @@ def api_networking_steve_auto_match():
                 pass
 
             # For auto_match the "query" is the requester's own profile context
+            structured_ids = structured_candidates(member_rows, enriched_user_profile, _v)
+            semantic_ids = semantic_candidates(
+                enriched_user_profile,
+                all_member_usernames,
+                k_recall=NETWORKING_ANN_RECALL_CAP,
+                k_final=NETWORKING_PROMPT_MEMBER_CAP,
+            )
+            ordered_usernames = fuse_roster(
+                structured_ids,
+                semantic_ids,
+                cap=NETWORKING_PROMPT_MEMBER_CAP,
+            )
+            logger.info(
+                "Steve networking retrieval mode=auto structured=%s semantic=%s fused=%s model=%s",
+                len(structured_ids),
+                len(semantic_ids),
+                len(ordered_usernames),
+                STEVE_NETWORKING_MODEL,
+            )
             members_text = _networking_build_members_text(
                 member_rows, all_member_usernames, user_subcommunities,
                 recent_posts_map, viewer_username=username,
                 query_text=enriched_user_profile, _v=_v,
+                preordered_usernames=ordered_usernames,
             )
 
             parent_name = community_names.get(community_id, '')
@@ -16788,10 +16912,8 @@ def api_networking_steve_auto_match():
 
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
-        response = client.responses.create(
-            model=GROK_MODEL_FAST,
-            input=[
-                {"role": "system", "content": f"""You are Steve, a friendly and helpful networking assistant inside a private professional network. You speak like a knowledgeable friend — warm, concise, and natural. Never sound like a database or a computer.
+        auto_input = [
+            {"role": "system", "content": f"""You are Steve, a friendly and helpful networking assistant inside a private professional network. You speak like a knowledgeable friend — warm, concise, and natural. Never sound like a database or a computer.
 
 COMMUNITY STRUCTURE:
 {hierarchy_ctx}
@@ -16829,13 +16951,16 @@ RULES:
 - ON-PLATFORM COHORTS (CRITICAL): A roster line may include "Shared cohorts with requester (C-Point, verified):" for cohorts both people are in. If that segment is ABSENT for someone, you MUST NOT state or imply they belong to any named C-Point cohort or sub-community. Never infer cohort membership from geography, job, or AI insight alone.
 - C-POINT COMMUNITY PRIVACY: Do not name on-platform C-Point communities the requester does not share. External affiliations only when clearly grounded in roster text — never as a substitute for verified cohort lines.
 - Be concise and friendly."""},
-                {"role": "user", "content": f"My profile:\n{enriched_user_profile}\n\nCommunity members:\n{members_text}\n\nPlease suggest my best networking matches."}
-            ],
-            max_output_tokens=800, temperature=0.5
+            {"role": "user", "content": f"My profile:\n{enriched_user_profile}\n\nCommunity members:\n{members_text}\n\nPlease suggest my best networking matches."}
+        ]
+        ai_response, recommended, _model_used = _run_networking_completion(
+            client,
+            prompt_input=auto_input,
+            member_names=member_names,
+            context_label="steve_auto_match",
         )
-        ai_response = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
-        if not ai_response: ai_response = "I couldn't generate matches. Please try again."
-        recommended = _extract_recommended_usernames(ai_response, member_names)
+        if not ai_response:
+            ai_response = "I couldn't generate matches. Please try again."
         _record_recommendations_background(recommended, username, community_id, context='auto_match')
         ai_response = inject_member_mentions(ai_response, member_names)
         ai_response = _sanitize_networking_response_mentions(ai_response, member_names)
