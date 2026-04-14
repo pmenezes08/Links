@@ -62,11 +62,6 @@ export default function ChatThread(){
   // Scroll state - reset when switching chats
   const userHasScrolledRef = useRef<boolean>(false)
   const hasScrolledToBottomRef = useRef(false)
-  
-  useEffect(() => {
-    userHasScrolledRef.current = false
-    hasScrolledToBottomRef.current = false
-  }, [username])
 
   // Detect mobile device
   useEffect(() => {
@@ -182,6 +177,22 @@ export default function ChatThread(){
   const [showScrollDown, setShowScrollDown] = useState(false)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
+
+  // Reset peer-scoped state when switching DM threads (fixes stale since_id, wrong-thread poll merge, cache bleed)
+  useEffect(() => {
+    if (!username) return
+    userHasScrolledRef.current = false
+    hasScrolledToBottomRef.current = false
+    lastVisibleMsgKeyRef.current = null
+    lastKnownMessageIdRef.current = 0
+    pollCountRef.current = 0
+    idBridgeRef.current.tempToServer.clear()
+    idBridgeRef.current.serverToTemp.clear()
+    recentOptimisticRef.current.clear()
+    pendingDeletions.current.clear()
+    setOtherUserId('')
+    setMessages([])
+  }, [username])
   
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
@@ -753,6 +764,15 @@ export default function ChatThread(){
           })
           setHasMoreMessages(!!msgResponse.has_more)
           lastFetchTime.current = Date.now()
+
+          let maxServerId = 0
+          for (const m of msgResponse.messages) {
+            const mid = typeof m.id === 'number' ? m.id : parseInt(String(m.id), 10)
+            if (!Number.isNaN(mid) && mid > maxServerId) maxServerId = mid
+          }
+          if (maxServerId > 0) {
+            lastKnownMessageIdRef.current = maxServerId
+          }
           
           // Cache the messages for next time
           if (chatCacheKey) {
