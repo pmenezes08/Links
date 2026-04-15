@@ -56,6 +56,7 @@ def execute_job(job: Dict[str, Any], *, triggered_by_username: str) -> Dict[str,
                 community_id=int(job["community_id"]),
                 content=result.content,
                 source_links=result.source_links,
+                append_sources=result.append_sources,
             )
         else:
             target_username = result.target_username or job.get("target_username")

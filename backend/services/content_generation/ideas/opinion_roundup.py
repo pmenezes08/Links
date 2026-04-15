@@ -385,5 +385,6 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
         delivery_channel="feed_post",
         content=format_response_links(body),
         source_links=ordered_links,
+        append_sources=False,
         meta={"topic": topic, "featured_video_url": featured_video_url, **topic_meta},
     )

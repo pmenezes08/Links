@@ -60,6 +60,7 @@ class IdeaExecutionResult:
     delivery_channel: DeliveryChannel
     content: str
     source_links: List[str] = field(default_factory=list)
+    append_sources: bool = True
     meta: Dict[str, Any] = field(default_factory=dict)
     target_username: Optional[str] = None
 

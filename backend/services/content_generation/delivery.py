@@ -45,8 +45,15 @@ def _source_label(url: str, fallback_index: int) -> str:
         return f"source {fallback_index}"
 
 
-def _append_sources(content: str, source_links: Optional[Iterable[str]]) -> str:
+def _append_sources(
+    content: str,
+    source_links: Optional[Iterable[str]],
+    *,
+    enabled: bool = True,
+) -> str:
     stripped = content.strip()
+    if not enabled:
+        return stripped
     if "\nSources\n" in stripped or stripped.endswith("\nSources"):
         return stripped
     links = [str(url).strip() for url in (source_links or []) if str(url).strip()]
@@ -64,11 +71,12 @@ def create_steve_feed_post(
     community_id: int,
     content: str,
     source_links: Optional[Iterable[str]] = None,
+    append_sources: bool = True,
 ) -> int:
     """Persist a new community feed post by Steve."""
     timestamp = datetime.utcnow()
     timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
-    final_content = _append_sources(content, source_links)
+    final_content = _append_sources(content, source_links, enabled=append_sources)
     with get_db_connection() as conn:
         c = conn.cursor()
         ensure_steve_user(c)
