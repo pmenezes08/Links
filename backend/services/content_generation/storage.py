@@ -83,7 +83,7 @@ def ensure_tables() -> None:
             """
             CREATE TABLE IF NOT EXISTS content_generation_runs (
                 id INT PRIMARY KEY AUTO_INCREMENT,
-                job_id INT NOT NULL,
+                job_id INT NULL,
                 idea_id VARCHAR(120) NOT NULL,
                 target_type VARCHAR(32) NOT NULL,
                 community_id INT NULL,
@@ -104,6 +104,81 @@ def ensure_tables() -> None:
         )
         _ensure_index(c, "content_generation_jobs", "idx_content_jobs_community", "community_id, created_at")
         _ensure_index(c, "content_generation_jobs", "idx_content_jobs_target_username", "target_username, created_at")
+        _ensure_index(c, "content_generation_runs", "idx_content_runs_job", "job_id, created_at")
+        _ensure_index(c, "content_generation_runs", "idx_content_runs_community", "community_id, created_at")
+        try:
+            conn.commit()
+        except Exception:
+            pass
+    _ensure_runs_job_id_nullable()
+
+
+def _ensure_runs_job_id_nullable() -> None:
+    """Migrate existing DBs so runs can outlive deleted jobs (nullable job_id)."""
+    if USE_MYSQL:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            try:
+                c.execute("ALTER TABLE content_generation_runs MODIFY job_id INT NULL")
+                try:
+                    conn.commit()
+                except Exception:
+                    pass
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+        return
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute("PRAGMA table_info(content_generation_runs)")
+        rows = c.fetchall() or []
+        job_notnull: Optional[int] = None
+        for row in rows:
+            name = row["name"] if hasattr(row, "keys") else row[1]
+            if name != "job_id":
+                continue
+            job_notnull = row["notnull"] if hasattr(row, "keys") else row[3]
+            break
+        if job_notnull is None or job_notnull == 0:
+            return
+        c.execute(
+            """
+            CREATE TABLE content_generation_runs_migration (
+                id INT PRIMARY KEY AUTOINCREMENT,
+                job_id INT NULL,
+                idea_id VARCHAR(120) NOT NULL,
+                target_type VARCHAR(32) NOT NULL,
+                community_id INT NULL,
+                target_username VARCHAR(191) NULL,
+                triggered_by_username VARCHAR(191) NOT NULL,
+                delivery_channel VARCHAR(32) NOT NULL,
+                status VARCHAR(32) NOT NULL DEFAULT 'running',
+                started_at TEXT NOT NULL,
+                finished_at TEXT NULL,
+                output_post_id INT NULL,
+                output_message_id INT NULL,
+                error TEXT NULL,
+                source_links_json TEXT NULL,
+                meta_json TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        c.execute(
+            """
+            INSERT INTO content_generation_runs_migration
+            SELECT id, job_id, idea_id, target_type, community_id, target_username,
+                   triggered_by_username, delivery_channel, status, started_at,
+                   finished_at, output_post_id, output_message_id, error,
+                   source_links_json, meta_json, created_at
+            FROM content_generation_runs
+            """
+        )
+        c.execute("DROP TABLE content_generation_runs")
+        c.execute("ALTER TABLE content_generation_runs_migration RENAME TO content_generation_runs")
         _ensure_index(c, "content_generation_runs", "idx_content_runs_job", "job_id, created_at")
         _ensure_index(c, "content_generation_runs", "idx_content_runs_community", "community_id, created_at")
         try:
@@ -398,12 +473,12 @@ def get_run(run_id: int) -> Optional[Dict[str, Any]]:
 
 
 def delete_job(job_id: int) -> bool:
-    """Delete a job and its run rows. Returns True if the job existed."""
+    """Delete a job. Run history is preserved (runs are detached from the job)."""
     if not get_job(job_id):
         return False
     with get_db_connection() as conn:
         c = conn.cursor()
-        c.execute("DELETE FROM content_generation_runs WHERE job_id = ?", (job_id,))
+        c.execute("UPDATE content_generation_runs SET job_id = NULL WHERE job_id = ?", (job_id,))
         c.execute("DELETE FROM content_generation_jobs WHERE id = ?", (job_id,))
         try:
             conn.commit()
@@ -452,15 +527,19 @@ def delete_all_runs() -> int:
 
 
 def delete_jobs_for_community(community_id: int) -> int:
-    """Delete all jobs (and their runs) for a community."""
+    """Delete all saved jobs for a community. Run history is preserved."""
     ensure_tables()
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute("SELECT id FROM content_generation_jobs WHERE community_id = ?", (community_id,))
         ids = [row["id"] if hasattr(row, "keys") else row[0] for row in (c.fetchall() or [])]
-        for jid in ids:
-            c.execute("DELETE FROM content_generation_runs WHERE job_id = ?", (jid,))
-            c.execute("DELETE FROM content_generation_jobs WHERE id = ?", (jid,))
+        if ids:
+            placeholders = ",".join(["?"] * len(ids))
+            c.execute(
+                f"UPDATE content_generation_runs SET job_id = NULL WHERE job_id IN ({placeholders})",
+                tuple(ids),
+            )
+        c.execute("DELETE FROM content_generation_jobs WHERE community_id = ?", (community_id,))
         try:
             conn.commit()
         except Exception:
@@ -469,11 +548,11 @@ def delete_jobs_for_community(community_id: int) -> int:
 
 
 def delete_all_jobs() -> None:
-    """Remove every job and run (admin maintenance)."""
+    """Remove every job definition (admin). Run history is preserved."""
     ensure_tables()
     with get_db_connection() as conn:
         c = conn.cursor()
-        c.execute("DELETE FROM content_generation_runs")
+        c.execute("UPDATE content_generation_runs SET job_id = NULL WHERE job_id IS NOT NULL")
         c.execute("DELETE FROM content_generation_jobs")
         try:
             conn.commit()

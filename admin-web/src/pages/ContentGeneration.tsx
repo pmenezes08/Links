@@ -24,7 +24,10 @@ function CollapsibleSection({
           onClick={() => setOpen(!open)}
           aria-expanded={open}
         >
-          <span className="text-muted text-xs shrink-0 w-5">{open ? '▼' : '▶'}</span>
+          <i
+            className={`fa-solid shrink-0 w-5 text-center text-[10px] text-muted ${open ? 'fa-chevron-down' : 'fa-chevron-right'}`}
+            aria-hidden
+          />
           <span className="font-medium">{title}</span>
         </button>
         {right}

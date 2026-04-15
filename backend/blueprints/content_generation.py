@@ -287,7 +287,7 @@ def delete_content_generation_run_api(run_id: int):
 @content_generation_bp.route("/api/content-generation/jobs", methods=["DELETE"])
 @_login_required
 def delete_content_generation_jobs_bulk_api():
-    """DELETE ?community_id=N&all=1 removes all jobs (and runs) for that community."""
+    """DELETE ?community_id=N&all=1 removes all saved jobs for that community (run history kept)."""
     ensure_tables()
     username = session["username"]
     community_id = request.args.get("community_id", type=int)
