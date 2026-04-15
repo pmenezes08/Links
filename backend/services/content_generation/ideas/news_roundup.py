@@ -5,6 +5,13 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from backend.services.community import fetch_community_names
+from backend.services.content_generation.ideas.roundup_format import (
+    collect_urls_from_sections,
+    filter_section_items,
+    merge_source_links,
+    normalize_image_prompts,
+    render_sections_markdown,
+)
 from backend.services.content_generation.llm import (
     NEWS_PUBLIC_DOMAINS,
     extract_links,
@@ -68,6 +75,18 @@ def _is_enabled(value: Any, *, default: bool = True) -> bool:
     return str(value).strip().lower() not in {"0", "false", "no", "off"}
 
 
+def _legacy_body(topic: str, result: Dict[str, Any]) -> str:
+    bullets = result.get("bullets") or []
+    bullet_text = "\n".join(f"- {str(item).strip()}" for item in bullets if str(item).strip())
+    intro = str(result.get("intro") or f"Here is Steve's latest news roundup on {topic}.").strip()
+    closing = str(result.get("closing") or "Let me know if you want a deeper dive into any of these stories.").strip()
+    body = f"**Steve's public news roundup: {topic}**\n\n{intro}"
+    if bullet_text:
+        body += f"\n\n{bullet_text}"
+    body += f"\n\n{closing}"
+    return body
+
+
 def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
     payload = job.get("payload") or {}
     topic_mode = str(payload.get("topic_mode") or "manual").strip().lower() or "manual"
@@ -105,40 +124,80 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
     allowed_list = ", ".join(sorted(domain for domain in NEWS_PUBLIC_DOMAINS if not domain.startswith("www.")))
     result = generate_web_search_json(
         system_prompt=(
-            "You are Steve, writing a concise community news roundup. "
+            "You are Steve, writing a scannable community news roundup with personality. "
             "Only use public, non-paywalled news sources from this allowlist: "
             f"{allowed_list}. "
-            "Return JSON with keys: intro, bullets, closing, source_links. "
-            "bullets must be an array of 2-4 short markdown bullet strings. "
-            "Do not include citation tags, XML-like markup, inline source markers, or raw URLs in intro/bullets/closing. "
-            "Keep each bullet to one short sentence focused on the key update. "
-            "source_links must be an array of the exact article URLs you used."
+            "Return JSON with keys: hook, sections, cta, source_links, image_prompts. "
+            "hook: 1-2 punchy sentences that grab attention (stronger than a dry intro). "
+            "sections: array of 3-5 objects, each with "
+            '"title" (short section heading that fits THIS topic — e.g. Economy, Policy, World, Tech, Science, Sports, Infrastructure — pick labels that match the story set, not a generic laundry list) '
+            'and "items" (array of 1-3 story objects per section). '
+            "Each story object must have: "
+            '"title" (short headline for the link text), '
+            '"url" (full https URL from the allowlist), '
+            '"published_date" (e.g. April 2025 or 2025-04-10), '
+            '"why_it_matters" (exactly one clear sentence), '
+            '"key_stat" (one striking number or fact, or empty string if none), '
+            '"steve_note" (optional one short line of light Steve-style color commentary, or empty string). '
+            "Keep sentences short; each story is one tight block. "
+            "cta: one line inviting replies — e.g. a question or \"What are you seeing locally?\" "
+            "Do not mention email newsletters or subscribing. "
+            "source_links: array of every article URL you used (must match allowlist). "
+            "image_prompts: array of 1-2 short English prompts for social/feed images (e.g. map + topic visual); no watermarks or logos of news brands."
         ),
         user_prompt=(
             f"Topic: {topic}\n"
-            "Write a community-friendly news update with clear takeaways. "
-            "Do not mention any paywalled article. Include only public sources. "
-            "Keep the intro to 1-2 sentences and the closing to one short line."
+            "Write a community-friendly news update. Lead with the hook, then grouped sections. "
+            "Every url in sections must appear in source_links. "
+            "Do not cite paywalled sources. No XML or citation tags in text fields."
         ),
+        max_output_tokens=3200,
+        temperature=0.35,
     )
-    links = filter_links(result.get("source_links") or [], NEWS_PUBLIC_DOMAINS)
-    if not links:
-        links = filter_links(extract_links(str(result)), NEWS_PUBLIC_DOMAINS)
+
+    filtered_sections = filter_section_items(result.get("sections"), NEWS_PUBLIC_DOMAINS)
+    image_prompts = normalize_image_prompts(result.get("image_prompts"))
+
+    if filtered_sections:
+        hook = str(result.get("hook") or "").strip()
+        if not hook:
+            hook = str(result.get("intro") or "").strip() or f"Here's what matters right now on **{topic}**."
+        cta = str(result.get("cta") or "").strip()
+        if not cta:
+            cta = str(result.get("closing") or "").strip() or "What's your take — agree, or seeing something different?"
+        section_md = render_sections_markdown(filtered_sections)
+        parts = [
+            f"**Steve's public news roundup: {topic}**",
+            "",
+            hook,
+            "",
+            section_md,
+            "",
+            cta,
+        ]
+        if image_prompts:
+            parts.extend(["", "---", "**Suggested image prompts**"])
+            for i, prompt in enumerate(image_prompts, 1):
+                parts.append(f"{i}. {prompt}")
+        body = "\n".join(parts)
+        section_urls = collect_urls_from_sections(filtered_sections)
+        links = merge_source_links(result.get("source_links"), section_urls, NEWS_PUBLIC_DOMAINS)
+    else:
+        body = _legacy_body(topic, result)
+        links = filter_links(result.get("source_links") or [], NEWS_PUBLIC_DOMAINS)
+        if not links:
+            links = filter_links(extract_links(str(result)), NEWS_PUBLIC_DOMAINS)
+
     if not links:
         raise ValueError("No valid public news source links were returned")
 
-    bullets = result.get("bullets") or []
-    bullet_text = "\n".join(f"- {str(item).strip()}" for item in bullets if str(item).strip())
-    intro = str(result.get("intro") or f"Here is Steve's latest news roundup on {topic}.").strip()
-    closing = str(result.get("closing") or "Let me know if you want a deeper dive into any of these stories.").strip()
-    body = f"**Steve's public news roundup: {topic}**\n\n{intro}"
-    if bullet_text:
-        body += f"\n\n{bullet_text}"
-    body += f"\n\n{closing}"
+    topic_meta["roundup_format"] = "structured" if filtered_sections else "legacy"
+    if image_prompts:
+        topic_meta["image_prompts"] = image_prompts
+
     return IdeaExecutionResult(
         delivery_channel="feed_post",
         content=format_response_links(body),
         source_links=links,
         meta={"topic": topic, **topic_meta},
     )
-

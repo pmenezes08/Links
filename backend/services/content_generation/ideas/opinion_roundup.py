@@ -5,6 +5,13 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from backend.services.community import fetch_community_names
+from backend.services.content_generation.ideas.roundup_format import (
+    collect_urls_from_sections,
+    filter_section_items,
+    merge_source_links,
+    normalize_image_prompts,
+    render_sections_markdown,
+)
 from backend.services.content_generation.llm import (
     OPINION_PUBLIC_DOMAINS,
     extract_links,
@@ -80,6 +87,35 @@ def _is_enabled(value: Any, *, default: bool = True) -> bool:
     return str(value).strip().lower() not in {"0", "false", "no", "off"}
 
 
+def _legacy_opinion_body(
+    topic: str,
+    result: Dict[str, Any],
+    *,
+    featured_video_url: str,
+    featured_video_title: str,
+    featured_video_summary: str,
+) -> str:
+    bullets = result.get("bullets") or []
+    bullet_text = "\n".join(f"- {str(item).strip()}" for item in bullets if str(item).strip())
+    intro = str(result.get("intro") or f"Here are a few public opinion takes on {topic}.").strip()
+    closing = str(result.get("closing") or "These are viewpoints rather than straight reporting, so use them as perspective pieces.").strip()
+
+    body_parts: List[str] = [f"**Steve's opinion roundup: {topic}**", intro]
+
+    if featured_video_url:
+        body_parts.append(f"**Featured discussion:** {featured_video_title}")
+        body_parts.append(f"[Watch on YouTube]({featured_video_url})")
+        if featured_video_summary:
+            body_parts.append(featured_video_summary)
+
+    if bullet_text:
+        body_parts.append("**Key takeaways**")
+        body_parts.append(bullet_text)
+
+    body_parts.append(f"_{closing}_")
+    return "\n\n".join(part for part in body_parts if part)
+
+
 def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
     payload = job.get("payload") or {}
     topic_mode = str(payload.get("topic_mode") or "manual").strip().lower() or "manual"
@@ -117,61 +153,105 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
     curated_list = ", ".join(CURATED_VIDEO_SOURCES)
     result = generate_web_search_json(
         system_prompt=(
-            "You are Steve, writing an opinion roundup for a community feed. "
+            "You are Steve, writing an opinion roundup for a community feed — lively, scannable, and clearly labeled as perspective. "
             "Use public opinion sources from Medium plus reputable YouTube discussions from this allowlist: "
             f"{curated_list}. "
-            "Return JSON with keys: intro, featured_video_title, featured_video_url, featured_video_summary, bullets, closing, source_links. "
-            "bullets must be an array of 2-4 short markdown bullet strings describing main takeaways or viewpoints, not hard news facts. "
-            "Do not include citation tags, XML-like markup, inline source markers, or raw URLs in intro/bullets/closing/featured_video_summary. "
-            "If no good YouTube discussion is available, return an empty featured_video_url."
+            "Return JSON with keys: hook, featured_video_title, featured_video_url, featured_video_summary, "
+            "sections, cta, source_links, image_prompts. "
+            "hook: 1-2 sentences that pull readers in. "
+            "featured_video_*: one optional YouTube from the allowlist; if none fits, use empty string for featured_video_url. "
+            "sections: array of 2-4 objects with "
+            '"title" (section heading that fits the topic — e.g. Debates, Long reads, Creator takes) '
+            'and "items" (array of story objects). '
+            "Each story: title, url (https on allowlist), published_date, why_it_matters (one sentence), "
+            "key_stat (optional), steve_note (optional light commentary). "
+            "Opinion tone: label debate and disagreement where relevant. "
+            "cta: one engagement line — question or invitation to share experience. Do not mention subscribing or newsletters. "
+            "source_links: all URLs used. "
+            "image_prompts: 1-2 short prompts for images (e.g. podcast mic + topic mood). "
+            "Do not put raw URLs inside hook/featured_video_summary text; URLs belong in url fields and source_links."
         ),
         user_prompt=(
             f"Topic: {topic}\n"
-            "Find a mix of public Medium commentary and, when available, one reputable YouTube discussion from the allowed shows. "
-            "Label the content clearly as opinion/discussion, not breaking news. "
-            "Keep the intro to 1-2 sentences, bullets short, and the closing to one short line. "
-            "The featured video summary should explain what is discussed and why it matters."
+            "Blend Medium commentary with at most one featured YouTube from the allowed shows when it adds value. "
+            "Group into sections. Every item url must be in source_links."
         ),
+        max_output_tokens=3200,
+        temperature=0.35,
     )
-    links = filter_links(result.get("source_links") or [], OPINION_PUBLIC_DOMAINS)
-    if not links:
-        links = filter_links(extract_links(str(result)), OPINION_PUBLIC_DOMAINS)
-    if not links:
-        raise ValueError("No valid public opinion source links were returned")
 
-    bullets = result.get("bullets") or []
-    bullet_text = "\n".join(f"- {str(item).strip()}" for item in bullets if str(item).strip())
-    intro = str(result.get("intro") or f"Here are a few public opinion takes on {topic}.").strip()
-    closing = str(result.get("closing") or "These are viewpoints rather than straight reporting, so use them as perspective pieces.").strip()
     featured_video_url = str(result.get("featured_video_url") or "").strip()
+    if featured_video_url and not filter_links([featured_video_url], OPINION_PUBLIC_DOMAINS):
+        featured_video_url = ""
     featured_video_title = str(result.get("featured_video_title") or "Featured discussion").strip()
     featured_video_summary = str(result.get("featured_video_summary") or "").strip()
 
-    body_parts: List[str] = [f"**Steve's opinion roundup: {topic}**", intro]
+    filtered_sections = filter_section_items(result.get("sections"), OPINION_PUBLIC_DOMAINS)
+    image_prompts = normalize_image_prompts(result.get("image_prompts"))
 
-    if featured_video_url:
-        body_parts.append(f"**Featured discussion:** {featured_video_title}")
-        body_parts.append(f"[Watch on YouTube]({featured_video_url})")
-        if featured_video_summary:
-            body_parts.append(featured_video_summary)
+    if filtered_sections:
+        hook = str(result.get("hook") or "").strip()
+        if not hook:
+            hook = str(result.get("intro") or "").strip() or f"A few takes worth reading on **{topic}**."
+        cta = str(result.get("cta") or "").strip()
+        if not cta:
+            cta = str(result.get("closing") or "").strip() or "Where do you land on this — and what changed your mind?"
+        section_md = render_sections_markdown(filtered_sections)
+        parts: List[str] = [
+            f"**Steve's opinion roundup: {topic}**",
+            "",
+            hook,
+            "",
+        ]
+        if featured_video_url:
+            parts.extend(
+                [
+                    f"**Featured discussion:** {featured_video_title}",
+                    f"[Watch on YouTube]({featured_video_url})",
+                ]
+            )
+            if featured_video_summary:
+                parts.append(featured_video_summary)
+            parts.append("")
+        parts.append(section_md)
+        parts.extend(["", cta])
+        if image_prompts:
+            parts.extend(["", "---", "**Suggested image prompts**"])
+            for i, prompt in enumerate(image_prompts, 1):
+                parts.append(f"{i}. {prompt}")
+        body = "\n".join(parts)
+        section_urls = collect_urls_from_sections(filtered_sections)
+        combined_urls = ([featured_video_url] if featured_video_url else []) + section_urls
+        links = merge_source_links(result.get("source_links"), combined_urls, OPINION_PUBLIC_DOMAINS)
+    else:
+        body = _legacy_opinion_body(
+            topic,
+            result,
+            featured_video_url=featured_video_url,
+            featured_video_title=featured_video_title,
+            featured_video_summary=featured_video_summary,
+        )
+        links = filter_links(result.get("source_links") or [], OPINION_PUBLIC_DOMAINS)
+        if not links:
+            links = filter_links(extract_links(str(result)), OPINION_PUBLIC_DOMAINS)
 
-    if bullet_text:
-        body_parts.append("**Key takeaways**")
-        body_parts.append(bullet_text)
-
-    body_parts.append(f"_{closing}_")
-    body = "\n\n".join(part for part in body_parts if part)
+    if not links:
+        raise ValueError("No valid public opinion source links were returned")
 
     ordered_links: List[str] = []
-    if featured_video_url:
+    if featured_video_url and featured_video_url in links:
         ordered_links.append(featured_video_url)
     for link in links:
         if link not in ordered_links:
             ordered_links.append(link)
+
+    topic_meta["roundup_format"] = "structured" if filtered_sections else "legacy"
+    if image_prompts:
+        topic_meta["image_prompts"] = image_prompts
+
     return IdeaExecutionResult(
         delivery_channel="feed_post",
         content=format_response_links(body),
         source_links=ordered_links,
         meta={"topic": topic, "featured_video_url": featured_video_url, **topic_meta},
     )
-
