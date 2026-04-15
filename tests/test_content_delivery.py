@@ -5,7 +5,7 @@ from backend.services.content_generation.delivery import _append_sources
 
 class TestContentDelivery(unittest.TestCase):
     def test_append_sources_can_be_disabled(self):
-        content = "Steve's opinion roundup: AI\n\nWhere do you land on this?"
+        content = "Welcome to this opinion roundup, brought to you by Steve.\n\n**Leave a comment:** Where do you land on this?"
         result = _append_sources(
             content,
             ["https://www.technologyreview.com/example"],

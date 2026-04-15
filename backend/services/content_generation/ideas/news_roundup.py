@@ -6,6 +6,8 @@ from typing import Any, Dict
 
 from backend.services.community import fetch_community_names
 from backend.services.content_generation.ideas.roundup_format import (
+    build_roundup_cta,
+    build_roundup_welcome,
     collect_urls_from_sections,
     default_min_publication_year,
     derive_sources_from_sections,
@@ -84,19 +86,22 @@ def _is_enabled(value: Any, *, default: bool = True) -> bool:
     return str(value).strip().lower() not in {"0", "false", "no", "off"}
 
 
-def _legacy_body(topic: str, result: Dict[str, Any]) -> str:
+def _legacy_body(topic: str, result: Dict[str, Any], job: Dict[str, Any]) -> str:
     bullets = result.get("bullets") or []
     bullet_text = "\n".join(f"• {str(item).strip()}" for item in bullets if str(item).strip())
     intro = strip_feed_markdown_emphasis(
-        str(result.get("intro") or f"Here is Steve's latest news roundup on {topic}.").strip()
+        str(result.get("intro") or "").strip()
     )
-    closing = strip_feed_markdown_emphasis(
-        str(result.get("closing") or "Let me know if you want a deeper dive into any of these stories.").strip()
+    raw_closing = strip_feed_markdown_emphasis(
+        str(result.get("closing") or "").strip() or "What stood out to you?"
     )
-    body = f"Steve's public news roundup: {topic}\n\n{intro}"
+    welcome = build_roundup_welcome("news", topic, job)
+    body = welcome
+    if intro:
+        body += f"\n\n{intro}"
     if bullet_text:
         body += f"\n\n{bullet_text}"
-    body += f"\n\n{closing}"
+    body += f"\n\n{build_roundup_cta(raw_closing)}"
     return body
 
 
@@ -158,7 +163,8 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             '"key_stat" (one striking number or fact, or empty string if none), '
             '"source_label" (short source line label for the SOURCES section, e.g. Portugal deficit cap). '
             "Keep the tone professional, concise, and natural. Avoid jokey asides, sarcasm, internet slang, or exaggerated personality. "
-            "cta: one line inviting replies — e.g. a question or \"What are you seeing locally?\" "
+            "cta: the discussion question only — e.g. \"What are you seeing locally?\" or \"Which story stood out to you?\" "
+            "Do not include a 'leave a comment' prefix — the app adds that automatically. "
             "Do not mention email newsletters or subscribing. "
             'sources: array of objects with "title", "outlet", "published_date", and "url" for the bottom SOURCES section. '
             "source_links: array of every article URL you used (must match allowlist). "
@@ -190,17 +196,19 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             hook = strip_feed_markdown_emphasis(
                 str(result.get("intro") or "").strip() or f"Here is what matters right now on {topic}."
             )
-        cta = strip_feed_markdown_emphasis(str(result.get("cta") or "").strip())
-        if not cta:
-            cta = strip_feed_markdown_emphasis(
-                str(result.get("closing") or "").strip() or "What is your take on this?"
+        raw_cta = strip_feed_markdown_emphasis(str(result.get("cta") or "").strip())
+        if not raw_cta:
+            raw_cta = strip_feed_markdown_emphasis(
+                str(result.get("closing") or "").strip() or "What stood out to you?"
             )
+        cta = build_roundup_cta(raw_cta)
+        welcome = build_roundup_welcome("news", topic, job)
         section_md = render_sections_markdown(filtered_sections)
         if not structured_sources:
             structured_sources = derive_sources_from_sections(filtered_sections)
         sources_md = render_sources_section(structured_sources)
         parts = [
-            f"Steve's public news roundup: {topic}",
+            welcome,
             "",
             hook,
             "",
@@ -215,7 +223,7 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
         source_urls = [source.get("url", "") for source in structured_sources]
         links = merge_source_links(result.get("source_links"), section_urls + source_urls, NEWS_PUBLIC_DOMAINS)
     else:
-        body = _legacy_body(topic, result)
+        body = _legacy_body(topic, result, job)
         if structured_sources:
             body = f"{body}\n\n{render_sources_section(structured_sources)}"
         links = filter_links(result.get("source_links") or [], NEWS_PUBLIC_DOMAINS)

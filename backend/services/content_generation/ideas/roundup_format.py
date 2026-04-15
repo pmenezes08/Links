@@ -40,6 +40,52 @@ def strip_feed_markdown_emphasis(text: str) -> str:
     return s
 
 
+_CADENCE_LABELS: Dict[str, str] = {
+    "daily": "daily",
+    "weekly": "weekly",
+    "biweekly": "bi-weekly",
+    "bi-weekly": "bi-weekly",
+    "monthly": "monthly",
+}
+
+
+def cadence_label(job: Dict[str, Any]) -> str:
+    """Derive a human-readable frequency word from the job schedule."""
+    schedule = job.get("schedule") or {}
+    cadence = str(schedule.get("cadence") or "").strip().lower()
+    return _CADENCE_LABELS.get(cadence, "")
+
+
+def build_roundup_welcome(kind: str, topic: str, job: Dict[str, Any]) -> str:
+    """Build the welcome header + segue that opens every roundup post.
+
+    Returns two lines joined by newline:
+      Welcome to your {weekly} {kind} update, brought to you by Steve.
+      {segue about the topic}
+    """
+    freq = cadence_label(job)
+    freq_part = f"your {freq}" if freq else "this"
+
+    if kind == "news":
+        header = f"Welcome to {freq_part} news update, brought to you by Steve."
+        segue = f"Here is what is making headlines on {topic} — and why it matters."
+    else:
+        header = f"Welcome to {freq_part} opinion roundup, brought to you by Steve."
+        segue = f"One perspective on {topic} worth considering — see what you think."
+    return f"{header}\n{segue}"
+
+
+def build_roundup_cta(question: str) -> str:
+    """Wrap an LLM-generated question into a bold call-to-action.
+
+    The **bold** prefix is intentional — the client renders it as <strong>.
+    """
+    q = (question or "").strip()
+    if not q:
+        q = "What do you think?"
+    return f"**Leave a comment:** {q}"
+
+
 def default_min_publication_year() -> int:
     """Drop items older than ~3 calendar years when year is parseable."""
     return date.today().year - 3

@@ -7,6 +7,8 @@ from typing import Any, Dict, List
 
 from backend.services.community import fetch_community_names
 from backend.services.content_generation.ideas.roundup_format import (
+    build_roundup_cta,
+    build_roundup_welcome,
     collect_urls_from_sections,
     default_min_publication_year,
     filter_section_items,
@@ -152,6 +154,7 @@ def _is_enabled(value: Any, *, default: bool = True) -> bool:
 def _legacy_opinion_body(
     topic: str,
     result: Dict[str, Any],
+    job: Dict[str, Any],
     *,
     featured_video_url: str,
     featured_video_title: str,
@@ -160,16 +163,16 @@ def _legacy_opinion_body(
     bullets = result.get("bullets") or []
     bullet_text = "\n".join(f"• {str(item).strip()}" for item in bullets if str(item).strip())
     intro = strip_feed_markdown_emphasis(
-        str(result.get("intro") or f"Here is one public opinion piece worth reading on {topic}.").strip()
+        str(result.get("intro") or "").strip()
     )
-    closing = strip_feed_markdown_emphasis(
-        str(
-            result.get("closing")
-            or "This is perspective rather than straight reporting — use it as one angle to consider."
-        ).strip()
+    raw_closing = strip_feed_markdown_emphasis(
+        str(result.get("closing") or "").strip() or "Where do you land on this?"
     )
 
-    body_parts: List[str] = [f"Steve's opinion roundup: {topic}", intro]
+    welcome = build_roundup_welcome("opinion", topic, job)
+    body_parts: List[str] = [welcome]
+    if intro:
+        body_parts.append(intro)
 
     if featured_video_url:
         body_parts.append(f"Featured discussion: {md_link_title(featured_video_title)}")
@@ -181,7 +184,7 @@ def _legacy_opinion_body(
         body_parts.append("KEY TAKEAWAYS")
         body_parts.append(bullet_text)
 
-    body_parts.append(closing)
+    body_parts.append(build_roundup_cta(raw_closing))
     return "\n\n".join(part for part in body_parts if part)
 
 
@@ -244,7 +247,8 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             "That story: title, url (https on allowlist), outlet, published_date, why_it_matters (one sentence), "
             "key_stat (optional), source_label (short label for validation only). "
             "Opinion tone: thoughtful, professional, and clearly labeled as perspective. Avoid jokey asides and exaggerated AI voice. "
-            "cta: one engagement line only — a question or invitation. "
+            "cta: the discussion question only — e.g. \"Where do you land on this?\" or \"Does this match your experience?\" "
+            "Do not include a 'leave a comment' prefix — the app adds that automatically. "
             "Do not mention subscribing, newsletters, or a Sources list. Do not append URLs, domain names, or footnotes to cta. "
             'sources: optional validation array — the feed does not render a Sources list. '
             "source_links: all URLs used (written article URL, or YouTube URL, never both). "
@@ -290,10 +294,13 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
         raw = str(result.get("cta") or "").strip()
         if not raw:
             raw = str(result.get("closing") or "").strip() or "Where do you land on this?"
-        return _strip_opinion_cta_noise(strip_feed_markdown_emphasis(raw))
+        question = _strip_opinion_cta_noise(strip_feed_markdown_emphasis(raw))
+        return build_roundup_cta(question)
 
     roundup_format = "legacy"
     body = ""
+
+    welcome = build_roundup_welcome("opinion", topic, job)
 
     if filtered_sections:
         hook = strip_feed_markdown_emphasis(str(result.get("hook") or "").strip())
@@ -307,7 +314,7 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             link_after_opinion=True,
         )
         parts: List[str] = [
-            f"Steve's opinion roundup: {topic}",
+            welcome,
             "",
             hook,
             "",
@@ -331,7 +338,7 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
         featured_video_url = fv
         safe_title = md_link_title(featured_video_title)
         parts = [
-            f"Steve's opinion roundup: {topic}",
+            welcome,
             "",
             hook,
             "",
@@ -355,6 +362,7 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
         body = _legacy_opinion_body(
             topic,
             result,
+            job,
             featured_video_url=fv_legacy,
             featured_video_title=featured_video_title,
             featured_video_summary=featured_video_summary,

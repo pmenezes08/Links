@@ -152,6 +152,27 @@ function SmartLink({
 }
 
 /**
+ * Converts **bold** markdown markers in string nodes to <strong> elements.
+ */
+export function applyBoldEmphasis(nodes: React.ReactNode[]): React.ReactNode[] {
+  const out: React.ReactNode[] = []
+  nodes.forEach((node, i) => {
+    if (typeof node !== 'string') { out.push(node); return }
+    const parts = node.split(/\*\*(.+?)\*\*/g)
+    if (parts.length === 1) { out.push(node); return }
+    parts.forEach((part, j) => {
+      if (!part) return
+      if (j % 2 === 1) {
+        out.push(<strong key={`b-${i}-${j}`} className="font-semibold">{part}</strong>)
+      } else {
+        out.push(part)
+      }
+    })
+  })
+  return out
+}
+
+/**
  * Colorizes @mentions in an array of React nodes.
  * When onMentionClick is provided, mentions become clickable (e.g. navigate to public profile).
  */
@@ -230,7 +251,7 @@ export function renderTextWithSourceLinks(
     
     if (effectiveStart > lastIndex) {
       const textBefore = text.substring(lastIndex, effectiveStart)
-      parts.push(...colorizeMentions(preserveRichTextNewlines(textBefore), onMentionClick))
+      parts.push(...colorizeMentions(applyBoldEmphasis(preserveRichTextNewlines(textBefore)), onMentionClick))
     }
     
     let url: string
@@ -276,10 +297,9 @@ export function renderTextWithSourceLinks(
     lastIndex = match.index + match[0].length
   }
   
-  // Add remaining text
   if (lastIndex < text.length) {
     const remainingText = text.substring(lastIndex)
-    parts.push(...colorizeMentions(preserveRichTextNewlines(remainingText), onMentionClick))
+    parts.push(...colorizeMentions(applyBoldEmphasis(preserveRichTextNewlines(remainingText)), onMentionClick))
   }
   
   return parts.length > 0 ? <>{parts}</> : text
@@ -305,13 +325,11 @@ export function renderTextWithLinks(
   let match
   
   while ((match = markdownRegex.exec(text)) !== null) {
-    // Add text before the link (with mentions colorized)
     if (match.index > lastIndex) {
       const textBefore = text.substring(lastIndex, match.index)
-      parts.push(...colorizeMentions(preserveRichTextNewlines(textBefore), onMentionClick))
+      parts.push(...colorizeMentions(applyBoldEmphasis(preserveRichTextNewlines(textBefore)), onMentionClick))
     }
     
-    // Add the link as a clickable element
     const displayText = match[1]
     const url = match[2]
     const fullUrl = url.startsWith('http') ? url : `https://${url}`
@@ -328,10 +346,9 @@ export function renderTextWithLinks(
     lastIndex = match.index + match[0].length
   }
   
-  // Add remaining text (with mentions colorized)
   if (lastIndex < text.length) {
     const remainingText = text.substring(lastIndex)
-    parts.push(...colorizeMentions(preserveRichTextNewlines(remainingText), onMentionClick))
+    parts.push(...colorizeMentions(applyBoldEmphasis(preserveRichTextNewlines(remainingText)), onMentionClick))
   }
   
   return parts.length > 0 ? parts : text
