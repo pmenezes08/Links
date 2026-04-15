@@ -10,10 +10,17 @@ from flask import Blueprint, jsonify, request, session
 
 from backend.services.content_generation import (
     create_job,
+    delete_all_jobs,
+    delete_all_runs,
+    delete_job,
+    delete_jobs_for_community,
+    delete_run,
+    delete_runs_for_community,
     ensure_tables,
     execute_job,
     get_descriptor,
     get_job,
+    get_run,
     list_ideas,
     list_jobs,
     list_runs,
@@ -76,6 +83,13 @@ def _default_job_title(descriptor, payload: Dict[str, Any], *, community_id: Opt
 def _job_accessible(username: str, job: Dict[str, Any]) -> bool:
     if job["target_type"] == "community":
         return can_manage_community_jobs(username, int(job.get("community_id") or 0))
+    return can_manage_member_jobs(username)
+
+
+def _run_accessible(username: str, run: Dict[str, Any]) -> bool:
+    cid = run.get("community_id")
+    if cid:
+        return can_manage_community_jobs(username, int(cid))
     return can_manage_member_jobs(username)
 
 
@@ -240,6 +254,68 @@ def update_content_generation_job_api(job_id: int):
     return jsonify({"success": True, "job": updated})
 
 
+@content_generation_bp.route("/api/content-generation/jobs/<int:job_id>", methods=["DELETE"])
+@_login_required
+def delete_content_generation_job_api(job_id: int):
+    ensure_tables()
+    username = session["username"]
+    job = get_job(job_id)
+    if not job:
+        return jsonify({"success": False, "error": "Job not found"}), 404
+    if not _job_accessible(username, job):
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    if not delete_job(job_id):
+        return jsonify({"success": False, "error": "Failed to delete job"}), 500
+    return jsonify({"success": True})
+
+
+@content_generation_bp.route("/api/content-generation/runs/<int:run_id>", methods=["DELETE"])
+@_login_required
+def delete_content_generation_run_api(run_id: int):
+    ensure_tables()
+    username = session["username"]
+    run = get_run(run_id)
+    if not run:
+        return jsonify({"success": False, "error": "Run not found"}), 404
+    if not _run_accessible(username, run):
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    if not delete_run(run_id):
+        return jsonify({"success": False, "error": "Run not found"}), 404
+    return jsonify({"success": True})
+
+
+@content_generation_bp.route("/api/content-generation/jobs", methods=["DELETE"])
+@_login_required
+def delete_content_generation_jobs_bulk_api():
+    """DELETE ?community_id=N&all=1 removes all jobs (and runs) for that community."""
+    ensure_tables()
+    username = session["username"]
+    community_id = request.args.get("community_id", type=int)
+    delete_all = str(request.args.get("all") or "").strip().lower() in {"1", "true", "yes"}
+    if not community_id or not delete_all:
+        return jsonify({"success": False, "error": "community_id and all=1 are required"}), 400
+    if not can_manage_community_jobs(username, community_id):
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    removed = delete_jobs_for_community(community_id)
+    return jsonify({"success": True, "removed": removed})
+
+
+@content_generation_bp.route("/api/content-generation/runs", methods=["DELETE"])
+@_login_required
+def delete_content_generation_runs_bulk_api():
+    """DELETE ?community_id=N&all=1 removes all run history for that community."""
+    ensure_tables()
+    username = session["username"]
+    community_id = request.args.get("community_id", type=int)
+    delete_all = str(request.args.get("all") or "").strip().lower() in {"1", "true", "yes"}
+    if not community_id or not delete_all:
+        return jsonify({"success": False, "error": "community_id and all=1 are required"}), 400
+    if not can_manage_community_jobs(username, community_id):
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    removed = delete_runs_for_community(community_id)
+    return jsonify({"success": True, "removed": removed})
+
+
 @content_generation_bp.route("/api/content-generation/jobs/<int:job_id>/run", methods=["POST"])
 @_login_required
 def run_content_generation_job_api(job_id: int):
@@ -355,6 +431,65 @@ def admin_create_content_generation_jobs_api():
     except Exception as exc:
         logger.error("Admin failed to create content generation jobs: %s", exc, exc_info=True)
         return jsonify({"success": False, "error": "Failed to create jobs"}), 500
+
+
+@content_generation_bp.route("/api/admin/content-generation/jobs", methods=["DELETE"])
+@_login_required
+def admin_delete_all_content_generation_jobs_api():
+    ensure_tables()
+    username = session["username"]
+    if not is_app_admin(username):
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    delete_all = str(request.args.get("all") or "").strip().lower() in {"1", "true", "yes"}
+    if not delete_all:
+        return jsonify({"success": False, "error": "all=1 is required"}), 400
+    delete_all_jobs()
+    return jsonify({"success": True})
+
+
+@content_generation_bp.route("/api/admin/content-generation/jobs/<int:job_id>", methods=["DELETE"])
+@_login_required
+def admin_delete_content_generation_job_api(job_id: int):
+    ensure_tables()
+    username = session["username"]
+    if not is_app_admin(username):
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    job = get_job(job_id)
+    if not job:
+        return jsonify({"success": False, "error": "Job not found"}), 404
+    if not delete_job(job_id):
+        return jsonify({"success": False, "error": "Failed to delete job"}), 500
+    return jsonify({"success": True})
+
+
+@content_generation_bp.route("/api/admin/content-generation/runs/<int:run_id>", methods=["DELETE"])
+@_login_required
+def admin_delete_content_generation_run_api(run_id: int):
+    ensure_tables()
+    username = session["username"]
+    if not is_app_admin(username):
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    if not delete_run(run_id):
+        return jsonify({"success": False, "error": "Run not found"}), 404
+    return jsonify({"success": True})
+
+
+@content_generation_bp.route("/api/admin/content-generation/runs", methods=["DELETE"])
+@_login_required
+def admin_delete_content_generation_runs_bulk_api():
+    ensure_tables()
+    username = session["username"]
+    if not is_app_admin(username):
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    community_id = request.args.get("community_id", type=int)
+    delete_all = str(request.args.get("all") or "").strip().lower() in {"1", "true", "yes"}
+    if community_id:
+        removed = delete_runs_for_community(community_id)
+        return jsonify({"success": True, "removed": removed})
+    if delete_all:
+        removed = delete_all_runs()
+        return jsonify({"success": True, "removed": removed})
+    return jsonify({"success": False, "error": "Use all=1 or community_id=N"}), 400
 
 
 @content_generation_bp.route("/api/admin/content-generation/jobs/<int:job_id>/run", methods=["POST"])

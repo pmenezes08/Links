@@ -378,6 +378,109 @@ def finish_run(
             pass
 
 
+def get_run(run_id: int) -> Optional[Dict[str, Any]]:
+    ensure_tables()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT id, job_id, idea_id, target_type, community_id, target_username,
+                   triggered_by_username, delivery_channel, status, started_at,
+                   finished_at, output_post_id, output_message_id, error,
+                   source_links_json, meta_json, created_at
+            FROM content_generation_runs
+            WHERE id = ?
+            """,
+            (run_id,),
+        )
+        row = c.fetchone()
+    return _run_from_row(row) if row else None
+
+
+def delete_job(job_id: int) -> bool:
+    """Delete a job and its run rows. Returns True if the job existed."""
+    if not get_job(job_id):
+        return False
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM content_generation_runs WHERE job_id = ?", (job_id,))
+        c.execute("DELETE FROM content_generation_jobs WHERE id = ?", (job_id,))
+        try:
+            conn.commit()
+        except Exception:
+            pass
+    return True
+
+
+def delete_run(run_id: int) -> bool:
+    """Delete a single run row. Returns True if a row was removed."""
+    ensure_tables()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM content_generation_runs WHERE id = ?", (run_id,))
+        try:
+            conn.commit()
+        except Exception:
+            pass
+        return bool(getattr(c, "rowcount", 0))
+
+
+def delete_runs_for_community(community_id: int) -> int:
+    """Delete all run history rows for a community."""
+    ensure_tables()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM content_generation_runs WHERE community_id = ?", (community_id,))
+        try:
+            conn.commit()
+        except Exception:
+            pass
+        return int(getattr(c, "rowcount", 0) or 0)
+
+
+def delete_all_runs() -> int:
+    """Delete every run row (admin maintenance)."""
+    ensure_tables()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM content_generation_runs")
+        try:
+            conn.commit()
+        except Exception:
+            pass
+        return int(getattr(c, "rowcount", 0) or 0)
+
+
+def delete_jobs_for_community(community_id: int) -> int:
+    """Delete all jobs (and their runs) for a community."""
+    ensure_tables()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id FROM content_generation_jobs WHERE community_id = ?", (community_id,))
+        ids = [row["id"] if hasattr(row, "keys") else row[0] for row in (c.fetchall() or [])]
+        for jid in ids:
+            c.execute("DELETE FROM content_generation_runs WHERE job_id = ?", (jid,))
+            c.execute("DELETE FROM content_generation_jobs WHERE id = ?", (jid,))
+        try:
+            conn.commit()
+        except Exception:
+            pass
+        return len(ids)
+
+
+def delete_all_jobs() -> None:
+    """Remove every job and run (admin maintenance)."""
+    ensure_tables()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM content_generation_runs")
+        c.execute("DELETE FROM content_generation_jobs")
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+
 def list_runs(
     *,
     community_id: Optional[int] = None,

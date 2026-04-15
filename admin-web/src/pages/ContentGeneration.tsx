@@ -1,5 +1,38 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api, apiJson, apiPost } from '../utils/api'
+
+const SECTION = 'rounded-xl border border-accent/25 bg-black p-5 shadow-[inset_0_0_0_1px_rgba(77,182,172,0.06)]'
+
+function CollapsibleSection({
+  title,
+  defaultOpen = true,
+  right,
+  children,
+}: {
+  title: string
+  defaultOpen?: boolean
+  right?: ReactNode
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <section className={SECTION}>
+      <div className="flex items-start justify-between gap-2 mb-0">
+        <button
+          type="button"
+          className="flex flex-1 items-center gap-2 text-left min-w-0"
+          onClick={() => setOpen(!open)}
+          aria-expanded={open}
+        >
+          <span className="text-muted text-xs shrink-0 w-5">{open ? '▼' : '▶'}</span>
+          <span className="font-medium">{title}</span>
+        </button>
+        {right}
+      </div>
+      {open ? <div className="mt-3">{children}</div> : null}
+    </section>
+  )
+}
 
 type IdeaField = {
   name: string
@@ -123,6 +156,7 @@ export default function ContentGeneration() {
   const [payload, setPayload] = useState<Record<string, string>>({})
   const [schedule, setSchedule] = useState<ScheduleState>(defaultSchedule)
   const [jobFilter, setJobFilter] = useState<'all' | 'community' | 'member'>('all')
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const selectedIdea = useMemo(
     () => ideas.find(idea => idea.idea_id === selectedIdeaId) || null,
@@ -237,6 +271,70 @@ export default function ContentGeneration() {
     }
   }
 
+  async function deleteJob(jobId: number) {
+    if (!window.confirm('Delete this job? This cannot be undone.')) return
+    setDeletingId(`job-${jobId}`)
+    try {
+      const resp = await api(`/api/admin/content-generation/jobs/${jobId}`, { method: 'DELETE' })
+      const json = await resp.json().catch(() => null)
+      if (!resp.ok || !json?.success) throw new Error(json?.error || 'Failed to delete job')
+      setFeedback({ type: 'success', text: 'Job deleted.' })
+      await loadData()
+    } catch (error) {
+      setFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Failed to delete job.' })
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  async function deleteAllJobs() {
+    if (!window.confirm('Delete ALL jobs platform-wide? This cannot be undone.')) return
+    setDeletingId('jobs-all')
+    try {
+      const resp = await api('/api/admin/content-generation/jobs?all=1', { method: 'DELETE' })
+      const json = await resp.json().catch(() => null)
+      if (!resp.ok || !json?.success) throw new Error(json?.error || 'Failed to delete jobs')
+      setFeedback({ type: 'success', text: 'All jobs removed.' })
+      await loadData()
+    } catch (error) {
+      setFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Failed to delete jobs.' })
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  async function deleteRun(runId: number) {
+    if (!window.confirm('Remove this run from history?')) return
+    setDeletingId(`run-${runId}`)
+    try {
+      const resp = await api(`/api/admin/content-generation/runs/${runId}`, { method: 'DELETE' })
+      const json = await resp.json().catch(() => null)
+      if (!resp.ok || !json?.success) throw new Error(json?.error || 'Failed to delete run')
+      setFeedback({ type: 'success', text: 'Run removed.' })
+      await loadData()
+    } catch (error) {
+      setFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Failed to delete run.' })
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  async function deleteAllRuns() {
+    if (!window.confirm('Delete ALL run history platform-wide? This cannot be undone.')) return
+    setDeletingId('runs-all')
+    try {
+      const resp = await api('/api/admin/content-generation/runs?all=1', { method: 'DELETE' })
+      const json = await resp.json().catch(() => null)
+      if (!resp.ok || !json?.success) throw new Error(json?.error || 'Failed to delete runs')
+      setFeedback({ type: 'success', text: `Removed ${json.removed ?? 0} run(s).` })
+      await loadData()
+    } catch (error) {
+      setFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Failed to delete runs.' })
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div>
@@ -252,11 +350,15 @@ export default function ContentGeneration() {
 
       <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
         <div className="space-y-5">
-          <section className="bg-surface-2 border border-white/10 rounded-xl p-5">
-            <div className="mb-4">
-              <div className="font-medium">Create jobs</div>
-              <p className="text-xs text-white/50 mt-1">Bulk community creation fans out into separate single-community jobs. Choose a fixed topic or let Steve select a timely one automatically.</p>
-            </div>
+          <CollapsibleSection
+            title="Create jobs"
+            right={
+              <p className="text-xs text-white/50 max-w-[200px] text-right hidden sm:block">
+                Bulk create; fixed or auto topic.
+              </p>
+            }
+          >
+            <p className="text-xs text-white/50 mb-4">Bulk community creation fans out into separate single-community jobs. Choose a fixed topic or let Steve select a timely one automatically.</p>
             {loading ? (
               <div className="text-sm text-white/60">Loading...</div>
             ) : (
@@ -441,13 +543,12 @@ export default function ContentGeneration() {
                 </button>
               </form>
             )}
-          </section>
+          </CollapsibleSection>
 
-          <section className="bg-surface-2 border border-white/10 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="font-medium">Ideas library</div>
-              <div className="text-xs text-white/50">{ideas.length} ideas</div>
-            </div>
+          <CollapsibleSection
+            title="Ideas library"
+            right={<div className="text-xs text-white/50">{ideas.length} ideas</div>}
+          >
             <div className="space-y-3">
               {ideas.map(idea => (
                 <div key={idea.idea_id} className="rounded-lg border border-white/10 p-3 bg-black/30">
@@ -459,24 +560,41 @@ export default function ContentGeneration() {
                 </div>
               ))}
             </div>
-          </section>
+          </CollapsibleSection>
         </div>
 
         <div className="space-y-5">
-          <section className="bg-surface-2 border border-white/10 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="font-medium">Jobs</div>
-              <select
-                value={jobFilter}
-                onChange={e => setJobFilter(e.target.value as typeof jobFilter)}
-                className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs focus:border-accent focus:outline-none"
-              >
-                <option value="all">All targets</option>
-                <option value="community">Community</option>
-                <option value="member">Member</option>
-              </select>
-            </div>
-            <div className="space-y-3 max-h-[420px] overflow-y-auto">
+          <CollapsibleSection
+            title="Jobs"
+            right={
+              <div className="flex items-center gap-2 shrink-0">
+                {filteredJobs.length > 0 && (
+                  <button
+                    type="button"
+                    className="text-[11px] text-red-300 hover:text-red-200 disabled:opacity-50"
+                    disabled={deletingId !== null}
+                    onClick={e => {
+                      e.stopPropagation()
+                      void deleteAllJobs()
+                    }}
+                  >
+                    Delete all
+                  </button>
+                )}
+                <select
+                  value={jobFilter}
+                  onClick={e => e.stopPropagation()}
+                  onChange={e => setJobFilter(e.target.value as typeof jobFilter)}
+                  className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs focus:border-accent focus:outline-none"
+                >
+                  <option value="all">All targets</option>
+                  <option value="community">Community</option>
+                  <option value="member">Member</option>
+                </select>
+              </div>
+            }
+          >
+            <div className="space-y-3">
               {filteredJobs.length === 0 ? (
                 <div className="text-sm text-white/60">No jobs yet.</div>
               ) : filteredJobs.map(job => (
@@ -510,15 +628,39 @@ export default function ContentGeneration() {
                     >
                       {job.status === 'active' ? 'Pause' : 'Activate'}
                     </button>
+                    <button
+                      type="button"
+                      disabled={deletingId !== null}
+                      onClick={() => deleteJob(job.id)}
+                      className="px-3 py-1.5 rounded-lg border border-red-500/30 text-xs text-red-300 hover:bg-red-500/10 disabled:opacity-50"
+                    >
+                      {deletingId === `job-${job.id}` ? '…' : 'Delete'}
+                    </button>
                   </div>
                 </div>
               ))}
             </div>
-          </section>
+          </CollapsibleSection>
 
-          <section className="bg-surface-2 border border-white/10 rounded-xl p-5">
-            <div className="font-medium mb-3">Recent runs</div>
-            <div className="space-y-3 max-h-[360px] overflow-y-auto">
+          <CollapsibleSection
+            title="Recent runs"
+            right={
+              runs.length > 0 ? (
+                <button
+                  type="button"
+                  className="text-[11px] text-red-300 hover:text-red-200 disabled:opacity-50 shrink-0"
+                  disabled={deletingId !== null}
+                  onClick={e => {
+                    e.stopPropagation()
+                    void deleteAllRuns()
+                  }}
+                >
+                  Delete all
+                </button>
+              ) : null
+            }
+          >
+            <div className="space-y-3">
               {runs.length === 0 ? (
                 <div className="text-sm text-white/60">No runs yet.</div>
               ) : runs.map(run => (
@@ -541,10 +683,20 @@ export default function ContentGeneration() {
                     </div>
                   )}
                   {run.error && <div className="text-[11px] text-red-300 mt-2">{run.error}</div>}
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      type="button"
+                      disabled={deletingId !== null}
+                      onClick={() => deleteRun(run.id)}
+                      className="text-[11px] text-red-300/90 hover:text-red-200 disabled:opacity-50"
+                    >
+                      {deletingId === `run-${run.id}` ? '…' : 'Remove'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
-          </section>
+          </CollapsibleSection>
         </div>
       </div>
     </div>
