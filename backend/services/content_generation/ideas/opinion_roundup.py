@@ -342,7 +342,7 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             "",
             hook,
             "",
-            "THE PIECE",
+            "**The Article**",
             "",
             f"• {safe_title}",
         ]

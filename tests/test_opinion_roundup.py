@@ -40,7 +40,7 @@ class TestOpinionRoundup(unittest.TestCase):
             featured_video_title="",
             featured_video_summary="",
         )
-        self.assertTrue(body.startswith("Welcome to your weekly opinion roundup"))
+        self.assertTrue(body.startswith("Welcome to your weekly opinion roundup, brought to you by Steve! [FA_STAR]"))
 
     def test_legacy_opinion_body_welcome_without_cadence(self):
         body = _legacy_opinion_body(
@@ -51,7 +51,7 @@ class TestOpinionRoundup(unittest.TestCase):
             featured_video_title="",
             featured_video_summary="",
         )
-        self.assertTrue(body.startswith("Welcome to this opinion roundup"))
+        self.assertTrue(body.startswith("Welcome to this opinion roundup, brought to you by Steve! [FA_STAR]"))
 
 
 if __name__ == "__main__":

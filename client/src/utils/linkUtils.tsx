@@ -173,6 +173,28 @@ export function applyBoldEmphasis(nodes: React.ReactNode[]): React.ReactNode[] {
 }
 
 /**
+ * Replaces special tokens like [FA_STAR] with Font Awesome icons.
+ * Used for roundup welcome messages to add a star after "Steve!".
+ */
+export function replaceFaIcons(nodes: React.ReactNode[]): React.ReactNode[] {
+  const out: React.ReactNode[] = []
+  nodes.forEach((node, i) => {
+    if (typeof node !== 'string') { out.push(node); return }
+    const parts = node.split(/(\[FA_STAR\])/g)
+    if (parts.length === 1) { out.push(node); return }
+    parts.forEach((part, j) => {
+      if (!part) return
+      if (part === '[FA_STAR]') {
+        out.push(<i key={`fa-${i}-${j}`} className="fa-solid fa-star text-yellow-400 ml-1 align-middle" />)
+      } else {
+        out.push(part)
+      }
+    })
+  })
+  return out
+}
+
+/**
  * Colorizes @mentions in an array of React nodes.
  * When onMentionClick is provided, mentions become clickable (e.g. navigate to public profile).
  */
@@ -251,7 +273,7 @@ export function renderTextWithSourceLinks(
     
     if (effectiveStart > lastIndex) {
       const textBefore = text.substring(lastIndex, effectiveStart)
-      parts.push(...colorizeMentions(applyBoldEmphasis(preserveRichTextNewlines(textBefore)), onMentionClick))
+      parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(textBefore))), onMentionClick))
     }
     
     let url: string
@@ -299,7 +321,7 @@ export function renderTextWithSourceLinks(
   
   if (lastIndex < text.length) {
     const remainingText = text.substring(lastIndex)
-    parts.push(...colorizeMentions(applyBoldEmphasis(preserveRichTextNewlines(remainingText)), onMentionClick))
+    parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(remainingText))), onMentionClick))
   }
   
   return parts.length > 0 ? <>{parts}</> : text
@@ -327,7 +349,7 @@ export function renderTextWithLinks(
   while ((match = markdownRegex.exec(text)) !== null) {
     if (match.index > lastIndex) {
       const textBefore = text.substring(lastIndex, match.index)
-      parts.push(...colorizeMentions(applyBoldEmphasis(preserveRichTextNewlines(textBefore)), onMentionClick))
+      parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(textBefore))), onMentionClick))
     }
     
     const displayText = match[1]
@@ -348,7 +370,7 @@ export function renderTextWithLinks(
   
   if (lastIndex < text.length) {
     const remainingText = text.substring(lastIndex)
-    parts.push(...colorizeMentions(applyBoldEmphasis(preserveRichTextNewlines(remainingText)), onMentionClick))
+    parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(remainingText))), onMentionClick))
   }
   
   return parts.length > 0 ? parts : text

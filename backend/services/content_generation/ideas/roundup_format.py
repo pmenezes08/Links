@@ -59,20 +59,20 @@ def cadence_label(job: Dict[str, Any]) -> str:
 def build_roundup_welcome(kind: str, topic: str, job: Dict[str, Any]) -> str:
     """Build the welcome header + segue that opens every roundup post.
 
-    Returns two lines joined by newline:
-      Welcome to your {weekly} {kind} update, brought to you by Steve.
+    Returns two lines joined by two newlines (paragraph break):
+      Welcome to your {weekly} {kind} roundup, brought to you by Steve!
       {segue about the topic}
     """
     freq = cadence_label(job)
     freq_part = f"your {freq}" if freq else "this"
 
     if kind == "news":
-        header = f"Welcome to {freq_part} news update, brought to you by Steve."
-        segue = f"Here is what is making headlines on {topic} — and why it matters."
+        header = f"Welcome to {freq_part} news update, brought to you by Steve! [FA_STAR]"
+        segue = f"Today we will be discussing what is making headlines on {topic}. See what you think."
     else:
-        header = f"Welcome to {freq_part} opinion roundup, brought to you by Steve."
-        segue = f"One perspective on {topic} worth considering — see what you think."
-    return f"{header}\n{segue}"
+        header = f"Welcome to {freq_part} opinion roundup, brought to you by Steve! [FA_STAR]"
+        segue = f"Today we will be discussing one perspective on {topic}. See what you think."
+    return f"{header}\n\n{segue}"
 
 
 def build_roundup_cta(question: str) -> str:
@@ -255,7 +255,7 @@ def format_story_item(item: Dict[str, Any]) -> str:
         lines.append(wim)
     stat = strip_feed_markdown_emphasis(str(item.get("key_stat") or "").strip())
     if stat:
-        lines.append(f"Key stat: {stat}")
+        lines.append(f"**Key stat:** {stat}")
     return "\n\n".join(line for line in lines if line).strip()
 
 
@@ -299,7 +299,7 @@ def take_first_opinion_article(sections: List[Dict[str, Any]]) -> List[Dict[str,
         items = sec.get("items") or []
         if not items:
             continue
-        title = str(sec.get("title") or "").strip() or "THE PIECE"
+        title = str(sec.get("title") or "").strip() or "**The Article**"
         return [{"title": title, "items": [items[0]]}]
     return []
 
