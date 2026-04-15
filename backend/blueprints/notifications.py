@@ -666,6 +666,38 @@ def mark_notification_read(notification_id: int):
         return jsonify({"success": False, "error": "Server error"}), 500
 
 
+@notifications_bp.route("/api/notifications/mark-community-read", methods=["POST"], endpoint="mark_community_notifications_read")
+@_login_required
+def mark_community_notifications_read():
+    """Mark all community_post notifications for a specific community as read."""
+    username = session["username"]
+    payload = request.get_json(silent=True) or {}
+    community_id = payload.get("community_id")
+    if not community_id:
+        return jsonify({"success": False, "error": "community_id required"}), 400
+    try:
+        community_id = int(community_id)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "invalid community_id"}), 400
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                """
+                UPDATE notifications
+                SET is_read = 1
+                WHERE user_id = ? AND community_id = ? AND type = 'community_post' AND is_read = 0
+                """,
+                (username, community_id),
+            )
+            conn.commit()
+        return jsonify({"success": True})
+    except Exception as exc:
+        current_app.logger.error("Error marking community notifications as read: %s", exc)
+        return jsonify({"success": False, "error": "Server error"}), 500
+
+
 @notifications_bp.route("/api/notifications/mark-all-read", methods=["POST"], endpoint="mark_all_notifications_read")
 @_login_required
 def mark_all_notifications_read():

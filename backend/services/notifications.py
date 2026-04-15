@@ -153,6 +153,21 @@ def fanout_community_post_notifications(
 
         for member in members:
             try:
+                c.execute(
+                    f"SELECT 1 FROM user_muted_communities WHERE username={placeholder} AND community_id={placeholder}",
+                    (member, community_id),
+                )
+                if c.fetchone():
+                    continue
+            except Exception as muted_err:
+                logger.warning(
+                    "muted community lookup failed for %s in %s: %s",
+                    member,
+                    community_id,
+                    muted_err,
+                )
+
+            try:
                 create_notification(
                     member,
                     author_username,
@@ -168,21 +183,6 @@ def fanout_community_post_notifications(
                     "community post notify db error to %s: %s",
                     member,
                     notify_err,
-                )
-
-            try:
-                c.execute(
-                    f"SELECT 1 FROM user_muted_communities WHERE username={placeholder} AND community_id={placeholder}",
-                    (member, community_id),
-                )
-                if c.fetchone():
-                    continue
-            except Exception as muted_err:
-                logger.warning(
-                    "muted community lookup failed for %s in %s: %s",
-                    member,
-                    community_id,
-                    muted_err,
                 )
 
             try:

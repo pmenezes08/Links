@@ -24,6 +24,7 @@ import LazyVideo from '../components/LazyVideo'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 import { cacheFeed, getCachedFeed } from '../utils/offlineDb'
 import { useUserProfile } from '../contexts/UserProfileContext'
+import { useBadges } from '../contexts/BadgeContext'
 import { handleLogoutClick } from '../utils/logout'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
@@ -147,6 +148,7 @@ export default function CommunityFeed() {
   }
   const navigate = useNavigate()
   const routerLocation = useLocation()
+  const { refreshBadges } = useBadges()
   const deviceFeedCacheKey = useMemo(() => (community_id ? `community-feed:${community_id}` : null), [community_id])
   const [data, setData] = useState<any>(() => {
     if (deviceFeedCacheKey) {
@@ -297,6 +299,18 @@ export default function CommunityFeed() {
       .catch(() => {})
   }, [community_id])
 
+  useEffect(() => {
+    if (!community_id) return
+    fetch('/api/notifications/mark-community-read', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ community_id: Number(community_id) }),
+    })
+      .then(() => refreshBadges())
+      .catch(() => {})
+  }, [community_id, refreshBadges])
+
   // Poll for unread counts
   useEffect(() => {
     let mounted = true
@@ -373,13 +387,14 @@ export default function CommunityFeed() {
           })
           return { ...prev, posts: updated }
         })
+        refreshBadges()
       } else {
         recordedViewsRef.current.delete(postId)
       }
     } catch {
       recordedViewsRef.current.delete(postId)
     }
-  }, [])
+  }, [refreshBadges])
 
   const openStoryViewers = useCallback((storyId: number) => {
     if (!storyId) return

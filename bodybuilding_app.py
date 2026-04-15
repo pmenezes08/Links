@@ -31421,6 +31421,14 @@ def api_post_view():
                 logger.warning(f"Failed to record post view for {post_id}: {view_err}")
                 view_count = None
             try:
+                c.execute(
+                    "UPDATE notifications SET is_read = 1 WHERE user_id = ? AND post_id = ? AND is_read = 0",
+                    (username, post_id),
+                )
+                conn.commit()
+            except Exception as notif_err:
+                logger.debug("post_view notif clear for %s/%s: %s", username, post_id, notif_err)
+            try:
                 if community_id:
                     invalidate_community_cache(community_id)
             except Exception as e:
