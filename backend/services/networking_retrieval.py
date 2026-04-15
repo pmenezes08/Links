@@ -89,6 +89,16 @@ _FOLLOW_UP_EXACT = {
     "those people",
 }
 
+_PLANNER_LEAD_PHRASES = (
+    "looking for",
+    "trying to find",
+    "who should i meet",
+    "who do you recommend",
+    "anyone who",
+    "someone who",
+    "people who",
+)
+
 _INDUSTRY_ALIASES = {
     "tech": (
         "tech",
@@ -144,26 +154,11 @@ _INDUSTRY_ALIASES = {
     ),
 }
 
-_FACET_ALIAS_MAP = {
-    "geography": {
-        "us": ("us", "usa", "united states", "america"),
-        "usa": ("usa", "us", "united states", "america"),
-        "united states": ("united states", "usa", "us", "america"),
-        "uk": ("uk", "united kingdom", "britain", "england"),
-        "lisbon": ("lisbon", "lisboa", "portugal"),
-    },
-    "company_builder": {
-        "founder": ("founder", "cofounder", "co-founder", "built a company", "started a company", "started their own company"),
-        "created own company": ("created their own company", "created own company", "built their own company", "built a company", "founded a company", "started a company"),
-        "entrepreneur": ("entrepreneur", "startup founder", "cofounder", "business owner"),
-    },
-    "traits": {
-        "goal driven": ("goal driven", "goal-driven", "driven", "high agency", "ambitious"),
-        "collaborative": ("collaborative", "team player", "works well with others"),
-    },
-    "identity_life_stage": {
-        "parent": ("parent", "mother", "father", "mom", "dad", "kids", "children", "son", "daughter"),
-    },
+_GEOGRAPHY_ABBREVIATIONS = {
+    "us": ("us", "usa", "united states", "america"),
+    "usa": ("usa", "us", "united states", "america"),
+    "united states": ("united states", "usa", "us", "america"),
+    "uk": ("uk", "united kingdom", "britain", "england"),
 }
 
 
@@ -239,9 +234,21 @@ def _looks_like_follow_up(message: str) -> bool:
         return True
     if "@" in message:
         return True
-    if len(norm.split()) <= 5 and any(token in norm for token in ("more", "them", "him", "her", "hugo")):
+    if len(norm.split()) <= 5 and any(token in norm for token in ("more", "them", "him", "her", "those", "that")):
         return True
     return False
+
+
+def _structural_constraint_count(message: str) -> int:
+    text = str(message or "").strip().lower()
+    if not text:
+        return 0
+    count = 0
+    count += text.count(" and ")
+    count += text.count(",")
+    count += text.count(";")
+    count += sum(text.count(token) for token in (" who ", " that ", " with ", " in ", " from "))
+    return count
 
 
 def should_use_reasoning_planner(message: str, conversation_history: Any = None) -> bool:
@@ -254,13 +261,13 @@ def should_use_reasoning_planner(message: str, conversation_history: Any = None)
     if "@" in message:
         return True
     keyword_count = len(_query_keywords(norm))
-    if any(sep in message for sep in (",", ";")) and keyword_count >= 2:
+    if keyword_count >= 3 and any(norm.startswith(prefix) for prefix in _PLANNER_LEAD_PHRASES):
         return True
-    if " and " in norm and keyword_count >= 3:
+    if _structural_constraint_count(message) >= 2 and keyword_count >= 3:
         return True
-    if any(term in norm for term in ("goal driven", "goal-driven", "founder", "parent", "climbing", "golf")):
+    if keyword_count >= 7:
         return True
-    return keyword_count >= 6
+    return False
 
 
 def build_retrieval_query(message: str, conversation_history: Any = None, query_plan: dict[str, Any] | None = None) -> str:
@@ -332,11 +339,10 @@ def _plan_facet_terms(query_plan: dict[str, Any] | None, facet: str) -> list[str
 
 def _facet_terms_with_aliases(facet: str, terms: Sequence[str]) -> list[str]:
     expanded: list[str] = []
-    alias_map = _FACET_ALIAS_MAP.get(facet, {})
     for term in _normalize_phrase_list(list(terms)):
         expanded.append(term)
-        aliases = alias_map.get(term, ())
-        expanded.extend(_normalize_phrase_list(list(aliases)))
+        if facet == "geography":
+            expanded.extend(_normalize_phrase_list(list(_GEOGRAPHY_ABBREVIATIONS.get(term, ()))))
     return _dedupe_keep_order(expanded)
 
 
@@ -344,30 +350,47 @@ def _match_any_terms(blob: str, terms: Sequence[str]) -> int:
     return sum(1 for term in terms if _contains_term(blob, term))
 
 
-def _structured_candidates_from_plan(
+def _structured_match_details_from_plan(
     member_rows: Sequence[Any],
     getter: Callable[[Any, int], Any],
     *,
     retrieval_plan: dict[str, Any],
-    cap: int,
-) -> list[str]:
+    cap: int = 120,
+) -> dict[str, dict[str, Any]]:
     geography_terms = _facet_terms_with_aliases("geography", _plan_facet_terms(retrieval_plan, "geography"))
     industry_terms = _facet_terms_with_aliases("industry", _plan_facet_terms(retrieval_plan, "industry"))
     role_terms = _facet_terms_with_aliases("roles", _plan_facet_terms(retrieval_plan, "roles"))
-    builder_terms = _facet_terms_with_aliases("company_builder", _plan_facet_terms(retrieval_plan, "company_builder"))
-    trait_terms = _facet_terms_with_aliases("traits", _plan_facet_terms(retrieval_plan, "traits"))
-    interest_terms = _facet_terms_with_aliases("interests", _plan_facet_terms(retrieval_plan, "interests"))
-    experience_terms = _facet_terms_with_aliases("experiences", _plan_facet_terms(retrieval_plan, "experiences"))
-    identity_terms = _facet_terms_with_aliases("identity_life_stage", _plan_facet_terms(retrieval_plan, "identity_life_stage"))
-    hard_constraints = {term for term in _normalize_phrase_list(retrieval_plan.get("hard_constraints"))}
+    builder_terms = _normalize_phrase_list(_plan_facet_terms(retrieval_plan, "company_builder"))
+    trait_terms = _normalize_phrase_list(_plan_facet_terms(retrieval_plan, "traits"))
+    interest_terms = _normalize_phrase_list(_plan_facet_terms(retrieval_plan, "interests"))
+    experience_terms = _normalize_phrase_list(_plan_facet_terms(retrieval_plan, "experiences"))
+    identity_terms = _normalize_phrase_list(_plan_facet_terms(retrieval_plan, "identity_life_stage"))
+    hard_raw = retrieval_plan.get("hard_constraints") or []
+    if isinstance(hard_raw, str):
+        hard_raw = [hard_raw]
+    hard_constraints = {str(facet).strip() for facet in (hard_raw or []) if str(facet).strip()}
 
     has_any_requested_facet = any(
         (geography_terms, industry_terms, role_terms, builder_terms, trait_terms, interest_terms, experience_terms, identity_terms)
     )
     if not has_any_requested_facet:
-        return []
+        return {}
 
-    scored_rows: list[tuple[str, int, int, float]] = []
+    requested_facets = {
+        facet
+        for facet, terms in (
+            ("geography", geography_terms),
+            ("industry", industry_terms),
+            ("roles", role_terms),
+            ("company_builder", builder_terms),
+            ("traits", trait_terms),
+            ("interests", interest_terms),
+            ("experiences", experience_terms),
+            ("identity_life_stage", identity_terms),
+        )
+        if terms
+    }
+    details: dict[str, dict[str, Any]] = {}
     for row in member_rows:
         username = _row_value(row, getter, 0).strip()
         if not username:
@@ -416,10 +439,61 @@ def _structured_candidates_from_plan(
             + facet_matches["experiences"] * 3.5
             + facet_matches["identity_life_stage"] * 4.0
         )
-        scored_rows.append((username, hard_hits, len(matched_facets), score + total_hits * 0.25))
+        details[username] = {
+            "username": username,
+            "facet_matches": facet_matches,
+            "matched_facets": matched_facets,
+            "matched_facets_count": len(matched_facets),
+            "hard_hits": hard_hits,
+            "hard_misses": hard_misses,
+            "total_hits": total_hits,
+            "requested_facets": requested_facets,
+            "score": score + total_hits * 0.25,
+        }
+    if cap and len(details) > cap:
+        ranked = sorted(
+            details.values(),
+            key=lambda item: (-item["hard_hits"], -item["matched_facets_count"], -item["score"], item["username"]),
+        )[:cap]
+        return {item["username"]: item for item in ranked}
+    return details
 
-    ranked = sorted(scored_rows, key=lambda item: (-item[1], -item[2], -item[3], item[0]))
-    return [username for username, _, _, _ in ranked[:cap]]
+
+def _structured_candidates_from_plan(
+    member_rows: Sequence[Any],
+    getter: Callable[[Any, int], Any],
+    *,
+    retrieval_plan: dict[str, Any],
+    cap: int,
+) -> list[str]:
+    details = _structured_match_details_from_plan(
+        member_rows,
+        getter,
+        retrieval_plan=retrieval_plan,
+        cap=cap,
+    )
+    ranked = sorted(
+        details.values(),
+        key=lambda item: (-item["hard_hits"], -item["matched_facets_count"], -item["score"], item["username"]),
+    )
+    return [item["username"] for item in ranked[:cap]]
+
+
+def structured_match_details(
+    member_rows: Sequence[Any],
+    getter: Callable[[Any, int], Any],
+    *,
+    retrieval_plan: dict[str, Any] | None = None,
+    cap: int = 120,
+) -> dict[str, dict[str, Any]]:
+    if not retrieval_plan:
+        return {}
+    return _structured_match_details_from_plan(
+        member_rows,
+        getter,
+        retrieval_plan=retrieval_plan,
+        cap=cap,
+    )
 
 
 def _candidate_location_terms(member_rows: Sequence[Any], getter: Callable[[Any, int], Any]) -> list[str]:
@@ -603,6 +677,41 @@ def semantic_candidates(
     return [username for username, _ in ranked[:target_k]]
 
 
+def _tiered_matches_from_details(
+    ordered_usernames: Sequence[str],
+    *,
+    structured_details: dict[str, dict[str, Any]] | None = None,
+    forced_usernames: Sequence[str] = (),
+    semantic_ids: Sequence[str] = (),
+) -> dict[str, str]:
+    details = structured_details or {}
+    forced = set(_dedupe_keep_order([str(u).strip() for u in forced_usernames if str(u).strip()]))
+    semantic_rank = {u: idx for idx, u in enumerate(semantic_ids, start=1)}
+    tier_map: dict[str, str] = {}
+    for username in ordered_usernames:
+        info = details.get(username)
+        if not info:
+            if details:
+                tier_map[username] = "broader" if username in forced else "discard"
+            else:
+                tier_map[username] = "broader" if username in forced else "direct"
+            continue
+        requested_count = max(1, len(info.get("requested_facets") or []))
+        hard_constraints = info.get("hard_hits", 0) + info.get("hard_misses", 0)
+        direct_required = hard_constraints if hard_constraints > 0 else (2 if requested_count >= 2 else 1)
+        if info.get("hard_misses", 0) == 0 and info.get("matched_facets_count", 0) >= direct_required:
+            tier_map[username] = "direct"
+        elif info.get("matched_facets_count", 0) > 0:
+            tier_map[username] = "broader"
+        elif username in forced:
+            tier_map[username] = "broader"
+        elif semantic_rank.get(username, 10**9) <= 3 and requested_count <= 1:
+            tier_map[username] = "broader"
+        else:
+            tier_map[username] = "discard"
+    return tier_map
+
+
 def fuse_roster(
     structured_ids: Sequence[str],
     semantic_ids: Sequence[str],
@@ -655,4 +764,31 @@ def fuse_roster(
     if forced:
         final_ranked = forced + [u for u in final_ranked if u not in forced]
     return final_ranked[:cap]
+
+
+def tiered_roster(
+    structured_ids: Sequence[str],
+    semantic_ids: Sequence[str],
+    *,
+    cap: int = 40,
+    forced_usernames: Sequence[str] = (),
+    structured_details: dict[str, dict[str, Any]] | None = None,
+) -> tuple[list[str], dict[str, str]]:
+    """Return the ordered shortlist plus direct/broader/discard tiers."""
+    ordered = fuse_roster(
+        structured_ids,
+        semantic_ids,
+        cap=cap,
+        forced_usernames=forced_usernames,
+    )
+    tier_map = _tiered_matches_from_details(
+        ordered,
+        structured_details=structured_details,
+        forced_usernames=forced_usernames,
+        semantic_ids=semantic_ids,
+    )
+    directs = [u for u in ordered if tier_map.get(u) == "direct"]
+    broaders = [u for u in ordered if tier_map.get(u) == "broader"]
+    final_order = (directs + broaders)[:cap]
+    return final_order, {u: tier_map.get(u, "discard") for u in final_order}
 

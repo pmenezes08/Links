@@ -10,8 +10,10 @@ from backend.services.networking_retrieval import (
     fuse_roster,
     resolve_named_people,
     semantic_candidates,
+    structured_match_details,
     structured_candidates,
     should_use_reasoning_planner,
+    tiered_roster,
 )
 
 
@@ -124,29 +126,29 @@ class TestNetworkingRetrieval(unittest.TestCase):
             self.assertEqual(ranked, ["u3", "u1", "u2"])
 
     def test_should_use_reasoning_planner_for_complex_and_follow_up_queries(self):
-        history = [{"role": "user", "content": "I want to meet people who have lived in Lisbon"}]
+        history = [{"role": "user", "content": "I want to meet people with experience across Southern Europe"}]
         self.assertTrue(
             should_use_reasoning_planner(
-                "What about @hugosdurao?",
+                "What about @member123?",
                 history,
             )
         )
         self.assertTrue(
             should_use_reasoning_planner(
-                "I want to meet people who are goal driven and founded their own company in the US",
+                "Looking for people with swimming, volunteering, and writing interests",
                 [],
             )
         )
-        self.assertFalse(should_use_reasoning_planner("Who is in Miami?", []))
+        self.assertFalse(should_use_reasoning_planner("Who is in Austin?", []))
 
     def test_build_retrieval_query_merges_prior_user_context_for_follow_ups(self):
         history = [
-            {"role": "user", "content": "I want to meet people that have lived or live in Lisbon"},
-            {"role": "assistant", "content": "Here are a couple Lisbon-adjacent people."},
+            {"role": "user", "content": "I want to meet people with long experience in Southern Europe"},
+            {"role": "assistant", "content": "Here are a couple region-adjacent people."},
         ]
-        query = build_retrieval_query("What about @hugosdurao?", history)
-        self.assertIn("lived or live in Lisbon", query)
-        self.assertIn("@hugosdurao", query)
+        query = build_retrieval_query("What about @member123?", history)
+        self.assertIn("experience in Southern Europe", query)
+        self.assertIn("@member123", query)
 
     def test_resolve_named_people_supports_mentions_and_display_names(self):
         rows = [
@@ -219,8 +221,8 @@ class TestNetworkingRetrieval(unittest.TestCase):
         plan = {
             "facets": {
                 "geography": ["US"],
-                "company_builder": ["created own company"],
-                "traits": ["goal driven"],
+                "company_builder": ["founder"],
+                "traits": ["goal-driven"],
                 "interests": ["golf"],
                 "experiences": ["climbing"],
                 "identity_life_stage": ["parent"],
@@ -237,6 +239,69 @@ class TestNetworkingRetrieval(unittest.TestCase):
 
         self.assertEqual(ranked[0], "founder_parent")
         self.assertNotEqual(ranked[0], "founder_not_parent")
+
+    def test_tiered_roster_separates_direct_and_broader_matches(self):
+        rows = [
+            (
+                "direct_match",
+                "Direct Match",
+                "Parent founder based in Austin who golfs.",
+                "Austin",
+                "USA",
+                "Technology",
+                "Founder",
+                "BuildCo",
+                "golf",
+                "Austin, Texas",
+                "Founder and parent building software products.",
+            ),
+            (
+                "broader_match",
+                "Broader Match",
+                "Founder based in Austin who golfs.",
+                "Austin",
+                "USA",
+                "Technology",
+                "Founder",
+                "BuildCo",
+                "golf",
+                "Austin, Texas",
+                "Founder building software products.",
+            ),
+            (
+                "semantic_only",
+                "Semantic Only",
+                "Operator in Austin.",
+                "Austin",
+                "USA",
+                "Consumer",
+                "COO",
+                "OpsCo",
+                "",
+                "Austin, Texas",
+                "Experienced operator.",
+            ),
+        ]
+        plan = {
+            "facets": {
+                "geography": ["US"],
+                "company_builder": ["founder"],
+                "identity_life_stage": ["parent"],
+            },
+            "hard_constraints": ["geography", "company_builder", "identity_life_stage"],
+        }
+        details = structured_match_details(rows, self._getter, retrieval_plan=plan)
+        ordered, tiers = tiered_roster(
+            ["direct_match", "broader_match"],
+            ["semantic_only", "broader_match", "direct_match"],
+            structured_details=details,
+            cap=3,
+        )
+
+        self.assertEqual(ordered[0], "direct_match")
+        self.assertEqual(tiers["direct_match"], "direct")
+        self.assertEqual(tiers["broader_match"], "broader")
+        self.assertEqual(tiers["semantic_only"], "broader")
 
 
 if __name__ == "__main__":

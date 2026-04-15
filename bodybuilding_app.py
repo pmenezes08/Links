@@ -16436,7 +16436,7 @@ def _get_or_build_context(username: str, profile: dict, *, networking: bool = Fa
 
 def _networking_build_members_text(
     member_rows, all_member_usernames, user_subcommunities, recent_posts_map,
-    viewer_username, query_text=None, _v=None, preordered_usernames=None,
+    viewer_username, query_text=None, _v=None, preordered_usernames=None, match_tiers=None,
 ):
     """Build the members block for the Grok prompt.
 
@@ -16540,9 +16540,9 @@ def _networking_build_members_text(
             shared_subs = sorted({s for s in member_subs if s in viewer_cohorts})
             if shared_subs:
                 line += f" | Shared cohorts with requester (C-Point, verified): {', '.join(shared_subs)}"
-        recent = recent_posts_map.get(uname, [])
-        if recent:
-            line += f" | Recent posts: {'; '.join(recent)}"
+        tier = (match_tiers or {}).get(uname)
+        if tier in {"direct", "broader"}:
+            line += f" | Match tier: {tier}"
         profile_ctx = ctx_map.get(uname, '')
         if profile_ctx:
             line += f" | AI insight: {profile_ctx}"
@@ -16767,7 +16767,9 @@ def api_networking_steve_match():
             fuse_roster,
             resolve_named_people,
             semantic_candidates,
+            structured_match_details,
             structured_candidates,
+            tiered_roster,
         )
 
         with get_db_connection() as conn:
@@ -16827,6 +16829,12 @@ def api_networking_steve_match():
                 _v,
                 retrieval_plan=query_plan,
             )
+            structured_details = structured_match_details(
+                member_rows,
+                _v,
+                retrieval_plan=query_plan,
+                cap=NETWORKING_PROMPT_MEMBER_CAP,
+            )
             semantic_ids = semantic_candidates(
                 retrieval_query,
                 all_member_usernames,
@@ -16845,37 +16853,29 @@ def api_networking_steve_match():
                 cap=NETWORKING_PROMPT_MEMBER_CAP,
                 forced_usernames=forced_usernames,
             )
+            ordered_usernames, tiered_matches = tiered_roster(
+                structured_ids,
+                semantic_ids,
+                cap=NETWORKING_PROMPT_MEMBER_CAP,
+                forced_usernames=forced_usernames,
+                structured_details=structured_details,
+            )
             logger.info(
-                "Steve networking retrieval mode=match structured=%s semantic=%s fused=%s forced=%s model=%s",
+                "Steve networking retrieval mode=match structured=%s semantic=%s fused=%s direct=%s broader=%s forced=%s model=%s",
                 len(structured_ids),
                 len(semantic_ids),
                 len(ordered_usernames),
+                sum(1 for tier in tiered_matches.values() if tier == "direct"),
+                sum(1 for tier in tiered_matches.values() if tier == "broader"),
                 len(forced_usernames),
                 STEVE_NETWORKING_MODEL,
             )
 
-            recent_posts_map = {}
-            try:
-                c.execute(f"""
-                    SELECT username, content FROM posts
-                    WHERE community_id IN ({comm_ph}) AND LOWER(username) NOT IN ('admin','steve')
-                    AND timestamp > DATE_SUB(NOW(), INTERVAL 30 DAY)
-                    ORDER BY timestamp DESC LIMIT 200
-                """, tuple(community_ids))
-                for row in c.fetchall():
-                    pu = row['username'] if hasattr(row, 'keys') else row[0]
-                    pc = (row['content'] if hasattr(row, 'keys') else row[1]) or ''
-                    if pu not in recent_posts_map:
-                        recent_posts_map[pu] = []
-                    if len(recent_posts_map[pu]) < 2 and pc.strip():
-                        recent_posts_map[pu].append(pc.strip()[:80])
-            except Exception:
-                pass
-
             members_text = _networking_build_members_text(
                 member_rows, all_member_usernames, user_subcommunities,
-                recent_posts_map, viewer_username=username, query_text=retrieval_query, _v=_v,
+                {}, viewer_username=username, query_text=retrieval_query, _v=_v,
                 preordered_usernames=ordered_usernames,
+                match_tiers=tiered_matches,
             )
 
             parent_name = community_names.get(community_id, '')
@@ -16901,12 +16901,12 @@ DATA SOURCE (CRITICAL):
 
 HOW TO MATCH:
 1. Start with people who clearly match what the user asked for. If they ask about a location, lead with people connected to that location. If they ask about an industry, lead with people in that industry.
-2. DIRECT vs STRETCH: Recommend as primary matches ONLY people whose roster text (summary, traits, experiences, expertise, posts) shows a DIRECT connection to the ask. If you also want to suggest a looser angle (adjacent skill, metaphorical similarity, "same discipline" without the exact credential), put those in a SHORT clearly labeled follow-on such as "If you're open to a broader angle:" and state honestly that the link is indirect — never present a stretch as equivalent to a direct match.
+2. DIRECT vs STRETCH: Recommend as primary matches ONLY people whose roster text (summary, traits, experiences, expertise, or AI insight) shows a DIRECT connection to the ask. If you also want to suggest a looser angle, put those in a SHORT clearly labeled follow-on such as "If you're open to a broader angle:" and state honestly that the link is indirect — never present a stretch as equivalent to a direct match.
 3. AMBIGUOUS OR POLYSEMOUS ASKS: Short or vague requests, or words with multiple meanings (e.g. "climbing" = outdoor sport vs career ladder; "security"; "culture"; "capital"; "network"), require ONE focused clarifying question before you rely on stretched matches — unless prior messages in this thread or the roster already disambiguates.
 4. TRAIT AND PERSONALITY ASKS (e.g. "goal-driven", "collaborative"): Base recommendations ONLY on traits, values, identity, or explicit personality signals in the roster. Do NOT infer personality from job title, industry, or employer alone unless the roster explicitly supports it.
 5. VAGUE PEOPLE-FINDING ASKS (e.g. "military background", "someone in healthcare") without why they need them: Prefer ONE brief clarifying question (what they want to achieve or discuss) before listing many names — unless the ask is already specific enough to search.
 6. Sub-community (cohort) membership is MINOR background context, NOT a matching criterion. Being in the same sub-community as the requester should never be the reason you recommend someone. Match based on relevance to the request — skills, expertise, location, industry, interests. A shared sub-community is at most a tiebreaker between otherwise equal candidates.
-7. Use everything you know about each member — their background, company, role, location, interests, what they've posted, and any deeper context provided. The richer profile data is your best source of truth.
+7. Use everything you know about each member — their background, company, role, location, interests, and any deeper context provided. The richer profile data is your best source of truth.
 8. Never recommend someone with zero connection to the ask. If someone shares an interest in AI but the user asked about Lisbon, that person is not relevant.
 9. CRITICAL: Your recommendations must draw from the ENTIRE network, not cluster around members from any single sub-community or cohort. Ensure diversity across the full network.
 
@@ -16927,11 +16927,12 @@ LOAD BALANCING & QUALITY SIGNALS — VERY IMPORTANT:
 
 HOW TO RESPOND:
 - Lead with direct matches (if any): for each, give @username and a brief, natural rationale tied to evidence in the roster.
+- Respect internal roster labels: members tagged `Match tier: direct` belong in the main answer, while `Match tier: broader` belong only in a clearly labeled broader-angle follow-on.
 - If you asked a clarifying question (ambiguous ask or vague people search), you may answer with ONLY that question and no recommendations — that is helpful.
 - If you include stretch or optional matches, separate them clearly and label them as optional; do not use the same confident tone as for direct matches.
 - If someone is a strong match, say so confidently. If the match relies on a soft clue, say so plainly without sounding technical.
 - Quality over quantity. Recommend 1-5 people for direct matches. If only 1 person is directly relevant, recommend just that 1.
-- If nobody has a direct connection to the request, say so briefly and offer to help with a different angle or ask one clarifying question.
+- If nobody has a direct connection to the request, say so briefly and then, if useful, offer a short broader-angle section instead of stopping cold.
 
 RULES:
 - Only reference members from the provided list.
@@ -16941,6 +16942,7 @@ RULES:
 - ON-PLATFORM COHORTS (CRITICAL): A roster line may include "Shared cohorts with requester (C-Point, verified):" — those cohorts are verified in the database for BOTH people. If that segment is ABSENT for someone, you MUST NOT state or imply they belong to any named C-Point cohort or sub-community (e.g. do not say they are in "Kellogg Miami" unless that exact cohort appears there for them). Never infer cohort membership from geography, job, school brands, or AI insight alone.
 - C-POINT COMMUNITY PRIVACY: Do not name or imply on-platform C-Point communities the requester does not share. External / off-platform affiliations (e.g. university chapters not on C-Point) may only be mentioned when clearly grounded in the roster text — never as a substitute for verified C-Point cohort lines.
 - NEVER say "I won't recommend" or explain what you're choosing not to do. Focus on what you CAN offer.
+- Never quote or closely paraphrase private member-post wording. Use only safe, high-level evidence from the roster and AI insight.
 - This is a multi-turn conversation. Pay close attention to what was discussed previously. If the user asks a follow-up (e.g., "suggest a message to send him", "tell me more about her"), refer back to the person or topic from the prior exchange. Do NOT start a new unrelated recommendation unless the user explicitly asks for something different.
 - The requester's profile is provided as background context ONLY — so you know who they are and can craft better introductions. When the user makes a specific request, match ONLY based on what they asked for. Do NOT bring the requester's own interests, industry, or background into the recommendation rationale unless they explicitly ask for connections related to their own profile (e.g., "people in my industry", "people with similar interests"). If the user asks about race cars, recommend people connected to race cars — not people who share the requester's AI interests."""}
         ]
@@ -17046,24 +17048,6 @@ def api_networking_steve_auto_match():
             all_member_usernames = [str(_v(r, 0)) for r in member_rows]
             member_names = [(str(_v(r, 0)), str(_v(r, 1))) for r in member_rows]
 
-            recent_posts_map = {}
-            try:
-                c.execute(f"""
-                    SELECT username, content FROM posts
-                    WHERE community_id IN ({comm_ph}) AND LOWER(username) NOT IN ('admin','steve')
-                    AND timestamp > DATE_SUB(NOW(), INTERVAL 30 DAY)
-                    ORDER BY timestamp DESC LIMIT 200
-                """, tuple(community_ids))
-                for row in c.fetchall():
-                    pu = row['username'] if hasattr(row, 'keys') else row[0]
-                    pc = (row['content'] if hasattr(row, 'keys') else row[1]) or ''
-                    if pu not in recent_posts_map:
-                        recent_posts_map[pu] = []
-                    if len(recent_posts_map[pu]) < 2 and pc.strip():
-                        recent_posts_map[pu].append(pc.strip()[:80])
-            except Exception:
-                pass
-
             # For auto_match the "query" is the requester's own profile context
             structured_ids = structured_candidates(member_rows, enriched_user_profile, _v)
             semantic_ids = semantic_candidates(
@@ -17086,7 +17070,7 @@ def api_networking_steve_auto_match():
             )
             members_text = _networking_build_members_text(
                 member_rows, all_member_usernames, user_subcommunities,
-                recent_posts_map, viewer_username=username,
+                {}, viewer_username=username,
                 query_text=enriched_user_profile, _v=_v,
                 preordered_usernames=ordered_usernames,
             )
@@ -17114,7 +17098,7 @@ HOW TO MATCH:
 2. DIRECT vs STRETCH: Primary recommendations must be grounded in clear overlap (complementary skills, shared domains, geography, values, or explicit traits in the roster). If you suggest a looser fit, label it as optional and say honestly why it is indirect.
 3. TRAIT AND PERSONALITY: When highlighting character fit, use only traits or identity signals present in the roster — do not infer personality from job title or industry alone unless the text supports it.
 4. Sub-community (cohort) membership is MINOR background context, NOT a matching criterion. Being in the same cohort as the requester should never be the reason you recommend someone. Match based on relevance — skills, expertise, location, industry, interests. A shared sub-community is at most a tiebreaker between otherwise equal candidates.
-5. Use everything you know about each member — their background, company, role, location, interests, what they've posted, and any deeper context provided. The richer profile data is your best source of truth.
+5. Use everything you know about each member — their background, company, role, location, interests, and any deeper context provided. The richer profile data is your best source of truth.
 6. Every recommendation must have a clear rationale — why would these two people benefit from connecting? Ensure diversity across the full network.
 
 LOAD BALANCING & QUALITY SIGNALS — VERY IMPORTANT:
@@ -17138,6 +17122,7 @@ RULES:
 - NEVER reference internal data, field names, system terminology, or analysis methods. Don't say things like "AI insight", "profile data", "structured data", "recommendation count", or similar. Just speak naturally about what you know.
 - ON-PLATFORM COHORTS (CRITICAL): A roster line may include "Shared cohorts with requester (C-Point, verified):" for cohorts both people are in. If that segment is ABSENT for someone, you MUST NOT state or imply they belong to any named C-Point cohort or sub-community. Never infer cohort membership from geography, job, or AI insight alone.
 - C-POINT COMMUNITY PRIVACY: Do not name on-platform C-Point communities the requester does not share. External affiliations only when clearly grounded in roster text — never as a substitute for verified cohort lines.
+- Never quote or closely paraphrase private member-post wording. Use only safe, high-level evidence from the roster and AI insight.
 - Be concise and friendly."""},
             {"role": "user", "content": f"My profile:\n{enriched_user_profile}\n\nCommunity members:\n{members_text}\n\nPlease suggest my best networking matches."}
         ]

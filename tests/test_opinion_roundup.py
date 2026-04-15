@@ -1,0 +1,34 @@
+import unittest
+
+from backend.services.content_generation.ideas.opinion_roundup import (
+    _legacy_opinion_body,
+    _strip_opinion_cta_noise,
+)
+
+
+class TestOpinionRoundup(unittest.TestCase):
+    def test_strip_opinion_cta_noise_removes_sources_footer(self):
+        cleaned = _strip_opinion_cta_noise(
+            "How might this change your view?\n\nSources\n- technologyreview.com"
+        )
+        self.assertEqual(cleaned, "How might this change your view?")
+
+    def test_legacy_opinion_body_ends_cleanly_without_sources_section(self):
+        body = _legacy_opinion_body(
+            "AI",
+            {
+                "intro": "One recent take worth reading.",
+                "closing": "Where do you land on this?",
+                "bullets": [],
+            },
+            featured_video_url="https://www.youtube.com/watch?v=abcdefghijk",
+            featured_video_title="A strong discussion",
+            featured_video_summary="A recent conversation about the topic.",
+        )
+
+        self.assertNotIn("\nSources", body)
+        self.assertTrue(body.rstrip().endswith("Where do you land on this?"))
+
+
+if __name__ == "__main__":
+    unittest.main()

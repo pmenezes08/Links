@@ -328,15 +328,11 @@ def build_profile_chunks(profile: dict, username: str = None) -> Dict[str, str]:
     if (ob.get('reachOut') or '').strip():
         soc_parts.append(f"Wants reach-outs about: {ob['reachOut'].strip()}")
     public_posts = personal.get('publicPosts') or []
-    if public_posts:
-        recent = [p for p in public_posts if isinstance(p, dict) and p.get('relevance') in ('high', 'medium')][:4]
-        if recent:
-            soc_parts.append('Recent activity: ' + '; '.join(p.get('insight', '') for p in recent if p.get('insight')))
+    if any(isinstance(p, dict) and p.get('relevance') in ('high', 'medium') for p in public_posts):
+        soc_parts.append('Shows meaningful public activity on the platform.')
     authored = platform.get('authoredPosts') or []
     if authored:
-        snippets = [p.get('snippet', '')[:120] for p in authored[:5] if isinstance(p, dict) and p.get('snippet')]
-        if snippets:
-            soc_parts.append('C-Point posts: ' + '; '.join(snippets))
+        soc_parts.append('Has authored posts on the platform.')
     starters = analysis.get('conversationStarters') or []
     if starters:
         soc_parts.append('Conversation starters: ' + '; '.join(starters[:4]))
