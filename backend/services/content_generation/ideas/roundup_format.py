@@ -114,22 +114,30 @@ def derive_sources_from_sections(sections: List[Dict[str, Any]]) -> List[Dict[st
     return sources
 
 
+def _source_display_label(title: str, outlet: str, published_date: str) -> str:
+    """One line like: Title - Reuters, 14 Apr 2026 (used in Sources only, not body)."""
+    label = md_link_title(title) or "Source"
+    o = (outlet or "").strip()
+    d = (published_date or "").strip()
+    tail = ", ".join(part for part in [o, d] if part)
+    if tail:
+        return f"{label} - {tail}"
+    return label
+
+
 def format_story_item(item: Dict[str, Any]) -> str:
+    """Body text only: headline + context. Outlet/date stay in Sources, not repeated here."""
     title = md_link_title(item.get("title") or "")
     if not title:
         return ""
-    parts: List[str] = [f"• {title}"]
-    outlet = str(item.get("outlet") or "").strip()
-    date = str(item.get("published_date") or "").strip()
-    if outlet or date:
-        parts[-1] += f" - {', '.join(part for part in [outlet, date] if part)}."
+    lines: List[str] = [f"• {title}"]
     wim = str(item.get("why_it_matters") or "").strip()
     if wim:
-        parts.append(wim)
+        lines.append(wim)
     stat = str(item.get("key_stat") or "").strip()
     if stat:
-        parts.append(f"Key stat: {stat}")
-    return " ".join(part for part in parts if part).strip()
+        lines.append(f"Key stat: {stat}")
+    return "\n\n".join(line for line in lines if line).strip()
 
 
 def render_sections_markdown(sections: List[Dict[str, Any]]) -> str:
@@ -150,6 +158,7 @@ def render_sections_markdown(sections: List[Dict[str, Any]]) -> str:
 
 
 def render_sources_section(sources: List[Dict[str, str]]) -> str:
+    """Bullet list of markdown links; label matches 'Title - Outlet, date' style."""
     if not sources:
         return ""
     lines = ["Sources"]
@@ -157,11 +166,12 @@ def render_sources_section(sources: List[Dict[str, str]]) -> str:
         title = str(source.get("title") or "Source").strip()
         outlet = str(source.get("outlet") or "").strip()
         date = str(source.get("published_date") or "").strip()
-        tail = ", ".join(part for part in [outlet, date] if part)
-        if tail:
-            lines.append(f"• {title} - {tail}")
+        url = str(source.get("url") or "").strip()
+        label = _source_display_label(title, outlet, date)
+        if url:
+            lines.append(f"• [{label}]({url})")
         else:
-            lines.append(f"• {title}")
+            lines.append(f"• {label}")
     return "\n".join(lines)
 
 
