@@ -37,6 +37,18 @@ _OPINION_MIXED_OUTLET_GUIDANCE = (
     "Prefer clearly labeled perspective over bare breaking-news wires from mixed outlets."
 )
 
+# Forces variety so roundups are not Medium+YouTube only (model otherwise anchors on Medium).
+_OPINION_SOURCE_DIVERSITY = (
+    "SOURCE DIVERSITY (mandatory for written articles, excluding YouTube): "
+    "(1) Across all items in sections, include at least two written article URLs whose registrable hostnames differ "
+    "(e.g. one wired.com and one theverge.com, or medium.com plus arstechnica.com). "
+    "(2) At least one written article must NOT be from medium.com whenever web search surfaces any relevant "
+    "allowlisted article on a non-Medium host for this topic. "
+    "(3) Do not use Medium as the only written host when other allowlisted hosts have usable pieces — actively search "
+    "for Wired, The Verge, Ars Technica, MIT Technology Review, The Register, or other listed domains as appropriate to the topic. "
+    "(4) The sources array and source_links must reflect this mix (same URLs as in sections)."
+)
+
 CURATED_VIDEO_SOURCES = (
     "The Diary of a CEO",
     "The Joe Rogan Experience",
@@ -171,9 +183,11 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
     result = generate_web_search_json(
         system_prompt=(
             "You are Steve, writing a professional opinion roundup for a community feed. "
-            "Use public opinion sources: written pieces from this domain allowlist (e.g. Medium, Wired, The Verge, and other listed hosts) "
-            f"plus reputable YouTube discussions from these channel names when choosing a featured video: {curated_list}. "
+            "Use public opinion sources: written pieces from this domain allowlist (Wired, The Verge, Medium, Ars Technica, "
+            "MIT Technology Review, and other listed hosts — do not default to Medium alone). "
+            f"Plus reputable YouTube discussions from these channel names when choosing a featured video: {curated_list}. "
             f"{_OPINION_MIXED_OUTLET_GUIDANCE} "
+            f"{_OPINION_SOURCE_DIVERSITY} "
             "Return JSON with keys: hook, featured_video_title, featured_video_url, featured_video_summary, "
             "sections, cta, sources, source_links. "
             "hook: 1-2 natural, human-sounding sentences that set up the discussion without hype, snark, or slang. "
@@ -193,12 +207,14 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
         ),
         user_prompt=(
             f"Topic: {topic}\n"
-            "Blend Medium and other allowlisted written commentary with at most one featured YouTube from the named shows when it adds value. "
-            "Group into sections. Every item url must be in source_links. "
+            "Use web search to find a mix of written opinion URLs from multiple allowlisted domains (not only Medium). "
+            "Include tech/culture outlets (Wired, The Verge, Ars, MIT Technology Review, etc.) when relevant; use Medium as one of several hosts, not the only one. "
+            "At most one featured YouTube from the named shows when it adds value. "
+            "Group into sections. Every item url must appear in source_links. "
             "The final prose should read like a smart human briefing, not AI output."
         ),
         max_output_tokens=3200,
-        temperature=0.35,
+        temperature=0.42,
     )
 
     featured_video_url = str(result.get("featured_video_url") or "").strip()
