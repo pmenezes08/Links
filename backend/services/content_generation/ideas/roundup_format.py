@@ -114,6 +114,27 @@ def derive_sources_from_sections(sections: List[Dict[str, Any]]) -> List[Dict[st
     return sources
 
 
+def prepend_featured_youtube_source(
+    sources: List[Dict[str, str]],
+    featured_url: str,
+    featured_title: str,
+) -> List[Dict[str, str]]:
+    """Ensure the featured discussion video appears in Sources (clickable at bottom)."""
+    if not (featured_url or "").strip():
+        return sources
+    url = str(featured_url).strip()
+    for s in sources:
+        if str(s.get("url") or "").strip() == url:
+            return sources
+    entry: Dict[str, str] = {
+        "title": md_link_title(featured_title),
+        "outlet": "YouTube",
+        "published_date": "",
+        "url": url,
+    }
+    return [entry] + list(sources)
+
+
 def _source_display_label(title: str, outlet: str, published_date: str) -> str:
     """One line like: Title - Reuters, 14 Apr 2026 (used in Sources only, not body)."""
     label = md_link_title(title) or "Source"

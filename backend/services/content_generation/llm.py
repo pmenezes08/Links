@@ -16,6 +16,53 @@ logger = logging.getLogger(__name__)
 XAI_API_KEY = os.getenv("XAI_API_KEY", "")
 GROK_MODEL_FAST = os.getenv("STEVE_CONTENT_MODEL", "grok-4-1-fast-non-reasoning")
 
+# Tech, culture, analysis, fashion, music — US/Europe-oriented; bare + www for filter_links netloc match.
+_EXPANDED_ROUNDUP_DOMAINS = frozenset(
+    {
+        "wired.com",
+        "www.wired.com",
+        "theverge.com",
+        "www.theverge.com",
+        "gizmodo.com",
+        "www.gizmodo.com",
+        "mashable.com",
+        "www.mashable.com",
+        "thenextweb.com",
+        "www.thenextweb.com",
+        "arstechnica.com",
+        "www.arstechnica.com",
+        "technologyreview.com",
+        "www.technologyreview.com",
+        "theregister.com",
+        "www.theregister.com",
+        "spectrum.ieee.org",
+        "dazeddigital.com",
+        "www.dazeddigital.com",
+        "hypebeast.com",
+        "www.hypebeast.com",
+        "vogue.com",
+        "www.vogue.com",
+        "refinery29.com",
+        "www.refinery29.com",
+        "thecut.com",
+        "www.thecut.com",
+        "gq.com",
+        "www.gq.com",
+        "rollingstone.com",
+        "www.rollingstone.com",
+        "pitchfork.com",
+        "www.pitchfork.com",
+        "stereogum.com",
+        "www.stereogum.com",
+        "nme.com",
+        "www.nme.com",
+        "thequietus.com",
+        "www.thequietus.com",
+        "vulture.com",
+        "www.vulture.com",
+    }
+)
+
 NEWS_PUBLIC_DOMAINS = {
     "reuters.com",
     "www.reuters.com",
@@ -35,7 +82,7 @@ NEWS_PUBLIC_DOMAINS = {
     "www.aljazeera.com",
     "dw.com",
     "www.dw.com",
-}
+} | set(_EXPANDED_ROUNDUP_DOMAINS)
 
 OPINION_PUBLIC_DOMAINS = {
     "medium.com",
@@ -44,7 +91,7 @@ OPINION_PUBLIC_DOMAINS = {
     "www.youtube.com",
     "m.youtube.com",
     "youtu.be",
-}
+} | set(_EXPANDED_ROUNDUP_DOMAINS)
 
 
 def _require_client() -> OpenAI:

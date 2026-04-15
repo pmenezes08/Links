@@ -12,6 +12,7 @@ from backend.services.content_generation.ideas.roundup_format import (
     filter_sources,
     md_link_title,
     merge_source_links,
+    prepend_featured_youtube_source,
     render_sections_markdown,
     render_sources_section,
 )
@@ -25,6 +26,16 @@ from backend.services.content_generation.llm import (
 )
 from backend.services.content_generation.types import IdeaDescriptor, IdeaExecutionResult, IdeaField
 from backend.services.database import get_db_connection
+
+FEATURED_VIDEO_SOURCES_CTA = (
+    "Watch the full discussion via the YouTube link in Sources below."
+)
+
+_OPINION_MIXED_OUTLET_GUIDANCE = (
+    "Prioritize opinion, analysis, commentary, reviews, and editorials. Use page cues: section labels "
+    "(Opinion, Editorial, Op-Ed, Analysis), author-forward presentation, and evaluative tone in headlines. "
+    "Prefer clearly labeled perspective over bare breaking-news wires from mixed outlets."
+)
 
 CURATED_VIDEO_SOURCES = (
     "The Diary of a CEO",
@@ -106,13 +117,13 @@ def _legacy_opinion_body(
     body_parts: List[str] = [f"Steve's opinion roundup: {topic}", intro]
 
     if featured_video_url:
-        body_parts.append(f"**Featured discussion:** {md_link_title(featured_video_title)}")
+        body_parts.append(f"Featured discussion: {md_link_title(featured_video_title)}")
         if featured_video_summary:
             body_parts.append(featured_video_summary)
-        body_parts.append(f"[Watch on YouTube]({featured_video_url})")
+        body_parts.append(FEATURED_VIDEO_SOURCES_CTA)
 
     if bullet_text:
-        body_parts.append("**Key takeaways**")
+        body_parts.append("Key takeaways")
         body_parts.append(bullet_text)
 
     body_parts.append(closing)
@@ -154,11 +165,15 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
         raise ValueError("A topic is required for opinion roundups when topic mode is manual")
 
     curated_list = ", ".join(CURATED_VIDEO_SOURCES)
+    written_allowlist = ", ".join(
+        sorted(d for d in OPINION_PUBLIC_DOMAINS if not d.startswith("www.") and "youtube" not in d and "youtu.be" not in d)
+    )
     result = generate_web_search_json(
         system_prompt=(
             "You are Steve, writing a professional opinion roundup for a community feed. "
-            "Use public opinion sources from Medium plus reputable YouTube discussions from this allowlist: "
-            f"{curated_list}. "
+            "Use public opinion sources: written pieces from this domain allowlist (e.g. Medium, Wired, The Verge, and other listed hosts) "
+            f"plus reputable YouTube discussions from these channel names when choosing a featured video: {curated_list}. "
+            f"{_OPINION_MIXED_OUTLET_GUIDANCE} "
             "Return JSON with keys: hook, featured_video_title, featured_video_url, featured_video_summary, "
             "sections, cta, sources, source_links. "
             "hook: 1-2 natural, human-sounding sentences that set up the discussion without hype, snark, or slang. "
@@ -171,12 +186,14 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             "Opinion tone: thoughtful, professional, and clearly labeled as perspective. Avoid jokey asides and exaggerated AI voice. "
             "cta: one engagement line — question or invitation to share experience. Do not mention subscribing or newsletters. "
             'sources: array of objects with "title", "outlet", "published_date", and "url" for the bottom Sources section. '
+            "Include the featured YouTube URL in sources and source_links when featured_video_url is set. "
             "source_links: all URLs used. "
-            "Do not put raw URLs inside hook/featured_video_summary text; URLs belong in url fields and source_links."
+            "Do not put raw URLs inside hook/featured_video_summary text; URLs belong in url fields and source_links. "
+            f"Written-source domains (non-exhaustive): {written_allowlist}."
         ),
         user_prompt=(
             f"Topic: {topic}\n"
-            "Blend Medium commentary with at most one featured YouTube from the allowed shows when it adds value. "
+            "Blend Medium and other allowlisted written commentary with at most one featured YouTube from the named shows when it adds value. "
             "Group into sections. Every item url must be in source_links. "
             "The final prose should read like a smart human briefing, not AI output."
         ),
@@ -202,11 +219,15 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             cta = str(result.get("closing") or "").strip() or "Where do you land on this?"
         section_md = render_sections_markdown(
             filtered_sections,
-            bold_section_titles=True,
             link_after_opinion=True,
         )
         if not structured_sources:
             structured_sources = derive_sources_from_sections(filtered_sections)
+        structured_sources = prepend_featured_youtube_source(
+            structured_sources,
+            featured_video_url,
+            featured_video_title,
+        )
         sources_md = render_sources_section(structured_sources)
         parts: List[str] = [
             f"Steve's opinion roundup: {topic}",
@@ -218,7 +239,7 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             safe_title = md_link_title(featured_video_title)
             parts.extend(
                 [
-                    f"**Featured discussion:** {safe_title}",
+                    f"Featured discussion: {safe_title}",
                     "",
                 ]
             )
@@ -227,7 +248,7 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             parts.extend(
                 [
                     "",
-                    f"[Watch on YouTube]({featured_video_url})",
+                    FEATURED_VIDEO_SOURCES_CTA,
                     "",
                 ]
             )
@@ -248,8 +269,14 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             featured_video_title=featured_video_title,
             featured_video_summary=featured_video_summary,
         )
-        if structured_sources:
-            body = f"{body}\n\n{render_sources_section(structured_sources)}"
+        sources_for_render = list(structured_sources) if structured_sources else []
+        sources_for_render = prepend_featured_youtube_source(
+            sources_for_render,
+            featured_video_url,
+            featured_video_title,
+        )
+        if sources_for_render:
+            body = f"{body}\n\n{render_sources_section(sources_for_render)}"
         links = filter_links(result.get("source_links") or [], OPINION_PUBLIC_DOMAINS)
         if not links:
             links = filter_links(extract_links(str(result)), OPINION_PUBLIC_DOMAINS)
