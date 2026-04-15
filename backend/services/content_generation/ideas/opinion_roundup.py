@@ -9,12 +9,9 @@ from backend.services.community import fetch_community_names
 from backend.services.content_generation.ideas.roundup_format import (
     collect_urls_from_sections,
     default_min_publication_year,
-    derive_sources_from_sections,
     filter_section_items,
-    filter_sources,
     md_link_title,
     merge_source_links,
-    prepend_featured_youtube_source,
     render_sections_markdown,
     strip_feed_markdown_emphasis,
     take_first_opinion_article,
@@ -48,6 +45,23 @@ def _featured_video_embed_markdown(url: str) -> str:
         return ""
     return f"[Watch on YouTube]({u})"
 
+
+def _strip_opinion_cta_noise(text: str) -> str:
+    """Drop model-appended Sources headings, bullets, or domain footnotes after the real CTA line."""
+    if not (text or "").strip():
+        return text
+    lines = text.split("\n")
+    out: List[str] = []
+    for line in lines:
+        low = line.strip().lower()
+        if low.startswith("sources") or low.startswith("source:"):
+            break
+        if re.match(r"^[-•]\s*([a-z0-9.-]+\.[a-z]{2,})\s*$", low):
+            break
+        out.append(line)
+    return "\n".join(out).strip()
+
+
 _OPINION_MIXED_OUTLET_GUIDANCE = (
     "Prioritize opinion, analysis, commentary, reviews, and editorials. Use page cues: section labels "
     "(Opinion, Editorial, Op-Ed, Analysis), author-forward presentation, and evaluative tone in headlines. "
@@ -55,17 +69,20 @@ _OPINION_MIXED_OUTLET_GUIDANCE = (
 )
 
 _OPINION_RECENCY = (
-    "RECENCY (mandatory): Choose a written article originally published within roughly the last 18–24 months "
-    "(prefer the last 12 months). Do not use pieces whose original publication is more than about three years old "
-    "unless the topic is explicitly historical. Set published_date from the article page. "
-    "Prefer outlets with a clear publication date; avoid undated archival republications of old work."
+    "RECENCY (mandatory): For a written article, prefer publication within roughly the last 18–24 months "
+    "(ideally the last 12 months); do not use pieces more than about three years old unless the topic is historical. "
+    "Set published_date from the article page. "
+    "For a YouTube-only piece, prefer a recent episode from roughly the last 12–18 months. "
+    "Avoid undated archival republications of old work."
 )
 
-_OPINION_SINGLE_ARTICLE = (
-    "STRUCTURE: Exactly one written opinion or analysis article on the allowlist — one URL, one perspective. "
-    "Do not add multiple competing opinion pieces. Optional: one featured YouTube from the named shows when it adds value; "
-    "that video is separate from the single written article. "
-    "When Wired, The Verge, Ars Technica, MIT Technology Review, or similar have a comparable piece, prefer them over Medium alone."
+_OPINION_SINGLE_PIECE = (
+    "STRUCTURE (mandatory): Exactly ONE opinion surface — choose ONE, never both. "
+    "(A) One allowlisted written article in sections[0].items with featured_video_* fields empty; OR "
+    "(B) One featured YouTube from the named shows (Lex Fridman, All-In, etc.) with sections empty or sections[0].items empty — "
+    "treat a long-form episode like a single opinion piece. "
+    "If web search finds both a strong article and a strong video, prefer the written article and leave featured_video_url empty. "
+    "When Wired, The Verge, Ars Technica, MIT Technology Review, or similar have a strong piece, prefer them over Medium alone."
 )
 
 CURATED_VIDEO_SOURCES = (
@@ -84,7 +101,7 @@ CURATED_VIDEO_SOURCES = (
 DESCRIPTOR = IdeaDescriptor(
     idea_id="public_opinion_roundup",
     title="Public Opinion Roundup",
-    description="Steve posts one recent opinion or analysis article and an optional featured discussion video.",
+    description="Steve posts one recent opinion: either one written article or one curated discussion video — never both.",
     target_type="community",
     delivery_channel="feed_post",
     surfaces=("community", "admin"),
@@ -214,33 +231,34 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             f"Plus reputable YouTube discussions from these channel names when choosing a featured video: {curated_list}. "
             f"{_OPINION_MIXED_OUTLET_GUIDANCE} "
             f"{_OPINION_RECENCY} "
-            f"{_OPINION_SINGLE_ARTICLE} "
+            f"{_OPINION_SINGLE_PIECE} "
             "Return JSON with keys: hook, featured_video_title, featured_video_url, featured_video_summary, "
             "sections, cta, sources, source_links. "
             "hook: 1-2 natural, human-sounding sentences that set up the discussion without hype, snark, or slang. "
-            "featured_video_*: one optional YouTube from the allowlist; if none fits, use empty string for featured_video_url. "
-            "sections: array of exactly one object with "
-            '"title" (short section heading that fits the topic — e.g. The piece, Long read, Why it matters now) '
-            'and "items": array of exactly one story object (the single written opinion article). '
+            "VIDEO PATH: If you choose a YouTube episode as the single piece, set featured_video_* and use sections: [] "
+            "or sections with empty items. Do not also fill sections with a written article. "
+            "WRITTEN PATH: If you choose a written article, set featured_video_url to empty string and use sections with exactly one item. "
+            "featured_video_*: only when VIDEO PATH — standard watch or youtu.be link (11-character video id). "
+            "sections: when WRITTEN PATH, array of one object with "
+            '"title" (e.g. The piece) and "items": array of exactly one story object. '
             "That story: title, url (https on allowlist), outlet, published_date, why_it_matters (one sentence), "
-            "key_stat (optional), source_label (short label for validation only — not shown as a separate feed block). "
+            "key_stat (optional), source_label (short label for validation only). "
             "Opinion tone: thoughtful, professional, and clearly labeled as perspective. Avoid jokey asides and exaggerated AI voice. "
             "cta: one engagement line only — a question or invitation. "
             "Do not mention subscribing, newsletters, or a Sources list. Do not append URLs, domain names, or footnotes to cta. "
-            'sources: optional validation array with "title", "outlet", "published_date", and "url" — the feed does not render a Sources list. '
-            "Include the featured YouTube URL in sources and source_links when featured_video_url is set. "
-            "featured_video_url must be a standard watch or youtu.be link (11-character video id) so the in-app player can embed it. "
-            "source_links: all URLs used. "
+            'sources: optional validation array — the feed does not render a Sources list. '
+            "source_links: all URLs used (written article URL, or YouTube URL, never both). "
             "Do not put raw URLs inside hook/featured_video_summary text; URLs belong in url fields and source_links. "
             "Do not use markdown emphasis markers (** or *) in text fields — plain sentences only. "
-            f"Written-source domains (non-exhaustive): {written_allowlist}."
+            f"Written-source domains when using WRITTEN PATH (non-exhaustive): {written_allowlist}."
         ),
         user_prompt=(
             f"Topic: {topic}\n"
-            "Use web search to find exactly one recent, high-quality opinion or analysis piece on the allowlist. "
-            "Prefer publication within the last 12–18 months; avoid articles more than about three years old. "
-            "Use at most one featured YouTube from the named shows when it adds value. "
-            "Return exactly one item in sections[0].items. Every url must appear in source_links. "
+            "Pick ONE: either one recent allowlisted written opinion/analysis, OR one strong discussion video from the named shows — never both. "
+            "If both exist, prefer the written article and omit the video. "
+            "Written path: one item in sections[0].items; empty featured_video_url. "
+            "Video path: fill featured_video_*; leave sections empty or items empty. "
+            "Every url must appear in source_links. "
             "The cta must be only the discussion prompt — no Sources section, bullet lists, or domain footnotes after it. "
             "The final prose should read like a smart human briefing, not AI output."
         ),
@@ -261,7 +279,21 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
         min_publication_year=min_year,
     )
     filtered_sections = take_first_opinion_article(filtered_sections)
-    structured_sources = filter_sources(result.get("sources"), OPINION_PUBLIC_DOMAINS)
+
+    # One piece only: written article XOR YouTube episode (never both in one post)
+    if filtered_sections and featured_video_url:
+        featured_video_url = ""
+        featured_video_title = ""
+        featured_video_summary = ""
+
+    def _finalize_cta() -> str:
+        raw = str(result.get("cta") or "").strip()
+        if not raw:
+            raw = str(result.get("closing") or "").strip() or "Where do you land on this?"
+        return _strip_opinion_cta_noise(strip_feed_markdown_emphasis(raw))
+
+    roundup_format = "legacy"
+    body = ""
 
     if filtered_sections:
         hook = strip_feed_markdown_emphasis(str(result.get("hook") or "").strip())
@@ -269,60 +301,70 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             hook = strip_feed_markdown_emphasis(
                 str(result.get("intro") or "").strip() or f"One opinion piece worth reading on {topic}."
             )
-        cta = strip_feed_markdown_emphasis(str(result.get("cta") or "").strip())
-        if not cta:
-            cta = strip_feed_markdown_emphasis(
-                str(result.get("closing") or "").strip() or "Where do you land on this?"
-            )
+        cta = _finalize_cta()
         section_md = render_sections_markdown(
             filtered_sections,
             link_after_opinion=True,
-        )
-        structured_sources = derive_sources_from_sections(filtered_sections)
-        structured_sources = prepend_featured_youtube_source(
-            structured_sources,
-            featured_video_url,
-            featured_video_title,
         )
         parts: List[str] = [
             f"Steve's opinion roundup: {topic}",
             "",
             hook,
             "",
+            section_md,
+            "",
+            cta,
         ]
-        if featured_video_url:
-            fv = _normalize_youtube_url_for_embed(featured_video_url)
-            safe_title = md_link_title(featured_video_title)
-            parts.extend(
-                [
-                    f"Featured discussion: {safe_title}",
-                    "",
-                ]
-            )
-            if featured_video_summary:
-                parts.append(strip_feed_markdown_emphasis(featured_video_summary))
-            parts.extend(
-                [
-                    "",
-                    _featured_video_embed_markdown(fv),
-                    "",
-                ]
-            )
-        parts.append(section_md)
-        parts.extend(["", cta])
         body = "\n".join(parts)
         section_urls = collect_urls_from_sections(filtered_sections)
-        source_urls = [source.get("url", "") for source in structured_sources]
-        combined_urls = ([featured_video_url] if featured_video_url else []) + section_urls + source_urls
-        links = merge_source_links(result.get("source_links"), combined_urls, OPINION_PUBLIC_DOMAINS)
+        links = merge_source_links(result.get("source_links"), section_urls, OPINION_PUBLIC_DOMAINS)
+        roundup_format = "structured"
+
+    elif featured_video_url:
+        hook = strip_feed_markdown_emphasis(str(result.get("hook") or "").strip())
+        if not hook:
+            hook = strip_feed_markdown_emphasis(
+                str(result.get("intro") or "").strip() or f"One discussion worth watching on {topic}."
+            )
+        cta = _finalize_cta()
+        fv = _normalize_youtube_url_for_embed(featured_video_url)
+        featured_video_url = fv
+        safe_title = md_link_title(featured_video_title)
+        parts = [
+            f"Steve's opinion roundup: {topic}",
+            "",
+            hook,
+            "",
+            "THE PIECE",
+            "",
+            f"• {safe_title}",
+        ]
+        if featured_video_summary:
+            parts.extend(["", strip_feed_markdown_emphasis(featured_video_summary)])
+        parts.extend(["", _featured_video_embed_markdown(fv), "", cta])
+        body = "\n".join(parts)
+        links = merge_source_links(result.get("source_links"), [fv], OPINION_PUBLIC_DOMAINS)
+        roundup_format = "video_only"
+
     else:
+        bullets = result.get("bullets") or []
+        has_bullets = any(str(b).strip() for b in bullets)
+        fv_legacy = featured_video_url
+        if has_bullets and fv_legacy:
+            fv_legacy = ""
         body = _legacy_opinion_body(
             topic,
             result,
-            featured_video_url=featured_video_url,
+            featured_video_url=fv_legacy,
             featured_video_title=featured_video_title,
             featured_video_summary=featured_video_summary,
         )
+        if not fv_legacy:
+            featured_video_url = ""
+            featured_video_title = ""
+            featured_video_summary = ""
+        else:
+            featured_video_url = fv_legacy
         links = filter_links(result.get("source_links") or [], OPINION_PUBLIC_DOMAINS)
         if not links:
             links = filter_links(extract_links(str(result)), OPINION_PUBLIC_DOMAINS)
@@ -337,7 +379,7 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
         if link not in ordered_links:
             ordered_links.append(link)
 
-    topic_meta["roundup_format"] = "structured" if filtered_sections else "legacy"
+    topic_meta["roundup_format"] = roundup_format
 
     return IdeaExecutionResult(
         delivery_channel="feed_post",
