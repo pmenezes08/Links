@@ -12,9 +12,10 @@ export type VideoEmbed = {
 export function extractVideoEmbed(text: string): VideoEmbed | null {
   if (!text) return null
 
-  // YouTube patterns
+  // YouTube patterns (m. subdomain; &v= when v is not the first query param)
   const youtubePatterns = [
-    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+    /(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+    /(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/watch\?[^)\s]*&v=([a-zA-Z0-9_-]{11})/,
     /(?:https?:\/\/)?(?:www\.)?youtu\.be\/([a-zA-Z0-9_-]{11})/,
     /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
     /(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
@@ -105,12 +106,14 @@ export function removeVideoUrlFromText(text: string, videoEmbed: VideoEmbed | nu
 
   const patterns: Record<string, RegExp[]> = {
     youtube: [
-      /\[[^\]]+\]\(https?:\/\/(?:www\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
+      /\[[^\]]+\]\(https?:\/\/(?:www\.|m\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
+      /\[[^\]]+\]\(https?:\/\/(?:www\.|m\.)?youtube\.com\/watch\?[^)\s]*&v=[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
       /\[[^\]]+\]\(https?:\/\/(?:www\.)?youtu\.be\/[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
       /\[[^\]]+\]\(https?:\/\/(?:www\.)?youtube\.com\/embed\/[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
       /\[[^\]]+\]\(https?:\/\/(?:www\.)?youtube\.com\/shorts\/[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
       /\[[^\]]+\]\(https?:\/\/(?:www\.)?youtube\.com\/live\/[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
-      /https?:\/\/(?:www\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11}[^\s]*/g,
+      /https?:\/\/(?:www\.|m\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11}[^\s]*/g,
+      /https?:\/\/(?:www\.|m\.)?youtube\.com\/watch\?[^)\s]*&v=[a-zA-Z0-9_-]{11}[^\s]*/g,
       /https?:\/\/(?:www\.)?youtu\.be\/[a-zA-Z0-9_-]{11}[^\s]*/g,
       /https?:\/\/(?:www\.)?youtube\.com\/embed\/[a-zA-Z0-9_-]{11}[^\s]*/g,
       /https?:\/\/(?:www\.)?youtube\.com\/shorts\/[a-zA-Z0-9_-]{11}[^\s]*/g,

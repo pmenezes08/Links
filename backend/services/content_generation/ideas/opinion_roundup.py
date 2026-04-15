@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List
 
 from backend.services.community import fetch_community_names
@@ -15,7 +16,6 @@ from backend.services.content_generation.ideas.roundup_format import (
     merge_source_links,
     prepend_featured_youtube_source,
     render_sections_markdown,
-    render_sources_section,
     strip_feed_markdown_emphasis,
     take_first_opinion_article,
 )
@@ -30,9 +30,23 @@ from backend.services.content_generation.llm import (
 from backend.services.content_generation.types import IdeaDescriptor, IdeaExecutionResult, IdeaField
 from backend.services.database import get_db_connection
 
-FEATURED_VIDEO_SOURCES_CTA = (
-    "Watch the full discussion via the YouTube link in SOURCES below."
-)
+def _normalize_youtube_url_for_embed(url: str) -> str:
+    """Canonical watch URL so the mobile app and feed can embed the player reliably."""
+    u = (url or "").strip()
+    if not u:
+        return ""
+    m = re.match(r"https?://(?:www\.)?youtu\.be/([a-zA-Z0-9_-]{11})", u, re.I)
+    if m:
+        return f"https://www.youtube.com/watch?v={m.group(1)}"
+    return u
+
+
+def _featured_video_embed_markdown(url: str) -> str:
+    """Markdown link removed by client + iframe embed; do not duplicate in a SOURCES block."""
+    u = _normalize_youtube_url_for_embed(url)
+    if not u:
+        return ""
+    return f"[Watch on YouTube]({u})"
 
 _OPINION_MIXED_OUTLET_GUIDANCE = (
     "Prioritize opinion, analysis, commentary, reviews, and editorials. Use page cues: section labels "
@@ -144,7 +158,7 @@ def _legacy_opinion_body(
         body_parts.append(f"Featured discussion: {md_link_title(featured_video_title)}")
         if featured_video_summary:
             body_parts.append(strip_feed_markdown_emphasis(featured_video_summary))
-        body_parts.append(FEATURED_VIDEO_SOURCES_CTA)
+        body_parts.append(_featured_video_embed_markdown(featured_video_url))
 
     if bullet_text:
         body_parts.append("KEY TAKEAWAYS")
@@ -209,11 +223,13 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             '"title" (short section heading that fits the topic — e.g. The piece, Long read, Why it matters now) '
             'and "items": array of exactly one story object (the single written opinion article). '
             "That story: title, url (https on allowlist), outlet, published_date, why_it_matters (one sentence), "
-            "key_stat (optional), source_label (short source line label for the Sources section). "
+            "key_stat (optional), source_label (short label for validation only — not shown as a separate feed block). "
             "Opinion tone: thoughtful, professional, and clearly labeled as perspective. Avoid jokey asides and exaggerated AI voice. "
-            "cta: one engagement line — question or invitation to share experience. Do not mention subscribing or newsletters. "
-            'sources: array of objects with "title", "outlet", "published_date", and "url" for the bottom Sources section. '
+            "cta: one engagement line only — a question or invitation. "
+            "Do not mention subscribing, newsletters, or a Sources list. Do not append URLs, domain names, or footnotes to cta. "
+            'sources: optional validation array with "title", "outlet", "published_date", and "url" — the feed does not render a Sources list. '
             "Include the featured YouTube URL in sources and source_links when featured_video_url is set. "
+            "featured_video_url must be a standard watch or youtu.be link (11-character video id) so the in-app player can embed it. "
             "source_links: all URLs used. "
             "Do not put raw URLs inside hook/featured_video_summary text; URLs belong in url fields and source_links. "
             "Do not use markdown emphasis markers (** or *) in text fields — plain sentences only. "
@@ -225,6 +241,7 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             "Prefer publication within the last 12–18 months; avoid articles more than about three years old. "
             "Use at most one featured YouTube from the named shows when it adds value. "
             "Return exactly one item in sections[0].items. Every url must appear in source_links. "
+            "The cta must be only the discussion prompt — no Sources section, bullet lists, or domain footnotes after it. "
             "The final prose should read like a smart human briefing, not AI output."
         ),
         max_output_tokens=3200,
@@ -267,7 +284,6 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             featured_video_url,
             featured_video_title,
         )
-        sources_md = render_sources_section(structured_sources)
         parts: List[str] = [
             f"Steve's opinion roundup: {topic}",
             "",
@@ -275,6 +291,7 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             "",
         ]
         if featured_video_url:
+            fv = _normalize_youtube_url_for_embed(featured_video_url)
             safe_title = md_link_title(featured_video_title)
             parts.extend(
                 [
@@ -287,14 +304,12 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             parts.extend(
                 [
                     "",
-                    FEATURED_VIDEO_SOURCES_CTA,
+                    _featured_video_embed_markdown(fv),
                     "",
                 ]
             )
         parts.append(section_md)
         parts.extend(["", cta])
-        if sources_md:
-            parts.extend(["", sources_md])
         body = "\n".join(parts)
         section_urls = collect_urls_from_sections(filtered_sections)
         source_urls = [source.get("url", "") for source in structured_sources]
@@ -308,14 +323,6 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             featured_video_title=featured_video_title,
             featured_video_summary=featured_video_summary,
         )
-        sources_for_render = list(structured_sources) if structured_sources else []
-        sources_for_render = prepend_featured_youtube_source(
-            sources_for_render,
-            featured_video_url,
-            featured_video_title,
-        )
-        if sources_for_render:
-            body = f"{body}\n\n{render_sources_section(sources_for_render)}"
         links = filter_links(result.get("source_links") or [], OPINION_PUBLIC_DOMAINS)
         if not links:
             links = filter_links(extract_links(str(result)), OPINION_PUBLIC_DOMAINS)
