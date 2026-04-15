@@ -46,14 +46,17 @@ def _source_label(url: str, fallback_index: int) -> str:
 
 
 def _append_sources(content: str, source_links: Optional[Iterable[str]]) -> str:
+    stripped = content.strip()
+    if "\nSources\n" in stripped or stripped.endswith("\nSources"):
+        return stripped
     links = [str(url).strip() for url in (source_links or []) if str(url).strip()]
     if not links:
-        return content.strip()
+        return stripped
     source_lines = "\n".join(
         f"- [{_source_label(url, idx)}]({url})"
         for idx, url in enumerate(links, start=1)
     )
-    return f"{content.strip()}\n\nSources\n{source_lines}"
+    return f"{stripped}\n\nSources\n{source_lines}"
 
 
 def create_steve_feed_post(

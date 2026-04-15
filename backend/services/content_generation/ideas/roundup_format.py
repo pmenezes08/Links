@@ -56,10 +56,11 @@ def filter_section_items(
                 {
                     "title": str(item.get("title") or "").strip(),
                     "url": url,
+                    "outlet": str(item.get("outlet") or "").strip(),
                     "published_date": str(item.get("published_date") or "").strip(),
                     "why_it_matters": str(item.get("why_it_matters") or "").strip(),
                     "key_stat": str(item.get("key_stat") or "").strip(),
-                    "steve_note": str(item.get("steve_note") or "").strip(),
+                    "source_label": str(item.get("source_label") or "").strip(),
                 }
             )
         if title and items_out:
@@ -67,25 +68,68 @@ def filter_section_items(
     return out
 
 
+def filter_sources(
+    sources: Any,
+    allowed_domains: Sequence[str],
+) -> List[Dict[str, str]]:
+    """Keep only valid structured sources from allowed domains."""
+    out: List[Dict[str, str]] = []
+    if not isinstance(sources, list):
+        return out
+
+    for item in sources:
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get("url") or "").strip()
+        if not url or not filter_links([url], allowed_domains):
+            continue
+        out.append(
+            {
+                "title": str(item.get("title") or "").strip(),
+                "outlet": str(item.get("outlet") or "").strip(),
+                "published_date": str(item.get("published_date") or "").strip(),
+                "url": url,
+            }
+        )
+    return out
+
+
+def derive_sources_from_sections(sections: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    sources: List[Dict[str, str]] = []
+    seen = set()
+    for sec in sections:
+        for item in sec.get("items") or []:
+            url = str(item.get("url") or "").strip()
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            sources.append(
+                {
+                    "title": str(item.get("source_label") or item.get("title") or "").strip(),
+                    "outlet": str(item.get("outlet") or "").strip(),
+                    "published_date": str(item.get("published_date") or "").strip(),
+                    "url": url,
+                }
+            )
+    return sources
+
+
 def format_story_item(item: Dict[str, Any]) -> str:
     title = md_link_title(item.get("title") or "")
-    url = str(item.get("url") or "").strip()
-    if not url:
+    if not title:
         return ""
-    parts: List[str] = [f"**[{title}]({url})**"]
+    parts: List[str] = [f"• {title}"]
+    outlet = str(item.get("outlet") or "").strip()
     date = str(item.get("published_date") or "").strip()
-    if date:
-        parts.append(f"_{date}_")
+    if outlet or date:
+        parts[-1] += f" - {', '.join(part for part in [outlet, date] if part)}."
     wim = str(item.get("why_it_matters") or "").strip()
     if wim:
-        parts.append(f"**Why it matters:** {wim}")
+        parts.append(wim)
     stat = str(item.get("key_stat") or "").strip()
     if stat:
-        parts.append(f"**Key stat:** {stat}")
-    note = str(item.get("steve_note") or "").strip()
-    if note:
-        parts.append(f"_Steve: {note}_")
-    return "\n".join(parts)
+        parts.append(f"Key stat: {stat}")
+    return " ".join(part for part in parts if part).strip()
 
 
 def render_sections_markdown(sections: List[Dict[str, Any]]) -> str:
@@ -95,7 +139,7 @@ def render_sections_markdown(sections: List[Dict[str, Any]]) -> str:
         items = sec.get("items") or []
         if not title or not items:
             continue
-        inner: List[str] = [f"## {title}"]
+        inner: List[str] = [title]
         for it in items:
             block = format_story_item(it)
             if block:
@@ -105,21 +149,20 @@ def render_sections_markdown(sections: List[Dict[str, Any]]) -> str:
     return "\n\n".join(blocks)
 
 
-def normalize_image_prompts(raw: Any, *, max_items: int = 2) -> List[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, str) and raw.strip():
-        return [raw.strip()[:500]]
-    if not isinstance(raw, list):
-        return []
-    out: List[str] = []
-    for x in raw:
-        s = str(x).strip()
-        if s:
-            out.append(s[:500])
-        if len(out) >= max_items:
-            break
-    return out
+def render_sources_section(sources: List[Dict[str, str]]) -> str:
+    if not sources:
+        return ""
+    lines = ["Sources"]
+    for source in sources:
+        title = str(source.get("title") or "Source").strip()
+        outlet = str(source.get("outlet") or "").strip()
+        date = str(source.get("published_date") or "").strip()
+        tail = ", ".join(part for part in [outlet, date] if part)
+        if tail:
+            lines.append(f"• {title} - {tail}")
+        else:
+            lines.append(f"• {title}")
+    return "\n".join(lines)
 
 
 def merge_source_links(
