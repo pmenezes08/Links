@@ -202,6 +202,8 @@ try:
                 recommended_username VARCHAR(191) NOT NULL,
                 feedback ENUM('up','down') NOT NULL,
                 created_by VARCHAR(191) NOT NULL,
+                reasoning_text TEXT NULL,
+                query_context TEXT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE KEY uq_session_user_by (session_id, recommended_username, created_by),
                 INDEX idx_feedback_user (recommended_username)
@@ -213,10 +215,30 @@ try:
                 recommended_username TEXT NOT NULL,
                 feedback TEXT NOT NULL CHECK(feedback IN ('up','down')),
                 created_by TEXT NOT NULL,
+                reasoning_text TEXT NULL,
+                query_context TEXT NULL,
                 created_at TEXT DEFAULT (datetime('now')),
                 UNIQUE(session_id, recommended_username, created_by)
             )""")
         _sc.commit()
+
+        # Migrate new columns for contextual feedback (safe for existing DBs)
+        try:
+            if USE_MYSQL:
+                _scc.execute("ALTER TABLE steve_recommendation_feedback ADD COLUMN IF NOT EXISTS reasoning_text TEXT NULL")
+                _scc.execute("ALTER TABLE steve_recommendation_feedback ADD COLUMN IF NOT EXISTS query_context TEXT NULL")
+            else:
+                # SQLite doesn't support IF NOT EXISTS on ALTER, so check first
+                _scc.execute("PRAGMA table_info(steve_recommendation_feedback)")
+                columns = [row[1] if hasattr(row, 'keys') else row[1] for row in _scc.fetchall()]
+                if 'reasoning_text' not in columns:
+                    _scc.execute("ALTER TABLE steve_recommendation_feedback ADD COLUMN reasoning_text TEXT")
+                if 'query_context' not in columns:
+                    _scc.execute("ALTER TABLE steve_recommendation_feedback ADD COLUMN query_context TEXT")
+            _sc.commit()
+        except Exception as mig_err:
+            print(f"[STARTUP] Feedback table migration warning: {mig_err}", file=sys.stderr, flush=True)
+
     print("[STARTUP] Steve chat tables ensured", file=sys.stderr, flush=True)
 except Exception as _se:
     print(f"[STARTUP] Steve chat table init warning: {_se}", file=sys.stderr, flush=True)
@@ -16544,6 +16566,8 @@ def _networking_build_members_text(
         fb = feedback_scores.get(uname, 0)
         if fb > 0:
             line += " | Well-rated by previous recommenders"
+        elif fb < 0:
+            line += " | Has received negative feedback in the past (use caution for similar queries)"
         resp_rate = (profiles_raw.get(uname) or {}).get('introductionResponseRate')
         if resp_rate is not None and resp_rate >= 0.7:
             line += " | Highly responsive to introductions"
@@ -16920,6 +16944,7 @@ def api_networking_steve_match():
             metadata_scores = load_dimension_metadata_scores(
                 candidate_pool,
                 dimension_plan=dimension_plan,
+                feedback_scores={},  # TODO: pass real feedback_scores from profiles for weighted negative signals
             )
             ordered_usernames, tiered_matches = tiered_roster(
                 structured_ids,
@@ -17278,11 +17303,15 @@ def api_steve_session_messages(session_id):
                     messages.append({'role': r[0], 'text': r[1]})
             feedback = {}
             try:
-                c.execute(f"SELECT recommended_username, feedback FROM steve_recommendation_feedback WHERE session_id = {ph} AND created_by = {ph}", (session_id, username))
+                c.execute(f"SELECT recommended_username, feedback, reasoning_text FROM steve_recommendation_feedback WHERE session_id = {ph} AND created_by = {ph}", (session_id, username))
                 for r in c.fetchall():
                     ru = r['recommended_username'] if hasattr(r, 'keys') else r[0]
                     fb = r['feedback'] if hasattr(r, 'keys') else r[1]
-                    feedback[ru] = fb
+                    reasoning = r['reasoning_text'] if hasattr(r, 'keys') else r[2]
+                    feedback[ru] = {
+                        'feedback': fb,
+                        'reasoning': reasoning if reasoning else None
+                    }
             except Exception:
                 pass
             return jsonify({'success': True, 'messages': messages, 'feedback': feedback})
@@ -17362,9 +17391,9 @@ def api_steve_session_delete(session_id):
 @app.route('/api/networking/steve_feedback', methods=['POST'])
 @login_required
 def api_steve_feedback():
-    """Submit thumbs-up/down feedback on a recommended member.
+    """Submit thumbs-up/down feedback on a recommended member with optional reasoning.
 
-    Request: {session_id, recommended_username, feedback: 'up'|'down'|null}
+    Request: {session_id, recommended_username, feedback: 'up'|'down'|null, reasoning?: string}
     If feedback is null, removes the existing entry (un-click).
     """
     username = session.get('username')
@@ -17372,6 +17401,7 @@ def api_steve_feedback():
     session_id = data.get('session_id')
     rec_username = (data.get('recommended_username') or '').strip()
     feedback = data.get('feedback')
+    reasoning = (data.get('reasoning') or '').strip() or None
     if not session_id or not rec_username:
         return jsonify({'success': False, 'error': 'session_id and recommended_username required'}), 400
     if feedback is not None and feedback not in ('up', 'down'):
@@ -17386,16 +17416,33 @@ def api_steve_feedback():
             if feedback is None:
                 c.execute(f"DELETE FROM steve_recommendation_feedback WHERE session_id = {ph} AND recommended_username = {ph} AND created_by = {ph}", (session_id, rec_username, username))
             elif USE_MYSQL:
-                c.execute(f"""INSERT INTO steve_recommendation_feedback (session_id, recommended_username, feedback, created_by)
-                    VALUES ({ph}, {ph}, {ph}, {ph})
-                    ON DUPLICATE KEY UPDATE feedback = VALUES(feedback)""",
-                    (session_id, rec_username, feedback, username))
+                c.execute(f"""INSERT INTO steve_recommendation_feedback 
+                    (session_id, recommended_username, feedback, created_by, reasoning_text, query_context)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                    ON DUPLICATE KEY UPDATE 
+                    feedback = VALUES(feedback),
+                    reasoning_text = VALUES(reasoning_text),
+                    query_context = VALUES(query_context)""",
+                    (session_id, rec_username, feedback, username, reasoning, None))
             else:
-                c.execute(f"""INSERT INTO steve_recommendation_feedback (session_id, recommended_username, feedback, created_by)
-                    VALUES ({ph}, {ph}, {ph}, {ph})
-                    ON CONFLICT(session_id, recommended_username, created_by) DO UPDATE SET feedback = excluded.feedback""",
-                    (session_id, rec_username, feedback, username))
+                c.execute(f"""INSERT INTO steve_recommendation_feedback 
+                    (session_id, recommended_username, feedback, created_by, reasoning_text, query_context)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                    ON CONFLICT(session_id, recommended_username, created_by) DO UPDATE SET 
+                    feedback = excluded.feedback,
+                    reasoning_text = excluded.reasoning_text,
+                    query_context = excluded.query_context""",
+                    (session_id, rec_username, feedback, username, reasoning, None))
             conn.commit()
+
+            # Trigger contextual follow-up from Steve for negative feedback
+            if feedback == 'down':
+                try:
+                    follow_up_text = f"Thanks for the feedback on @{rec_username}. Would you like to provide a bit more context on why they weren't the right match for your query? This helps me improve future recommendations."
+                    c.execute(f"INSERT INTO steve_chat_messages (session_id, role, text) VALUES ({ph}, 'steve', {ph})", (session_id, follow_up_text))
+                    conn.commit()
+                except Exception as follow_err:
+                    logger.warning(f"Failed to add Steve follow-up for feedback: {follow_err}")
 
         import threading
         def _aggregate(target_username):
@@ -17430,8 +17477,14 @@ def _aggregate_feedback_to_firestore(target_username: str):
         net_score = ups - downs
         from backend.services.firestore_writes import _get_client as _get_fs
         fs = _get_fs()
+        update_data = {
+            'feedbackScore': net_score, 
+            'feedbackUps': ups, 
+            'feedbackDowns': downs
+        }
+        # TODO: In future iterations, also pull and store latest reasoning_text here for prompt injection
         fs.collection('steve_user_profiles').document(target_username).set(
-            {'feedbackScore': net_score, 'feedbackUps': ups, 'feedbackDowns': downs},
+            update_data,
             merge=True
         )
     except Exception as e:

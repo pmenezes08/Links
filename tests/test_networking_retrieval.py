@@ -379,6 +379,27 @@ class TestNetworkingRetrieval(unittest.TestCase):
         self.assertIn("GeographyCulture", scores["hugo"]["dimension_adjustments"])
         self.assertIn("InferredContext", scores["hugo"]["dimension_adjustments"])
 
+    def test_load_dimension_metadata_scores_applies_negative_user_feedback_weighting(self):
+        """Test new contextual feedback system: negative scores reduce ranking (weighted)."""
+        fake_docs = {
+            "ExpertiseDepth": {
+                "updatedAt": "2026-04-15T10:00:00Z",
+                "content": {"confidence": 0.8},
+            },
+        }
+        negative_feedback_scores = {"hugo": -2}  # e.g. 2 thumbs-downs
+
+        with patch("backend.services.steve_knowledge_base.get_member_knowledge", return_value=fake_docs):
+            scores = load_dimension_metadata_scores(
+                ["hugo"],
+                dimension_plan={"primary_dimensions": ["ExpertiseDepth"]},
+                feedback_scores=negative_feedback_scores,
+            )
+
+        self.assertIn("hugo", scores)
+        self.assertLess(scores["hugo"]["total_adjustment"], 0.0)  # negative weighting applied
+        self.assertIn("ExpertiseDepth", scores["hugo"]["dimension_adjustments"])
+
     def test_networking_policy_for_size_varies_caps(self):
         small = networking_policy_for_size(20)
         medium = networking_policy_for_size(80)

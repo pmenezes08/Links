@@ -925,6 +925,7 @@ def load_dimension_metadata_scores(
     usernames: Sequence[str],
     *,
     dimension_plan: dict[str, Any] | None = None,
+    feedback_scores: dict[str, int] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Load lightweight KB metadata signals for reranking."""
     try:
@@ -985,6 +986,13 @@ def load_dimension_metadata_scores(
                         adjustment -= 0.2
                     elif confidence >= 0.75:
                         adjustment += 0.05
+
+            # Apply user feedback weighting (negative scores reduce ranking for similar queries)
+            if feedback_scores and username in (feedback_scores or {}):
+                score = feedback_scores[username]
+                if score < 0:
+                    adjustment -= 0.15 * min(3, abs(score))  # cap impact, scale with number of downs
+
             if adjustment:
                 dimension_adjustments[dimension] = adjustment
                 total_adjustment += adjustment

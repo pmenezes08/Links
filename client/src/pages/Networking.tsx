@@ -75,7 +75,7 @@ export default function Networking() {
   const [showSessionList, setShowSessionList] = useState(false)
   const [sessionsLoading, setSessionsLoading] = useState(false)
   const [deletingSessionId, setDeletingSessionId] = useState<number | null>(null)
-  const [steveFeedback, setSteveFeedback] = useState<Record<string, 'up' | 'down'>>({})
+  const [steveFeedback, setSteveFeedback] = useState<Record<string, { feedback: 'up' | 'down'; reasoning?: string }>>({})
   const [steveMemberCount, setSteveMemberCount] = useState<number | null>(null)
   const [steveMembersLoading, setSteveMembersLoading] = useState(false)
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -293,7 +293,16 @@ export default function Networking() {
       .then(d => {
         if (d.success) {
           setSteveMessages(d.messages || [])
-          setSteveFeedback(d.feedback || {})
+          // Support both old string format and new object format with reasoning
+          const normalizedFeedback: Record<string, { feedback: 'up' | 'down'; reasoning?: string }> = {}
+          Object.entries(d.feedback || {}).forEach(([key, value]) => {
+            if (typeof value === 'string') {
+              normalizedFeedback[key] = { feedback: value as 'up' | 'down' }
+            } else if (value && typeof value === 'object') {
+              normalizedFeedback[key] = value as { feedback: 'up' | 'down'; reasoning?: string }
+            }
+          })
+          setSteveFeedback(normalizedFeedback)
         }
       })
       .catch(() => {})
@@ -364,19 +373,27 @@ export default function Networking() {
     return matches ? [...new Set(matches.map(m => m.slice(1)))] : []
   }, [])
 
-  const submitFeedback = useCallback((recUsername: string, feedback: 'up' | 'down') => {
+  const submitFeedback = useCallback((recUsername: string, feedback: 'up' | 'down', reasoning?: string) => {
     if (!steveSessionId) return
     const current = steveFeedback[recUsername]
-    const newFeedback = current === feedback ? null : feedback
+    const newFeedback = current?.feedback === feedback ? null : feedback
     setSteveFeedback(prev => {
       const next = { ...prev }
-      if (newFeedback) next[recUsername] = newFeedback
-      else delete next[recUsername]
+      if (newFeedback) {
+        next[recUsername] = { feedback: newFeedback, reasoning }
+      } else {
+        delete next[recUsername]
+      }
       return next
     })
     fetch('/api/networking/steve_feedback', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-      body: JSON.stringify({ session_id: steveSessionId, recommended_username: recUsername, feedback: newFeedback })
+      body: JSON.stringify({ 
+        session_id: steveSessionId, 
+        recommended_username: recUsername, 
+        feedback: newFeedback,
+        reasoning 
+      })
     }).catch(() => {})
   }, [steveSessionId, steveFeedback])
 
@@ -657,12 +674,12 @@ export default function Networking() {
                                       <span className="text-white/25">@{u}</span>
                                       <button
                                         onClick={() => submitFeedback(u, 'up')}
-                                        className={`p-0.5 rounded transition ${steveFeedback[u] === 'up' ? 'text-[#4db6ac]' : 'text-white/20 hover:text-white/50'}`}
+                                        className={`p-0.5 rounded transition ${steveFeedback[u]?.feedback === 'up' ? 'text-[#4db6ac]' : 'text-white/20 hover:text-white/50'}`}
                                         title="Good recommendation"
                                       ><i className="fa-solid fa-thumbs-up text-[10px]" /></button>
                                       <button
                                         onClick={() => submitFeedback(u, 'down')}
-                                        className={`p-0.5 rounded transition ${steveFeedback[u] === 'down' ? 'text-red-400/80' : 'text-white/20 hover:text-white/50'}`}
+                                        className={`p-0.5 rounded transition ${steveFeedback[u]?.feedback === 'down' ? 'text-red-400/80' : 'text-white/20 hover:text-white/50'}`}
                                         title="Not relevant"
                                       ><i className="fa-solid fa-thumbs-down text-[10px]" /></button>
                                     </span>
