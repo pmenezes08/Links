@@ -62,7 +62,9 @@ function iconFor(type?: string){
       case 'announcement': return 'fa-solid fa-bullhorn'
       case 'task_assigned': return 'fa-solid fa-list-check'
       case 'reaction': return 'fa-regular fa-heart'
+      case 'story_reaction': return 'fa-regular fa-heart'
       case 'reply': return 'fa-regular fa-comment'
+      case 'story_comment': return 'fa-regular fa-comment'
       case 'mention_post': return 'fa-solid fa-at'
       case 'mention_reply': return 'fa-solid fa-at'
       case 'follow': return 'fa-solid fa-user-plus'
@@ -234,7 +236,7 @@ export default function Notifications(){
       return
     }
     const isPollNotification = typeKey === 'poll' || typeKey === 'poll_reminder' || typeKey === 'poll_closed'
-    const isReplyNotification = typeKey === 'reply' || typeKey === 'mention_reply'
+    const isReplyNotification = typeKey === 'reply' || typeKey === 'mention_reply' || typeKey === 'story_comment'
 
     if (!url && isPollNotification && n.community_id) {
       url = `/community/${n.community_id}/polls_react`
@@ -384,7 +386,9 @@ export default function Notifications(){
                                   <span className="text-white/70">
                                     {typeKey === 'task_assigned' ? 'assigned you a task' :
                                     typeKey === 'reaction' ? 'reacted to your post' :
+                                    typeKey === 'story_reaction' ? 'reacted to your story' :
                                     typeKey === 'reply' ? 'replied to your post' :
+                                    typeKey === 'story_comment' ? 'commented on your story' :
                                     typeKey === 'mention_post' ? 'mentioned you in a post' :
                                     typeKey === 'mention_reply' ? 'mentioned you in a reply' : 'interacted with you'}
                                   </span>

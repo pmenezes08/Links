@@ -61,6 +61,7 @@ from backend.services.notifications import (
     create_notification,
     fanout_community_post_notifications,
     send_push_to_user,
+    truncate_notification_preview,
 )
 from backend.services.native_push import (
     DEFAULT_APNS_ENVIRONMENT,
@@ -31966,7 +31967,7 @@ def api_story_reaction():
             ph = get_sql_placeholder()
             c.execute(
                 f"""
-                SELECT cs.community_id, c.creator_username
+                SELECT cs.community_id, cs.username AS story_username, c.creator_username
                 FROM community_stories cs
                 JOIN communities c ON c.id = cs.community_id
                 WHERE cs.id = {ph}
@@ -31977,11 +31978,13 @@ def api_story_reaction():
             if not row:
                 return jsonify({'success': False, 'error': 'Story not found'}), 404
             community_id = row["community_id"] if hasattr(row, "keys") else row[0]
-            creator_username = row["creator_username"] if hasattr(row, "keys") else (row[1] if len(row) > 1 else None)
+            story_author = row["story_username"] if hasattr(row, "keys") else (row[1] if len(row) > 1 else None)
+            creator_username = row["creator_username"] if hasattr(row, "keys") else (row[2] if len(row) > 2 else None)
             if not user_has_story_access(c, username, community_id, creator_username):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
 
             now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            should_notify_author = False
             c.execute(
                 f"""
                 SELECT reaction FROM community_story_reactions
@@ -32028,8 +32031,36 @@ def api_story_reaction():
                             """,
                             (story_id, username, normalized_reaction, now_str),
                         )
+                    should_notify_author = True
 
             conn.commit()
+            if should_notify_author and story_author and story_author.lower() != username.lower():
+                notif_link = f"/community_feed_react/{community_id}"
+                notif_message = f"{username} reacted to your story"
+                try:
+                    create_notification(
+                        story_author,
+                        username,
+                        'story_reaction',
+                        post_id=story_id,
+                        community_id=community_id,
+                        message=notif_message,
+                        link=notif_link,
+                    )
+                except Exception as notify_err:
+                    logger.warning(f"Story reaction notification error for {story_author}: {notify_err}")
+                try:
+                    send_push_to_user(
+                        story_author,
+                        {
+                            'title': f'New reaction from {username}',
+                            'body': notif_message,
+                            'url': notif_link,
+                            'tag': f'story-reaction-{story_id}-{story_author}',
+                        },
+                    )
+                except Exception as push_err:
+                    logger.warning(f"Story reaction push error for {story_author}: {push_err}")
             reaction_counts, user_reactions = fetch_story_reaction_maps(c, [story_id], username)
             return jsonify(
                 {
@@ -32128,7 +32159,7 @@ def api_add_story_comment(story_id: int):
             ph = get_sql_placeholder()
             c.execute(
                 f"""
-                SELECT cs.community_id, co.creator_username
+                SELECT cs.community_id, cs.username AS story_username, co.creator_username
                 FROM community_stories cs
                 JOIN communities co ON co.id = cs.community_id
                 WHERE cs.id = {ph} AND cs.status = 'active'
@@ -32139,7 +32170,8 @@ def api_add_story_comment(story_id: int):
             if not row:
                 return jsonify({'success': False, 'error': 'Story not found'}), 404
             community_id = row['community_id'] if hasattr(row, 'keys') else row[0]
-            creator = row['creator_username'] if hasattr(row, 'keys') else (row[1] if len(row) > 1 else None)
+            story_author = row['story_username'] if hasattr(row, 'keys') else (row[1] if len(row) > 1 else None)
+            creator = row['creator_username'] if hasattr(row, 'keys') else (row[2] if len(row) > 2 else None)
             if not user_has_story_access(c, username, community_id, creator):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
             now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
@@ -32152,6 +32184,59 @@ def api_add_story_comment(story_id: int):
             )
             comment_id = getattr(c, 'lastrowid', None)
             conn.commit()
+            recipients = set()
+            if story_author and story_author.lower() != username.lower():
+                recipients.add(story_author)
+            try:
+                c.execute(
+                    f"""
+                    SELECT DISTINCT username
+                    FROM community_story_comments
+                    WHERE story_id = {ph} AND LOWER(username) != LOWER({ph})
+                    """,
+                    (story_id, username),
+                )
+                for recipient_row in c.fetchall() or []:
+                    recipient = recipient_row['username'] if hasattr(recipient_row, 'keys') else recipient_row[0]
+                    if recipient and recipient.lower() != username.lower():
+                        recipients.add(recipient)
+            except Exception as recipient_err:
+                logger.warning(f"Story comment recipient lookup failed for {story_id}: {recipient_err}")
+
+            notif_link = f"/community_feed_react/{community_id}"
+            preview_snip = truncate_notification_preview(content)
+            for recipient in recipients:
+                is_story_author = bool(story_author and recipient.lower() == story_author.lower())
+                notif_message = (
+                    f"{username} commented on your story"
+                    if is_story_author
+                    else f"{username} also commented on a story you commented on"
+                )
+                try:
+                    create_notification(
+                        recipient,
+                        username,
+                        'story_comment',
+                        post_id=story_id,
+                        community_id=community_id,
+                        message=notif_message,
+                        link=notif_link,
+                        preview_text=preview_snip or None,
+                    )
+                except Exception as notify_err:
+                    logger.warning(f"Story comment notification error for {recipient}: {notify_err}")
+                try:
+                    send_push_to_user(
+                        recipient,
+                        {
+                            'title': f'New story comment from {username}',
+                            'body': preview_snip or notif_message,
+                            'url': notif_link,
+                            'tag': f'story-comment-{story_id}-{recipient}',
+                        },
+                    )
+                except Exception as push_err:
+                    logger.warning(f"Story comment push error for {recipient}: {push_err}")
             pp_row = c.execute(
                 f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (username,)
             ) if False else None
