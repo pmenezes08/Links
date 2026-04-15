@@ -7,12 +7,14 @@ from typing import Any, Dict
 from backend.services.community import fetch_community_names
 from backend.services.content_generation.ideas.roundup_format import (
     collect_urls_from_sections,
+    default_min_publication_year,
     derive_sources_from_sections,
     filter_section_items,
     filter_sources,
     merge_source_links,
     render_sections_markdown,
     render_sources_section,
+    strip_feed_markdown_emphasis,
 )
 from backend.services.content_generation.llm import (
     NEWS_PUBLIC_DOMAINS,
@@ -85,8 +87,12 @@ def _is_enabled(value: Any, *, default: bool = True) -> bool:
 def _legacy_body(topic: str, result: Dict[str, Any]) -> str:
     bullets = result.get("bullets") or []
     bullet_text = "\n".join(f"• {str(item).strip()}" for item in bullets if str(item).strip())
-    intro = str(result.get("intro") or f"Here is Steve's latest news roundup on {topic}.").strip()
-    closing = str(result.get("closing") or "Let me know if you want a deeper dive into any of these stories.").strip()
+    intro = strip_feed_markdown_emphasis(
+        str(result.get("intro") or f"Here is Steve's latest news roundup on {topic}.").strip()
+    )
+    closing = strip_feed_markdown_emphasis(
+        str(result.get("closing") or "Let me know if you want a deeper dive into any of these stories.").strip()
+    )
     body = f"Steve's public news roundup: {topic}\n\n{intro}"
     if bullet_text:
         body += f"\n\n{bullet_text}"
@@ -137,6 +143,9 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             f"{_NEWS_MIXED_OUTLET_GUIDANCE} "
             "Return JSON with keys: hook, sections, cta, sources, source_links. "
             "hook: 1-2 natural, human-sounding sentences that set up the topic without hype, slang, or snark. "
+            "RECENCY: Prefer stories published within the last few weeks or months; avoid articles whose original "
+            "publication is more than about three years old unless the topic is explicitly historical. "
+            "Set published_date from each article page when available. "
             "sections: array of 3-5 objects, each with "
             '"title" (short section heading that fits THIS topic — e.g. Economy, Policy, World, Tech, Science, Sports, Infrastructure — pick labels that match the story set, not a generic laundry list) '
             'and "items" (array of 1-3 story objects per section). '
@@ -147,16 +156,18 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             '"published_date" (e.g. 14 Apr 2026 or March 2026), '
             '"why_it_matters" (exactly one clear sentence), '
             '"key_stat" (one striking number or fact, or empty string if none), '
-            '"source_label" (short source line label for the Sources section, e.g. Portugal deficit cap). '
+            '"source_label" (short source line label for the SOURCES section, e.g. Portugal deficit cap). '
             "Keep the tone professional, concise, and natural. Avoid jokey asides, sarcasm, internet slang, or exaggerated personality. "
             "cta: one line inviting replies — e.g. a question or \"What are you seeing locally?\" "
             "Do not mention email newsletters or subscribing. "
-            'sources: array of objects with "title", "outlet", "published_date", and "url" for the bottom Sources section. '
-            "source_links: array of every article URL you used (must match allowlist)."
+            'sources: array of objects with "title", "outlet", "published_date", and "url" for the bottom SOURCES section. '
+            "source_links: array of every article URL you used (must match allowlist). "
+            "Do not use markdown emphasis markers (** or *) in text fields — plain sentences only."
         ),
         user_prompt=(
             f"Topic: {topic}\n"
             "Write a community-friendly news update. Lead with the hook, then grouped sections. "
+            "Prioritize recent reporting; avoid decade-old articles unless the topic is historical. "
             "Every url in sections must appear in source_links. "
             "The final prose should read like a smart human briefing, not AI output. "
             "Do not cite paywalled sources. No XML, markdown emphasis markers, or citation tags in text fields."
@@ -165,16 +176,25 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
         temperature=0.35,
     )
 
-    filtered_sections = filter_section_items(result.get("sections"), NEWS_PUBLIC_DOMAINS)
+    min_year = default_min_publication_year()
+    filtered_sections = filter_section_items(
+        result.get("sections"),
+        NEWS_PUBLIC_DOMAINS,
+        min_publication_year=min_year,
+    )
     structured_sources = filter_sources(result.get("sources"), NEWS_PUBLIC_DOMAINS)
 
     if filtered_sections:
-        hook = str(result.get("hook") or "").strip()
+        hook = strip_feed_markdown_emphasis(str(result.get("hook") or "").strip())
         if not hook:
-            hook = str(result.get("intro") or "").strip() or f"Here is what matters right now on {topic}."
-        cta = str(result.get("cta") or "").strip()
+            hook = strip_feed_markdown_emphasis(
+                str(result.get("intro") or "").strip() or f"Here is what matters right now on {topic}."
+            )
+        cta = strip_feed_markdown_emphasis(str(result.get("cta") or "").strip())
         if not cta:
-            cta = str(result.get("closing") or "").strip() or "What is your take on this?"
+            cta = strip_feed_markdown_emphasis(
+                str(result.get("closing") or "").strip() or "What is your take on this?"
+            )
         section_md = render_sections_markdown(filtered_sections)
         if not structured_sources:
             structured_sources = derive_sources_from_sections(filtered_sections)

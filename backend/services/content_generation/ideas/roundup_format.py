@@ -2,9 +2,47 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Sequence
+import re
+from datetime import date
+from typing import Any, Dict, List, Optional, Sequence
 
 from backend.services.content_generation.llm import filter_links
+
+
+def extract_year_from_text(s: str) -> Optional[int]:
+    """Best-effort year for recency checks (e.g. '14 Apr 2026', 'March 2023')."""
+    if not (s or "").strip():
+        return None
+    m = re.search(r"\b(20\d{2}|19\d{2})\b", s.strip())
+    if not m:
+        return None
+    y = int(m.group(1))
+    cy = date.today().year
+    if y < 1990 or y > cy + 1:
+        return None
+    return y
+
+
+def is_stale_publication_date(published_date: str, *, min_year: int) -> bool:
+    """True if we parsed a year and it is before min_year (unknown year → not stale)."""
+    y = extract_year_from_text(published_date or "")
+    if y is None:
+        return False
+    return y < min_year
+
+
+def strip_feed_markdown_emphasis(text: str) -> str:
+    """Remove raw markdown emphasis so the community feed does not show ** or *…*."""
+    if not text:
+        return text
+    s = text.replace("**", "")
+    s = re.sub(r"(?<!\*)\*(?!\s)([^*\n]+?)(?<!\s)\*(?!\*)", r"\1", s)
+    return s
+
+
+def default_min_publication_year() -> int:
+    """Drop items older than ~3 calendar years when year is parseable."""
+    return date.today().year - 3
 
 
 def md_link_title(text: str) -> str:
@@ -31,8 +69,14 @@ def collect_urls_from_sections(sections: Any) -> List[str]:
 def filter_section_items(
     sections: Any,
     allowed_domains: Sequence[str],
+    *,
+    min_publication_year: int | None = None,
 ) -> List[Dict[str, Any]]:
-    """Drop items whose URLs are not on the allowlist; drop empty sections."""
+    """Drop items whose URLs are not on the allowlist; drop empty sections.
+
+    When min_publication_year is set, drop items with a parseable year strictly before
+    that threshold. If that would empty a section, keep the pre-filter items (soft filter).
+    """
     out: List[Dict[str, Any]] = []
     if not isinstance(sections, list):
         return out
@@ -63,6 +107,14 @@ def filter_section_items(
                     "source_label": str(item.get("source_label") or "").strip(),
                 }
             )
+        if min_publication_year is not None and items_out:
+            recent_only = [
+                it
+                for it in items_out
+                if not is_stale_publication_date(it.get("published_date") or "", min_year=min_publication_year)
+            ]
+            if recent_only:
+                items_out = recent_only
         if title and items_out:
             out.append({"title": title, "items": items_out})
     return out
@@ -148,14 +200,14 @@ def _source_display_label(title: str, outlet: str, published_date: str) -> str:
 
 def format_story_item(item: Dict[str, Any]) -> str:
     """Body text only: headline + context. Outlet/date stay in Sources, not repeated here."""
-    title = md_link_title(item.get("title") or "")
+    title = strip_feed_markdown_emphasis(md_link_title(item.get("title") or ""))
     if not title:
         return ""
     lines: List[str] = [f"• {title}"]
-    wim = str(item.get("why_it_matters") or "").strip()
+    wim = strip_feed_markdown_emphasis(str(item.get("why_it_matters") or "").strip())
     if wim:
         lines.append(wim)
-    stat = str(item.get("key_stat") or "").strip()
+    stat = strip_feed_markdown_emphasis(str(item.get("key_stat") or "").strip())
     if stat:
         lines.append(f"Key stat: {stat}")
     return "\n\n".join(line for line in lines if line).strip()
@@ -185,19 +237,30 @@ def format_opinion_story_item(item: Dict[str, Any]) -> str:
     return f"{base}\n\n[{label}]({url})"
 
 
-def _section_heading_markdown(title: str, *, bold: bool) -> str:
-    t = str(title or "").strip().replace("*", "")
+def _section_heading_feed(title: str) -> str:
+    """ALL CAPS section title for plain-text / feed (no ** markdown)."""
+    t = strip_feed_markdown_emphasis(str(title or "").strip())
     if not t:
         return ""
-    if bold:
-        return f"**{t}**"
-    return t
+    return t.upper()
+
+
+def take_first_opinion_article(sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Single opinion: one section, one written article (first item)."""
+    if not sections:
+        return []
+    for sec in sections:
+        items = sec.get("items") or []
+        if not items:
+            continue
+        title = str(sec.get("title") or "").strip() or "THE PIECE"
+        return [{"title": title, "items": [items[0]]}]
+    return []
 
 
 def render_sections_markdown(
     sections: List[Dict[str, Any]],
     *,
-    bold_section_titles: bool = False,
     link_after_opinion: bool = False,
 ) -> str:
     blocks: List[str] = []
@@ -206,7 +269,7 @@ def render_sections_markdown(
         items = sec.get("items") or []
         if not title or not items:
             continue
-        heading = _section_heading_markdown(title, bold=bold_section_titles)
+        heading = _section_heading_feed(title)
         inner: List[str] = [heading]
         formatter = format_opinion_story_item if link_after_opinion else format_story_item
         for it in items:
@@ -222,7 +285,7 @@ def render_sources_section(sources: List[Dict[str, str]]) -> str:
     """Bullet list of markdown links; label matches 'Title - Outlet, date' style."""
     if not sources:
         return ""
-    lines = ["Sources"]
+    lines = ["SOURCES"]
     for source in sources:
         title = str(source.get("title") or "Source").strip()
         outlet = str(source.get("outlet") or "").strip()
