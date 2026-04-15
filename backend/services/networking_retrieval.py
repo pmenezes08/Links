@@ -70,6 +70,25 @@ _STOPWORDS = {
     "your",
 }
 
+_FOLLOW_UP_PREFIXES = (
+    "what about",
+    "how about",
+    "and what about",
+    "and how about",
+    "tell me more about",
+    "more on",
+    "what about @",
+)
+
+_FOLLOW_UP_EXACT = {
+    "him",
+    "her",
+    "them",
+    "that person",
+    "that one",
+    "those people",
+}
+
 _INDUSTRY_ALIASES = {
     "tech": (
         "tech",
@@ -125,6 +144,28 @@ _INDUSTRY_ALIASES = {
     ),
 }
 
+_FACET_ALIAS_MAP = {
+    "geography": {
+        "us": ("us", "usa", "united states", "america"),
+        "usa": ("usa", "us", "united states", "america"),
+        "united states": ("united states", "usa", "us", "america"),
+        "uk": ("uk", "united kingdom", "britain", "england"),
+        "lisbon": ("lisbon", "lisboa", "portugal"),
+    },
+    "company_builder": {
+        "founder": ("founder", "cofounder", "co-founder", "built a company", "started a company", "started their own company"),
+        "created own company": ("created their own company", "created own company", "built their own company", "built a company", "founded a company", "started a company"),
+        "entrepreneur": ("entrepreneur", "startup founder", "cofounder", "business owner"),
+    },
+    "traits": {
+        "goal driven": ("goal driven", "goal-driven", "driven", "high agency", "ambitious"),
+        "collaborative": ("collaborative", "team player", "works well with others"),
+    },
+    "identity_life_stage": {
+        "parent": ("parent", "mother", "father", "mom", "dad", "kids", "children", "son", "daughter"),
+    },
+}
+
 
 def _normalize_text(value: Any) -> str:
     if value is None:
@@ -153,11 +194,232 @@ def _dedupe_keep_order(values: Iterable[str]) -> list[str]:
     return out
 
 
+def _normalize_phrase_list(values: Any) -> list[str]:
+    if values is None:
+        return []
+    if isinstance(values, str):
+        values = [values]
+    out: list[str] = []
+    for value in values or []:
+        norm = _normalize_text(value)
+        if norm:
+            out.append(norm)
+    return _dedupe_keep_order(out)
+
+
 def _row_value(row: Any, getter: Callable[[Any, int], Any], idx: int) -> str:
     try:
         return str(getter(row, idx) or "")
     except Exception:
         return ""
+
+
+def _history_user_messages(conversation_history: Any) -> list[str]:
+    if not isinstance(conversation_history, list):
+        return []
+    out: list[str] = []
+    for turn in conversation_history:
+        if not isinstance(turn, dict):
+            continue
+        if str(turn.get("role") or "").strip().lower() != "user":
+            continue
+        content = str(turn.get("content") or "").strip()
+        if content:
+            out.append(content)
+    return out
+
+
+def _looks_like_follow_up(message: str) -> bool:
+    norm = _normalize_text(message)
+    if not norm:
+        return False
+    if any(norm.startswith(prefix) for prefix in _FOLLOW_UP_PREFIXES):
+        return True
+    if norm in _FOLLOW_UP_EXACT:
+        return True
+    if "@" in message:
+        return True
+    if len(norm.split()) <= 5 and any(token in norm for token in ("more", "them", "him", "her", "hugo")):
+        return True
+    return False
+
+
+def should_use_reasoning_planner(message: str, conversation_history: Any = None) -> bool:
+    """Use the extra planner only when the query is complex enough to justify it."""
+    norm = _normalize_text(message)
+    if not norm:
+        return False
+    if _looks_like_follow_up(message) and _history_user_messages(conversation_history):
+        return True
+    if "@" in message:
+        return True
+    keyword_count = len(_query_keywords(norm))
+    if any(sep in message for sep in (",", ";")) and keyword_count >= 2:
+        return True
+    if " and " in norm and keyword_count >= 3:
+        return True
+    if any(term in norm for term in ("goal driven", "goal-driven", "founder", "parent", "climbing", "golf")):
+        return True
+    return keyword_count >= 6
+
+
+def build_retrieval_query(message: str, conversation_history: Any = None, query_plan: dict[str, Any] | None = None) -> str:
+    """Build a retrieval-oriented query, preserving follow-up context when needed."""
+    current = str((query_plan or {}).get("search_rewrite") or message or "").strip()
+    if not current:
+        return ""
+    prior_user_messages = _history_user_messages(conversation_history)
+    if not _looks_like_follow_up(message) or not prior_user_messages:
+        return current
+    prior_context = prior_user_messages[-2:]
+    merged = " ".join(m for m in prior_context + [current] if str(m).strip())
+    return re.sub(r"\s+", " ", merged).strip()
+
+
+def resolve_named_people(
+    member_rows: Sequence[Any],
+    getter: Callable[[Any, int], Any],
+    *,
+    message: str = "",
+    query_plan: dict[str, Any] | None = None,
+) -> list[str]:
+    """Resolve explicit names/@mentions to usernames so they are always evaluated."""
+    by_username: dict[str, str] = {}
+    by_display: dict[str, str] = {}
+    for row in member_rows:
+        username = _row_value(row, getter, 0).strip()
+        display_name = _row_value(row, getter, 1).strip()
+        if not username:
+            continue
+        uname_norm = _normalize_text(username)
+        if uname_norm:
+            by_username[uname_norm] = username
+        display_norm = _normalize_text(display_name)
+        if display_norm:
+            by_display[display_norm] = username
+
+    raw_names: list[str] = []
+    raw_names.extend(re.findall(r"@([A-Za-z0-9_]{1,40})", message or ""))
+    qp = query_plan or {}
+    raw_names.extend(str(v).strip() for v in (qp.get("named_people") or []) if str(v).strip())
+
+    resolved: list[str] = []
+    for raw in raw_names:
+        norm = _normalize_text(raw)
+        if not norm:
+            continue
+        if norm in by_username:
+            resolved.append(by_username[norm])
+            continue
+        if norm in by_display:
+            resolved.append(by_display[norm])
+            continue
+        for display_norm, username in by_display.items():
+            if norm in display_norm or display_norm in norm:
+                resolved.append(username)
+                break
+    return _dedupe_keep_order(resolved)
+
+
+def _plan_facet_terms(query_plan: dict[str, Any] | None, facet: str) -> list[str]:
+    if not isinstance(query_plan, dict):
+        return []
+    facets = query_plan.get("facets") or {}
+    if not isinstance(facets, dict):
+        return []
+    return _normalize_phrase_list(facets.get(facet))
+
+
+def _facet_terms_with_aliases(facet: str, terms: Sequence[str]) -> list[str]:
+    expanded: list[str] = []
+    alias_map = _FACET_ALIAS_MAP.get(facet, {})
+    for term in _normalize_phrase_list(list(terms)):
+        expanded.append(term)
+        aliases = alias_map.get(term, ())
+        expanded.extend(_normalize_phrase_list(list(aliases)))
+    return _dedupe_keep_order(expanded)
+
+
+def _match_any_terms(blob: str, terms: Sequence[str]) -> int:
+    return sum(1 for term in terms if _contains_term(blob, term))
+
+
+def _structured_candidates_from_plan(
+    member_rows: Sequence[Any],
+    getter: Callable[[Any, int], Any],
+    *,
+    retrieval_plan: dict[str, Any],
+    cap: int,
+) -> list[str]:
+    geography_terms = _facet_terms_with_aliases("geography", _plan_facet_terms(retrieval_plan, "geography"))
+    industry_terms = _facet_terms_with_aliases("industry", _plan_facet_terms(retrieval_plan, "industry"))
+    role_terms = _facet_terms_with_aliases("roles", _plan_facet_terms(retrieval_plan, "roles"))
+    builder_terms = _facet_terms_with_aliases("company_builder", _plan_facet_terms(retrieval_plan, "company_builder"))
+    trait_terms = _facet_terms_with_aliases("traits", _plan_facet_terms(retrieval_plan, "traits"))
+    interest_terms = _facet_terms_with_aliases("interests", _plan_facet_terms(retrieval_plan, "interests"))
+    experience_terms = _facet_terms_with_aliases("experiences", _plan_facet_terms(retrieval_plan, "experiences"))
+    identity_terms = _facet_terms_with_aliases("identity_life_stage", _plan_facet_terms(retrieval_plan, "identity_life_stage"))
+    hard_constraints = {term for term in _normalize_phrase_list(retrieval_plan.get("hard_constraints"))}
+
+    has_any_requested_facet = any(
+        (geography_terms, industry_terms, role_terms, builder_terms, trait_terms, interest_terms, experience_terms, identity_terms)
+    )
+    if not has_any_requested_facet:
+        return []
+
+    scored_rows: list[tuple[str, int, int, float]] = []
+    for row in member_rows:
+        username = _row_value(row, getter, 0).strip()
+        if not username:
+            continue
+        city = _row_value(row, getter, 3)
+        country = _row_value(row, getter, 4)
+        industry = _row_value(row, getter, 5)
+        role = _row_value(row, getter, 6)
+        company = _row_value(row, getter, 7)
+        interests = _row_value(row, getter, 8)
+        profile_location = _row_value(row, getter, 9)
+        professional_about = _row_value(row, getter, 10)
+        bio = _row_value(row, getter, 2)
+
+        location_blob = _normalize_text(" ".join([city, country, profile_location, bio, professional_about]))
+        professional_blob = _normalize_text(" ".join([industry, role, company, interests, professional_about, bio]))
+        general_blob = _normalize_text(" ".join([bio, interests, professional_about, company, role, industry, city, country, profile_location]))
+
+        facet_matches = {
+            "geography": _match_any_terms(location_blob, geography_terms),
+            "industry": _match_any_terms(professional_blob, industry_terms),
+            "roles": _match_any_terms(professional_blob, role_terms),
+            "company_builder": _match_any_terms(professional_blob, builder_terms),
+            "traits": _match_any_terms(general_blob, trait_terms),
+            "interests": _match_any_terms(general_blob, interest_terms),
+            "experiences": _match_any_terms(general_blob, experience_terms),
+            "identity_life_stage": _match_any_terms(general_blob, identity_terms),
+        }
+
+        matched_facets = {facet for facet, score in facet_matches.items() if score > 0}
+        if not matched_facets:
+            continue
+
+        hard_hits = sum(1 for facet in hard_constraints if facet in matched_facets)
+        hard_misses = sum(1 for facet in hard_constraints if facet not in matched_facets)
+        total_hits = sum(facet_matches.values())
+        score = (
+            hard_hits * 12.0
+            - hard_misses * 3.5
+            + facet_matches["geography"] * 6.0
+            + facet_matches["industry"] * 5.0
+            + facet_matches["roles"] * 4.0
+            + facet_matches["company_builder"] * 5.5
+            + facet_matches["traits"] * 3.5
+            + facet_matches["interests"] * 3.5
+            + facet_matches["experiences"] * 3.5
+            + facet_matches["identity_life_stage"] * 4.0
+        )
+        scored_rows.append((username, hard_hits, len(matched_facets), score + total_hits * 0.25))
+
+    ranked = sorted(scored_rows, key=lambda item: (-item[1], -item[2], -item[3], item[0]))
+    return [username for username, _, _, _ in ranked[:cap]]
 
 
 def _candidate_location_terms(member_rows: Sequence[Any], getter: Callable[[Any, int], Any]) -> list[str]:
@@ -227,6 +489,7 @@ def structured_candidates(
     getter: Callable[[Any, int], Any],
     *,
     cap: int = 120,
+    retrieval_plan: dict[str, Any] | None = None,
 ) -> list[str]:
     """Return a structured roster ranking from SQL-loaded member rows.
 
@@ -234,6 +497,16 @@ def structured_candidates(
     to benefit from metadata/keyword filtering (for example a location or
     an industry/domain cue present in the query).
     """
+
+    if retrieval_plan:
+        planned = _structured_candidates_from_plan(
+            member_rows,
+            getter,
+            retrieval_plan=retrieval_plan,
+            cap=cap,
+        )
+        if planned:
+            return planned
 
     message_norm = _normalize_text(message)
     if not message_norm:
@@ -336,16 +609,22 @@ def fuse_roster(
     *,
     cap: int = 40,
     rrf_k: int = _RRF_K,
+    forced_usernames: Sequence[str] = (),
 ) -> list[str]:
     """Fuse structured and semantic rankings into one ordered shortlist."""
 
     structured = _dedupe_keep_order([str(username).strip() for username in structured_ids if str(username).strip()])
     semantic = _dedupe_keep_order([str(username).strip() for username in semantic_ids if str(username).strip()])
 
+    forced = _dedupe_keep_order([str(username).strip() for username in forced_usernames if str(username).strip()])
+    if not structured and not semantic:
+        return forced[:cap]
     if not structured:
-        return semantic[:cap]
+        ranked = semantic[:cap]
+        return (forced + [u for u in ranked if u not in forced])[:cap]
     if not semantic:
-        return structured[:cap]
+        ranked = structured[:cap]
+        return (forced + [u for u in ranked if u not in forced])[:cap]
 
     scores: dict[str, float] = {}
     first_rank: dict[str, tuple[int, int]] = {}
@@ -372,5 +651,8 @@ def fuse_roster(
             username,
         ),
     )
-    return ranked[:cap]
+    final_ranked = ranked[:cap]
+    if forced:
+        final_ranked = forced + [u for u in final_ranked if u not in forced]
+    return final_ranked[:cap]
 

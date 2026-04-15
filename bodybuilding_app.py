@@ -16571,6 +16571,148 @@ def _networking_should_retry_multi_agent(ai_response: str, recommended: list[str
     return any(marker in text for marker in _NETWORKING_NO_MATCH_MARKERS)
 
 
+def _extract_json_object(text: str) -> dict:
+    text = (text or "").strip()
+    if not text:
+        return {}
+    try:
+        data = json.loads(text)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        pass
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return {}
+    try:
+        data = json.loads(text[start : end + 1])
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _normalize_networking_query_plan(raw_plan: dict | None) -> dict | None:
+    if not isinstance(raw_plan, dict):
+        return None
+    allowed_facets = (
+        "geography",
+        "industry",
+        "roles",
+        "company_builder",
+        "traits",
+        "interests",
+        "experiences",
+        "identity_life_stage",
+    )
+    facets_in = raw_plan.get("facets") or {}
+    facets_out = {}
+    for facet in allowed_facets:
+        values = facets_in.get(facet) if isinstance(facets_in, dict) else []
+        if isinstance(values, str):
+            values = [values]
+        cleaned = []
+        for value in values or []:
+            s = str(value or "").strip()
+            if s:
+                cleaned.append(s[:120])
+        if cleaned:
+            facets_out[facet] = cleaned[:8]
+
+    def _clean_constraints(values):
+        if isinstance(values, str):
+            values = [values]
+        return [facet for facet in (values or []) if facet in allowed_facets]
+
+    named_people = raw_plan.get("named_people") or []
+    if isinstance(named_people, str):
+        named_people = [named_people]
+    named_people = [str(v).strip()[:120] for v in named_people if str(v).strip()][:6]
+
+    plan = {
+        "facets": facets_out,
+        "hard_constraints": _clean_constraints(raw_plan.get("hard_constraints")),
+        "soft_constraints": _clean_constraints(raw_plan.get("soft_constraints")),
+        "named_people": named_people,
+        "search_rewrite": str(raw_plan.get("search_rewrite") or "").strip()[:500],
+        "needs_clarification": bool(raw_plan.get("needs_clarification")),
+        "clarifying_question": str(raw_plan.get("clarifying_question") or "").strip()[:300],
+    }
+    return plan if (plan["facets"] or plan["named_people"] or plan["search_rewrite"]) else None
+
+
+def _plan_networking_query(client, *, message: str, conversation_history, member_names) -> dict | None:
+    from backend.services.networking_retrieval import should_use_reasoning_planner
+
+    if not should_use_reasoning_planner(message, conversation_history):
+        return None
+
+    recent_user_turns = []
+    if isinstance(conversation_history, list):
+        for turn in conversation_history[-8:]:
+            if not isinstance(turn, dict):
+                continue
+            if str(turn.get("role") or "").strip().lower() != "user":
+                continue
+            content = str(turn.get("content") or "").strip()
+            if content:
+                recent_user_turns.append(content)
+    history_block = "\n".join(f"- {item}" for item in recent_user_turns[-4:]) or "- (none)"
+    member_block = "\n".join(f"- @{u} | {n}" for u, n in member_names[:120]) or "- (none)"
+
+    planner_input = [
+        {
+            "role": "system",
+            "content": """You are a query planner for a private professional networking search assistant.
+Return JSON only with keys:
+- facets
+- hard_constraints
+- soft_constraints
+- named_people
+- search_rewrite
+- needs_clarification
+- clarifying_question
+
+Facet keys may only be:
+geography, industry, roles, company_builder, traits, interests, experiences, identity_life_stage
+
+Rules:
+- Preserve prior user intent for follow-up questions.
+- If the user mentions a person explicitly, include them in named_people.
+- Use hard_constraints only for facets the user clearly requires.
+- Use soft_constraints for preferences.
+- search_rewrite should be a compact search query for retrieval.
+- For sensitive life-stage / identity asks like parent, include them only when the user explicitly asked for them.
+- If the ask is simple and single-facet, keep the JSON minimal.
+- Never mention internal reasoning. JSON only.""",
+        },
+        {
+            "role": "user",
+            "content": f"Recent user turns:\n{history_block}\n\nCurrent user message:\n{message}\n\nKnown members:\n{member_block}",
+        },
+    ]
+
+    try:
+        response = client.responses.create(
+            model=GROK_MODEL_REASONING,
+            input=planner_input,
+            max_output_tokens=350,
+            temperature=0.1,
+        )
+        planner_text = (response.output_text or "").strip() if hasattr(response, "output_text") else ""
+        plan = _normalize_networking_query_plan(_extract_json_object(planner_text))
+        if plan:
+            logger.info(
+                "Networking planner active facets=%s hard=%s named=%s",
+                sorted((plan.get("facets") or {}).keys()),
+                plan.get("hard_constraints") or [],
+                plan.get("named_people") or [],
+            )
+        return plan
+    except Exception:
+        logger.warning("Networking planner failed; falling back to direct retrieval", exc_info=True)
+        return None
+
+
 def _run_networking_completion(client, *, prompt_input, member_names, context_label: str):
     response = client.responses.create(
         model=STEVE_NETWORKING_MODEL,
@@ -16621,7 +16763,9 @@ def api_networking_steve_match():
         return jsonify({'success': False, 'error': 'AI service not available'}), 503
     try:
         from backend.services.networking_retrieval import (
+            build_retrieval_query,
             fuse_roster,
+            resolve_named_people,
             semantic_candidates,
             structured_candidates,
         )
@@ -16663,23 +16807,50 @@ def api_networking_steve_match():
             member_rows = c.fetchall()
             all_member_usernames = [str(_v(r, 0)) for r in member_rows]
             member_names = [(str(_v(r, 0)), str(_v(r, 1))) for r in member_rows]
-            structured_ids = structured_candidates(member_rows, message, _v)
-            semantic_ids = semantic_candidates(
+            from openai import OpenAI
+            client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+
+            query_plan = _plan_networking_query(
+                client,
+                message=message,
+                conversation_history=conversation_history,
+                member_names=member_names,
+            )
+            retrieval_query = build_retrieval_query(
                 message,
+                conversation_history,
+                query_plan=query_plan,
+            )
+            structured_ids = structured_candidates(
+                member_rows,
+                retrieval_query,
+                _v,
+                retrieval_plan=query_plan,
+            )
+            semantic_ids = semantic_candidates(
+                retrieval_query,
                 all_member_usernames,
                 k_recall=NETWORKING_ANN_RECALL_CAP,
                 k_final=NETWORKING_PROMPT_MEMBER_CAP,
+            )
+            forced_usernames = resolve_named_people(
+                member_rows,
+                _v,
+                message=message,
+                query_plan=query_plan,
             )
             ordered_usernames = fuse_roster(
                 structured_ids,
                 semantic_ids,
                 cap=NETWORKING_PROMPT_MEMBER_CAP,
+                forced_usernames=forced_usernames,
             )
             logger.info(
-                "Steve networking retrieval mode=match structured=%s semantic=%s fused=%s model=%s",
+                "Steve networking retrieval mode=match structured=%s semantic=%s fused=%s forced=%s model=%s",
                 len(structured_ids),
                 len(semantic_ids),
                 len(ordered_usernames),
+                len(forced_usernames),
                 STEVE_NETWORKING_MODEL,
             )
 
@@ -16703,7 +16874,7 @@ def api_networking_steve_match():
 
             members_text = _networking_build_members_text(
                 member_rows, all_member_usernames, user_subcommunities,
-                recent_posts_map, viewer_username=username, query_text=message, _v=_v,
+                recent_posts_map, viewer_username=username, query_text=retrieval_query, _v=_v,
                 preordered_usernames=ordered_usernames,
             )
 
@@ -16719,8 +16890,6 @@ def api_networking_steve_match():
             if requester_profile_ctx:
                 enriched_user_profile += f"\nAI insight: {requester_profile_ctx}"
 
-        from openai import OpenAI
-        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
         grok_input = [
             {"role": "system", "content": f"""You are Steve, a friendly and helpful networking assistant inside a private professional network. You speak like a knowledgeable friend — warm, concise, and natural. Never sound like a database or a computer.
 
@@ -16775,13 +16944,30 @@ RULES:
 - This is a multi-turn conversation. Pay close attention to what was discussed previously. If the user asks a follow-up (e.g., "suggest a message to send him", "tell me more about her"), refer back to the person or topic from the prior exchange. Do NOT start a new unrelated recommendation unless the user explicitly asks for something different.
 - The requester's profile is provided as background context ONLY — so you know who they are and can craft better introductions. When the user makes a specific request, match ONLY based on what they asked for. Do NOT bring the requester's own interests, industry, or background into the recommendation rationale unless they explicitly ask for connections related to their own profile (e.g., "people in my industry", "people with similar interests"). If the user asks about race cars, recommend people connected to race cars — not people who share the requester's AI interests."""}
         ]
+        if query_plan:
+            planner_hint = json.dumps(
+                {
+                    "facets": query_plan.get("facets") or {},
+                    "hard_constraints": query_plan.get("hard_constraints") or [],
+                    "soft_constraints": query_plan.get("soft_constraints") or [],
+                    "named_people": query_plan.get("named_people") or [],
+                    "search_rewrite": query_plan.get("search_rewrite") or "",
+                },
+                ensure_ascii=True,
+            )
+            grok_input.append(
+                {
+                    "role": "system",
+                    "content": f"Internal query plan for retrieval alignment only: {planner_hint}. Use it to honor the user's intent, but never mention this plan explicitly.",
+                }
+            )
         if conversation_history and isinstance(conversation_history, list):
             for turn in conversation_history[-10:]:
                 role = turn.get('role', '')
                 content = turn.get('content', '')
                 if role in ('user', 'assistant') and content:
                     grok_input.append({"role": role, "content": content})
-        grok_input.append({"role": "user", "content": f"(Background context about me — use only if relevant to my request):\n{enriched_user_profile}\n\nMy request: {message}\n\nCommunity members:\n{members_text}"})
+        grok_input.append({"role": "user", "content": f"(Background context about me — use only if relevant to my request):\n{enriched_user_profile}\n\nMy request: {message}\n\nRetrieval focus: {retrieval_query}\n\nCommunity members:\n{members_text}"})
         ai_response, recommended, _model_used = _run_networking_completion(
             client,
             prompt_input=grok_input,

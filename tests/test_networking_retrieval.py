@@ -6,9 +6,12 @@ import unittest
 from unittest.mock import patch
 
 from backend.services.networking_retrieval import (
+    build_retrieval_query,
     fuse_roster,
+    resolve_named_people,
     semantic_candidates,
     structured_candidates,
+    should_use_reasoning_planner,
 )
 
 
@@ -119,6 +122,121 @@ class TestNetworkingRetrieval(unittest.TestCase):
             )
 
             self.assertEqual(ranked, ["u3", "u1", "u2"])
+
+    def test_should_use_reasoning_planner_for_complex_and_follow_up_queries(self):
+        history = [{"role": "user", "content": "I want to meet people who have lived in Lisbon"}]
+        self.assertTrue(
+            should_use_reasoning_planner(
+                "What about @hugosdurao?",
+                history,
+            )
+        )
+        self.assertTrue(
+            should_use_reasoning_planner(
+                "I want to meet people who are goal driven and founded their own company in the US",
+                [],
+            )
+        )
+        self.assertFalse(should_use_reasoning_planner("Who is in Miami?", []))
+
+    def test_build_retrieval_query_merges_prior_user_context_for_follow_ups(self):
+        history = [
+            {"role": "user", "content": "I want to meet people that have lived or live in Lisbon"},
+            {"role": "assistant", "content": "Here are a couple Lisbon-adjacent people."},
+        ]
+        query = build_retrieval_query("What about @hugosdurao?", history)
+        self.assertIn("lived or live in Lisbon", query)
+        self.assertIn("@hugosdurao", query)
+
+    def test_resolve_named_people_supports_mentions_and_display_names(self):
+        rows = [
+            ("hugosdurao", "Hugo Silva-Durao", "", "", "", "", "", "", "", "", ""),
+            ("jh1987", "Jonas H", "", "", "", "", "", "", "", "", ""),
+        ]
+
+        resolved = resolve_named_people(rows, self._getter, message="What about @hugosdurao?")
+        self.assertEqual(resolved, ["hugosdurao"])
+
+        resolved_from_plan = resolve_named_people(
+            rows,
+            self._getter,
+            query_plan={"named_people": ["Hugo Silva Durao"]},
+        )
+        self.assertEqual(resolved_from_plan, ["hugosdurao"])
+
+    def test_fuse_roster_force_includes_named_usernames(self):
+        fused = fuse_roster(
+            ["amy", "bob"],
+            ["cara", "bob", "zoe"],
+            cap=4,
+            forced_usernames=["hugosdurao"],
+        )
+        self.assertEqual(fused[0], "hugosdurao")
+        self.assertIn("bob", fused)
+
+    def test_structured_candidates_support_query_plan_and_sensitive_explicit_only(self):
+        rows = [
+            (
+                "founder_parent",
+                "Founder Parent",
+                "Goal-driven operator and parent of two.",
+                "Austin",
+                "USA",
+                "Technology",
+                "Founder",
+                "BuildCo",
+                "golf, climbing",
+                "Austin, Texas",
+                "Founded a startup after years in software.",
+            ),
+            (
+                "founder_not_parent",
+                "Founder Not Parent",
+                "Goal-driven founder who loves golf and climbing.",
+                "Austin",
+                "USA",
+                "Technology",
+                "Founder",
+                "StartCo",
+                "golf, climbing",
+                "Austin, Texas",
+                "Built and sold a software company.",
+            ),
+            (
+                "parent_no_founder",
+                "Parent No Founder",
+                "Parent and golfer in the US.",
+                "Denver",
+                "USA",
+                "Finance",
+                "Investor",
+                "FundCo",
+                "golf",
+                "Denver, Colorado",
+                "Climbs on weekends.",
+            ),
+        ]
+        plan = {
+            "facets": {
+                "geography": ["US"],
+                "company_builder": ["created own company"],
+                "traits": ["goal driven"],
+                "interests": ["golf"],
+                "experiences": ["climbing"],
+                "identity_life_stage": ["parent"],
+            },
+            "hard_constraints": ["geography", "company_builder", "identity_life_stage"],
+        }
+
+        ranked = structured_candidates(
+            rows,
+            "goal-driven founders in the US who golf, climb, and are parents",
+            self._getter,
+            retrieval_plan=plan,
+        )
+
+        self.assertEqual(ranked[0], "founder_parent")
+        self.assertNotEqual(ranked[0], "founder_not_parent")
 
 
 if __name__ == "__main__":
