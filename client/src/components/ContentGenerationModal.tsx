@@ -384,8 +384,14 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
 
   return (
     <div
-      className="fixed inset-0 z-[1200] overflow-y-auto overscroll-contain bg-black/80 backdrop-blur-sm px-3 py-8 sm:py-10"
-      style={{ WebkitOverflowScrolling: 'touch' }}
+      className="fixed inset-0 z-[1200] overflow-y-auto overscroll-contain bg-black/80 backdrop-blur-sm px-3"
+      style={{
+        WebkitOverflowScrolling: 'touch',
+        paddingTop: 'max(2rem, env(safe-area-inset-top, 0px))',
+        paddingBottom: 'max(2rem, env(safe-area-inset-bottom, 0px))',
+        paddingLeft: 'max(0.75rem, env(safe-area-inset-left, 0px))',
+        paddingRight: 'max(0.75rem, env(safe-area-inset-right, 0px))',
+      }}
       onClick={(e) => e.currentTarget === e.target && onClose()}
       role="dialog"
       aria-modal="true"
