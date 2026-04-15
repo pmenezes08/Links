@@ -161,6 +161,78 @@ _GEOGRAPHY_ABBREVIATIONS = {
     "uk": ("uk", "united kingdom", "britain", "england"),
 }
 
+KB_DIMENSIONS = (
+    "Index",
+    "LifeCareer",
+    "GeographyCulture",
+    "Expertise",
+    "CompanyIntel",
+    "Opinions",
+    "Identity",
+    "Network",
+    "UniqueFingerprint",
+    "InferredContext",
+)
+
+_FACET_DIMENSION_MAP = {
+    "geography": ("GeographyCulture", "InferredContext", "Index"),
+    "industry": ("Expertise", "CompanyIntel", "LifeCareer", "Index"),
+    "roles": ("LifeCareer", "Expertise", "CompanyIntel", "Index"),
+    "company_builder": ("LifeCareer", "UniqueFingerprint", "CompanyIntel", "Identity"),
+    "traits": ("Identity", "UniqueFingerprint", "Index"),
+    "interests": ("Identity", "InferredContext", "UniqueFingerprint"),
+    "experiences": ("InferredContext", "LifeCareer", "GeographyCulture", "UniqueFingerprint"),
+    "identity_life_stage": ("Identity", "InferredContext", "UniqueFingerprint"),
+}
+
+_FACET_HARD_DIMENSION_MAP = {
+    "geography": ("GeographyCulture",),
+    "industry": ("Expertise",),
+    "roles": ("LifeCareer",),
+    "company_builder": ("LifeCareer",),
+    "traits": ("Identity",),
+    "interests": ("Identity",),
+    "experiences": ("InferredContext",),
+    "identity_life_stage": ("Identity",),
+}
+
+_FACET_STRUCTURED_DIMENSION_MAP = {
+    "geography": ("GeographyCulture",),
+    "industry": ("Expertise", "CompanyIntel"),
+    "roles": ("LifeCareer",),
+    "company_builder": ("LifeCareer",),
+    "traits": ("Identity",),
+    "interests": ("Identity",),
+    "experiences": ("InferredContext",),
+    "identity_life_stage": ("Identity",),
+}
+
+_DIMENSION_WEIGHT = {
+    "Index": 1.5,
+    "LifeCareer": 1.25,
+    "GeographyCulture": 1.25,
+    "Expertise": 1.25,
+    "CompanyIntel": 1.1,
+    "Opinions": 1.0,
+    "Identity": 1.2,
+    "Network": 0.95,
+    "UniqueFingerprint": 1.1,
+    "InferredContext": 1.1,
+}
+
+_STRUCTURED_DIMENSION_FIELDS = {
+    "Index": ("city", "country", "industry", "role", "company", "interests", "profile_location", "professional_about", "bio"),
+    "LifeCareer": ("role", "company", "professional_about", "bio", "industry"),
+    "GeographyCulture": ("city", "country", "profile_location", "bio", "professional_about"),
+    "Expertise": ("industry", "role", "interests", "professional_about", "bio", "company"),
+    "CompanyIntel": ("company", "industry", "professional_about", "bio"),
+    "Opinions": ("bio", "professional_about", "interests"),
+    "Identity": ("bio", "interests", "professional_about", "company", "role"),
+    "Network": ("interests", "bio", "professional_about"),
+    "UniqueFingerprint": ("bio", "professional_about", "company", "role", "interests"),
+    "InferredContext": ("bio", "interests", "professional_about", "profile_location", "company"),
+}
+
 
 def _normalize_text(value: Any) -> str:
     if value is None:
@@ -200,6 +272,100 @@ def _normalize_phrase_list(values: Any) -> list[str]:
         if norm:
             out.append(norm)
     return _dedupe_keep_order(out)
+
+
+def _normalize_dimension_list(values: Any) -> list[str]:
+    if values is None:
+        return []
+    if isinstance(values, str):
+        values = [values]
+    out: list[str] = []
+    for value in values or []:
+        raw = str(value or "").strip()
+        if raw in KB_DIMENSIONS and raw not in out:
+            out.append(raw)
+    return out
+
+
+def _normalize_constraint_keys(values: Any) -> list[str]:
+    if values is None:
+        return []
+    if isinstance(values, str):
+        values = [values]
+    out: list[str] = []
+    for value in values or []:
+        key = str(value or "").strip()
+        if key and key not in out:
+            out.append(key)
+    return out
+
+
+def _dimension_terms_from_facets(query_plan: dict[str, Any] | None) -> dict[str, list[str]]:
+    out = {dimension: [] for dimension in KB_DIMENSIONS}
+    if not isinstance(query_plan, dict):
+        return out
+    facets = query_plan.get("facets") or {}
+    if not isinstance(facets, dict):
+        return out
+    for facet, dimensions in _FACET_STRUCTURED_DIMENSION_MAP.items():
+        terms = _normalize_phrase_list(facets.get(facet))
+        if facet == "geography":
+            terms = _facet_terms_with_aliases("geography", terms)
+        if not terms:
+            continue
+        for dimension in dimensions:
+            out[dimension].extend(terms)
+    return {dimension: _dedupe_keep_order(terms) for dimension, terms in out.items()}
+
+
+def build_dimension_plan(query_plan: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """Build a KB-dimension retrieval plan from planner output."""
+    if not isinstance(query_plan, dict):
+        return None
+
+    primary = _normalize_dimension_list(query_plan.get("primary_dimensions"))
+    secondary = _normalize_dimension_list(query_plan.get("secondary_dimensions"))
+    hard = _normalize_dimension_list(query_plan.get("hard_dimensions"))
+
+    if not primary and not secondary:
+        facets = query_plan.get("facets") or {}
+        if isinstance(facets, dict):
+            for facet, dimensions in _FACET_DIMENSION_MAP.items():
+                if _normalize_phrase_list(facets.get(facet)):
+                    for idx, dimension in enumerate(dimensions):
+                        target = primary if idx < 2 else secondary
+                        if dimension not in target:
+                            target.append(dimension)
+
+    if not primary and query_plan.get("search_rewrite"):
+        primary = ["Index", "Expertise", "LifeCareer"]
+        secondary = ["Identity", "UniqueFingerprint", "InferredContext"]
+
+    if not hard:
+        legacy_hard = _normalize_constraint_keys(query_plan.get("hard_constraints"))
+        for facet in legacy_hard:
+            for dimension in _FACET_HARD_DIMENSION_MAP.get(facet, _FACET_DIMENSION_MAP.get(facet, ())[:1]):
+                if dimension not in hard:
+                    hard.append(dimension)
+
+    dimension_terms = _dimension_terms_from_facets(query_plan)
+    fallback_terms = _query_keywords(_normalize_text(query_plan.get("search_rewrite") or ""))
+    for dimension in primary + secondary + hard:
+        if not dimension_terms.get(dimension):
+            dimension_terms[dimension] = fallback_terms[:8]
+
+    plan = {
+        "primary_dimensions": _dedupe_keep_order(primary),
+        "secondary_dimensions": [d for d in _dedupe_keep_order(secondary) if d not in primary],
+        "hard_dimensions": _dedupe_keep_order(hard),
+        "dimension_terms": {d: terms for d, terms in dimension_terms.items() if terms},
+        "named_people": [str(v).strip() for v in (query_plan.get("named_people") or []) if str(v).strip()],
+        "search_rewrite": str(query_plan.get("search_rewrite") or "").strip(),
+        "needs_clarification": bool(query_plan.get("needs_clarification")),
+        "clarifying_question": str(query_plan.get("clarifying_question") or "").strip(),
+    }
+    relevant = plan["primary_dimensions"] or plan["secondary_dimensions"] or plan["hard_dimensions"]
+    return plan if relevant or plan["named_people"] or plan["search_rewrite"] else None
 
 
 def _row_value(row: Any, getter: Callable[[Any, int], Any], idx: int) -> str:
@@ -350,6 +516,34 @@ def _match_any_terms(blob: str, terms: Sequence[str]) -> int:
     return sum(1 for term in terms if _contains_term(blob, term))
 
 
+def _structured_dimension_texts_from_row(
+    row: Any,
+    getter: Callable[[Any, int], Any],
+) -> dict[str, str]:
+    fields = {
+        "city": _row_value(row, getter, 3),
+        "country": _row_value(row, getter, 4),
+        "industry": _row_value(row, getter, 5),
+        "role": _row_value(row, getter, 6),
+        "company": _row_value(row, getter, 7),
+        "interests": _row_value(row, getter, 8),
+        "profile_location": _row_value(row, getter, 9),
+        "professional_about": _row_value(row, getter, 10),
+        "bio": _row_value(row, getter, 2),
+    }
+    texts: dict[str, str] = {}
+    for dimension, field_names in _STRUCTURED_DIMENSION_FIELDS.items():
+        texts[dimension] = _normalize_text(" ".join(fields.get(field, "") for field in field_names))
+    return texts
+
+
+def _dimension_terms_for_plan(dimension_plan: dict[str, Any], dimension: str) -> list[str]:
+    terms = _normalize_phrase_list((dimension_plan.get("dimension_terms") or {}).get(dimension))
+    if terms:
+        return terms
+    return _query_keywords(_normalize_text(dimension_plan.get("search_rewrite") or ""))[:8]
+
+
 def _structured_match_details_from_plan(
     member_rows: Sequence[Any],
     getter: Callable[[Any, int], Any],
@@ -357,103 +551,64 @@ def _structured_match_details_from_plan(
     retrieval_plan: dict[str, Any],
     cap: int = 120,
 ) -> dict[str, dict[str, Any]]:
-    geography_terms = _facet_terms_with_aliases("geography", _plan_facet_terms(retrieval_plan, "geography"))
-    industry_terms = _facet_terms_with_aliases("industry", _plan_facet_terms(retrieval_plan, "industry"))
-    role_terms = _facet_terms_with_aliases("roles", _plan_facet_terms(retrieval_plan, "roles"))
-    builder_terms = _normalize_phrase_list(_plan_facet_terms(retrieval_plan, "company_builder"))
-    trait_terms = _normalize_phrase_list(_plan_facet_terms(retrieval_plan, "traits"))
-    interest_terms = _normalize_phrase_list(_plan_facet_terms(retrieval_plan, "interests"))
-    experience_terms = _normalize_phrase_list(_plan_facet_terms(retrieval_plan, "experiences"))
-    identity_terms = _normalize_phrase_list(_plan_facet_terms(retrieval_plan, "identity_life_stage"))
-    hard_raw = retrieval_plan.get("hard_constraints") or []
-    if isinstance(hard_raw, str):
-        hard_raw = [hard_raw]
-    hard_constraints = {str(facet).strip() for facet in (hard_raw or []) if str(facet).strip()}
-
-    has_any_requested_facet = any(
-        (geography_terms, industry_terms, role_terms, builder_terms, trait_terms, interest_terms, experience_terms, identity_terms)
-    )
-    if not has_any_requested_facet:
+    dimension_plan = build_dimension_plan(retrieval_plan) or {}
+    primary_dimensions = dimension_plan.get("primary_dimensions") or []
+    secondary_dimensions = dimension_plan.get("secondary_dimensions") or []
+    hard_dimensions = set(dimension_plan.get("hard_dimensions") or [])
+    relevant_dimensions = _dedupe_keep_order(primary_dimensions + secondary_dimensions + list(hard_dimensions))
+    if not relevant_dimensions:
         return {}
-
-    requested_facets = {
-        facet
-        for facet, terms in (
-            ("geography", geography_terms),
-            ("industry", industry_terms),
-            ("roles", role_terms),
-            ("company_builder", builder_terms),
-            ("traits", trait_terms),
-            ("interests", interest_terms),
-            ("experiences", experience_terms),
-            ("identity_life_stage", identity_terms),
-        )
-        if terms
-    }
     details: dict[str, dict[str, Any]] = {}
     for row in member_rows:
         username = _row_value(row, getter, 0).strip()
         if not username:
             continue
-        city = _row_value(row, getter, 3)
-        country = _row_value(row, getter, 4)
-        industry = _row_value(row, getter, 5)
-        role = _row_value(row, getter, 6)
-        company = _row_value(row, getter, 7)
-        interests = _row_value(row, getter, 8)
-        profile_location = _row_value(row, getter, 9)
-        professional_about = _row_value(row, getter, 10)
-        bio = _row_value(row, getter, 2)
+        dimension_texts = _structured_dimension_texts_from_row(row, getter)
+        dimension_scores: dict[str, float] = {}
+        for dimension in relevant_dimensions:
+            terms = _dimension_terms_for_plan(dimension_plan, dimension)
+            if not terms:
+                continue
+            hits = _match_any_terms(dimension_texts.get(dimension, ""), terms)
+            if hits:
+                dimension_scores[dimension] = hits * _DIMENSION_WEIGHT.get(dimension, 1.0)
 
-        location_blob = _normalize_text(" ".join([city, country, profile_location, bio, professional_about]))
-        professional_blob = _normalize_text(" ".join([industry, role, company, interests, professional_about, bio]))
-        general_blob = _normalize_text(" ".join([bio, interests, professional_about, company, role, industry, city, country, profile_location]))
-
-        facet_matches = {
-            "geography": _match_any_terms(location_blob, geography_terms),
-            "industry": _match_any_terms(professional_blob, industry_terms),
-            "roles": _match_any_terms(professional_blob, role_terms),
-            "company_builder": _match_any_terms(professional_blob, builder_terms),
-            "traits": _match_any_terms(general_blob, trait_terms),
-            "interests": _match_any_terms(general_blob, interest_terms),
-            "experiences": _match_any_terms(general_blob, experience_terms),
-            "identity_life_stage": _match_any_terms(general_blob, identity_terms),
-        }
-
-        matched_facets = {facet for facet, score in facet_matches.items() if score > 0}
-        if not matched_facets:
+        matched_dimensions = {dimension for dimension, score in dimension_scores.items() if score > 0}
+        if not matched_dimensions:
             continue
-
-        hard_hits = sum(1 for facet in hard_constraints if facet in matched_facets)
-        hard_misses = sum(1 for facet in hard_constraints if facet not in matched_facets)
-        total_hits = sum(facet_matches.values())
+        hard_hits = sum(1 for dimension in hard_dimensions if dimension in matched_dimensions)
+        hard_misses = sum(1 for dimension in hard_dimensions if dimension not in matched_dimensions)
+        primary_hits = sum(1 for dimension in primary_dimensions if dimension in matched_dimensions)
+        secondary_hits = sum(1 for dimension in secondary_dimensions if dimension in matched_dimensions)
         score = (
-            hard_hits * 12.0
-            - hard_misses * 3.5
-            + facet_matches["geography"] * 6.0
-            + facet_matches["industry"] * 5.0
-            + facet_matches["roles"] * 4.0
-            + facet_matches["company_builder"] * 5.5
-            + facet_matches["traits"] * 3.5
-            + facet_matches["interests"] * 3.5
-            + facet_matches["experiences"] * 3.5
-            + facet_matches["identity_life_stage"] * 4.0
+            sum(dimension_scores.values())
+            + primary_hits * 3.0
+            + secondary_hits * 1.25
+            + hard_hits * 5.0
+            - hard_misses * 3.0
         )
         details[username] = {
             "username": username,
-            "facet_matches": facet_matches,
-            "matched_facets": matched_facets,
-            "matched_facets_count": len(matched_facets),
+            "dimension_scores": dimension_scores,
+            "matched_dimensions": matched_dimensions,
+            "matched_dimensions_count": len(matched_dimensions),
             "hard_hits": hard_hits,
             "hard_misses": hard_misses,
-            "total_hits": total_hits,
-            "requested_facets": requested_facets,
-            "score": score + total_hits * 0.25,
+            "primary_hits": primary_hits,
+            "secondary_hits": secondary_hits,
+            "structured_score": score,
+            "semantic_score": 0.0,
+            "metadata_score": 0.0,
+            "score": score,
+            "primary_dimensions": primary_dimensions,
+            "secondary_dimensions": secondary_dimensions,
+            "hard_dimensions": list(hard_dimensions),
+            "match_sources": {"structured": True, "semantic": False},
         }
     if cap and len(details) > cap:
         ranked = sorted(
             details.values(),
-            key=lambda item: (-item["hard_hits"], -item["matched_facets_count"], -item["score"], item["username"]),
+            key=lambda item: (-item["hard_hits"], -item["primary_hits"], -item["matched_dimensions_count"], -item["score"], item["username"]),
         )[:cap]
         return {item["username"]: item for item in ranked}
     return details
@@ -474,7 +629,7 @@ def _structured_candidates_from_plan(
     )
     ranked = sorted(
         details.values(),
-        key=lambda item: (-item["hard_hits"], -item["matched_facets_count"], -item["score"], item["username"]),
+        key=lambda item: (-item["hard_hits"], -item["primary_hits"], -item["matched_dimensions_count"], -item["score"], item["username"]),
     )
     return [item["username"] for item in ranked[:cap]]
 
@@ -555,6 +710,27 @@ def _query_keywords(message_norm: str) -> list[str]:
             continue
         keywords.append(token)
     return _dedupe_keep_order(keywords)
+
+
+def networking_policy_for_size(member_count: int) -> dict[str, int]:
+    """Tune retrieval and prompt caps by network size."""
+    if member_count <= 40:
+        return {
+            "ann_recall_cap": max(20, member_count),
+            "prompt_member_cap": max(10, member_count),
+            "full_context_cap": max(10, member_count),
+        }
+    if member_count <= 100:
+        return {
+            "ann_recall_cap": member_count,
+            "prompt_member_cap": min(60, member_count),
+            "full_context_cap": min(18, member_count),
+        }
+    return {
+        "ann_recall_cap": min(300, max(200, int(member_count * 0.25))),
+        "prompt_member_cap": 40,
+        "full_context_cap": 12,
+    }
 
 
 def structured_candidates(
@@ -677,14 +853,235 @@ def semantic_candidates(
     return [username for username, _ in ranked[:target_k]]
 
 
+def semantic_match_details(
+    query_text: str,
+    all_usernames: Sequence[str],
+    *,
+    retrieval_plan: dict[str, Any] | None = None,
+    k_recall: int = 200,
+    k_final: int = 40,
+) -> dict[str, dict[str, Any]]:
+    """Return semantic evidence per user, preserving the best-matching chunk source."""
+    from backend.services.embedding_service import (
+        AGGREGATE_DIMENSION_MAP,
+        search_similar_profiles_ranked_detailed,
+    )
+
+    usernames = _dedupe_keep_order([str(username).strip() for username in all_usernames if str(username).strip()])
+    if not usernames:
+        return {}
+    target_k = min(max(k_recall, k_final), len(usernames))
+    results = search_similar_profiles_ranked_detailed(query_text, usernames, k=target_k)
+    dimension_plan = build_dimension_plan(retrieval_plan) or {}
+    primary_dimensions = dimension_plan.get("primary_dimensions") or []
+    secondary_dimensions = dimension_plan.get("secondary_dimensions") or []
+    hard_dimensions = set(dimension_plan.get("hard_dimensions") or [])
+    relevant_dimensions = set(primary_dimensions + secondary_dimensions + list(hard_dimensions))
+
+    details: dict[str, dict[str, Any]] = {}
+    for rank, result in enumerate(results, start=1):
+        username = str(result.get("username") or "").strip()
+        if not username:
+            continue
+        score = float(result.get("score") or 0.0)
+        chunk_type = str(result.get("chunk_type") or "Index").strip()
+        source_dimensions = list(AGGREGATE_DIMENSION_MAP.get(chunk_type, (chunk_type,)))
+        dimension_scores: dict[str, float] = {}
+        for dimension in source_dimensions:
+            if dimension not in KB_DIMENSIONS:
+                continue
+            weight = 1.0
+            if relevant_dimensions and dimension in relevant_dimensions:
+                weight = 1.25
+            elif relevant_dimensions:
+                weight = 0.75
+            dimension_scores[dimension] = score * weight
+
+        matched_dimensions = {dimension for dimension, dim_score in dimension_scores.items() if dim_score > 0}
+        details[username] = {
+            "username": username,
+            "dimension_scores": dimension_scores,
+            "matched_dimensions": matched_dimensions,
+            "matched_dimensions_count": len(matched_dimensions),
+            "hard_hits": sum(1 for dimension in hard_dimensions if dimension in matched_dimensions),
+            "hard_misses": 0,
+            "primary_hits": sum(1 for dimension in primary_dimensions if dimension in matched_dimensions),
+            "secondary_hits": sum(1 for dimension in secondary_dimensions if dimension in matched_dimensions),
+            "structured_score": 0.0,
+            "semantic_score": score + max(0.0, (target_k - rank) / max(target_k, 1)),
+            "metadata_score": 0.0,
+            "score": score,
+            "primary_dimensions": primary_dimensions,
+            "secondary_dimensions": secondary_dimensions,
+            "hard_dimensions": list(hard_dimensions),
+            "semantic_rank": rank,
+            "best_chunk_type": chunk_type,
+            "match_sources": {"structured": False, "semantic": True},
+        }
+    return details
+
+
+def load_dimension_metadata_scores(
+    usernames: Sequence[str],
+    *,
+    dimension_plan: dict[str, Any] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Load lightweight KB metadata signals for reranking."""
+    try:
+        from datetime import datetime, timezone
+        from backend.services.steve_knowledge_base import get_member_knowledge
+    except Exception:
+        return {}
+
+    dimensions = list(
+        _dedupe_keep_order(
+            (dimension_plan or {}).get("primary_dimensions", [])
+            + (dimension_plan or {}).get("secondary_dimensions", [])
+            + (dimension_plan or {}).get("hard_dimensions", [])
+        )
+    ) or list(KB_DIMENSIONS)
+
+    def _parse_ts(value: Any) -> Any:
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        try:
+            return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    now = datetime.now(timezone.utc)
+    metadata_by_user: dict[str, dict[str, Any]] = {}
+    for username in _dedupe_keep_order([str(u).strip() for u in usernames if str(u).strip()])[:80]:
+        try:
+            docs = get_member_knowledge(username, dimensions)
+        except Exception:
+            continue
+        total_adjustment = 0.0
+        dimension_adjustments: dict[str, float] = {}
+        for dimension, doc in (docs or {}).items():
+            if dimension not in dimensions or not isinstance(doc, dict):
+                continue
+            adjustment = 0.0
+            updated_at = _parse_ts(doc.get("updatedAt"))
+            feedback = doc.get("adminFeedback") or {}
+            feedback_at = _parse_ts(feedback.get("at"))
+            status = str(feedback.get("status") or "").strip().lower()
+            if updated_at and (now - updated_at).days <= 365:
+                adjustment += 0.05
+            if status in {"needs_correction", "missing_info"} and feedback_at and (not updated_at or feedback_at > updated_at):
+                adjustment -= 0.35
+            if dimension == "InferredContext":
+                content = doc.get("content") or {}
+                try:
+                    confidence = float(content.get("confidence"))
+                except Exception:
+                    confidence = None
+                if confidence is not None:
+                    if confidence < 0.35:
+                        adjustment -= 0.2
+                    elif confidence >= 0.75:
+                        adjustment += 0.05
+            if adjustment:
+                dimension_adjustments[dimension] = adjustment
+                total_adjustment += adjustment
+        if dimension_adjustments or total_adjustment:
+            metadata_by_user[username] = {
+                "dimension_adjustments": dimension_adjustments,
+                "total_adjustment": total_adjustment,
+            }
+    return metadata_by_user
+
+
+def _merge_match_details(
+    ordered_usernames: Sequence[str],
+    *,
+    structured_details: dict[str, dict[str, Any]] | None = None,
+    semantic_details: dict[str, dict[str, Any]] | None = None,
+    dimension_plan: dict[str, Any] | None = None,
+    metadata_scores: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, dict[str, Any]]:
+    merged: dict[str, dict[str, Any]] = {}
+    metadata_scores = metadata_scores or {}
+    for username in ordered_usernames:
+        base = {"username": username}
+        structured = (structured_details or {}).get(username, {})
+        semantic = (semantic_details or {}).get(username, {})
+        primary_dimensions = (
+            (dimension_plan or {}).get("primary_dimensions")
+            or structured.get("primary_dimensions")
+            or semantic.get("primary_dimensions")
+            or []
+        )
+        secondary_dimensions = (
+            (dimension_plan or {}).get("secondary_dimensions")
+            or structured.get("secondary_dimensions")
+            or semantic.get("secondary_dimensions")
+            or []
+        )
+        hard_dimensions = (
+            (dimension_plan or {}).get("hard_dimensions")
+            or structured.get("hard_dimensions")
+            or semantic.get("hard_dimensions")
+            or []
+        )
+        dimension_scores: dict[str, float] = {}
+        for source in (structured, semantic):
+            for dimension, score in (source.get("dimension_scores") or {}).items():
+                dimension_scores[dimension] = dimension_scores.get(dimension, 0.0) + float(score or 0.0)
+        matched_dimensions = {dimension for dimension, score in dimension_scores.items() if score > 0}
+        metadata_score = float((metadata_scores.get(username) or {}).get("total_adjustment") or 0.0)
+        primary_hits = sum(1 for dimension in primary_dimensions if dimension in matched_dimensions)
+        secondary_hits = sum(1 for dimension in secondary_dimensions if dimension in matched_dimensions)
+        hard_hits = sum(1 for dimension in hard_dimensions if dimension in matched_dimensions)
+        hard_misses = sum(1 for dimension in hard_dimensions if dimension not in matched_dimensions)
+        combined_score = (
+            float(structured.get("structured_score") or 0.0) * _STRUCTURED_WEIGHT
+            + float(semantic.get("semantic_score") or 0.0) * _SEMANTIC_WEIGHT
+            + sum(dimension_scores.values()) * 0.35
+            + metadata_score
+        )
+        merged[username] = {
+            **base,
+            "dimension_scores": dimension_scores,
+            "matched_dimensions": matched_dimensions,
+            "matched_dimensions_count": len(matched_dimensions),
+            "primary_hits": primary_hits,
+            "secondary_hits": secondary_hits,
+            "hard_hits": hard_hits,
+            "hard_misses": hard_misses,
+            "structured_score": float(structured.get("structured_score") or 0.0),
+            "semantic_score": float(semantic.get("semantic_score") or 0.0),
+            "metadata_score": metadata_score,
+            "score": combined_score,
+            "primary_dimensions": primary_dimensions,
+            "secondary_dimensions": secondary_dimensions,
+            "hard_dimensions": list(hard_dimensions),
+            "match_sources": {
+                "structured": bool(structured),
+                "semantic": bool(semantic),
+            },
+        }
+    return merged
+
+
 def _tiered_matches_from_details(
     ordered_usernames: Sequence[str],
     *,
     structured_details: dict[str, dict[str, Any]] | None = None,
+    semantic_details: dict[str, dict[str, Any]] | None = None,
+    dimension_plan: dict[str, Any] | None = None,
+    metadata_scores: dict[str, dict[str, Any]] | None = None,
     forced_usernames: Sequence[str] = (),
     semantic_ids: Sequence[str] = (),
 ) -> dict[str, str]:
-    details = structured_details or {}
+    details = _merge_match_details(
+        ordered_usernames,
+        structured_details=structured_details,
+        semantic_details=semantic_details,
+        dimension_plan=dimension_plan,
+        metadata_scores=metadata_scores,
+    )
     forced = set(_dedupe_keep_order([str(u).strip() for u in forced_usernames if str(u).strip()]))
     semantic_rank = {u: idx for idx, u in enumerate(semantic_ids, start=1)}
     tier_map: dict[str, str] = {}
@@ -696,16 +1093,16 @@ def _tiered_matches_from_details(
             else:
                 tier_map[username] = "broader" if username in forced else "direct"
             continue
-        requested_count = max(1, len(info.get("requested_facets") or []))
-        hard_constraints = info.get("hard_hits", 0) + info.get("hard_misses", 0)
-        direct_required = hard_constraints if hard_constraints > 0 else (2 if requested_count >= 2 else 1)
-        if info.get("hard_misses", 0) == 0 and info.get("matched_facets_count", 0) >= direct_required:
+        primary_dimensions = info.get("primary_dimensions") or []
+        hard_dimensions = info.get("hard_dimensions") or []
+        direct_required = len(hard_dimensions) if hard_dimensions else (2 if len(primary_dimensions) >= 2 else 1)
+        if info.get("hard_misses", 0) == 0 and info.get("primary_hits", 0) >= max(1, direct_required):
             tier_map[username] = "direct"
-        elif info.get("matched_facets_count", 0) > 0:
+        elif info.get("primary_hits", 0) > 0 or info.get("secondary_hits", 0) > 0:
             tier_map[username] = "broader"
         elif username in forced:
             tier_map[username] = "broader"
-        elif semantic_rank.get(username, 10**9) <= 3 and requested_count <= 1:
+        elif semantic_rank.get(username, 10**9) <= 3 and len(primary_dimensions) <= 1:
             tier_map[username] = "broader"
         else:
             tier_map[username] = "discard"
@@ -773,6 +1170,9 @@ def tiered_roster(
     cap: int = 40,
     forced_usernames: Sequence[str] = (),
     structured_details: dict[str, dict[str, Any]] | None = None,
+    semantic_details: dict[str, dict[str, Any]] | None = None,
+    dimension_plan: dict[str, Any] | None = None,
+    metadata_scores: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[list[str], dict[str, str]]:
     """Return the ordered shortlist plus direct/broader/discard tiers."""
     ordered = fuse_roster(
@@ -784,11 +1184,27 @@ def tiered_roster(
     tier_map = _tiered_matches_from_details(
         ordered,
         structured_details=structured_details,
+        semantic_details=semantic_details,
+        dimension_plan=dimension_plan,
+        metadata_scores=metadata_scores,
         forced_usernames=forced_usernames,
         semantic_ids=semantic_ids,
     )
-    directs = [u for u in ordered if tier_map.get(u) == "direct"]
-    broaders = [u for u in ordered if tier_map.get(u) == "broader"]
+    merged_details = _merge_match_details(
+        ordered,
+        structured_details=structured_details,
+        semantic_details=semantic_details,
+        dimension_plan=dimension_plan,
+        metadata_scores=metadata_scores,
+    )
+    directs = sorted(
+        [u for u in ordered if tier_map.get(u) == "direct"],
+        key=lambda username: -float((merged_details.get(username) or {}).get("score") or 0.0),
+    )
+    broaders = sorted(
+        [u for u in ordered if tier_map.get(u) == "broader"],
+        key=lambda username: -float((merged_details.get(username) or {}).get("score") or 0.0),
+    )
     final_order = (directs + broaders)[:cap]
     return final_order, {u: tier_map.get(u, "discard") for u in final_order}
 

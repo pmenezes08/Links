@@ -22,7 +22,7 @@ import logging
 import threading
 import time
 import numpy as np
-from typing import List, Tuple, Optional, Dict
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,27 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 EMBEDDING_MODEL = 'text-embedding-3-small'
 EMBEDDING_DIMS = 1536
 
-CHUNK_TYPES = ('professional', 'personality', 'experiences', 'social')
+AGGREGATE_CHUNK_TYPES = ('professional', 'personality', 'experiences', 'social')
+DIMENSION_CHUNK_TYPES = (
+    'Index',
+    'LifeCareer',
+    'GeographyCulture',
+    'Expertise',
+    'CompanyIntel',
+    'Opinions',
+    'Identity',
+    'Network',
+    'UniqueFingerprint',
+    'InferredContext',
+)
+CHUNK_TYPES = AGGREGATE_CHUNK_TYPES + DIMENSION_CHUNK_TYPES
+
+AGGREGATE_DIMENSION_MAP = {
+    'professional': ('Index', 'LifeCareer', 'Expertise', 'CompanyIntel'),
+    'personality': ('Identity', 'Opinions', 'Index'),
+    'experiences': ('GeographyCulture', 'UniqueFingerprint', 'InferredContext', 'LifeCareer'),
+    'social': ('Network', 'Identity'),
+}
 
 _faiss_available = False
 try:
@@ -113,6 +133,188 @@ def _load_kb_for_embedding(username: str) -> Dict[str, dict]:
         return {}
 
 
+def build_dimension_chunks(profile: dict, username: str = None) -> Dict[str, str]:
+    """Build one semantic text block per canonical KB dimension."""
+    from bodybuilding_app import _migrate_analysis_to_v3
+
+    analysis = _migrate_analysis_to_v3(profile.get('analysis', {}))
+    ob = profile.get('onboardingIdentity') or {}
+    platform = profile.get('profilingPlatformActivity') or {}
+    personal = analysis.get('personal') or {}
+    pro = analysis.get('professional') or {}
+    identity = analysis.get('identity') or {}
+    kb = _load_kb_for_embedding(username) if username else {}
+
+    chunks: Dict[str, str] = {}
+
+    idx = kb.get("Index", {})
+    idx_parts: List[str] = []
+    if idx.get("currentSynthesis"):
+        idx_parts.append(idx["currentSynthesis"])
+    if idx.get("dimensionSummaries"):
+        idx_parts.append(f"Dimension summaries: {_kb_text_for_field(idx, 'dimensionSummaries', 10)}")
+    if idx.get("recentEvolutionSignals"):
+        idx_parts.append(f"Recent evolution: {_kb_text_for_field(idx, 'recentEvolutionSignals', 6)}")
+    if analysis.get('summary'):
+        idx_parts.append(analysis['summary'])
+    if idx_parts:
+        chunks["Index"] = " | ".join(idx_parts)
+
+    lc = kb.get("LifeCareer", {})
+    lc_parts: List[str] = []
+    if lc.get("trajectory"):
+        lc_parts.append(f"Trajectory: {lc['trajectory']}")
+    if lc.get("currentStage"):
+        lc_parts.append(f"Current stage: {lc['currentStage']}")
+    if lc.get("stages"):
+        lc_parts.append(f"Stages: {_kb_text_for_field(lc, 'stages', 8)}")
+    if lc.get("turningPoints"):
+        lc_parts.append(f"Turning points: {_kb_text_for_field(lc, 'turningPoints', 6)}")
+    career = pro.get('careerHistory') or []
+    if career:
+        lc_parts.append("Career history: " + "; ".join(
+            f"{entry.get('role', '?')} at {entry.get('company', '?')}"
+            for entry in career[:6]
+            if isinstance(entry, dict)
+        ))
+    edu = pro.get('education')
+    if edu:
+        lc_parts.append(f"Education: {edu}")
+    if lc_parts:
+        chunks["LifeCareer"] = " | ".join(part for part in lc_parts if part)
+
+    geo = kb.get("GeographyCulture", {})
+    geo_parts: List[str] = []
+    if geo.get("currentLocation"):
+        geo_parts.append(f"Current location: {_kb_text_for_field(geo, 'currentLocation', 4)}")
+    if geo.get("locations"):
+        geo_parts.append(f"Locations: {_kb_text_for_field(geo, 'locations', 8)}")
+    if geo.get("culturalInfluences"):
+        geo_parts.append(f"Cultural influences: {geo['culturalInfluences']}")
+    if geo.get("geographicExpertise"):
+        geo_parts.append(f"Geographic expertise: {_kb_text_for_field(geo, 'geographicExpertise', 6)}")
+    loc = pro.get('location') or {}
+    if loc:
+        geo_parts.append(f"Legacy location: {', '.join(str(v) for v in loc.values() if v)}")
+    if geo_parts:
+        chunks["GeographyCulture"] = " | ".join(part for part in geo_parts if part)
+
+    exp_kb = kb.get("Expertise", {})
+    exp_parts: List[str] = []
+    if exp_kb.get("domains"):
+        exp_parts.append(f"Domains: {_kb_text_for_field(exp_kb, 'domains', 8)}")
+    if exp_kb.get("depthProgression"):
+        exp_parts.append(f"Depth progression: {exp_kb['depthProgression']}")
+    if exp_kb.get("currentFocus"):
+        exp_parts.append(f"Current focus: {exp_kb['currentFocus']}")
+    if exp_kb.get("credibilitySignals"):
+        exp_parts.append(f"Credibility: {_kb_text_for_field(exp_kb, 'credibilitySignals', 6)}")
+    if pro.get('webFindings'):
+        exp_parts.append(f"Professional findings: {pro['webFindings']}")
+    if exp_parts:
+        chunks["Expertise"] = " | ".join(part for part in exp_parts if part)
+
+    ci = kb.get("CompanyIntel", {})
+    ci_parts: List[str] = []
+    if ci.get("companies"):
+        ci_parts.append(f"Companies: {_kb_text_for_field(ci, 'companies', 6)}")
+    if ci.get("globalPresence"):
+        ci_parts.append(f"Global presence: {_kb_text_for_field(ci, 'globalPresence', 4)}")
+    if ci.get("publicStatus"):
+        ci_parts.append(f"Public status: {_kb_text_for_field(ci, 'publicStatus', 4)}")
+    company = pro.get('company') or {}
+    if company.get('description'):
+        ci_parts.append(f"Legacy company: {company.get('name', '?')} - {company['description']}")
+    if ci_parts:
+        chunks["CompanyIntel"] = " | ".join(part for part in ci_parts if part)
+
+    op = kb.get("Opinions", {})
+    op_parts: List[str] = []
+    if op.get("keyTopics"):
+        op_parts.append(f"Key topics: {_kb_text_for_field(op, 'keyTopics', 8)}")
+    if op.get("shifts"):
+        op_parts.append(f"Opinion shifts: {_kb_text_for_field(op, 'shifts', 6)}")
+    if op.get("consistentBeliefs"):
+        op_parts.append(f"Beliefs: {op['consistentBeliefs']}")
+    if op.get("controversialTakes"):
+        op_parts.append(f"Controversial takes: {op['controversialTakes']}")
+    if op_parts:
+        chunks["Opinions"] = " | ".join(part for part in op_parts if part)
+
+    ident_kb = kb.get("Identity", {})
+    ident_parts: List[str] = []
+    if ident_kb.get("coreValues"):
+        ident_parts.append(f"Core values: {_kb_text_for_field(ident_kb, 'coreValues', 8)}")
+    if ident_kb.get("traits"):
+        ident_parts.append(f"Traits: {_kb_text_for_field(ident_kb, 'traits', 8)}")
+    if ident_kb.get("contradictions"):
+        ident_parts.append(f"Contradictions: {_kb_text_for_field(ident_kb, 'contradictions', 4)}")
+    if ident_kb.get("energyPatterns"):
+        ident_parts.append(f"Energy: {_kb_text_for_field(ident_kb, 'energyPatterns', 4)}")
+    if ident_kb.get("communicationStyle"):
+        ident_parts.append(f"Communication style: {_kb_text_for_field(ident_kb, 'communicationStyle', 4)}")
+    if identity.get('bridgeInsight'):
+        ident_parts.append(identity['bridgeInsight'])
+    if personal.get('lifestyle'):
+        ident_parts.append(f"Lifestyle: {personal['lifestyle']}")
+    if ident_parts:
+        chunks["Identity"] = " | ".join(part for part in ident_parts if part)
+
+    net_kb = kb.get("Network", {})
+    net_parts: List[str] = []
+    if net_kb.get("interactionFrequency"):
+        net_parts.append(f"Interactions: {_kb_text_for_field(net_kb, 'interactionFrequency', 6)}")
+    if net_kb.get("networkEvolution"):
+        net_parts.append(f"Network evolution: {_kb_text_for_field(net_kb, 'networkEvolution', 4)}")
+    if net_kb.get("communityParticipation"):
+        net_parts.append(f"Community participation: {_kb_text_for_field(net_kb, 'communityParticipation', 6)}")
+    if net_kb.get("relationshipStrength"):
+        net_parts.append(f"Relationship strength: {_kb_text_for_field(net_kb, 'relationshipStrength', 6)}")
+    starters = analysis.get('conversationStarters') or []
+    if starters:
+        net_parts.append("Conversation starters: " + "; ".join(starters[:4]))
+    if (ob.get('reachOut') or '').strip():
+        net_parts.append(f"Reach-outs: {ob['reachOut'].strip()}")
+    if net_parts:
+        chunks["Network"] = " | ".join(part for part in net_parts if part)
+
+    uf = kb.get("UniqueFingerprint", {})
+    uf_parts: List[str] = []
+    if uf.get("whatMakesThemSpecial"):
+        uf_parts.append(f"Special: {uf['whatMakesThemSpecial']}")
+    if uf.get("bridgingCapability"):
+        uf_parts.append(f"Bridging capability: {_kb_text_for_field(uf, 'bridgingCapability', 4)}")
+    if uf.get("rareQualities"):
+        uf_parts.append(f"Rare qualities: {_kb_text_for_field(uf, 'rareQualities', 6)}")
+    if uf.get("bestMatchedWith"):
+        uf_parts.append(f"Best matched with: {_kb_text_for_field(uf, 'bestMatchedWith', 6)}")
+    if identity.get('bridgeInsight'):
+        uf_parts.append(f"Bridge insight: {identity['bridgeInsight']}")
+    if uf_parts:
+        chunks["UniqueFingerprint"] = " | ".join(part for part in uf_parts if part)
+
+    ic = kb.get("InferredContext", {})
+    ic_parts: List[str] = []
+    if ic.get("experiences"):
+        ic_parts.append(f"Experiences: {_kb_text_for_field(ic, 'experiences', 8)}")
+    if ic.get("overarchingThemes"):
+        ic_parts.append(f"Overarching themes: {_kb_text_for_field(ic, 'overarchingThemes', 6)}")
+    if ic.get("worldviewEvolution"):
+        ic_parts.append(f"Worldview: {ic['worldviewEvolution']}")
+    if ic.get("strategicImplications"):
+        ic_parts.append(f"Strategic implications: {ic['strategicImplications']}")
+    if ic.get("confidence") is not None:
+        ic_parts.append(f"Confidence: {ic['confidence']}")
+    if (ob.get('journey') or '').strip():
+        ic_parts.append(f"Journey: {ob['journey'].strip()}")
+    if analysis.get('networkingValue'):
+        ic_parts.append(f"Networking value: {analysis['networkingValue']}")
+    if ic_parts:
+        chunks["InferredContext"] = " | ".join(part for part in ic_parts if part)
+
+    return chunks
+
+
 def build_profile_chunks(profile: dict, username: str = None) -> Dict[str, str]:
     """Build up to 4 text chunks from profile data + knowledge base.
 
@@ -129,6 +331,7 @@ def build_profile_chunks(profile: dict, username: str = None) -> Dict[str, str]:
     platform = profile.get('profilingPlatformActivity') or {}
 
     kb = _load_kb_for_embedding(username) if username else {}
+    dimension_chunks = build_dimension_chunks(profile, username=username)
 
     chunks: Dict[str, str] = {}
 
@@ -339,6 +542,7 @@ def build_profile_chunks(profile: dict, username: str = None) -> Dict[str, str]:
     if soc_parts:
         chunks['social'] = ' | '.join(soc_parts)
 
+    chunks.update({k: v for k, v in dimension_chunks.items() if v})
     return chunks
 
 
@@ -456,6 +660,7 @@ class ProfileIndex:
         query_vector: List[float],
         candidate_usernames: Optional[List[str]] = None,
         k: int = 30,
+        return_chunks: bool = False,
     ) -> List[Tuple[str, float]]:
         """Return up to *k* (username, best_score) pairs.
 
@@ -480,38 +685,42 @@ class ProfileIndex:
                     return []
                 sub_vecs = self._vectors[mask_indices]
                 scores = (sub_vecs @ qvec.T).flatten()
-                best_per_user: Dict[str, float] = {}
+                best_per_user: Dict[str, Tuple[float, str]] = {}
                 for local_i, global_i in enumerate(mask_indices):
-                    uname = self._keys[global_i][0]
+                    uname, chunk_type = self._keys[global_i]
                     s = float(scores[local_i])
-                    if uname not in best_per_user or s > best_per_user[uname]:
-                        best_per_user[uname] = s
-                ranked = sorted(best_per_user.items(), key=lambda x: -x[1])[:k]
-                return ranked
+                    if uname not in best_per_user or s > best_per_user[uname][0]:
+                        best_per_user[uname] = (s, chunk_type)
+                ranked = sorted(best_per_user.items(), key=lambda x: -x[1][0])[:k]
+                if return_chunks:
+                    return [(uname, score_chunk[0], score_chunk[1]) for uname, score_chunk in ranked]
+                return [(uname, score_chunk[0]) for uname, score_chunk in ranked]
 
             all_scores = (self._vectors @ qvec.T).flatten()
 
             if _faiss_available and self._faiss_index is not None:
                 search_k = min(k * len(CHUNK_TYPES), self._faiss_index.ntotal)
                 distances, indices = self._faiss_index.search(qvec, search_k)
-                best_per_user: Dict[str, float] = {}
+                best_per_user: Dict[str, Tuple[float, str]] = {}
                 for dist, idx in zip(distances[0], indices[0]):
                     if idx < 0:
                         continue
-                    uname = self._keys[idx][0]
+                    uname, chunk_type = self._keys[idx]
                     s = float(dist)
-                    if uname not in best_per_user or s > best_per_user[uname]:
-                        best_per_user[uname] = s
+                    if uname not in best_per_user or s > best_per_user[uname][0]:
+                        best_per_user[uname] = (s, chunk_type)
             else:
-                best_per_user: Dict[str, float] = {}
+                best_per_user: Dict[str, Tuple[float, str]] = {}
                 for i, s in enumerate(all_scores):
-                    uname = self._keys[i][0]
+                    uname, chunk_type = self._keys[i]
                     sf = float(s)
-                    if uname not in best_per_user or sf > best_per_user[uname]:
-                        best_per_user[uname] = sf
+                    if uname not in best_per_user or sf > best_per_user[uname][0]:
+                        best_per_user[uname] = (sf, chunk_type)
 
-            ranked = sorted(best_per_user.items(), key=lambda x: -x[1])[:k]
-            return ranked
+            ranked = sorted(best_per_user.items(), key=lambda x: -x[1][0])[:k]
+            if return_chunks:
+                return [(uname, score_chunk[0], score_chunk[1]) for uname, score_chunk in ranked]
+            return [(uname, score_chunk[0]) for uname, score_chunk in ranked]
 
     @property
     def size(self) -> int:
@@ -666,6 +875,40 @@ def search_similar_profiles_ranked(
     if not results:
         return [(candidate_usernames[i], 0.0) for i in range(cap)]
     return results
+
+
+def search_similar_profiles_ranked_detailed(
+    query_text: str,
+    candidate_usernames: List[str],
+    k: int = 30,
+) -> List[Dict[str, Any]]:
+    """Like search_similar_profiles_ranked but preserve the best matching chunk type."""
+    if not candidate_usernames:
+        return []
+    cap = min(k, len(candidate_usernames))
+    if not profile_index.is_ready or not OPENAI_API_KEY:
+        return [
+            {"username": candidate_usernames[i], "score": 0.0, "chunk_type": "professional"}
+            for i in range(cap)
+        ]
+
+    qvec = compute_embedding(query_text)
+    if not qvec:
+        return [
+            {"username": candidate_usernames[i], "score": 0.0, "chunk_type": "professional"}
+            for i in range(cap)
+        ]
+
+    results = profile_index.search(qvec, candidate_usernames=candidate_usernames, k=k, return_chunks=True)
+    if not results:
+        return [
+            {"username": candidate_usernames[i], "score": 0.0, "chunk_type": "professional"}
+            for i in range(cap)
+        ]
+    return [
+        {"username": username, "score": score, "chunk_type": chunk_type}
+        for username, score, chunk_type in results
+    ]
 
 
 def search_similar_profiles(

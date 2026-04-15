@@ -16434,9 +16434,20 @@ def _get_or_build_context(username: str, profile: dict, *, networking: bool = Fa
     return ctx or ''
 
 
+def _top_match_dimensions(match_details: dict[str, dict] | None, username: str, *, limit: int = 3) -> list[str]:
+    details = (match_details or {}).get(username) or {}
+    dimension_scores = details.get("dimension_scores") or {}
+    ranked = sorted(
+        ((str(dimension), float(score or 0.0)) for dimension, score in dimension_scores.items() if float(score or 0.0) > 0),
+        key=lambda item: (-item[1], item[0]),
+    )
+    return [dimension for dimension, _ in ranked[:limit]]
+
+
 def _networking_build_members_text(
     member_rows, all_member_usernames, user_subcommunities, recent_posts_map,
     viewer_username, query_text=None, _v=None, preordered_usernames=None, match_tiers=None,
+    match_details=None, prompt_member_cap=None, full_context_cap=None,
 ):
     """Build the members block for the Grok prompt.
 
@@ -16457,30 +16468,33 @@ def _networking_build_members_text(
 
     valid_usernames = {str(u) for u in all_member_usernames}
 
+    prompt_member_cap = int(prompt_member_cap or NETWORKING_PROMPT_MEMBER_CAP)
+    full_context_cap = int(full_context_cap or NETWORKING_GROK_FULL_CONTEXT_CAP)
+
     if preordered_usernames:
         ordered_prompt = [
             str(u) for u in preordered_usernames
             if u and str(u) in valid_usernames
-        ][:NETWORKING_PROMPT_MEMBER_CAP]
-        full_ctx_users = set(ordered_prompt[:NETWORKING_GROK_FULL_CONTEXT_CAP])
-        if len(all_member_usernames) > NETWORKING_PROMPT_MEMBER_CAP and ordered_prompt:
+        ][:prompt_member_cap]
+        full_ctx_users = set(ordered_prompt[:full_context_cap])
+        if len(all_member_usernames) > prompt_member_cap and ordered_prompt:
             tiered_preamble = (
-                f"Roster note: The first {NETWORKING_GROK_FULL_CONTEXT_CAP} members below have "
+                f"Roster note: The first {full_context_cap} members below have "
                 "FULL profile context; remaining members have structured summaries.\n\n"
             )
-    elif n <= NETWORKING_PROMPT_MEMBER_CAP:
+    elif n <= prompt_member_cap:
         ordered_prompt = list(all_member_usernames)
     elif query_text and profile_index.is_ready:
         ann_k = min(NETWORKING_ANN_RECALL_CAP, n)
         ranked = search_similar_profiles_ranked(query_text, all_member_usernames, k=ann_k)
-        ordered_prompt = [u for u, _ in ranked[:NETWORKING_PROMPT_MEMBER_CAP]]
-        full_ctx_users = set(ordered_prompt[:NETWORKING_GROK_FULL_CONTEXT_CAP])
+        ordered_prompt = [u for u, _ in ranked[:prompt_member_cap]]
+        full_ctx_users = set(ordered_prompt[:full_context_cap])
         tiered_preamble = (
-            f"Roster note: The first {NETWORKING_GROK_FULL_CONTEXT_CAP} members below have "
+            f"Roster note: The first {full_context_cap} members below have "
             "FULL profile context; remaining members have structured summaries.\n\n"
         )
     else:
-        ordered_prompt = list(all_member_usernames[:NETWORKING_PROMPT_MEMBER_CAP])
+        ordered_prompt = list(all_member_usernames[:prompt_member_cap])
 
     default_tier = "mid" if n <= 100 else "slim"
 
@@ -16543,6 +16557,9 @@ def _networking_build_members_text(
         tier = (match_tiers or {}).get(uname)
         if tier in {"direct", "broader"}:
             line += f" | Match tier: {tier}"
+        top_dimensions = _top_match_dimensions(match_details, uname)
+        if top_dimensions:
+            line += f" | Relevant evidence: {', '.join(top_dimensions)}"
         profile_ctx = ctx_map.get(uname, '')
         if profile_ctx:
             line += f" | AI insight: {profile_ctx}"
@@ -16594,6 +16611,18 @@ def _extract_json_object(text: str) -> dict:
 def _normalize_networking_query_plan(raw_plan: dict | None) -> dict | None:
     if not isinstance(raw_plan, dict):
         return None
+    allowed_dimensions = (
+        "Index",
+        "LifeCareer",
+        "GeographyCulture",
+        "Expertise",
+        "CompanyIntel",
+        "Opinions",
+        "Identity",
+        "Network",
+        "UniqueFingerprint",
+        "InferredContext",
+    )
     allowed_facets = (
         "geography",
         "industry",
@@ -16618,6 +16647,11 @@ def _normalize_networking_query_plan(raw_plan: dict | None) -> dict | None:
         if cleaned:
             facets_out[facet] = cleaned[:8]
 
+    def _clean_dimensions(values):
+        if isinstance(values, str):
+            values = [values]
+        return [dimension for dimension in (values or []) if dimension in allowed_dimensions]
+
     def _clean_constraints(values):
         if isinstance(values, str):
             values = [values]
@@ -16632,12 +16666,22 @@ def _normalize_networking_query_plan(raw_plan: dict | None) -> dict | None:
         "facets": facets_out,
         "hard_constraints": _clean_constraints(raw_plan.get("hard_constraints")),
         "soft_constraints": _clean_constraints(raw_plan.get("soft_constraints")),
+        "primary_dimensions": _clean_dimensions(raw_plan.get("primary_dimensions")),
+        "secondary_dimensions": _clean_dimensions(raw_plan.get("secondary_dimensions")),
+        "hard_dimensions": _clean_dimensions(raw_plan.get("hard_dimensions")),
         "named_people": named_people,
         "search_rewrite": str(raw_plan.get("search_rewrite") or "").strip()[:500],
         "needs_clarification": bool(raw_plan.get("needs_clarification")),
         "clarifying_question": str(raw_plan.get("clarifying_question") or "").strip()[:300],
     }
-    return plan if (plan["facets"] or plan["named_people"] or plan["search_rewrite"]) else None
+    return plan if (
+        plan["facets"]
+        or plan["primary_dimensions"]
+        or plan["secondary_dimensions"]
+        or plan["hard_dimensions"]
+        or plan["named_people"]
+        or plan["search_rewrite"]
+    ) else None
 
 
 def _plan_networking_query(client, *, message: str, conversation_history, member_names) -> dict | None:
@@ -16667,6 +16711,9 @@ Return JSON only with keys:
 - facets
 - hard_constraints
 - soft_constraints
+- primary_dimensions
+- secondary_dimensions
+- hard_dimensions
 - named_people
 - search_rewrite
 - needs_clarification
@@ -16675,11 +16722,17 @@ Return JSON only with keys:
 Facet keys may only be:
 geography, industry, roles, company_builder, traits, interests, experiences, identity_life_stage
 
+Dimension keys may only be:
+Index, LifeCareer, GeographyCulture, Expertise, CompanyIntel, Opinions, Identity, Network, UniqueFingerprint, InferredContext
+
 Rules:
 - Preserve prior user intent for follow-up questions.
 - If the user mentions a person explicitly, include them in named_people.
 - Use hard_constraints only for facets the user clearly requires.
 - Use soft_constraints for preferences.
+- Use primary_dimensions for the main KB dimensions this query depends on.
+- Use secondary_dimensions for adjacent or broader evidence dimensions.
+- Use hard_dimensions only when a KB dimension is truly required to satisfy the ask.
 - search_rewrite should be a compact search query for retrieval.
 - For sensitive life-stage / identity asks like parent, include them only when the user explicitly asked for them.
 - If the ask is simple and single-facet, keep the JSON minimal.
@@ -16763,10 +16816,13 @@ def api_networking_steve_match():
         return jsonify({'success': False, 'error': 'AI service not available'}), 503
     try:
         from backend.services.networking_retrieval import (
+            build_dimension_plan,
             build_retrieval_query,
-            fuse_roster,
+            load_dimension_metadata_scores,
+            networking_policy_for_size,
             resolve_named_people,
             semantic_candidates,
+            semantic_match_details,
             structured_match_details,
             structured_candidates,
             tiered_roster,
@@ -16809,6 +16865,7 @@ def api_networking_steve_match():
             member_rows = c.fetchall()
             all_member_usernames = [str(_v(r, 0)) for r in member_rows]
             member_names = [(str(_v(r, 0)), str(_v(r, 1))) for r in member_rows]
+            retrieval_policy = networking_policy_for_size(len(all_member_usernames))
             from openai import OpenAI
             client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
@@ -16823,23 +16880,32 @@ def api_networking_steve_match():
                 conversation_history,
                 query_plan=query_plan,
             )
+            dimension_plan = build_dimension_plan(query_plan)
             structured_ids = structured_candidates(
                 member_rows,
                 retrieval_query,
                 _v,
                 retrieval_plan=query_plan,
+                cap=retrieval_policy["prompt_member_cap"],
             )
             structured_details = structured_match_details(
                 member_rows,
                 _v,
                 retrieval_plan=query_plan,
-                cap=NETWORKING_PROMPT_MEMBER_CAP,
+                cap=retrieval_policy["ann_recall_cap"],
             )
             semantic_ids = semantic_candidates(
                 retrieval_query,
                 all_member_usernames,
-                k_recall=NETWORKING_ANN_RECALL_CAP,
-                k_final=NETWORKING_PROMPT_MEMBER_CAP,
+                k_recall=retrieval_policy["ann_recall_cap"],
+                k_final=retrieval_policy["prompt_member_cap"],
+            )
+            semantic_details = semantic_match_details(
+                retrieval_query,
+                all_member_usernames,
+                retrieval_plan=query_plan,
+                k_recall=retrieval_policy["ann_recall_cap"],
+                k_final=retrieval_policy["ann_recall_cap"],
             )
             forced_usernames = resolve_named_people(
                 member_rows,
@@ -16847,18 +16913,23 @@ def api_networking_steve_match():
                 message=message,
                 query_plan=query_plan,
             )
-            ordered_usernames = fuse_roster(
-                structured_ids,
-                semantic_ids,
-                cap=NETWORKING_PROMPT_MEMBER_CAP,
-                forced_usernames=forced_usernames,
+            candidate_pool = structured_ids[:retrieval_policy["ann_recall_cap"]]
+            for username_candidate in semantic_ids[:retrieval_policy["ann_recall_cap"]]:
+                if username_candidate not in candidate_pool:
+                    candidate_pool.append(username_candidate)
+            metadata_scores = load_dimension_metadata_scores(
+                candidate_pool,
+                dimension_plan=dimension_plan,
             )
             ordered_usernames, tiered_matches = tiered_roster(
                 structured_ids,
                 semantic_ids,
-                cap=NETWORKING_PROMPT_MEMBER_CAP,
+                cap=retrieval_policy["prompt_member_cap"],
                 forced_usernames=forced_usernames,
                 structured_details=structured_details,
+                semantic_details=semantic_details,
+                dimension_plan=dimension_plan,
+                metadata_scores=metadata_scores,
             )
             logger.info(
                 "Steve networking retrieval mode=match structured=%s semantic=%s fused=%s direct=%s broader=%s forced=%s model=%s",
@@ -16876,6 +16947,9 @@ def api_networking_steve_match():
                 {}, viewer_username=username, query_text=retrieval_query, _v=_v,
                 preordered_usernames=ordered_usernames,
                 match_tiers=tiered_matches,
+                match_details={**structured_details, **semantic_details},
+                prompt_member_cap=retrieval_policy["prompt_member_cap"],
+                full_context_cap=retrieval_policy["full_context_cap"],
             )
 
             parent_name = community_names.get(community_id, '')
@@ -16952,6 +17026,9 @@ RULES:
                     "facets": query_plan.get("facets") or {},
                     "hard_constraints": query_plan.get("hard_constraints") or [],
                     "soft_constraints": query_plan.get("soft_constraints") or [],
+                    "primary_dimensions": query_plan.get("primary_dimensions") or [],
+                    "secondary_dimensions": query_plan.get("secondary_dimensions") or [],
+                    "hard_dimensions": query_plan.get("hard_dimensions") or [],
                     "named_people": query_plan.get("named_people") or [],
                     "search_rewrite": query_plan.get("search_rewrite") or "",
                 },

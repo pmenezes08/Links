@@ -6,9 +6,13 @@ import unittest
 from unittest.mock import patch
 
 from backend.services.networking_retrieval import (
+    build_dimension_plan,
     build_retrieval_query,
     fuse_roster,
+    load_dimension_metadata_scores,
+    networking_policy_for_size,
     resolve_named_people,
+    semantic_match_details,
     semantic_candidates,
     structured_match_details,
     structured_candidates,
@@ -150,6 +154,25 @@ class TestNetworkingRetrieval(unittest.TestCase):
         self.assertIn("experience in Southern Europe", query)
         self.assertIn("@member123", query)
 
+    def test_build_dimension_plan_maps_legacy_facets_to_kb_dimensions(self):
+        plan = build_dimension_plan(
+            {
+                "facets": {
+                    "geography": ["southern europe"],
+                    "traits": ["collaborative"],
+                    "company_builder": ["founder"],
+                },
+                "hard_constraints": ["geography"],
+                "search_rewrite": "founders in southern europe with collaborative traits",
+            }
+        )
+
+        self.assertIn("GeographyCulture", plan["primary_dimensions"])
+        self.assertIn("Identity", plan["primary_dimensions"] + plan["secondary_dimensions"])
+        self.assertIn("LifeCareer", plan["primary_dimensions"] + plan["secondary_dimensions"])
+        self.assertIn("GeographyCulture", plan["hard_dimensions"])
+        self.assertIn("southern europe", plan["dimension_terms"]["GeographyCulture"])
+
     def test_resolve_named_people_supports_mentions_and_display_names(self):
         rows = [
             ("hugosdurao", "Hugo Silva-Durao", "", "", "", "", "", "", "", "", ""),
@@ -175,6 +198,32 @@ class TestNetworkingRetrieval(unittest.TestCase):
         )
         self.assertEqual(fused[0], "hugosdurao")
         self.assertIn("bob", fused)
+
+    def test_semantic_match_details_preserve_source_dimensions(self):
+        fake_module = types.ModuleType("backend.services.embedding_service")
+        fake_module.AGGREGATE_DIMENSION_MAP = {
+            "professional": ("Index", "LifeCareer", "Expertise", "CompanyIntel"),
+            "experiences": ("GeographyCulture", "UniqueFingerprint", "InferredContext", "LifeCareer"),
+        }
+        fake_module.search_similar_profiles_ranked_detailed = lambda *args, **kwargs: [
+            {"username": "hugo", "score": 0.92, "chunk_type": "GeographyCulture"},
+            {"username": "alex", "score": 0.88, "chunk_type": "professional"},
+        ]
+
+        with patch.dict(sys.modules, {"backend.services.embedding_service": fake_module}):
+            details = semantic_match_details(
+                "people with deep southern europe experience",
+                ["hugo", "alex"],
+                retrieval_plan={
+                    "facets": {"geography": ["southern europe"]},
+                    "search_rewrite": "southern europe experience",
+                },
+                k_recall=20,
+                k_final=10,
+            )
+
+        self.assertIn("GeographyCulture", details["hugo"]["matched_dimensions"])
+        self.assertIn("Expertise", details["alex"]["matched_dimensions"])
 
     def test_structured_candidates_support_query_plan_and_sensitive_explicit_only(self):
         rows = [
@@ -302,6 +351,43 @@ class TestNetworkingRetrieval(unittest.TestCase):
         self.assertEqual(tiers["direct_match"], "direct")
         self.assertEqual(tiers["broader_match"], "broader")
         self.assertEqual(tiers["semantic_only"], "broader")
+
+    def test_load_dimension_metadata_scores_uses_feedback_and_confidence(self):
+        fake_docs = {
+            "GeographyCulture": {
+                "updatedAt": "2026-04-15T10:00:00Z",
+                "content": {},
+                "adminFeedback": {"status": "needs_correction", "at": "2026-04-16T10:00:00Z"},
+            },
+            "InferredContext": {
+                "updatedAt": "2026-04-15T10:00:00Z",
+                "content": {"confidence": 0.2},
+            },
+        }
+
+        with patch("backend.services.steve_knowledge_base.get_member_knowledge", return_value=fake_docs):
+            scores = load_dimension_metadata_scores(
+                ["hugo"],
+                dimension_plan={
+                    "primary_dimensions": ["GeographyCulture", "InferredContext"],
+                    "secondary_dimensions": [],
+                    "hard_dimensions": [],
+                },
+            )
+
+        self.assertLess(scores["hugo"]["total_adjustment"], 0.0)
+        self.assertIn("GeographyCulture", scores["hugo"]["dimension_adjustments"])
+        self.assertIn("InferredContext", scores["hugo"]["dimension_adjustments"])
+
+    def test_networking_policy_for_size_varies_caps(self):
+        small = networking_policy_for_size(20)
+        medium = networking_policy_for_size(80)
+        large = networking_policy_for_size(500)
+
+        self.assertEqual(small["prompt_member_cap"], 20)
+        self.assertGreaterEqual(medium["prompt_member_cap"], 40)
+        self.assertEqual(large["prompt_member_cap"], 40)
+        self.assertGreater(large["ann_recall_cap"], medium["ann_recall_cap"])
 
 
 if __name__ == "__main__":
