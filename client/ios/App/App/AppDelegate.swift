@@ -188,6 +188,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     private func syncBadgeWithServer() {
         NSLog("📛 Syncing badge with server...")
         
+        // Clear badge first for robustness (ensures stale counts do not persist
+        // after viewing posts/messages; server sync will set correct value)
+        UIApplication.shared.applicationIconBadgeNumber = 0
+        
         guard let url = URL(string: "\(serverURL)/api/notifications/badge-count") else {
             NSLog("📛 Invalid badge URL")
             return

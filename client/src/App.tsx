@@ -24,7 +24,7 @@ import { NetworkProvider } from './contexts/NetworkContext'
 import { BadgeProvider } from './contexts/BadgeContext'
 import OfflineBanner from './components/OfflineBanner'
 import OutboxDrainer from './components/OutboxDrainer'
-// import NativePushInit from './components/NativePushInit' // Disabled - conflicts with PushInit
+// NativePushInit disabled (clear logic now centralized in BadgeContext with resume listener + always-on-native clear in poll for robustness)
 import BrandAssetsInit from './components/BrandAssetsInit'
 // Encryption removed — not in use
 import CrossfitExact from './pages/CrossfitExact'

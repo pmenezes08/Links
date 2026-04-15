@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
+import { App as CapacitorApp } from '@capacitor/app'
 import { PushNotifications } from '@capacitor/push-notifications'
 
 type BadgeContextType = {
@@ -20,7 +21,7 @@ export function useBadges() {
   return useContext(BadgeContext)
 }
 
-const POLL_INTERVAL_MS = 5000
+const POLL_INTERVAL_MS = 15000
 
 export function BadgeProvider({ children }: { children: React.ReactNode }) {
   const [unreadMsgs, setUnreadMsgs] = useState(0)
@@ -62,7 +63,10 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
       }
     } catch {}
 
-    if (total === 0 && Capacitor.isNativePlatform()) {
+    // Always sync native badge on poll (server computes exact count via get_total_badge_count
+    // and sends silent push). This + resume listener makes clearing robust after viewing
+    // posts/messages without depending only on total===0 or next launch.
+    if (Capacitor.isNativePlatform()) {
       try {
         await PushNotifications.removeAllDeliveredNotifications()
       } catch {}
@@ -86,6 +90,35 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
     }
     document.addEventListener('visibilitychange', onVis)
     return () => document.removeEventListener('visibilitychange', onVis)
+  }, [poll])
+
+  // Robust resume listener for native platforms (iOS/Android) to sync badge immediately on return to app.
+  // This addresses the persistence issue where badge only cleared on next full open.
+  useEffect(() => {
+    let resumeListener: any = null
+    const setupResume = async () => {
+      if (Capacitor.isNativePlatform()) {
+        const listener = await CapacitorApp.addListener('resume', async () => {
+          console.log('App resumed - syncing badge')
+          poll()
+          // Always trigger server sync + delivered clear on resume for robustness
+          // (clear-badge endpoint computes current count and sends silent push)
+          try {
+            await PushNotifications.removeAllDeliveredNotifications()
+            await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' })
+          } catch (e) {
+            console.warn('Badge sync on resume failed:', e)
+          }
+        })
+        resumeListener = listener
+      }
+    }
+    setupResume()
+    return () => {
+      if (resumeListener?.remove) {
+        resumeListener.remove()
+      }
+    }
   }, [poll])
 
   const refreshBadges = useCallback(() => {

@@ -225,7 +225,10 @@ export default function Notifications(){
 
   async function onClick(n: Notif){
     if (!n.is_read) adjustBadges({ notifs: -1 })
-    fetch(`/api/notifications/${n.id}/read`, { method:'POST', credentials:'include' }).catch(()=>{})
+    try {
+      await fetch(`/api/notifications/${n.id}/read`, { method:'POST', credentials:'include' })
+      refreshBadges()
+    } catch {}
     
     // For poll notifications, navigate to polls page
     let url = n.link
