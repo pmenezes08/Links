@@ -17557,6 +17557,29 @@ def api_chat_threads():
             except Exception as blocked_err:
                 logger.warning(f"Could not get blocked users for chat threads: {blocked_err}")
 
+            counterpart_usernames = [
+                row['other_username'] if isinstance(row, dict) or hasattr(row, 'keys') else row[0]
+                for row in counterpart_rows
+            ]
+            profile_map = {}
+            if counterpart_usernames:
+                try:
+                    placeholders = ",".join([ph] * len(counterpart_usernames))
+                    c.execute(
+                        f"SELECT username, display_name, profile_picture FROM user_profiles WHERE username IN ({placeholders})",
+                        tuple(counterpart_usernames),
+                    )
+                    for profile_row in c.fetchall():
+                        profile_username = profile_row['username'] if hasattr(profile_row, 'keys') else profile_row[0]
+                        display_name = profile_row['display_name'] if hasattr(profile_row, 'keys') else profile_row[1]
+                        profile_picture_rel = profile_row['profile_picture'] if hasattr(profile_row, 'keys') else profile_row[2]
+                        profile_map[profile_username] = {
+                            'display_name': display_name,
+                            'profile_picture_url': url_for('static', filename=profile_picture_rel) if profile_picture_rel else None,
+                        }
+                except Exception as profile_err:
+                    logger.warning(f"Could not batch fetch chat thread profiles: {profile_err}")
+
             threads = []
             for row in counterpart_rows:
                 try:
@@ -17637,32 +17660,9 @@ def api_chat_threads():
                             except Exception:
                                 continue
 
-                    # Profile info (avatar)
-                    c.execute(
-                        "SELECT display_name, profile_picture FROM user_profiles WHERE username = ?",
-                        (other_username,),
-                    )
-                    profile = c.fetchone()
-                    display_name = None
-                    profile_picture_rel = None
-                    if profile:
-                        if hasattr(profile, 'keys') and 'display_name' in profile.keys():
-                            display_name = profile['display_name']
-                        else:
-                            try:
-                                display_name = profile[0]
-                            except Exception:
-                                display_name = None
-                        if hasattr(profile, 'keys') and 'profile_picture' in profile.keys():
-                            profile_picture_rel = profile['profile_picture']
-                        else:
-                            try:
-                                profile_picture_rel = profile[1]
-                            except Exception:
-                                profile_picture_rel = None
-                    display_name = display_name or other_username
-
-                    profile_picture_url = url_for('static', filename=profile_picture_rel) if profile_picture_rel else None
+                    profile = profile_map.get(other_username) or {}
+                    display_name = profile.get('display_name') or other_username
+                    profile_picture_url = profile.get('profile_picture_url')
 
                     threads.append({
                         'other_username': other_username,

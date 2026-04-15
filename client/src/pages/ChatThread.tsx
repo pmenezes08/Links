@@ -191,6 +191,7 @@ export default function ChatThread(){
     recentOptimisticRef.current.clear()
     pendingDeletions.current.clear()
     setOtherUserId('')
+    setOtherProfile(null)
     setMessages([])
   }, [username])
   
@@ -798,19 +799,10 @@ export default function ChatThread(){
         .then(r => r.json())
         .then(profileResponse => {
           if (profileResponse?.success) {
-            // Cache-bust the profile picture URL so browser loads fresh image
-            let ppUrl = profileResponse.profile_picture || null
-            if (ppUrl) {
-              ppUrl = ppUrl + (ppUrl.includes('?') ? '&' : '?') + 'v=' + Date.now()
-            }
             const profile = { 
               display_name: profileResponse.display_name, 
-              profile_picture: ppUrl
+              profile_picture: profileResponse.profile_picture || null,
             }
-            // Clear avatar caches
-            try {
-              import('../utils/avatarCache').then(({ clearAvatarCache }) => clearAvatarCache(username || ''))
-            } catch {}
             setOtherProfile(profile)
             if (profileCacheKey) {
               writeDeviceCache(profileCacheKey, profile, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION)
@@ -2415,11 +2407,13 @@ export default function ChatThread(){
             <i className="fa-solid fa-arrow-left text-white" />
           </button>
             <Avatar 
+              key={`${username || ''}:${otherProfile?.profile_picture || ''}`}
               username={username || ''} 
               url={otherProfile?.profile_picture || undefined} 
               size={36}
               linkToProfile
               displayName={otherProfile?.display_name}
+              loading="eager"
             />
           <div className="flex-1 min-w-0">
             <div className="font-semibold truncate text-white text-sm">

@@ -164,7 +164,13 @@ export default function Messages(){
             if (a.length !== b.length) return b
             const changed = a.some((x, idx) => {
               const y = b[idx]
-              return !y || x.other_username !== y.other_username || x.last_message_text !== y.last_message_text || x.last_activity_time !== y.last_activity_time || (x.unread_count || 0) !== (y.unread_count || 0)
+              return !y
+                || x.other_username !== y.other_username
+                || x.display_name !== y.display_name
+                || x.profile_picture_url !== y.profile_picture_url
+                || x.last_message_text !== y.last_message_text
+                || x.last_activity_time !== y.last_activity_time
+                || (x.unread_count || 0) !== (y.unread_count || 0)
             })
             return changed ? b : a
           })
@@ -996,7 +1002,7 @@ export default function Messages(){
                     className="w-full px-3 py-2 flex items-center gap-3 bg-transparent"
                     style={{ transform: `translateX(${tx}px)`, transition }}
                   >
-                    <Avatar username={t.other_username} url={t.profile_picture_url || undefined} size={48} linkToProfile displayName={t.display_name} />
+                    <Avatar username={t.other_username} url={t.profile_picture_url || undefined} size={48} linkToProfile displayName={t.display_name} loading="eager" />
                     <div className="flex-1 min-w-0 text-left">
                       <div className="flex items-center justify-between">
                         <div className="font-medium truncate">{t.display_name}</div>
@@ -1112,7 +1118,7 @@ export default function Messages(){
                             className="w-full px-3 py-2 flex items-center gap-3 bg-transparent"
                             style={{ transform: `translateX(${tx}px)`, transition }}
                           >
-                            <Avatar username={t.other_username} url={t.profile_picture_url || undefined} size={44} displayName={t.display_name} />
+                            <Avatar username={t.other_username} url={t.profile_picture_url || undefined} size={44} displayName={t.display_name} loading="eager" />
                             <div className="flex-1 min-w-0 text-left">
                               <div className="flex items-center justify-between">
                                 <div className="font-medium truncate text-white/70">{t.display_name}</div>

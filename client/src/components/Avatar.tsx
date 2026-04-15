@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type KeyboardEvent, type MouseEvent } from 'react'
+import { useState, useEffect, useMemo, useRef, type KeyboardEvent, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cacheAvatarUrl, isAvatarCached } from '../utils/avatarCache'
 import { optimizeAvatar } from '../utils/imageOptimizer'
@@ -12,6 +12,7 @@ type AvatarProps = {
   onClick?: (event: MouseEvent<HTMLDivElement | HTMLAnchorElement>) => void
   /** Display name to use for initials fallback (if not provided, uses username) */
   displayName?: string | null
+  loading?: 'lazy' | 'eager'
 }
 
 // Global cache of loaded images to prevent re-fetching during session
@@ -34,25 +35,33 @@ export function clearImageCache(username?: string) {
   }
 }
 
-function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials, username, fontSize }: { src: string; alt: string; style: React.CSSProperties, fallbacks?: string[], initials?: string, username?: string, fontSize?: number }) {
-  // Check if already loaded this session
-  const alreadyLoaded = imageCache.has(src)
-  const [loading, setLoading] = useState(!alreadyLoaded)
+function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials, username, fontSize, loadingBehavior = 'lazy' }: { src: string; alt: string; style: React.CSSProperties, fallbacks?: string[], initials?: string, username?: string, fontSize?: number, loadingBehavior?: 'lazy' | 'eager' }) {
+  const fallbackQueue = useMemo(() => fallbacks.filter(Boolean), [fallbacks])
   const [error, setError] = useState(false)
   const [currentSrc, setCurrentSrc] = useState<string>(src)
+  const [fallbackIndex, setFallbackIndex] = useState(0)
+  const [loading, setLoading] = useState(!imageCache.has(src))
   const imgRef = useRef<HTMLImageElement>(null)
+  const alreadyLoaded = imageCache.has(currentSrc)
+
+  useEffect(() => {
+    setCurrentSrc(src)
+    setFallbackIndex(0)
+    setError(false)
+    setLoading(!imageCache.has(src))
+  }, [src])
 
   // Check if image is already in browser cache (complete and has dimensions)
   useEffect(() => {
     const img = imgRef.current
     if (img && img.complete && img.naturalWidth > 0) {
       setLoading(false)
-      imageCache.set(src, true)
+      imageCache.set(currentSrc, true)
       if (username) {
-        cacheAvatarUrl(username, src)
+        cacheAvatarUrl(username, currentSrc)
       }
     }
-  }, [src, username])
+  }, [currentSrc, username])
 
   // If error, show initials fallback (same as when no image URL provided)
   if (error) {
@@ -90,24 +99,24 @@ function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials
         }}
         onError={() => {
           setLoading(false)
-          // Try next fallback if available
-          if (fallbacks.length > 0){
-            const [next, ...rest] = fallbacks
+          if (fallbackIndex < fallbackQueue.length){
+            const next = fallbackQueue[fallbackIndex]
             setError(false)
-            setLoading(true)
+            setLoading(!imageCache.has(next))
             setCurrentSrc(next)
-            ;(fallbacks as any).splice(0, fallbacks.length, ...rest)
+            setFallbackIndex(prev => prev + 1)
           } else {
             setError(true)
           }
         }}
-        loading="lazy"
+        loading={loadingBehavior}
+        decoding="async"
       />
     </div>
   )
 }
 
-export default function Avatar({ username, url, size = 40, className = '', linkToProfile = false, onClick, displayName }: AvatarProps){
+export default function Avatar({ username, url, size = 40, className = '', linkToProfile = false, onClick, displayName, loading = 'lazy' }: AvatarProps){
   const navigate = useNavigate()
   
   // Resolve the URL and apply Cloudflare optimization
@@ -167,6 +176,7 @@ export default function Avatar({ username, url, size = 40, className = '', linkT
         initials={initials}
         username={username}
         fontSize={fontSize}
+        loadingBehavior={loading}
       />
     ) : (
       <span style={{ fontSize }} className="text-white/80 font-medium">
