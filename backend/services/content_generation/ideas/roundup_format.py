@@ -140,16 +140,56 @@ def format_story_item(item: Dict[str, Any]) -> str:
     return "\n\n".join(line for line in lines if line).strip()
 
 
-def render_sections_markdown(sections: List[Dict[str, Any]]) -> str:
+def _opinion_piece_link_label(url: str, outlet: str) -> str:
+    """Short CTA label for a markdown link after each opinion item."""
+    u = (url or "").strip().lower()
+    if "youtu.be" in u or "youtube.com" in u:
+        return "Watch on YouTube"
+    o = (outlet or "").strip()
+    if o:
+        return f"Read on {o}"
+    return "Read full piece"
+
+
+def format_opinion_story_item(item: Dict[str, Any]) -> str:
+    """Like format_story_item but append a clickable link after the takeaway (opinion roundups)."""
+    base = format_story_item(item)
+    if not base:
+        return ""
+    url = str(item.get("url") or "").strip()
+    if not url:
+        return base
+    outlet = str(item.get("outlet") or "").strip()
+    label = _opinion_piece_link_label(url, outlet)
+    return f"{base}\n\n[{label}]({url})"
+
+
+def _section_heading_markdown(title: str, *, bold: bool) -> str:
+    t = str(title or "").strip().replace("*", "")
+    if not t:
+        return ""
+    if bold:
+        return f"**{t}**"
+    return t
+
+
+def render_sections_markdown(
+    sections: List[Dict[str, Any]],
+    *,
+    bold_section_titles: bool = False,
+    link_after_opinion: bool = False,
+) -> str:
     blocks: List[str] = []
     for sec in sections:
         title = str(sec.get("title") or "").strip()
         items = sec.get("items") or []
         if not title or not items:
             continue
-        inner: List[str] = [title]
+        heading = _section_heading_markdown(title, bold=bold_section_titles)
+        inner: List[str] = [heading]
+        formatter = format_opinion_story_item if link_after_opinion else format_story_item
         for it in items:
-            block = format_story_item(it)
+            block = formatter(it)
             if block:
                 inner.append(block)
         if len(inner) > 1:

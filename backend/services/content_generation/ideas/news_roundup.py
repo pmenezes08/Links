@@ -169,7 +169,7 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
         cta = str(result.get("cta") or "").strip()
         if not cta:
             cta = str(result.get("closing") or "").strip() or "What is your take on this?"
-        section_md = render_sections_markdown(filtered_sections)
+        section_md = render_sections_markdown(filtered_sections, bold_section_titles=True)
         if not structured_sources:
             structured_sources = derive_sources_from_sections(filtered_sections)
         sources_md = render_sources_section(structured_sources)

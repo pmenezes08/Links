@@ -10,6 +10,7 @@ from backend.services.content_generation.ideas.roundup_format import (
     derive_sources_from_sections,
     filter_section_items,
     filter_sources,
+    md_link_title,
     merge_source_links,
     render_sections_markdown,
     render_sources_section,
@@ -105,12 +106,13 @@ def _legacy_opinion_body(
     body_parts: List[str] = [f"Steve's opinion roundup: {topic}", intro]
 
     if featured_video_url:
-        body_parts.append(f"Featured discussion: {featured_video_title}")
+        body_parts.append(f"**Featured discussion:** {md_link_title(featured_video_title)}")
         if featured_video_summary:
             body_parts.append(featured_video_summary)
+        body_parts.append(f"[Watch on YouTube]({featured_video_url})")
 
     if bullet_text:
-        body_parts.append("Key takeaways")
+        body_parts.append("**Key takeaways**")
         body_parts.append(bullet_text)
 
     body_parts.append(closing)
@@ -198,7 +200,11 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
         cta = str(result.get("cta") or "").strip()
         if not cta:
             cta = str(result.get("closing") or "").strip() or "Where do you land on this?"
-        section_md = render_sections_markdown(filtered_sections)
+        section_md = render_sections_markdown(
+            filtered_sections,
+            bold_section_titles=True,
+            link_after_opinion=True,
+        )
         if not structured_sources:
             structured_sources = derive_sources_from_sections(filtered_sections)
         sources_md = render_sources_section(structured_sources)
@@ -209,14 +215,22 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             "",
         ]
         if featured_video_url:
+            safe_title = md_link_title(featured_video_title)
             parts.extend(
                 [
-                    f"Featured discussion: {featured_video_title}",
+                    f"**Featured discussion:** {safe_title}",
+                    "",
                 ]
             )
             if featured_video_summary:
                 parts.append(featured_video_summary)
-            parts.append("")
+            parts.extend(
+                [
+                    "",
+                    f"[Watch on YouTube]({featured_video_url})",
+                    "",
+                ]
+            )
         parts.append(section_md)
         parts.extend(["", cta])
         if sources_md:
