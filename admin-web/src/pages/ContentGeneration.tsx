@@ -4,9 +4,11 @@ import { api, apiJson, apiPost } from '../utils/api'
 type IdeaField = {
   name: string
   label: string
+  kind?: string
   required: boolean
   help_text?: string
   placeholder?: string
+  options?: Array<{ value: string; label: string }>
 }
 
 type IdeaDescriptor = {
@@ -92,6 +94,17 @@ function scheduleSummary(schedule?: Partial<ScheduleState>) {
     return `${week} ${weekday} at ${time} (${timezone})`
   }
   return `Every ${weekday} at ${time} (${timezone})`
+}
+
+function getTopicMode(payload: Record<string, string>) {
+  return payload.topic_mode || 'manual'
+}
+
+function shouldShowField(field: IdeaField, payload: Record<string, string>) {
+  const topicMode = getTopicMode(payload)
+  if (field.name === 'topic') return topicMode !== 'auto'
+  if (field.name === 'topic_seed') return topicMode === 'auto'
+  return true
 }
 
 export default function ContentGeneration() {
@@ -242,7 +255,7 @@ export default function ContentGeneration() {
           <section className="bg-surface-2 border border-white/10 rounded-xl p-5">
             <div className="mb-4">
               <div className="font-medium">Create jobs</div>
-              <p className="text-xs text-white/50 mt-1">Bulk community creation fans out into separate single-community jobs. Schedules are persisted now and can be automated later.</p>
+              <p className="text-xs text-white/50 mt-1">Bulk community creation fans out into separate single-community jobs. Choose a fixed topic or let Steve select a timely one automatically.</p>
             </div>
             {loading ? (
               <div className="text-sm text-white/60">Loading...</div>
@@ -312,21 +325,53 @@ export default function ContentGeneration() {
                 )}
 
                 {selectedIdea?.payload_fields.filter(field => field.name !== 'target_username').map(field => (
-                  <div key={field.name}>
-                    <label className="text-sm text-muted block mb-1.5">
-                      {field.label}
-                      {field.required ? ' *' : ''}
-                    </label>
-                    <input
-                      type="text"
-                      value={payload[field.name] || ''}
-                      onChange={e => setPayload(prev => ({ ...prev, [field.name]: e.target.value }))}
-                      required={field.required}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:border-accent focus:outline-none"
-                      placeholder={field.placeholder || ''}
-                    />
-                    {field.help_text && <p className="text-xs text-white/50 mt-1">{field.help_text}</p>}
-                  </div>
+                  shouldShowField(field, payload) ? (
+                    <div key={field.name}>
+                      <label className="text-sm text-muted block mb-1.5">
+                        {field.label}
+                        {field.required ? ' *' : ''}
+                      </label>
+                      {field.kind === 'select' ? (
+                        <select
+                          value={(field.name === 'topic_mode' ? getTopicMode(payload) : payload[field.name]) || ''}
+                          onChange={e => {
+                            const nextValue = e.target.value
+                            setPayload(prev => {
+                              if (field.name !== 'topic_mode') {
+                                return { ...prev, [field.name]: nextValue }
+                              }
+                              return {
+                                ...prev,
+                                topic_mode: nextValue,
+                                topic: nextValue === 'auto' ? '' : prev.topic || '',
+                                topic_seed: nextValue === 'auto' ? prev.topic_seed || '' : '',
+                              }
+                            })
+                          }}
+                          className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:border-accent focus:outline-none"
+                        >
+                          {(field.options || []).map(option => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={payload[field.name] || ''}
+                          onChange={e => setPayload(prev => ({ ...prev, [field.name]: e.target.value }))}
+                          required={field.required}
+                          className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:border-accent focus:outline-none"
+                          placeholder={field.placeholder || ''}
+                        />
+                      )}
+                      {field.help_text && <p className="text-xs text-white/50 mt-1">{field.help_text}</p>}
+                      {field.name === 'topic_mode' && getTopicMode(payload) === 'auto' && (
+                        <p className="text-xs text-white/50 mt-1">
+                          Steve will choose a timely topic automatically each time the job runs.
+                        </p>
+                      )}
+                    </div>
+                  ) : null
                 ))}
 
                 <div className="rounded-xl border border-white/10 p-4 space-y-3">

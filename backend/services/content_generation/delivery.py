@@ -11,6 +11,7 @@ from redis_cache import cache, invalidate_community_cache, invalidate_message_ca
 
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.firestore_writes import write_dm_message, write_post
+from backend.services.notifications import fanout_community_post_notifications
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,19 @@ def create_steve_feed_post(
         invalidate_community_cache(community_id)
     except Exception:
         pass
+    try:
+        fanout_community_post_notifications(
+            community_id=community_id,
+            post_id=post_id,
+            author_username="steve",
+            content=final_content,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Community post notifications failed for generated Steve post %s: %s",
+            post_id,
+            exc,
+        )
     try:
         from bodybuilding_app import auto_flag_content_if_needed  # type: ignore import-not-found
 

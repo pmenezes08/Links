@@ -59,9 +59,13 @@ def _build_rrule(schedule: Dict[str, Any]) -> Optional[str]:
 
 
 def _default_job_title(descriptor, payload: Dict[str, Any], *, community_id: Optional[int], target_username: Optional[str]) -> str:
+    topic_mode = str(payload.get("topic_mode") or "manual").strip().lower()
     topic = str(payload.get("topic") or "").strip()
     if topic:
         return f"{descriptor.title}: {topic}"
+    if topic_mode == "auto":
+        topic_seed = str(payload.get("topic_seed") or "").strip()
+        return f"{descriptor.title}: auto{f' ({topic_seed})' if topic_seed else ''}"
     if target_username:
         return f"{descriptor.title}: @{target_username}"
     if community_id:
@@ -91,7 +95,33 @@ def _user_exists(username: str) -> bool:
 
 def _payload_for_create(data: Dict[str, Any], descriptor) -> Dict[str, Any]:
     payload = data.get("payload") if isinstance(data.get("payload"), dict) else {}
-    normalized = {str(key): value for key, value in payload.items()}
+    normalized = {
+        str(key): value.strip() if isinstance(value, str) else value
+        for key, value in payload.items()
+    }
+
+    if descriptor.idea_id in {"public_news_roundup", "public_opinion_roundup"}:
+        topic_mode = str(normalized.get("topic_mode") or "manual").strip().lower() or "manual"
+        if topic_mode not in {"manual", "auto"}:
+            raise ValueError("Topic mode must be manual or auto")
+        normalized["topic_mode"] = topic_mode
+        normalized["topic"] = str(normalized.get("topic") or "").strip()
+        normalized["topic_seed"] = str(normalized.get("topic_seed") or "").strip()
+        community_context_enabled = normalized.get("community_context_enabled")
+        if community_context_enabled in (None, ""):
+            normalized["community_context_enabled"] = "true"
+        else:
+            normalized["community_context_enabled"] = (
+                "false"
+                if str(community_context_enabled).strip().lower() in {"0", "false", "no", "off"}
+                else "true"
+            )
+        if topic_mode == "manual" and not normalized["topic"]:
+            raise ValueError("Topic is required when topic mode is manual")
+
+    if "target_username" in normalized:
+        normalized["target_username"] = str(normalized.get("target_username") or "").strip()
+
     for field in descriptor.payload_fields:
         if field.name == "target_username":
             continue
@@ -201,6 +231,9 @@ def update_content_generation_job_api(job_id: int):
     for key in ("title", "status", "payload", "schedule", "timezone", "rrule", "next_run_at"):
         if key in data:
             updates[key] = data[key]
+    if "payload" in updates:
+        descriptor = get_descriptor(job["idea_id"])
+        updates["payload"] = _payload_for_create({"payload": updates["payload"]}, descriptor)
     if "schedule" in updates and "rrule" not in updates:
         updates["rrule"] = _build_rrule(updates["schedule"] or {})
     updated = update_job(job_id, updates)

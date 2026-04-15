@@ -6,8 +6,8 @@ export default {
       colors: {
         accent: '#4db6ac',
         muted: '#9fb0b5',
-        surface: '#111111',
-        'surface-2': '#1a1a1a',
+        surface: '#000000',
+        'surface-2': '#000000',
       }
     }
   },

@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import random
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Dict, List
 
 from backend.services.community import fetch_community_names
 from backend.services.content_generation.llm import XAI_API_KEY, generate_json
 from backend.services.content_generation.types import IdeaDescriptor, IdeaExecutionResult, IdeaField
 from backend.services.database import get_db_connection
-from backend.services.steve_knowledge_base import build_knowledge_context_for_steve
+from backend.services.steve_knowledge_base import (
+    build_knowledge_context_for_steve,
+    build_knowledge_context_slim,
+)
 
 
 DESCRIPTOR = IdeaDescriptor(
@@ -55,6 +59,67 @@ def _community_member_usernames(community_id: int) -> List[str]:
     return usernames
 
 
+def _community_name(community_id: int) -> str:
+    with get_db_connection() as conn:
+        names = fetch_community_names(conn.cursor(), [community_id])
+    return str(names[0]).strip() if names else ""
+
+
+def _fallback_body(target_username: str, community_name: str) -> str:
+    community_label = community_name or "this community"
+    return (
+        f"@{target_username}, Steve hopes you have a great day. "
+        f"Glad you're part of {community_label}."
+    )
+
+
+def _normalize_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def _fact_is_grounded(fact_used: str, kb_context: str) -> bool:
+    normalized_fact = _normalize_text(fact_used)
+    normalized_context = _normalize_text(kb_context)
+    return bool(normalized_fact and len(normalized_fact) >= 8 and normalized_fact in normalized_context)
+
+
+def _contains_internal_identifier(text: str) -> bool:
+    return bool(
+        re.search(r"\bcommunity\s*#?\d+\b", text or "", flags=re.IGNORECASE)
+        or re.search(r"\binternal\s+id\b", text or "", flags=re.IGNORECASE)
+    )
+
+
+def _contains_unsupported_claim(text: str) -> bool:
+    patterns = (
+        r"\balways brightens\b",
+        r"\bthe whole community\b",
+        r"\beveryone (?:here )?(?:loves|appreciates|knows)\b",
+        r"\byour presence\b",
+        r"\bthanks for being awesome\b",
+        r"\byou make .* better\b",
+    )
+    return any(re.search(pattern, text or "", flags=re.IGNORECASE) for pattern in patterns)
+
+
+def _prompt_context_for_member(target_username: str) -> str:
+    slim_context = build_knowledge_context_slim(target_username).strip()
+    if slim_context:
+        return slim_context[:900]
+    full_context = build_knowledge_context_for_steve(target_username).strip()
+    if not full_context:
+        return ""
+    return "\n".join(full_context.splitlines()[:12])[:1200]
+
+
+def _grounded_rewrite(target_username: str, community_name: str, fact_used: str) -> str:
+    community_label = community_name or "this community"
+    return (
+        f"@{target_username}, Steve appreciates this about you: {fact_used}. "
+        f"Wishing you a great day in {community_label}."
+    )
+
+
 def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
     community_id = int(job.get("community_id") or 0)
     if not community_id:
@@ -69,41 +134,68 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
     if requested_username and requested_username not in candidates:
         raise ValueError("Selected member is not part of this community")
     target_username = requested_username or random.choice(candidates)
+    community_name = _community_name(community_id)
 
     if not XAI_API_KEY:
-        content = (
-            f"@{target_username}, wishing you a great day from Steve. "
-            "Thanks for being part of this community and helping keep the energy positive."
-        )
+        content = _fallback_body(target_username, community_name)
         return IdeaExecutionResult(
             delivery_channel="feed_post",
             content=content,
-            meta={"target_username": target_username},
+            meta={"target_username": target_username, "community_name": community_name},
         )
 
-    kb_context = build_knowledge_context_for_steve(target_username)
+    kb_context = _prompt_context_for_member(target_username)
     response = generate_json(
         system_prompt=(
-            "You are Steve writing a warm but non-creepy public compliment for a community member. "
-            "Keep it short, positive, and safe. "
-            "Only use clearly positive, non-sensitive facts from the provided profile context. "
-            "Do not mention health, politics, religion, finances, family, or inferred private details."
+            "You are Steve writing a short, warm, public compliment for a community member. "
+            "Use only explicit, positive, non-sensitive facts from the supplied profile context. "
+            "Never mention internal IDs, numeric community identifiers, databases, or unsupported claims about social impact. "
+            "If the context is too weak for a grounded compliment, write a neutral greeting instead and leave fact_used empty. "
+            "Start the message with the target @username. "
+            "Return JSON with keys body and fact_used. "
+            "fact_used must be either an exact short snippet copied from the provided profile context or an empty string."
         ),
         user_prompt=(
             f"Target member: @{target_username}\n"
-            f"Community ID: {community_id}\n"
-            f"Profile context:\n{kb_context or 'No additional knowledge base context available.'}\n\n"
-            "Return JSON with one key: body."
+            f"Community name: {community_name or 'Community unavailable'}\n"
+            f"Profile context:\n{kb_context or 'No additional profile context available.'}\n\n"
+            "Keep the compliment to one or two sentences."
         ),
         max_tokens=300,
-        temperature=0.7,
+        temperature=0.35,
     )
     body = str(response.get("body") or "").strip()
+    fact_used = str(response.get("fact_used") or "").strip()
+
     if not body:
-        body = f"@{target_username}, wishing you a great day from Steve. Glad you're part of this community."
+        body = _fallback_body(target_username, community_name)
+    if not body.startswith(f"@{target_username}"):
+        body = f"@{target_username}, {body.lstrip()}"
+
+    fact_is_grounded = _fact_is_grounded(fact_used, kb_context)
+    if _contains_internal_identifier(body):
+        body = _fallback_body(target_username, community_name)
+        fact_used = ""
+        fact_is_grounded = False
+
+    if fact_used and not fact_is_grounded:
+        body = _fallback_body(target_username, community_name)
+        fact_used = ""
+        fact_is_grounded = False
+
+    if _contains_unsupported_claim(body):
+        if fact_is_grounded and fact_used:
+            body = _grounded_rewrite(target_username, community_name, fact_used)
+        else:
+            body = _fallback_body(target_username, community_name)
+
     return IdeaExecutionResult(
         delivery_channel="feed_post",
         content=body,
-        meta={"target_username": target_username},
+        meta={
+            "target_username": target_username,
+            "community_name": community_name,
+            "fact_used": fact_used if fact_is_grounded else "",
+        },
     )
 

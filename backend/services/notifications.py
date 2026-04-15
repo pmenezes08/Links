@@ -11,7 +11,7 @@ from threading import Lock
 
 from pywebpush import WebPushException, webpush
 
-from backend.services.database import USE_MYSQL, get_db_connection
+from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 
 # Modern APNs implementation using HTTP/2 (Apple's 2025 recommendation)
 try:
@@ -49,6 +49,7 @@ def create_notification(
     community_id=None,
     message=None,
     link=None,
+    preview_text=None,
 ):
     """Create or refresh an in-app notification entry."""
     try:
@@ -57,34 +58,145 @@ def create_notification(
             if USE_MYSQL:
                 c.execute(
                     """
-                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
-                    VALUES (%s, %s, %s, %s, %s, %s, NOW(), 0, %s)
+                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                    VALUES (%s, %s, %s, %s, %s, %s, NOW(), 0, %s, %s)
                     ON DUPLICATE KEY UPDATE
                         created_at = NOW(),
                         message = VALUES(message),
                         link = VALUES(link),
+                        preview_text = VALUES(preview_text),
                         is_read = 0
                     """,
-                    (user_id, from_user, notification_type, post_id, community_id, message, link),
+                    (user_id, from_user, notification_type, post_id, community_id, message, link, preview_text),
                 )
             else:
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 c.execute(
                     """
-                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
                     ON CONFLICT(user_id, from_user, type, post_id, community_id)
                     DO UPDATE SET
                         created_at = excluded.created_at,
                         message = excluded.message,
                         link = excluded.link,
+                        preview_text = excluded.preview_text,
                         is_read = 0
                     """,
-                    (user_id, from_user, notification_type, post_id, community_id, message, now_str, link),
+                    (user_id, from_user, notification_type, post_id, community_id, message, now_str, link, preview_text),
                 )
             conn.commit()
     except Exception as exc:
         logger.error("Error creating notification: %s", exc)
+
+
+def truncate_notification_preview(text: str, max_len: int = 160) -> str:
+    preview = " ".join(str(text or "").split()).strip()
+    if len(preview) <= max_len:
+        return preview
+    return preview[: max_len - 1].rstrip() + "…"
+
+
+def fanout_community_post_notifications(
+    *,
+    community_id: int,
+    post_id: int,
+    author_username: str,
+    content: str,
+    community_name: str | None = None,
+) -> None:
+    """Fan out a new community post using the same semantics everywhere."""
+    if not community_id or not post_id or not author_username:
+        return
+
+    preview = truncate_notification_preview(content or "")
+    notif_link = f"/community_feed_react/{community_id}"
+    placeholder = get_sql_placeholder()
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT DISTINCT u.username
+            FROM users u
+            JOIN user_communities uc ON u.id = uc.user_id
+            WHERE uc.community_id = ? AND u.username != ?
+            """,
+            (community_id, author_username),
+        )
+        members = [
+            row["username"] if hasattr(row, "keys") else row[0]
+            for row in (c.fetchall() or [])
+        ]
+
+        resolved_community_name = (community_name or "").strip()
+        if not resolved_community_name:
+            try:
+                c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+                row = c.fetchone()
+                if row:
+                    resolved_community_name = (
+                        row["name"] if hasattr(row, "keys") else row[0]
+                    ) or ""
+            except Exception as community_err:
+                logger.warning(
+                    "community post notify name lookup failed for %s: %s",
+                    community_id,
+                    community_err,
+                )
+
+        notif_message = (
+            f"{author_username} made a new post on {resolved_community_name}"
+            if resolved_community_name
+            else f"{author_username} made a new post"
+        )
+
+        for member in members:
+            try:
+                create_notification(
+                    member,
+                    author_username,
+                    "community_post",
+                    post_id=post_id,
+                    community_id=community_id,
+                    message=notif_message,
+                    link=notif_link,
+                    preview_text=preview or None,
+                )
+            except Exception as notify_err:
+                logger.warning(
+                    "community post notify db error to %s: %s",
+                    member,
+                    notify_err,
+                )
+
+            try:
+                c.execute(
+                    f"SELECT 1 FROM user_muted_communities WHERE username={placeholder} AND community_id={placeholder}",
+                    (member, community_id),
+                )
+                if c.fetchone():
+                    continue
+            except Exception as muted_err:
+                logger.warning(
+                    "muted community lookup failed for %s in %s: %s",
+                    member,
+                    community_id,
+                    muted_err,
+                )
+
+            try:
+                send_push_to_user(
+                    member,
+                    {
+                        "title": "New community post",
+                        "body": f"{author_username}: {preview or truncate_notification_preview(content or '', 100)}",
+                        "url": notif_link,
+                        "tag": f"community-post-{community_id}-{post_id}",
+                    },
+                )
+            except Exception as push_err:
+                logger.warning("push notify community warn: %s", push_err)
 
 
 def send_native_push(username: str, title: str, body: str, data: dict = None):

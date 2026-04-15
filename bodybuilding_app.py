@@ -59,6 +59,7 @@ from backend.services.notifications import (
     check_single_event_notifications,
     check_single_poll_notifications,
     create_notification,
+    fanout_community_post_notifications,
     send_push_to_user,
 )
 from backend.services.native_push import (
@@ -20469,100 +20470,12 @@ def post_status():
 
             # Notify community members (excluding creator) - push + in-app notification row
             try:
-                # Get all members of the community (excluding author)
-                c.execute(
-                    """
-                    SELECT DISTINCT u.username
-                    FROM users u
-                    JOIN user_communities uc ON u.id = uc.user_id
-                    WHERE uc.community_id = ? AND u.username != ?
-                    """,
-                    (community_id, username)
+                fanout_community_post_notifications(
+                    community_id=community_id,
+                    post_id=post_id,
+                    author_username=username,
+                    content=content or "",
                 )
-                members = [row['username'] if hasattr(row, 'keys') else row[0] for row in c.fetchall()]
-
-                # Resolve community name for nicer message
-                community_name = None
-                try:
-                    c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
-                    r = c.fetchone()
-                    if r:
-                        try:
-                            community_name = r['name'] if hasattr(r, 'keys') else r[0]
-                        except Exception:
-                            community_name = None
-                except Exception:
-                    community_name = None
-
-                notif_message = (
-                    f"{username} made a new post on {community_name}" if community_name else f"{username} made a new post"
-                )
-                notif_link = f"/community_feed_react/{community_id}"
-                post_preview = _truncate_notif_preview(content or "")
-
-                for member in members:
-                    logger.info(f"Attempting to notify member: {member}")
-                    # In-app notification row (dedupe by unique key if present)
-                    try:
-                        if 'USE_MYSQL' in globals() and USE_MYSQL:
-                            c.execute(
-                                """
-                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
-                                VALUES (?, ?, 'community_post', ?, ?, ?, NOW(), 0, ?, ?)
-                                ON DUPLICATE KEY UPDATE
-                                  created_at = NOW(),
-                                  message = VALUES(message),
-                                  is_read = 0,
-                                  link = VALUES(link),
-                                  preview_text = VALUES(preview_text)
-                                """,
-                                (member, username, post_id, community_id, notif_message, notif_link, post_preview or None),
-                            )
-                        else:
-                            c.execute(
-                                """
-                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
-                                VALUES (?, ?, 'community_post', ?, ?, ?, datetime('now'), 0, ?, ?)
-                                ON CONFLICT(user_id, from_user, type, post_id, community_id)
-                                DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link, preview_text = excluded.preview_text
-                                """,
-                                (member, username, post_id, community_id, notif_message, notif_link, post_preview or None),
-                            )
-                        conn.commit()
-                    except Exception as ne:
-                        try:
-                            # Fallback simple insert (best effort)
-                            c.execute(
-                                """
-                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link, preview_text)
-                                VALUES (?, ?, 'community_post', ?, ?, ?, datetime('now'), 0, ?, ?)
-                                """,
-                                (member, username, post_id, community_id, notif_message, notif_link, post_preview or None),
-                            )
-                            conn.commit()
-                        except Exception as ne2:
-                            logger.warning(f"community post notify db error to {member}: {ne2}")
-
-                    # Skip push for muted communities
-                    try:
-                        _comm_ph = get_sql_placeholder()
-                        c.execute(f"SELECT 1 FROM user_muted_communities WHERE username={_comm_ph} AND community_id={_comm_ph}", (member, community_id))
-                        if c.fetchone():
-                            continue  # Skip push, in-app notification already created above
-                    except Exception:
-                        pass
-                    try:
-                        send_push_to_user(
-                            member,
-                            {
-                                'title': 'New community post',
-                                'body': f"{username}: {post_preview or (content[:100] if content else '')}",
-                                'url': notif_link,
-                                'tag': f"community-post-{community_id}-{post_id}",
-                            },
-                        )
-                    except Exception as pe:
-                        logger.warning(f"push notify community warn: {pe}")
             except Exception as notify_err:
                 logger.warning(f"community notify block error: {notify_err}")
         

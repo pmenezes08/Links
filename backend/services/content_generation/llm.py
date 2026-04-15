@@ -196,3 +196,69 @@ def generate_web_search_json(
     raw = (response.output_text or "").strip() if hasattr(response, "output_text") else ""
     return _extract_json(raw)
 
+
+def plan_timely_topic(
+    *,
+    roundup_kind: str,
+    allowed_domains: Sequence[str],
+    topic_seed: str = "",
+    community_name: str = "",
+    community_context_enabled: bool = True,
+) -> Dict[str, Any]:
+    """Pick one timely topic using public web search results."""
+    cleaned_seed = str(topic_seed or "").strip()
+    cleaned_community = str(community_name or "").strip()
+
+    if not XAI_API_KEY:
+        fallback_topic = cleaned_seed or (
+            f"{cleaned_community} conversations" if cleaned_community else f"current {roundup_kind} discussions"
+        )
+        return {
+            "topic": fallback_topic,
+            "why_now": "Fallback topic selected because LLM search is unavailable.",
+            "source_links": [],
+        }
+
+    allowed_list = ", ".join(
+        sorted(domain for domain in allowed_domains if not domain.startswith("www."))
+    )
+    community_line = (
+        f"Community context: {cleaned_community}\n"
+        if community_context_enabled and cleaned_community
+        else ""
+    )
+    seed_line = (
+        f"Standing theme or seed: {cleaned_seed}\n"
+        if cleaned_seed
+        else "Standing theme or seed: choose a timely angle that fits the community context.\n"
+    )
+    result = generate_web_search_json(
+        system_prompt=(
+            f"You are planning one timely topic for Steve's {roundup_kind} roundup. "
+            "Use current public web coverage to choose one concrete topic that feels timely and specific. "
+            f"Only consider sources from this allowlist: {allowed_list}. "
+            "Return JSON with keys: topic, why_now, source_links. "
+            "topic should be short, concrete, and ready to place in a headline. "
+            "why_now should be one short sentence. "
+            "source_links should be an array of 1-4 exact URLs that justify the choice."
+        ),
+        user_prompt=(
+            f"{seed_line}"
+            f"{community_line}"
+            "Pick a topic Steve can cover right now. Avoid vague evergreen labels such as 'technology news'."
+        ),
+        max_output_tokens=700,
+        temperature=0.2,
+    )
+    topic = str(result.get("topic") or "").strip()
+    if not topic:
+        raise ValueError("Unable to choose an automatic topic right now")
+    links = filter_links(result.get("source_links") or [], allowed_domains)
+    if not links:
+        links = filter_links(extract_links(str(result)), allowed_domains)
+    return {
+        "topic": topic,
+        "why_now": str(result.get("why_now") or "").strip(),
+        "source_links": links,
+    }
+

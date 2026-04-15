@@ -3,10 +3,11 @@ import { useEffect, useMemo, useState } from 'react'
 type IdeaField = {
   name: string
   label: string
-  kind: string
+  kind?: string
   required: boolean
   help_text?: string
   placeholder?: string
+  options?: Array<{ value: string; label: string }>
 }
 
 type IdeaDescriptor = {
@@ -96,6 +97,17 @@ function scheduleSummary(schedule: Partial<ScheduleState> | undefined) {
     return `${weekLabel} ${dayLabel} of each month at ${timeOfDay} (${timezone})`
   }
   return `Every ${dayLabel} at ${timeOfDay} (${timezone})`
+}
+
+function getTopicMode(payload: Record<string, string>) {
+  return payload.topic_mode || 'manual'
+}
+
+function shouldShowField(field: IdeaField, payload: Record<string, string>) {
+  const topicMode = getTopicMode(payload)
+  if (field.name === 'topic') return topicMode !== 'auto'
+  if (field.name === 'topic_seed') return topicMode === 'auto'
+  return true
 }
 
 export default function ContentGenerationModal({ communityId, open, onClose }: Props) {
@@ -261,7 +273,7 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
 
   return (
     <div className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-sm flex items-center justify-center px-3" onClick={(e) => e.currentTarget === e.target && onClose()}>
-      <div className="w-full max-w-3xl max-h-[88vh] overflow-y-auto rounded-2xl border border-white/10 bg-[#080808] text-white p-4 sm:p-5 space-y-5">
+      <div className="w-full max-w-3xl max-h-[88vh] overflow-y-auto rounded-2xl border border-white/10 bg-black text-white p-4 sm:p-5 space-y-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Content Generation</h2>
@@ -279,11 +291,11 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
         )}
 
         <div className="grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <div className="rounded-2xl border border-white/10 bg-black p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <div className="font-medium">{editingJobId ? 'Edit job' : 'Create job'}</div>
-                <div className="text-xs text-[#9fb0b5]">Schedules are saved now and ready for automation later. Use Run Now for immediate delivery.</div>
+                <div className="text-xs text-[#9fb0b5]">Choose a fixed topic or let Steve pick a timely one automatically. Use Run Now for immediate delivery.</div>
               </div>
               {editingJobId && (
                 <button className="text-xs text-[#4db6ac]" type="button" onClick={() => resetForm(selectedIdeaId)}>
@@ -325,33 +337,63 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
                 </div>
 
                 {selectedIdea?.payload_fields.map((field) => (
-                  <div key={field.name}>
-                    <label className="block text-xs text-[#9fb0b5] mb-1">
-                      {field.label}
-                      {field.required ? ' *' : ''}
-                    </label>
-                    {field.name === 'target_username' ? (
-                      <select
-                        value={payload[field.name] || ''}
-                        onChange={(e) => setPayload((prev) => ({ ...prev, [field.name]: e.target.value }))}
-                        className="w-full rounded-lg bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
-                      >
-                        <option value="">{field.required ? 'Select a member' : 'Steve chooses automatically'}</option>
-                        {members.map((member) => (
-                          <option key={member.username} value={member.username}>@{member.username}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        value={payload[field.name] || ''}
-                        onChange={(e) => setPayload((prev) => ({ ...prev, [field.name]: e.target.value }))}
-                        required={field.required}
-                        placeholder={field.placeholder || ''}
-                        className="w-full rounded-lg bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
-                      />
-                    )}
-                    {field.help_text && <p className="text-xs text-[#9fb0b5] mt-1">{field.help_text}</p>}
-                  </div>
+                  shouldShowField(field, payload) ? (
+                    <div key={field.name}>
+                      <label className="block text-xs text-[#9fb0b5] mb-1">
+                        {field.label}
+                        {field.required ? ' *' : ''}
+                      </label>
+                      {field.name === 'target_username' ? (
+                        <select
+                          value={payload[field.name] || ''}
+                          onChange={(e) => setPayload((prev) => ({ ...prev, [field.name]: e.target.value }))}
+                          className="w-full rounded-lg bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                        >
+                          <option value="">{field.required ? 'Select a member' : 'Steve chooses automatically'}</option>
+                          {members.map((member) => (
+                            <option key={member.username} value={member.username}>@{member.username}</option>
+                          ))}
+                        </select>
+                      ) : field.kind === 'select' ? (
+                        <select
+                          value={(field.name === 'topic_mode' ? getTopicMode(payload) : payload[field.name]) || ''}
+                          onChange={(e) => {
+                            const nextValue = e.target.value
+                            setPayload((prev) => {
+                              if (field.name !== 'topic_mode') {
+                                return { ...prev, [field.name]: nextValue }
+                              }
+                              return {
+                                ...prev,
+                                topic_mode: nextValue,
+                                topic: nextValue === 'auto' ? '' : prev.topic || '',
+                                topic_seed: nextValue === 'auto' ? prev.topic_seed || '' : '',
+                              }
+                            })
+                          }}
+                          className="w-full rounded-lg bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                        >
+                          {(field.options || []).map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          value={payload[field.name] || ''}
+                          onChange={(e) => setPayload((prev) => ({ ...prev, [field.name]: e.target.value }))}
+                          required={field.required}
+                          placeholder={field.placeholder || ''}
+                          className="w-full rounded-lg bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                        />
+                      )}
+                      {field.help_text && <p className="text-xs text-[#9fb0b5] mt-1">{field.help_text}</p>}
+                      {field.name === 'topic_mode' && getTopicMode(payload) === 'auto' && (
+                        <p className="text-xs text-[#9fb0b5] mt-1">
+                          Steve will pick a timely topic automatically whenever this job runs.
+                        </p>
+                      )}
+                    </div>
+                  ) : null
                 ))}
 
                 <div className="rounded-xl border border-white/10 p-3 space-y-3">
@@ -427,13 +469,13 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
           </div>
 
           <div className="space-y-4">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+            <div className="rounded-2xl border border-white/10 bg-black p-4">
               <div className="font-medium mb-3">Saved jobs</div>
               <div className="space-y-3 max-h-[320px] overflow-y-auto">
                 {jobs.length === 0 ? (
                   <div className="text-sm text-[#9fb0b5]">No jobs saved for this community yet.</div>
                 ) : jobs.map((job) => (
-                  <div key={job.id} className="rounded-xl border border-white/10 p-3 bg-black/40">
+                  <div key={job.id} className="rounded-xl border border-white/10 p-3 bg-black">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="font-medium text-sm">{job.title || job.idea_id}</div>
@@ -465,13 +507,13 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+            <div className="rounded-2xl border border-white/10 bg-black p-4">
               <div className="font-medium mb-3">Recent runs</div>
               <div className="space-y-3 max-h-[260px] overflow-y-auto">
                 {runs.length === 0 ? (
                   <div className="text-sm text-[#9fb0b5]">No runs yet.</div>
                 ) : runs.map((run) => (
-                  <div key={run.id} className="rounded-xl border border-white/10 p-3 bg-black/40">
+                  <div key={run.id} className="rounded-xl border border-white/10 p-3 bg-black">
                     <div className="flex items-center justify-between gap-3">
                       <div className="text-sm font-medium">{run.idea_id}</div>
                       <span className={`text-[11px] px-2 py-1 rounded-full ${run.status === 'succeeded' ? 'bg-[#4db6ac]/15 text-[#9bf3ea]' : run.status === 'failed' ? 'bg-red-500/15 text-red-300' : 'bg-white/10 text-white/60'}`}>
