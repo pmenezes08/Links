@@ -5,7 +5,13 @@ private let kAppGroupId = "group.co.cpoint.app"
 private let kIncomingSubdir = "IncomingShare"
 
 @objc(ShareImportPlugin)
-public class ShareImportPlugin: CAPPlugin {
+public class ShareImportPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "ShareImportPlugin"
+    public let jsName = "ShareImport"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "getPending", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "clearPending", returnType: CAPPluginReturnPromise),
+    ]
 
     @objc func getPending(_ call: CAPPluginCall) {
         guard let base = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: kAppGroupId) else {
