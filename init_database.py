@@ -26,8 +26,7 @@ def init_database():
         c.execute('''CREATE TABLE IF NOT EXISTS users
                      (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                       username TEXT UNIQUE NOT NULL, subscription TEXT, password TEXT,
-                      gender TEXT, weight REAL, height REAL, blood_type TEXT, muscle_mass REAL, bmi REAL,
-                      nutrition_goal TEXT, nutrition_restrictions TEXT)''')
+                      gender TEXT, weight REAL, height REAL, blood_type TEXT, muscle_mass REAL, bmi REAL)''')
         
         # Insert admin user
         print("Inserting admin user...")

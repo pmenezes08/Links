@@ -1,4 +1,4 @@
-#!/bin/bash
+s #!/bin/bash
 # Rebuild React Frontend Script
 # This script rebuilds the React app so changes take effect
 

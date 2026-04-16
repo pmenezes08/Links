@@ -88,65 +88,6 @@ document.addEventListener('DOMContentLoaded', function() {
         setInterval(checkUnreadMessages, 5000);
     }
 
-    // Workout Generation (for Premium Dashboard)
-    const $workoutForm = $('form[action="/generate_workout"]');
-    const $saveBtn = $('#save-btn');
-    const $resultDiv = $('#result');
-    let isGenerating = false;
-
-    if ($workoutForm.length && $saveBtn.length && $resultDiv.length) {
-        $workoutForm.on('submit', function(e) {
-            e.preventDefault();
-            if (!isGenerating) {
-                isGenerating = true;
-                $resultDiv.hide();
-                const formData = new FormData(this);
-                fetch('/generate_workout', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    isGenerating = false;
-                    if (data.error) {
-                        $resultDiv.html('<p style="color: #e0e0e0;">' + data.error + '</p>').show();
-                    } else {
-                        $resultDiv.html('<h3 class="result-title">Workout Generated</h3><div class="workout-content">' + data.workout + '</div>').show();
-                        $saveBtn.show();
-                    }
-                })
-                .catch(error => {
-                    isGenerating = false;
-                    $resultDiv.html('<p style="color: #e0e0e0;">Error: ' + error + '</p>').show();
-                });
-            }
-        });
-
-        $saveBtn.on('click', function() {
-            const workout = $resultDiv.html();
-            fetch('/save_workout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'workout=' + encodeURIComponent(workout)
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    $resultDiv.after('<div class="success-message">Workout saved successfully!</div>');
-                    $saveBtn.hide();
-                    setTimeout(() => $('.success-message').remove(), 3000);
-                } else {
-                    $resultDiv.after(`<div class="error-message">Error saving workout: ${data.error}</div>`);
-                    setTimeout(() => $('.error-message').remove(), 3000);
-                }
-            })
-            .catch(error => {
-                $resultDiv.after(`<div class="error-message">Error: ${error}</div>`);
-                setTimeout(() => $('.error-message').remove(), 3000);
-            });
-        });
-    }
-
     // Social Interactivity (for feed.html)
     const $postForm = $('form[action="/post_status"]');
     const $postContainer = $('.posts');

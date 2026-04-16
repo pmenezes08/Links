@@ -75,7 +75,6 @@ emergency_fix.py
 final_fix.py
 find_mysql_password.py
 revert_chat_changes.py
-nutrition_plans.py
 
 # Ignore misc files
 cookies.txt

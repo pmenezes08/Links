@@ -1,7 +1,6 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from flask_oauthlib.client import OAuth
 import sqlite3
-import random
 import sys
 import requests
 from datetime import datetime
@@ -11,8 +10,6 @@ try:
 except ImportError:
     print("Error: Stripe module not installed. Run 'pip install stripe'")
     stripe = None
-
-from workouts import workouts
 
 app = Flask(__name__)
 app.secret_key = 'cjB0MmRPRFRnOG9jcTA0UGRZV006MTpjaQ'  # Replace with secure key
@@ -44,8 +41,7 @@ def init_db():
         c.execute("DROP TABLE IF EXISTS users")
         c.execute('''CREATE TABLE users
                      (username TEXT PRIMARY KEY, subscription TEXT, password TEXT,
-                      gender TEXT, weight REAL, height REAL, blood_type TEXT, muscle_mass REAL, bmi REAL,
-                      nutrition_goal TEXT, nutrition_restrictions TEXT)''')
+                      gender TEXT, weight REAL, height REAL, blood_type TEXT, muscle_mass REAL, bmi REAL)''')
         c.execute("INSERT IGNORE INTO users (username, subscription, password) VALUES (?, ?, ?)",
                   ('admin', 'premium', '12345'))
         c.execute("DROP TABLE IF EXISTS api_usage")
@@ -363,46 +359,6 @@ def edit_profile():
     print(f"Rendering edit_profile for {username}")
     return render_template('edit_profile.html', name=username, gender=user[0], weight=user[1], height=user[2],
                           blood_type=user[3], muscle_mass=user[4])
-
-@app.route('/generate_workout', methods=['POST'])
-def generate_workout():
-    if 'username' not in session:
-        print("No username in session, redirecting to index")
-        return redirect(url_for('public.index'))
-    username = session['username']
-    muscle = request.form.get('muscle')
-    training_type = request.form.get('training_type')
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-    user = c.fetchone()
-    conn.close()
-    subscription = user[0] if user else 'free'
-    print(f"Generating workout for {username}, muscle: {muscle}, type: {training_type}, sub: {subscription}")
-
-    if not muscle or not training_type:
-        print("Missing details, returning error")
-        return jsonify({'error': f'Hey {username}, please provide all details!'})
-
-    try:
-        variations = workouts[muscle][training_type]
-        if subscription == 'free':
-            selected_program = variations[0][:1]
-            workout_text = f"<b>Hey {username}, Free Tier Workout:</b><br><br>Upgrade to Premium for 600+ options!<br><br>"
-        else:
-            selected_program = random.choice(variations)
-            workout_text = f"<b>Hey {username}, your Premium Workout (600+ Options):</b><br><br>"
-
-        for exercise in selected_program:
-            workout_text += (
-                f"<b>{exercise['name']}</b><br>Sets: {exercise['sets']}, Reps: {exercise['reps']}<br>"
-                f"Note: {exercise['note']}<br><br>"
-            )
-        print(f"Workout generated for {username}")
-        return jsonify({'workout': workout_text})
-    except KeyError:
-        print(f"No workout data for {muscle} - {training_type}")
-        return jsonify({'error': f'Sorry {username}, no data for {muscle} - {training_type}!'})
 
 @app.route('/subscribe', methods=['GET', 'POST'])
 def subscribe():

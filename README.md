@@ -5,9 +5,7 @@ A comprehensive fitness and community platform built with Flask (Python) and Rea
 ## Features
 
 ### 🏋️ Fitness & Training
-- Workout generation and tracking
-- Nutrition planning and analysis
-- Blood test analysis
+- Workout tracking
 - Weight tracking
 - Professional trainer/coach profiles
 - CrossFit and gym workout modules
