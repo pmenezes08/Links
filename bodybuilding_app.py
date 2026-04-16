@@ -1566,9 +1566,6 @@ STRIPE_PRICE_IDS = {
     'premium_monthly': STRIPE_PRICE_PREMIUM_MONTHLY,
     'premium_yearly': STRIPE_PRICE_PREMIUM_YEARLY,
 }
-XAI_API_KEY = os.getenv('XAI_API_KEY', 'xai-hFCxhRKITxZXsIQy5rRpRus49rxcgUPw4NECAunCgHU0BnWnbPE9Y594Nk5jba03t5FYl2wJkjcwyxRh')
-X_CONSUMER_KEY = os.getenv('X_CONSUMER_KEY', 'cjB0MmRPRFRnOG9jcTA0UGRZV006MTpjaQ')
-X_CONSUMER_SECRET = os.getenv('X_CONSUMER_SECRET', 'Wxo9qnpOaDIJ-9Aw_Bl_MDkor4uY24ephq9ZJFq6HwdH7o4-kB')
 VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY', '')
 VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '')
 VAPID_SUBJECT = os.getenv('VAPID_SUBJECT', 'https://www.c-point.co')
@@ -1587,8 +1584,12 @@ STEVE_NETWORKING_MULTI_AGENT = os.getenv('STEVE_NETWORKING_MULTI_AGENT', 'false'
 
 _BUILD_MARKER = "v5-guardrail-hardened-20260414"
 
-# Logging setup
-logging.basicConfig(level=logging.DEBUG)
+# Logging setup: DEBUG in development only; INFO in production (reduces noise and log volume).
+_is_dev_logging = (
+    os.environ.get('FLASK_ENV') == 'development'
+    or (os.environ.get('DEBUG') or '').strip().lower() in ('1', 'true', 'yes', 'on')
+)
+logging.basicConfig(level=logging.DEBUG if _is_dev_logging else logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -1643,20 +1644,6 @@ try:
 except ImportError:
     logger.warning("Stripe module not installed. Run 'pip install stripe'")
     stripe = None
-
-# OAuth setup for X
-# oauth = OAuth(app)
-# x_auth = oauth.remote_app(
-#     'x',
-#     consumer_key=X_CONSUMER_KEY,
-#     consumer_secret=X_CONSUMER_SECRET,
-#     request_token_params={'scope': 'users.read'},
-#     base_url='https://api.x.com/2/',
-#     request_token_url=None,
-#     access_token_method='POST',
-#     access_token_url='https://api.x.com/2/oauth2/token',
-#     authorize_url='https://x.com/i/oauth2/authorize',
-# )
 
 # xAI API setup
 XAI_API_URL = 'https://api.x.ai/v1/chat/completions'
@@ -9633,57 +9620,6 @@ def clear_sessions():
     resp.set_cookie('cpoint_session', '', expires=0, path='/')
     return resp
 
-@app.route('/test_form', methods=['GET', 'POST'])
-def test_form():
-    """Test form to debug POST requests"""
-    if os.environ.get('FLASK_ENV') != 'development' and not os.environ.get('DEBUG'):
-        abort(404)
-    logger.info(f"Test form accessed: Method={request.method}")
-    
-    if request.method == 'POST':
-        logger.info(f"Test form POST received: {dict(request.form)}")
-        return f"""
-        <html><body style="background: black; color: white; padding: 20px;">
-        <h1>POST received successfully!</h1>
-        <p>Form data: {dict(request.form)}</p>
-        <p>Method: {request.method}</p>
-        <p>Headers: Content-Type = {request.headers.get('Content-Type')}</p>
-        <a href="/test_form" style="color: #4db6ac;">Try again</a>
-        </body></html>
-        """
-    
-    return """
-    <html><body style="background: black; color: white; padding: 20px;">
-    <h1>Test Form</h1>
-    <p style="color: yellow;">This page tests if POST requests are working</p>
-    
-    <h2>1. Simple Test</h2>
-    <form method="POST" action="/test_form">
-        <input type="text" name="test_field" placeholder="Enter anything" style="padding: 10px; margin: 10px 0; color: black;">
-        <button type="submit" style="padding: 10px 20px; background: #4db6ac; color: white; border: none; cursor: pointer;">
-            Submit Test
-        </button>
-    </form>
-    
-    <hr style="margin: 20px 0;">
-    
-    <h2>2. Test Main Login Form</h2>
-    <form method="POST" action="/">
-        <input type="text" name="username" placeholder="Enter username" required style="padding: 10px; margin: 10px 0; color: black;">
-        <button type="submit" style="padding: 10px 20px; background: #4db6ac; color: white; border: none; cursor: pointer;">
-            Submit to Main Route
-        </button>
-    </form>
-    
-    <hr style="margin: 20px 0;">
-    
-    <h2>3. Direct Link Test</h2>
-    <p>If forms don't work, try these direct links:</p>
-    <a href="/health" style="color: #4db6ac;">Health Check</a> | 
-    <a href="/api/test" style="color: #4db6ac;">API Test</a> | 
-    <a href="/login_password" style="color: #4db6ac;">Login Password Page</a>
-    </body></html>
-    """
 @app.route('/api/debug_communities', methods=['GET'])
 @login_required
 def debug_communities():
@@ -11019,14 +10955,6 @@ def admin():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     dist_dir = os.path.join(base_dir, 'client', 'dist')
     return send_from_directory(dist_dir, 'index.html')
-
-@app.route('/admin_test')
-@login_required
-def admin_test():
-    if session['username'] != 'admin':
-        return redirect(url_for('public.index'))
-    return "Admin test route is working!"
-                    
 
 PUBLIC_PROFILE_CACHE_TTL = 60  # 60 seconds
 
@@ -37689,177 +37617,6 @@ def admin_merge_legacy_user_exercises():
         return jsonify({ 'success': False, 'error': str(e) })
 
 
-
-
-
-@app.route('/test_version')
-def test_version():
-    return jsonify({'version': '1755799276', 'message': 'Updated version loaded with format fix'})
-@app.route('/test_database')
-def test_database():
-    try:
-        conn = sqlite3.connect('users.db')
-        cursor = conn.cursor()
-        
-        # Check if tables exist
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = cursor.fetchall()
-        
-        # Check exercises table
-        cursor.execute("SELECT COUNT(*) FROM exercises")
-        exercise_count = cursor.fetchone()[0]
-        
-        # Check workouts table
-        cursor.execute("SELECT COUNT(*) FROM workouts")
-        workout_count = cursor.fetchone()[0]
-        
-        # Check exercise_sets table
-        cursor.execute("SELECT COUNT(*) FROM exercise_sets")
-        sets_count = cursor.fetchone()[0]
-        
-        # Check communities table structure
-        cursor.execute("SHOW COLUMNS FROM communities")
-        community_columns = cursor.fetchall()
-        
-        # Check if required columns exist
-        column_names = [col['Field'] for col in community_columns]
-        missing_columns = []
-        if 'info' not in column_names:
-            missing_columns.append('info')
-        if 'info_updated_at' not in column_names:
-            missing_columns.append('info_updated_at')
-        
-        # Check community_announcements table
-        announcements_count = 0
-        try:
-            cursor.execute("SELECT COUNT(*) FROM community_announcements")
-            announcements_count = cursor.fetchone()[0]
-        except:
-            pass
-        
-        # Check community_files table
-        files_count = 0
-        try:
-            cursor.execute("SELECT COUNT(*) FROM community_files")
-            files_count = cursor.fetchone()[0]
-        except:
-            pass
-        
-        conn.close()
-        
-        return jsonify({
-            'tables': [table[0] for table in tables],
-            'exercise_count': exercise_count,
-            'workout_count': workout_count,
-            'sets_count': sets_count,
-            'community_columns': column_names,
-            'missing_columns': missing_columns,
-            'needs_fix': len(missing_columns) > 0,
-            'announcements_count': announcements_count,
-            'files_count': files_count
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)})
-
-@app.route('/fix_communities_table')
-def fix_communities_table():
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Check if info column exists
-        cursor.execute("SHOW COLUMNS FROM communities")
-        columns = [col['Field'] for col in cursor.fetchall()]
-        
-        changes_made = []
-        
-        if 'info' not in columns:
-            logger.info("Adding info column to communities table...")
-            cursor.execute("ALTER TABLE communities ADD COLUMN info TEXT")
-            changes_made.append('info column added')
-        
-        if 'info_updated_at' not in columns:
-            logger.info("Adding info_updated_at column to communities table...")
-            cursor.execute("ALTER TABLE communities ADD COLUMN info_updated_at TEXT")
-            changes_made.append('info_updated_at column added')
-        
-        conn.commit()
-        conn.close()
-        
-        if changes_made:
-            return jsonify({'success': True, 'message': f'Database updated: {", ".join(changes_made)}'})
-        else:
-            return jsonify({'success': True, 'message': 'All columns already exist'})
-        
-    except Exception as e:
-        logger.error(f"Error fixing communities table: {e}")
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/test_format')
-def test_format():
-    # Simulate the format generation
-    workout_name = "Wod v3 Push Day"
-    date = "2025-08-21"
-    
-    # Extract clean workout name
-    clean_name = workout_name
-    if ' - ' in workout_name:
-        clean_name = workout_name.split(' - ')[0]
-    elif ' Push Day' in workout_name:
-        clean_name = workout_name.split(' Push Day')[0]
-    
-    content = f"{clean_name}\n\n"
-    content += f"{date}\n"
-    content += "Hack Squat (40.0kg x 2 sets x 12 reps)\n"
-    content += "Bench Press (150.0kg x 1 sets x 1 reps)\n"
-    
-    return jsonify({
-        'original_name': workout_name,
-        'clean_name': clean_name,
-        'date': date,
-        'final_content': content,
-        'content_lines': content.split('\n')
-    })
-
-@app.route('/test_community_template')
-def test_community_template():
-    """Test route to check if community template renders correctly"""
-    try:
-        # Create a mock community object
-        mock_community = {
-            'id': 1,
-            'name': 'Test Community',
-            'type': 'Test',
-            'creator_username': 'admin',
-            'join_code': 'TEST123',
-            'created_at': '2025-01-01',
-            'description': 'Test description',
-            'location': 'Test location',
-            'background_path': '',
-            'info': 'Test announcement\nWith multiple lines',
-            'info_updated_at': '2025-01-01 12:00:00',
-            'template': 'default',
-            'background_color': '#2d3839',
-            'text_color': '#ffffff',
-            'accent_color': '#4db6ac',
-            'card_color': '#1a2526'
-        }
-        
-        # Return JSON instead of HTML template
-        return jsonify({
-            'success': True,
-            'community': mock_community,
-            'posts': [],
-            'message': 'Test route - community_feed.html removed, use React version'
-        })
-    except Exception as e:
-        import traceback
-        logger.error(f"Test route error: {e}\n{traceback.format_exc()}")
-        return jsonify({
-            'success': False, 
-            'error': str(e)
-        })
 
 @app.route('/simple_test', endpoint='simple_test_route')
 def simple_test_route():

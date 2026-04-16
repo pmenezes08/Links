@@ -224,20 +224,6 @@ def login():
         return ("Internal Server Error", 500)
 
 
-@auth_bp.route("/login_x", endpoint="login_x")
-def login_x():
-    """Disabled placeholder for X/Twitter login."""
-    flash("Sign in with X is not available yet. This feature requires API configuration.", "error")
-    return redirect(url_for("public.index"))
-
-
-@auth_bp.route("/callback", endpoint="authorized")
-def authorized():
-    """OAuth callback placeholder for X/Twitter."""
-    flash("Sign in with X is not available yet. This feature requires API configuration.", "error")
-    return redirect(url_for("public.index"))
-
-
 @auth_bp.route("/signup", methods=["GET", "POST"], endpoint="signup")
 def signup():
     """User registration page supporting HTML and React flows."""
