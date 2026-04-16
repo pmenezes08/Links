@@ -2426,6 +2426,13 @@ export default function PostDetail(){
         </div>
       )}
 
+      {/* In-platform Article Reader Modal (like X/Twitter) - triggered by SmartLink on roundup/news articles */}
+      <ArticleReaderModal 
+        isOpen={articleReaderOpen} 
+        url={currentArticleUrl} 
+        onClose={closeArticleReader} 
+      />
+
     </div>
   )
 }
@@ -2797,12 +2804,5 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
         </div>
       ) : null}
     </div>
-
-      {/* In-platform Article Reader Modal (like X/Twitter) - for roundup article links */}
-      <ArticleReaderModal 
-        isOpen={articleReaderOpen} 
-        url={currentArticleUrl} 
-        onClose={closeArticleReader} 
-      />
   )
 }
