@@ -1804,6 +1804,7 @@ export default function PostDetail(){
               onSetActiveInlineReply={setActiveInlineReplyFor}
               onNavigateToReply={(id) => navigate(`/reply/${id}`)}
               onOpenReactors={openReplyReactorsModal}
+              onArticleOpen={openArticleReader}
             />
           ))}
           {/* Steve is typing indicator */}
@@ -2462,10 +2463,11 @@ const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
   if (prev.depth !== next.depth) return false
   if (prev.activeInlineReplyFor !== next.activeInlineReplyFor) return false
   if (prev.onNavigateToReply !== next.onNavigateToReply) return false
+  if (prev.onArticleOpen !== next.onArticleOpen) return false
   return true
 })
 
-function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, activeInlineReplyFor, onSetActiveInlineReply, onNavigateToReply, onOpenReactors }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, activeInlineReplyFor?: number | null, onSetActiveInlineReply?: (id: number | null) => void, onNavigateToReply?: (id: number) => void, onOpenReactors?: (id: number) => void }){
+function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, activeInlineReplyFor, onSetActiveInlineReply, onNavigateToReply, onOpenReactors, onArticleOpen }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, activeInlineReplyFor?: number | null, onSetActiveInlineReply?: (id: number | null) => void, onNavigateToReply?: (id: number) => void, onOpenReactors?: (id: number) => void, onArticleOpen?: (url: string) => void }){
   const navigate = useNavigate()
   const currentUser = currentUserName
   // Use parent's activeInlineReplyFor if provided, otherwise use local state
@@ -2552,7 +2554,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             ) : null}
           </div>
           {!isEditing ? (
-            <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words">{renderRichText(reply.content, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`), openArticleReader)}</div>
+            <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words">{renderRichText(reply.content, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`), onArticleOpen)}</div>
           ) : (
             <div className="mt-1" onClick={(e) => e.stopPropagation()}>
               <textarea
