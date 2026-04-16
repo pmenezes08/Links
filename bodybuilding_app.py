@@ -793,6 +793,7 @@ def _block_unverified_users():
             '/api/public/logo',  # Public logo (no auth, used by admin/landing)
             '/api/poll_notification_check', 
             '/api/event_notification_check', 
+            '/api/content-generation/cron/process-due-jobs',
             '/api/email_verified_status', 
             '/api/invitation/verify',
             '/api/push/register_fcm',  # FCM token registration (can be anonymous initially)
