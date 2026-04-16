@@ -271,16 +271,24 @@ def _opinion_piece_link_label(url: str, outlet: str) -> str:
 
 
 def format_opinion_story_item(item: Dict[str, Any]) -> str:
-    """Like format_story_item but append a clickable link after the takeaway (opinion roundups)."""
-    base = format_story_item(item)
-    if not base:
+    """Make the article *title* the clickable markdown link (saves space, reduces noise).
+    No separate 'Read on Outlet' line."""
+    title = strip_feed_markdown_emphasis(md_link_title(item.get("title") or ""))
+    if not title:
         return ""
     url = str(item.get("url") or "").strip()
-    if not url:
-        return base
-    outlet = str(item.get("outlet") or "").strip()
-    label = _opinion_piece_link_label(url, outlet)
-    return f"{base}\n\n[{label}]({url})"
+    if url:
+        title_line = f"• [{title}]({url})"
+    else:
+        title_line = f"• {title}"
+    lines: List[str] = [title_line]
+    wim = strip_feed_markdown_emphasis(str(item.get("why_it_matters") or "").strip())
+    if wim:
+        lines.append(wim)
+    stat = strip_feed_markdown_emphasis(str(item.get("key_stat") or "").strip())
+    if stat:
+        lines.append(f"**Key stat:** {stat}")
+    return "\n\n".join(line for line in lines if line).strip()
 
 
 def _section_heading_feed(title: str) -> str:
