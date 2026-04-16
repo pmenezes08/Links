@@ -33,6 +33,7 @@ final class ShareViewController: UIViewController {
 
     private func runSharePipeline() async {
         guard let base = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) else {
+            NSLog("ShareExtension: App Group unavailable for %@", appGroupId)
             await finishWithError("App Group is not available. Rebuild the app with the Share Extension target.")
             return
         }
@@ -41,11 +42,13 @@ final class ShareViewController: UIViewController {
         do {
             try FileManager.default.createDirectory(at: incoming, withIntermediateDirectories: true)
         } catch {
+            NSLog("ShareExtension: Failed to create incoming directory: %@", error.localizedDescription)
             await finishWithError("Could not prepare shared storage.")
             return
         }
 
         guard let items = extensionContext?.inputItems as? [NSExtensionItem], !items.isEmpty else {
+            NSLog("ShareExtension: No extension input items")
             await finishWithError("Nothing to share.")
             return
         }
@@ -65,6 +68,7 @@ final class ShareViewController: UIViewController {
         }
 
         if manifestItems.isEmpty {
+            NSLog("ShareExtension: No supported items were copied")
             await finishWithError("No supported photos or videos.")
             return
         }
@@ -72,13 +76,16 @@ final class ShareViewController: UIViewController {
         let trimmed = Array(manifestItems.prefix(kMaxItems))
         let manifest: [String: Any] = ["version": 1, "items": trimmed]
         guard let json = try? JSONSerialization.data(withJSONObject: manifest, options: []) else {
+            NSLog("ShareExtension: Failed to serialize manifest for %d items", trimmed.count)
             await finishWithError("Could not build manifest.")
             return
         }
         let manifestURL = incoming.appendingPathComponent("manifest.json")
         do {
             try json.write(to: manifestURL, options: .atomic)
+            NSLog("ShareExtension: Wrote manifest with %d item(s) to %@", trimmed.count, manifestURL.path)
         } catch {
+            NSLog("ShareExtension: Failed to save manifest: %@", error.localizedDescription)
             await finishWithError("Could not save manifest.")
             return
         }
@@ -226,9 +233,39 @@ final class ShareViewController: UIViewController {
             extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
             return
         }
-        extensionContext?.open(url, completionHandler: { [weak self] _ in
-            self?.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+        NSLog("ShareExtension: Attempting to open host app with %@", url.absoluteString)
+        extensionContext?.open(url, completionHandler: { [weak self] success in
+            NSLog("ShareExtension: extensionContext.open success=%@", success ? "true" : "false")
+            guard let self else { return }
+            if success {
+                self.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+                return
+            }
+
+            if self.openHostAppViaResponderChain(url) {
+                NSLog("ShareExtension: Responder chain open fallback succeeded")
+                self.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+                return
+            }
+
+            NSLog("ShareExtension: Host app open failed")
+            Task { @MainActor in
+                await self.finishWithError("C.Point could not open from the share sheet. Reopen the app and try again.")
+            }
         })
+    }
+
+    private func openHostAppViaResponderChain(_ url: URL) -> Bool {
+        let selector = NSSelectorFromString("openURL:")
+        var responder: UIResponder? = self
+        while let current = responder {
+            if current.responds(to: selector) {
+                _ = current.perform(selector, with: url)
+                return true
+            }
+            responder = current.next
+        }
+        return false
     }
 
     @MainActor
