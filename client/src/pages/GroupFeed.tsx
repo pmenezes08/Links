@@ -9,6 +9,7 @@ import ImageLoader from '../components/ImageLoader'
 import { formatSmartTime } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
 import { renderTextWithLinks, detectLinks, replaceLinkInText } from '../utils/linkUtils'
+import { openExternalInApp } from '../utils/openExternalInApp'
 
 type Reply = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null }
 type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null, replies: Reply[], can_edit?: boolean, can_delete?: boolean }
@@ -26,6 +27,9 @@ export default function GroupFeed(){
   const { group_id } = useParams()
   const navigate = useNavigate()
   const mentionToProfile = useCallback((u: string) => { navigate(`/profile/${encodeURIComponent(u)}`) }, [navigate])
+  const openExternalArticle = useCallback((url: string) => {
+    void openExternalInApp(url)
+  }, [])
   const { setTitle } = useHeader()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
@@ -345,7 +349,7 @@ export default function GroupFeed(){
                 </div>
                 <div className="px-3 py-2 space-y-2" onClick={(e)=> e.stopPropagation()}>
                   {editingId !== p.id ? (
-                    <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{renderTextWithLinks(p.content, undefined, mentionToProfile)}</div>
+                    <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{renderTextWithLinks(p.content, undefined, mentionToProfile, { sourcesSmallLinks: true, onExternalClick: openExternalArticle })}</div>
                   ) : (
                     <div className="space-y-2">
                       <textarea className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" value={editText} onChange={(e)=> { setEditText(e.target.value); setDetectedLinks(detectLinks(e.target.value)) }} />

@@ -7,6 +7,7 @@ import ImageLoader from '../components/ImageLoader'
 import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import { renderTextWithLinks } from '../utils/linkUtils.tsx'
+import { openExternalInApp } from '../utils/openExternalInApp'
 import EditableAISummary from '../components/EditableAISummary'
 import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 
@@ -171,6 +172,9 @@ function PostMediaCarousel({ post }: { post: Post }) {
 export default function HomeTimeline(){
   const navigate = useNavigate()
   const mentionToProfile = useCallback((u: string) => { navigate(`/profile/${encodeURIComponent(u)}`) }, [navigate])
+  const openExternalArticle = useCallback((url: string) => {
+    void openExternalInApp(url)
+  }, [])
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
@@ -336,7 +340,7 @@ export default function HomeTimeline(){
                     if (!videoEmbed && !displayContent) return null
                     return (
                       <>
-                        {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] leading-relaxed">{renderTextWithLinks(displayContent, undefined, mentionToProfile)}</div>}
+                        {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] leading-relaxed">{renderTextWithLinks(displayContent, undefined, mentionToProfile, { sourcesSmallLinks: true, onExternalClick: openExternalArticle })}</div>}
                         {videoEmbed && <VideoEmbed embed={videoEmbed} />}
                       </>
                     )
