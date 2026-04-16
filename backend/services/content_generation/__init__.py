@@ -10,11 +10,13 @@ from backend.services.content_generation.storage import (
     delete_run,
     delete_runs_for_community,
     ensure_tables,
+    get_due_jobs,
     get_job,
     get_run,
     list_jobs,
     list_runs,
     update_job,
+    update_job_next_run,
 )
 
 __all__ = [
@@ -28,11 +30,13 @@ __all__ = [
     "ensure_tables",
     "execute_job",
     "get_descriptor",
+    "get_due_jobs",
     "get_job",
     "get_run",
     "list_ideas",
     "list_jobs",
     "list_runs",
     "update_job",
+    "update_job_next_run",
 ]
 
