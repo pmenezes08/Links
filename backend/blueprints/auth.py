@@ -823,12 +823,6 @@ def login_back():
     return redirect(url_for("auth.login"))
 
 
-@auth_bp.route("/test_login", endpoint="test_login_page")
-def test_login_page():
-    """Serve the static login test page."""
-    return render_template("test_login.html")
-
-
 # --- Google Sign-In ---
 
 GOOGLE_CLIENT_ID_IOS = os.environ.get('GOOGLE_CLIENT_ID_IOS', '')
