@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import { useBadges } from '../contexts/BadgeContext'
+import { renderTextWithLinks } from '../utils/linkUtils'
 
 type Notif = {
   id: number
@@ -400,7 +401,9 @@ export default function Notifications(){
                             )}
                           </div>
                           {n.preview ? (
-                            <div className="text-xs text-white/55 mt-1 line-clamp-2 break-words">{n.preview}</div>
+                            <div className="text-xs text-white/55 mt-1 line-clamp-2 break-words">
+                              {renderTextWithLinks(n.preview, undefined, undefined)}
+                            </div>
                           ) : null}
                           <div className="text-[11px] text-[#9fb0b5] mt-0.5">{timeAgo(n.created_at)}</div>
                         </div>

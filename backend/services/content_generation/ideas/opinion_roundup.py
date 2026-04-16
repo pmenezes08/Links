@@ -243,7 +243,7 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             "WRITTEN PATH: If you choose a written article, set featured_video_url to empty string and use sections with exactly one item. "
             "featured_video_*: only when VIDEO PATH — standard watch or youtu.be link (11-character video id). "
             "sections: when WRITTEN PATH, array of one object with "
-            '"title" (e.g. The piece) and "items": array of exactly one story object. '
+            '"title" (e.g. "The Article by Wired") and "items": array of exactly one story object. '
             "That story: title, url (https on allowlist), outlet, published_date, why_it_matters (one sentence), "
             "key_stat (optional), source_label (short label for validation only). "
             "Opinion tone: thoughtful, professional, and clearly labeled as perspective. Avoid jokey asides and exaggerated AI voice. "

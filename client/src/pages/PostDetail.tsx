@@ -18,7 +18,7 @@ import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import EditableAISummary from '../components/EditableAISummary'
 import { clearDeviceCache, readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
-import { colorizeMentions, preserveRichTextNewlines } from '../utils/linkUtils'
+import { colorizeMentions, preserveRichTextNewlines, applyBoldEmphasis, replaceFaIcons } from '../utils/linkUtils'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, reply_count?: number, view_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
@@ -50,7 +50,7 @@ function renderRichText(
   // First, process markdown links
   while ((match = markdownRe.exec(input))){
     if (match.index > lastIndex){
-      nodes.push(...colorizeMentions(preserveRichTextNewlines(input.slice(lastIndex, match.index)), onMentionClick))
+      nodes.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(input.slice(lastIndex, match.index)))), onMentionClick))
     }
     const label = match[1]
     const url = match[2]
@@ -65,7 +65,7 @@ function renderRichText(
   while ((m = urlRe.exec(rest))){
     if (m.index > urlLast){
       // Before URLs, also colorize @mentions in the chunk
-      nodes.push(...colorizeMentions(preserveRichTextNewlines(rest.slice(urlLast, m.index)), onMentionClick))
+      nodes.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(rest.slice(urlLast, m.index)))), onMentionClick))
     }
     const urlText = m[0]
     const href = urlText.startsWith('http') ? urlText : `https://${urlText}`
@@ -79,7 +79,7 @@ function renderRichText(
     urlLast = urlRe.lastIndex
   }
   if (urlLast < rest.length){
-    nodes.push(...colorizeMentions(preserveRichTextNewlines(rest.slice(urlLast)), onMentionClick))
+    nodes.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(rest.slice(urlLast)))), onMentionClick))
   }
   return <>{nodes}</>
 }

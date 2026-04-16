@@ -308,6 +308,11 @@ def take_first_opinion_article(sections: List[Dict[str, Any]]) -> List[Dict[str,
         if not items:
             continue
         title = str(sec.get("title") or "").strip() or "**The Article**"
+        # Append outlet for "The Article by Wired.com" format
+        if items and isinstance(items[0], dict):
+            outlet = str(items[0].get("outlet") or items[0].get("source_label") or "").strip()
+            if outlet:
+                title = f"**The Article by {outlet}**"
         return [{"title": title, "items": [items[0]]}]
     return []
 
