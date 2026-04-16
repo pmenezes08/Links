@@ -18,6 +18,7 @@ def capacitor_pods
   pod 'CapacitorNetwork', :path => '../../node_modules/@capacitor/network'
   pod 'CapacitorPreferences', :path => '../../node_modules/@capacitor/preferences'
   pod 'CapacitorPushNotifications', :path => '../../node_modules/@capacitor/push-notifications'
+  pod 'CapgoInappbrowser', :path => '../../node_modules/@capgo/inappbrowser'
   pod 'CodetrixStudioCapacitorGoogleAuth', :path => '../../node_modules/@codetrix-studio/capacitor-google-auth'
   pod 'StayLiquid', :path => '../../node_modules/stay-liquid'
 end

@@ -26,7 +26,7 @@ import {
   SmartLink,
   SOURCES_BLOCK_MARKER,
 } from '../utils/linkUtils'
-import ArticleReaderModal from '../components/ArticleReaderModal'
+import { openExternalInApp } from '../utils/openExternalInApp'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, reply_count?: number, view_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
@@ -51,7 +51,7 @@ function renderRichText(
   onMentionClick?: (username: string) => void,
   onArticleOpen?: (url: string) => void,
   markdownLinkClassName?: string,
-) {
+): React.ReactNode {
   if (!markdownLinkClassName && input.includes(SOURCES_BLOCK_MARKER)) {
     const idx = input.indexOf(SOURCES_BLOCK_MARKER)
     return (
@@ -186,18 +186,8 @@ export default function PostDetail(){
   const [mediaCarouselIndex, setMediaCarouselIndex] = useState(0)
   const [steveIsTyping, setSteveIsTyping] = useState(false)
   
-  // Article reader modal state for in-platform reading of roundup/news articles
-  const [articleReaderOpen, setArticleReaderOpen] = useState(false)
-  const [currentArticleUrl, setCurrentArticleUrl] = useState<string | null>(null)
-  
   const openArticleReader = useCallback((url: string) => {
-    setCurrentArticleUrl(url)
-    setArticleReaderOpen(true)
-  }, [])
-  
-  const closeArticleReader = useCallback(() => {
-    setArticleReaderOpen(false)
-    setCurrentArticleUrl(null)
+    void openExternalInApp(url)
   }, [])
   
   // Check if message contains @Steve mention (case insensitive)
@@ -2475,13 +2465,6 @@ export default function PostDetail(){
           </div>
         </div>
       )}
-
-      {/* In-platform Article Reader Modal (like X/Twitter) - triggered by SmartLink on roundup/news articles */}
-      <ArticleReaderModal 
-        isOpen={articleReaderOpen} 
-        url={currentArticleUrl} 
-        onClose={closeArticleReader} 
-      />
 
     </div>
   )
