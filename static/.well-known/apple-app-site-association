@@ -7,6 +7,10 @@
         ],
         "components": [
           {
+            "/": "/share/*",
+            "comment": "Share inbox (e.g. /share/incoming) — staging and production app hosts"
+          },
+          {
             "/": "/invite/*",
             "comment": "Community invite links - opens app directly"
           },

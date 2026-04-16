@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
@@ -23,6 +23,7 @@ import { renderTextWithSourceLinks } from '../utils/linkUtils'
 import LinkPreview, { extractUrls } from '../components/LinkPreview'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
+import { takePendingShareFiles } from '../services/shareImportStore'
 
 type Message = {
   id: number
@@ -84,6 +85,7 @@ function isConfirmedGroupMessage(
 export default function GroupChatThread() {
   const { group_id } = useParams()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { profile: currentUserProfile } = useUserProfile()
   // Get username from profile context, with localStorage fallback
   const currentUsername = (currentUserProfile as { username?: string })?.username 
@@ -127,6 +129,28 @@ export default function GroupChatThread() {
   // Multi-media preview state
   const [pendingMedia, setPendingMedia] = useState<Array<{ file: File; previewUrl: string; type: 'image' | 'video' }>>([])
   const [previewIndex, setPreviewIndex] = useState(0)
+
+  const shareAttach = searchParams.get('share')
+  useEffect(() => {
+    if (shareAttach !== '1') return
+    const files = takePendingShareFiles()
+    if (!files?.length) return
+    const newMedia = files.map(file => ({
+      file,
+      previewUrl: URL.createObjectURL(file),
+      type: (file.type.startsWith('video/') ? 'video' : 'image') as 'image' | 'video',
+    }))
+    setPendingMedia(prev => [...prev, ...newMedia])
+    setPreviewIndex(0)
+    setSearchParams(
+      p => {
+        const n = new URLSearchParams(p)
+        n.delete('share')
+        return n
+      },
+      { replace: true }
+    )
+  }, [group_id, shareAttach, setSearchParams])
   const [viewingMedia, setViewingMedia] = useState<{ urls: string[]; index: number; messageId?: number; senderUsername?: string } | null>(null) // For viewing sent media groups
   const videoInputRef = useRef<HTMLInputElement>(null)
   const [previewPlaying, setPreviewPlaying] = useState(false)

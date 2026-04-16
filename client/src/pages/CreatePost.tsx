@@ -11,12 +11,14 @@ import GifPicker from '../components/GifPicker'
 import { clearDeviceCache } from '../utils/deviceCache'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
+import { takePendingShareFiles } from '../services/shareImportStore'
 
 export default function CreatePost(){
-  const [params] = useSearchParams()
+  const [params, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const communityId = params.get('community_id') || ''
   const groupId = params.get('group_id') || ''
+  const fromShareParam = params.get('from_share')
   const [content, setContent] = useState('')
   const MAX_MEDIA = 5
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
@@ -72,6 +74,20 @@ export default function CreatePost(){
     }
   }, [mediaFiles.length, mediaCarouselIndex])
 
+  useEffect(() => {
+    if (fromShareParam !== '1') return
+    const files = takePendingShareFiles()
+    if (!files?.length) return
+    setMediaFiles(prev => [...prev, ...files].slice(0, MAX_MEDIA))
+    setSearchParams(
+      p => {
+        const n = new URLSearchParams(p)
+        n.delete('from_share')
+        return n
+      },
+      { replace: true }
+    )
+  }, [fromShareParam, setSearchParams])
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return

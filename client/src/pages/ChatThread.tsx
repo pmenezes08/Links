@@ -13,7 +13,7 @@ import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useAudioRecorder } from '../components/useAudioRecorder'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import { useBadges } from '../contexts/BadgeContext'
 import Avatar from '../components/Avatar'
@@ -44,6 +44,7 @@ import {
   MessageBubble,
 } from '../chat'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
+import { takePendingShareFiles } from '../services/shareImportStore'
 
 type Message = ChatMessage
 
@@ -52,6 +53,7 @@ export default function ChatThread(){
   const { refreshBadges } = useBadges()
   const { username } = useParams()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const profilePath = username ? `/profile/${encodeURIComponent(username)}` : null
   
   
@@ -194,6 +196,28 @@ export default function ChatThread(){
     setOtherProfile(null)
     setMessages([])
   }, [username])
+
+  const shareAttach = searchParams.get('share')
+  useEffect(() => {
+    if (shareAttach !== '1') return
+    const files = takePendingShareFiles()
+    if (!files?.length) return
+    const newMedia = files.map(file => ({
+      file,
+      previewUrl: URL.createObjectURL(file),
+      type: (file.type.startsWith('video/') ? 'video' : 'image') as 'image' | 'video',
+    }))
+    setPendingMedia(prev => [...prev, ...newMedia])
+    setPreviewIndex(0)
+    setSearchParams(
+      p => {
+        const n = new URLSearchParams(p)
+        n.delete('share')
+        return n
+      },
+      { replace: true }
+    )
+  }, [username, shareAttach, setSearchParams])
   
   const scrollToBottom = useCallback(() => {
     const el = listRef.current

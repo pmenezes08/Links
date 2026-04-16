@@ -6,5 +6,6 @@ class MainViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         super.capacitorDidLoad()
         bridge?.registerPluginInstance(GoogleAuth())
+        bridge?.registerPluginInstance(ShareImportPlugin())
     }
 }

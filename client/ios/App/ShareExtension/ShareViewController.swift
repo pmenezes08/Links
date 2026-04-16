@@ -1,0 +1,236 @@
+import UIKit
+import UniformTypeIdentifiers
+
+private let kAppGroupId = "group.co.cpoint.app"
+private let kIncomingSubdir = "IncomingShare"
+private let kMaxItems = 5
+
+final class ShareViewController: UIViewController {
+
+    private let appGroupId = kAppGroupId
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .systemBackground
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.text = "Adding to C.Point…"
+        label.textAlignment = .center
+        label.textColor = .label
+        label.font = .preferredFont(forTextStyle: .body)
+        view.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ])
+        Task { await runSharePipeline() }
+    }
+
+    private func runSharePipeline() async {
+        guard let base = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) else {
+            await finishWithError("App Group is not available. Rebuild the app with the Share Extension target.")
+            return
+        }
+        let incoming = base.appendingPathComponent(kIncomingSubdir, isDirectory: true)
+        try? FileManager.default.removeItem(at: incoming)
+        do {
+            try FileManager.default.createDirectory(at: incoming, withIntermediateDirectories: true)
+        } catch {
+            await finishWithError("Could not prepare shared storage.")
+            return
+        }
+
+        guard let items = extensionContext?.inputItems as? [NSExtensionItem], !items.isEmpty else {
+            await finishWithError("Nothing to share.")
+            return
+        }
+
+        var manifestItems: [[String: Any]] = []
+        var index = 0
+
+        outer: for extItem in items {
+            guard let attachments = extItem.attachments else { continue }
+            for provider in attachments {
+                if manifestItems.count >= kMaxItems { break outer }
+                if let entries = await copyFromProvider(provider, to: incoming, startIndex: &index) {
+                    manifestItems.append(contentsOf: entries)
+                }
+                if manifestItems.count >= kMaxItems { break outer }
+            }
+        }
+
+        if manifestItems.isEmpty {
+            await finishWithError("No supported photos or videos.")
+            return
+        }
+
+        let trimmed = Array(manifestItems.prefix(kMaxItems))
+        let manifest: [String: Any] = ["version": 1, "items": trimmed]
+        guard let json = try? JSONSerialization.data(withJSONObject: manifest, options: []) else {
+            await finishWithError("Could not build manifest.")
+            return
+        }
+        let manifestURL = incoming.appendingPathComponent("manifest.json")
+        do {
+            try json.write(to: manifestURL, options: .atomic)
+        } catch {
+            await finishWithError("Could not save manifest.")
+            return
+        }
+
+        await openHostApp()
+    }
+
+    private func copyFromProvider(_ provider: NSItemProvider, to incoming: URL, startIndex: inout Int) async -> [[String: Any]]? {
+        let movieTypes = [
+            UTType.movie.identifier,
+            "public.mpeg-4",
+            "com.apple.quicktime-movie",
+            "public.avi",
+        ]
+        for t in movieTypes where provider.hasItemConformingToTypeIdentifier(t) {
+            if let r = await loadMovie(provider: provider, typeIdentifier: t, incoming: incoming, startIndex: &startIndex) {
+                return r
+            }
+        }
+        if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+            if let r = await loadImage(provider: provider, incoming: incoming, startIndex: &startIndex) {
+                return r
+            }
+        }
+        if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            if let r = await loadFileURL(provider: provider, incoming: incoming, startIndex: &startIndex) {
+                return r
+            }
+        }
+        return nil
+    }
+
+    private func loadImage(provider: NSItemProvider, incoming: URL, startIndex: inout Int) async -> [[String: Any]]? {
+        await withCheckedContinuation { (cont: CheckedContinuation<[[String: Any]]?, Never>) in
+            provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, err in
+                if let url = url, err == nil {
+                    let ext = url.pathExtension.isEmpty ? "jpg" : url.pathExtension
+                    let name = "item_\(startIndex).\(ext)"
+                    startIndex += 1
+                    let dest = incoming.appendingPathComponent(name)
+                    do {
+                        if FileManager.default.fileExists(atPath: dest.path) {
+                            try FileManager.default.removeItem(at: dest)
+                        }
+                        try FileManager.default.copyItem(at: url, to: dest)
+                        cont.resume(returning: [["filename": name, "mimeType": self.mimeForFile(at: dest), "kind": "image"]])
+                    } catch {
+                        cont.resume(returning: nil)
+                    }
+                    return
+                }
+                provider.loadObject(ofClass: UIImage.self) { obj, _ in
+                    guard let img = obj as? UIImage, let data = img.jpegData(compressionQuality: 0.92) else {
+                        cont.resume(returning: nil)
+                        return
+                    }
+                    let name = "item_\(startIndex).jpg"
+                    startIndex += 1
+                    let dest = incoming.appendingPathComponent(name)
+                    do {
+                        try data.write(to: dest, options: .atomic)
+                        cont.resume(returning: [["filename": name, "mimeType": "image/jpeg", "kind": "image"]])
+                    } catch {
+                        cont.resume(returning: nil)
+                    }
+                }
+            }
+        }
+    }
+
+    private func loadMovie(provider: NSItemProvider, typeIdentifier: String, incoming: URL, startIndex: inout Int) async -> [[String: Any]]? {
+        await withCheckedContinuation { (cont: CheckedContinuation<[[String: Any]]?, Never>) in
+            provider.loadFileRepresentation(forTypeIdentifier: typeIdentifier) { url, err in
+                guard let url = url, err == nil else {
+                    cont.resume(returning: nil)
+                    return
+                }
+                let ext = url.pathExtension.isEmpty ? "mov" : url.pathExtension
+                let name = "item_\(startIndex).\(ext)"
+                startIndex += 1
+                let dest = incoming.appendingPathComponent(name)
+                do {
+                    if FileManager.default.fileExists(atPath: dest.path) {
+                        try FileManager.default.removeItem(at: dest)
+                    }
+                    try FileManager.default.copyItem(at: url, to: dest)
+                    cont.resume(returning: [["filename": name, "mimeType": self.mimeForFile(at: dest), "kind": "video"]])
+                } catch {
+                    cont.resume(returning: nil)
+                }
+            }
+        }
+    }
+
+    private func loadFileURL(provider: NSItemProvider, incoming: URL, startIndex: inout Int) async -> [[String: Any]]? {
+        await withCheckedContinuation { (cont: CheckedContinuation<[[String: Any]]?, Never>) in
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, err in
+                guard let url = item as? URL, err == nil else {
+                    cont.resume(returning: nil)
+                    return
+                }
+                let ext = url.pathExtension.lowercased()
+                let isVid = ["mov", "mp4", "m4v", "avi", "mkv", "webm"].contains(ext)
+                let isImg = ["jpg", "jpeg", "png", "heic", "heif", "gif", "webp"].contains(ext)
+                guard isVid || isImg else {
+                    cont.resume(returning: nil)
+                    return
+                }
+                let name = "item_\(startIndex).\(url.pathExtension.isEmpty ? (isVid ? "mp4" : "jpg") : url.pathExtension)"
+                startIndex += 1
+                let dest = incoming.appendingPathComponent(name)
+                do {
+                    if FileManager.default.fileExists(atPath: dest.path) {
+                        try FileManager.default.removeItem(at: dest)
+                    }
+                    try FileManager.default.copyItem(at: url, to: dest)
+                    let kind = isVid ? "video" : "image"
+                    cont.resume(returning: [["filename": name, "mimeType": self.mimeForFile(at: dest), "kind": kind]])
+                } catch {
+                    cont.resume(returning: nil)
+                }
+            }
+        }
+    }
+
+    private func mimeForFile(at url: URL) -> String {
+        let ext = url.pathExtension.lowercased()
+        switch ext {
+        case "jpg", "jpeg": return "image/jpeg"
+        case "png": return "image/png"
+        case "heic", "heif": return "image/heic"
+        case "gif": return "image/gif"
+        case "mp4", "m4v": return "video/mp4"
+        case "mov": return "video/quicktime"
+        case "webm": return "video/webm"
+        default: return "application/octet-stream"
+        }
+    }
+
+    @MainActor
+    private func openHostApp() {
+        guard let url = URL(string: "cpoint://share/incoming") else {
+            extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+            return
+        }
+        extensionContext?.open(url, completionHandler: { [weak self] _ in
+            self?.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+        })
+    }
+
+    @MainActor
+    private func finishWithError(_ message: String) {
+        let alert = UIAlertController(title: "Could not share", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+            let err = NSError(domain: "ShareExtension", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+            self?.extensionContext?.cancelRequest(withError: err)
+        })
+        present(alert, animated: true)
+    }
+}

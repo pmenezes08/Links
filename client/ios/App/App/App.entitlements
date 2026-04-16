@@ -4,12 +4,15 @@
 <dict>
 	<key>aps-environment</key>
 	<string>production</string>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.co.cpoint.app</string>
+	</array>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:app.c-point.co</string>
 		<string>applinks:www.c-point.co</string>
 		<string>applinks:c-point.co</string>
-		<string>applinks:cpoint-app-staging-739552904126.europe-west1.run.app</string>
 		<string>applinks:cpoint-app-staging-739552904126.europe-west1.run.app</string>
 	</array>
 </dict>

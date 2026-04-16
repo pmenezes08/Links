@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useBadges } from '../contexts/BadgeContext'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ParentCommunityPicker from '../components/ParentCommunityPicker'
 import GroupChatCreator from '../components/GroupChatCreator'
@@ -58,6 +58,9 @@ export default function Messages(){
   const { refreshBadges, adjustBadges } = useBadges()
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams] = useSearchParams()
+  const sharePick = searchParams.get('share_pick') === '1'
+  const shareQuery = sharePick ? '?share=1' : ''
   useEffect(() => {
     setTitle('Messages')
     return () => setTitle('')
@@ -622,6 +625,11 @@ export default function Messages(){
           minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))',
         }}
       >
+        {sharePick && (
+          <div className="mb-3 px-2 py-2 rounded-xl border border-[#4db6ac]/40 bg-[#4db6ac]/10 text-sm text-white/90">
+            Choose a direct chat or a group below — your shared photos or videos will attach to the composer.
+          </div>
+        )}
         {activeTab === 'chats' ? (
           <div className="space-y-3">
             <div className="bg-black border border-white/10 rounded-xl p-3">
@@ -824,7 +832,7 @@ export default function Messages(){
                                 setGroupChats(prev => prev.map(g => 
                                   g.id === gc.id ? { ...g, unread_count: 0 } : g
                                 ))
-                                navigate(`/group_chat/${gc.id}`)
+                                navigate(`/group_chat/${gc.id}${shareQuery}`)
                               }
                             }}
                             className="w-full px-3 py-3 flex items-center gap-3 hover:bg-white/5 text-left"
@@ -975,7 +983,7 @@ export default function Messages(){
                       const count = t.unread_count || 0
                       setThreads(prev => prev.map(x => x.other_username===t.other_username ? { ...x, unread_count: 0 } : x))
                       if (count > 0) adjustBadges({ msgs: -count })
-                      navigate(`/user_chat/chat/${encodeURIComponent(t.other_username)}`)
+                      navigate(`/user_chat/chat/${encodeURIComponent(t.other_username)}${shareQuery}`)
                     }}
                     onTouchStart={(e) => {
                       startXRef.current = e.touches[0].clientX
@@ -1091,7 +1099,7 @@ export default function Messages(){
 
                           <button
                             onClick={() => {
-                              navigate(`/user_chat/chat/${encodeURIComponent(t.other_username)}`)
+                              navigate(`/user_chat/chat/${encodeURIComponent(t.other_username)}${shareQuery}`)
                             }}
                             onTouchStart={(e) => {
                               startXRef.current = e.touches[0].clientX
@@ -1193,7 +1201,7 @@ export default function Messages(){
             {chatMoreTarget.type === 'dm' && (
               <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={() => {
                 setChatMoreTarget(null)
-                navigate(`/user_chat/chat/${chatMoreTarget.username}`)
+                navigate(`/user_chat/chat/${encodeURIComponent(chatMoreTarget.username ?? '')}${shareQuery}`)
               }}>
                 <i className="fa-solid fa-ban text-white/60 w-6 text-center" />
                 Block User

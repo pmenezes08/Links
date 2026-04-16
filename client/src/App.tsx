@@ -5,7 +5,7 @@ import { App as CapacitorApp } from '@capacitor/app'
 import { Keyboard, KeyboardResize } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
 import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
-import { extractInviteToken, joinCommunityWithInvite } from './utils/internalLinkHandler'
+import { extractInviteToken, isInternalLink, joinCommunityWithInvite } from './utils/internalLinkHandler'
 import {
   isClipboardInviteConsumed,
   markClipboardInviteConsumed,
@@ -71,6 +71,7 @@ import GroupFeed from './pages/GroupFeed'
 import EditGroup from './pages/EditGroup'
 // EncryptionSettings removed — not in use
 import CommentReply from './pages/CommentReply'
+import ShareIncoming from './pages/ShareIncoming'
 
 const queryClient = new QueryClient()
 
@@ -310,6 +311,26 @@ function AppRoutes(){
     const handleDeepLink = async (url: string, source: string) => {
       console.log(`🔗 Deep link received (${source}):`, url)
 
+      if (url.startsWith('cpoint://share')) {
+        navigate('/share/incoming')
+        markUrlProcessed(url)
+        return
+      }
+
+      // Universal Links: https://cpoint-app-staging-...run.app/share/incoming (and app.c-point.co)
+      try {
+        if (isInternalLink(url)) {
+          const parsed = new URL(url)
+          if (parsed.pathname === '/share/incoming' || parsed.pathname.startsWith('/share/incoming/')) {
+            navigate('/share/incoming')
+            markUrlProcessed(url)
+            return
+          }
+        }
+      } catch {
+        // ignore malformed URL
+      }
+
       const inviteToken = extractInviteToken(url)
       if (inviteToken) {
         await applyInviteTokenFromDeepLink(inviteToken, url)
@@ -335,7 +356,7 @@ function AppRoutes(){
     return () => {
       listenerHandle?.remove()
     }
-  }, [authLoaded, applyInviteTokenFromDeepLink])
+  }, [authLoaded, applyInviteTokenFromDeepLink, navigate, markUrlProcessed])
 
   // Deferred invite: clipboard payload from invite landing page (install-then-open flow)
   useEffect(() => {
@@ -720,6 +741,7 @@ function AppRoutes(){
                 <Route path="/event/:event_id" element={<EventDetail />} />
                 <Route path="/post/:post_id" element={<PostDetail />} />
                 <Route path="/reply/:reply_id" element={<CommentReply />} />
+                <Route path="/share/incoming" element={<ShareIncoming />} />
                 <Route path="/compose" element={<CreatePost />} />
                 <Route path="/group_feed_react/:group_id" element={<GroupFeed />} />
                 <Route path="/group/:group_id/edit" element={<EditGroup />} />
