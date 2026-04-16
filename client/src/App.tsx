@@ -95,7 +95,17 @@ function AppRoutes(){
   const locationRef = useRef(location.pathname)
   const scrollRegionRef = useRef<HTMLDivElement | null>(null)
   const publicPaths = useMemo(
-    () => new Set(['/', '/welcome', '/onboarding', '/login', '/signup', '/signup_react', '/verify_required']),
+    () =>
+      new Set([
+        '/',
+        '/welcome',
+        '/onboarding',
+        '/login',
+        '/signup',
+        '/signup_react',
+        '/verify_required',
+        '/share/incoming',
+      ]),
     [],
   )
   const applyKeyboardOffset = useCallback((nextOffset: number) => {
@@ -183,6 +193,8 @@ function AppRoutes(){
   const processedUrlsRef = useRef<Set<string>>(new Set())
   /** One attempt per session to read deferred invite from clipboard (install-then-open flow). */
   const clipboardInviteAttemptedRef = useRef(false)
+  /** Share extension opens cpoint:// before /api/profile_me finishes; queue until authLoaded. */
+  const pendingShareUrlRef = useRef<string | null>(null)
   
   // Initialize from sessionStorage on first render
   useEffect(() => {
@@ -297,13 +309,29 @@ function AppRoutes(){
   )
 
   // Handle deep links (Universal Links) when app is opened from external sources
-  // IMPORTANT: Wait for authLoaded before processing to avoid race conditions
+  // Share extension can fire cpoint://share/... before authLoaded; queue and flush below.
   useEffect(() => {
     if (Capacitor.getPlatform() === 'web') return
-    // Don't process deep links until auth state is known
-    if (!authLoaded) {
-      console.log('🔗 Waiting for auth to load before processing deep links...')
-      return
+
+    const isShareIncomingUrl = (url: string): boolean => {
+      if (url.startsWith('cpoint://share')) return true
+      try {
+        if (isInternalLink(url)) {
+          const parsed = new URL(url)
+          if (parsed.pathname === '/share/incoming' || parsed.pathname.startsWith('/share/incoming/')) {
+            return true
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+      return false
+    }
+
+    const applyShareIncoming = (url: string, source: string) => {
+      console.log(`🔗 Opening share inbox (${source}):`, url)
+      navigate('/share/incoming')
+      markUrlProcessed(url)
     }
 
     let listenerHandle: PluginListenerHandle | undefined
@@ -311,24 +339,19 @@ function AppRoutes(){
     const handleDeepLink = async (url: string, source: string) => {
       console.log(`🔗 Deep link received (${source}):`, url)
 
-      if (url.startsWith('cpoint://share')) {
-        navigate('/share/incoming')
-        markUrlProcessed(url)
+      if (isShareIncomingUrl(url)) {
+        if (!authLoaded) {
+          pendingShareUrlRef.current = url
+          console.log('🔗 Share deep link queued until auth is ready')
+          return
+        }
+        applyShareIncoming(url, source)
         return
       }
 
-      // Universal Links: https://cpoint-app-staging-...run.app/share/incoming (and app.c-point.co)
-      try {
-        if (isInternalLink(url)) {
-          const parsed = new URL(url)
-          if (parsed.pathname === '/share/incoming' || parsed.pathname.startsWith('/share/incoming/')) {
-            navigate('/share/incoming')
-            markUrlProcessed(url)
-            return
-          }
-        }
-      } catch {
-        // ignore malformed URL
+      if (!authLoaded) {
+        console.log('🔗 Waiting for auth to load before processing deep links...')
+        return
       }
 
       const inviteToken = extractInviteToken(url)
@@ -337,7 +360,15 @@ function AppRoutes(){
       }
     }
 
-    // Listen for app URL open events (Universal Links)
+    if (authLoaded) {
+      const pending = pendingShareUrlRef.current
+      if (pending && isShareIncomingUrl(pending)) {
+        pendingShareUrlRef.current = null
+        applyShareIncoming(pending, 'queued-after-auth')
+      }
+    }
+
+    // Listen for app URL open events (Universal Links) — register immediately so share is not dropped
     CapacitorApp.addListener('appUrlOpen', (event: { url: string }) => {
       console.log('🔗 appUrlOpen event:', event.url)
       handleDeepLink(event.url, 'appUrlOpen')
@@ -345,13 +376,18 @@ function AppRoutes(){
       listenerHandle = handle
     })
 
-    // Also check if app was launched with a URL (only once when auth is loaded)
-    CapacitorApp.getLaunchUrl().then((result) => {
-      if (result?.url) {
-        console.log('🔗 App launched with URL:', result.url)
-        handleDeepLink(result.url, 'getLaunchUrl')
-      }
-    }).catch(() => {})
+    // Defer getLaunchUrl until auth is known — otherwise non-share links (e.g. invites) would be
+    // skipped on cold start. Share links still work via appUrlOpen queue or this call once ready.
+    if (authLoaded) {
+      CapacitorApp.getLaunchUrl()
+        .then((result) => {
+          if (result?.url) {
+            console.log('🔗 App launched with URL:', result.url)
+            handleDeepLink(result.url, 'getLaunchUrl')
+          }
+        })
+        .catch(() => {})
+    }
 
     return () => {
       listenerHandle?.remove()
