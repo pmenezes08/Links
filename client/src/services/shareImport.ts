@@ -45,6 +45,9 @@ export async function hydrateShareFromNative(): Promise<File[]> {
     const it = items[i]
     const src = Capacitor.convertFileSrc(it.path)
     const res = await fetch(src)
+    if (!res.ok) {
+      throw new Error(`Failed to read shared file (${res.status}) from ${src}`)
+    }
     const blob = await res.blob()
     const ext = guessExtension(it.mimeType || blob.type, it.kind)
     const name = `share_${i}${ext}`

@@ -39,6 +39,14 @@ export default function ShareIncoming() {
   const [communitiesLoading, setCommunitiesLoading] = useState(false)
   const [showCommunities, setShowCommunities] = useState(false)
 
+  function goBackOrHome() {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      navigate(-1)
+      return
+    }
+    navigate('/home')
+  }
+
   useEffect(() => {
     setTitle('Share to C.Point')
     return () => setTitle('')
@@ -111,7 +119,7 @@ export default function ShareIncoming() {
 
   function cancelAndLeave() {
     clearPendingShareFiles()
-    navigate(-1)
+    goBackOrHome()
   }
 
   if (loading) {
@@ -129,7 +137,7 @@ export default function ShareIncoming() {
         <p className="text-white/90 mb-4">{error}</p>
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={goBackOrHome}
           className="px-4 py-2 rounded-full border border-white/20 text-sm hover:bg-white/10"
         >
           Go back
