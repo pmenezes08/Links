@@ -30,6 +30,7 @@ from backend.services.content_generation import (
     update_job_next_run,
 )
 from backend.services.steve_content_enrichment import fetch_article_for_reader
+from backend.services.content_generation.job_schedule import compute_schedule_timestamps
 from backend.services.content_generation.permissions import (
     can_manage_community_jobs,
     can_manage_member_jobs,
@@ -56,17 +57,27 @@ def _body_json() -> Dict[str, Any]:
     return request.get_json(silent=True) or {}
 
 
-def _build_rrule(schedule: Dict[str, Any]) -> Optional[str]:
-    if not schedule:
-        return None
-    cadence = str(schedule.get("cadence") or "").strip().lower()
-    weekday = str(schedule.get("weekday") or "").strip().upper()
-    week_of_month = str(schedule.get("week_of_month") or "").strip()
-    if cadence == "weekly" and weekday:
-        return f"FREQ=WEEKLY;BYDAY={weekday}"
-    if cadence == "monthly" and weekday and week_of_month:
-        return f"FREQ=MONTHLY;BYDAY={weekday};BYSETPOS={week_of_month}"
-    return None
+def _schedule_payload_from_request(
+    data: Dict[str, Any],
+) -> tuple[Dict[str, Any], Optional[str], str, Optional[str]]:
+    """Normalize schedule, rrule, next_run_at, ends_at (UTC strings)."""
+    schedule = data.get("schedule") if isinstance(data.get("schedule"), dict) else {}
+    timezone = str(data.get("timezone") or schedule.get("timezone") or "").strip() or None
+    sched_norm, rrule, next_run_at, ends_at = compute_schedule_timestamps(schedule, timezone)
+    return sched_norm, rrule, next_run_at, ends_at
+
+
+def _schedule_payload_from_update(
+    job: Dict[str, Any],
+    data: Dict[str, Any],
+) -> tuple[Dict[str, Any], Optional[str], str, Optional[str]]:
+    schedule = dict(job.get("schedule") or {})
+    if isinstance(data.get("schedule"), dict):
+        schedule.update(data["schedule"])
+    timezone = str(
+        data.get("timezone") if "timezone" in data else job.get("timezone") or schedule.get("timezone") or ""
+    ).strip() or None
+    return compute_schedule_timestamps(schedule, timezone)
 
 
 def _default_job_title(descriptor, payload: Dict[str, Any], *, community_id: Optional[int], target_username: Optional[str]) -> str:
@@ -209,8 +220,8 @@ def create_content_generation_job_api():
     try:
         payload = _payload_for_create(data, descriptor)
         target_username = str(payload.get("target_username") or "").strip() or None
-        schedule = data.get("schedule") if isinstance(data.get("schedule"), dict) else {}
-        timezone = str(data.get("timezone") or schedule.get("timezone") or "").strip() or None
+        sched_norm, rrule, next_run_at, ends_at = _schedule_payload_from_request(data)
+        timezone = str(data.get("timezone") or sched_norm.get("timezone") or "").strip() or None
         job = create_job(
             idea_id=idea_id,
             title=str(data.get("title") or "").strip() or _default_job_title(descriptor, payload, community_id=community_id, target_username=target_username),
@@ -221,10 +232,11 @@ def create_content_generation_job_api():
             actor_username=username,
             surface="community",
             payload=payload,
-            schedule=schedule,
+            schedule=sched_norm,
             timezone=timezone,
-            rrule=str(data.get("rrule") or "").strip() or _build_rrule(schedule),
-            next_run_at=str(data.get("next_run_at") or "").strip() or None,
+            rrule=rrule,
+            next_run_at=next_run_at,
+            ends_at=ends_at,
         )
         return jsonify({"success": True, "job": job})
     except ValueError as exc:
@@ -252,8 +264,18 @@ def update_content_generation_job_api(job_id: int):
     if "payload" in updates:
         descriptor = get_descriptor(job["idea_id"])
         updates["payload"] = _payload_for_create({"payload": updates["payload"]}, descriptor)
-    if "schedule" in updates and "rrule" not in updates:
-        updates["rrule"] = _build_rrule(updates["schedule"] or {})
+    if "schedule" in data or "timezone" in data:
+        try:
+            sched_norm, rrule, next_run, ends_at = _schedule_payload_from_update(job, data)
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 400
+        updates["schedule"] = sched_norm
+        updates["rrule"] = rrule
+        updates["next_run_at"] = next_run
+        updates["ends_at"] = ends_at
+        tz = str(data.get("timezone") or sched_norm.get("timezone") or "").strip() or None
+        if tz is not None:
+            updates["timezone"] = tz
     updated = update_job(job_id, updates)
     return jsonify({"success": True, "job": updated})
 
@@ -374,8 +396,8 @@ def admin_create_content_generation_jobs_api():
     descriptor = get_descriptor(idea_id)
     try:
         payload = _payload_for_create(data, descriptor)
-        schedule = data.get("schedule") if isinstance(data.get("schedule"), dict) else {}
-        timezone = str(data.get("timezone") or schedule.get("timezone") or "").strip() or None
+        sched_norm, rrule, next_run_at, ends_at = _schedule_payload_from_request(data)
+        timezone = str(data.get("timezone") or sched_norm.get("timezone") or "").strip() or None
         created_jobs: List[Dict[str, Any]] = []
         if descriptor.target_type == "community":
             community_ids = data.get("community_ids")
@@ -399,10 +421,11 @@ def admin_create_content_generation_jobs_api():
                         actor_username=username,
                         surface="admin",
                         payload=payload,
-                        schedule=schedule,
+                        schedule=sched_norm,
                         timezone=timezone,
-                        rrule=str(data.get("rrule") or "").strip() or _build_rrule(schedule),
-                        next_run_at=str(data.get("next_run_at") or "").strip() or None,
+                        rrule=rrule,
+                        next_run_at=next_run_at,
+                        ends_at=ends_at,
                     )
                 )
         else:
@@ -423,10 +446,11 @@ def admin_create_content_generation_jobs_api():
                     actor_username=username,
                     surface="admin",
                     payload=payload,
-                    schedule=schedule,
+                    schedule=sched_norm,
                     timezone=timezone,
-                    rrule=str(data.get("rrule") or "").strip() or _build_rrule(schedule),
-                    next_run_at=str(data.get("next_run_at") or "").strip() or None,
+                    rrule=rrule,
+                    next_run_at=next_run_at,
+                    ends_at=ends_at,
                 )
             )
         return jsonify({"success": True, "jobs": created_jobs})

@@ -86,11 +86,13 @@ type Community = {
 }
 
 type ScheduleState = {
-  cadence: 'weekly' | 'monthly'
+  cadence: 'weekly' | 'biweekly' | 'monthly'
   weekday: string
   week_of_month: string
   time_of_day: string
   timezone: string
+  starting_date: string
+  end_date: string
 }
 
 const weekdayOptions = [
@@ -117,6 +119,33 @@ function defaultSchedule(): ScheduleState {
     week_of_month: '1',
     time_of_day: '09:00',
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    starting_date: '',
+    end_date: '',
+  }
+}
+
+function supportedTimeZones(): string[] {
+  try {
+    const fn = (Intl as unknown as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf
+    if (typeof fn === 'function') {
+      return [...fn('timeZone')].sort((a, b) => a.localeCompare(b))
+    }
+  } catch {
+    /* ignore */
+  }
+  return ['UTC']
+}
+
+function timeZoneOptionLabel(tz: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz,
+      timeZoneName: 'longOffset',
+    }).formatToParts(new Date())
+    const off = parts.find((p) => p.type === 'timeZoneName')?.value || ''
+    return `${tz} — ${off}`
+  } catch {
+    return tz
   }
 }
 
@@ -125,11 +154,20 @@ function scheduleSummary(schedule?: Partial<ScheduleState>) {
   const weekday = weekdayOptions.find(option => option.value === schedule.weekday)?.label || schedule.weekday || 'Friday'
   const time = schedule.time_of_day || '09:00'
   const timezone = schedule.timezone || 'UTC'
+  const start = schedule.starting_date?.trim()
+  const end = schedule.end_date?.trim()
+  const rangeParts: string[] = []
+  if (start) rangeParts.push(`from ${start}`)
+  if (end) rangeParts.push(`until ${end}`)
+  const range = rangeParts.length ? ` (${rangeParts.join(', ')})` : ''
   if (schedule.cadence === 'monthly') {
     const week = weekOfMonthOptions.find(option => option.value === schedule.week_of_month)?.label || 'First'
-    return `${week} ${weekday} at ${time} (${timezone})`
+    return `${week} ${weekday} at ${time} (${timezone})${range}`
   }
-  return `Every ${weekday} at ${time} (${timezone})`
+  if (schedule.cadence === 'biweekly') {
+    return `Every other ${weekday} at ${time} (${timezone})${range}`
+  }
+  return `Every ${weekday} at ${time} (${timezone})${range}`
 }
 
 function getTopicMode(payload: Record<string, string>) {
@@ -165,6 +203,9 @@ export default function ContentGeneration() {
     () => ideas.find(idea => idea.idea_id === selectedIdeaId) || null,
     [ideas, selectedIdeaId],
   )
+
+  const timeZoneChoices = useMemo(() => supportedTimeZones(), [])
+  const [defaultEndModalOpen, setDefaultEndModalOpen] = useState(false)
 
   const filteredJobs = useMemo(() => {
     if (jobFilter === 'all') return jobs
@@ -213,8 +254,17 @@ export default function ContentGeneration() {
     if (nextIdeaId) setSelectedIdeaId(nextIdeaId)
   }
 
-  async function submitJob(e: React.FormEvent) {
+  function submitJob(e: React.FormEvent) {
     e.preventDefault()
+    if (!selectedIdea) return
+    if (!schedule.end_date?.trim()) {
+      setDefaultEndModalOpen(true)
+      return
+    }
+    void performSubmit()
+  }
+
+  async function performSubmit() {
     if (!selectedIdea) return
     setSaving(true)
     setFeedback(null)
@@ -490,6 +540,7 @@ export default function ContentGeneration() {
                         className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:border-accent focus:outline-none"
                       >
                         <option value="weekly">Weekly</option>
+                        <option value="biweekly">Bi-weekly</option>
                         <option value="monthly">Monthly</option>
                       </select>
                     </div>
@@ -528,14 +579,41 @@ export default function ContentGeneration() {
                         className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:border-accent focus:outline-none"
                       />
                     </div>
+                    <div>
+                      <label className="text-sm text-muted block mb-1.5">
+                        Starting date <span className="text-white/40">(optional)</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={schedule.starting_date}
+                        onChange={e => setSchedule(prev => ({ ...prev, starting_date: e.target.value }))}
+                        className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:border-accent focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm text-muted block mb-1.5">
+                        End date <span className="text-white/40">(optional)</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={schedule.end_date}
+                        onChange={e => setSchedule(prev => ({ ...prev, end_date: e.target.value }))}
+                        className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:border-accent focus:outline-none"
+                      />
+                    </div>
                     <div className="md:col-span-2">
                       <label className="text-sm text-muted block mb-1.5">Timezone</label>
-                      <input
-                        type="text"
+                      <select
                         value={schedule.timezone}
                         onChange={e => setSchedule(prev => ({ ...prev, timezone: e.target.value }))}
                         className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:border-accent focus:outline-none"
-                      />
+                      >
+                        {timeZoneChoices.map(tz => (
+                          <option key={tz} value={tz}>
+                            {timeZoneOptionLabel(tz)}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                   <p className="text-xs text-white/50">Saved summary: {scheduleSummary(schedule)}</p>
@@ -702,6 +780,48 @@ export default function ContentGeneration() {
           </CollapsibleSection>
         </div>
       </div>
+
+      {defaultEndModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+          onClick={() => setDefaultEndModalOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="admin-cg-default-end-title"
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-accent/30 bg-black p-5 shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 id="admin-cg-default-end-title" className="text-base font-semibold">
+              Default end date
+            </h3>
+            <p className="mt-2 text-sm text-white/60">
+              You did not set an end date. This job will automatically stop after six months from the starting date you
+              picked, or from today if you left the starting date empty.
+            </p>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-white/10 px-4 py-2 text-sm hover:bg-white/5"
+                onClick={() => setDefaultEndModalOpen(false)}
+              >
+                Go back
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-black hover:brightness-110"
+                onClick={() => {
+                  setDefaultEndModalOpen(false)
+                  void performSubmit()
+                }}
+              >
+                Create job
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

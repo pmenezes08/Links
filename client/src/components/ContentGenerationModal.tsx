@@ -53,11 +53,13 @@ type Props = {
 }
 
 type ScheduleState = {
-  cadence: 'weekly' | 'monthly'
+  cadence: 'weekly' | 'biweekly' | 'monthly'
   weekday: string
   week_of_month: string
   time_of_day: string
   timezone: string
+  starting_date: string
+  end_date: string
 }
 
 const SECTION_BORDER = 'rounded-2xl border border-[#4db6ac]/25 bg-black p-4 shadow-[inset_0_0_0_1px_rgba(77,182,172,0.06)]'
@@ -86,6 +88,33 @@ function defaultSchedule(): ScheduleState {
     week_of_month: '1',
     time_of_day: '09:00',
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    starting_date: '',
+    end_date: '',
+  }
+}
+
+function supportedTimeZones(): string[] {
+  try {
+    const fn = (Intl as unknown as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf
+    if (typeof fn === 'function') {
+      return [...fn('timeZone')].sort((a, b) => a.localeCompare(b))
+    }
+  } catch {
+    /* ignore */
+  }
+  return ['UTC']
+}
+
+function timeZoneOptionLabel(tz: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz,
+      timeZoneName: 'longOffset',
+    }).formatToParts(new Date())
+    const off = parts.find((p) => p.type === 'timeZoneName')?.value || ''
+    return `${tz} — ${off}`
+  } catch {
+    return tz
   }
 }
 
@@ -94,11 +123,20 @@ function scheduleSummary(schedule: Partial<ScheduleState> | undefined) {
   const dayLabel = WEEKDAY_OPTIONS.find(option => option.value === schedule.weekday)?.label || schedule.weekday || 'Friday'
   const timeOfDay = schedule.time_of_day || '09:00'
   const timezone = schedule.timezone || 'UTC'
+  const start = schedule.starting_date?.trim()
+  const end = schedule.end_date?.trim()
+  const rangeParts: string[] = []
+  if (start) rangeParts.push(`from ${start}`)
+  if (end) rangeParts.push(`until ${end}`)
+  const range = rangeParts.length ? ` (${rangeParts.join(', ')})` : ''
   if (schedule.cadence === 'monthly') {
     const weekLabel = WEEK_OF_MONTH_OPTIONS.find(option => option.value === schedule.week_of_month)?.label || 'First'
-    return `${weekLabel} ${dayLabel} of each month at ${timeOfDay} (${timezone})`
+    return `${weekLabel} ${dayLabel} of each month at ${timeOfDay} (${timezone})${range}`
   }
-  return `Every ${dayLabel} at ${timeOfDay} (${timezone})`
+  if (schedule.cadence === 'biweekly') {
+    return `Every other ${dayLabel} at ${timeOfDay} (${timezone})${range}`
+  }
+  return `Every ${dayLabel} at ${timeOfDay} (${timezone})${range}`
 }
 
 function getTopicMode(payload: Record<string, string>) {
@@ -167,6 +205,9 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
     [ideas, selectedIdeaId],
   )
 
+  const timeZoneChoices = useMemo(() => supportedTimeZones(), [])
+  const [defaultEndModalOpen, setDefaultEndModalOpen] = useState(false)
+
   async function loadData() {
     if (!communityId) return
     setLoading(true)
@@ -232,11 +273,22 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
       ...defaultSchedule(),
       ...(job.schedule || {}),
       timezone: job.timezone || job.schedule?.timezone || defaultSchedule().timezone,
+      starting_date: String((job.schedule as Record<string, string>)?.starting_date || ''),
+      end_date: String((job.schedule as Record<string, string>)?.end_date || ''),
     })
   }
 
-  async function submitJob(e: React.FormEvent) {
+  function submitJob(e: React.FormEvent) {
     e.preventDefault()
+    if (!selectedIdea) return
+    if (!editingJobId && !schedule.end_date?.trim()) {
+      setDefaultEndModalOpen(true)
+      return
+    }
+    void performSubmit()
+  }
+
+  async function performSubmit() {
     if (!selectedIdea) return
     setSaving(true)
     setFeedback(null)
@@ -551,6 +603,7 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
                         className="w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
                       >
                         <option value="weekly">Weekly</option>
+                        <option value="biweekly">Bi-weekly</option>
                         <option value="monthly">Monthly</option>
                       </select>
                     </div>
@@ -593,13 +646,41 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
                         className="w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
                       />
                     </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-[#9fb0b5]">
+                        Starting date <span className="text-white/40">(optional)</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={schedule.starting_date}
+                        onChange={(e) => setSchedule((prev) => ({ ...prev, starting_date: e.target.value }))}
+                        className="w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-[#9fb0b5]">
+                        End date <span className="text-white/40">(optional)</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={schedule.end_date}
+                        onChange={(e) => setSchedule((prev) => ({ ...prev, end_date: e.target.value }))}
+                        className="w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                      />
+                    </div>
                     <div className="sm:col-span-2">
                       <label className="mb-1 block text-xs text-[#9fb0b5]">Timezone</label>
-                      <input
+                      <select
                         value={schedule.timezone}
                         onChange={(e) => setSchedule((prev) => ({ ...prev, timezone: e.target.value }))}
                         className="w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
-                      />
+                      >
+                        {timeZoneChoices.map((tz) => (
+                          <option key={tz} value={tz}>
+                            {timeZoneOptionLabel(tz)}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                   <p className="text-xs text-[#9fb0b5]">Saved summary: {scheduleSummary(schedule)}</p>
@@ -760,6 +841,48 @@ export default function ContentGenerationModal({ communityId, open, onClose }: P
           </div>
         </div>
       </div>
+
+      {defaultEndModalOpen ? (
+        <div
+          className="fixed inset-0 z-[1300] flex items-center justify-center bg-black/70 px-4"
+          onClick={() => setDefaultEndModalOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cg-default-end-title"
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-[#4db6ac]/30 bg-black p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="cg-default-end-title" className="text-base font-semibold text-white">
+              Default end date
+            </h3>
+            <p className="mt-2 text-sm text-[#9fb0b5]">
+              You did not set an end date. This job will automatically stop after six months from the starting date you
+              picked, or from today if you left the starting date empty.
+            </p>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-white/10 px-4 py-2 text-sm text-white hover:bg-white/5"
+                onClick={() => setDefaultEndModalOpen(false)}
+              >
+                Go back
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110"
+                onClick={() => {
+                  setDefaultEndModalOpen(false)
+                  void performSubmit()
+                }}
+              >
+                Create job
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

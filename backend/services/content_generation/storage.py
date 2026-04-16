@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
+from backend.services.content_generation.job_schedule import (
+    format_utc_naive,
+    next_run_after,
+    parse_utc_naive,
+)
 from backend.services.database import USE_MYSQL, get_db_connection
 
 
@@ -73,6 +78,7 @@ def ensure_tables() -> None:
                 timezone VARCHAR(100) NULL,
                 rrule TEXT NULL,
                 next_run_at TEXT NULL,
+                ends_at TEXT NULL,
                 last_run_at TEXT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -111,6 +117,24 @@ def ensure_tables() -> None:
         except Exception:
             pass
     _ensure_runs_job_id_nullable()
+    _ensure_jobs_ends_at_column()
+
+
+def _ensure_jobs_ends_at_column() -> None:
+    """Add ends_at for schedule end enforcement (older DBs)."""
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute("ALTER TABLE content_generation_jobs ADD COLUMN ends_at TEXT NULL")
+            try:
+                conn.commit()
+            except Exception:
+                pass
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
 
 def _ensure_runs_job_id_nullable() -> None:
@@ -204,9 +228,10 @@ def _job_from_row(row: Any) -> Dict[str, Any]:
         "timezone": row[12],
         "rrule": row[13],
         "next_run_at": row[14],
-        "last_run_at": row[15],
-        "created_at": row[16],
-        "updated_at": row[17],
+        "ends_at": row[15],
+        "last_run_at": row[16],
+        "created_at": row[17],
+        "updated_at": row[18],
     }
     data["payload"] = _json_load(data.pop("payload_json", None), {})
     data["schedule"] = _json_load(data.pop("schedule_json", None), {})
@@ -253,6 +278,7 @@ def create_job(
     timezone: Optional[str] = None,
     rrule: Optional[str] = None,
     next_run_at: Optional[str] = None,
+    ends_at: Optional[str] = None,
 ) -> Dict[str, Any]:
     ensure_tables()
     now = _utc_now_str()
@@ -264,9 +290,9 @@ def create_job(
                 idea_id, title, target_type, community_id, target_username,
                 delivery_channel, status, actor_username, surface,
                 payload_json, schedule_json, timezone, rrule, next_run_at,
-                last_run_at, updated_at
+                ends_at, last_run_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+            VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
             """,
             (
                 idea_id,
@@ -282,6 +308,7 @@ def create_job(
                 timezone,
                 rrule,
                 next_run_at,
+                ends_at,
                 now,
             ),
         )
@@ -305,7 +332,7 @@ def get_job(job_id: int) -> Optional[Dict[str, Any]]:
             SELECT id, idea_id, title, target_type, community_id, target_username,
                    delivery_channel, status, actor_username, surface,
                    payload_json, schedule_json, timezone, rrule, next_run_at,
-                   last_run_at, created_at, updated_at
+                   ends_at, last_run_at, created_at, updated_at
             FROM content_generation_jobs
             WHERE id = ?
             """,
@@ -325,6 +352,7 @@ def update_job(job_id: int, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]
         "timezone": "timezone",
         "rrule": "rrule",
         "next_run_at": "next_run_at",
+        "ends_at": "ends_at",
     }
     assignments: List[str] = []
     params: List[Any] = []
@@ -592,31 +620,52 @@ def get_due_jobs(limit: int = 10) -> List[Dict[str, Any]]:
     ensure_tables()
     now = _utc_now_str()
     query = """
-        SELECT * FROM content_generation_jobs 
-        WHERE status = 'active' AND (next_run_at IS NULL OR next_run_at <= ?)
+        SELECT id, idea_id, title, target_type, community_id, target_username,
+               delivery_channel, status, actor_username, surface,
+               payload_json, schedule_json, timezone, rrule, next_run_at,
+               ends_at, last_run_at, created_at, updated_at
+        FROM content_generation_jobs
+        WHERE status = 'active'
+          AND (next_run_at IS NULL OR next_run_at <= ?)
+          AND (ends_at IS NULL OR ? <= ends_at)
+          AND (ends_at IS NULL OR next_run_at IS NULL OR next_run_at <= ends_at)
         ORDER BY next_run_at ASC, id ASC
         LIMIT ?
     """
     with get_db_connection() as conn:
         c = conn.cursor()
-        c.execute(query, (now, limit))
+        c.execute(query, (now, now, limit))
         rows = c.fetchall() or []
     return [_job_from_row(row) for row in rows]
 
 
 def update_job_next_run(job_id: int, cadence: str) -> None:
-    """Update next_run_at based on cadence after a successful run (simple approximation)."""
+    """Advance next_run_at after a successful run; complete job if past ends_at."""
     ensure_tables()
-    now = datetime.utcnow()
-    if cadence == "daily":
-        delta = timedelta(days=1)
-    elif cadence in ("biweekly", "bi-weekly"):
-        delta = timedelta(days=14)
-    elif cadence == "monthly":
-        delta = timedelta(days=30)  # approximate; use relativedelta for precision in production
-    else:
-        delta = timedelta(days=7)  # default to weekly
-    next_run = (now + delta).isoformat()
+    job = get_job(job_id)
+    if not job:
+        return
+    prev = job.get("next_run_at")
+    next_dt = next_run_after(prev, cadence)
+    next_run = format_utc_naive(next_dt)
+    ends_raw = job.get("ends_at")
+    ends_dt = parse_utc_naive(ends_raw) if ends_raw else None
+    if ends_dt and next_dt > ends_dt:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                """
+                UPDATE content_generation_jobs
+                SET status = 'completed', next_run_at = NULL, updated_at = ?
+                WHERE id = ?
+                """,
+                (_utc_now_str(), job_id),
+            )
+            try:
+                conn.commit()
+            except Exception:
+                pass
+        return
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(
