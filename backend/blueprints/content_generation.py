@@ -30,7 +30,10 @@ from backend.services.content_generation import (
     update_job_next_run,
 )
 from backend.services.steve_content_enrichment import fetch_article_for_reader
-from backend.services.content_generation.job_schedule import compute_schedule_timestamps
+from backend.services.content_generation.job_schedule import (
+    compute_schedule_timestamps,
+    preview_schedule_display,
+)
 from backend.services.content_generation.permissions import (
     can_manage_community_jobs,
     can_manage_member_jobs,
@@ -157,6 +160,21 @@ def _payload_for_create(data: Dict[str, Any], descriptor) -> Dict[str, Any]:
         if field.required and not str(normalized.get(field.name) or "").strip():
             raise ValueError(f"{field.label} is required")
     return normalized
+
+
+@content_generation_bp.route("/api/content-generation/schedule-preview", methods=["POST"])
+@_login_required
+def content_generation_schedule_preview_api():
+    """Return first-run time and labels; same rules as job create."""
+    ensure_tables()
+    data = _body_json()
+    schedule = data.get("schedule") if isinstance(data.get("schedule"), dict) else {}
+    timezone = str(data.get("timezone") or schedule.get("timezone") or "").strip() or None
+    try:
+        preview = preview_schedule_display(schedule, timezone)
+        return jsonify({"success": True, **preview})
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
 
 
 @content_generation_bp.route("/api/content-generation/ideas", methods=["GET"])
@@ -560,7 +578,13 @@ def api_process_due_content_generation_jobs():
                 result = execute_job(job, triggered_by_username="system-cron")
                 update_job_next_run(job["id"], cadence)
                 processed += 1
-                logger.info("Processed due job %s (%s): %s", job.get("id"), cadence, result.get("status"))
+                logger.info(
+                    "Processed due job %s (%s): run_id=%s output_post_id=%s",
+                    job.get("id"),
+                    cadence,
+                    result.get("run_id"),
+                    result.get("output_post_id"),
+                )
             except Exception as job_err:
                 logger.error("Failed to process due job %s: %s", job.get("id"), job_err, exc_info=True)
         return jsonify({"success": True, "processed": processed, "due": len(due_jobs)})

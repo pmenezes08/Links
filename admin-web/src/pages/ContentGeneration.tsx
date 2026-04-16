@@ -66,6 +66,8 @@ type Job = {
   status: string
   payload?: Record<string, string>
   schedule?: Record<string, string>
+  timezone?: string | null
+  next_run_at?: string | null
   last_run_at?: string | null
 }
 
@@ -165,9 +167,46 @@ function scheduleSummary(schedule?: Partial<ScheduleState>) {
     return `${week} ${weekday} at ${time} (${timezone})${range}`
   }
   if (schedule.cadence === 'biweekly') {
-    return `Every other ${weekday} at ${time} (${timezone})${range}`
+    return `Every two weeks at ${time} (${timezone}) — repeats every 14 days from the start date (or today)${range}`
   }
-  return `Every ${weekday} at ${time} (${timezone})${range}`
+  return `Every week at ${time} (${timezone}) — repeats every 7 days from the start date (or today)${range}`
+}
+
+function parseUtcNaiveToDate(raw: string): Date | null {
+  const clean = raw.replace('T', ' ').replace('Z', '').slice(0, 19)
+  const m = clean.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/)
+  if (!m) return null
+  return new Date(
+    Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6])),
+  )
+}
+
+function formatFirstRunFromJob(job: Job): string | null {
+  const raw = job.next_run_at
+  if (!raw) return null
+  const tz = job.timezone || 'UTC'
+  const d = parseUtcNaiveToDate(String(raw))
+  if (!d || Number.isNaN(d.getTime())) return null
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz,
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(d)
+  } catch {
+    return null
+  }
+}
+
+function cadenceLabelFromJobSchedule(job: Job): string {
+  const c = (job.schedule?.cadence || 'weekly').toLowerCase()
+  if (c === 'biweekly' || c === 'bi-weekly') return 'every two weeks'
+  if (c === 'monthly') return 'every month'
+  return 'every week'
 }
 
 function getTopicMode(payload: Record<string, string>) {
@@ -206,6 +245,18 @@ export default function ContentGeneration() {
 
   const timeZoneChoices = useMemo(() => supportedTimeZones(), [])
   const [defaultEndModalOpen, setDefaultEndModalOpen] = useState(false)
+  const [schedulePreview, setSchedulePreview] = useState<{
+    first_run_local_label: string
+    cadence_label: string
+    timezone: string
+  } | null>(null)
+  const [schedulePreviewError, setSchedulePreviewError] = useState<string | null>(null)
+  const [jobsCreatedDialog, setJobsCreatedDialog] = useState<{
+    count: number
+    firstRunLine: string
+    cadenceLine: string
+    timezone: string
+  } | null>(null)
 
   const filteredJobs = useMemo(() => {
     if (jobFilter === 'all') return jobs
@@ -245,6 +296,49 @@ export default function ContentGeneration() {
     return () => window.clearTimeout(timer)
   }, [feedback])
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const json = await apiJson<{
+            success?: boolean
+            first_run_local_label?: string
+            cadence_label?: string
+            timezone?: string
+            error?: string
+          }>('/api/content-generation/schedule-preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ schedule, timezone: schedule.timezone }),
+          })
+          if (json?.success && json.first_run_local_label) {
+            setSchedulePreview({
+              first_run_local_label: json.first_run_local_label,
+              cadence_label: json.cadence_label || '',
+              timezone: json.timezone || schedule.timezone,
+            })
+            setSchedulePreviewError(null)
+          } else {
+            setSchedulePreview(null)
+            setSchedulePreviewError(typeof json?.error === 'string' ? json.error : null)
+          }
+        } catch {
+          setSchedulePreview(null)
+          setSchedulePreviewError(null)
+        }
+      })()
+    }, 400)
+    return () => window.clearTimeout(timer)
+  }, [
+    schedule.cadence,
+    schedule.weekday,
+    schedule.week_of_month,
+    schedule.time_of_day,
+    schedule.timezone,
+    schedule.starting_date,
+    schedule.end_date,
+  ])
+
   function resetForm(nextIdeaId?: string) {
     setTitle('')
     setPayload({})
@@ -281,10 +375,25 @@ export default function ContentGeneration() {
       } else {
         body.target_username = targetUsername.trim()
       }
-      const json = await apiPost('/api/admin/content-generation/jobs', body)
+      const json = await apiPost('/api/admin/content-generation/jobs', body) as {
+        success?: boolean
+        error?: string
+        jobs?: Job[]
+      }
       if (!json?.success) throw new Error(json?.error || 'Failed to create jobs')
       const createdCount = Array.isArray(json.jobs) ? json.jobs.length : 0
-      setFeedback({ type: 'success', text: createdCount > 1 ? `${createdCount} jobs created.` : 'Job created.' })
+      if (createdCount > 0 && json.jobs?.[0]) {
+        const job = json.jobs[0]
+        const firstRun = formatFirstRunFromJob(job)
+        setJobsCreatedDialog({
+          count: createdCount,
+          firstRunLine: firstRun || 'First run time is stored on each job.',
+          cadenceLine: cadenceLabelFromJobSchedule(job),
+          timezone: job.timezone || schedule.timezone || 'UTC',
+        })
+      } else {
+        setFeedback({ type: 'success', text: 'Job(s) created.' })
+      }
       resetForm(selectedIdea.idea_id)
       await loadData()
     } catch (error) {
@@ -544,18 +653,25 @@ export default function ContentGeneration() {
                         <option value="monthly">Monthly</option>
                       </select>
                     </div>
-                    <div>
-                      <label className="text-sm text-muted block mb-1.5">Weekday</label>
-                      <select
-                        value={schedule.weekday}
-                        onChange={e => setSchedule(prev => ({ ...prev, weekday: e.target.value }))}
-                        className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:border-accent focus:outline-none"
-                      >
-                        {weekdayOptions.map(option => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </div>
+                    {schedule.cadence === 'monthly' ? (
+                      <div>
+                        <label className="text-sm text-muted block mb-1.5">Weekday</label>
+                        <select
+                          value={schedule.weekday}
+                          onChange={e => setSchedule(prev => ({ ...prev, weekday: e.target.value }))}
+                          className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:border-accent focus:outline-none"
+                        >
+                          {weekdayOptions.map(option => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="md:col-span-2 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/60">
+                        Weekly and bi-weekly jobs use the <span className="text-white/90">starting date</span> (or today)
+                        at the time above, then every 7 or 14 days. Weekday is set from that date.
+                      </div>
+                    )}
                     {schedule.cadence === 'monthly' && (
                       <div>
                         <label className="text-sm text-muted block mb-1.5">Week of month</label>
@@ -617,6 +733,14 @@ export default function ContentGeneration() {
                     </div>
                   </div>
                   <p className="text-xs text-white/50">Saved summary: {scheduleSummary(schedule)}</p>
+                  {schedulePreviewError ? (
+                    <p className="text-xs text-amber-200/90">{schedulePreviewError}</p>
+                  ) : schedulePreview ? (
+                    <p className="text-xs text-accent">
+                      First run: <span className="font-medium text-white">{schedulePreview.first_run_local_label}</span>{' '}
+                      ({schedulePreview.timezone}) · then {schedulePreview.cadence_label} at the same time of day.
+                    </p>
+                  ) : null}
                 </div>
 
                 <button type="submit" disabled={saving || loading} className="w-full bg-accent text-black font-semibold py-2.5 rounded-lg hover:bg-accent/90 disabled:opacity-50 transition text-sm">
@@ -817,6 +941,49 @@ export default function ContentGeneration() {
                 }}
               >
                 Create job
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {jobsCreatedDialog ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+          onClick={() => setJobsCreatedDialog(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="admin-cg-jobs-created-title"
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-accent/30 bg-black p-5 shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 id="admin-cg-jobs-created-title" className="text-base font-semibold">
+              {jobsCreatedDialog.count === 1 ? 'Job created' : 'Jobs created'}
+            </h3>
+            <p className="mt-2 text-sm text-white/60">
+              {jobsCreatedDialog.count === 1
+                ? 'Steve will use this schedule for the new job.'
+                : `${jobsCreatedDialog.count} jobs were created with the same schedule (one per target).`}
+            </p>
+            <p className="mt-2 text-sm text-white/80">
+              Runs <span className="text-white">{jobsCreatedDialog.cadenceLine}</span> at the scheduled time (
+              {jobsCreatedDialog.timezone}).
+            </p>
+            <p className="mt-2 text-sm text-accent">
+              First run: <span className="font-semibold text-white">{jobsCreatedDialog.firstRunLine}</span>
+            </p>
+            <p className="mt-1 text-xs text-white/50">
+              Actual execution may be a few minutes after the scheduled time, depending on the server cron.
+            </p>
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-black hover:brightness-110"
+                onClick={() => setJobsCreatedDialog(null)}
+              >
+                OK
               </button>
             </div>
           </div>

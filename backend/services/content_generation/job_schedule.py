@@ -20,6 +20,8 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})(?::(\d{2}))?$")
 
 RRULE_WEEKDAY = {"MO": 0, "TU": 1, "WE": 2, "TH": 3, "FR": 4, "SA": 5, "SU": 6}
+# Python weekday Monday=0 … Sunday=6
+RRULE_BY_PY_WEEKDAY = ("MO", "TU", "WE", "TH", "FR", "SA", "SU")
 
 
 def utc_now_naive() -> datetime:
@@ -168,25 +170,6 @@ def next_monthly_occurrence(
     return start_local + timedelta(days=30)
 
 
-def next_matching_weekday_local(
-    min_date: date,
-    weekday_mo: str,
-    t: time,
-    tz: ZoneInfo,
-    now_local: datetime,
-) -> datetime:
-    w_target = RRULE_WEEKDAY.get(weekday_mo.upper(), 0)
-    start_scan = max(min_date, now_local.date())
-    for add in range(0, 400):
-        d = start_scan + timedelta(days=add)
-        if d.weekday() != w_target:
-            continue
-        cand = datetime.combine(d, t, tzinfo=tz)
-        if cand >= now_local:
-            return cand
-    return datetime.combine(start_scan, t, tzinfo=tz)
-
-
 def first_run_local(schedule: Dict[str, Any], tz: ZoneInfo, now_local: datetime) -> datetime:
     sched = normalize_schedule(schedule)
     cadence = sched["cadence"]
@@ -216,7 +199,12 @@ def first_run_local(schedule: Dict[str, Any], tz: ZoneInfo, now_local: datetime)
             cand = next_monthly_occurrence(cand, weekday, week_of_month, t, tz, now_local)
         return cand
 
-    return next_matching_weekday_local(min_date, weekday, t, tz, now_local)
+    # Weekly / bi-weekly: anchor on starting date (or today) at time_of_day; step by 7 or 14 days.
+    cand = datetime.combine(min_date, t, tzinfo=tz)
+    step = timedelta(days=7 if cadence == "weekly" else 14)
+    while cand < now_local:
+        cand += step
+    return cand
 
 
 def build_rrule(schedule: Optional[Dict[str, Any]]) -> Optional[str]:
@@ -267,6 +255,10 @@ def compute_schedule_timestamps(
     first_local = first_run_local(sched_in, tz, now_local)
     next_run_utc = first_local.astimezone(UTC).replace(tzinfo=None)
 
+    # Weekly / bi-weekly: weekday in stored schedule follows the anchor date (not a separate picker).
+    if sched_in["cadence"] in ("weekly", "biweekly"):
+        sched_in["weekday"] = RRULE_BY_PY_WEEKDAY[first_local.weekday()]
+
     start_anchor = parse_local_date(sched_in.get("starting_date")) or first_local.date()
     ends_at_utc = compute_ends_at_utc(sched_in, tz, start_anchor)
 
@@ -297,3 +289,33 @@ def next_run_after(
     if c == "daily":
         return base + timedelta(days=1)
     return base + timedelta(days=7)
+
+
+def preview_schedule_display(
+    schedule: Optional[Dict[str, Any]],
+    timezone_name: Optional[str],
+) -> Dict[str, Any]:
+    """Human-readable preview; same rules as compute_schedule_timestamps."""
+    sched_norm, rrule, next_run_utc_str, ends_at_str = compute_schedule_timestamps(schedule, timezone_name)
+    tz = resolve_zone(timezone_name)
+    naive_utc = parse_utc_naive(next_run_utc_str)
+    if not naive_utc:
+        raise ValueError("Could not compute first run time.")
+    local = naive_utc.replace(tzinfo=UTC).astimezone(tz)
+    first_run_local_label = local.strftime("%a %d %b %Y · %H:%M")
+    cadence = sched_norm["cadence"]
+    if cadence == "weekly":
+        cadence_label = "every week"
+    elif cadence == "biweekly":
+        cadence_label = "every two weeks"
+    else:
+        cadence_label = "every month"
+    return {
+        "schedule": sched_norm,
+        "rrule": rrule,
+        "next_run_at_utc": next_run_utc_str,
+        "ends_at_utc": ends_at_str,
+        "first_run_local_label": first_run_local_label,
+        "timezone": (timezone_name or "UTC").strip() or "UTC",
+        "cadence_label": cadence_label,
+    }
