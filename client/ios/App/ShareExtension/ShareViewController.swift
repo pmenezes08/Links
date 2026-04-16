@@ -174,9 +174,11 @@ final class ShareViewController: UIViewController {
     }
 
     private func loadFileURL(provider: NSItemProvider, incoming: URL, indexBox: IndexBox) async -> [[String: Any]]? {
+        // Prefer loadFileRepresentation over loadItem — the latter triggers noisy
+        // system logs ("nil expectedValueClass allowing …") and is less predictable for file URLs.
         await withCheckedContinuation { (cont: CheckedContinuation<[[String: Any]]?, Never>) in
-            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, err in
-                guard let url = item as? URL, err == nil else {
+            provider.loadFileRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { url, err in
+                guard let url = url, err == nil else {
                     cont.resume(returning: nil)
                     return
                 }
