@@ -5,6 +5,11 @@ private let kAppGroupId = "group.co.cpoint.app"
 private let kIncomingSubdir = "IncomingShare"
 private let kMaxItems = 5
 
+/// Reference type so NSItemProvider completion handlers can update the index (Swift forbids capturing `inout` in escaping closures).
+private final class IndexBox {
+    var value = 0
+}
+
 final class ShareViewController: UIViewController {
 
     private let appGroupId = kAppGroupId
@@ -46,13 +51,13 @@ final class ShareViewController: UIViewController {
         }
 
         var manifestItems: [[String: Any]] = []
-        var index = 0
+        let indexBox = IndexBox()
 
         outer: for extItem in items {
             guard let attachments = extItem.attachments else { continue }
             for provider in attachments {
                 if manifestItems.count >= kMaxItems { break outer }
-                if let entries = await copyFromProvider(provider, to: incoming, startIndex: &index) {
+                if let entries = await copyFromProvider(provider, to: incoming, indexBox: indexBox) {
                     manifestItems.append(contentsOf: entries)
                 }
                 if manifestItems.count >= kMaxItems { break outer }
@@ -81,7 +86,7 @@ final class ShareViewController: UIViewController {
         await openHostApp()
     }
 
-    private func copyFromProvider(_ provider: NSItemProvider, to incoming: URL, startIndex: inout Int) async -> [[String: Any]]? {
+    private func copyFromProvider(_ provider: NSItemProvider, to incoming: URL, indexBox: IndexBox) async -> [[String: Any]]? {
         let movieTypes = [
             UTType.movie.identifier,
             "public.mpeg-4",
@@ -89,30 +94,30 @@ final class ShareViewController: UIViewController {
             "public.avi",
         ]
         for t in movieTypes where provider.hasItemConformingToTypeIdentifier(t) {
-            if let r = await loadMovie(provider: provider, typeIdentifier: t, incoming: incoming, startIndex: &startIndex) {
+            if let r = await loadMovie(provider: provider, typeIdentifier: t, incoming: incoming, indexBox: indexBox) {
                 return r
             }
         }
         if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-            if let r = await loadImage(provider: provider, incoming: incoming, startIndex: &startIndex) {
+            if let r = await loadImage(provider: provider, incoming: incoming, indexBox: indexBox) {
                 return r
             }
         }
         if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-            if let r = await loadFileURL(provider: provider, incoming: incoming, startIndex: &startIndex) {
+            if let r = await loadFileURL(provider: provider, incoming: incoming, indexBox: indexBox) {
                 return r
             }
         }
         return nil
     }
 
-    private func loadImage(provider: NSItemProvider, incoming: URL, startIndex: inout Int) async -> [[String: Any]]? {
+    private func loadImage(provider: NSItemProvider, incoming: URL, indexBox: IndexBox) async -> [[String: Any]]? {
         await withCheckedContinuation { (cont: CheckedContinuation<[[String: Any]]?, Never>) in
             provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, err in
                 if let url = url, err == nil {
                     let ext = url.pathExtension.isEmpty ? "jpg" : url.pathExtension
-                    let name = "item_\(startIndex).\(ext)"
-                    startIndex += 1
+                    let name = "item_\(indexBox.value).\(ext)"
+                    indexBox.value += 1
                     let dest = incoming.appendingPathComponent(name)
                     do {
                         if FileManager.default.fileExists(atPath: dest.path) {
@@ -130,8 +135,8 @@ final class ShareViewController: UIViewController {
                         cont.resume(returning: nil)
                         return
                     }
-                    let name = "item_\(startIndex).jpg"
-                    startIndex += 1
+                    let name = "item_\(indexBox.value).jpg"
+                    indexBox.value += 1
                     let dest = incoming.appendingPathComponent(name)
                     do {
                         try data.write(to: dest, options: .atomic)
@@ -144,7 +149,7 @@ final class ShareViewController: UIViewController {
         }
     }
 
-    private func loadMovie(provider: NSItemProvider, typeIdentifier: String, incoming: URL, startIndex: inout Int) async -> [[String: Any]]? {
+    private func loadMovie(provider: NSItemProvider, typeIdentifier: String, incoming: URL, indexBox: IndexBox) async -> [[String: Any]]? {
         await withCheckedContinuation { (cont: CheckedContinuation<[[String: Any]]?, Never>) in
             provider.loadFileRepresentation(forTypeIdentifier: typeIdentifier) { url, err in
                 guard let url = url, err == nil else {
@@ -152,8 +157,8 @@ final class ShareViewController: UIViewController {
                     return
                 }
                 let ext = url.pathExtension.isEmpty ? "mov" : url.pathExtension
-                let name = "item_\(startIndex).\(ext)"
-                startIndex += 1
+                let name = "item_\(indexBox.value).\(ext)"
+                indexBox.value += 1
                 let dest = incoming.appendingPathComponent(name)
                 do {
                     if FileManager.default.fileExists(atPath: dest.path) {
@@ -168,7 +173,7 @@ final class ShareViewController: UIViewController {
         }
     }
 
-    private func loadFileURL(provider: NSItemProvider, incoming: URL, startIndex: inout Int) async -> [[String: Any]]? {
+    private func loadFileURL(provider: NSItemProvider, incoming: URL, indexBox: IndexBox) async -> [[String: Any]]? {
         await withCheckedContinuation { (cont: CheckedContinuation<[[String: Any]]?, Never>) in
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, err in
                 guard let url = item as? URL, err == nil else {
@@ -182,8 +187,8 @@ final class ShareViewController: UIViewController {
                     cont.resume(returning: nil)
                     return
                 }
-                let name = "item_\(startIndex).\(url.pathExtension.isEmpty ? (isVid ? "mp4" : "jpg") : url.pathExtension)"
-                startIndex += 1
+                let name = "item_\(indexBox.value).\(url.pathExtension.isEmpty ? (isVid ? "mp4" : "jpg") : url.pathExtension)"
+                indexBox.value += 1
                 let dest = incoming.appendingPathComponent(name)
                 do {
                     if FileManager.default.fileExists(atPath: dest.path) {
