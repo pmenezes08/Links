@@ -19,6 +19,16 @@ function normalizeUrlForOpen(raw: string): string | null {
   }
 }
 
+/** Short label for toolbar before/around load (hostname); avoids default "New Window". */
+function toolbarTitleFromUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    return u.hostname || url
+  } catch {
+    return url
+  }
+}
+
 function closeWebOverlay() {
   if (webOverlayRoot && webOverlayHost) {
     webOverlayRoot.unmount()
@@ -43,9 +53,10 @@ export async function openExternalInApp(rawUrl: string): Promise<void> {
     try {
       await InAppBrowser.openWebView({
         url,
+        title: toolbarTitleFromUrl(url),
         toolbarType: ToolBarType.COMPACT,
         backgroundColor: BackgroundColor.BLACK,
-        visibleTitle: false,
+        visibleTitle: true,
         showArrow: true,
         activeNativeNavigationForWebview: true,
       })
