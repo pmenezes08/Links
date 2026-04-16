@@ -80,12 +80,15 @@ export function SmartLink({
   href, 
   displayText, 
   onJoinCommunity,
-  onExternalClick 
+  onExternalClick,
+  linkClassName,
 }: { 
   href: string
   displayText: string
   onJoinCommunity?: (communityName: string, communityId: number) => void
   onExternalClick?: (url: string) => void
+  /** Extra classes for the anchor (e.g. smaller text in SOURCES block). */
+  linkClassName?: string
 }) {
   const navigate = useNavigate()
   const [processing, setProcessing] = useState(false)
@@ -149,7 +152,7 @@ export function SmartLink({
     <a
       href={href}
       onClick={handleClick}
-      className={`text-[#4db6ac] underline inline py-0.5 break-all ${processing ? 'opacity-50 cursor-wait' : ''}`}
+      className={`text-[#4db6ac] underline inline py-0.5 break-all ${processing ? 'opacity-50 cursor-wait' : ''} ${linkClassName || ''}`}
       style={{ minHeight: '32px', lineHeight: '1.6' }}
     >
       {displayText}
@@ -334,6 +337,54 @@ export function renderTextWithSourceLinks(
   return parts.length > 0 ? <>{parts}</> : text
 }
 
+/** Structured news roundups end with a SOURCES block (see render_sources_section). */
+export const SOURCES_BLOCK_MARKER = '\nSOURCES\n'
+
+function renderTextWithLinksInner(
+  text: string,
+  onJoinCommunity?: (communityName: string, communityId: number) => void,
+  onMentionClick?: (username: string) => void,
+  linkClassName?: string,
+): React.ReactNode {
+  if (!text) return null
+
+  const parts: React.ReactNode[] = []
+  let lastIndex = 0
+
+  const markdownRegex = new RegExp(MARKDOWN_LINK_REGEX)
+  let match
+
+  while ((match = markdownRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      const textBefore = text.substring(lastIndex, match.index)
+      parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(textBefore))), onMentionClick))
+    }
+
+    const displayText = match[1]
+    const url = match[2]
+    const fullUrl = url.startsWith('http') ? url : `https://${url}`
+
+    parts.push(
+      <SmartLink
+        key={match.index}
+        href={fullUrl}
+        displayText={displayText}
+        onJoinCommunity={onJoinCommunity}
+        linkClassName={linkClassName}
+      />,
+    )
+
+    lastIndex = match.index + match[0].length
+  }
+
+  if (lastIndex < text.length) {
+    const remainingText = text.substring(lastIndex)
+    parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(remainingText))), onMentionClick))
+  }
+
+  return parts.length > 0 ? parts : text
+}
+
 /**
  * Renders text with clickable links (converts markdown links to HTML)
  * Internal c-point.co links are handled within the app
@@ -342,43 +393,27 @@ export function renderTextWithSourceLinks(
 export function renderTextWithLinks(
   text: string,
   onJoinCommunity?: (communityName: string, communityId: number) => void,
-  onMentionClick?: (username: string) => void
+  onMentionClick?: (username: string) => void,
+  options?: { sourcesSmallLinks?: boolean },
 ): React.ReactNode {
   if (!text) return null
-  
-  const parts: React.ReactNode[] = []
-  let lastIndex = 0
-  
-  // Find all markdown links
-  const markdownRegex = new RegExp(MARKDOWN_LINK_REGEX)
-  let match
-  
-  while ((match = markdownRegex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      const textBefore = text.substring(lastIndex, match.index)
-      parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(textBefore))), onMentionClick))
+
+  if (options?.sourcesSmallLinks) {
+    const idx = text.indexOf(SOURCES_BLOCK_MARKER)
+    if (idx !== -1) {
+      const before = text.slice(0, idx)
+      const after = text.slice(idx + SOURCES_BLOCK_MARKER.length)
+      return (
+        <>
+          {renderTextWithLinksInner(before, onJoinCommunity, onMentionClick)}
+          <br />
+          <span className="font-semibold">SOURCES</span>
+          <br />
+          {renderTextWithLinksInner(after, onJoinCommunity, onMentionClick, 'text-[10px]')}
+        </>
+      )
     }
-    
-    const displayText = match[1]
-    const url = match[2]
-    const fullUrl = url.startsWith('http') ? url : `https://${url}`
-    
-    parts.push(
-      <SmartLink
-        key={match.index}
-        href={fullUrl}
-        displayText={displayText}
-        onJoinCommunity={onJoinCommunity}
-      />
-    )
-    
-    lastIndex = match.index + match[0].length
   }
-  
-  if (lastIndex < text.length) {
-    const remainingText = text.substring(lastIndex)
-    parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(remainingText))), onMentionClick))
-  }
-  
-  return parts.length > 0 ? parts : text
+
+  return renderTextWithLinksInner(text, onJoinCommunity, onMentionClick)
 }

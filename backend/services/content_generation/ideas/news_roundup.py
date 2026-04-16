@@ -239,5 +239,6 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
         delivery_channel="feed_post",
         content=format_response_links(body),
         source_links=links,
+        append_sources=False,
         meta={"topic": topic, **topic_meta},
     )

@@ -15,7 +15,13 @@ import ZoomableImage from '../components/ZoomableImage'
 import { useHeader } from '../contexts/HeaderContext'
 import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
-import { renderTextWithLinks, renderTextWithSourceLinks, detectLinks, replaceLinkInText, type DetectedLink } from '../utils/linkUtils.tsx'
+import {
+  renderTextWithLinks,
+  renderTextWithSourceLinks,
+  detectLinks,
+  replaceLinkInText,
+  type DetectedLink,
+} from '../utils/linkUtils.tsx'
 import EditableAISummary from '../components/EditableAISummary'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
@@ -4320,7 +4326,11 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               const displayContent = videoEmbed ? removeVideoUrlFromText(post.content, videoEmbed) : post.content
               return (
                 <>
-                  {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">{renderTextWithLinks(displayContent, undefined, mentionToProfile)}</div>}
+                  {displayContent && (
+                    <div className="px-3 whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">
+                      {renderTextWithLinks(displayContent, undefined, mentionToProfile, { sourcesSmallLinks: true })}
+                    </div>
+                  )}
                   {videoEmbed && <VideoEmbed embed={videoEmbed} />}
                 </>
               )

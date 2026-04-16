@@ -292,11 +292,11 @@ def format_opinion_story_item(item: Dict[str, Any]) -> str:
 
 
 def _section_heading_feed(title: str) -> str:
-    """ALL CAPS section title for plain-text / feed (no ** markdown)."""
+    """ALL CAPS section title; bold in feed (same pattern as **Leave a comment:**)."""
     t = strip_feed_markdown_emphasis(str(title or "").strip())
     if not t:
         return ""
-    return t.upper()
+    return f"**{t.upper()}**"
 
 
 def take_first_opinion_article(sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
