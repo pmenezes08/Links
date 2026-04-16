@@ -264,7 +264,8 @@ export function preserveRichTextNewlines(text: string): React.ReactNode[] {
 export function renderTextWithSourceLinks(
   text: string,
   shortenUrls: boolean = false,
-  onMentionClick?: (username: string) => void
+  onMentionClick?: (username: string) => void,
+  onExternalClick?: (url: string) => void,
 ): React.ReactNode {
   if (!text) return null
   
@@ -305,25 +306,13 @@ export function renderTextWithSourceLinks(
       }
     }
     
-    const handleLinkClick = (e: React.MouseEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      window.open(url, '_blank', 'noopener,noreferrer')
-    }
-    
     parts.push(
-      <a
+      <SmartLink
         key={`link-${effectiveStart}`}
         href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-[#4db6ac] underline inline py-0.5 break-all"
-        style={{ lineHeight: '1.6' }}
-        title={shortenUrls ? url : undefined}
-        onClick={handleLinkClick}
-      >
-        {displayText}
-      </a>
+        displayText={displayText}
+        onExternalClick={onExternalClick}
+      />,
     )
     
     lastIndex = match.index + match[0].length
@@ -340,11 +329,126 @@ export function renderTextWithSourceLinks(
 /** Structured news roundups end with a SOURCES block (see render_sources_section). */
 export const SOURCES_BLOCK_MARKER = '\nSOURCES\n'
 
+/**
+ * Markdown links, plain URLs, optional SOURCES block; uses SmartLink for external in-app handling.
+ */
+export function renderRichText(
+  input: string,
+  shortenUrls: boolean = false,
+  onMentionClick?: (username: string) => void,
+  onArticleOpen?: (url: string) => void,
+  markdownLinkClassName?: string,
+): React.ReactNode {
+  if (!markdownLinkClassName && input.includes(SOURCES_BLOCK_MARKER)) {
+    const idx = input.indexOf(SOURCES_BLOCK_MARKER)
+    return (
+      <>
+        {renderRichText(
+          input.slice(0, idx),
+          shortenUrls,
+          onMentionClick,
+          onArticleOpen,
+          undefined,
+        )}
+        <br />
+        <span className="font-semibold">SOURCES</span>
+        <br />
+        {renderRichText(
+          input.slice(idx + SOURCES_BLOCK_MARKER.length),
+          shortenUrls,
+          onMentionClick,
+          onArticleOpen,
+          'text-[10px]',
+        )}
+      </>
+    )
+  }
+
+  const nodes: Array<React.ReactNode> = []
+  const markdownRe = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  let sourceCounter = 0
+  while ((match = markdownRe.exec(input))) {
+    if (match.index > lastIndex) {
+      nodes.push(
+        ...colorizeMentions(
+          replaceFaIcons(
+            applyBoldEmphasis(preserveRichTextNewlines(input.slice(lastIndex, match.index))),
+          ),
+          onMentionClick,
+        ),
+      )
+    }
+    const label = match[1]
+    const url = match[2]
+    nodes.push(
+      <SmartLink
+        key={`md-${match.index}`}
+        href={url}
+        displayText={label}
+        onExternalClick={onArticleOpen}
+        linkClassName={markdownLinkClassName}
+      />,
+    )
+    lastIndex = markdownRe.lastIndex
+  }
+  const rest = input.slice(lastIndex)
+  const urlRe = /(https?:\/\/[^\s]+|www\.[^\s]+)/g
+  let urlLast = 0
+  let m: RegExpExecArray | null
+  while ((m = urlRe.exec(rest))) {
+    if (m.index > urlLast) {
+      nodes.push(
+        ...colorizeMentions(
+          replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(rest.slice(urlLast, m.index)))),
+          onMentionClick,
+        ),
+      )
+    }
+    const urlText = m[0]
+    const href = urlText.startsWith('http') ? urlText : `https://${urlText}`
+    if (shortenUrls) {
+      sourceCounter++
+      nodes.push(
+        <SmartLink
+          key={`u-${lastIndex + m.index}`}
+          href={href}
+          displayText={`[source${sourceCounter > 1 ? ` ${sourceCounter}` : ''}]`}
+          onExternalClick={onArticleOpen}
+          linkClassName={markdownLinkClassName}
+        />,
+      )
+    } else {
+      nodes.push(
+        <SmartLink
+          key={`u-${lastIndex + m.index}`}
+          href={href}
+          displayText={urlText}
+          onExternalClick={onArticleOpen}
+          linkClassName={markdownLinkClassName}
+        />,
+      )
+    }
+    urlLast = urlRe.lastIndex
+  }
+  if (urlLast < rest.length) {
+    nodes.push(
+      ...colorizeMentions(
+        replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(rest.slice(urlLast)))),
+        onMentionClick,
+      ),
+    )
+  }
+  return <>{nodes}</>
+}
+
 function renderTextWithLinksInner(
   text: string,
   onJoinCommunity?: (communityName: string, communityId: number) => void,
   onMentionClick?: (username: string) => void,
   linkClassName?: string,
+  onExternalClick?: (url: string) => void,
 ): React.ReactNode {
   if (!text) return null
 
@@ -370,6 +474,7 @@ function renderTextWithLinksInner(
         href={fullUrl}
         displayText={displayText}
         onJoinCommunity={onJoinCommunity}
+        onExternalClick={onExternalClick}
         linkClassName={linkClassName}
       />,
     )
@@ -394,9 +499,11 @@ export function renderTextWithLinks(
   text: string,
   onJoinCommunity?: (communityName: string, communityId: number) => void,
   onMentionClick?: (username: string) => void,
-  options?: { sourcesSmallLinks?: boolean },
+  options?: { sourcesSmallLinks?: boolean; onExternalClick?: (url: string) => void },
 ): React.ReactNode {
   if (!text) return null
+
+  const onExternalClick = options?.onExternalClick
 
   if (options?.sourcesSmallLinks) {
     const idx = text.indexOf(SOURCES_BLOCK_MARKER)
@@ -405,15 +512,15 @@ export function renderTextWithLinks(
       const after = text.slice(idx + SOURCES_BLOCK_MARKER.length)
       return (
         <>
-          {renderTextWithLinksInner(before, onJoinCommunity, onMentionClick)}
+          {renderTextWithLinksInner(before, onJoinCommunity, onMentionClick, undefined, onExternalClick)}
           <br />
           <span className="font-semibold">SOURCES</span>
           <br />
-          {renderTextWithLinksInner(after, onJoinCommunity, onMentionClick, 'text-[10px]')}
+          {renderTextWithLinksInner(after, onJoinCommunity, onMentionClick, 'text-[10px]', onExternalClick)}
         </>
       )
     }
   }
 
-  return renderTextWithLinksInner(text, onJoinCommunity, onMentionClick)
+  return renderTextWithLinksInner(text, onJoinCommunity, onMentionClick, undefined, onExternalClick)
 }

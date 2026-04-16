@@ -32,6 +32,7 @@ import { cacheFeed, getCachedFeed } from '../utils/offlineDb'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { useBadges } from '../contexts/BadgeContext'
 import { handleLogoutClick } from '../utils/logout'
+import { openExternalInApp } from '../utils/openExternalInApp'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
@@ -3905,6 +3906,9 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   const mentionToProfile = useCallback((u: string) => {
     navigate?.(`/profile/${encodeURIComponent(u)}`)
   }, [navigate])
+  const openExternalArticle = useCallback((url: string) => {
+    void openExternalInApp(url)
+  }, [])
   const cardRef = useRef<HTMLDivElement | null>(null)
   const mediaInputRef = useRef<HTMLInputElement | null>(null)
   const [isEditing, setIsEditing] = useState(false)
@@ -4328,7 +4332,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                 <>
                   {displayContent && (
                     <div className="px-3 whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">
-                      {renderTextWithLinks(displayContent, undefined, mentionToProfile, { sourcesSmallLinks: true })}
+                      {renderTextWithLinks(displayContent, undefined, mentionToProfile, { sourcesSmallLinks: true, onExternalClick: openExternalArticle })}
                     </div>
                   )}
                   {videoEmbed && <VideoEmbed embed={videoEmbed} />}
@@ -4742,7 +4746,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   </div>
                   {r.content ? (
                     <div className="text-[#dfe6e9] whitespace-pre-wrap break-words">
-                      {renderTextWithSourceLinks(r.content, false, mentionToProfile)}
+                      {renderTextWithSourceLinks(r.content, false, mentionToProfile, openExternalArticle)}
                     </div>
                   ) : null}
                   {r.image_path ? (

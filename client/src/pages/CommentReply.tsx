@@ -11,7 +11,8 @@ import MentionTextarea from '../components/MentionTextarea'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
-import { colorizeMentions, preserveRichTextNewlines } from '../utils/linkUtils'
+import { renderRichText } from '../utils/linkUtils'
+import { openExternalInApp } from '../utils/openExternalInApp'
 
 type Reply = {
   id: number
@@ -52,64 +53,6 @@ type ParentReply = {
   parent_reply_id?: number | null
 }
 
-function renderRichText(input: string, onMentionClick?: (username: string) => void) {
-  const nodes: Array<React.ReactNode> = []
-  const markdownRe = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g
-  let lastIndex = 0
-  let match: RegExpExecArray | null
-
-  while ((match = markdownRe.exec(input))) {
-    if (match.index > lastIndex) {
-      nodes.push(...colorizeMentions(preserveRichTextNewlines(input.slice(lastIndex, match.index)), onMentionClick))
-    }
-    const label = match[1]
-    const url = match[2]
-    nodes.push(
-      <a
-        key={`md-${match.index}`}
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-[#4db6ac] underline-offset-2 hover:underline break-words"
-      >
-        {label}
-      </a>
-    )
-    lastIndex = markdownRe.lastIndex
-  }
-
-  const rest = input.slice(lastIndex)
-  const urlRe = /(https?:\/\/[^\s]+|www\.[^\s]+)/g
-  let urlLast = 0
-  let m: RegExpExecArray | null
-
-  while ((m = urlRe.exec(rest))) {
-    if (m.index > urlLast) {
-      nodes.push(...colorizeMentions(preserveRichTextNewlines(rest.slice(urlLast, m.index)), onMentionClick))
-    }
-    const urlText = m[0]
-    const href = urlText.startsWith('http') ? urlText : `https://${urlText}`
-    nodes.push(
-      <a
-        key={`u-${lastIndex + m.index}`}
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-[#4db6ac] underline-offset-2 hover:underline break-words"
-      >
-        {urlText}
-      </a>
-    )
-    urlLast = urlRe.lastIndex
-  }
-
-  if (urlLast < rest.length) {
-    nodes.push(...colorizeMentions(preserveRichTextNewlines(rest.slice(urlLast)), onMentionClick))
-  }
-
-  return <>{nodes}</>
-}
-
 export default function CommentReply() {
   const { reply_id } = useParams<{ reply_id: string }>()
   const navigate = useNavigate()
@@ -123,6 +66,10 @@ export default function CommentReply() {
   const [sendingReply, setSendingReply] = useState(false)
   const [showGifPicker, setShowGifPicker] = useState(false)
   const [selectedGif, setSelectedGif] = useState<GifSelection | null>(null)
+
+  const openArticleReader = useCallback((url: string) => {
+    void openExternalInApp(url)
+  }, [])
   
   // Edit state for main reply
   const [isEditingMain, setIsEditingMain] = useState(false)
@@ -678,7 +625,7 @@ export default function CommentReply() {
                     <span className="text-xs text-white/40">{formatSmartTime(post.timestamp)}</span>
                   </div>
                   <div className="mt-1 text-[14px] text-white/70 line-clamp-3">
-                    {renderRichText(post.content, (u) => navigate(`/profile/${encodeURIComponent(u)}`))}
+                    {renderRichText(post.content, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`), openArticleReader)}
                   </div>
                   {post.image_path && (
                     <div className="mt-2">
@@ -713,7 +660,7 @@ export default function CommentReply() {
                     <span className="text-xs text-white/40">{formatSmartTime(parent.timestamp)}</span>
                   </div>
                   <div className="mt-1 text-[13px] text-white/60 line-clamp-2">
-                    {renderRichText(parent.content, (u) => navigate(`/profile/${encodeURIComponent(u)}`))}
+                    {renderRichText(parent.content, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`), openArticleReader)}
                   </div>
                   {parent.image_path && (
                     <div className="mt-2">
@@ -766,7 +713,7 @@ export default function CommentReply() {
                   <>
                     {reply.content && (
                       <div className="mt-2 text-[15px] whitespace-pre-wrap break-words text-white/90">
-                        {renderRichText(reply.content, (u) => navigate(`/profile/${encodeURIComponent(u)}`))}
+                        {renderRichText(reply.content, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`), openArticleReader)}
                       </div>
                     )}
                   </>
@@ -926,7 +873,7 @@ export default function CommentReply() {
                           <>
                             {nr.content && (
                               <div className="mt-1 text-[14px] whitespace-pre-wrap break-words text-white/80">
-                                {renderRichText(nr.content, (u) => navigate(`/profile/${encodeURIComponent(u)}`))}
+                                {renderRichText(nr.content, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`), openArticleReader)}
                               </div>
                             )}
                           </>
