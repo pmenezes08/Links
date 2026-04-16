@@ -10,6 +10,7 @@ Failures are non-fatal: each URL is best-effort; callers aggregate errors for Gr
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -418,3 +419,38 @@ def enrich_shared_activity_for_profile(
     )
     body = "\n".join(ordered_blocks)
     return header + body, errors, external_sources
+
+
+def fetch_article_for_reader(url: str) -> Dict[str, Any]:
+    """Fetch clean article text for the in-platform reader modal. Uses Redis caching
+    and reuses the private _fetch_article_text for trafilatura-based extraction.
+    """
+    from typing import Any, Dict  # for runtime
+    try:
+        from redis_cache import get_redis_client
+        cache_key = f"article:reader:{hash(url)}"
+        client = get_redis_client()
+        cached = client.get(cache_key)
+        if cached:
+            return json.loads(cached.decode() if isinstance(cached, bytes) else cached)
+    except Exception:
+        pass  # continue without cache on failure
+
+    text, error = _fetch_article_text(url)
+    result: Dict[str, Any] = {
+        "url": url,
+        "title": "Article Reader",  # can be improved with metadata extraction
+        "content": text or "",
+        "error": str(error) if error else None,
+        "success": error is None,
+    }
+
+    if error is None and text:
+        try:
+            from redis_cache import get_redis_client
+            client = get_redis_client()
+            client.set(cache_key, json.dumps(result), ex=3600 * 6)  # 6 hour cache
+        except Exception:
+            pass  # non-critical
+
+    return result

@@ -7,6 +7,7 @@ from functools import wraps
 from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request, session
+import os
 
 from backend.services.content_generation import (
     create_job,
@@ -19,13 +20,16 @@ from backend.services.content_generation import (
     ensure_tables,
     execute_job,
     get_descriptor,
+    get_due_jobs,
     get_job,
     get_run,
     list_ideas,
     list_jobs,
     list_runs,
     update_job,
+    update_job_next_run,
 )
+from backend.services.steve_content_enrichment import fetch_article_for_reader
 from backend.services.content_generation.permissions import (
     can_manage_community_jobs,
     can_manage_member_jobs,
@@ -508,4 +512,54 @@ def admin_run_content_generation_job_api(job_id: int):
     except Exception as exc:
         logger.error("Admin failed to execute content generation job %s: %s", job_id, exc, exc_info=True)
         return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@content_generation_bp.route("/api/content-generation/cron/process-due-jobs", methods=["POST"])
+def api_process_due_content_generation_jobs():
+    """Cron job endpoint to process due content generation jobs (roundups, etc.) based on user-chosen cadence.
+    Protected by X-API-Key like poll_notification_check. Updates next_run_at after execution.
+    Deploy as a cron job (e.g. every 5-15 minutes).
+    """
+    api_key = request.headers.get("X-API-Key") or request.form.get("api_key")
+    expected_key = os.getenv("CONTENT_GENERATION_CRON_API_KEY")
+
+    if expected_key and api_key != expected_key:
+        logger.warning("Content generation due-jobs cron called with invalid API key: %s", api_key)
+        return jsonify({"success": False, "error": "Invalid API key"}), 401
+
+    try:
+        due_jobs = get_due_jobs(limit=5)
+        processed = 0
+        for job in due_jobs:
+            try:
+                cadence = str((job.get("schedule") or {}).get("cadence") or "").strip().lower()
+                result = execute_job(job, triggered_by_username="system-cron")
+                update_job_next_run(job["id"], cadence)
+                processed += 1
+                logger.info("Processed due job %s (%s): %s", job.get("id"), cadence, result.get("status"))
+            except Exception as job_err:
+                logger.error("Failed to process due job %s: %s", job.get("id"), job_err, exc_info=True)
+        return jsonify({"success": True, "processed": processed, "due": len(due_jobs)})
+    except Exception as exc:
+        logger.error("Due jobs cron error: %s", exc, exc_info=True)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@content_generation_bp.route("/api/articles/read", methods=["GET"])
+def api_read_article():
+    """Proxy endpoint for in-platform article reader. Reuses trafilatura parsing with Redis caching.
+    Returns clean text suitable for modal display. URL must be provided as query param.
+    """
+    url = request.args.get("url", "").strip()
+    if not url:
+        return jsonify({"success": False, "error": "url query parameter is required"}), 400
+    if not url.startswith(("http://", "https://")):
+        return jsonify({"success": False, "error": "Invalid URL"}), 400
+
+    try:
+        result = fetch_article_for_reader(url)
+        return jsonify({"success": True, **result})
+    except Exception as exc:
+        logger.error("Article reader API failed for %s: %s", url, exc, exc_info=True)
+        return jsonify({"success": False, "error": "Failed to fetch article"}), 500
 

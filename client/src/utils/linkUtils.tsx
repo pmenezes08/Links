@@ -76,14 +76,16 @@ export function replaceLinkInText(text: string, oldUrl: string, newDisplayText: 
 /**
  * Smart link component that handles internal c-point.co links within the app
  */
-function SmartLink({ 
+export function SmartLink({ 
   href, 
   displayText, 
-  onJoinCommunity 
+  onJoinCommunity,
+  onExternalClick 
 }: { 
   href: string
   displayText: string
   onJoinCommunity?: (communityName: string, communityId: number) => void
+  onExternalClick?: (url: string) => void
 }) {
   const navigate = useNavigate()
   const [processing, setProcessing] = useState(false)
@@ -100,7 +102,12 @@ function SmartLink({
 
     // Check if this is an internal app.c-point.co link
     if (!isInternalLink(href)) {
-      // External link - open normally
+      // External link - prefer in-platform article reader for roundups/news if provided
+      if (onExternalClick) {
+        onExternalClick(href)
+        return
+      }
+      // Fallback to new tab
       window.open(href, '_blank', 'noopener,noreferrer')
       return
     }

@@ -18,7 +18,8 @@ import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import EditableAISummary from '../components/EditableAISummary'
 import { clearDeviceCache, readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
-import { colorizeMentions, preserveRichTextNewlines, applyBoldEmphasis, replaceFaIcons } from '../utils/linkUtils'
+import { colorizeMentions, preserveRichTextNewlines, applyBoldEmphasis, replaceFaIcons, SmartLink } from '../utils/linkUtils'
+import ArticleReaderModal from '../components/ArticleReaderModal'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, reply_count?: number, view_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
@@ -40,21 +41,29 @@ function readCachedPostDetail(postId: string | undefined): { post: Post | null; 
 function renderRichText(
   input: string,
   shortenUrls: boolean = false,
-  onMentionClick?: (username: string) => void
+  onMentionClick?: (username: string) => void,
+  onArticleOpen?: (url: string) => void
 ){
   const nodes: Array<React.ReactNode> = []
   const markdownRe = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g
   let lastIndex = 0
   let match: RegExpExecArray | null
   let sourceCounter = 0
-  // First, process markdown links
+  // First, process markdown links - use SmartLink for article reader support on roundup/news links
   while ((match = markdownRe.exec(input))){
     if (match.index > lastIndex){
       nodes.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(input.slice(lastIndex, match.index)))), onMentionClick))
     }
     const label = match[1]
     const url = match[2]
-    nodes.push(<a key={`md-${match.index}`} href={url} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline break-words">{label}</a>)
+    nodes.push(
+      <SmartLink 
+        key={`md-${match.index}`} 
+        href={url} 
+        displayText={label}
+        onExternalClick={onArticleOpen}
+      />
+    )
     lastIndex = markdownRe.lastIndex
   }
   const rest = input.slice(lastIndex)
@@ -72,9 +81,23 @@ function renderRichText(
     // If shortenUrls is true, show "source" instead of full URL
     if (shortenUrls) {
       sourceCounter++
-      nodes.push(<a key={`u-${lastIndex + m.index}`} href={href} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline" title={urlText}>[source{sourceCounter > 1 ? ` ${sourceCounter}` : ''}]</a>)
+      nodes.push(
+        <SmartLink 
+          key={`u-${lastIndex + m.index}`} 
+          href={href} 
+          displayText={`[source${sourceCounter > 1 ? ` ${sourceCounter}` : ''}]`}
+          onExternalClick={onArticleOpen}
+        />
+      )
     } else {
-      nodes.push(<a key={`u-${lastIndex + m.index}`} href={href} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline break-words">{urlText}</a>)
+      nodes.push(
+        <SmartLink 
+          key={`u-${lastIndex + m.index}`} 
+          href={href} 
+          displayText={urlText}
+          onExternalClick={onArticleOpen}
+        />
+      )
     }
     urlLast = urlRe.lastIndex
   }
@@ -113,6 +136,20 @@ export default function PostDetail(){
   const [submittingReply, setSubmittingReply] = useState(false)
   const [mediaCarouselIndex, setMediaCarouselIndex] = useState(0)
   const [steveIsTyping, setSteveIsTyping] = useState(false)
+  
+  // Article reader modal state for in-platform reading of roundup/news articles
+  const [articleReaderOpen, setArticleReaderOpen] = useState(false)
+  const [currentArticleUrl, setCurrentArticleUrl] = useState<string | null>(null)
+  
+  const openArticleReader = useCallback((url: string) => {
+    setCurrentArticleUrl(url)
+    setArticleReaderOpen(true)
+  }, [])
+  
+  const closeArticleReader = useCallback(() => {
+    setArticleReaderOpen(false)
+    setCurrentArticleUrl(null)
+  }, [])
   
   // Check if message contains @Steve mention (case insensitive)
   const containsSteveMention = (text: string) => {
@@ -1537,7 +1574,7 @@ export default function PostDetail(){
                   const displayContent = videoEmbed ? removeVideoUrlFromText(post.content, videoEmbed) : post.content
                   return (
                     <>
-                      {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] break-words">{renderRichText(displayContent, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`))}</div>}
+                      {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] break-words">{renderRichText(displayContent, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`), openArticleReader)}</div>}
                       {videoEmbed && <VideoEmbed embed={videoEmbed} />}
                     </>
                   )
@@ -2508,7 +2545,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             ) : null}
           </div>
           {!isEditing ? (
-            <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words">{renderRichText(reply.content, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`))}</div>
+            <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words">{renderRichText(reply.content, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`), openArticleReader)}</div>
           ) : (
             <div className="mt-1" onClick={(e) => e.stopPropagation()}>
               <textarea
@@ -2760,5 +2797,12 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
         </div>
       ) : null}
     </div>
+
+      {/* In-platform Article Reader Modal (like X/Twitter) - for roundup article links */}
+      <ArticleReaderModal 
+        isOpen={articleReaderOpen} 
+        url={currentArticleUrl} 
+        onClose={closeArticleReader} 
+      />
   )
 }

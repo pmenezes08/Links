@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
 from backend.services.database import USE_MYSQL, get_db_connection
@@ -585,4 +585,46 @@ def list_runs(
         c.execute(query, tuple(params))
         rows = c.fetchall() or []
     return [_run_from_row(row) for row in rows]
+
+
+def get_due_jobs(limit: int = 10) -> List[Dict[str, Any]]:
+    """Get active jobs that are due for execution based on next_run_at."""
+    ensure_tables()
+    now = _utc_now_str()
+    query = """
+        SELECT * FROM content_generation_jobs 
+        WHERE status = 'active' AND (next_run_at IS NULL OR next_run_at <= ?)
+        ORDER BY next_run_at ASC, id ASC
+        LIMIT ?
+    """
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(query, (now, limit))
+        rows = c.fetchall() or []
+    return [_job_from_row(row) for row in rows]
+
+
+def update_job_next_run(job_id: int, cadence: str) -> None:
+    """Update next_run_at based on cadence after a successful run (simple approximation)."""
+    ensure_tables()
+    now = datetime.utcnow()
+    if cadence == "daily":
+        delta = timedelta(days=1)
+    elif cadence in ("biweekly", "bi-weekly"):
+        delta = timedelta(days=14)
+    elif cadence == "monthly":
+        delta = timedelta(days=30)  # approximate; use relativedelta for precision in production
+    else:
+        delta = timedelta(days=7)  # default to weekly
+    next_run = (now + delta).isoformat()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            "UPDATE content_generation_jobs SET next_run_at = ?, updated_at = ? WHERE id = ?",
+            (next_run, _utc_now_str(), job_id),
+        )
+        try:
+            conn.commit()
+        except Exception:
+            pass
 
