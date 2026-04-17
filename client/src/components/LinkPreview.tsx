@@ -63,6 +63,25 @@ export function extractUrls(text: string): string[] {
   }).slice(0, 3)
 }
 
+/** Rich link cards for feed/detail — omits hosts already shown via VideoEmbed. */
+export function feedLinkPreviewUrls(text: string, videoEmbedUrl?: string | null): string[] {
+  const urls = extractUrls(text)
+  const ve = (videoEmbedUrl || '').toLowerCase()
+  return urls.filter(u => {
+    const lu = u.toLowerCase()
+    if (ve && (lu.includes(ve.slice(0, 48)) || ve.includes(lu.slice(0, 48)))) return false
+    if (
+      lu.includes('youtube.com') ||
+      lu.includes('youtu.be') ||
+      lu.includes('vimeo.com') ||
+      lu.includes('tiktok.com')
+    ) {
+      return false
+    }
+    return true
+  })
+}
+
 function getDomainIcon(domain: string): string {
   if (domain.includes('youtube') || domain.includes('youtu.be')) return 'fa-brands fa-youtube'
   if (domain.includes('instagram')) return 'fa-brands fa-instagram'

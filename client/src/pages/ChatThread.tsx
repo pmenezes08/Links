@@ -44,7 +44,12 @@ import {
   MessageBubble,
 } from '../chat'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
-import { takePendingShareFilesOnce, releaseShareHandoffKey } from '../services/shareImportStore'
+import {
+  takePendingShareFilesOnce,
+  takePendingShareUrlsOnce,
+  releaseShareHandoffKey,
+  releaseShareUrlHandoffKey,
+} from '../services/shareImportStore'
 
 type Message = ChatMessage
 
@@ -203,24 +208,40 @@ export default function ChatThread(){
   useEffect(() => {
     if (shareAttach !== '1' || !username) return
     const handoffKey = `dm:${username}:share`
-    const files = takePendingShareFilesOnce(handoffKey)
-    if (!files?.length) return
     if (shareAttachDoneRef.current) return
+    const files = takePendingShareFilesOnce(handoffKey)
+    const urls = takePendingShareUrlsOnce(handoffKey)
+    if (!files?.length && !urls?.length) return
     shareAttachDoneRef.current = true
-    const newMedia = files.map(file => {
-      const t = file.type.startsWith('video/')
-        ? 'video'
-        : file.type.startsWith('audio/')
-          ? 'audio'
-          : 'image'
-      return {
-        file,
-        previewUrl: URL.createObjectURL(file),
-        type: t as 'image' | 'video' | 'audio',
+    if (files?.length) {
+      const newMedia = files.map(file => {
+        const t = file.type.startsWith('video/')
+          ? 'video'
+          : file.type.startsWith('audio/')
+            ? 'audio'
+            : 'image'
+        return {
+          file,
+          previewUrl: URL.createObjectURL(file),
+          type: t as 'image' | 'video' | 'audio',
+        }
+      })
+      setPendingMedia(prev => [...prev, ...newMedia])
+      setPreviewIndex(0)
+    }
+    if (urls?.length) {
+      const text = urls.join('\n\n')
+      const ta = textareaRef.current
+      if (ta) {
+        const merged = ta.value.trim() ? `${text}\n\n${ta.value}` : text
+        ta.value = merged
+        draftRef.current = merged
+        setDraftDisplay(merged)
+      } else {
+        draftRef.current = text
+        setDraftDisplay(text)
       }
-    })
-    setPendingMedia(prev => [...prev, ...newMedia])
-    setPreviewIndex(0)
+    }
     setSearchParams(
       p => {
         const n = new URLSearchParams(p)
@@ -233,7 +254,11 @@ export default function ChatThread(){
 
   useEffect(() => {
     if (shareAttach === '1') return
-    if (username) releaseShareHandoffKey(`dm:${username}:share`)
+    if (username) {
+      const k = `dm:${username}:share`
+      releaseShareHandoffKey(k)
+      releaseShareUrlHandoffKey(k)
+    }
   }, [shareAttach, username])
   
   const scrollToBottom = useCallback(() => {

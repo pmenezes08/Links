@@ -15,6 +15,7 @@ import ImageLoader from '../components/ImageLoader'
 import ZoomableImage from '../components/ZoomableImage'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import VideoEmbed from '../components/VideoEmbed'
+import LinkPreview, { feedLinkPreviewUrls } from '../components/LinkPreview'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import EditableAISummary from '../components/EditableAISummary'
 import { clearDeviceCache, readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
@@ -1496,6 +1497,11 @@ export default function PostDetail(){
                   return (
                     <>
                       {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] break-words">{renderRichText(displayContent, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`), openArticleReader)}</div>}
+                      {feedLinkPreviewUrls(post.content, null).map(u => (
+                        <div key={u} className="px-3 mt-2">
+                          <LinkPreview url={u} sent={false} />
+                        </div>
+                      ))}
                       {videoEmbed && <VideoEmbed embed={videoEmbed} />}
                     </>
                   )

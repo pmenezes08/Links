@@ -1,13 +1,15 @@
 import { Capacitor, registerPlugin } from '@capacitor/core'
-import { clearPendingShareFiles, setPendingShareFiles } from './shareImportStore'
+import { clearPendingShareFiles, clearPendingShareUrls, setPendingShareFiles, setPendingShareUrls } from './shareImportStore'
 
 export type ShareImportItem = {
-  /** Original filename from the share manifest (e.g. item_0.jpg). */
+  /** Original filename from the share manifest (e.g. item_0.jpg). Empty for link-only items. */
   filename?: string
   mimeType: string
   kind: string
-  /** Base64 file payload from native; avoids WKWebView fetch(capacitor://_capacitor_file_/...) failures. */
-  dataBase64: string
+  /** Base64 file payload from native; omitted or empty for link items. */
+  dataBase64?: string
+  /** When kind is "link", shared URL (Instagram, X, etc.). */
+  url?: string
 }
 
 interface ShareImportPluginInterface {
@@ -88,9 +90,13 @@ export function fileIsFeedImageOrVideo(f: File): boolean {
   return f.type.startsWith('image/') || f.type.startsWith('video/')
 }
 
-/** Reads App Group manifest via native bridge, copies into File[], clears native inbox. */
-export async function hydrateShareFromNative(): Promise<File[]> {
-  if (Capacitor.getPlatform() === 'web') return []
+function isHttpUrl(s: string): boolean {
+  return /^https?:\/\//i.test(s.trim())
+}
+
+/** Reads App Group manifest via native bridge, copies file items into File[], collects link URLs, clears native inbox. */
+export async function hydrateShareFromNative(): Promise<{ files: File[]; urls: string[] }> {
+  if (Capacitor.getPlatform() === 'web') return { files: [], urls: [] }
   let items: ShareImportItem[]
   try {
     const pending = await ShareImport.getPending()
@@ -98,12 +104,22 @@ export async function hydrateShareFromNative(): Promise<File[]> {
   } catch (e) {
     throw new Error(`ShareImport.getPending failed: ${formatShareLoadError(e)}`)
   }
-  if (!items?.length) return []
   const files: File[] = []
+  const urls: string[] = []
+  const seenUrl = new Set<string>()
+
   for (let i = 0; i < items.length; i++) {
     const it = items[i]
+    if (it.kind === 'link' && typeof it.url === 'string') {
+      const u = it.url.trim()
+      if (isHttpUrl(u) && !seenUrl.has(u)) {
+        seenUrl.add(u)
+        urls.push(u)
+      }
+      continue
+    }
     if (!it.dataBase64 || typeof it.dataBase64 !== 'string') {
-      throw new Error(`ShareImport item ${i} missing dataBase64 (rebuild the iOS app with the latest ShareImportPlugin)`)
+      continue
     }
     try {
       const type = it.mimeType || 'application/octet-stream'
@@ -115,23 +131,26 @@ export async function hydrateShareFromNative(): Promise<File[]> {
       throw new Error(`Failed to decode shared file ${i}: ${formatShareLoadError(e)}`)
     }
   }
+
   try {
     await ShareImport.clearPending()
   } catch (e) {
     throw new Error(`ShareImport.clearPending failed: ${formatShareLoadError(e)}`)
   }
-  return files
+  return { files, urls }
 }
 
 /** Load native share inbox into the global pending store. */
-export async function loadShareIntoStore(): Promise<File[]> {
-  const files = await hydrateShareFromNative()
+export async function loadShareIntoStore(): Promise<{ files: File[]; urls: string[] }> {
+  const { files, urls } = await hydrateShareFromNative()
   if (files.length) setPendingShareFiles(files)
-  return files
+  if (urls.length) setPendingShareUrls(urls)
+  return { files, urls }
 }
 
 export async function resetShareStore() {
   clearPendingShareFiles()
+  clearPendingShareUrls()
   if (Capacitor.getPlatform() !== 'web') {
     await ShareImport.clearPending()
   }

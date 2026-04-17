@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { useHeader } from '../contexts/HeaderContext'
+import LinkPreview from '../components/LinkPreview'
 import {
   formatShareLoadError,
   fileIsPdf,
@@ -10,7 +11,7 @@ import {
   loadShareIntoStore,
   resetShareStore,
 } from '../services/shareImport'
-import { peekPendingShareFiles } from '../services/shareImportStore'
+import { peekPendingShareFiles, peekPendingShareUrls } from '../services/shareImportStore'
 
 type CommunityRow = { id: number; name: string }
 
@@ -59,9 +60,12 @@ export default function ShareIncoming() {
   const [recentGroups, setRecentGroups] = useState<GroupRecent[]>([])
   const [recentsLoading, setRecentsLoading] = useState(false)
   const [sharedFiles, setSharedFiles] = useState<File[]>([])
+  const [sharedUrls, setSharedUrls] = useState<string[]>([])
 
   const platform = Capacitor.getPlatform()
   const isNative = platform === 'ios' || platform === 'android'
+
+  const hasSharedLinks = sharedUrls.length > 0
 
   function goBackOrHome() {
     if (typeof window !== 'undefined' && window.history.length > 1) {
@@ -85,16 +89,18 @@ export default function ShareIncoming() {
     let cancelled = false
     ;(async () => {
       try {
-        await loadShareIntoStore()
-        const files = peekPendingShareFiles() ?? []
-        if (!cancelled) setSharedFiles(files)
-        if (!cancelled && files.length === 0) {
-          setError('Nothing to share. Try again from Photos, Files, or another app.')
+        const { files, urls } = await loadShareIntoStore()
+        if (!cancelled) {
+          setSharedFiles(peekPendingShareFiles() ?? files)
+          setSharedUrls(peekPendingShareUrls() ?? urls)
+        }
+        if (!cancelled && files.length === 0 && urls.length === 0) {
+          setError('Nothing to share. Try again from Photos, a browser link, or another app.')
         }
       } catch (e) {
         console.error('ShareIncoming load error:', e)
         if (!cancelled) {
-          setError('Could not load shared files.')
+          setError('Could not load shared content.')
           setErrorDetail(formatShareLoadError(e))
         }
       } finally {
@@ -177,6 +183,9 @@ export default function ShareIncoming() {
   const hasChatMedia = sharedFiles.some(fileIsChatShareableMedia)
   const pdfFiles = useMemo(() => sharedFiles.filter(fileIsPdf), [sharedFiles])
 
+  const canPostToFeed = hasFeedMedia || hasSharedLinks
+  const canSendToChat = hasChatMedia || hasSharedLinks
+
   const filteredCommunities = useMemo(() => {
     const q = communitySearch.trim().toLowerCase()
     if (!q) return communities
@@ -233,60 +242,83 @@ export default function ShareIncoming() {
 
   if (loading) {
     return (
-      <div className="min-h-[50vh] flex flex-col items-center justify-center text-white px-4">
-        <div className="w-10 h-10 border-2 border-white/20 border-t-[#4db6ac] rounded-full animate-spin mb-3" />
-        <p className="text-sm text-white/70">Preparing your share…</p>
+      <div className="glass-page min-h-[50vh] flex flex-col items-center justify-center">
+        <div className="glass-card px-10 py-12 flex flex-col items-center max-w-sm w-full">
+          <div className="w-10 h-10 border-2 border-white/15 border-t-[#4db6ac] rounded-full animate-spin mb-4" />
+          <p className="text-sm text-white/75 text-center">Preparing your share…</p>
+        </div>
       </div>
     )
   }
 
   if (error && !uploadingDocs) {
     return (
-      <div className="px-4 py-8 max-w-lg mx-auto text-center text-white">
-        <p className="text-white/90 mb-4">{error}</p>
-        {errorDetail ? (
-          <p className="text-left text-xs text-white/55 mb-4 whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-black/30 px-3 py-2 font-mono">
-            {errorDetail}
-          </p>
-        ) : null}
-        <button
-          type="button"
-          onClick={goBackOrHome}
-          className="px-4 py-2 rounded-full border border-white/20 text-sm hover:bg-white/10"
-        >
-          Go back
-        </button>
+      <div className="glass-page px-4 py-10 max-w-lg mx-auto">
+        <div className="glass-card px-6 py-8 text-center">
+          <p className="text-white/90 mb-4">{error}</p>
+          {errorDetail ? (
+            <p className="text-left text-xs text-white/50 mb-6 whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-black/25 px-3 py-2 font-mono">
+              {errorDetail}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            onClick={goBackOrHome}
+            className="px-6 py-2.5 rounded-full text-sm font-medium border border-[#4db6ac]/40 text-[#b2dfdb] hover:bg-[#4db6ac]/15 transition-colors"
+          >
+            Go back
+          </button>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="px-4 py-6 max-w-lg mx-auto text-white pb-24">
-      <p className="text-sm text-white/70 mb-4 text-center">Choose where to send this content.</p>
+    <div className="glass-page pb-28 max-w-lg mx-auto">
+      <div className="mb-6 text-center space-y-2">
+        <h1 className="text-lg font-semibold text-white tracking-tight">Share to C.Point</h1>
+        <p className="text-sm text-white/55">Choose where to send this content.</p>
+      </div>
+
+      {hasSharedLinks && (
+        <section className="glass-card glass-highlight mb-6 p-4 space-y-3">
+          <div className="text-[10px] uppercase tracking-[0.14em] text-[#b2dfdb]/90 font-medium">Link preview</div>
+          {sharedUrls.slice(0, 3).map(u => (
+            <div key={u} className="rounded-xl overflow-hidden border border-white/10 bg-black/20">
+              <LinkPreview url={u} sent={false} />
+            </div>
+          ))}
+          {sharedUrls.length > 3 ? (
+            <p className="text-xs text-white/45">+{sharedUrls.length - 3} more link(s) will be included in your post or message.</p>
+          ) : null}
+        </section>
+      )}
 
       {(recentsLoading || recentDms.length > 0 || recentGroups.length > 0) && (
-        <div className="mb-6 space-y-3">
-          <div className="text-xs text-white/50 uppercase tracking-wide">Recent</div>
+        <section className="glass-section mb-5 space-y-4">
+          <div className="text-[10px] uppercase tracking-[0.14em] text-white/40 font-medium">Recent</div>
           {recentsLoading ? (
-            <div className="text-sm text-white/50">Loading conversations…</div>
+            <div className="text-sm text-white/45 py-2">Loading conversations…</div>
           ) : (
             <>
               {recentDms.length > 0 && (
                 <div>
-                  <div className="text-xs text-white/40 mb-1">Direct messages</div>
-                  <ul className="space-y-1">
+                  <div className="text-xs text-white/35 mb-1.5">Direct messages</div>
+                  <ul className="space-y-1.5">
                     {recentDms.map(t => (
                       <li key={t.other_username}>
                         <button
                           type="button"
                           onClick={() => navigate(`/user_chat/chat/${encodeURIComponent(t.other_username)}${shareQuery}`)}
-                          disabled={!hasChatMedia}
-                          className={`w-full text-left px-3 py-2 rounded-xl text-sm border border-white/10 ${
-                            hasChatMedia ? 'hover:bg-white/10 bg-white/[0.03]' : 'opacity-40 cursor-not-allowed'
+                          disabled={!canSendToChat}
+                          className={`w-full text-left px-3 py-2.5 rounded-xl text-sm border transition-colors ${
+                            canSendToChat
+                              ? 'border-white/[0.07] bg-white/[0.04] hover:bg-white/[0.08] hover:border-[#4db6ac]/25'
+                              : 'opacity-35 cursor-not-allowed border-white/[0.05]'
                           }`}
                         >
-                          <span className="font-medium text-[#4db6ac]">{t.display_name || t.other_username}</span>
-                          <span className="text-white/45 text-xs ml-2">DM</span>
+                          <span className="font-medium text-[#7fd8cf]">{t.display_name || t.other_username}</span>
+                          <span className="text-white/35 text-xs ml-2">DM</span>
                         </button>
                       </li>
                     ))}
@@ -295,26 +327,28 @@ export default function ShareIncoming() {
               )}
               {recentGroups.length > 0 && (
                 <div>
-                  <div className="text-xs text-white/40 mb-1">Group chats</div>
+                  <div className="text-xs text-white/35 mb-1.5">Group chats</div>
                   <input
                     type="search"
                     value={groupSearch}
                     onChange={e => setGroupSearch(e.target.value)}
                     placeholder="Search groups…"
-                    className="w-full mb-2 rounded-lg bg-black/50 border border-white/15 px-3 py-2 text-sm placeholder:text-white/35"
+                    className="w-full mb-2 rounded-xl bg-black/40 border border-white/[0.08] px-3 py-2.5 text-sm placeholder:text-white/30 focus:border-[#4db6ac]/35 focus:outline-none"
                   />
-                  <ul className="space-y-1 max-h-40 overflow-y-auto">
+                  <ul className="space-y-1.5 max-h-40 overflow-y-auto">
                     {filteredGroups.map(g => (
                       <li key={g.id}>
                         <button
                           type="button"
                           onClick={() => navigate(`/group_chat/${g.id}${shareQuery}`)}
-                          disabled={!hasChatMedia}
-                          className={`w-full text-left px-3 py-2 rounded-xl text-sm border border-white/10 ${
-                            hasChatMedia ? 'hover:bg-white/10 bg-white/[0.03]' : 'opacity-40 cursor-not-allowed'
+                          disabled={!canSendToChat}
+                          className={`w-full text-left px-3 py-2.5 rounded-xl text-sm border transition-colors ${
+                            canSendToChat
+                              ? 'border-white/[0.07] bg-white/[0.04] hover:bg-white/[0.08] hover:border-[#4db6ac]/25'
+                              : 'opacity-35 cursor-not-allowed border-white/[0.05]'
                           }`}
                         >
-                          <span className="font-medium text-[#4db6ac]">{g.name}</span>
+                          <span className="font-medium text-[#7fd8cf]">{g.name}</span>
                         </button>
                       </li>
                     ))}
@@ -323,64 +357,74 @@ export default function ShareIncoming() {
               )}
             </>
           )}
-          {!hasChatMedia && (recentDms.length > 0 || recentGroups.length > 0) ? (
-            <p className="text-xs text-amber-200/80">Photos, videos, and audio can go to chats. PDFs use Links &amp; Docs below.</p>
+          {!canSendToChat && (recentDms.length > 0 || recentGroups.length > 0) ? (
+            <p className="text-xs text-amber-200/75 leading-relaxed">
+              Photos, video, audio, and links can go to chats. PDFs belong in Links &amp; Docs below.
+            </p>
           ) : null}
-        </div>
+        </section>
       )}
 
-      <div className="flex flex-col gap-3">
+      <section className="flex flex-col gap-3">
         <button
           type="button"
           onClick={goDmOrGroup}
-          disabled={!hasChatMedia}
-          className={`w-full text-left px-4 py-4 rounded-2xl border border-white/15 transition-colors ${
-            hasChatMedia ? 'bg-white/5 hover:bg-white/10' : 'opacity-40 cursor-not-allowed'
+          disabled={!canSendToChat}
+          className={`glass-card text-left p-4 rounded-2xl border transition-all ${
+            canSendToChat
+              ? 'border-white/[0.08] hover:border-[#4db6ac]/30 hover:shadow-[0_12px_40px_rgba(77,182,172,0.12)] active:scale-[0.99]'
+              : 'opacity-35 cursor-not-allowed border-white/[0.05]'
           }`}
         >
-          <div className="font-semibold text-[#4db6ac]">Direct or group message</div>
-          <div className="text-xs text-white/60 mt-1">Open Messages and pick a conversation. Media attaches to the composer.</div>
+          <div className="font-semibold text-[#7fd8cf] text-[15px]">Direct or group message</div>
+          <div className="text-xs text-white/50 mt-1.5 leading-relaxed">Open Messages and pick a conversation. Shared items attach to the composer.</div>
         </button>
 
         <button
           type="button"
           onClick={() => setShowFeedCommunities(v => !v)}
-          disabled={!hasFeedMedia}
-          className={`w-full text-left px-4 py-4 rounded-2xl border border-white/15 transition-colors ${
-            hasFeedMedia ? 'bg-white/5 hover:bg-white/10' : 'opacity-40 cursor-not-allowed'
+          disabled={!canPostToFeed}
+          className={`glass-card text-left p-4 rounded-2xl border transition-all ${
+            canPostToFeed
+              ? 'border-white/[0.08] hover:border-[#4db6ac]/30 hover:shadow-[0_12px_40px_rgba(77,182,172,0.12)] active:scale-[0.99]'
+              : 'opacity-35 cursor-not-allowed border-white/[0.05]'
           }`}
         >
-          <div className="font-semibold text-[#4db6ac]">Community feed post</div>
-          <div className="text-xs text-white/60 mt-1">Images and video only. Pick a community, then compose.</div>
+          <div className="font-semibold text-[#7fd8cf] text-[15px]">Community feed post</div>
+          <div className="text-xs text-white/50 mt-1.5 leading-relaxed">
+            Share images, video, or links to a community feed. Choose a community, then compose.
+          </div>
         </button>
 
         <button
           type="button"
           onClick={() => setShowLinksDocs(v => !v)}
           disabled={!hasPdf}
-          className={`w-full text-left px-4 py-4 rounded-2xl border border-white/15 transition-colors ${
-            hasPdf ? 'bg-white/5 hover:bg-white/10' : 'opacity-40 cursor-not-allowed'
+          className={`glass-card text-left p-4 rounded-2xl border transition-all ${
+            hasPdf
+              ? 'border-white/[0.08] hover:border-[#4db6ac]/30 hover:shadow-[0_12px_40px_rgba(77,182,172,0.12)] active:scale-[0.99]'
+              : 'opacity-35 cursor-not-allowed border-white/[0.05]'
           }`}
         >
-          <div className="font-semibold text-[#4db6ac]">Links &amp; Docs (PDF)</div>
-          <div className="text-xs text-white/60 mt-1">Upload PDFs to a community&apos;s Useful Links &amp; Docs.</div>
+          <div className="font-semibold text-[#7fd8cf] text-[15px]">Links &amp; Docs (PDF)</div>
+          <div className="text-xs text-white/50 mt-1.5 leading-relaxed">Upload PDFs to a community&apos;s Useful Links &amp; Docs.</div>
         </button>
-      </div>
+      </section>
 
-      {showFeedCommunities && hasFeedMedia && (
-        <div className="mt-6 border border-white/10 rounded-2xl p-3 bg-black/40">
-          <div className="text-xs text-white/50 mb-2 uppercase tracking-wide">Community for post</div>
+      {showFeedCommunities && canPostToFeed && (
+        <div className="mt-5 glass-section p-4">
+          <div className="text-[10px] uppercase tracking-[0.14em] text-white/40 mb-2 font-medium">Community for post</div>
           <input
             type="search"
             value={communitySearch}
             onChange={e => setCommunitySearch(e.target.value)}
             placeholder="Search communities…"
-            className="w-full mb-3 rounded-lg bg-black/50 border border-white/15 px-3 py-2 text-sm placeholder:text-white/35"
+            className="w-full mb-3 rounded-xl bg-black/40 border border-white/[0.08] px-3 py-2.5 text-sm placeholder:text-white/30 focus:border-[#4db6ac]/35 focus:outline-none"
           />
           {communitiesLoading ? (
-            <div className="text-sm text-white/50 py-4 text-center">Loading…</div>
+            <div className="text-sm text-white/45 py-4 text-center">Loading…</div>
           ) : filteredCommunities.length === 0 ? (
-            <div className="text-sm text-white/60 py-2">No communities match.</div>
+            <div className="text-sm text-white/50 py-2">No communities match.</div>
           ) : (
             <ul className="max-h-64 overflow-y-auto space-y-1">
               {filteredCommunities.map(c => (
@@ -388,7 +432,7 @@ export default function ShareIncoming() {
                   <button
                     type="button"
                     onClick={() => pickCommunityFeed(c)}
-                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-white/10 text-sm"
+                    className="w-full text-left px-3 py-2.5 rounded-xl text-sm text-white/90 hover:bg-white/[0.06] border border-transparent hover:border-white/[0.06]"
                   >
                     {c.name}
                   </button>
@@ -400,26 +444,26 @@ export default function ShareIncoming() {
       )}
 
       {showLinksDocs && hasPdf && (
-        <div className="mt-6 border border-white/10 rounded-2xl p-3 bg-black/40 space-y-3">
-          <div className="text-xs text-white/50 uppercase tracking-wide">Upload PDF to Links &amp; Docs</div>
+        <div className="mt-5 glass-section p-4 space-y-3">
+          <div className="text-[10px] uppercase tracking-[0.14em] text-white/40 font-medium">Upload PDF to Links &amp; Docs</div>
           <input
             type="text"
             value={docDescription}
             onChange={e => setDocDescription(e.target.value)}
             placeholder="Description (optional)"
-            className="w-full rounded-lg bg-black/50 border border-white/15 px-3 py-2 text-sm placeholder:text-white/35"
+            className="w-full rounded-xl bg-black/40 border border-white/[0.08] px-3 py-2.5 text-sm placeholder:text-white/30 focus:border-[#4db6ac]/35 focus:outline-none"
           />
           <input
             type="search"
             value={communitySearch}
             onChange={e => setCommunitySearch(e.target.value)}
             placeholder="Search communities…"
-            className="w-full rounded-lg bg-black/50 border border-white/15 px-3 py-2 text-sm placeholder:text-white/35"
+            className="w-full rounded-xl bg-black/40 border border-white/[0.08] px-3 py-2.5 text-sm placeholder:text-white/30 focus:border-[#4db6ac]/35 focus:outline-none"
           />
           {communitiesLoading ? (
-            <div className="text-sm text-white/50 py-4 text-center">Loading…</div>
+            <div className="text-sm text-white/45 py-4 text-center">Loading…</div>
           ) : filteredCommunities.length === 0 ? (
-            <div className="text-sm text-white/60 py-2">No communities match.</div>
+            <div className="text-sm text-white/50 py-2">No communities match.</div>
           ) : (
             <ul className="max-h-64 overflow-y-auto space-y-1">
               {filteredCommunities.map(c => (
@@ -428,7 +472,7 @@ export default function ShareIncoming() {
                     type="button"
                     disabled={uploadingDocs}
                     onClick={() => void uploadDocsToCommunity(c)}
-                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-white/10 text-sm disabled:opacity-50"
+                    className="w-full text-left px-3 py-2.5 rounded-xl text-sm hover:bg-white/[0.06] disabled:opacity-45"
                   >
                     {uploadingDocs ? 'Uploading…' : `Upload to ${c.name}`}
                   </button>
@@ -439,7 +483,11 @@ export default function ShareIncoming() {
         </div>
       )}
 
-      <button type="button" onClick={cancelAndLeave} className="mt-8 w-full text-center text-sm text-white/50 hover:text-white/80">
+      <button
+        type="button"
+        onClick={cancelAndLeave}
+        className="mt-10 w-full text-center text-sm text-white/40 hover:text-white/65 transition-colors py-2"
+      >
         Cancel
       </button>
     </div>

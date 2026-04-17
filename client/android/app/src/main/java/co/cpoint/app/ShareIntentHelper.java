@@ -18,7 +18,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Persists Android share intents into app storage using the same manifest shape as iOS
@@ -57,7 +61,18 @@ final class ShareIntentHelper {
         }
 
         List<Uri> uris = collectUris(intent);
-        if (uris.isEmpty()) {
+        StringBuilder textBlob = new StringBuilder();
+        String subject = intent.getStringExtra(Intent.EXTRA_SUBJECT);
+        if (subject != null) {
+            textBlob.append(subject).append(' ');
+        }
+        CharSequence extraText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+        if (extraText != null) {
+            textBlob.append(extraText);
+        }
+        List<String> textUrls = extractHttpUrls(textBlob.toString());
+
+        if (uris.isEmpty() && textUrls.isEmpty()) {
             return false;
         }
 
@@ -68,9 +83,10 @@ final class ShareIntentHelper {
         }
 
         JSONArray items = new JSONArray();
-        int index = 0;
+        int count = 0;
+        int fileIndex = 0;
         for (Uri uri : uris) {
-            if (index >= MAX_ITEMS) {
+            if (count >= MAX_ITEMS) {
                 break;
             }
             try {
@@ -80,7 +96,8 @@ final class ShareIntentHelper {
                 if (km == null) {
                     continue;
                 }
-                String filename = "item_" + index + "." + ext;
+                String filename = "item_" + fileIndex + "." + ext;
+                fileIndex++;
                 File dest = new File(incoming, filename);
                 copyUriToFile(ctx, uri, dest);
                 JSONObject o = new JSONObject();
@@ -88,9 +105,29 @@ final class ShareIntentHelper {
                 o.put("mimeType", km.mimeType);
                 o.put("kind", km.kind);
                 items.put(o);
-                index++;
+                count++;
             } catch (Exception ignored) {
                 // Skip unreadable items; continue with others.
+            }
+        }
+
+        LinkedHashSet<String> seenUrl = new LinkedHashSet<>();
+        for (String url : textUrls) {
+            if (count >= MAX_ITEMS) {
+                break;
+            }
+            if (!seenUrl.add(url)) {
+                continue;
+            }
+            try {
+                JSONObject o = new JSONObject();
+                o.put("kind", "link");
+                o.put("url", url);
+                o.put("mimeType", "text/plain");
+                o.put("filename", "");
+                items.put(o);
+                count++;
+            } catch (Exception ignored) {
             }
         }
 
@@ -101,7 +138,7 @@ final class ShareIntentHelper {
 
         try {
             JSONObject manifest = new JSONObject();
-            manifest.put("version", 1);
+            manifest.put("version", 2);
             manifest.put("items", items);
             File manifestFile = new File(incoming, MANIFEST);
             try (FileOutputStream fos = new FileOutputStream(manifestFile)) {
@@ -113,6 +150,25 @@ final class ShareIntentHelper {
             deleteRecursive(incoming);
             return false;
         }
+    }
+
+    private static List<String> extractHttpUrls(String text) {
+        if (text == null || text.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Pattern p = Pattern.compile("https?://[^\\s<>\"]+", Pattern.CASE_INSENSITIVE);
+        Matcher m = p.matcher(text);
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        while (m.find() && seen.size() < MAX_ITEMS) {
+            String u = m.group();
+            while (u.length() > 0 && ".,);]!?".indexOf(u.charAt(u.length() - 1)) >= 0) {
+                u = u.substring(0, u.length() - 1);
+            }
+            if (u.startsWith("http://") || u.startsWith("https://")) {
+                seen.add(u);
+            }
+        }
+        return new ArrayList<>(seen);
     }
 
     static File importedDir(Context ctx) {

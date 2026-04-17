@@ -40,6 +40,19 @@ public class ShareImportPlugin: CAPPlugin, CAPBridgedPlugin {
 
         var out: [[String: Any]] = []
         for item in rawItems {
+            if let kind = item["kind"] as? String, kind == "link",
+               let urlStr = item["url"] as? String, !urlStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let trimmed = urlStr.trimmingCharacters(in: .whitespacesAndNewlines)
+                out.append([
+                    "filename": item["filename"] as? String ?? "",
+                    "mimeType": item["mimeType"] as? String ?? "text/plain",
+                    "kind": "link",
+                    "url": trimmed,
+                    "dataBase64": "",
+                ])
+                continue
+            }
+
             guard let name = item["filename"] as? String, !name.isEmpty else { continue }
             let sourceURL = base.appendingPathComponent("\(kIncomingSubdir)/\(name)")
             let mime = item["mimeType"] as? String ?? "application/octet-stream"

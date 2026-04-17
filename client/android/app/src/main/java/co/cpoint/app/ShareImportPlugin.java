@@ -59,12 +59,26 @@ public class ShareImportPlugin extends Plugin {
                 if (item == null) {
                     continue;
                 }
+                String kind = item.optString("kind", "file");
+                if ("link".equals(kind)) {
+                    String urlStr = item.optString("url", "").trim();
+                    if (urlStr.isEmpty() || !(urlStr.startsWith("http://") || urlStr.startsWith("https://"))) {
+                        continue;
+                    }
+                    JSONObject row = new JSONObject();
+                    row.put("filename", item.optString("filename", ""));
+                    row.put("mimeType", item.optString("mimeType", "text/plain"));
+                    row.put("kind", "link");
+                    row.put("url", urlStr);
+                    row.put("dataBase64", "");
+                    out.put(row);
+                    continue;
+                }
                 String name = item.optString("filename", "");
                 if (name.isEmpty()) {
                     continue;
                 }
                 String mime = item.optString("mimeType", "application/octet-stream");
-                String kind = item.optString("kind", "file");
                 File source = new File(incoming, name);
                 if (!source.exists()) {
                     continue;

@@ -12,7 +12,7 @@ import { clearDeviceCache } from '../utils/deviceCache'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { fileIsPdf } from '../services/shareImport'
-import { takePendingShareFilesOnce, releaseShareHandoffKey } from '../services/shareImportStore'
+import { takePendingShareFilesOnce, takePendingShareUrlsOnce, releaseShareHandoffKey, releaseShareUrlHandoffKey } from '../services/shareImportStore'
 
 export default function CreatePost(){
   const [params, setSearchParams] = useSearchParams()
@@ -89,12 +89,22 @@ export default function CreatePost(){
 
   useEffect(() => {
     if (fromShareParam !== '1' || !shareHandoffKey) return
-    const files = takePendingShareFilesOnce(shareHandoffKey)
-    if (!files?.length) return
     if (shareAttachDoneRef.current) return
+    const files = takePendingShareFilesOnce(shareHandoffKey)
+    const urls = takePendingShareUrlsOnce(shareHandoffKey)
+    if (!files?.length && !urls?.length) return
     shareAttachDoneRef.current = true
-    const forFeed = files.filter(f => !fileIsPdf(f))
-    setMediaFiles(prev => [...prev, ...forFeed].slice(0, MAX_MEDIA))
+    if (files?.length) {
+      const forFeed = files.filter(f => !fileIsPdf(f))
+      setMediaFiles(prev => [...prev, ...forFeed].slice(0, MAX_MEDIA))
+    }
+    if (urls?.length) {
+      setContent(prev => {
+        const prefix = urls.join('\n\n')
+        if (!prev.trim()) return prefix
+        return `${prefix}\n\n${prev}`
+      })
+    }
     setSearchParams(
       p => {
         const n = new URLSearchParams(p)
@@ -107,7 +117,9 @@ export default function CreatePost(){
 
   useEffect(() => {
     if (fromShareParam === '1') return
-    releaseShareHandoffKey(`compose:${communityId || groupId || '0'}:from_share`)
+    const hk = `compose:${communityId || groupId || '0'}:from_share`
+    releaseShareHandoffKey(hk)
+    releaseShareUrlHandoffKey(hk)
   }, [fromShareParam, communityId, groupId])
 
   useLayoutEffect(() => {

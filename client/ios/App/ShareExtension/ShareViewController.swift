@@ -69,12 +69,12 @@ final class ShareViewController: UIViewController {
 
         if manifestItems.isEmpty {
             NSLog("ShareExtension: No supported items were copied")
-            await finishWithError("No supported photos, videos, audio, or PDFs.")
+            await finishWithError("No supported photos, videos, audio, PDFs, or links.")
             return
         }
 
         let trimmed = Array(manifestItems.prefix(kMaxItems))
-        let manifest: [String: Any] = ["version": 1, "items": trimmed]
+        let manifest: [String: Any] = ["version": 2, "items": trimmed]
         guard let json = try? JSONSerialization.data(withJSONObject: manifest, options: []) else {
             NSLog("ShareExtension: Failed to serialize manifest for %d items", trimmed.count)
             await finishWithError("Could not build manifest.")
@@ -133,7 +133,88 @@ final class ShareViewController: UIViewController {
                 return r
             }
         }
+        if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
+            if let r = await loadShareUrl(provider: provider) {
+                return r
+            }
+        }
+        if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+            if let r = await loadSharePlainText(provider: provider) {
+                return r
+            }
+        }
         return nil
+    }
+
+    private func loadShareUrl(provider: NSItemProvider) async -> [[String: Any]]? {
+        await withCheckedContinuation { (cont: CheckedContinuation<[[String: Any]]?, Never>) in
+            provider.loadItem(forTypeIdentifier: UTType.url.identifier as String, options: nil) { item, err in
+                if err != nil {
+                    cont.resume(returning: nil)
+                    return
+                }
+                guard let u = item as? URL else {
+                    cont.resume(returning: nil)
+                    return
+                }
+                let s = u.absoluteString
+                guard s.hasPrefix("http://") || s.hasPrefix("https://") else {
+                    cont.resume(returning: nil)
+                    return
+                }
+                cont.resume(returning: [["filename": "", "mimeType": "text/plain", "kind": "link", "url": s]])
+            }
+        }
+    }
+
+    private func loadSharePlainText(provider: NSItemProvider) async -> [[String: Any]]? {
+        await withCheckedContinuation { (cont: CheckedContinuation<[[String: Any]]?, Never>) in
+            provider.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { item, err in
+                if err != nil {
+                    cont.resume(returning: nil)
+                    return
+                }
+                guard let text = item as? String, !text.isEmpty else {
+                    cont.resume(returning: nil)
+                    return
+                }
+                let urls = Self.extractHttpUrls(from: text)
+                guard !urls.isEmpty else {
+                    cont.resume(returning: nil)
+                    return
+                }
+                let rows: [[String: Any]] = urls.map { u in
+                    ["filename": "", "mimeType": "text/plain", "kind": "link", "url": u]
+                }
+                cont.resume(returning: rows)
+            }
+        }
+    }
+
+    private static func extractHttpUrls(from text: String) -> [String] {
+        let pattern = "https?://[^\\s<>\"]+"
+        guard let re = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return [] }
+        let range = NSRange(text.startIndex..., in: text)
+        let matches = re.matches(in: text, options: [], range: range)
+        var out: [String] = []
+        var seen = Set<String>()
+        for m in matches.prefix(kMaxItems) {
+            guard m.numberOfRanges >= 1, let r = Range(m.range(at: 0), in: text) else { continue }
+            var s = String(text[r])
+            while let last = s.last {
+                let ch = String(last)
+                if [".", ",", ")", ";", "]", "!", "?"].contains(ch) {
+                    s.removeLast()
+                } else {
+                    break
+                }
+            }
+            if !seen.contains(s) {
+                seen.insert(s)
+                out.append(s)
+            }
+        }
+        return out
     }
 
     private func loadImage(provider: NSItemProvider, incoming: URL, indexBox: IndexBox) async -> [[String: Any]]? {
