@@ -2360,6 +2360,34 @@ export default function ChatThread(){
     if (!confirm('Are you sure you want to delete this message?')) {
       return
     }
+
+    /** Positive numeric server id only — temp_… and negative ids are client-only (failed / unsent). */
+    const hasPersistedServerId =
+      (typeof messageId === 'number' && messageId > 0) ||
+      (typeof messageId === 'string' && /^\d+$/.test(messageId) && Number(messageId) > 0)
+
+    if (!hasPersistedServerId) {
+      pendingDeletions.current.add(messageId)
+      setMessages(prev => prev.filter(x => x.id !== messageId))
+      const ck =
+        (messageData as { clientKey?: string }).clientKey ||
+        (typeof messageId === 'string' && messageId.startsWith('temp_') ? messageId : undefined)
+      if (ck) {
+        try {
+          recentOptimisticRef.current.delete(ck)
+        } catch {
+          /* ignore */
+        }
+        getOutboxEntries()
+          .then(entries => {
+            const e = entries.find(x => x.clientKey === ck && x.type === 'dm')
+            if (e?.id != null) removeFromOutbox(e.id).catch(() => {})
+          })
+          .catch(() => {})
+      }
+      setTimeout(() => pendingDeletions.current.delete(messageId), 5000)
+      return
+    }
     
     // Add to pending deletions
     pendingDeletions.current.add(messageId)

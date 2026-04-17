@@ -121,7 +121,7 @@ function MessageBubbleInner({
       onCopy={onCopy}
       onEdit={onEdit}
       onSelect={onSelect}
-      disabled={isEditing || !!m.isOptimistic}
+      disabled={isEditing || (!!m.isOptimistic && !m.sendFailed)}
     >
       <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
         <div className={`relative flex flex-col ${m.sent ? 'items-end' : 'items-start'} max-w-[82%] md:max-w-[65%] ${m.reaction ? 'mb-6' : ''}`}>

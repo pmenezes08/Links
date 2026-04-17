@@ -1657,6 +1657,25 @@ export default function GroupChatThread() {
 
   const handleDeleteMessage = async (messageId: number, messageData: Message) => {
     if (!confirm('Are you sure you want to delete this message?')) return
+
+    /** Positive id = persisted on server; temp / negative = local failed or unsent bubble */
+    const hasPersistedServerId = typeof messageId === 'number' && messageId > 0
+
+    if (!hasPersistedServerId) {
+      pendingDeletions.current.add(messageId)
+      setServerMessages(prev => prev.filter(m => m.id !== messageId))
+      const ck = (messageData as { clientKey?: string }).clientKey
+      if (ck) {
+        getOutboxEntries()
+          .then(entries => {
+            const e = entries.find(x => x.clientKey === ck && x.type === 'group')
+            if (e?.id != null) removeFromOutbox(e.id).catch(() => {})
+          })
+          .catch(() => {})
+      }
+      setTimeout(() => pendingDeletions.current.delete(messageId), 5000)
+      return
+    }
     
     // Add to pending deletions to prevent re-appearing from poll
     pendingDeletions.current.add(messageId)
@@ -1734,32 +1753,51 @@ export default function GroupChatThread() {
     if (!confirm(`Are you sure you want to delete ${count} message${count > 1 ? 's' : ''}?`)) return
     
     const idsToDelete = Array.from(selectedMessages)
-    
-    // Add to pending deletions
+    const serverIds = idsToDelete.filter((id): id is number => typeof id === 'number' && id > 0)
+
     idsToDelete.forEach(id => pendingDeletions.current.add(id))
-    
-    // Optimistically remove messages
-    setServerMessages(prev => prev.filter(m => !selectedMessages.has(m.id)))
-    
-    // Exit selection mode
+
+    setServerMessages(prev => {
+      const dropping = prev.filter(m => selectedMessages.has(m.id))
+      for (const m of dropping) {
+        if (typeof m.id === 'number' && m.id <= 0) {
+          const ck = (m as { clientKey?: string }).clientKey
+          if (ck) {
+            getOutboxEntries()
+              .then(entries => {
+                const e = entries.find(x => x.clientKey === ck && x.type === 'group')
+                if (e?.id != null) removeFromOutbox(e.id).catch(() => {})
+              })
+              .catch(() => {})
+          }
+        }
+      }
+      return prev.filter(m => !selectedMessages.has(m.id))
+    })
+
     exitSelectionMode()
+
+    if (serverIds.length === 0) {
+      setTimeout(() => {
+        idsToDelete.forEach(id => pendingDeletions.current.delete(id))
+      }, 5000)
+      return
+    }
     
     try {
       const response = await fetch(`/api/group_chat/${group_id}/messages/bulk_delete`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message_ids: idsToDelete })
+        body: JSON.stringify({ message_ids: serverIds })
       })
       const data = await response.json()
       
       if (data.success) {
-        // Keep in pending deletions for a while
         setTimeout(() => {
           idsToDelete.forEach(id => pendingDeletions.current.delete(id))
         }, 5000)
       } else {
-        // Restore messages if failed
         idsToDelete.forEach(id => pendingDeletions.current.delete(id))
         loadMessages(true)
         alert(data.error || 'Failed to delete messages')
@@ -2223,7 +2261,7 @@ export default function GroupChatThread() {
                             onDelete={() => handleDeleteMessage(msg.id, msg)}
                             onEdit={isSentByMe && msg.text && !msg.image && !msg.voice ? () => handleStartEdit(msg.id, msg.text || '') : undefined}
                             onSelect={isSentByMe ? () => enterSelectionMode(msg.id) : undefined}
-                            disabled={isOptimistic || editingId === msg.id || selectionMode}
+                            disabled={(isOptimistic && !sendFailed) || editingId === msg.id || selectionMode}
                           >
                             <div className={`relative ${messageReaction ? 'mb-5' : ''}`}>
                               {editingId === msg.id ? (
