@@ -11,6 +11,7 @@ import GifPicker from '../components/GifPicker'
 import { clearDeviceCache } from '../utils/deviceCache'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
+import { fileIsPdf } from '../services/shareImport'
 import { takePendingShareFilesOnce, releaseShareHandoffKey } from '../services/shareImportStore'
 
 export default function CreatePost(){
@@ -54,7 +55,11 @@ export default function CreatePost(){
   const mediaPreviewUrls = useMemo(() => {
     return mediaFiles.map(file => ({
       url: URL.createObjectURL(file),
-      type: file.type.startsWith('video/') ? 'video' : 'image',
+      type: file.type.startsWith('video/')
+        ? 'video'
+        : file.type.startsWith('audio/')
+          ? 'audio'
+          : 'image',
       name: file.name
     }))
   }, [mediaFiles])
@@ -88,7 +93,8 @@ export default function CreatePost(){
     if (!files?.length) return
     if (shareAttachDoneRef.current) return
     shareAttachDoneRef.current = true
-    setMediaFiles(prev => [...prev, ...files].slice(0, MAX_MEDIA))
+    const forFeed = files.filter(f => !fileIsPdf(f))
+    setMediaFiles(prev => [...prev, ...forFeed].slice(0, MAX_MEDIA))
     setSearchParams(
       p => {
         const n = new URLSearchParams(p)
@@ -282,8 +288,16 @@ export default function CreatePost(){
       } else if (mediaFiles.length > 0) {
         const LARGE_VIDEO_THRESHOLD = 25 * 1024 * 1024 // 25MB
         const preUploadedVideoUrls: string[] = []
-        
+        let appendedPostAudio = false
+
         for (const file of mediaFiles) {
+          if (file.type.startsWith('audio/')) {
+            if (!appendedPostAudio) {
+              fd.append('audio', file, file.name || 'audio.m4a')
+              appendedPostAudio = true
+            }
+            continue
+          }
           if (file.type.startsWith('video/') && file.size > LARGE_VIDEO_THRESHOLD) {
             // Large video - upload directly to R2 via presigned URL
             try {
@@ -313,7 +327,7 @@ export default function CreatePost(){
             }
           } else if (file.type.startsWith('video/')) {
             fd.append('videos', file)
-          } else {
+          } else if (file.type.startsWith('image/')) {
             fd.append('images', file)
           }
         }
@@ -483,6 +497,8 @@ export default function CreatePost(){
                   playsInline
                   className="w-full max-h-[360px] bg-black"
                 />
+              ) : mediaPreviewUrls[mediaCarouselIndex]?.type === 'audio' ? (
+                <audio src={mediaPreviewUrls[mediaCarouselIndex].url} controls className="w-full max-w-md mx-auto" />
               ) : (
                 <img 
                   src={mediaPreviewUrls[mediaCarouselIndex]?.url} 
@@ -529,7 +545,13 @@ export default function CreatePost(){
             <div className="px-3 py-2 flex items-center justify-between bg-white/5 border-t border-white/10">
               <div className="flex items-center gap-2 text-xs text-white/70">
                 <span className="flex items-center gap-1.5 text-[#7fe7df]">
-                  <i className={`fa-solid ${mediaPreviewUrls[mediaCarouselIndex]?.type === 'video' ? 'fa-video' : 'fa-image'}`} />
+                  <i className={`fa-solid ${
+                    mediaPreviewUrls[mediaCarouselIndex]?.type === 'video'
+                      ? 'fa-video'
+                      : mediaPreviewUrls[mediaCarouselIndex]?.type === 'audio'
+                        ? 'fa-music'
+                        : 'fa-image'
+                  }`} />
                   {mediaPreviewUrls.length}/{MAX_MEDIA}
                 </span>
               </div>

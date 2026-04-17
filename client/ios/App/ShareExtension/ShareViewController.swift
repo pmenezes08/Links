@@ -69,7 +69,7 @@ final class ShareViewController: UIViewController {
 
         if manifestItems.isEmpty {
             NSLog("ShareExtension: No supported items were copied")
-            await finishWithError("No supported photos or videos.")
+            await finishWithError("No supported photos, videos, audio, or PDFs.")
             return
         }
 
@@ -102,6 +102,24 @@ final class ShareViewController: UIViewController {
         ]
         for t in movieTypes where provider.hasItemConformingToTypeIdentifier(t) {
             if let r = await loadMovie(provider: provider, typeIdentifier: t, incoming: incoming, indexBox: indexBox) {
+                return r
+            }
+        }
+        let audioTypes = [
+            UTType.audio.identifier,
+            UTType.mp3.identifier,
+            UTType.mpeg4Audio.identifier,
+            "public.aiff-audio",
+            "public.wav",
+            "com.apple.coreaudio-format",
+        ]
+        for t in audioTypes where provider.hasItemConformingToTypeIdentifier(t) {
+            if let r = await loadAudio(provider: provider, typeIdentifier: t, incoming: incoming, indexBox: indexBox) {
+                return r
+            }
+        }
+        if provider.hasItemConformingToTypeIdentifier(UTType.pdf.identifier) {
+            if let r = await loadPdf(provider: provider, incoming: incoming, indexBox: indexBox) {
                 return r
             }
         }
@@ -156,6 +174,54 @@ final class ShareViewController: UIViewController {
         }
     }
 
+    private func loadAudio(provider: NSItemProvider, typeIdentifier: String, incoming: URL, indexBox: IndexBox) async -> [[String: Any]]? {
+        await withCheckedContinuation { (cont: CheckedContinuation<[[String: Any]]?, Never>) in
+            provider.loadFileRepresentation(forTypeIdentifier: typeIdentifier) { url, err in
+                guard let url = url, err == nil else {
+                    cont.resume(returning: nil)
+                    return
+                }
+                let ext = url.pathExtension.isEmpty ? "m4a" : url.pathExtension
+                let name = "item_\(indexBox.value).\(ext)"
+                indexBox.value += 1
+                let dest = incoming.appendingPathComponent(name)
+                do {
+                    if FileManager.default.fileExists(atPath: dest.path) {
+                        try FileManager.default.removeItem(at: dest)
+                    }
+                    try FileManager.default.copyItem(at: url, to: dest)
+                    cont.resume(returning: [["filename": name, "mimeType": self.mimeForFile(at: dest), "kind": "audio"]])
+                } catch {
+                    cont.resume(returning: nil)
+                }
+            }
+        }
+    }
+
+    private func loadPdf(provider: NSItemProvider, incoming: URL, indexBox: IndexBox) async -> [[String: Any]]? {
+        await withCheckedContinuation { (cont: CheckedContinuation<[[String: Any]]?, Never>) in
+            provider.loadFileRepresentation(forTypeIdentifier: UTType.pdf.identifier) { url, err in
+                guard let url = url, err == nil else {
+                    cont.resume(returning: nil)
+                    return
+                }
+                let ext = url.pathExtension.isEmpty ? "pdf" : url.pathExtension
+                let name = "item_\(indexBox.value).\(ext)"
+                indexBox.value += 1
+                let dest = incoming.appendingPathComponent(name)
+                do {
+                    if FileManager.default.fileExists(atPath: dest.path) {
+                        try FileManager.default.removeItem(at: dest)
+                    }
+                    try FileManager.default.copyItem(at: url, to: dest)
+                    cont.resume(returning: [["filename": name, "mimeType": "application/pdf", "kind": "document"]])
+                } catch {
+                    cont.resume(returning: nil)
+                }
+            }
+        }
+    }
+
     private func loadMovie(provider: NSItemProvider, typeIdentifier: String, incoming: URL, indexBox: IndexBox) async -> [[String: Any]]? {
         await withCheckedContinuation { (cont: CheckedContinuation<[[String: Any]]?, Never>) in
             provider.loadFileRepresentation(forTypeIdentifier: typeIdentifier) { url, err in
@@ -192,11 +258,15 @@ final class ShareViewController: UIViewController {
                 let ext = url.pathExtension.lowercased()
                 let isVid = ["mov", "mp4", "m4v", "avi", "mkv", "webm"].contains(ext)
                 let isImg = ["jpg", "jpeg", "png", "heic", "heif", "gif", "webp"].contains(ext)
-                guard isVid || isImg else {
+                let isAud = ["m4a", "mp3", "aac", "wav", "flac", "caf", "aiff", "aif", "ogg", "opus"].contains(ext)
+                let isPdf = ext == "pdf"
+                guard isVid || isImg || isAud || isPdf else {
                     cont.resume(returning: nil)
                     return
                 }
-                let name = "item_\(indexBox.value).\(url.pathExtension.isEmpty ? (isVid ? "mp4" : "jpg") : url.pathExtension)"
+                let fallbackExt: String
+                if isVid { fallbackExt = "mp4" } else if isAud { fallbackExt = "m4a" } else if isPdf { fallbackExt = "pdf" } else { fallbackExt = "jpg" }
+                let name = "item_\(indexBox.value).\(url.pathExtension.isEmpty ? fallbackExt : url.pathExtension)"
                 indexBox.value += 1
                 let dest = incoming.appendingPathComponent(name)
                 do {
@@ -204,7 +274,8 @@ final class ShareViewController: UIViewController {
                         try FileManager.default.removeItem(at: dest)
                     }
                     try FileManager.default.copyItem(at: url, to: dest)
-                    let kind = isVid ? "video" : "image"
+                    let kind: String
+                    if isVid { kind = "video" } else if isAud { kind = "audio" } else if isPdf { kind = "document" } else { kind = "image" }
                     cont.resume(returning: [["filename": name, "mimeType": self.mimeForFile(at: dest), "kind": kind]])
                 } catch {
                     cont.resume(returning: nil)
@@ -223,6 +294,15 @@ final class ShareViewController: UIViewController {
         case "mp4", "m4v": return "video/mp4"
         case "mov": return "video/quicktime"
         case "webm": return "video/webm"
+        case "pdf": return "application/pdf"
+        case "m4a": return "audio/mp4"
+        case "mp3": return "audio/mpeg"
+        case "aac": return "audio/aac"
+        case "wav": return "audio/wav"
+        case "caf": return "audio/x-caf"
+        case "flac": return "audio/flac"
+        case "ogg", "opus": return "audio/ogg"
+        case "aiff", "aif": return "audio/aiff"
         default: return "application/octet-stream"
         }
     }

@@ -158,7 +158,7 @@ export default function ChatThread(){
   const lastFetchTime = useRef<number>(0)
   const [pastedImage, setPastedImage] = useState<File | null>(null)
   const [videoUploadProgress, setVideoUploadProgress] = useState<UploadProgress | null>(null)
-  const [pendingMedia, setPendingMedia] = useState<Array<{ file: File; previewUrl: string; type: 'image' | 'video' }>>([])
+  const [pendingMedia, setPendingMedia] = useState<Array<{ file: File; previewUrl: string; type: 'image' | 'video' | 'audio' }>>([])
   const [previewIndex, setPreviewIndex] = useState(0)
   const [viewingMedia, setViewingMedia] = useState<{ urls: string[]; index: number } | null>(null)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
@@ -207,11 +207,18 @@ export default function ChatThread(){
     if (!files?.length) return
     if (shareAttachDoneRef.current) return
     shareAttachDoneRef.current = true
-    const newMedia = files.map(file => ({
-      file,
-      previewUrl: URL.createObjectURL(file),
-      type: (file.type.startsWith('video/') ? 'video' : 'image') as 'image' | 'video',
-    }))
+    const newMedia = files.map(file => {
+      const t = file.type.startsWith('video/')
+        ? 'video'
+        : file.type.startsWith('audio/')
+          ? 'audio'
+          : 'image'
+      return {
+        file,
+        previewUrl: URL.createObjectURL(file),
+        type: t as 'image' | 'video' | 'audio',
+      }
+    })
     setPendingMedia(prev => [...prev, ...newMedia])
     setPreviewIndex(0)
     setSearchParams(
@@ -1710,12 +1717,14 @@ export default function ChatThread(){
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const files = event.target.files
     if (!files || files.length === 0) return
-    const newMedia: Array<{ file: File; previewUrl: string; type: 'image' | 'video' }> = []
+    const newMedia: Array<{ file: File; previewUrl: string; type: 'image' | 'video' | 'audio' }> = []
     Array.from(files).forEach(file => {
       if (file.type.startsWith('image/')) {
         newMedia.push({ file, previewUrl: URL.createObjectURL(file), type: 'image' })
       } else if (file.type.startsWith('video/')) {
         newMedia.push({ file, previewUrl: URL.createObjectURL(file), type: 'video' })
+      } else if (file.type.startsWith('audio/')) {
+        newMedia.push({ file, previewUrl: URL.createObjectURL(file), type: 'audio' })
       }
     })
     if (newMedia.length > 0) {
@@ -1729,10 +1738,12 @@ export default function ChatThread(){
   function handleVideoFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const files = event.target.files
     if (!files || files.length === 0) return
-    const newMedia: Array<{ file: File; previewUrl: string; type: 'image' | 'video' }> = []
+    const newMedia: Array<{ file: File; previewUrl: string; type: 'image' | 'video' | 'audio' }> = []
     Array.from(files).forEach(file => {
       if (file.type.startsWith('video/') || file.type.startsWith('image/')) {
         newMedia.push({ file, previewUrl: URL.createObjectURL(file), type: file.type.startsWith('video/') ? 'video' : 'image' })
+      } else if (file.type.startsWith('audio/')) {
+        newMedia.push({ file, previewUrl: URL.createObjectURL(file), type: 'audio' })
       }
     })
     if (newMedia.length > 0) {
@@ -1759,6 +1770,26 @@ export default function ChatThread(){
   async function confirmSendMedia() {
     if (pendingMedia.length === 0 || !otherUserId) return
     const mediaToSend = [...pendingMedia]
+    const audios = mediaToSend.filter(i => i.type === 'audio')
+    const imagesAndVideos = mediaToSend.filter(i => i.type === 'image' || i.type === 'video')
+
+    const revokeAll = () => {
+      mediaToSend.forEach(item => {
+        if (item.previewUrl.startsWith('blob:')) {
+          try { URL.revokeObjectURL(item.previewUrl) } catch {}
+        }
+      })
+    }
+
+    if (imagesAndVideos.length === 0 && audios.length > 0) {
+      setPendingMedia([])
+      setPreviewIndex(0)
+      revokeAll()
+      for (const item of audios) {
+        await uploadSharedAudioFile(item.file)
+      }
+      return
+    }
 
     if (mediaToSend.length === 1) {
       setPendingMedia([])
@@ -1766,8 +1797,10 @@ export default function ChatThread(){
       const item = mediaToSend[0]
       if (item.type === 'image') {
         handleImageFile(item.file, 'photo')
-      } else {
+      } else if (item.type === 'video') {
         handleVideoFile(item.file)
+      } else {
+        await uploadSharedAudioFile(item.file)
       }
       if (item.previewUrl.startsWith('blob:')) {
         try { URL.revokeObjectURL(item.previewUrl) } catch {}
@@ -1777,13 +1810,16 @@ export default function ChatThread(){
 
     setPendingMedia([])
     setPreviewIndex(0)
-    mediaToSend.forEach(item => {
-      if (item.previewUrl.startsWith('blob:')) {
-        try { URL.revokeObjectURL(item.previewUrl) } catch {}
-      }
-    })
+    revokeAll()
+
+    for (const item of audios) {
+      await uploadSharedAudioFile(item.file)
+    }
+
+    if (imagesAndVideos.length === 0) return
+
     void sendMultiMediaMessage({
-      files: mediaToSend.map(item => ({ file: item.file, type: item.type })),
+      files: imagesAndVideos.map(item => ({ file: item.file, type: item.type as 'image' | 'video' })),
       otherUserId,
       username,
       setMessages,
@@ -1914,6 +1950,91 @@ export default function ChatThread(){
         }
         break
       }
+    }
+  }
+
+  async function uploadSharedAudioFile(file: File) {
+    if (!otherUserId) return
+    setSending(true)
+    skipNextPollsUntil.current = Date.now() + 5000
+    const tempId = `temp_audio_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const url = URL.createObjectURL(file)
+    let durationSeconds = ''
+    try {
+      const d = await new Promise<number>(resolve => {
+        const a = new Audio()
+        a.preload = 'metadata'
+        a.src = url
+        a.onloadedmetadata = () => {
+          const sec = Math.round(a.duration || 0)
+          a.remove()
+          resolve(sec)
+        }
+        a.onerror = () => {
+          a.remove()
+          resolve(0)
+        }
+        setTimeout(() => resolve(0), 6000)
+      })
+      if (d > 0) durationSeconds = String(d)
+    } catch {
+      durationSeconds = ''
+    }
+    try {
+      const now = new Date().toISOString()
+      const optimistic: Message = {
+        id: tempId,
+        text: '🎤 Voice message',
+        audio_path: url,
+        sent: true,
+        time: now,
+        isOptimistic: true,
+        clientKey: tempId,
+      }
+      setMessages(prev => [...prev, optimistic])
+      recentOptimisticRef.current.set(tempId, { message: optimistic, timestamp: Date.now() })
+      setTimeout(scrollToBottom, 50)
+      const fd = new FormData()
+      fd.append('recipient_id', String(otherUserId))
+      if (durationSeconds) fd.append('duration_seconds', durationSeconds)
+      fd.append('audio', file, file.name || 'audio.m4a')
+      const r = await fetch('/send_audio_message', { method: 'POST', credentials: 'include', body: fd })
+      const j = await r.json().catch(() => null)
+      if (!j?.success) {
+        setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
+        recentOptimisticRef.current.delete(tempId)
+        URL.revokeObjectURL(url)
+        alert(j?.error || 'Failed to send audio')
+      } else if (j.message_id) {
+        idBridgeRef.current.tempToServer.set(tempId, j.message_id)
+        idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
+        setMessages(prev => {
+          const serverId = j.message_id
+          const updated = prev.map(m => {
+            if ((m.clientKey || m.id) === tempId) {
+              return {
+                ...m,
+                id: serverId,
+                audio_path: j.audio_path || m.audio_path,
+                audio_summary: j.audio_summary || m.audio_summary || null,
+                isOptimistic: false,
+                clientKey: tempId,
+              }
+            }
+            return m
+          })
+          return updated.filter(m => m.id !== serverId || (m.clientKey || m.id) === tempId)
+        })
+        setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
+        setTimeout(() => URL.revokeObjectURL(url), 100)
+      }
+    } catch (error) {
+      console.error('Failed to send shared audio', error)
+      setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
+      recentOptimisticRef.current.delete(tempId)
+      alert('Failed to send audio')
+    } finally {
+      setSending(false)
     }
   }
 
@@ -3927,6 +4048,8 @@ export default function ChatThread(){
                   playsInline
                   className="max-w-full max-h-full object-contain"
                 />
+              ) : pendingMedia[previewIndex]?.type === 'audio' ? (
+                <audio src={pendingMedia[previewIndex]?.previewUrl} controls className="w-full max-w-md" />
               ) : (
                 <ZoomableImage
                   src={pendingMedia[previewIndex]?.previewUrl || ''}
@@ -3963,6 +4086,10 @@ export default function ChatThread(){
                   {item.type === 'video' ? (
                     <div className="w-full h-full bg-black/50 flex items-center justify-center">
                       <i className="fa-solid fa-video text-white/60 text-xs" />
+                    </div>
+                  ) : item.type === 'audio' ? (
+                    <div className="w-full h-full bg-black/50 flex items-center justify-center">
+                      <i className="fa-solid fa-music text-white/60 text-xs" />
                     </div>
                   ) : (
                     <img src={item.previewUrl} alt="" className="w-full h-full object-cover" />

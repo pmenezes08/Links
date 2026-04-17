@@ -50,6 +50,14 @@ function base64ToBlob(base64: string, mime: string): Blob {
 
 function guessExtension(mime: string, kind: string): string {
   const m = mime.toLowerCase()
+  if (m === 'application/pdf' || kind === 'document') return '.pdf'
+  if (m.includes('audio')) {
+    if (m.includes('mpeg') && !m.includes('mp4')) return '.mp3'
+    if (m.includes('mp4') || m.includes('m4a')) return '.m4a'
+    if (m.includes('wav')) return '.wav'
+    if (m.includes('aac')) return '.aac'
+    if (kind === 'audio') return '.m4a'
+  }
   if (m.includes('video')) {
     if (m.includes('quicktime')) return '.mov'
     if (m.includes('webm')) return '.webm'
@@ -59,7 +67,25 @@ function guessExtension(mime: string, kind: string): string {
   if (m.includes('gif')) return '.gif'
   if (m.includes('heic')) return '.heic'
   if (kind === 'video') return '.mp4'
+  if (kind === 'audio') return '.m4a'
   return '.jpg'
+}
+
+/** Classify shared File objects for routing in ShareIncoming. */
+export function fileIsPdf(f: File): boolean {
+  return f.type === 'application/pdf' || /\.pdf$/i.test(f.name)
+}
+
+export function fileIsAudio(f: File): boolean {
+  return f.type.startsWith('audio/')
+}
+
+export function fileIsChatShareableMedia(f: File): boolean {
+  return f.type.startsWith('image/') || f.type.startsWith('video/') || fileIsAudio(f)
+}
+
+export function fileIsFeedImageOrVideo(f: File): boolean {
+  return f.type.startsWith('image/') || f.type.startsWith('video/')
 }
 
 /** Reads App Group manifest via native bridge, copies into File[], clears native inbox. */

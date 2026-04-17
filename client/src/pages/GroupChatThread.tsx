@@ -127,7 +127,7 @@ export default function GroupChatThread() {
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
   // Multi-media preview state
-  const [pendingMedia, setPendingMedia] = useState<Array<{ file: File; previewUrl: string; type: 'image' | 'video' }>>([])
+  const [pendingMedia, setPendingMedia] = useState<Array<{ file: File; previewUrl: string; type: 'image' | 'video' | 'audio' }>>([])
   const [previewIndex, setPreviewIndex] = useState(0)
   const shareAttachDoneRef = useRef(false)
 
@@ -143,11 +143,18 @@ export default function GroupChatThread() {
     if (!files?.length) return
     if (shareAttachDoneRef.current) return
     shareAttachDoneRef.current = true
-    const newMedia = files.map(file => ({
-      file,
-      previewUrl: URL.createObjectURL(file),
-      type: (file.type.startsWith('video/') ? 'video' : 'image') as 'image' | 'video',
-    }))
+    const newMedia = files.map(file => {
+      const t = file.type.startsWith('video/')
+        ? 'video'
+        : file.type.startsWith('audio/')
+          ? 'audio'
+          : 'image'
+      return {
+        file,
+        previewUrl: URL.createObjectURL(file),
+        type: t as 'image' | 'video' | 'audio',
+      }
+    })
     setPendingMedia(prev => [...prev, ...newMedia])
     setPreviewIndex(0)
     setSearchParams(
@@ -1164,12 +1171,64 @@ export default function GroupChatThread() {
     })
   }
   
+  const sendSharedGroupAudioFile = async (file: File) => {
+    if (!group_id) return
+    setSending(true)
+    const optimisticId = -Date.now() - Math.floor(Math.random() * 10000)
+    try {
+      const ext = file.name.split('.').pop() || 'm4a'
+      const formData = new FormData()
+      formData.append('audio', file, `share.${ext}`)
+      const uploadResponse = await fetch('/api/upload_voice_message', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      })
+      const uploadData = await uploadResponse.json()
+      if (uploadData.success && uploadData.audio_path) {
+        const optimisticMsg = {
+          id: optimisticId,
+          sender: currentUsername || 'You',
+          text: null,
+          image: null,
+          voice: uploadData.audio_path,
+          audio_summary: null,
+          created_at: new Date().toISOString(),
+          profile_picture: null,
+          isOptimistic: true,
+        }
+        setServerMessages(prev => [...prev, optimisticMsg as any])
+        const response = await fetch(`/api/group_chat/${group_id}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ voice: uploadData.audio_path }),
+        })
+        const data = await response.json()
+        if (data.success) {
+          setServerMessages(prev =>
+            prev.map(m => (m.id === optimisticId ? { ...data.message, isOptimistic: false } : m))
+          )
+          lastMessageIdRef.current = data.message.id
+        } else {
+          setServerMessages(prev => prev.filter(m => m.id !== optimisticId))
+        }
+      }
+    } catch (err) {
+      console.error('Error sending shared audio:', err)
+      setServerMessages(prev => prev.filter(m => m.id !== optimisticId))
+    } finally {
+      setSending(false)
+    }
+  }
+
   // Confirm and send all pending media
-  const confirmSendMedia = () => {
+  const confirmSendMedia = async () => {
     if (pendingMedia.length === 0 || !group_id) return
 
     const mediaToSend = [...pendingMedia]
-    console.log('[GroupChat] Sending media, count:', mediaToSend.length)
+    const audios = mediaToSend.filter(i => i.type === 'audio')
+    const imagesAndVideos = mediaToSend.filter(i => i.type === 'image' || i.type === 'video')
 
     mediaToSend.forEach(item => {
       if (item.previewUrl.startsWith('blob:')) {
@@ -1179,8 +1238,14 @@ export default function GroupChatThread() {
     setPendingMedia([])
     setPreviewIndex(0)
 
+    for (const item of audios) {
+      await sendSharedGroupAudioFile(item.file)
+    }
+
+    if (imagesAndVideos.length === 0) return
+
     void sendGroupMultiMedia({
-      files: mediaToSend.map(item => ({ file: item.file, type: item.type })),
+      files: imagesAndVideos.map(item => ({ file: item.file, type: item.type as 'image' | 'video' })),
       groupId: group_id,
       currentUsername,
       setServerMessages,
@@ -3517,6 +3582,8 @@ export default function GroupChatThread() {
                   playsInline
                   className="max-w-full max-h-full object-contain"
                 />
+              ) : pendingMedia[previewIndex]?.type === 'audio' ? (
+                <audio src={pendingMedia[previewIndex]?.previewUrl} controls className="w-full max-w-md" />
               ) : (
                 <ZoomableImage
                   src={pendingMedia[previewIndex]?.previewUrl || ''}
@@ -3558,6 +3625,10 @@ export default function GroupChatThread() {
                   {item.type === 'video' ? (
                     <div className="w-full h-full bg-black/50 flex items-center justify-center">
                       <i className="fa-solid fa-video text-white/60 text-xs" />
+                    </div>
+                  ) : item.type === 'audio' ? (
+                    <div className="w-full h-full bg-black/50 flex items-center justify-center">
+                      <i className="fa-solid fa-music text-white/60 text-xs" />
                     </div>
                   ) : (
                     <img src={item.previewUrl} alt="" className="w-full h-full object-cover" />
