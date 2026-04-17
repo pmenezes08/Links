@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { useHeader } from '../contexts/HeaderContext'
-import { loadShareIntoStore } from '../services/shareImport'
+import { formatShareLoadError, loadShareIntoStore } from '../services/shareImport'
 import { clearPendingShareFiles, peekPendingShareFiles } from '../services/shareImportStore'
 
 type CommunityRow = { id: number; name: string }
@@ -35,6 +35,8 @@ export default function ShareIncoming() {
   const { setTitle } = useHeader()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  /** Technical detail shown under the friendly message so debugging does not rely on console. */
+  const [errorDetail, setErrorDetail] = useState<string | null>(null)
   const [communities, setCommunities] = useState<CommunityRow[]>([])
   const [communitiesLoading, setCommunitiesLoading] = useState(false)
   const [showCommunities, setShowCommunities] = useState(false)
@@ -68,7 +70,10 @@ export default function ShareIncoming() {
         }
       } catch (e) {
         console.error('ShareIncoming load error:', e)
-        if (!cancelled) setError('Could not load shared files.')
+        if (!cancelled) {
+          setError('Could not load shared files.')
+          setErrorDetail(formatShareLoadError(e))
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -135,6 +140,11 @@ export default function ShareIncoming() {
     return (
       <div className="px-4 py-8 max-w-lg mx-auto text-center text-white">
         <p className="text-white/90 mb-4">{error}</p>
+        {errorDetail ? (
+          <p className="text-left text-xs text-white/55 mb-4 whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-black/30 px-3 py-2 font-mono">
+            {errorDetail}
+          </p>
+        ) : null}
         <button
           type="button"
           onClick={goBackOrHome}
