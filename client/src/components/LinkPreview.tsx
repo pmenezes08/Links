@@ -63,6 +63,21 @@ export function extractUrls(text: string): string[] {
   }).slice(0, 3)
 }
 
+/**
+ * Remove URL strings from message/post text when those URLs are shown as link preview cards.
+ * Pass the same URL list returned by `extractUrls` (or a superset you render as cards).
+ */
+export function stripExtractedUrlsFromText(text: string, urls: string[]): string {
+  if (!text || !urls.length) return text
+  let t = text
+  for (const u of urls) {
+    if (!u.trim()) continue
+    const escaped = u.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    t = t.replace(new RegExp(escaped, 'gi'), '')
+  }
+  return t.replace(/\n{3,}/g, '\n\n').trim()
+}
+
 /** Rich link cards for feed/detail — omits hosts already shown via VideoEmbed. */
 export function feedLinkPreviewUrls(text: string, videoEmbedUrl?: string | null): string[] {
   const urls = extractUrls(text)

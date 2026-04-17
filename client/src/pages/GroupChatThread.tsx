@@ -20,7 +20,7 @@ import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMed
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
 import { SENDING_MEDIA_LABEL } from '../chat/mediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
-import LinkPreview, { extractUrls } from '../components/LinkPreview'
+import LinkPreview, { extractUrls, stripExtractedUrlsFromText } from '../components/LinkPreview'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
 import {
@@ -2152,6 +2152,12 @@ export default function GroupChatThread() {
                       displayText = replyMatch[3]
                     }
                   }
+
+                  const linkPreviewUrls = displayText ? extractUrls(displayText) : []
+                  const bubbleTextWithoutUrls =
+                    linkPreviewUrls.length > 0 && displayText
+                      ? stripExtractedUrlsFromText(displayText, linkPreviewUrls)
+                      : displayText
                   
                   // Date separator logic - matching ChatThread
                   const messageDate = getDateKey(msg.created_at)
@@ -2279,9 +2285,9 @@ export default function GroupChatThread() {
                                       </div>
                                     </div>
                                   )}
-                                  {displayText && (
+                                  {bubbleTextWithoutUrls?.trim() && (
                                     <div className="text-[14px] text-white whitespace-pre-wrap break-words px-3 py-2">
-                                      {renderTextWithMentions(displayText)}
+                                      {renderTextWithMentions(bubbleTextWithoutUrls)}
                                       {isOptimistic && (
                                         <span className="ml-2 text-[10px] text-white/60">
                                           <i className="fa-solid fa-clock text-[8px] mr-1" />
@@ -2294,7 +2300,7 @@ export default function GroupChatThread() {
                                       )}
                                     </div>
                                   )}
-                                  {displayText && extractUrls(displayText).map(u => (
+                                  {linkPreviewUrls.map(u => (
                                     <div key={u} className="px-2 pb-2">
                                       <LinkPreview url={u} sent={isSentByMe} />
                                     </div>

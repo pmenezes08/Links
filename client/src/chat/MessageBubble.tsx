@@ -14,7 +14,7 @@ import { memo } from 'react'
 import type { ChatMessage } from '../types/chat'
 import MessageImage from '../components/MessageImage'
 import MessageVideo from '../components/MessageVideo'
-import LinkPreview, { extractUrls } from '../components/LinkPreview'
+import LinkPreview, { extractUrls, stripExtractedUrlsFromText } from '../components/LinkPreview'
 import { normalizeMediaPath, formatMessageTime, parseMessageTime } from './utils'
 import AudioMessage from './AudioMessage'
 import LongPressActionable from './LongPressActionable'
@@ -107,6 +107,12 @@ function MessageBubbleInner({
   linkifyText,
   onRetry,
 }: MessageBubbleProps) {
+  const previewUrls = extractUrls(m.text || '')
+  const textWithoutPreviewUrls =
+    previewUrls.length > 0 ? stripExtractedUrlsFromText(m.text || '', previewUrls) : m.text || ''
+  const showLinkPreviews = previewUrls.length > 0
+  const showLinkifiedBody = textWithoutPreviewUrls.trim().length > 0
+
   return (
     <LongPressActionable
       onDelete={onDelete}
@@ -472,7 +478,7 @@ function MessageBubbleInner({
                   onEdit()
                 }}
               >
-                {linkifyText(m.text)}
+                {showLinkifiedBody ? linkifyText(textWithoutPreviewUrls) : null}
                 {m.edited_at ? (
                   <span className="text-[10px] text-white/50 ml-1">edited</span>
                 ) : null}
@@ -480,9 +486,8 @@ function MessageBubbleInner({
                   {formatMessageTime(m.time)}
                 </span>
               </div>
-              {extractUrls(m.text).map(u => (
-                <LinkPreview key={u} url={u} sent={m.sent} />
-              ))}
+              {showLinkPreviews &&
+                previewUrls.map(u => <LinkPreview key={u} url={u} sent={m.sent} />)}
             </>
           ) : (
             <span className={`text-[10px] ${m.sent ? 'text-white/60' : 'text-white/45'}`}>

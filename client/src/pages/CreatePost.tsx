@@ -7,23 +7,13 @@ import MentionTextarea from '../components/MentionTextarea'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { detectLinks, replaceLinkInText, type DetectedLink } from '../utils/linkUtils.tsx'
-import { extractUrls } from '../components/LinkPreview'
+import { extractUrls, stripExtractedUrlsFromText } from '../components/LinkPreview'
 import GifPicker from '../components/GifPicker'
 import { clearDeviceCache } from '../utils/deviceCache'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { fileIsPdf } from '../services/shareImport'
 import { takePendingShareFilesOnce, takePendingShareUrlsOnce, releaseShareHandoffKey, releaseShareUrlHandoffKey } from '../services/shareImportStore'
-
-function stripUrlsFromText(text: string, urls: string[]): string {
-  let t = text
-  for (const u of urls) {
-    if (!u.trim()) continue
-    const escaped = u.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    t = t.replace(new RegExp(escaped, 'gi'), '')
-  }
-  return t.replace(/\n{3,}/g, '\n\n').trim()
-}
 
 export default function CreatePost(){
   const [params, setSearchParams] = useSearchParams()
@@ -293,7 +283,7 @@ export default function CreatePost(){
 
     const urlsFromText = extractUrls(content)
     const allLinkUrls = [...new Set([...pendingShareUrls, ...urlsFromText])]
-    const captionStripped = stripUrlsFromText(content, allLinkUrls)
+    const captionStripped = stripExtractedUrlsFromText(content, allLinkUrls)
     const groupMerged =
       groupId && pendingShareUrls.length > 0
         ? [pendingShareUrls.join('\n\n'), content].filter(Boolean).join('\n\n')
