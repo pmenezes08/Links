@@ -242,30 +242,38 @@ final class ShareViewController: UIViewController {
                 return
             }
 
-            if self.openHostAppViaResponderChain(url) {
-                NSLog("ShareExtension: Responder chain open fallback succeeded")
-                self.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
-                return
-            }
-
-            NSLog("ShareExtension: Host app open failed")
-            Task { @MainActor in
-                await self.finishWithError("C.Point could not open from the share sheet. Reopen the app and try again.")
+            // extensionContext.open can fail on some OS/simulator builds. Do not use deprecated
+            // UIApplication.openURL(_:) — UIKit forces it to return false on current iOS.
+            self.openHostAppViaResponderChain(url) { [weak self] fallbackSuccess in
+                guard let self else { return }
+                if fallbackSuccess {
+                    NSLog("ShareExtension: UIApplication.open fallback succeeded")
+                    self.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+                    return
+                }
+                NSLog("ShareExtension: Host app open failed (extensionContext + UIApplication fallback)")
+                Task { @MainActor in
+                    await self.finishWithError("C.Point could not open from the share sheet. Open C.Point, then try sharing again.")
+                }
             }
         })
     }
 
-    private func openHostAppViaResponderChain(_ url: URL) -> Bool {
-        let selector = NSSelectorFromString("openURL:")
+    /// Finds UIApplication on the responder chain and opens the URL with the non-deprecated API.
+    private func openHostAppViaResponderChain(_ url: URL, completion: @escaping (Bool) -> Void) {
         var responder: UIResponder? = self
         while let current = responder {
-            if current.responds(to: selector) {
-                _ = current.perform(selector, with: url)
-                return true
+            if let application = current as? UIApplication {
+                application.open(url, options: [:], completionHandler: { success in
+                    NSLog("ShareExtension: UIApplication.open completion=%@", success ? "true" : "false")
+                    completion(success)
+                })
+                return
             }
             responder = current.next
         }
-        return false
+        NSLog("ShareExtension: No UIApplication in responder chain for fallback open")
+        completion(false)
     }
 
     @MainActor
