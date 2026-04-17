@@ -14,7 +14,7 @@ import ImageLoader from '../components/ImageLoader'
 import ZoomableImage from '../components/ZoomableImage'
 import { useHeader } from '../contexts/HeaderContext'
 import VideoEmbed from '../components/VideoEmbed'
-import LinkPreview, { feedLinkPreviewUrls } from '../components/LinkPreview'
+import LinkPreview, { feedPostLinkPreviewUrls } from '../components/LinkPreview'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import {
   renderTextWithLinks,
@@ -39,7 +39,7 @@ type PollOption = { id: number; text: string; votes: number; user_voted?: boolea
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, audio_path?: string|null, parent_reply_id?: number | null, reply_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
-type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean, media_paths?: MediaItem[] | string | null }
+type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean, media_paths?: MediaItem[] | string | null }
 type ReactionGroup = { reaction_type: string; users: Array<{ username: string; profile_picture?: string | null }> }
 type PostViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
 type TextOverlay = {
@@ -4336,7 +4336,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       {renderTextWithLinks(displayContent, undefined, mentionToProfile, { sourcesSmallLinks: true, onExternalClick: openExternalArticle })}
                     </div>
                   )}
-                  {feedLinkPreviewUrls(post.content, null).map(u => (
+                  {feedPostLinkPreviewUrls(post.content, post.link_urls, null).map(u => (
                     <div key={u} className="px-3 mt-2">
                       <LinkPreview url={u} sent={false} />
                     </div>

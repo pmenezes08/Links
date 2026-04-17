@@ -18844,6 +18844,53 @@ def add_reaction():
 
 
 
+def _parse_link_urls_from_request(raw) -> list:
+    """Parse JSON array of strings from multipart form; only http(s) URLs kept."""
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        items = raw
+    else:
+        try:
+            items = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return []
+    if not isinstance(items, list):
+        return []
+    out = []
+    for x in items:
+        if isinstance(x, str) and x.strip().startswith(('http://', 'https://')):
+            out.append(x.strip()[:4096])
+    return out
+
+
+def _strip_urls_from_post_content(content: str, urls: list) -> str:
+    """Remove URL strings from text (caption-only storage when URLs are in link_urls)."""
+    if not content or not urls:
+        return (content or '').strip()
+    out = content
+    for u in urls:
+        if not u:
+            continue
+        out = out.replace(u, '')
+    out = re.sub(r'\n{3,}', '\n\n', out)
+    return out.strip()
+
+
+def _normalize_link_urls_json(urls: list) -> str | None:
+    out = []
+    seen = set()
+    for u in urls or []:
+        s = (u or '').strip()
+        if not s.startswith(('http://', 'https://')):
+            continue
+        if s in seen:
+            continue
+        seen.add(s)
+        out.append(s)
+    return json.dumps(out) if out else None
+
+
 def notify_post_reply_recipients(
     *,
     post_id: int,
@@ -18854,7 +18901,9 @@ def notify_post_reply_recipients(
     reply_content: str | None = None,
 ):
     """Create in-app notifications and web push for post reply recipients.
-    Recipients: post owner (ALWAYS unless they are the sender), parent reply author, and prior engagers.
+    Recipients: post owner (unless sender), parent reply author, and users who engaged
+    (replied, reacted on the post, or reacted on a reply). Users who only viewed the post
+    (post_views) are never included — they are not queried here.
     
     If reply_id is provided, notifications will link to /reply/{reply_id} for nested replies,
     allowing users to navigate directly to the relevant thread.
@@ -18862,48 +18911,58 @@ def notify_post_reply_recipients(
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Determine recipients - post owner ALWAYS gets notified (unless they wrote the reply)
-            recipients = set()
+            engaged: set[str] = set()
             
-            # 1. ALWAYS notify the post owner (unless they're the one replying)
             c.execute("SELECT username FROM posts WHERE id=?", (post_id,))
             row = c.fetchone()
             post_owner = (row['username'] if hasattr(row,'keys') else row[0]) if row else None
             logger.info(f"[Reply Notify] Post {post_id} owner: {post_owner}, replier: {from_user}, parent_reply_id: {parent_reply_id}")
             
-            if post_owner and post_owner != from_user:
-                recipients.add(post_owner)
-                logger.info(f"[Reply Notify] Added post owner {post_owner} to recipients")
+            if post_owner:
+                engaged.add(post_owner)
             
-            # 2. Notify the parent reply author (for nested replies)
             parent_author = None
             if parent_reply_id:
                 c.execute("SELECT username FROM replies WHERE id=?", (parent_reply_id,))
                 r2 = c.fetchone()
                 parent_author = (r2['username'] if hasattr(r2,'keys') else r2[0]) if r2 else None
-                if parent_author and parent_author not in (from_user,):
-                    # Add parent author even if they're the post owner (they'll be deduped by the set)
-                    recipients.add(parent_author)
-                    logger.info(f"[Reply Notify] Added parent reply author {parent_author} to recipients")
+                if parent_author:
+                    engaged.add(parent_author)
+                    logger.info(f"[Reply Notify] Parent reply author {parent_author} in engaged set")
 
-            # Include prior engagers: anyone who replied on this post
             try:
                 c.execute("SELECT DISTINCT username FROM replies WHERE post_id=?", (post_id,))
                 for rr in c.fetchall() or []:
                     uname = rr['username'] if hasattr(rr,'keys') else rr[0]
-                    if uname and uname not in (from_user, post_owner, parent_author):
-                        recipients.add(uname)
+                    if uname:
+                        engaged.add(uname)
             except Exception as qe:
                 logger.warning(f"collect prior repliers failed: {qe}")
-            # Include prior reactors
             try:
                 c.execute("SELECT DISTINCT username FROM reactions WHERE post_id=?", (post_id,))
                 for rv in c.fetchall() or []:
                     uname = rv['username'] if hasattr(rv,'keys') else rv[0]
-                    if uname and uname not in (from_user, post_owner, parent_author):
-                        recipients.add(uname)
+                    if uname:
+                        engaged.add(uname)
             except Exception as qe2:
                 logger.warning(f"collect prior reactors failed: {qe2}")
+            try:
+                c.execute(
+                    """
+                    SELECT DISTINCT rr.username FROM reply_reactions rr
+                    INNER JOIN replies r ON r.id = rr.reply_id
+                    WHERE r.post_id = ?
+                    """,
+                    (post_id,),
+                )
+                for rr in c.fetchall() or []:
+                    uname = rr['username'] if hasattr(rr,'keys') else rr[0]
+                    if uname:
+                        engaged.add(uname)
+            except Exception as qe3:
+                logger.warning(f"collect reply_reactors failed: {qe3}")
+
+            recipients = {u for u in engaged if u and u != from_user}
 
             preview_snip = _truncate_notif_preview(reply_content or "")
             # Insert notifications (dedupe 10s by same from_user/post/type/recipient)
@@ -19744,6 +19803,8 @@ def remove_logo():
 def post_status():
     username = session['username']
     content = request.form.get('content', '').strip()
+    link_urls_raw = (request.form.get('link_urls') or '').strip()
+    link_urls_list = _parse_link_urls_from_request(link_urls_raw) if link_urls_raw else []
     community_id_raw = request.form.get('community_id')
     community_id = int(community_id_raw) if community_id_raw else None
     token = (request.form.get('dedupe_token') or '').strip()
@@ -19760,7 +19821,7 @@ def post_status():
             except (IndexError, ValueError) as e:
                 logger.warning(f"Could not extract community_id from referer: {e}")
     
-    logger.info(f"Received post request for {username} with content: {content} in community: {community_id} (raw: {community_id_raw})")
+    logger.info(f"Received post request for {username} with content: {content!r} link_urls={len(link_urls_list)} in community: {community_id} (raw: {community_id_raw})")
     
     # Debug: Log all form data
     logger.info(f"All form data: {dict(request.form)}")
@@ -19808,6 +19869,9 @@ def post_status():
     if len(media_paths) > MAX_MEDIA_PER_POST:
         media_paths = media_paths[:MAX_MEDIA_PER_POST]
         logger.warning(f"Post from {username}: media truncated to {MAX_MEDIA_PER_POST} items")
+
+    content_clean = _strip_urls_from_post_content(content, link_urls_list)
+    link_urls_json = _normalize_link_urls_json(link_urls_list)
 
     # Handle legacy single image upload
     if not media_paths and 'image' in files and files['image'].filename:
@@ -19859,7 +19923,7 @@ def post_status():
             elif m['type'] == 'video' and not video_path:
                 video_path = m['path']
     
-    if not content and not image_path and not audio_path and not video_path and not media_paths:
+    if not content_clean and not image_path and not audio_path and not video_path and not media_paths and not link_urls_json:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'success': False, 'error': 'Content, image, video or audio is required!'}), 400
         else:
@@ -19913,7 +19977,7 @@ def post_status():
                         return redirect(url_for('community_feed', community_id=community_id) + '?error=You are not a member of this community')
             
             # Debug: Log the exact values being inserted
-            logger.info(f"About to insert post with values: username={username}, content={content}, image_path={image_path}, video_path={video_path}, timestamp={timestamp}, community_id={community_id} (type: {type(community_id)})")
+            logger.info(f"About to insert post with values: username={username}, content={content_clean!r}, link_urls={bool(link_urls_json)}, image_path={image_path}, video_path={video_path}, timestamp={timestamp}, community_id={community_id} (type: {type(community_id)})")
             
             # Ensure audio columns exist for posts (migration-light)
             try:
@@ -19940,6 +20004,10 @@ def post_status():
                 c.execute("ALTER TABLE posts ADD COLUMN media_paths TEXT")
             except Exception:
                 pass
+            try:
+                c.execute("ALTER TABLE posts ADD COLUMN link_urls TEXT")
+            except Exception:
+                pass
 
             # Generate AI summary if audio is present
             audio_summary = None
@@ -19959,8 +20027,8 @@ def post_status():
             # Serialize media_paths to JSON if we have multiple media
             media_paths_json = json.dumps(media_paths) if media_paths else None
             
-            c.execute("INSERT INTO posts (username, content, image_path, video_path, audio_path, audio_summary, timestamp, community_id, media_paths) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                      (username, content, image_path, video_path, audio_path, audio_summary, timestamp, community_id, media_paths_json))
+            c.execute("INSERT INTO posts (username, content, image_path, video_path, audio_path, audio_summary, timestamp, community_id, media_paths, link_urls) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                      (username, content_clean, image_path, video_path, audio_path, audio_summary, timestamp, community_id, media_paths_json, link_urls_json))
             conn.commit()
             post_id = c.lastrowid
             logger.info(f"Post added successfully for {username} with ID: {post_id} in community: {community_id}")
@@ -19968,9 +20036,15 @@ def post_status():
             # Dual-write post to Firestore
             try:
                 from backend.services.firestore_writes import write_post
-                write_post(post_id=post_id, username=username, content=content, community_id=community_id,
+                link_urls_for_fs = None
+                if link_urls_json:
+                    try:
+                        link_urls_for_fs = json.loads(link_urls_json)
+                    except Exception:
+                        link_urls_for_fs = None
+                write_post(post_id=post_id, username=username, content=content_clean, community_id=community_id,
                           image_path=image_path, video_path=video_path, audio_path=audio_path, audio_summary=audio_summary,
-                          media_paths=media_paths if media_paths else None)
+                          media_paths=media_paths if media_paths else None, link_urls=link_urls_for_fs)
             except Exception:
                 pass
             try:
@@ -19988,7 +20062,7 @@ def post_status():
 
             # Auto-flag content if it contains objectionable material (Apple App Store requirement)
             try:
-                auto_flag_content_if_needed(post_id, content, username, community_id)
+                auto_flag_content_if_needed(post_id, content_clean, username, community_id)
             except Exception as flag_err:
                 logger.warning(f"Error in content auto-flagging: {flag_err}")
             # Also set created_at to match timestamp for feeds that rely on created_at
@@ -20036,12 +20110,12 @@ def post_status():
             # Check if @Steve is mentioned in the post - trigger AI reply
             try:
                 import re
-                if content and re.search(r'@steve\b', content, re.IGNORECASE):
+                if content_clean and re.search(r'@steve\b', content_clean, re.IGNORECASE):
                     logger.info(f"@Steve mentioned in new post {post_id} by {username}")
                     # Trigger async Steve reply (don't block post creation)
                     try:
                         trigger_steve_reply_to_post(
-                            post_id, content, username, community_id,
+                            post_id, content_clean, username, community_id,
                             image_path=image_path, video_path=video_path, media_paths=media_paths_json
                         )
                     except Exception as steve_err:
@@ -20055,7 +20129,7 @@ def post_status():
                     community_id=community_id,
                     post_id=post_id,
                     author_username=username,
-                    content=content or "",
+                    content=content_clean or "",
                 )
             except Exception as notify_err:
                 logger.warning(f"community notify block error: {notify_err}")
@@ -20075,13 +20149,20 @@ def post_status():
             or request.content_type and 'multipart/form-data' in request.content_type
         )
         if wants_json:
+            link_urls_resp = None
+            if link_urls_json:
+                try:
+                    link_urls_resp = json.loads(link_urls_json)
+                except Exception:
+                    link_urls_resp = None
             return jsonify({
                 'success': True,
                 'message': 'Post added!',
                 'post': {
-                    'id': c.lastrowid, 
-                    'username': username, 
-                    'content': content, 
+                    'id': post_id,
+                    'username': username,
+                    'content': content_clean,
+                    'link_urls': link_urls_resp,
                     'image_path': image_path,
                     'video_path': video_path,
                     'media_paths': media_paths if media_paths else None,
@@ -27018,13 +27099,41 @@ def get_post():
                     with get_db_connection() as hconn:
                         hc = hconn.cursor()
                         # Always prefer MySQL content (authoritative after edits)
-                        hc.execute("SELECT content, community_id FROM posts WHERE id = ?", (post_id,))
-                        mysql_row = hc.fetchone()
+                        mysql_row = None
+                        try:
+                            hc.execute("SELECT content, link_urls, community_id FROM posts WHERE id = ?", (post_id,))
+                            mysql_row = hc.fetchone()
+                        except Exception:
+                            try:
+                                hc.execute("SELECT content, community_id FROM posts WHERE id = ?", (post_id,))
+                                mysql_row = hc.fetchone()
+                            except Exception:
+                                mysql_row = None
                         if mysql_row:
                             mysql_content = mysql_row['content'] if hasattr(mysql_row, 'keys') else mysql_row[0]
                             if mysql_content:
                                 fs_post['content'] = mysql_content
-                            fs_community_id = mysql_row['community_id'] if hasattr(mysql_row, 'keys') else mysql_row[1]
+                            fs_community_id = None
+                            lu = None
+                            try:
+                                if hasattr(mysql_row, 'keys'):
+                                    fs_community_id = mysql_row.get('community_id')
+                                    lu = mysql_row.get('link_urls')
+                                elif len(mysql_row) >= 3:
+                                    lu = mysql_row[1]
+                                    fs_community_id = mysql_row[2]
+                                else:
+                                    fs_community_id = mysql_row[1]
+                                if isinstance(lu, str) and lu.strip():
+                                    fs_post['link_urls'] = json.loads(lu)
+                                elif isinstance(lu, list):
+                                    fs_post['link_urls'] = lu
+                            except Exception:
+                                fs_community_id = (
+                                    mysql_row.get('community_id')
+                                    if hasattr(mysql_row, 'keys')
+                                    else (mysql_row[2] if len(mysql_row) > 2 else mysql_row[1])
+                                )
                         else:
                             fs_community_id = fs_post.get('community_id')
 
@@ -27152,6 +27261,12 @@ def get_post():
                 return jsonify({'success': False, 'error': 'Post not found'}), 404
             
             post = dict(post_raw)
+            try:
+                lu = post.get('link_urls')
+                if isinstance(lu, str) and lu.strip():
+                    post['link_urls'] = json.loads(lu)
+            except Exception:
+                pass
             allow_nsfw_imagine = False
             community_id = post.get('community_id') if isinstance(post, dict) else None
             if community_id:
@@ -30498,6 +30613,12 @@ def api_community_feed(community_id):
                 # Now enrich posts with all the batched data (no more individual queries!)
                 for post in posts:
                     post_id = post['id']
+                    try:
+                        lu = post.get('link_urls')
+                        if isinstance(lu, str) and lu.strip():
+                            post['link_urls'] = json.loads(lu)
+                    except Exception:
+                        post['link_urls'] = None
                     
                     # Timestamp formatting
                     try:

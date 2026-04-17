@@ -204,63 +204,6 @@ export default function ChatThread(){
     setMessages([])
   }, [username])
 
-  const shareAttach = searchParams.get('share')
-  useEffect(() => {
-    if (shareAttach !== '1' || !username) return
-    const handoffKey = `dm:${username}:share`
-    if (shareAttachDoneRef.current) return
-    const files = takePendingShareFilesOnce(handoffKey)
-    const urls = takePendingShareUrlsOnce(handoffKey)
-    if (!files?.length && !urls?.length) return
-    shareAttachDoneRef.current = true
-    if (files?.length) {
-      const newMedia = files.map(file => {
-        const t = file.type.startsWith('video/')
-          ? 'video'
-          : file.type.startsWith('audio/')
-            ? 'audio'
-            : 'image'
-        return {
-          file,
-          previewUrl: URL.createObjectURL(file),
-          type: t as 'image' | 'video' | 'audio',
-        }
-      })
-      setPendingMedia(prev => [...prev, ...newMedia])
-      setPreviewIndex(0)
-    }
-    if (urls?.length) {
-      const text = urls.join('\n\n')
-      const ta = textareaRef.current
-      if (ta) {
-        const merged = ta.value.trim() ? `${text}\n\n${ta.value}` : text
-        ta.value = merged
-        draftRef.current = merged
-        setDraftDisplay(merged)
-      } else {
-        draftRef.current = text
-        setDraftDisplay(text)
-      }
-    }
-    setSearchParams(
-      p => {
-        const n = new URLSearchParams(p)
-        n.delete('share')
-        return n
-      },
-      { replace: true }
-    )
-  }, [username, shareAttach, setSearchParams])
-
-  useEffect(() => {
-    if (shareAttach === '1') return
-    if (username) {
-      const k = `dm:${username}:share`
-      releaseShareHandoffKey(k)
-      releaseShareUrlHandoffKey(k)
-    }
-  }, [shareAttach, username])
-  
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
     if (!el) return
@@ -779,6 +722,64 @@ export default function ChatThread(){
       adjustTextareaHeight()
     }
   }, [username])
+
+  // Share handoff must run *after* draft restore above, or saved/cleared draft overwrites shared links.
+  const shareAttach = searchParams.get('share')
+  useEffect(() => {
+    if (shareAttach !== '1' || !username) return
+    const handoffKey = `dm:${username}:share`
+    if (shareAttachDoneRef.current) return
+    const files = takePendingShareFilesOnce(handoffKey)
+    const urls = takePendingShareUrlsOnce(handoffKey)
+    if (!files?.length && !urls?.length) return
+    shareAttachDoneRef.current = true
+    if (files?.length) {
+      const newMedia = files.map(file => {
+        const t = file.type.startsWith('video/')
+          ? 'video'
+          : file.type.startsWith('audio/')
+            ? 'audio'
+            : 'image'
+        return {
+          file,
+          previewUrl: URL.createObjectURL(file),
+          type: t as 'image' | 'video' | 'audio',
+        }
+      })
+      setPendingMedia(prev => [...prev, ...newMedia])
+      setPreviewIndex(0)
+    }
+    if (urls?.length) {
+      const text = urls.join('\n\n')
+      const ta = textareaRef.current
+      if (ta) {
+        const merged = ta.value.trim() ? `${text}\n\n${ta.value}` : text
+        ta.value = merged
+        draftRef.current = merged
+        setDraftDisplay(merged)
+      } else {
+        draftRef.current = text
+        setDraftDisplay(text)
+      }
+    }
+    setSearchParams(
+      p => {
+        const n = new URLSearchParams(p)
+        n.delete('share')
+        return n
+      },
+      { replace: true }
+    )
+  }, [username, shareAttach, setSearchParams])
+
+  useEffect(() => {
+    if (shareAttach === '1') return
+    if (username) {
+      const k = `dm:${username}:share`
+      releaseShareHandoffKey(k)
+      releaseShareUrlHandoffKey(k)
+    }
+  }, [shareAttach, username])
 
   // Save draft when leaving chat (cleanup)
   useEffect(() => {

@@ -15,7 +15,7 @@ import ImageLoader from '../components/ImageLoader'
 import ZoomableImage from '../components/ZoomableImage'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import VideoEmbed from '../components/VideoEmbed'
-import LinkPreview, { feedLinkPreviewUrls } from '../components/LinkPreview'
+import LinkPreview, { feedPostLinkPreviewUrls } from '../components/LinkPreview'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import EditableAISummary from '../components/EditableAISummary'
 import { clearDeviceCache, readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
@@ -24,7 +24,7 @@ import { openExternalInApp } from '../utils/openExternalInApp'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, reply_count?: number, view_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
-type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}>; view_count?: number; media_paths?: MediaItem[] | string | null }
+type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}>; view_count?: number; media_paths?: MediaItem[] | string | null }
 
 const POST_DETAIL_CACHE_VERSION = 'post-detail-v1'
 const POST_DETAIL_CACHE_TTL_MS = 3 * 60 * 1000
@@ -1497,7 +1497,7 @@ export default function PostDetail(){
                   return (
                     <>
                       {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] break-words">{renderRichText(displayContent, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`), openArticleReader)}</div>}
-                      {feedLinkPreviewUrls(post.content, null).map(u => (
+                      {feedPostLinkPreviewUrls(post.content, post.link_urls, null).map(u => (
                         <div key={u} className="px-3 mt-2">
                           <LinkPreview url={u} sent={false} />
                         </div>

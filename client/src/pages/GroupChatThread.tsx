@@ -140,62 +140,6 @@ export default function GroupChatThread() {
     shareAttachDoneRef.current = false
   }, [group_id])
 
-  const shareAttach = searchParams.get('share')
-  useEffect(() => {
-    if (shareAttach !== '1' || !group_id) return
-    const handoffKey = `group:${group_id}:share`
-    if (shareAttachDoneRef.current) return
-    const files = takePendingShareFilesOnce(handoffKey)
-    const urls = takePendingShareUrlsOnce(handoffKey)
-    if (!files?.length && !urls?.length) return
-    shareAttachDoneRef.current = true
-    if (files?.length) {
-      const newMedia = files.map(file => {
-        const t = file.type.startsWith('video/')
-          ? 'video'
-          : file.type.startsWith('audio/')
-            ? 'audio'
-            : 'image'
-        return {
-          file,
-          previewUrl: URL.createObjectURL(file),
-          type: t as 'image' | 'video' | 'audio',
-        }
-      })
-      setPendingMedia(prev => [...prev, ...newMedia])
-      setPreviewIndex(0)
-    }
-    if (urls?.length) {
-      const text = urls.join('\n\n')
-      const ta = textareaRef.current
-      if (ta) {
-        const merged = ta.value.trim() ? `${text}\n\n${ta.value}` : text
-        ta.value = merged
-        draftRef.current = merged
-        setDraftDisplay(merged)
-      } else {
-        draftRef.current = text
-        setDraftDisplay(text)
-      }
-    }
-    setSearchParams(
-      p => {
-        const n = new URLSearchParams(p)
-        n.delete('share')
-        return n
-      },
-      { replace: true }
-    )
-  }, [group_id, shareAttach, setSearchParams])
-
-  useEffect(() => {
-    if (shareAttach === '1') return
-    if (group_id) {
-      const k = `group:${group_id}:share`
-      releaseShareHandoffKey(k)
-      releaseShareUrlHandoffKey(k)
-    }
-  }, [shareAttach, group_id])
   const [viewingMedia, setViewingMedia] = useState<{ urls: string[]; index: number; messageId?: number; senderUsername?: string } | null>(null) // For viewing sent media groups
   const videoInputRef = useRef<HTMLInputElement>(null)
   const [previewPlaying, setPreviewPlaying] = useState(false)
@@ -796,6 +740,64 @@ export default function GroupChatThread() {
       adjustTextareaHeight()
     }
   }, [group_id])
+
+  // Share handoff must run *after* draft restore above, or saved/cleared draft overwrites shared links.
+  const shareAttach = searchParams.get('share')
+  useEffect(() => {
+    if (shareAttach !== '1' || !group_id) return
+    const handoffKey = `group:${group_id}:share`
+    if (shareAttachDoneRef.current) return
+    const files = takePendingShareFilesOnce(handoffKey)
+    const urls = takePendingShareUrlsOnce(handoffKey)
+    if (!files?.length && !urls?.length) return
+    shareAttachDoneRef.current = true
+    if (files?.length) {
+      const newMedia = files.map(file => {
+        const t = file.type.startsWith('video/')
+          ? 'video'
+          : file.type.startsWith('audio/')
+            ? 'audio'
+            : 'image'
+        return {
+          file,
+          previewUrl: URL.createObjectURL(file),
+          type: t as 'image' | 'video' | 'audio',
+        }
+      })
+      setPendingMedia(prev => [...prev, ...newMedia])
+      setPreviewIndex(0)
+    }
+    if (urls?.length) {
+      const text = urls.join('\n\n')
+      const ta = textareaRef.current
+      if (ta) {
+        const merged = ta.value.trim() ? `${text}\n\n${ta.value}` : text
+        ta.value = merged
+        draftRef.current = merged
+        setDraftDisplay(merged)
+      } else {
+        draftRef.current = text
+        setDraftDisplay(text)
+      }
+    }
+    setSearchParams(
+      p => {
+        const n = new URLSearchParams(p)
+        n.delete('share')
+        return n
+      },
+      { replace: true }
+    )
+  }, [group_id, shareAttach, setSearchParams])
+
+  useEffect(() => {
+    if (shareAttach === '1') return
+    if (group_id) {
+      const k = `group:${group_id}:share`
+      releaseShareHandoffKey(k)
+      releaseShareUrlHandoffKey(k)
+    }
+  }, [shareAttach, group_id])
 
   // Save draft when leaving group chat (cleanup)
   useEffect(() => {

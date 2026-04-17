@@ -252,6 +252,7 @@ def get_post_detail(post_id: int, username: str):
             'id': post_id,
             'username': d.get('username', ''),
             'content': d.get('content', ''),
+            'link_urls': d.get('link_urls'),
             'image_path': d.get('image_path'),
             'video_path': d.get('video_path'),
             'audio_path': d.get('audio_path'),

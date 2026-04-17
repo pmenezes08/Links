@@ -194,7 +194,8 @@ def edit_group_chat_message(group_id: int, message_id: int, new_text: str):
 def write_post(post_id: int, username: str, content: str = '', community_id=None,
                group_id=None, image_path: str = None, video_path: str = None,
                audio_path: str = None, audio_summary: str = None,
-               post_type: str = 'community', timestamp=None, media_paths=None):
+               post_type: str = 'community', timestamp=None, media_paths=None,
+               link_urls=None):
     """Write a post to Firestore after MySQL insert."""
     if not USE_FIRESTORE_WRITES:
         return
@@ -202,7 +203,7 @@ def write_post(post_id: int, username: str, content: str = '', community_id=None
         fs = _get_client()
         doc_id = f"gp_{post_id}" if post_type == 'group' else str(post_id)
         ts = timestamp if isinstance(timestamp, datetime) else datetime.utcnow()
-        fs.collection('posts').document(doc_id).set({
+        doc = {
             'mysql_id': post_id,
             'type': post_type,
             'username': username,
@@ -215,7 +216,10 @@ def write_post(post_id: int, username: str, content: str = '', community_id=None
             'audio_summary': audio_summary,
             'media_paths': media_paths,
             'created_at': ts,
-        })
+        }
+        if link_urls:
+            doc['link_urls'] = link_urls
+        fs.collection('posts').document(doc_id).set(doc)
     except Exception as e:
         logger.warning(f"Firestore post write failed (non-fatal): {e}")
 

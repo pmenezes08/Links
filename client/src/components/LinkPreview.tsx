@@ -82,6 +82,48 @@ export function feedLinkPreviewUrls(text: string, videoEmbedUrl?: string | null)
   })
 }
 
+/** Parse `link_urls` from API (JSON string, array, or null). */
+export function parseLinkUrlsField(raw: unknown): string[] {
+  if (raw == null) return []
+  if (Array.isArray(raw)) {
+    return raw.filter((u): u is string => typeof u === 'string').map(s => s.trim()).filter(Boolean)
+  }
+  if (typeof raw === 'string') {
+    const t = raw.trim()
+    if (!t) return []
+    try {
+      const parsed = JSON.parse(t)
+      if (Array.isArray(parsed)) {
+        return parsed.filter((u): u is string => typeof u === 'string').map(s => s.trim()).filter(Boolean)
+      }
+    } catch {
+      if (t.startsWith('http')) return [t]
+    }
+  }
+  return []
+}
+
+/**
+ * Link preview cards: stored `link_urls` (caption posts) plus legacy URLs embedded in `content`.
+ */
+export function feedPostLinkPreviewUrls(
+  content: string,
+  linkUrls: unknown,
+  videoEmbedUrl?: string | null
+): string[] {
+  const fromStored = parseLinkUrlsField(linkUrls)
+  const fromBody = feedLinkPreviewUrls(content, videoEmbedUrl)
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const u of [...fromStored, ...fromBody]) {
+    const k = u.replace(/\/+$/, '')
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.push(u)
+  }
+  return out.slice(0, 5)
+}
+
 function getDomainIcon(domain: string): string {
   if (domain.includes('youtube') || domain.includes('youtu.be')) return 'fa-brands fa-youtube'
   if (domain.includes('instagram')) return 'fa-brands fa-instagram'

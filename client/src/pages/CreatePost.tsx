@@ -7,12 +7,23 @@ import MentionTextarea from '../components/MentionTextarea'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { detectLinks, replaceLinkInText, type DetectedLink } from '../utils/linkUtils.tsx'
+import { extractUrls } from '../components/LinkPreview'
 import GifPicker from '../components/GifPicker'
 import { clearDeviceCache } from '../utils/deviceCache'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { fileIsPdf } from '../services/shareImport'
 import { takePendingShareFilesOnce, takePendingShareUrlsOnce, releaseShareHandoffKey, releaseShareUrlHandoffKey } from '../services/shareImportStore'
+
+function stripUrlsFromText(text: string, urls: string[]): string {
+  let t = text
+  for (const u of urls) {
+    if (!u.trim()) continue
+    const escaped = u.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    t = t.replace(new RegExp(escaped, 'gi'), '')
+  }
+  return t.replace(/\n{3,}/g, '\n\n').trim()
+}
 
 export default function CreatePost(){
   const [params, setSearchParams] = useSearchParams()
@@ -32,6 +43,8 @@ export default function CreatePost(){
   const { recording, preview, start, stop, clearPreview, ensurePreview, level, recordMs } = useAudioRecorder() as any
   const [showPraise, setShowPraise] = useState(false)
   const [detectedLinks, setDetectedLinks] = useState<DetectedLink[]>([])
+  /** Shared links (e.g. share extension) — stored separately from caption, not merged into body text. */
+  const [pendingShareUrls, setPendingShareUrls] = useState<string[]>([])
   const [renamingLink, setRenamingLink] = useState<DetectedLink | null>(null)
   const [linkDisplayName, setLinkDisplayName] = useState('')
   const tokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
@@ -99,11 +112,7 @@ export default function CreatePost(){
       setMediaFiles(prev => [...prev, ...forFeed].slice(0, MAX_MEDIA))
     }
     if (urls?.length) {
-      setContent(prev => {
-        const prefix = urls.join('\n\n')
-        if (!prev.trim()) return prefix
-        return `${prefix}\n\n${prev}`
-      })
+      setPendingShareUrls(urls)
     }
     setSearchParams(
       p => {
@@ -280,11 +289,25 @@ export default function CreatePost(){
     // If user is still recording, stop and wait briefly for preview to finalize
     if (recording) await ensurePreview(5000)
     
-    if (!content && mediaFiles.length === 0 && !gifFile && !preview?.blob) {
-      alert('Add text, media, or finish recording audio before posting')
+    if (submitting) return
+
+    const urlsFromText = extractUrls(content)
+    const allLinkUrls = [...new Set([...pendingShareUrls, ...urlsFromText])]
+    const captionStripped = stripUrlsFromText(content, allLinkUrls)
+    const groupMerged =
+      groupId && pendingShareUrls.length > 0
+        ? [pendingShareUrls.join('\n\n'), content].filter(Boolean).join('\n\n')
+        : content
+
+    const canPost = groupId
+      ? !!(groupMerged.trim() || mediaFiles.length > 0 || gifFile || preview?.blob)
+      : !!(captionStripped.trim() || mediaFiles.length > 0 || gifFile || preview?.blob || allLinkUrls.length > 0)
+
+    if (!canPost) {
+      alert('Add text, media, links, or finish recording audio before posting')
       return
     }
-    if (submitting) return
+
     setSubmitting(true)
     
     // Check if this is from onboarding (first post)
@@ -292,7 +315,12 @@ export default function CreatePost(){
     
     try{
       const fd = new FormData()
-      fd.append('content', content)
+      if (groupId) {
+        fd.append('content', groupMerged)
+      } else {
+        fd.append('content', captionStripped)
+        if (allLinkUrls.length > 0) fd.append('link_urls', JSON.stringify(allLinkUrls))
+      }
       
       // Handle GIF (takes priority as single image)
       if (gifFile) {
@@ -393,6 +421,7 @@ export default function CreatePost(){
         else navigate(-1)
       }
       setContent('')
+      setPendingShareUrls([])
       setMediaFiles([])
       setSelectedGif(null)
       setGifFile(null)
