@@ -340,6 +340,12 @@ function AppRoutes(){
       console.log(`🔗 Deep link received (${source}):`, url)
 
       if (isShareIncomingUrl(url)) {
+        // iOS can deliver the same URL multiple times; ignore repeats so we don't navigate away
+        // from Messages/compose after the user already picked a destination (store may be empty).
+        if (isUrlProcessed(url)) {
+          console.log('🔗 Share deep link already handled, skipping duplicate:', url)
+          return
+        }
         if (!authLoaded) {
           pendingShareUrlRef.current = url
           console.log('🔗 Share deep link queued until auth is ready')

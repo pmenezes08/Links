@@ -229,7 +229,9 @@ final class ShareViewController: UIViewController {
 
     @MainActor
     private func openHostApp() {
-        guard let url = URL(string: "cpoint://share/incoming") else {
+        // Unique query so JS can dedupe appUrlOpen repeats without blocking a later share in the session.
+        let incoming = "cpoint://share/incoming?t=\(UUID().uuidString)"
+        guard let url = URL(string: incoming) else {
             extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
             return
         }

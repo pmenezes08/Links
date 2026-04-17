@@ -23,7 +23,7 @@ import { renderTextWithSourceLinks } from '../utils/linkUtils'
 import LinkPreview, { extractUrls } from '../components/LinkPreview'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
-import { takePendingShareFiles } from '../services/shareImportStore'
+import { takePendingShareFilesOnce, releaseShareHandoffKey } from '../services/shareImportStore'
 
 type Message = {
   id: number
@@ -129,12 +129,20 @@ export default function GroupChatThread() {
   // Multi-media preview state
   const [pendingMedia, setPendingMedia] = useState<Array<{ file: File; previewUrl: string; type: 'image' | 'video' }>>([])
   const [previewIndex, setPreviewIndex] = useState(0)
+  const shareAttachDoneRef = useRef(false)
+
+  useEffect(() => {
+    shareAttachDoneRef.current = false
+  }, [group_id])
 
   const shareAttach = searchParams.get('share')
   useEffect(() => {
-    if (shareAttach !== '1') return
-    const files = takePendingShareFiles()
+    if (shareAttach !== '1' || !group_id) return
+    const handoffKey = `group:${group_id}:share`
+    const files = takePendingShareFilesOnce(handoffKey)
     if (!files?.length) return
+    if (shareAttachDoneRef.current) return
+    shareAttachDoneRef.current = true
     const newMedia = files.map(file => ({
       file,
       previewUrl: URL.createObjectURL(file),
@@ -151,6 +159,11 @@ export default function GroupChatThread() {
       { replace: true }
     )
   }, [group_id, shareAttach, setSearchParams])
+
+  useEffect(() => {
+    if (shareAttach === '1') return
+    if (group_id) releaseShareHandoffKey(`group:${group_id}:share`)
+  }, [shareAttach, group_id])
   const [viewingMedia, setViewingMedia] = useState<{ urls: string[]; index: number; messageId?: number; senderUsername?: string } | null>(null) // For viewing sent media groups
   const videoInputRef = useRef<HTMLInputElement>(null)
   const [previewPlaying, setPreviewPlaying] = useState(false)

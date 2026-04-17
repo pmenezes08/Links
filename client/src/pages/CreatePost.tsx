@@ -11,7 +11,7 @@ import GifPicker from '../components/GifPicker'
 import { clearDeviceCache } from '../utils/deviceCache'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
-import { takePendingShareFiles } from '../services/shareImportStore'
+import { takePendingShareFilesOnce, releaseShareHandoffKey } from '../services/shareImportStore'
 
 export default function CreatePost(){
   const [params, setSearchParams] = useSearchParams()
@@ -34,6 +34,7 @@ export default function CreatePost(){
   const [renamingLink, setRenamingLink] = useState<DetectedLink | null>(null)
   const [linkDisplayName, setLinkDisplayName] = useState('')
   const tokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
+  const shareAttachDoneRef = useRef(false)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const headerOffsetVar = 'var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px)))'
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
@@ -74,10 +75,19 @@ export default function CreatePost(){
     }
   }, [mediaFiles.length, mediaCarouselIndex])
 
+  const shareHandoffKey =
+    fromShareParam === '1' ? `compose:${communityId || groupId || '0'}:from_share` : ''
+
   useEffect(() => {
-    if (fromShareParam !== '1') return
-    const files = takePendingShareFiles()
+    shareAttachDoneRef.current = false
+  }, [communityId, groupId])
+
+  useEffect(() => {
+    if (fromShareParam !== '1' || !shareHandoffKey) return
+    const files = takePendingShareFilesOnce(shareHandoffKey)
     if (!files?.length) return
+    if (shareAttachDoneRef.current) return
+    shareAttachDoneRef.current = true
     setMediaFiles(prev => [...prev, ...files].slice(0, MAX_MEDIA))
     setSearchParams(
       p => {
@@ -87,7 +97,12 @@ export default function CreatePost(){
       },
       { replace: true }
     )
-  }, [fromShareParam, setSearchParams])
+  }, [fromShareParam, shareHandoffKey, setSearchParams])
+
+  useEffect(() => {
+    if (fromShareParam === '1') return
+    releaseShareHandoffKey(`compose:${communityId || groupId || '0'}:from_share`)
+  }, [fromShareParam, communityId, groupId])
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return

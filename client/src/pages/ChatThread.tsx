@@ -44,7 +44,7 @@ import {
   MessageBubble,
 } from '../chat'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
-import { takePendingShareFiles } from '../services/shareImportStore'
+import { takePendingShareFilesOnce, releaseShareHandoffKey } from '../services/shareImportStore'
 
 type Message = ChatMessage
 
@@ -179,6 +179,7 @@ export default function ChatThread(){
   const [showScrollDown, setShowScrollDown] = useState(false)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
+  const shareAttachDoneRef = useRef(false)
 
   // Reset peer-scoped state when switching DM threads (fixes stale since_id, wrong-thread poll merge, cache bleed)
   useEffect(() => {
@@ -192,6 +193,7 @@ export default function ChatThread(){
     idBridgeRef.current.serverToTemp.clear()
     recentOptimisticRef.current.clear()
     pendingDeletions.current.clear()
+    shareAttachDoneRef.current = false
     setOtherUserId('')
     setOtherProfile(null)
     setMessages([])
@@ -199,9 +201,12 @@ export default function ChatThread(){
 
   const shareAttach = searchParams.get('share')
   useEffect(() => {
-    if (shareAttach !== '1') return
-    const files = takePendingShareFiles()
+    if (shareAttach !== '1' || !username) return
+    const handoffKey = `dm:${username}:share`
+    const files = takePendingShareFilesOnce(handoffKey)
     if (!files?.length) return
+    if (shareAttachDoneRef.current) return
+    shareAttachDoneRef.current = true
     const newMedia = files.map(file => ({
       file,
       previewUrl: URL.createObjectURL(file),
@@ -218,6 +223,11 @@ export default function ChatThread(){
       { replace: true }
     )
   }, [username, shareAttach, setSearchParams])
+
+  useEffect(() => {
+    if (shareAttach === '1') return
+    if (username) releaseShareHandoffKey(`dm:${username}:share`)
+  }, [shareAttach, username])
   
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
