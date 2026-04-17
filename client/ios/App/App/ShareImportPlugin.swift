@@ -52,9 +52,18 @@ public class ShareImportPlugin: CAPPlugin, CAPBridgedPlugin {
                     try FileManager.default.removeItem(at: destURL)
                 }
                 try FileManager.default.copyItem(at: sourceURL, to: destURL)
-                out.append(["path": destURL.path, "mimeType": mime, "kind": kind])
+                let fileData = try Data(contentsOf: destURL)
+                let dataBase64 = fileData.base64EncodedString()
+                // Pass bytes through the bridge so JS never uses fetch(capacitor://_capacitor_file_/...)
+                // which is unreliable for temp / App Group paths on some iOS builds.
+                out.append([
+                    "filename": name,
+                    "mimeType": mime,
+                    "kind": kind,
+                    "dataBase64": dataBase64,
+                ])
             } catch {
-                NSLog("ShareImportPlugin copy failed for %@: %@", name, error.localizedDescription)
+                NSLog("ShareImportPlugin copy/read failed for %@: %@", name, error.localizedDescription)
             }
         }
         call.resolve(["items": out])

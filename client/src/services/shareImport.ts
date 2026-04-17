@@ -2,9 +2,12 @@ import { Capacitor, registerPlugin } from '@capacitor/core'
 import { clearPendingShareFiles, setPendingShareFiles } from './shareImportStore'
 
 export type ShareImportItem = {
-  path: string
+  /** Original filename from the share manifest (e.g. item_0.jpg). */
+  filename?: string
   mimeType: string
   kind: string
+  /** Base64 file payload from native; avoids WKWebView fetch(capacitor://_capacitor_file_/...) failures. */
+  dataBase64: string
 }
 
 interface ShareImportPluginInterface {
@@ -37,6 +40,14 @@ export function formatShareLoadError(e: unknown): string {
   }
 }
 
+function base64ToBlob(base64: string, mime: string): Blob {
+  const binary = atob(base64)
+  const len = binary.length
+  const bytes = new Uint8Array(len)
+  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i)
+  return new Blob([bytes], { type: mime })
+}
+
 function guessExtension(mime: string, kind: string): string {
   const m = mime.toLowerCase()
   if (m.includes('video')) {
@@ -65,20 +76,17 @@ export async function hydrateShareFromNative(): Promise<File[]> {
   const files: File[] = []
   for (let i = 0; i < items.length; i++) {
     const it = items[i]
-    const src = Capacitor.convertFileSrc(it.path)
+    if (!it.dataBase64 || typeof it.dataBase64 !== 'string') {
+      throw new Error(`ShareImport item ${i} missing dataBase64 (rebuild the iOS app with the latest ShareImportPlugin)`)
+    }
     try {
-      const res = await fetch(src)
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status} reading file (path: ${it.path})`)
-      }
-      const blob = await res.blob()
-      const ext = guessExtension(it.mimeType || blob.type, it.kind)
-      const name = `share_${i}${ext}`
-      const type = it.mimeType || blob.type || 'application/octet-stream'
-      files.push(new File([blob], name, { type }))
+      const type = it.mimeType || 'application/octet-stream'
+      const blob = base64ToBlob(it.dataBase64, type)
+      const ext = guessExtension(type, it.kind)
+      const baseName = it.filename?.trim() ? `share_${i}_${it.filename}` : `share_${i}${ext}`
+      files.push(new File([blob], baseName, { type }))
     } catch (e) {
-      if (e instanceof Error && e.message.startsWith('HTTP')) throw e
-      throw new Error(`fetch failed for converted URL (${src}): ${formatShareLoadError(e)}`)
+      throw new Error(`Failed to decode shared file ${i}: ${formatShareLoadError(e)}`)
     }
   }
   try {
