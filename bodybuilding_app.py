@@ -19139,14 +19139,20 @@ def notify_post_reply_recipients(
 
             recipients = {u for u in engaged if u and u != from_user}
 
-            # Preview shows what was replied to (parent comment or original post), not the new reply text
+            # Parent context: snippet of the comment/post being replied to (shown under the main line in-app)
+            parent_preview_snip = ""
             try:
-                preview_snip = _parent_snippet_replied_to(c, post_id, parent_reply_id)
+                parent_preview_snip = _parent_snippet_replied_to(c, post_id, parent_reply_id)
             except Exception as ps_err:
                 logger.warning("parent snippet for reply notify failed: %s", ps_err)
-                preview_snip = ""
-            if not preview_snip:
-                preview_snip = _truncate_notif_preview(reply_content or "")
+
+            # Main line: "{user} replied \"{new reply snippet}\"" (inner double-quotes flattened for display)
+            new_reply_snip = _truncate_notif_preview(reply_content or "")
+            if not new_reply_snip.strip():
+                new_reply_snip = "(media)"
+            safe_inner = new_reply_snip.replace('"', "'")
+            notif_message = f'{from_user} replied "{safe_inner}"'
+
             # Insert notifications (dedupe 10s by same from_user/post/type/recipient)
             for target in recipients:
                 try:
@@ -19181,7 +19187,7 @@ def notify_post_reply_recipients(
                                 is_read = 0,
                                 link = VALUES(link),
                                 preview_text = VALUES(preview_text)
-                        """, (target, from_user, post_id, community_id, f"{from_user} replied", notif_link, preview_snip or None))
+                        """, (target, from_user, post_id, community_id, notif_message, notif_link, parent_preview_snip or None))
                         conn.commit()
                 except Exception as ne:
                     logger.warning(f"reply notify db error to {target}: {ne}")
@@ -19195,7 +19201,10 @@ def notify_post_reply_recipients(
                     notification_url = f'/post/{post_id}'
                 
                 try:
-                    push_body = preview_snip or "Tap to view the conversation"
+                    if new_reply_snip != "(media)":
+                        push_body = new_reply_snip
+                    else:
+                        push_body = parent_preview_snip or "Tap to view the conversation"
                     send_push_to_user(target, {
                         'title': f'New reply from {from_user}',
                         'body': push_body,
