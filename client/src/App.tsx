@@ -72,11 +72,7 @@ import EditGroup from './pages/EditGroup'
 // EncryptionSettings removed — not in use
 import CommentReply from './pages/CommentReply'
 import ShareIncoming from './pages/ShareIncoming'
-import {
-  GOOGLE_ANDROID_CLIENT_ID,
-  GOOGLE_IOS_CLIENT_ID,
-  GOOGLE_WEB_CLIENT_ID,
-} from './constants/googleOAuth'
+import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './constants/googleOAuth'
 
 const queryClient = new QueryClient()
 
@@ -844,10 +840,14 @@ export default function App() {
           scopes: ['profile', 'email'],
           grantOfflineAccess: false,
         }
-        if (Capacitor.getPlatform() === 'android') {
-          opts.clientId = GOOGLE_ANDROID_CLIENT_ID
+        // Android Sign-In ID tokens come from requestIdToken(Web client id); do not use the
+        // Android-type OAuth client id here (plugin/androidClientId resolution can mis-route).
+        // iOS branch must not catch Android — use an explicit platform string (Capacitor is lowercase).
+        const platform = String(Capacitor.getPlatform() ?? '').toLowerCase()
+        if (platform === 'android') {
+          opts.clientId = GOOGLE_WEB_CLIENT_ID
           opts.serverClientId = GOOGLE_WEB_CLIENT_ID
-        } else {
+        } else if (platform === 'ios') {
           opts.clientId = GOOGLE_IOS_CLIENT_ID
           opts.iosClientId = GOOGLE_IOS_CLIENT_ID
         }

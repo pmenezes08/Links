@@ -12,7 +12,20 @@
           "package_name": "co.cpoint.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "739552904126-mvkhoasgt3kt25uejlple989m3ph6dd4.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "co.cpoint.app",
+            "certificate_hash": "b3b101975419d936910795f96194404898c1f97e"
+          }
+        },
+        {
+          "client_id": "739552904126-ini3ms8voub380vij0cgq79k1dreul5h.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCyo-MwvsOOP_Qa2jpzSJxxJVhs9ICOzL0"

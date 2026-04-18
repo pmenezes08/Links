@@ -24,12 +24,11 @@ const config: CapacitorConfig = {
       style: 'dark',
     },
     GoogleAuth: {
-      // Android native OAuth client (fallback if JS initialize() omits clientId).
-      clientId: '739552904126-mvkhoasgt3kt25uejlple989m3ph6dd4.apps.googleusercontent.com',
-      androidClientId: '739552904126-mvkhoasgt3kt25uejlple989m3ph6dd4.apps.googleusercontent.com',
+      // Native fallback (before JS init): Android must use Web client id for ID token (same as
+      // strings.xml server_client_id). iOS keeps its own id via iosClientId below.
+      clientId: '739552904126-ini3ms8voub380vij0cgq79k1dreul5h.apps.googleusercontent.com',
+      androidClientId: '739552904126-ini3ms8voub380vij0cgq79k1dreul5h.apps.googleusercontent.com',
       iosClientId: '739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com',
-      // Web OAuth client: ID token audience for backend verify; must match android strings.xml
-      // server_client_id and App.tsx serverClientId (Android). iOS still sets iosClientId via App.tsx.
       serverClientId: '739552904126-ini3ms8voub380vij0cgq79k1dreul5h.apps.googleusercontent.com',
       scopes: ['profile', 'email'],
       forceCodeForRefreshToken: false,
