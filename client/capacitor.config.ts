@@ -26,6 +26,7 @@ const config: CapacitorConfig = {
     GoogleAuth: {
       // Android native OAuth client (fallback if JS initialize() omits clientId).
       clientId: '739552904126-mvkhoasgt3kt25uejlple989m3ph6dd4.apps.googleusercontent.com',
+      androidClientId: '739552904126-mvkhoasgt3kt25uejlple989m3ph6dd4.apps.googleusercontent.com',
       iosClientId: '739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com',
       // iOS plugin reads this; keep iOS client so native iOS behavior stays unchanged.
       serverClientId: '739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com',
@@ -63,4 +64,3 @@ export default config;
  * 
  * 5. Test by clicking an invite link - it should open the app
  */
-
