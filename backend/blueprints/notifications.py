@@ -470,9 +470,29 @@ def get_notifications():
             except Exception as cleanup_err:
                 current_app.logger.warning("Notification cleanup failed (non-fatal): %s", cleanup_err)
 
-            # Prefer link + preview_text; fall back if older schema
+            # Load user preference first — must not run another query on the same cursor before
+            # fetching notification rows (otherwise the notifications result set is discarded).
+            show_content_previews = True
+            try:
+                c.execute(
+                    "SELECT notification_show_previews FROM users WHERE username = ? LIMIT 1",
+                    (username,),
+                )
+                prow = c.fetchone()
+                if prow is not None:
+                    pv = prow["notification_show_previews"] if hasattr(prow, "keys") else prow[0]
+                    if pv is not None:
+                        try:
+                            show_content_previews = bool(int(pv))
+                        except (TypeError, ValueError):
+                            show_content_previews = bool(pv)
+            except Exception as pref_err:
+                current_app.logger.debug("notification_show_previews not available: %s", pref_err)
+
+            # Prefer link + preview_text; fall back if older schema — then fetchall immediately
             has_link_column = True
             has_preview_column = True
+            notification_rows = []
             try:
                 if show_all:
                     c.execute(
@@ -496,6 +516,7 @@ def get_notifications():
                         """,
                         (username,),
                     )
+                notification_rows = list(c.fetchall())
             except Exception as col_err:
                 current_app.logger.warning("Notifications query without preview_text: %s", col_err)
                 has_preview_column = False
@@ -522,6 +543,7 @@ def get_notifications():
                             """,
                             (username,),
                         )
+                    notification_rows = list(c.fetchall())
                 except Exception as col_err2:
                     current_app.logger.warning("Link column may not exist, using fallback query: %s", col_err2)
                     has_link_column = False
@@ -547,28 +569,12 @@ def get_notifications():
                             """,
                             (username,),
                         )
-
-            show_content_previews = True
-            try:
-                c.execute(
-                    "SELECT notification_show_previews FROM users WHERE username = ? LIMIT 1",
-                    (username,),
-                )
-                prow = c.fetchone()
-                if prow is not None:
-                    pv = prow["notification_show_previews"] if hasattr(prow, "keys") else prow[0]
-                    if pv is not None:
-                        try:
-                            show_content_previews = bool(int(pv))
-                        except (TypeError, ValueError):
-                            show_content_previews = bool(pv)
-            except Exception as pref_err:
-                current_app.logger.debug("notification_show_previews not available: %s", pref_err)
+                    notification_rows = list(c.fetchall())
 
             # First pass: collect notifications and unique from_users
             raw_notifications = []
             from_users = set()
-            for row in c.fetchall():
+            for row in notification_rows:
                 from_user = row["from_user"]
                 if from_user:
                     from_users.add(from_user)
