@@ -1,4 +1,5 @@
 import { useState, useEffect, memo } from 'react'
+import { Capacitor } from '@capacitor/core'
 
 export type LinkPreviewData = {
   title: string
@@ -156,6 +157,43 @@ export function feedPostLinkPreviewUrls(
   return out.slice(0, 5)
 }
 
+/**
+ * Open an external URL so that iOS Universal Links / Android App Links can route
+ * to the native app that owns the domain (Instagram, X, TikTok, YouTube, etc.).
+ *
+ * On iOS inside the Capacitor WKWebView a plain <a target="_blank"> does NOT call
+ * UIApplication.open and therefore never triggers Universal Links — the URL loads
+ * in a web view and Instagram's "Open in app" interstitial deep-links to the home
+ * feed instead of the specific post. Routing through @capacitor/app's openUrl
+ * forwards the URL to UIApplication.open at the OS level, which lets AASA match
+ * and hand off to the native Instagram/X/TikTok app with the exact URL.
+ *
+ * If the native app isn't installed we fall back to our in-app browser so the
+ * card never becomes a dead end.
+ */
+async function openExternalNative(url: string): Promise<void> {
+  try {
+    const { App: CapApp } = await import('@capacitor/app')
+    const anyApp = CapApp as unknown as {
+      openUrl?: (opts: { url: string }) => Promise<{ completed?: boolean }>
+    }
+    if (anyApp.openUrl) {
+      const res = await anyApp.openUrl({ url })
+      if (res && res.completed === false) {
+        const { openExternalInApp } = await import('../utils/openExternalInApp')
+        await openExternalInApp(url)
+      }
+      return
+    }
+  } catch {
+    // fall through to in-app browser fallback
+  }
+  try {
+    const { openExternalInApp } = await import('../utils/openExternalInApp')
+    await openExternalInApp(url)
+  } catch { /* noop */ }
+}
+
 function getDomainIcon(domain: string): string {
   if (domain.includes('youtube') || domain.includes('youtu.be')) return 'fa-brands fa-youtube'
   if (domain.includes('instagram')) return 'fa-brands fa-instagram'
@@ -238,6 +276,10 @@ function LinkPreviewCard({ url, sent }: Props) {
       style={{ background: 'rgba(255,255,255,0.04)' }}
       onClick={(e) => {
         e.stopPropagation()
+        if (Capacitor.isNativePlatform()) {
+          e.preventDefault()
+          void openExternalNative(url)
+        }
       }}
     >
       {hasImage && (

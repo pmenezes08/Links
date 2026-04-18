@@ -13389,8 +13389,13 @@ def _extract_og_metadata(url: str) -> dict | None:
     try:
         import requests as _req
         # Facebook/Instagram serve full OG tags to facebookexternalhit but a login wall
-        # to generic UAs. Pick a UA that yields real metadata for the requested domain.
-        is_meta_host = any(d in domain for d in ('instagram.com', 'facebook.com'))
+        # to generic UAs. X/Twitter serves a minimal SPA shell to generic UAs but returns
+        # proper og:/twitter: meta to facebookexternalhit and Twitterbot. Pick a UA that
+        # yields real metadata for the requested domain.
+        is_meta_host = any(d in domain for d in (
+            'instagram.com', 'facebook.com', 'fb.com',
+            'x.com', 'twitter.com', 't.co',
+        ))
         ua = ('facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'
               if is_meta_host
               else 'Mozilla/5.0 (compatible; CPointBot/1.0; +https://c-point.co)')
@@ -13432,34 +13437,58 @@ def _extract_og_metadata(url: str) -> dict | None:
         _link_preview_negative_cache[cache_key] = _time.time()
         return None
 
+    # IMPORTANT: use [^"']* (not .*?) and drop DOTALL so these patterns cannot
+    # greedily cross `>` boundaries between meta tags. That was causing X/Twitter
+    # pages — which don't serve og:/twitter: meta to generic UAs — to backtrack
+    # onto the viewport meta's content and surface "width=device-width,..." as
+    # the card title/description.
     def _og(prop):
         m = _re.search(
-            rf'<meta[^>]*property=["\']og:{prop}["\'][^>]*content=["\'](.*?)["\']',
-            html, _re.IGNORECASE | _re.DOTALL)
+            rf'<meta[^>]*?property=["\']og:{prop}["\'][^>]*?content=["\']([^"\']*)["\']',
+            html, _re.IGNORECASE)
         if not m:
             m = _re.search(
-                rf'<meta[^>]*content=["\'](.*?)["\'][^>]*property=["\']og:{prop}["\']',
-                html, _re.IGNORECASE | _re.DOTALL)
+                rf'<meta[^>]*?content=["\']([^"\']*)["\'][^>]*?property=["\']og:{prop}["\']',
+                html, _re.IGNORECASE)
         return (m.group(1).strip() if m else '').replace('&amp;', '&').replace('&#x27;', "'")
 
     def _meta(name):
         m = _re.search(
-            rf'<meta[^>]*name=["\'](?:twitter:)?{name}["\'][^>]*content=["\'](.*?)["\']',
-            html, _re.IGNORECASE | _re.DOTALL)
+            rf'<meta[^>]*?name=["\'](?:twitter:)?{name}["\'][^>]*?content=["\']([^"\']*)["\']',
+            html, _re.IGNORECASE)
         if not m:
             m = _re.search(
-                rf'<meta[^>]*content=["\'](.*?)["\'][^>]*name=["\'](?:twitter:)?{name}["\']',
-                html, _re.IGNORECASE | _re.DOTALL)
+                rf'<meta[^>]*?content=["\']([^"\']*)["\'][^>]*?name=["\'](?:twitter:)?{name}["\']',
+                html, _re.IGNORECASE)
         return (m.group(1).strip() if m else '').replace('&amp;', '&').replace('&#x27;', "'")
+
+    def _looks_like_meta_junk(s: str) -> bool:
+        """Reject strings that are obviously the content of a <meta name="viewport">,
+        <meta charset>, or similar tag rather than a real title/description. Acts as
+        a last-line defense if regex tightening ever misses an edge case."""
+        if not s:
+            return False
+        low = s.lower().lstrip()
+        return (
+            low.startswith('width=device-width')
+            or low.startswith('charset=')
+            or 'initial-scale=' in low
+            or 'viewport-fit=' in low
+            or low.startswith('text/html')
+        )
 
     title = _og('title') or _meta('title')
     if not title:
         tm = _re.search(r'<title[^>]*>(.*?)</title>', html, _re.IGNORECASE | _re.DOTALL)
         title = (tm.group(1).strip() if tm else '')
     title = _re.sub(r'<[^>]+>', '', title).strip()
+    if _looks_like_meta_junk(title):
+        title = ''
 
     description = _og('description') or _meta('description')
     description = _re.sub(r'<[^>]+>', '', description).strip()
+    if _looks_like_meta_junk(description):
+        description = ''
     if len(description) > 300:
         description = description[:297] + '...'
 
