@@ -19011,6 +19011,60 @@ def _normalize_link_urls_json(urls: list) -> str | None:
     return json.dumps(out) if out else None
 
 
+def _parent_snippet_replied_to(c, post_id: int, parent_reply_id: int | None) -> str:
+    """Snippet of the post or parent reply that the new reply is responding to (for notifications)."""
+    try:
+        if parent_reply_id:
+            try:
+                c.execute(
+                    "SELECT content, image_path, audio_path, video_path FROM replies WHERE id = ?",
+                    (parent_reply_id,),
+                )
+            except Exception:
+                c.execute(
+                    "SELECT content, image_path, audio_path FROM replies WHERE id = ?",
+                    (parent_reply_id,),
+                )
+        else:
+            try:
+                c.execute(
+                    "SELECT content, image_path, audio_path, video_path FROM posts WHERE id = ?",
+                    (post_id,),
+                )
+            except Exception:
+                c.execute(
+                    "SELECT content, image_path, audio_path FROM posts WHERE id = ?",
+                    (post_id,),
+                )
+        row = c.fetchone()
+        if not row:
+            return ""
+        if hasattr(row, "keys"):
+            content = (row.get("content") or "").strip()
+            if content:
+                return _truncate_notif_preview(content)
+            if row.get("video_path"):
+                return "Video"
+            if row.get("image_path"):
+                return "Photo"
+            if row.get("audio_path"):
+                return "Voice message"
+            return ""
+        # tuple row: content, image_path, audio_path, [video_path]
+        content = (row[0] or "").strip() if len(row) > 0 else ""
+        if content:
+            return _truncate_notif_preview(content)
+        if len(row) > 3 and row[3]:
+            return "Video"
+        if len(row) > 1 and row[1]:
+            return "Photo"
+        if len(row) > 2 and row[2]:
+            return "Voice message"
+        return ""
+    except Exception:
+        return ""
+
+
 def notify_post_reply_recipients(
     *,
     post_id: int,
@@ -19085,7 +19139,14 @@ def notify_post_reply_recipients(
 
             recipients = {u for u in engaged if u and u != from_user}
 
-            preview_snip = _truncate_notif_preview(reply_content or "")
+            # Preview shows what was replied to (parent comment or original post), not the new reply text
+            try:
+                preview_snip = _parent_snippet_replied_to(c, post_id, parent_reply_id)
+            except Exception as ps_err:
+                logger.warning("parent snippet for reply notify failed: %s", ps_err)
+                preview_snip = ""
+            if not preview_snip:
+                preview_snip = _truncate_notif_preview(reply_content or "")
             # Insert notifications (dedupe 10s by same from_user/post/type/recipient)
             for target in recipients:
                 try:
@@ -19134,7 +19195,7 @@ def notify_post_reply_recipients(
                     notification_url = f'/post/{post_id}'
                 
                 try:
-                    push_body = preview_snip or 'Tap to view the conversation'
+                    push_body = preview_snip or "Tap to view the conversation"
                     send_push_to_user(target, {
                         'title': f'New reply from {from_user}',
                         'body': push_body,
