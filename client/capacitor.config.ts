@@ -24,10 +24,10 @@ const config: CapacitorConfig = {
       style: 'dark',
     },
     GoogleAuth: {
-      // Used by Android plugin for requestIdToken() and as fallback if JS initialize() omits clientId.
-      clientId: '739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com',
+      // Android native OAuth client (fallback if JS initialize() omits clientId).
+      clientId: '739552904126-mvkhoasgt3kt25uejlple989m3ph6dd4.apps.googleusercontent.com',
       iosClientId: '739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com',
-      // Web OAuth client — Android Sign-In uses this for ID token audience (backend verifies the same).
+      // iOS plugin reads this; keep iOS client so native iOS behavior stays unchanged.
       serverClientId: '739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com',
       scopes: ['profile', 'email'],
       forceCodeForRefreshToken: false,

@@ -811,10 +811,14 @@ def login_back():
 
 # --- Google Sign-In ---
 
-# Web OAuth client ID (Capacitor serverClientId / GoogleAuth.initialize) — ID token audience for server verify.
-_DEFAULT_GOOGLE_WEB_CLIENT_ID = "739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com"
-GOOGLE_CLIENT_ID_IOS = os.environ.get("GOOGLE_CLIENT_ID_IOS") or _DEFAULT_GOOGLE_WEB_CLIENT_ID
-GOOGLE_CLIENT_ID_ANDROID = os.environ.get("GOOGLE_CLIENT_ID_ANDROID") or _DEFAULT_GOOGLE_WEB_CLIENT_ID
+# OAuth client IDs (Google Cloud Console). Web = browser + Android ID token audience; iOS = native iOS OAuth client.
+_DEFAULT_GOOGLE_WEB_CLIENT_ID = "739552904126-ini3ms8voub380vij0cgq79k1dreul5h.apps.googleusercontent.com"
+_DEFAULT_GOOGLE_IOS_CLIENT_ID = "739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com"
+_DEFAULT_GOOGLE_ANDROID_CLIENT_ID = "739552904126-mvkhoasgt3kt25uejlple989m3ph6dd4.apps.googleusercontent.com"
+
+GOOGLE_CLIENT_ID_WEB = os.environ.get("GOOGLE_CLIENT_ID_WEB") or _DEFAULT_GOOGLE_WEB_CLIENT_ID
+GOOGLE_CLIENT_ID_IOS = os.environ.get("GOOGLE_CLIENT_ID_IOS") or _DEFAULT_GOOGLE_IOS_CLIENT_ID
+GOOGLE_CLIENT_ID_ANDROID = os.environ.get("GOOGLE_CLIENT_ID_ANDROID") or _DEFAULT_GOOGLE_ANDROID_CLIENT_ID
 
 
 def _verify_google_id_token(id_token: str, platform: str = 'ios') -> dict | None:
@@ -822,12 +826,14 @@ def _verify_google_id_token(id_token: str, platform: str = 'ios') -> dict | None
     from google.oauth2 import id_token as google_id_token
     from google.auth.transport import requests as google_requests
 
-    # Prefer platform-specific OAuth client ID, then fall back — Capacitor/Android often
-    # issues tokens for the Web client ID shared with iOS, so a single env var may suffice.
+    # Try audiences in a sensible order per platform (Web/Android tokens usually use Web client aud).
+    platform = (platform or '').lower()
     if platform == 'android':
-        ordered = (GOOGLE_CLIENT_ID_ANDROID, GOOGLE_CLIENT_ID_IOS)
+        ordered = (GOOGLE_CLIENT_ID_WEB, GOOGLE_CLIENT_ID_ANDROID, GOOGLE_CLIENT_ID_IOS)
+    elif platform == 'web':
+        ordered = (GOOGLE_CLIENT_ID_WEB, GOOGLE_CLIENT_ID_IOS, GOOGLE_CLIENT_ID_ANDROID)
     else:
-        ordered = (GOOGLE_CLIENT_ID_IOS, GOOGLE_CLIENT_ID_ANDROID)
+        ordered = (GOOGLE_CLIENT_ID_IOS, GOOGLE_CLIENT_ID_WEB, GOOGLE_CLIENT_ID_ANDROID)
     client_ids = [c for c in ordered if c]
 
     for client_id in client_ids:
