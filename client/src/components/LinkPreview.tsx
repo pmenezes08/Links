@@ -15,31 +15,48 @@ type Props = {
   sent?: boolean
 }
 
-const _cache = new Map<string, LinkPreviewData | null>()
+/**
+ * Preview cache. Successful results are cached for the lifetime of the page.
+ * Negative results (server error / no preview / timeout) are cached only briefly
+ * so a transient failure doesn't permanently hide the card for the session.
+ */
+const _cache = new Map<string, LinkPreviewData>()
+const _negativeCache = new Map<string, number>()
 const _pending = new Map<string, Promise<LinkPreviewData | null>>()
+const NEGATIVE_CACHE_TTL_MS = 2 * 60 * 1000
+const PREVIEW_FETCH_TIMEOUT_MS = 8000
 
 async function fetchPreview(url: string): Promise<LinkPreviewData | null> {
   const key = url.replace(/\/+$/, '')
-  const cached = _cache.get(key)
-  if (cached !== undefined) return cached
+
+  const hit = _cache.get(key)
+  if (hit) return hit
+
+  const negTs = _negativeCache.get(key)
+  if (negTs && Date.now() - negTs < NEGATIVE_CACHE_TTL_MS) return null
+  if (negTs) _negativeCache.delete(key)
 
   const inflight = _pending.get(key)
   if (inflight) return inflight
 
   const p = (async () => {
+    const ctrl = new AbortController()
+    const timeoutId = setTimeout(() => ctrl.abort(), PREVIEW_FETCH_TIMEOUT_MS)
     try {
       const resp = await fetch(`/api/link-preview?url=${encodeURIComponent(url)}`, {
         credentials: 'include',
+        signal: ctrl.signal,
       })
-      if (!resp.ok) { _cache.set(key, null); return null }
+      if (!resp.ok) { _negativeCache.set(key, Date.now()); return null }
       const data = await resp.json()
-      if (!data.success || !data.preview) { _cache.set(key, null); return null }
+      if (!data.success || !data.preview) { _negativeCache.set(key, Date.now()); return null }
       _cache.set(key, data.preview)
       return data.preview as LinkPreviewData
     } catch {
-      _cache.set(key, null)
+      _negativeCache.set(key, Date.now())
       return null
     } finally {
+      clearTimeout(timeoutId)
       _pending.delete(key)
     }
   })()

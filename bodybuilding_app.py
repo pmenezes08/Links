@@ -13326,7 +13326,9 @@ def delete_chat():
 # ── Link Preview API ──────────────────────────────────────────────────
 
 _link_preview_cache: dict = {}
+_link_preview_negative_cache: dict = {}
 _LINK_PREVIEW_TTL = 86400
+_LINK_PREVIEW_NEGATIVE_TTL = 300
 _LINK_PREVIEW_MAX_CACHE = 2000
 
 _LINK_PREVIEW_ALLOWED_DOMAINS = {
@@ -13376,26 +13378,58 @@ def _extract_og_metadata(url: str) -> dict | None:
             return cached
         del _link_preview_cache[cache_key]
 
+    # Short-lived negative cache so one slow/failed fetch doesn't block the worker
+    # every time the same URL is requested (e.g. a post opened by several users).
+    neg_ts = _link_preview_negative_cache.get(cache_key)
+    if neg_ts and _time.time() - neg_ts < _LINK_PREVIEW_NEGATIVE_TTL:
+        return None
+    if neg_ts:
+        _link_preview_negative_cache.pop(cache_key, None)
+
     try:
         import requests as _req
+        # Facebook/Instagram serve full OG tags to facebookexternalhit but a login wall
+        # to generic UAs. Pick a UA that yields real metadata for the requested domain.
+        is_meta_host = any(d in domain for d in ('instagram.com', 'facebook.com'))
+        ua = ('facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'
+              if is_meta_host
+              else 'Mozilla/5.0 (compatible; CPointBot/1.0; +https://c-point.co)')
         headers = {
-            'User-Agent': 'Mozilla/5.0 (compatible; CPointBot/1.0; +https://c-point.co)',
+            'User-Agent': ua,
             'Accept': 'text/html,application/xhtml+xml',
             'Accept-Language': 'en-US,en;q=0.9',
         }
-        resp = _req.get(url, headers=headers, timeout=5, allow_redirects=True,
+        # Tuple timeout: (connect=3s, read=5s). The read timeout only applies to each
+        # recv() on the underlying socket — a slow streamer can still exceed 5s in total,
+        # so we also enforce a hard wall clock around iter_content below.
+        resp = _req.get(url, headers=headers, timeout=(3, 5), allow_redirects=True,
                         stream=True)
         if resp.status_code != 200:
+            try:
+                resp.close()
+            except Exception:
+                pass
+            _link_preview_negative_cache[cache_key] = _time.time()
             return None
 
         content = b''
-        for chunk in resp.iter_content(chunk_size=8192):
-            content += chunk
-            if len(content) > 200_000:
-                break
-        resp.close()
+        stream_start = _time.monotonic()
+        try:
+            for chunk in resp.iter_content(chunk_size=8192):
+                if _time.monotonic() - stream_start > 6:
+                    break
+                if chunk:
+                    content += chunk
+                if len(content) > 200_000:
+                    break
+        finally:
+            try:
+                resp.close()
+            except Exception:
+                pass
         html = content.decode('utf-8', errors='replace')
     except Exception:
+        _link_preview_negative_cache[cache_key] = _time.time()
         return None
 
     def _og(prop):
@@ -13455,6 +13489,7 @@ def _extract_og_metadata(url: str) -> dict | None:
     }
 
     if not title and not description and not image:
+        _link_preview_negative_cache[cache_key] = _time.time()
         return None
 
     if len(_link_preview_cache) >= _LINK_PREVIEW_MAX_CACHE:
@@ -13969,22 +14004,31 @@ def send_message():
             # Check for duplicate message in last 5 seconds to prevent double-sends
             if USE_MYSQL:
                 c.execute("""
-                    SELECT id FROM messages 
+                    SELECT id, timestamp FROM messages 
                     WHERE sender = %s AND receiver = %s AND message = %s
                     AND timestamp > DATE_SUB(NOW(), INTERVAL 5 SECOND)
                     LIMIT 1
                 """, (username, recipient_username, message))
             else:
                 c.execute("""
-                    SELECT id FROM messages 
+                    SELECT id, timestamp FROM messages 
                     WHERE sender = ? AND receiver = ? AND message = ?
                     AND datetime(timestamp) > datetime('now','-5 seconds')
                     LIMIT 1
                 """, (username, recipient_username, message))
-            
-            if c.fetchone():
-                # Duplicate message detected, return success but don't insert
-                return jsonify({'success': True, 'message': 'Message already sent'})
+
+            dup_row = c.fetchone()
+            if dup_row:
+                # Duplicate message detected — return the canonical message_id so the client
+                # can promote its optimistic bubble out of "sending" state.
+                dup_id = dup_row['id'] if hasattr(dup_row, 'keys') else dup_row[0]
+                dup_time = dup_row['timestamp'] if hasattr(dup_row, 'keys') else dup_row[1]
+                return jsonify({
+                    'success': True,
+                    'message': 'Message already sent',
+                    'message_id': dup_id,
+                    'time': dup_time,
+                })
             
             # Insert message with optional encryption support
             if USE_MYSQL:

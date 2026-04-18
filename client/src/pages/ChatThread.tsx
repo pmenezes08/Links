@@ -1643,6 +1643,16 @@ export default function ChatThread(){
             })
             
             setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
+          } else {
+            // Defensive: server acked success without a message_id (legacy dedup path).
+            // Promote the optimistic bubble out of "sending" so it doesn't stay stuck forever.
+            // A subsequent poll will reconcile the real server id via text/time match.
+            setMessages(prev => prev.map(m =>
+              (m.clientKey || m.id) === tempId
+                ? { ...m, isOptimistic: false, sendFailed: false }
+                : m
+            ))
+            setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
           }
         } else {
           markFailed(tempId)

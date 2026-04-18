@@ -3,6 +3,12 @@ import { useNetwork } from '../contexts/NetworkContext'
 import { getOutboxEntries, updateOutboxStatus, removeFromOutbox, type OutboxEntry } from '../utils/offlineDb'
 
 const MAX_RETRIES = 3
+/**
+ * Don't re-send entries whose original fetch is likely still in flight.
+ * Prevents racing the original send() (especially on share-extension return
+ * where iOS often fires a reconnect event while the first request is mid-flight).
+ */
+const MIN_ENTRY_AGE_MS = 8000
 
 async function sendDm(entry: OutboxEntry): Promise<boolean> {
   const fd = new URLSearchParams({ recipient_id: entry.recipient, message: entry.content, client_key: entry.clientKey })
@@ -33,7 +39,13 @@ export default function OutboxDrainer() {
     ;(async () => {
       try {
         const entries = await getOutboxEntries()
-        const eligible = entries.filter(e => e.status !== 'sending' && (e.retries ?? 0) < MAX_RETRIES && e.id != null)
+        const now = Date.now()
+        const eligible = entries.filter(e =>
+          e.status !== 'sending' &&
+          (e.retries ?? 0) < MAX_RETRIES &&
+          e.id != null &&
+          (now - (e.createdAt ?? 0)) >= MIN_ENTRY_AGE_MS
+        )
 
         for (const entry of eligible) {
           const id = entry.id!
