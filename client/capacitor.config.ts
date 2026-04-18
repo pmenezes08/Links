@@ -7,7 +7,7 @@ const config: CapacitorConfig = {
   appName: 'C.Point',
   webDir: 'dist',
   server: {
-    url: 'https://cpoint-app-staging-739552904126.europe-west1.run.app',
+    url: 'https://app.c-point.co',
     cleartext: false,
     allowNavigation: ['cpoint-app-staging-739552904126.europe-west1.run.app', 'app.c-point.co', '*.c-point.co'],
   },
@@ -24,11 +24,13 @@ const config: CapacitorConfig = {
       style: 'dark',
     },
     GoogleAuth: {
-      // Native fallback (before JS init): Android must use Web client id for ID token (same as
-      // strings.xml server_client_id). iOS keeps its own id via iosClientId below.
+      // Used as fallback if JS initialize() omits clientId.
       clientId: '739552904126-ini3ms8voub380vij0cgq79k1dreul5h.apps.googleusercontent.com',
-      androidClientId: '739552904126-ini3ms8voub380vij0cgq79k1dreul5h.apps.googleusercontent.com',
+      // MUST be the Android OAuth Client ID (linked to SHA-1)
+      androidClientId: '739552904126-mvkhoasgt3kt25uejlple989m3ph6dd4.apps.googleusercontent.com',
+      // MUST be the iOS OAuth Client ID
       iosClientId: '739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com',
+      // MUST be the Web OAuth Client ID
       serverClientId: '739552904126-ini3ms8voub380vij0cgq79k1dreul5h.apps.googleusercontent.com',
       scopes: ['profile', 'email'],
       forceCodeForRefreshToken: false,
@@ -37,30 +39,3 @@ const config: CapacitorConfig = {
 };
 
 export default config;
-
-/*
- * UNIVERSAL LINKS SETUP (iOS)
- * 
- * To enable invite links to open in the iOS app instead of Safari:
- * 
- * 1. In Apple Developer Portal:
- *    - Go to Identifiers > App IDs > co.cpoint.app
- *    - Enable "Associated Domains" capability
- *    - Note your Team ID (visible in Membership section)
- * 
- * 2. Update the AASA file:
- *    - Edit /static/.well-known/apple-app-site-association
- *    - Replace "TEAM_ID" with your actual Apple Team ID
- *    - Example: "ABCD1234.co.cpoint.app"
- * 
- * 3. In Xcode:
- *    - Open the iOS project (client/ios/App/App.xcworkspace)
- *    - Select App target > Signing & Capabilities
- *    - Click "+ Capability" and add "Associated Domains"
- *    - Add: applinks:app.c-point.co
- *    - Add: applinks:www.c-point.co (for landing page links)
- * 
- * 4. Rebuild and deploy the iOS app
- * 
- * 5. Test by clicking an invite link - it should open the app
- */

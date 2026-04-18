@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "739552904126-2u058kmt597jqikpmbreeju8t9g89s99.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "co.cpoint.app",
+            "certificate_hash": "f35dc4b2fb266cdacae11762004cf0dc2833dcf7"
+          }
+        },
+        {
           "client_id": "739552904126-ini3ms8voub380vij0cgq79k1dreul5h.apps.googleusercontent.com",
           "client_type": 3
         }
