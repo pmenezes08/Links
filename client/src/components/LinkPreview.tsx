@@ -245,8 +245,6 @@ function LinkPreviewCard({ url, sent }: Props) {
     return () => { cancelled = true }
   }, [url])
 
-  if (error || (!loading && !data)) return null
-
   if (loading) {
     return (
       <div className="mt-1.5 rounded-xl overflow-hidden border border-white/10 bg-white/[0.04] animate-pulse">
@@ -258,7 +256,50 @@ function LinkPreviewCard({ url, sent }: Props) {
     )
   }
 
-  if (!data) return null
+  // Prefer the canonical URL returned by the backend (og:url or post-redirect)
+  // over the raw URL the user shared. This matters for Instagram: shares often
+  // come as /share/p/<opaque-id>/, which the Instagram app can't resolve and
+  // falls back to the home feed. og:url gives us /p/<shortcode>/ which routes
+  // correctly via Universal Links.
+  const openUrl = (data && data.url) || url
+
+  // Failure fallback: the backend couldn't produce a preview (X shell, login
+  // wall, rate limit, etc.). Render a minimal host+URL card so the bubble is
+  // never empty — the message's URL has already been stripped from the text
+  // in MessageBubble assuming a card would render.
+  if (error || !data) {
+    let fallbackDomain = ''
+    try { fallbackDomain = new URL(url).hostname.replace(/^www\./, '') }
+    catch { fallbackDomain = url }
+    const fIcon = getDomainIcon(fallbackDomain)
+    const fColor = getDomainColor(fallbackDomain)
+    return (
+      <a
+        href={openUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block mt-1.5 rounded-xl overflow-hidden border border-white/10 hover:border-white/20 transition-colors no-underline"
+        style={{ background: 'rgba(255,255,255,0.04)' }}
+        onClick={(e) => {
+          e.stopPropagation()
+          if (Capacitor.isNativePlatform()) {
+            e.preventDefault()
+            void openExternalNative(openUrl)
+          }
+        }}
+      >
+        <div className="px-3 py-2">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <i className={`${fIcon} text-[11px]`} style={{ color: fColor }} />
+            <span className="text-[11px] text-white/50 truncate">{fallbackDomain || 'Link'}</span>
+          </div>
+          <div className={`text-[12px] ${sent ? 'text-white/80' : 'text-white/70'} break-all line-clamp-2`}>
+            {url}
+          </div>
+        </div>
+      </a>
+    )
+  }
 
   const domain = data.domain || ''
   const icon = getDomainIcon(domain)
@@ -269,7 +310,7 @@ function LinkPreviewCard({ url, sent }: Props) {
 
   return (
     <a
-      href={url}
+      href={openUrl}
       target="_blank"
       rel="noopener noreferrer"
       className="block mt-1.5 rounded-xl overflow-hidden border border-white/10 hover:border-white/20 transition-colors no-underline"
@@ -278,7 +319,7 @@ function LinkPreviewCard({ url, sent }: Props) {
         e.stopPropagation()
         if (Capacitor.isNativePlatform()) {
           e.preventDefault()
-          void openExternalNative(url)
+          void openExternalNative(openUrl)
         }
       }}
     >

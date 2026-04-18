@@ -13506,6 +13506,26 @@ def _extract_og_metadata(url: str) -> dict | None:
     if video_id and not image:
         image = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
 
+    # Prefer the canonical URL exposed by the page itself (og:url) over whatever
+    # variant the sharer copy-pasted. Instagram in particular rewrites shares like
+    # https://www.instagram.com/share/p/<opaque-id>/ — if the client hands THAT
+    # URL to iOS Universal Links, the Instagram app can't resolve the share-id and
+    # falls back to the home feed. og:url returns the canonical /p/<shortcode>/
+    # form (or /reel/<shortcode>/), which the app routes directly to the post.
+    canonical_url = _og('url')
+    if not canonical_url:
+        try:
+            canonical_url = (resp.url or '').strip() or url
+        except Exception:
+            canonical_url = url
+    # Keep http(s) only — defend against relative og:url values like "/p/abc/".
+    if canonical_url and not canonical_url.startswith(('http://', 'https://')):
+        try:
+            canonical_url = f"{parsed.scheme}://{parsed.hostname}{canonical_url}" \
+                if canonical_url.startswith('/') else url
+        except Exception:
+            canonical_url = url
+
     result = {
         'title': title[:200] if title else '',
         'description': description,
@@ -13513,7 +13533,7 @@ def _extract_og_metadata(url: str) -> dict | None:
         'site_name': site_name,
         'domain': domain,
         'type': og_type,
-        'url': url,
+        'url': canonical_url or url,
         '_ts': _time.time(),
     }
 

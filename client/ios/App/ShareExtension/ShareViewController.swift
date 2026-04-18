@@ -398,23 +398,28 @@ final class ShareViewController: UIViewController {
         }
         NSLog("ShareExtension: Attempting to open host app with %@", url.absoluteString)
 
-        // Critical: do NOT gate completeRequest() on extensionContext.open's completion handler.
-        // On iOS 17+ that callback can take seconds (or never fire) while the host app scene spins
-        // up, leaving the source app (Instagram, etc.) visually frozen on its share UI.
+        // Critical ordering: call completeRequest FIRST and open the host app
+        // INSIDE the completion handler. The completion handler fires after the
+        // share sheet has dismissed in the source app (Instagram, X, …), which
+        // lets that app finish its dismissal animation cleanly. If we instead
+        // called UIApplication.open first, iOS would foreground C.Point while
+        // the source app is mid-dismissal, preempting its scene transition and
+        // leaving it visually frozen on the share UI.
         //
-        // Instead, fire-and-forget the URL open via the responder chain (the supported API for
-        // app extensions) and dismiss the extension immediately so the source app unfreezes.
-        let openedViaResponder = openHostAppViaResponderChainSync(url)
-        if !openedViaResponder {
-            // Last-resort fallback: try extensionContext.open without waiting for its callback.
-            // We still completeRequest right after so the host app is not blocked on the callback.
-            extensionContext?.open(url, completionHandler: nil)
-            NSLog("ShareExtension: extensionContext.open fired without waiting for callback")
-        } else {
-            NSLog("ShareExtension: UIApplication.open fired via responder chain")
+        // `self` (and therefore the responder chain) is still valid inside the
+        // completion handler even though the extension is tearing down — that's
+        // what makes the responder-chain open work.
+        extensionContext?.completeRequest(returningItems: nil) { [weak self] _ in
+            guard let self = self else { return }
+            if self.openHostAppViaResponderChainSync(url) {
+                NSLog("ShareExtension: UIApplication.open fired via responder chain after completeRequest")
+            } else {
+                // Last-resort fallback. The extension is already dismissed at this point,
+                // so the source app's animation has completed.
+                self.extensionContext?.open(url, completionHandler: nil)
+                NSLog("ShareExtension: fallback extensionContext.open fired after completeRequest")
+            }
         }
-
-        extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
     }
 
     /// Walks the responder chain to find UIApplication and calls open(_:options:completionHandler:)
