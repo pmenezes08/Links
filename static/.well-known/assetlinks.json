@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "co.cpoint.app",
+      "sha256_cert_fingerprints": [
+        "39:31:08:9B:D1:A8:82:0F:FB:1A:D1:08:36:8B:0E:BA:3D:58:8F:35:43:93:51:D9:6C:A3:5D:1C:48:D2:0A:E9"
+      ]
+    }
+  }
+]
