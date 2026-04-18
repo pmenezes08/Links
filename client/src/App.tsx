@@ -72,6 +72,11 @@ import EditGroup from './pages/EditGroup'
 // EncryptionSettings removed — not in use
 import CommentReply from './pages/CommentReply'
 import ShareIncoming from './pages/ShareIncoming'
+import {
+  GOOGLE_ANDROID_CLIENT_ID,
+  GOOGLE_IOS_CLIENT_ID,
+  GOOGLE_WEB_CLIENT_ID,
+} from './constants/googleOAuth'
 
 const queryClient = new QueryClient()
 
@@ -825,36 +830,24 @@ function AppRoutes(){
   )
 }
 
-/** Web OAuth client — browser + Android ID token audience (server verify). */
-const GOOGLE_WEB_CLIENT_ID =
-  '739552904126-ini3ms8voub380vij0cgq79k1dreul5h.apps.googleusercontent.com'
-/** iOS OAuth client — unchanged; iOS sign-in already works with this ID. */
-const GOOGLE_IOS_CLIENT_ID =
-  '739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com'
-/** Android OAuth client (native). */
-const GOOGLE_ANDROID_CLIENT_ID =
-  '739552904126-mvkhoasgt3kt25uejlple989m3ph6dd4.apps.googleusercontent.com'
-
 export default function App() {
   useEffect(() => {
+    // Web uses Google Identity Services (gsi/client) in MobileLogin — not Codetrix web shims
+    // (deprecated; new OAuth clients get access_denied from iframerpc).
+    if (!Capacitor.isNativePlatform()) {
+      window.__googleAuthReady = true
+      return
+    }
     import('@codetrix-studio/capacitor-google-auth')
       .then(({ GoogleAuth }) => {
-        // Use isNativePlatform — getPlatform() === 'web' can miss edge cases (browser would
-        // otherwise fall through to the iOS branch and pass the iOS OAuth client to GIS/FedCM,
-        // causing invalid_client / no registered origin on the Web flow).
-        const isNative = Capacitor.isNativePlatform()
         const opts: Record<string, unknown> = {
           scopes: ['profile', 'email'],
           grantOfflineAccess: false,
         }
-        if (!isNative) {
-          opts.clientId = GOOGLE_WEB_CLIENT_ID
-          opts.serverClientId = GOOGLE_WEB_CLIENT_ID
-        } else if (Capacitor.getPlatform() === 'android') {
+        if (Capacitor.getPlatform() === 'android') {
           opts.clientId = GOOGLE_ANDROID_CLIENT_ID
           opts.serverClientId = GOOGLE_WEB_CLIENT_ID
         } else {
-          // iOS native only
           opts.clientId = GOOGLE_IOS_CLIENT_ID
           opts.iosClientId = GOOGLE_IOS_CLIENT_ID
         }
