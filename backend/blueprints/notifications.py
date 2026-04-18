@@ -365,6 +365,16 @@ def fix_notifications_schema():
                         results.append("✅ Added link column")
                     except Exception as e:
                         results.append(f"⚠️ link column add failed: {e}")
+
+                # Fix 3b: preview_text — required for create_notification() inserts (community posts, replies, etc.)
+                if "preview_text" not in existing_columns:
+                    try:
+                        c.execute(
+                            "ALTER TABLE notifications ADD COLUMN preview_text VARCHAR(512) NULL"
+                        )
+                        results.append("✅ Added preview_text column")
+                    except Exception as e:
+                        results.append(f"⚠️ preview_text column add failed: {e}")
                 
                 # Fix 4: Create a trigger to auto-populate timestamp from created_at and vice versa
                 # This ensures both columns stay in sync

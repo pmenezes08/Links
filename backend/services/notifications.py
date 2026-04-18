@@ -26,6 +26,8 @@ except ImportError:
 
 
 logger = logging.getLogger(__name__)
+_PREVIEW_TEXT_COLUMN_ENSURED = False
+
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "https://www.c-point.co")
@@ -41,6 +43,41 @@ _APNS_JWT_EXPIRY = None
 _APNS_TOKEN_LOCK = Lock()
 
 
+def ensure_notifications_preview_text_column() -> None:
+    """Add notifications.preview_text if missing (MySQL skips init_db() where this was added). Idempotent."""
+    global _PREVIEW_TEXT_COLUMN_ENSURED
+    if _PREVIEW_TEXT_COLUMN_ENSURED:
+        return
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if USE_MYSQL:
+                c.execute("SHOW COLUMNS FROM notifications LIKE 'preview_text'")
+                if not c.fetchone():
+                    c.execute(
+                        "ALTER TABLE notifications ADD COLUMN preview_text VARCHAR(512) NULL"
+                    )
+                    conn.commit()
+                    logger.info("Added preview_text column to notifications (lazy migrate)")
+            else:
+                c.execute("PRAGMA table_info(notifications)")
+                has_preview = False
+                for row in c.fetchall():
+                    col_name = row["name"] if hasattr(row, "keys") else row[1]
+                    if col_name == "preview_text":
+                        has_preview = True
+                        break
+                if not has_preview:
+                    c.execute(
+                        "ALTER TABLE notifications ADD COLUMN preview_text VARCHAR(512) NULL"
+                    )
+                    conn.commit()
+                    logger.info("Added preview_text column to notifications (lazy migrate, SQLite)")
+        _PREVIEW_TEXT_COLUMN_ENSURED = True
+    except Exception as exc:
+        logger.warning("Could not ensure notifications.preview_text column: %s", exc)
+
+
 def create_notification(
     user_id,
     from_user,
@@ -52,6 +89,7 @@ def create_notification(
     preview_text=None,
 ):
     """Create or refresh an in-app notification entry."""
+    ensure_notifications_preview_text_column()
     try:
         with get_db_connection() as conn:
             c = conn.cursor()

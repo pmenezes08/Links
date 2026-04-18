@@ -59,6 +59,7 @@ from backend.services.notifications import (
     check_single_event_notifications,
     check_single_poll_notifications,
     create_notification,
+    ensure_notifications_preview_text_column,
     fanout_community_post_notifications,
     send_push_to_user,
     truncate_notification_preview,
@@ -3211,6 +3212,32 @@ def add_missing_tables():
                     conn.commit()
             except Exception as e:
                 logger.warning(f"Could not ensure useful_docs table: {e}")
+
+            # notifications.preview_text — required by create_notification() and fan-out; MySQL production
+            # skips init_db() where this column was originally added, so add it here for all backends.
+            try:
+                if USE_MYSQL:
+                    c.execute("SHOW COLUMNS FROM notifications LIKE 'preview_text'")
+                    if not c.fetchone():
+                        c.execute(
+                            "ALTER TABLE notifications ADD COLUMN preview_text VARCHAR(512) NULL"
+                        )
+                        logger.info("Added preview_text column to notifications table (MySQL)")
+                else:
+                    c.execute("PRAGMA table_info(notifications)")
+                    has_preview = False
+                    for row in c.fetchall():
+                        col_name = row["name"] if hasattr(row, "keys") else row[1]
+                        if col_name == "preview_text":
+                            has_preview = True
+                            break
+                    if not has_preview:
+                        c.execute(
+                            "ALTER TABLE notifications ADD COLUMN preview_text VARCHAR(512) NULL"
+                        )
+                        logger.info("Added preview_text column to notifications table (SQLite)")
+            except Exception as ne:
+                logger.warning("notifications preview_text column ensure failed: %s", ne)
 
             conn.commit()
             logger.info("Missing tables and columns added successfully")
@@ -19002,6 +19029,7 @@ def notify_post_reply_recipients(
     allowing users to navigate directly to the relevant thread.
     """
     try:
+        ensure_notifications_preview_text_column()
         with get_db_connection() as conn:
             c = conn.cursor()
             engaged: set[str] = set()
@@ -38949,6 +38977,7 @@ def process_mentions_for_post(post_id: int, author_username: str):
     Users are ALWAYS notified when tagged, regardless of community membership.
     """
     try:
+        ensure_notifications_preview_text_column()
         with get_db_connection() as conn:
             c = conn.cursor()
             c.execute("SELECT content, community_id FROM posts WHERE id = ?", (post_id,))
@@ -39024,6 +39053,7 @@ def process_mentions_for_reply(post_id: int, author_username: str, community_id:
     Works for comments, replies, and nested replies.
     """
     try:
+        ensure_notifications_preview_text_column()
         with get_db_connection() as conn:
             c = conn.cursor()
             # Get exact reply content if reply_id provided, else most recent by this author/post
