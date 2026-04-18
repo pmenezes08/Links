@@ -23,7 +23,9 @@ const config: CapacitorConfig = {
       style: 'dark',
     },
     GoogleAuth: {
+      clientId: '739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com',
       iosClientId: '739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com',
+      serverClientId: '739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com',
       scopes: ['profile', 'email'],
       forceCodeForRefreshToken: false,
     },

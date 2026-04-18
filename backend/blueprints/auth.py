@@ -811,27 +811,39 @@ def login_back():
 
 # --- Google Sign-In ---
 
-GOOGLE_CLIENT_ID_IOS = os.environ.get('GOOGLE_CLIENT_ID_IOS', '')
-GOOGLE_CLIENT_ID_ANDROID = os.environ.get('GOOGLE_CLIENT_ID_ANDROID', '')
+# Web OAuth client ID (Capacitor serverClientId / GoogleAuth.initialize) — ID token audience for server verify.
+_DEFAULT_GOOGLE_WEB_CLIENT_ID = "739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com"
+GOOGLE_CLIENT_ID_IOS = os.environ.get("GOOGLE_CLIENT_ID_IOS") or _DEFAULT_GOOGLE_WEB_CLIENT_ID
+GOOGLE_CLIENT_ID_ANDROID = os.environ.get("GOOGLE_CLIENT_ID_ANDROID") or _DEFAULT_GOOGLE_WEB_CLIENT_ID
 
 
 def _verify_google_id_token(id_token: str, platform: str = 'ios') -> dict | None:
     """Verify a Google ID token and return the payload (sub, email, name, etc.)."""
-    try:
-        from google.oauth2 import id_token as google_id_token
-        from google.auth.transport import requests as google_requests
-        client_id = GOOGLE_CLIENT_ID_ANDROID if platform == 'android' else GOOGLE_CLIENT_ID_IOS
-        if not client_id:
-            return None
-        payload = google_id_token.verify_oauth2_token(
-            id_token, google_requests.Request(), client_id
-        )
-        if payload.get('iss') not in ('accounts.google.com', 'https://accounts.google.com'):
-            return None
-        return payload
-    except Exception as e:
-        current_app.logger.warning(f"Google ID token verification failed: {e}")
-        return None
+    from google.oauth2 import id_token as google_id_token
+    from google.auth.transport import requests as google_requests
+
+    # Prefer platform-specific OAuth client ID, then fall back — Capacitor/Android often
+    # issues tokens for the Web client ID shared with iOS, so a single env var may suffice.
+    if platform == 'android':
+        ordered = (GOOGLE_CLIENT_ID_ANDROID, GOOGLE_CLIENT_ID_IOS)
+    else:
+        ordered = (GOOGLE_CLIENT_ID_IOS, GOOGLE_CLIENT_ID_ANDROID)
+    client_ids = [c for c in ordered if c]
+
+    for client_id in client_ids:
+        try:
+            payload = google_id_token.verify_oauth2_token(
+                id_token, google_requests.Request(), client_id
+            )
+            if payload.get('iss') not in ('accounts.google.com', 'https://accounts.google.com'):
+                return None
+            return payload
+        except Exception as e:
+            suffix = client_id[-8:] if len(client_id) >= 8 else client_id
+            current_app.logger.debug("Google ID token verify with client_id (suffix …%s): %s", suffix, e)
+            continue
+    current_app.logger.warning("Google ID token verification failed: no matching client ID")
+    return None
 
 
 def _ensure_google_id_column(cursor):

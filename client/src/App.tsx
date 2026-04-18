@@ -825,23 +825,29 @@ function AppRoutes(){
   )
 }
 
+const GOOGLE_WEB_CLIENT_ID =
+  '739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com'
+
 export default function App() {
   useEffect(() => {
-    if (!Capacitor.isNativePlatform()) {
-      window.__googleAuthReady = true
-      return
-    }
     import('@codetrix-studio/capacitor-google-auth')
       .then(({ GoogleAuth }) => {
-        return GoogleAuth.initialize({
-          clientId: '739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com',
-          iosClientId: '739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com',
+        const opts: Record<string, unknown> = {
+          clientId: GOOGLE_WEB_CLIENT_ID,
           scopes: ['profile', 'email'],
           grantOfflineAccess: false,
-        } as any)
+        }
+        if (Capacitor.isNativePlatform()) {
+          opts.iosClientId = GOOGLE_WEB_CLIENT_ID
+        }
+        return GoogleAuth.initialize(opts as any)
       })
-      .then(() => { window.__googleAuthReady = true })
-      .catch(() => { window.__googleAuthReady = true })
+      .then(() => {
+        window.__googleAuthReady = true
+      })
+      .catch(() => {
+        window.__googleAuthReady = true
+      })
   }, [])
 
   return (
