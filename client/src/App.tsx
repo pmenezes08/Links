@@ -839,18 +839,22 @@ export default function App() {
   useEffect(() => {
     import('@codetrix-studio/capacitor-google-auth')
       .then(({ GoogleAuth }) => {
-        const platform = Capacitor.getPlatform()
+        // Use isNativePlatform — getPlatform() === 'web' can miss edge cases (browser would
+        // otherwise fall through to the iOS branch and pass the iOS OAuth client to GIS/FedCM,
+        // causing invalid_client / no registered origin on the Web flow).
+        const isNative = Capacitor.isNativePlatform()
         const opts: Record<string, unknown> = {
           scopes: ['profile', 'email'],
           grantOfflineAccess: false,
         }
-        if (platform === 'web') {
+        if (!isNative) {
           opts.clientId = GOOGLE_WEB_CLIENT_ID
-        } else if (platform === 'android') {
+          opts.serverClientId = GOOGLE_WEB_CLIENT_ID
+        } else if (Capacitor.getPlatform() === 'android') {
           opts.clientId = GOOGLE_ANDROID_CLIENT_ID
           opts.serverClientId = GOOGLE_WEB_CLIENT_ID
         } else {
-          // iOS: keep previous behavior (iOS client only; no serverClientId override)
+          // iOS native only
           opts.clientId = GOOGLE_IOS_CLIENT_ID
           opts.iosClientId = GOOGLE_IOS_CLIENT_ID
         }
