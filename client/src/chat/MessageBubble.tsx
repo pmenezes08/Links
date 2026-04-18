@@ -112,6 +112,11 @@ function MessageBubbleInner({
     previewUrls.length > 0 ? stripExtractedUrlsFromText(m.text || '', previewUrls) : m.text || ''
   const showLinkPreviews = previewUrls.length > 0
   const showLinkifiedBody = textWithoutPreviewUrls.trim().length > 0
+  // Only render the "bubble" (liquid-glass background) when there is actual text,
+  // a reply/story to quote, or an active editor. Media and link previews are
+  // rendered as siblings of the bubble so they appear with their own thin
+  // frame rather than inside a big rounded box. Mirrors GroupChatThread.tsx.
+  const showTextBubble = isEditing || showLinkifiedBody || !!m.replySnippet || !!m.storyReply
 
   return (
     <LongPressActionable
@@ -124,17 +129,161 @@ function MessageBubbleInner({
       disabled={isEditing || (!!m.isOptimistic && !m.sendFailed)}
     >
       <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
-        <div className={`relative flex flex-col ${m.sent ? 'items-end' : 'items-start'} max-w-[82%] md:max-w-[65%] ${m.reaction ? 'mb-6' : ''}`}>
-          <div
-            className={`${
-              m.isOptimistic
-                ? 'bg-[#4db6ac]/40 border border-[#4db6ac]/30'
-                : `liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent' : 'liquid-glass-bubble--received'}`
-            } text-white px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words overflow-hidden max-w-full min-w-0 ${
-              m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
-            } ${m.sendFailed ? 'opacity-60' : m.isOptimistic ? 'opacity-70' : 'opacity-100'}`}
-          >
-          
+        <div className={`relative flex flex-col ${m.sent ? 'items-end' : 'items-start'} max-w-[82%] md:max-w-[65%] ${m.reaction ? 'mb-6' : ''} ${m.sendFailed ? 'opacity-60' : m.isOptimistic ? 'opacity-70' : 'opacity-100'}`}>
+
+          {/* Grouped media display — rendered OUTSIDE the text bubble */}
+          {m.media_paths && m.media_paths.length > 0 ? (
+            <div className="mb-1.5 max-w-[280px]">
+              <div
+                className="relative cursor-pointer"
+                onClick={() => {
+                  const urls = m.media_paths!.map(normalizeMediaPath)
+                  if (onMediaGroupClick) {
+                    onMediaGroupClick(urls, 0)
+                  } else {
+                    onImageClick(urls[0])
+                  }
+                }}
+              >
+                {m.media_paths[0].match(/\.(mp4|mov|webm|m4v)$/i) ? (
+                  <div className="relative">
+                    <video
+                      src={normalizeMediaPath(m.media_paths[0]) + '#t=0.1'}
+                      className="w-full rounded-lg"
+                      muted
+                      preload="metadata"
+                      playsInline
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
+                        <i className="fa-solid fa-play text-white text-lg ml-0.5" />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <MessageImage
+                    src={normalizeMediaPath(m.media_paths[0])}
+                    alt="Media"
+                    className="w-full rounded-lg"
+                  />
+                )}
+                {m.media_paths.length > 1 && (
+                  <div className="absolute inset-0 bg-black/30 rounded-lg flex items-center justify-center">
+                    <span className="text-white text-2xl font-semibold">
+                      {m.media_paths.length}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              {m.image_path ? (
+                <div className="mb-1.5">
+                  <MessageImage
+                    src={normalizeMediaPath(m.image_path)}
+                    alt="Shared photo"
+                    className="max-w-full max-h-64 cursor-pointer rounded-lg"
+                    onClick={() => onImageClick(normalizeMediaPath(m.image_path!))}
+                  />
+                </div>
+              ) : null}
+              {m.video_path ? (
+                <div className="mb-1.5 rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                  <MessageVideo
+                    src={normalizeMediaPath(m.video_path)}
+                    className="max-h-64"
+                  />
+                </div>
+              ) : null}
+            </>
+          )}
+
+          {/* Audio message — rendered OUTSIDE the text bubble */}
+          {m.audio_path && !m.image_path ? (
+            <div className="mb-1.5 w-full min-w-0">
+              <AudioMessage
+                message={m}
+                audioPath={normalizeMediaPath(m.audio_path)}
+              />
+              {m.audio_summary ? (
+                <div className="px-2 pb-1 pt-0.5">
+                  <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
+                    <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
+                    <span>{translatedSummaries?.[m.id] ? 'AI Summary (Translated)' : 'AI Summary'}</span>
+                    <div className="ml-auto flex items-center gap-1">
+                      {translatedSummaries?.[m.id] && onTranslateSummary && (
+                        <button onClick={(e) => { e.stopPropagation(); onTranslateSummary(m.id, '', 'reset') }} className="text-white/30 hover:text-white/50 px-0.5"><i className="fa-solid fa-rotate-left text-[8px]" /></button>
+                      )}
+                      {onTranslateSummary && (
+                        <button onClick={(e) => { e.stopPropagation(); onTranslateSummary(m.id, m.audio_summary || '', 'pick') }} className="text-white/30 hover:text-white/50 px-0.5" disabled={translatingId === m.id}>
+                          {translatingId === m.id ? <i className="fa-solid fa-spinner fa-spin text-[9px]" /> : <i className="fa-solid fa-globe text-[9px]" />}
+                        </button>
+                      )}
+                      {m.sent && onEditSummary && (
+                        <button onClick={(e) => { e.stopPropagation(); onEditSummary(m.id, m.audio_summary || '') }} className="text-white/30 hover:text-white/50 px-0.5"><i className="fa-solid fa-pen text-[8px]" /></button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-[12px] text-white/80 leading-relaxed italic">
+                    {translatedSummaries?.[m.id] || m.audio_summary}
+                  </p>
+                </div>
+              ) : m.audio_path && (() => {
+                try {
+                  const t = new Date(m.time).getTime()
+                  if (Date.now() - t < 120000) return (
+                    <div className="px-2 pb-1 pt-0.5">
+                      <div className="flex items-center gap-1">
+                        <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-white/40" />
+                        <span className="text-[11px] text-white/40">AI Summary generating</span>
+                        <span className="flex gap-0.5 ml-0.5">
+                          <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </span>
+                      </div>
+                    </div>
+                  )
+                } catch {}
+                return null
+              })()}
+            </div>
+          ) : null}
+
+          {/* Link previews — rendered OUTSIDE the text bubble (they carry their own thin frame) */}
+          {showLinkPreviews && (
+            <div className="w-full max-w-[320px] min-w-0 mb-1.5 flex flex-col">
+              {previewUrls.map(u => <LinkPreview key={u} url={u} sent={m.sent} />)}
+            </div>
+          )}
+
+          {/* Encryption / decryption indicators — rendered OUTSIDE the text bubble */}
+          {Boolean(m.is_encrypted) && !m.decryption_error && (
+            <div className="flex items-center gap-1.5 mb-1.5 text-[11px] text-[#7fe7df]">
+              <i className="fa-solid fa-lock text-[10px]" />
+              <span className="font-medium">End-to-end encrypted</span>
+            </div>
+          )}
+          {m.decryption_error && (
+            <div className="flex items-center gap-1.5 mb-1.5 text-[11px] text-red-400">
+              <i className="fa-solid fa-triangle-exclamation text-[10px]" />
+              <span className="font-medium">Decryption failed</span>
+            </div>
+          )}
+
+          {/* Text bubble — only rendered when there is text / reply / story content or an active editor */}
+          {showTextBubble ? (
+            <div
+              className={`${
+                m.isOptimistic
+                  ? 'bg-[#4db6ac]/40 border border-[#4db6ac]/30'
+                  : `liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent' : 'liquid-glass-bubble--received'}`
+              } text-white px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words overflow-hidden max-w-full min-w-0 ${
+                m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
+              }`}
+            >
+
           {/* Story reply - shows a preview of the story being replied to */}
           {m.storyReply ? (() => {
             const isVideo = m.storyReply.mediaType === '🎥'
@@ -287,145 +436,6 @@ function MessageBubbleInner({
             )
           })() : null}
 
-          {/* Audio message */}
-          {m.audio_path && !m.image_path ? (
-            <>
-              <AudioMessage
-                message={m}
-                audioPath={normalizeMediaPath(m.audio_path)}
-              />
-              {m.audio_summary ? (
-                <div className="px-2 pb-1 pt-0.5">
-                  <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
-                    <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
-                    <span>{translatedSummaries?.[m.id] ? 'AI Summary (Translated)' : 'AI Summary'}</span>
-                    <div className="ml-auto flex items-center gap-1">
-                      {translatedSummaries?.[m.id] && onTranslateSummary && (
-                        <button onClick={(e) => { e.stopPropagation(); onTranslateSummary(m.id, '', 'reset') }} className="text-white/30 hover:text-white/50 px-0.5"><i className="fa-solid fa-rotate-left text-[8px]" /></button>
-                      )}
-                      {onTranslateSummary && (
-                        <button onClick={(e) => { e.stopPropagation(); onTranslateSummary(m.id, m.audio_summary || '', 'pick') }} className="text-white/30 hover:text-white/50 px-0.5" disabled={translatingId === m.id}>
-                          {translatingId === m.id ? <i className="fa-solid fa-spinner fa-spin text-[9px]" /> : <i className="fa-solid fa-globe text-[9px]" />}
-                        </button>
-                      )}
-                      {m.sent && onEditSummary && (
-                        <button onClick={(e) => { e.stopPropagation(); onEditSummary(m.id, m.audio_summary || '') }} className="text-white/30 hover:text-white/50 px-0.5"><i className="fa-solid fa-pen text-[8px]" /></button>
-                      )}
-                    </div>
-                  </div>
-                  <p className="text-[12px] text-white/80 leading-relaxed italic">
-                    {translatedSummaries?.[m.id] || m.audio_summary}
-                  </p>
-                </div>
-              ) : m.audio_path && (() => {
-                try {
-                  const t = new Date(m.time).getTime()
-                  if (Date.now() - t < 120000) return (
-                    <div className="px-2 pb-1 pt-0.5">
-                      <div className="flex items-center gap-1">
-                        <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-white/40" />
-                        <span className="text-[11px] text-white/40">AI Summary generating</span>
-                        <span className="flex gap-0.5 ml-0.5">
-                          <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                          <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                          <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                        </span>
-                      </div>
-                    </div>
-                  )
-                } catch {}
-                return null
-              })()}
-            </>
-          ) : null}
-
-          {/* Grouped media display */}
-          {m.media_paths && m.media_paths.length > 0 ? (
-            <div className="mb-1.5 max-w-[280px]">
-              <div
-                className="relative cursor-pointer"
-                onClick={() => {
-                  const urls = m.media_paths!.map(normalizeMediaPath)
-                  if (onMediaGroupClick) {
-                    onMediaGroupClick(urls, 0)
-                  } else {
-                    onImageClick(urls[0])
-                  }
-                }}
-              >
-                {m.media_paths[0].match(/\.(mp4|mov|webm|m4v)$/i) ? (
-                  <div className="relative">
-                    <video
-                      src={normalizeMediaPath(m.media_paths[0]) + '#t=0.1'}
-                      className="w-full rounded-lg"
-                      muted
-                      preload="metadata"
-                      playsInline
-                    />
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
-                        <i className="fa-solid fa-play text-white text-lg ml-0.5" />
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <MessageImage
-                    src={normalizeMediaPath(m.media_paths[0])}
-                    alt="Media"
-                    className="w-full rounded-lg"
-                  />
-                )}
-                {m.media_paths.length > 1 && (
-                  <div className="absolute inset-0 bg-black/30 rounded-lg flex items-center justify-center">
-                    <span className="text-white text-2xl font-semibold">
-                      {m.media_paths.length}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* Image display */}
-              {m.image_path ? (
-                <div className="mb-1.5">
-                  <MessageImage
-                    src={normalizeMediaPath(m.image_path)}
-                    alt="Shared photo"
-                    className="max-w-full max-h-64 cursor-pointer"
-                    onClick={() => onImageClick(normalizeMediaPath(m.image_path!))}
-                  />
-                </div>
-              ) : null}
-
-              {/* Video display */}
-              {m.video_path ? (
-                <div className="mb-1.5" onClick={(e) => e.stopPropagation()}>
-                  <MessageVideo
-                    src={normalizeMediaPath(m.video_path)}
-                    className="max-h-64"
-                  />
-                </div>
-              ) : null}
-            </>
-          )}
-
-          {/* Encryption indicator */}
-          {Boolean(m.is_encrypted) && !m.decryption_error && (
-            <div className="flex items-center gap-1.5 mb-1.5 text-[11px] text-[#7fe7df]">
-              <i className="fa-solid fa-lock text-[10px]" />
-              <span className="font-medium">End-to-end encrypted</span>
-            </div>
-          )}
-
-          {/* Decryption error indicator */}
-          {m.decryption_error && (
-            <div className="flex items-center gap-1.5 mb-1.5 text-[11px] text-red-400">
-              <i className="fa-solid fa-triangle-exclamation text-[10px]" />
-              <span className="font-medium">Decryption failed</span>
-            </div>
-          )}
-
           {/* Text content or editor */}
           {isEditing ? (
             <div 
@@ -467,34 +477,31 @@ function MessageBubbleInner({
                 </button>
               </div>
             </div>
-          ) : m.text ? (
-            <>
-              <div
-                className="inline"
-                onDoubleClick={() => {
-                  if (!m.sent || !onEdit) return
-                  const dt = parseMessageTime(m.time)
-                  if (dt && Date.now() - dt.getTime() > 5 * 60 * 1000) return
-                  onEdit()
-                }}
-              >
-                {showLinkifiedBody ? linkifyText(textWithoutPreviewUrls) : null}
-                {m.edited_at ? (
-                  <span className="text-[10px] text-white/50 ml-1">edited</span>
-                ) : null}
-                <span className={`text-[10px] ml-2 ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
-                  {formatMessageTime(m.time)}
-                </span>
-              </div>
-              {showLinkPreviews &&
-                previewUrls.map(u => <LinkPreview key={u} url={u} sent={m.sent} />)}
-            </>
           ) : (
-            <span className={`text-[10px] ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
+            <div
+              className="inline"
+              onDoubleClick={() => {
+                if (!m.sent || !onEdit) return
+                const dt = parseMessageTime(m.time)
+                if (dt && Date.now() - dt.getTime() > 5 * 60 * 1000) return
+                onEdit()
+              }}
+            >
+              {showLinkifiedBody ? linkifyText(textWithoutPreviewUrls) : null}
+              {m.edited_at ? (
+                <span className="text-[10px] text-white/50 ml-1">edited</span>
+              ) : null}
+              <span className={`text-[10px] ml-2 ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
+                {formatMessageTime(m.time)}
+              </span>
+            </div>
+          )}
+            </div>
+          ) : (
+            <span className={`text-[10px] mt-0.5 ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
               {formatMessageTime(m.time)}
             </span>
           )}
-          </div>
           {/* WhatsApp-style reaction pill - floats at bottom corner */}
           {m.reaction && (
             <div 
