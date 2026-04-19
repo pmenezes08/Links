@@ -856,7 +856,10 @@ export default function App() {
       .then(() => {
         window.__googleAuthReady = true
       })
-      .catch(() => {
+      .catch((err) => {
+        if (String(Capacitor.getPlatform() ?? '').toLowerCase() === 'android') {
+          console.error('[GoogleAuth Android] initialize failed:', err)
+        }
         window.__googleAuthReady = true
       })
   }, [])
