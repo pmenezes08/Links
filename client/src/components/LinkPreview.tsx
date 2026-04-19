@@ -2,6 +2,7 @@ import { useState, useEffect, memo } from 'react'
 import { Capacitor } from '@capacitor/core'
 import type { VideoEmbed } from '../utils/videoEmbed'
 import { extractVideoEmbed } from '../utils/videoEmbed'
+import { openExternalNativeLink } from '../utils/openExternalInApp'
 
 export type LinkPreviewData = {
   title: string
@@ -105,13 +106,17 @@ export function feedLinkPreviewUrls(text: string, videoEmbedUrl?: string | null)
   return urls.filter(u => {
     const lu = u.toLowerCase()
     if (ve && (lu.includes(ve.slice(0, 48)) || ve.includes(lu.slice(0, 48)))) return false
-    if (
-      lu.includes('youtube.com') ||
-      lu.includes('youtu.be') ||
-      lu.includes('vimeo.com') ||
-      lu.includes('tiktok.com')
-    ) {
-      return false
+    // Only hide video-platform URLs from cards when an inline embed is already rendered.
+    if (ve) {
+      if (
+        lu.includes('youtube.com') ||
+        lu.includes('youtu.be') ||
+        lu.includes('music.youtube') ||
+        lu.includes('vimeo.com') ||
+        lu.includes('tiktok.com')
+      ) {
+        return false
+      }
     }
     return true
   })
@@ -182,28 +187,6 @@ export function feedPostLinkPreviewUrls(
  * If the native app isn't installed we fall back to our in-app browser so the
  * card never becomes a dead end.
  */
-async function openExternalNative(url: string): Promise<void> {
-  try {
-    const { App: CapApp } = await import('@capacitor/app')
-    const anyApp = CapApp as unknown as {
-      openUrl?: (opts: { url: string }) => Promise<{ completed?: boolean }>
-    }
-    if (anyApp.openUrl) {
-      const res = await anyApp.openUrl({ url })
-      if (res && res.completed === false) {
-        const { openExternalInApp } = await import('../utils/openExternalInApp')
-        await openExternalInApp(url)
-      }
-      return
-    }
-  } catch {
-    // fall through to in-app browser fallback
-  }
-  try {
-    const { openExternalInApp } = await import('../utils/openExternalInApp')
-    await openExternalInApp(url)
-  } catch { /* noop */ }
-}
 
 function getDomainIcon(domain: string): string {
   if (domain.includes('youtube') || domain.includes('youtu.be')) return 'fa-brands fa-youtube'
@@ -295,7 +278,7 @@ function LinkPreviewCard({ url, sent }: Props) {
           e.stopPropagation()
           if (Capacitor.isNativePlatform()) {
             e.preventDefault()
-            void openExternalNative(openUrl)
+            void openExternalNativeLink(openUrl)
           }
         }}
       >
@@ -330,7 +313,7 @@ function LinkPreviewCard({ url, sent }: Props) {
         e.stopPropagation()
         if (Capacitor.isNativePlatform()) {
           e.preventDefault()
-          void openExternalNative(openUrl)
+          void openExternalNativeLink(openUrl)
         }
       }}
     >

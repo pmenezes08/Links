@@ -26,6 +26,7 @@ import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/de
 import { sendImageMessage, sendVideoMessage, sendMultiMediaMessage, SENDING_MEDIA_LABEL, type UploadProgress } from '../chat/mediaSenders'
 import type { ChatMessage } from '../types/chat'
 import { isInternalLink, isLandingPageLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from '../utils/internalLinkHandler'
+import { openExternalNativeLink } from '../utils/openExternalInApp'
 
 // Import utilities and components from chat module
 import {
@@ -599,6 +600,16 @@ export default function ChatThread(){
               e.preventDefault()
               e.stopPropagation()
               handleInternalLinkClick(href)
+              return
+            }
+            if (Capacitor.isNativePlatform()) {
+              e.preventDefault()
+              e.stopPropagation()
+              if (isLanding) {
+                window.open(href, '_blank', 'noopener,noreferrer')
+              } else {
+                void openExternalNativeLink(href)
+              }
             }
           }}
         >

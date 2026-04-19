@@ -46,10 +46,12 @@ export function extractVideoEmbedFromPost(content: string | null | undefined, li
 export function extractVideoEmbed(text: string): VideoEmbed | null {
   if (!text) return null
 
-  // YouTube patterns (m. subdomain; &v= when v is not the first query param)
+  // YouTube patterns (m. / music. subdomain; &v= when v is not the first query param)
   const youtubePatterns = [
     /(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
     /(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/watch\?[^)\s]*&v=([a-zA-Z0-9_-]{11})/,
+    /(?:https?:\/\/)?(?:www\.)?music\.youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+    /(?:https?:\/\/)?(?:www\.)?music\.youtube\.com\/watch\?[^)\s]*&v=([a-zA-Z0-9_-]{11})/,
     /(?:https?:\/\/)?(?:www\.)?youtu\.be\/([a-zA-Z0-9_-]{11})/,
     /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
     /(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
@@ -142,12 +144,16 @@ export function removeVideoUrlFromText(text: string, videoEmbed: VideoEmbed | nu
     youtube: [
       /\[[^\]]+\]\(https?:\/\/(?:www\.|m\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
       /\[[^\]]+\]\(https?:\/\/(?:www\.|m\.)?youtube\.com\/watch\?[^)\s]*&v=[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
+      /\[[^\]]+\]\(https?:\/\/(?:www\.)?music\.youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
+      /\[[^\]]+\]\(https?:\/\/(?:www\.)?music\.youtube\.com\/watch\?[^)\s]*&v=[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
       /\[[^\]]+\]\(https?:\/\/(?:www\.)?youtu\.be\/[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
       /\[[^\]]+\]\(https?:\/\/(?:www\.)?youtube\.com\/embed\/[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
       /\[[^\]]+\]\(https?:\/\/(?:www\.)?youtube\.com\/shorts\/[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
       /\[[^\]]+\]\(https?:\/\/(?:www\.)?youtube\.com\/live\/[a-zA-Z0-9_-]{11}[^\s)]*\)/g,
       /https?:\/\/(?:www\.|m\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11}[^\s]*/g,
       /https?:\/\/(?:www\.|m\.)?youtube\.com\/watch\?[^)\s]*&v=[a-zA-Z0-9_-]{11}[^\s]*/g,
+      /https?:\/\/(?:www\.)?music\.youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11}[^\s]*/g,
+      /https?:\/\/(?:www\.)?music\.youtube\.com\/watch\?[^)\s]*&v=[a-zA-Z0-9_-]{11}[^\s]*/g,
       /https?:\/\/(?:www\.)?youtu\.be\/[a-zA-Z0-9_-]{11}[^\s]*/g,
       /https?:\/\/(?:www\.)?youtube\.com\/embed\/[a-zA-Z0-9_-]{11}[^\s]*/g,
       /https?:\/\/(?:www\.)?youtube\.com\/shorts\/[a-zA-Z0-9_-]{11}[^\s]*/g,

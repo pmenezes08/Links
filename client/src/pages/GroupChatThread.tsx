@@ -23,7 +23,7 @@ import { renderTextWithSourceLinks } from '../utils/linkUtils'
 import LinkPreview, { stripExtractedUrlsFromText, feedLinkPreviewUrls } from '../components/LinkPreview'
 import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
-import { openExternalInApp } from '../utils/openExternalInApp'
+import { openExternalNativeLink } from '../utils/openExternalInApp'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
 import {
@@ -94,7 +94,7 @@ export default function GroupChatThread() {
   const { group_id } = useParams()
   const navigate = useNavigate()
   const openExternalArticle = useCallback((url: string) => {
-    void openExternalInApp(url)
+    void openExternalNativeLink(url)
   }, [])
   const [searchParams, setSearchParams] = useSearchParams()
   const { profile: currentUserProfile } = useUserProfile()

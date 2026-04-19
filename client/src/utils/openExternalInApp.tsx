@@ -82,3 +82,37 @@ export async function openExternalInApp(rawUrl: string): Promise<void> {
     <WebArticleFallback url={url} onClose={closeWebOverlay} />,
   )
 }
+
+/**
+ * Prefer OS-level URL open (Universal Links / App Links via @capacitor/app), then in-app browser.
+ * Use for chat links and other taps where nested youtube.com WebViews fight with the YouTube app.
+ */
+export async function openExternalNativeLink(rawUrl: string): Promise<void> {
+  const url = normalizeUrlForOpen(rawUrl)
+  if (!url) {
+    console.warn('openExternalNativeLink: invalid URL', rawUrl)
+    return
+  }
+
+  if (!Capacitor.isNativePlatform()) {
+    window.open(url, '_blank', 'noopener,noreferrer')
+    return
+  }
+
+  try {
+    const { App: CapApp } = await import('@capacitor/app')
+    const anyApp = CapApp as unknown as {
+      openUrl?: (opts: { url: string }) => Promise<{ completed?: boolean }>
+    }
+    if (anyApp.openUrl) {
+      const res = await anyApp.openUrl({ url })
+      if (res && res.completed === false) {
+        await openExternalInApp(url)
+      }
+      return
+    }
+  } catch {
+    // fall through to in-app browser
+  }
+  await openExternalInApp(url)
+}
