@@ -1,13 +1,13 @@
 package co.cpoint.app;
 
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
-import com.getcapacitor.JSObject;
 
 import java.util.UUID;
 
@@ -47,21 +47,38 @@ public class MainActivity extends BridgeActivity {
      * manifest to {@code IncomingShare/}. We now need to tell the React app to navigate to
      * {@code /share/incoming} so the user sees the share picker.
      *
-     * We used to inject {@code window.location.href='/share/incoming'}, which forced the
-     * WebView to do a hard reload against the staging server. The backend has no Flask
-     * route for that path, so Flask's 404 handler replaced the React app with an error
-     * page — exactly the "nothing happens" symptom.
+     * History of this method:
+     *   v1 — injected {@code window.location.href='/share/incoming'}. Forced a hard HTTP
+     *        reload against the remote server.url; Flask had no route, 404 handler wiped
+     *        the React app. Symptom: "nothing happens" when tapping C.Point in the share
+     *        sheet.
+     *   v2 — called {@code bridge.triggerJSEvent("appUrlOpen", "App", data)}. That looks
+     *        right, but {@code @capacitor/app}'s {@code addListener('appUrlOpen', cb)}
+     *        subscribes through the native plugin-callback bridge, NOT through DOM
+     *        CustomEvents. {@code triggerJSEvent} with a non-"window"/"document" target
+     *        ends up calling {@code document.querySelector("App")}, which finds no
+     *        element and drops the event. Symptom: app launches straight to the
+     *        dashboard.
      *
-     * Instead, we now emit the same Capacitor {@code appUrlOpen} plugin event that iOS's
-     * Share Extension triggers via {@code cpoint://share/incoming?t=...}. The JS handler
-     * in App.tsx ({@code CapacitorApp.addListener('appUrlOpen', ...)}) catches it and
-     * calls {@code navigate('/share/incoming')} — a soft React-Router navigation with no
-     * server round-trip. This unifies the share-handoff path across iOS and Android.
+     * v3 (this implementation): synthesize an {@code ACTION_VIEW} intent with a
+     * {@code cpoint://share/incoming?t=<uuid>} URI and push it through
+     * {@link Bridge#onNewIntent(Intent)}. That dispatches to every registered plugin,
+     * including {@code AppPlugin.handleOnNewIntent}, which fires
+     * {@code notifyListeners("appUrlOpen", data, retainUntilConsumed=true)}.
      *
-     * NOTE: the {@code "App"} target string must match the {@code @capacitor/app} plugin
-     * ID. That's the same target the plugin uses internally when it calls
-     * {@code notifyListeners("appUrlOpen", ...)} from its own native code, so our JS
-     * listener receives it identically regardless of who emitted it.
+     * Why this works for both cold and warm start:
+     *   - Warm start: React is mounted, {@code CapacitorApp.addListener('appUrlOpen')}
+     *     is active, and the listener fires immediately.
+     *   - Cold start: the event is emitted while React is still loading. Because
+     *     {@code retainUntilConsumed=true}, Capacitor queues the event natively until
+     *     a JS listener subscribes — same mechanism iOS uses.
+     *
+     * The JS handler in App.tsx matches {@code url.startsWith('cpoint://share')} and
+     * calls {@code navigate('/share/incoming')} — a soft React-Router transition with
+     * no HTTP round-trip.
+     *
+     * iOS is unaffected: iOS has its own native path via {@code UIApplication.open}
+     * from the Share Extension.
      */
     private void maybeNavigateToShareIncoming() {
         if (!ShareIntentHelper.hasPendingNavigation()) {
@@ -69,7 +86,7 @@ public class MainActivity extends BridgeActivity {
             return;
         }
         Bridge bridge = getBridge();
-        if (bridge == null || bridge.getWebView() == null) {
+        if (bridge == null) {
             if (shareNavRetries++ < 25) {
                 mainHandler.postDelayed(this::maybeNavigateToShareIncoming, 400);
             } else {
@@ -81,9 +98,9 @@ public class MainActivity extends BridgeActivity {
         shareNavRetries = 0;
         ShareIntentHelper.clearPendingNavigationFlag();
 
-        JSObject data = new JSObject();
-        // Unique query so JS can dedupe repeats without blocking a later share in the session.
-        data.put("url", "cpoint://share/incoming?t=" + UUID.randomUUID().toString());
-        bridge.triggerJSEvent("appUrlOpen", "App", data.toString());
+        Intent viewIntent = new Intent(Intent.ACTION_VIEW);
+        // Unique token so repeat shares in the same session aren't deduped by JS.
+        viewIntent.setData(Uri.parse("cpoint://share/incoming?t=" + UUID.randomUUID().toString()));
+        bridge.onNewIntent(viewIntent);
     }
 }
