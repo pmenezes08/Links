@@ -72,6 +72,10 @@ export default function PostDetail(){
   const openArticleReader = useCallback((url: string) => {
     void openExternalInApp(url)
   }, [])
+
+  const onNavigateToReply = useCallback((id: number) => {
+    navigate(`/reply/${id}`)
+  }, [navigate])
   
   // Check if message contains @Steve mention (case insensitive)
   const containsSteveMention = (text: string) => {
@@ -1729,7 +1733,7 @@ export default function PostDetail(){
               postId={post?.id}
               activeInlineReplyFor={activeInlineReplyFor}
               onSetActiveInlineReply={setActiveInlineReplyFor}
-              onNavigateToReply={(id) => navigate(`/reply/${id}`)}
+              onNavigateToReply={onNavigateToReply}
               onOpenReactors={openReplyReactorsModal}
               onArticleOpen={openArticleReader}
             />

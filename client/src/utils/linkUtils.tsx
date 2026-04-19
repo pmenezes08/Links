@@ -245,13 +245,15 @@ export function colorizeMentions(nodes: React.ReactNode[], onMentionClick?: (use
 }
 
 /**
- * Preserves newlines in text by converting them to <br> elements
+ * Preserves newlines in text by converting them to <br> elements.
+ * Pass a stable `keyPrefix` unique per segment when multiple segments are merged into one parent (avoids duplicate React keys).
  */
-export function preserveRichTextNewlines(text: string): React.ReactNode[] {
+export function preserveRichTextNewlines(text: string, keyPrefix: string | number = '0'): React.ReactNode[] {
   const parts = text.split(/\n/)
   const out: React.ReactNode[] = []
+  const prefix = String(keyPrefix)
   parts.forEach((p, i) => {
-    if (i > 0) out.push(<br key={`br-${i}-${p.length}-${Math.random()}`} />)
+    if (i > 0) out.push(<br key={`br-${prefix}-${i}`} />)
     if (p) out.push(p)
   })
   return out
@@ -284,7 +286,7 @@ export function renderTextWithSourceLinks(
     
     if (effectiveStart > lastIndex) {
       const textBefore = text.substring(lastIndex, effectiveStart)
-      parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(textBefore))), onMentionClick))
+      parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(textBefore, lastIndex))), onMentionClick))
     }
     
     let url: string
@@ -320,7 +322,7 @@ export function renderTextWithSourceLinks(
   
   if (lastIndex < text.length) {
     const remainingText = text.substring(lastIndex)
-    parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(remainingText))), onMentionClick))
+    parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(remainingText, lastIndex))), onMentionClick))
   }
   
   return parts.length > 0 ? <>{parts}</> : text
@@ -374,7 +376,7 @@ export function renderRichText(
       nodes.push(
         ...colorizeMentions(
           replaceFaIcons(
-            applyBoldEmphasis(preserveRichTextNewlines(input.slice(lastIndex, match.index))),
+            applyBoldEmphasis(preserveRichTextNewlines(input.slice(lastIndex, match.index), lastIndex)),
           ),
           onMentionClick,
         ),
@@ -401,7 +403,7 @@ export function renderRichText(
     if (m.index > urlLast) {
       nodes.push(
         ...colorizeMentions(
-          replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(rest.slice(urlLast, m.index)))),
+          replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(rest.slice(urlLast, m.index), lastIndex + urlLast))),
           onMentionClick,
         ),
       )
@@ -435,7 +437,7 @@ export function renderRichText(
   if (urlLast < rest.length) {
     nodes.push(
       ...colorizeMentions(
-        replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(rest.slice(urlLast)))),
+        replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(rest.slice(urlLast), lastIndex + urlLast))),
         onMentionClick,
       ),
     )
@@ -461,7 +463,7 @@ function renderTextWithLinksInner(
   while ((match = markdownRegex.exec(text)) !== null) {
     if (match.index > lastIndex) {
       const textBefore = text.substring(lastIndex, match.index)
-      parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(textBefore))), onMentionClick))
+      parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(textBefore, lastIndex))), onMentionClick))
     }
 
     const displayText = match[1]
@@ -484,7 +486,7 @@ function renderTextWithLinksInner(
 
   if (lastIndex < text.length) {
     const remainingText = text.substring(lastIndex)
-    parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(remainingText))), onMentionClick))
+    parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(remainingText, lastIndex))), onMentionClick))
   }
 
   return parts.length > 0 ? parts : text
