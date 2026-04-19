@@ -173,21 +173,6 @@ export function feedPostLinkPreviewUrls(
   return out.slice(0, 5)
 }
 
-/**
- * Open an external URL so that iOS Universal Links / Android App Links can route
- * to the native app that owns the domain (Instagram, X, TikTok, YouTube, etc.).
- *
- * On iOS inside the Capacitor WKWebView a plain <a target="_blank"> does NOT call
- * UIApplication.open and therefore never triggers Universal Links — the URL loads
- * in a web view and Instagram's "Open in app" interstitial deep-links to the home
- * feed instead of the specific post. Routing through @capacitor/app's openUrl
- * forwards the URL to UIApplication.open at the OS level, which lets AASA match
- * and hand off to the native Instagram/X/TikTok app with the exact URL.
- *
- * If the native app isn't installed we fall back to our in-app browser so the
- * card never becomes a dead end.
- */
-
 function getDomainIcon(domain: string): string {
   if (domain.includes('youtube') || domain.includes('youtu.be')) return 'fa-brands fa-youtube'
   if (domain.includes('instagram')) return 'fa-brands fa-instagram'

@@ -84,8 +84,9 @@ export async function openExternalInApp(rawUrl: string): Promise<void> {
 }
 
 /**
- * Prefer OS-level URL open (Universal Links / App Links via @capacitor/app), then in-app browser.
- * Use for chat links and other taps where nested youtube.com WebViews fight with the YouTube app.
+ * Open an external URL so Universal Links / App Links can route to the native app (YouTube, etc.).
+ * On iOS, `target="_blank"` in the Capacitor WKWebView often does not call `UIApplication.open`;
+ * `App.openUrl` forwards to the OS first. If that does not complete, falls back to `openExternalInApp`.
  */
 export async function openExternalNativeLink(rawUrl: string): Promise<void> {
   const url = normalizeUrlForOpen(rawUrl)
