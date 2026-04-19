@@ -13360,6 +13360,7 @@ _LINK_PREVIEW_MAX_CACHE = 2000
 
 _LINK_PREVIEW_ALLOWED_DOMAINS = {
     'youtube.com', 'youtu.be', 'www.youtube.com', 'm.youtube.com',
+    'music.youtube.com', 'www.music.youtube.com',
     'vimeo.com', 'www.vimeo.com',
     'instagram.com', 'www.instagram.com',
     'linkedin.com', 'www.linkedin.com',
@@ -13382,6 +13383,30 @@ _LINK_PREVIEW_ALLOWED_DOMAINS = {
     'forbes.com', 'www.forbes.com',
     'wsj.com', 'www.wsj.com',
 }
+
+
+def _youtube_video_id_from_share_url(url: str) -> str | None:
+    """Extract 11-char video id from common YouTube / YouTube Music share URLs."""
+    import re as _re
+    patterns = (
+        r'(?:www\.|m\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})',
+        r'(?:www\.|m\.)?youtube\.com/watch\?[^#\s]*[?&]v=([a-zA-Z0-9_-]{11})',
+        r'(?:www\.)?music\.youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})',
+        r'(?:www\.)?music\.youtube\.com/watch\?[^#\s]*[?&]v=([a-zA-Z0-9_-]{11})',
+        r'(?:www\.)?youtu\.be/([a-zA-Z0-9_-]{11})',
+        r'(?:www\.)?youtube\.com/embed/([a-zA-Z0-9_-]{11})',
+        r'(?:www\.)?youtube\.com/shorts/([a-zA-Z0-9_-]{11})',
+        r'(?:www\.)?youtube\.com/live/([a-zA-Z0-9_-]{11})',
+    )
+    for p in patterns:
+        m = _re.search(p, url, _re.IGNORECASE)
+        if m:
+            return m.group(1)
+    return None
+
+
+def _domain_is_youtube_family(domain_lower: str) -> bool:
+    return domain_lower == 'youtu.be' or 'youtube.com' in domain_lower
 
 
 def _extract_og_metadata(url: str) -> dict | None:
@@ -13413,6 +13438,26 @@ def _extract_og_metadata(url: str) -> dict | None:
     if neg_ts:
         _link_preview_negative_cache.pop(cache_key, None)
 
+    def _store_youtube_fallback_preview() -> dict | None:
+        vid = _youtube_video_id_from_share_url(url)
+        if not vid or not _domain_is_youtube_family(domain):
+            return None
+        result = {
+            'title': '',
+            'description': '',
+            'image': f'https://img.youtube.com/vi/{vid}/hqdefault.jpg',
+            'site_name': 'YouTube',
+            'domain': domain,
+            'type': 'video',
+            'url': url.strip(),
+            '_ts': _time.time(),
+        }
+        if len(_link_preview_cache) >= _LINK_PREVIEW_MAX_CACHE:
+            oldest_key = min(_link_preview_cache, key=lambda k: _link_preview_cache[k]['_ts'])
+            del _link_preview_cache[oldest_key]
+        _link_preview_cache[cache_key] = result
+        return result
+
     try:
         import requests as _req
         # Facebook/Instagram serve full OG tags to facebookexternalhit but a login wall
@@ -13441,6 +13486,9 @@ def _extract_og_metadata(url: str) -> dict | None:
                 resp.close()
             except Exception:
                 pass
+            fb = _store_youtube_fallback_preview()
+            if fb:
+                return fb
             _link_preview_negative_cache[cache_key] = _time.time()
             return None
 
@@ -13461,6 +13509,9 @@ def _extract_og_metadata(url: str) -> dict | None:
                 pass
         html = content.decode('utf-8', errors='replace')
     except Exception:
+        fb = _store_youtube_fallback_preview()
+        if fb:
+            return fb
         _link_preview_negative_cache[cache_key] = _time.time()
         return None
 
@@ -13526,10 +13577,7 @@ def _extract_og_metadata(url: str) -> dict | None:
     site_name = _og('site_name') or domain
     og_type = _og('type') or ''
 
-    yt_match = _re.search(
-        r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})',
-        url)
-    video_id = yt_match.group(1) if yt_match else None
+    video_id = _youtube_video_id_from_share_url(url)
     if video_id and not image:
         image = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
 
@@ -13565,6 +13613,9 @@ def _extract_og_metadata(url: str) -> dict | None:
     }
 
     if not title and not description and not image:
+        fb = _store_youtube_fallback_preview()
+        if fb:
+            return fb
         _link_preview_negative_cache[cache_key] = _time.time()
         return None
 

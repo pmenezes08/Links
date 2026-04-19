@@ -13,6 +13,23 @@ interface LongPressActionableProps {
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '🔥', '👏', '😮', '😢', '🙏']
 
+/** Links / controls inside the bubble must receive real clicks (especially on iOS). */
+function eventTargetIsInteractiveLinkOrControl(e: React.MouseEvent | React.TouchEvent): boolean {
+  let node: EventTarget | null = null
+  if ('touches' in e && e.touches.length > 0) {
+    node = e.touches[0]?.target ?? null
+  } else if ('changedTouches' in e && e.changedTouches.length > 0) {
+    node = e.changedTouches[0]?.target ?? null
+  } else {
+    node = (e as React.MouseEvent).target
+  }
+  const el = node instanceof Element ? node : (node as Node | null)?.parentElement
+  if (!el) return false
+  return !!el.closest(
+    'a[href], button:not(:disabled), input, textarea, select, label[for], [role="button"]',
+  )
+}
+
 const EMOJI_CATEGORIES = {
   'Smileys': ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '🥲', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🥸', '🤩', '🥳', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🥵', '🥶', '🥴', '😵', '😵‍💫', '🤯', '🤠', '🥳', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾'],
   'People': ['👶', '👧', '🧒', '👦', '👩', '🧑', '👨', '👩‍🦱', '🧑‍🦱', '👨‍🦱', '👩‍🦰', '🧑‍🦰', '👨‍🦰', '👱‍♀️', '👱', '👱‍♂️', '👩‍🦳', '🧑‍🦳', '👨‍🦳', '👩‍🦲', '🧑‍🦲', '👨‍🦲', '🧔', '👵', '🧓', '👴', '👮‍♀️', '👮', '👷‍♀️', '👷', '💂‍♀️', '💂', '🕵️‍♀️', '🕵️', '👩‍⚕️', '🧑‍⚕️', '👩‍🎓', '🧑‍🎓', '👩‍💻', '🧑‍💻', '👩‍🚀', '🧑‍🚀', '🧑‍🎨', '🧑‍🍳', '🧑‍🏫', '🧑‍🔬', '🧑‍✈️', '🧑‍🚒', '🦸', '🦹', '🧙', '🧚', '🧛', '🧜', '🧝', '🧞', '🧟', '💆', '💇', '🚶', '🧍', '🧎', '🏃', '💃', '🕺', '👯', '🧖', '🧗', '🤸', '⛹️', '🏋️', '🚴', '🚵', '🤼', '🤽', '🤾', '🤺', '🏄', '🏊', '🤿', '🧘'],
@@ -105,6 +122,7 @@ export default function LongPressActionable({
 
   function handleDoubleTap(e: React.TouchEvent) {
     if (disabled) return
+    if (eventTargetIsInteractiveLinkOrControl(e)) return
     const touch = e.changedTouches[0]
     if (!touch) return
     const now = Date.now()
@@ -122,12 +140,14 @@ export default function LongPressActionable({
 
   function handleStart(e?: React.MouseEvent | React.TouchEvent) {
     if (disabled) return
-    try {
-      if (e && typeof e.preventDefault === 'function') {
-        e.preventDefault()
+    if (!e || !eventTargetIsInteractiveLinkOrControl(e)) {
+      try {
+        if (e && typeof e.preventDefault === 'function') {
+          e.preventDefault()
+        }
+      } catch {
+        // Ignore
       }
-    } catch {
-      // Ignore
     }
     setIsPressed(true)
     if (timerRef.current) clearTimeout(timerRef.current)
