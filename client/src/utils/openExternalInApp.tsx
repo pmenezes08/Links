@@ -62,6 +62,12 @@ export async function openExternalInApp(rawUrl: string): Promise<void> {
       })
     } catch (e) {
       console.error('openExternalInApp: InAppBrowser failed', e)
+      // Production binaries without @capgo/inappbrowser (or other native errors): still open the link.
+      try {
+        window.open(url, '_blank', 'noopener,noreferrer')
+      } catch (openErr) {
+        console.error('openExternalInApp: window.open fallback failed', openErr)
+      }
     }
     return
   }

@@ -6,6 +6,40 @@ export type VideoEmbed = {
   embedUrl: string
 }
 
+/** Parse `link_urls` from API (same rules as LinkPreview.parseLinkUrlsField). */
+function parseLinkUrlsFieldForEmbed(raw: unknown): string[] {
+  if (raw == null) return []
+  if (Array.isArray(raw)) {
+    return raw.filter((u): u is string => typeof u === 'string').map(s => s.trim()).filter(Boolean)
+  }
+  if (typeof raw === 'string') {
+    const t = raw.trim()
+    if (!t) return []
+    try {
+      const parsed = JSON.parse(t)
+      if (Array.isArray(parsed)) {
+        return parsed.filter((u): u is string => typeof u === 'string').map(s => s.trim()).filter(Boolean)
+      }
+    } catch {
+      if (t.startsWith('http')) return [t]
+    }
+  }
+  return []
+}
+
+/** Join post body with stored link_urls so embed detection works when the URL is only in link_urls. */
+export function contentPlusLinkUrlsForEmbed(content: string | null | undefined, linkUrlsRaw: unknown): string {
+  const parts: string[] = []
+  const c = (content || '').trim()
+  if (c) parts.push(c)
+  parts.push(...parseLinkUrlsFieldForEmbed(linkUrlsRaw))
+  return parts.join('\n')
+}
+
+export function extractVideoEmbedFromPost(content: string | null | undefined, linkUrlsRaw: unknown): VideoEmbed | null {
+  return extractVideoEmbed(contentPlusLinkUrlsForEmbed(content, linkUrlsRaw))
+}
+
 /**
  * Extracts video embed info from a URL or text content
  */

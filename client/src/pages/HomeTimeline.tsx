@@ -5,7 +5,7 @@ import Avatar from '../components/Avatar'
 import { formatSmartTime } from '../utils/time'
 import ImageLoader from '../components/ImageLoader'
 import VideoEmbed from '../components/VideoEmbed'
-import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
+import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
 import { renderTextWithLinks } from '../utils/linkUtils.tsx'
 import { openExternalInApp } from '../utils/openExternalInApp'
 import EditableAISummary from '../components/EditableAISummary'
@@ -18,7 +18,7 @@ const HOME_TIMELINE_CACHE_VERSION = 'home-timeline-v1'
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string }
 type MediaItem = { type: 'image' | 'video'; path: string }
-type Post = { id:number; username:string; content:string; image_path?:string|null; video_path?: string | null; audio_path?: string | null; audio_summary?: string | null; timestamp:string; display_timestamp?:string; community_id?:number|null; community_name?:string; reactions:Record<string,number>; user_reaction:string|null; poll?:Poll|null; replies_count?:number; profile_picture?:string|null; media_paths?: MediaItem[] | string | null }
+type Post = { id:number; username:string; content:string; image_path?:string|null; video_path?: string | null; audio_path?: string | null; audio_summary?: string | null; timestamp:string; display_timestamp?:string; community_id?:number|null; community_name?:string; reactions:Record<string,number>; user_reaction:string|null; poll?:Poll|null; replies_count?:number; profile_picture?:string|null; media_paths?: MediaItem[] | string | null; link_urls?: unknown }
 
 function normalizeMediaPath(path?: string | null){
   const raw = (path || '').trim()
@@ -334,7 +334,7 @@ export default function HomeTimeline(){
                   {(() => {
                     // Always use fresh content from post object
                     const content = p.content || ''
-                    const videoEmbed = extractVideoEmbed(content)
+                    const videoEmbed = extractVideoEmbedFromPost(content, p.link_urls)
                     const displayContent = videoEmbed ? removeVideoUrlFromText(content, videoEmbed) : content
                     
                     if (!videoEmbed && !displayContent) return null

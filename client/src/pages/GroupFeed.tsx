@@ -10,9 +10,11 @@ import { formatSmartTime } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
 import { renderTextWithLinks, detectLinks, replaceLinkInText } from '../utils/linkUtils'
 import { openExternalInApp } from '../utils/openExternalInApp'
+import VideoEmbed from '../components/VideoEmbed'
+import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
 
 type Reply = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null }
-type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null, replies: Reply[], can_edit?: boolean, can_delete?: boolean }
+type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null, replies: Reply[], can_edit?: boolean, can_delete?: boolean, link_urls?: unknown }
 
 function ManageGroupButton({ groupId, onClose }:{ groupId: string, onClose: ()=>void }){
   const navigate = useNavigate()
@@ -349,7 +351,20 @@ export default function GroupFeed(){
                 </div>
                 <div className="px-3 py-2 space-y-2" onClick={(e)=> e.stopPropagation()}>
                   {editingId !== p.id ? (
-                    <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{renderTextWithLinks(p.content, undefined, mentionToProfile, { sourcesSmallLinks: true, onExternalClick: openExternalArticle })}</div>
+                    (() => {
+                      const videoEmbed = extractVideoEmbedFromPost(p.content, p.link_urls)
+                      const displayContent = videoEmbed ? removeVideoUrlFromText(p.content, videoEmbed) : p.content
+                      return (
+                        <>
+                          {displayContent.trim() ? (
+                            <div className="whitespace-pre-wrap text-[14px] leading-relaxed">
+                              {renderTextWithLinks(displayContent, undefined, mentionToProfile, { sourcesSmallLinks: true, onExternalClick: openExternalArticle })}
+                            </div>
+                          ) : null}
+                          {videoEmbed ? <VideoEmbed embed={videoEmbed} /> : null}
+                        </>
+                      )
+                    })()
                   ) : (
                     <div className="space-y-2">
                       <textarea className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" value={editText} onChange={(e)=> { setEditText(e.target.value); setDetectedLinks(detectLinks(e.target.value)) }} />

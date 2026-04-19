@@ -16,7 +16,7 @@ import ZoomableImage from '../components/ZoomableImage'
 import { useHeader } from '../contexts/HeaderContext'
 import VideoEmbed from '../components/VideoEmbed'
 import LinkPreview, { feedPostLinkPreviewUrls } from '../components/LinkPreview'
-import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
+import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
 import {
   renderTextWithLinks,
   renderTextWithSourceLinks,
@@ -4333,7 +4333,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         {!isEditing ? (
           <>
             {(() => {
-              const videoEmbed = extractVideoEmbed(post.content)
+              const videoEmbed = extractVideoEmbedFromPost(post.content, post.link_urls)
               const displayContent = videoEmbed ? removeVideoUrlFromText(post.content, videoEmbed) : post.content
               return (
                 <>
@@ -4342,7 +4342,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       {renderTextWithLinks(displayContent, undefined, mentionToProfile, { sourcesSmallLinks: true, onExternalClick: openExternalArticle })}
                     </div>
                   )}
-                  {feedPostLinkPreviewUrls(post.content, post.link_urls, null).map(u => (
+                  {feedPostLinkPreviewUrls(post.content, post.link_urls, videoEmbed).map(u => (
                     <div key={u} className="px-3 mt-2">
                       <LinkPreview url={u} sent={false} />
                     </div>

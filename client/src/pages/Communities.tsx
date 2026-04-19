@@ -6,7 +6,7 @@ import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
 import VideoEmbed from '../components/VideoEmbed'
-import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
+import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
 import { renderTextWithLinks } from '../utils/linkUtils.tsx'
 import EditableAISummary from '../components/EditableAISummary'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
@@ -1676,8 +1676,8 @@ function ParentTimeline({ parentId }:{ parentId:number }){
               </div>
               <div className="px-3 py-2 space-y-2">
                 {(() => {
-                  const videoEmbed = extractVideoEmbed(p.content || '')
-                  const displayContent = videoEmbed ? removeVideoUrlFromText(p.content, videoEmbed) : p.content
+                  const videoEmbed = extractVideoEmbedFromPost(p.content || '', p.link_urls)
+                  const displayContent = videoEmbed ? removeVideoUrlFromText(p.content || '', videoEmbed) : p.content
                   return (
                     <>
                       {displayContent && <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{renderTextWithLinks(displayContent, undefined, mentionToProfile)}</div>}
