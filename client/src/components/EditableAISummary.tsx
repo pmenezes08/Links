@@ -90,7 +90,7 @@ export default function EditableAISummary({ postId, initialSummary, isOwner, onS
         <div className="flex items-center gap-2">
           <i className="fa-solid fa-sparkles text-[#4db6ac] text-xs" />
           <span className="text-xs font-medium text-[#4db6ac]">
-            {translatedText ? 'AI Summary (Translated)' : 'AI Summary'}
+            {translatedText ? 'Steve summary (translated)' : 'Steve summary'}
           </span>
         </div>
         <div className="flex items-center gap-1">
@@ -165,7 +165,7 @@ export default function EditableAISummary({ postId, initialSummary, isOwner, onS
             value={summary}
             onChange={(e) => setSummary(e.target.value)}
             className="w-full px-2 py-1 text-sm bg-[#1a1d29] text-white rounded border border-[#4db6ac]/30 focus:outline-none focus:border-[#4db6ac] min-h-[60px]"
-            placeholder="Edit AI summary..."
+            placeholder="Edit Steve summary..."
           />
           <div className="flex gap-2">
             <button
