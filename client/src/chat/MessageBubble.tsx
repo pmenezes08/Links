@@ -210,7 +210,7 @@ function MessageBubbleInner({
                 <div className="px-2 pb-1 pt-0.5">
                   <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
                     <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
-                    <span>{translatedSummaries?.[m.id] ? 'AI Summary (Translated)' : 'AI Summary'}</span>
+                    <span>{translatedSummaries?.[m.id] ? 'Steve summary (translated)' : 'Steve summary'}</span>
                     <div className="ml-auto flex items-center gap-1">
                       {translatedSummaries?.[m.id] && onTranslateSummary && (
                         <button onClick={(e) => { e.stopPropagation(); onTranslateSummary(m.id, '', 'reset') }} className="text-white/30 hover:text-white/50 px-0.5"><i className="fa-solid fa-rotate-left text-[8px]" /></button>
@@ -236,7 +236,7 @@ function MessageBubbleInner({
                     <div className="px-2 pb-1 pt-0.5">
                       <div className="flex items-center gap-1">
                         <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-white/40" />
-                        <span className="text-[11px] text-white/40">AI Summary generating</span>
+                        <span className="text-[11px] text-white/40">Steve summary generating</span>
                         <span className="flex gap-0.5 ml-0.5">
                           <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                           <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />

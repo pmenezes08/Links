@@ -5166,14 +5166,14 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           onClick={() => setShowSummaryModal(false)}
         >
           <div 
-            className="bg-[#1a1f25] rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden border border-white/10 shadow-2xl"
+            className="bg-black rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden border border-white/10 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
               <div className="flex items-center gap-2">
                 <i className="fa-solid fa-wand-magic-sparkles text-teal-400" />
-                <span className="font-semibold text-white">AI Summary</span>
+                <span className="font-semibold text-white">Steve summary</span>
               </div>
               <button 
                 className="text-white/60 hover:text-white p-1"
@@ -5188,7 +5188,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               {summaryLoading && (
                 <div className="flex flex-col items-center justify-center py-8 gap-3">
                   <div className="w-8 h-8 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-white/60 text-sm">Generating summary...</span>
+                  <span className="text-white/60 text-sm">Steve is writing your summary...</span>
                 </div>
               )}
               

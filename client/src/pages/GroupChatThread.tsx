@@ -2439,7 +2439,7 @@ export default function GroupChatThread() {
                                     <div className="px-2 pb-1 pt-0.5">
                                       <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
                                         <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
-                                        <span>{translations[msg.id] ? 'AI Summary (Translated)' : 'AI Summary'}</span>
+                                        <span>{translations[msg.id] ? 'Steve summary (translated)' : 'Steve summary'}</span>
                                         <div className="ml-auto flex items-center gap-1">
                                           {translations[msg.id] && (
                                             <button onClick={(e) => { e.stopPropagation(); setTranslations(prev => { const n = { ...prev }; delete n[msg.id]; return n }) }} className="text-white/30 hover:text-white/50 px-0.5"><i className="fa-solid fa-rotate-left text-[8px]" /></button>
@@ -2463,7 +2463,7 @@ export default function GroupChatThread() {
                                         <div className="px-2 pb-1 pt-0.5">
                                           <div className="flex items-center gap-1">
                                             <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-white/40" />
-                                            <span className="text-[11px] text-white/40">AI Summary generating</span>
+                                            <span className="text-[11px] text-white/40">Steve summary generating</span>
                                             <span className="flex gap-0.5 ml-0.5">
                                               <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                                               <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -3826,7 +3826,7 @@ export default function GroupChatThread() {
         </div>
       )}
 
-      {/* Edit AI Summary modal */}
+      {/* Edit Steve summary modal */}
       {editingSummaryId !== null && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}>
           <div className="absolute inset-0 bg-black/70" />
@@ -3836,7 +3836,7 @@ export default function GroupChatThread() {
           >
             <div className="flex items-center gap-2 mb-3">
               <i className="fa-solid fa-wand-magic-sparkles text-[#4db6ac]" />
-              <span className="text-white font-semibold text-sm">Edit AI Summary</span>
+              <span className="text-white font-semibold text-sm">Edit Steve summary</span>
             </div>
             <textarea
               value={editSummaryText}

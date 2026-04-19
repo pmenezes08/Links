@@ -3745,7 +3745,7 @@ export default function ChatThread(){
         </div>
       )}
 
-      {/* Edit AI Summary modal */}
+      {/* Edit Steve summary modal */}
       {editingSummaryId !== null && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}>
           <div className="absolute inset-0 bg-black/70" />
@@ -3755,7 +3755,7 @@ export default function ChatThread(){
           >
             <div className="flex items-center gap-2 mb-3">
               <i className="fa-solid fa-wand-magic-sparkles text-[#4db6ac]" />
-              <span className="text-white font-semibold text-sm">Edit AI Summary</span>
+              <span className="text-white font-semibold text-sm">Edit Steve summary</span>
             </div>
             <textarea
               value={editSummaryText}
