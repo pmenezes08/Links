@@ -1,5 +1,6 @@
 import { type ChangeEvent, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
+import { Capacitor } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import { Geolocation } from '@capacitor/geolocation'
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core'
@@ -157,6 +158,11 @@ export default function CommunityFeed() {
   const navigate = useNavigate()
   const routerLocation = useLocation()
   const { refreshBadges } = useBadges()
+  /** iOS keeps legacy 20px offset (layout verified there). Android + web use h-14 (56px) so feed clears the fixed header. */
+  const feedScrollHeaderBodyPx = useMemo(
+    () => (Capacitor.getPlatform() === 'ios' ? 20 : 56),
+    []
+  )
   const deviceFeedCacheKey = useMemo(() => (community_id ? `community-feed:${community_id}` : null), [community_id])
   const [data, setData] = useState<any>(() => {
     if (deviceFeedCacheKey) {
@@ -2413,7 +2419,7 @@ export default function CommunityFeed() {
           overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto',
           overscrollBehaviorY: 'auto',
           touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y',
-          paddingTop: `calc(env(safe-area-inset-top, 0px) + 20px + ${pullPx}px)`,
+          paddingTop: `calc(env(safe-area-inset-top, 0px) + ${feedScrollHeaderBodyPx}px + ${pullPx}px)`,
         }}
       >
         <div className="space-y-3">
