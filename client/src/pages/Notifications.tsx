@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import { useBadges } from '../contexts/BadgeContext'
@@ -54,6 +54,9 @@ type Task = {
 }
 
 type TabType = 'notifications' | 'calendar' | 'polls' | 'tasks'
+
+/** Width uncovered when row is swiped left: two action buttons + gap (matches Messages list). */
+const NOTIF_SWIPE_ACTION_WIDTH = 116
 
 function iconFor(type?: string){
   const normalized = type?.split(':')[0]
@@ -114,6 +117,12 @@ export default function Notifications(){
   const [eventsLoading, setEventsLoading] = useState(false)
   const [pollsLoading, setPollsLoading] = useState(false)
   const [tasksLoading, setTasksLoading] = useState(false)
+
+  const [swipeNotifId, setSwipeNotifId] = useState<number | null>(null)
+  const [notifDragX, setNotifDragX] = useState(0)
+  const notifGestureRef = useRef<{ startX: number; startY: number; wasOpen: boolean } | null>(null)
+  const notifLiveXRef = useRef(0)
+  const notifDraggingIdRef = useRef<number | null>(null)
 
   useEffect(() => { setTitle('Notifications') }, [setTitle])
 
@@ -203,10 +212,54 @@ export default function Notifications(){
   }
 
   async function markAll(){
+    setSwipeNotifId(null)
     adjustBadges({ notifs: -Infinity })
     await fetch('/api/notifications/mark-all-read', { method:'POST', credentials:'include' })
     refreshBadges()
     load()
+  }
+
+  async function markOneRead(n: Notif, e?: React.MouseEvent<HTMLButtonElement>) {
+    e?.stopPropagation()
+    const wasUnread = !n.is_read
+    if (wasUnread) adjustBadges({ notifs: -1 })
+    try {
+      const r = await fetch(`/api/notifications/${n.id}/read`, { method: 'POST', credentials: 'include' })
+      const j = await r.json()
+      if (j?.success) {
+        setItems(prev => (prev ? prev.map(x => (x.id === n.id ? { ...x, is_read: true } : x)) : prev))
+        setSwipeNotifId(null)
+        refreshBadges()
+      } else if (wasUnread) {
+        adjustBadges({ notifs: 1 })
+        refreshBadges()
+      }
+    } catch {
+      if (wasUnread) adjustBadges({ notifs: 1 })
+      refreshBadges()
+    }
+  }
+
+  async function deleteOneNotif(n: Notif, e?: React.MouseEvent<HTMLButtonElement>) {
+    e?.stopPropagation()
+    if (!confirm('Delete this notification?')) return
+    const wasUnread = !n.is_read
+    if (wasUnread) adjustBadges({ notifs: -1 })
+    try {
+      const r = await fetch(`/api/notifications/${n.id}`, { method: 'DELETE', credentials: 'include' })
+      const j = await r.json()
+      if (r.ok && j?.success) {
+        setItems(prev => (prev ? prev.filter(x => x.id !== n.id) : prev))
+        setSwipeNotifId(null)
+        refreshBadges()
+      } else {
+        if (wasUnread) adjustBadges({ notifs: 1 })
+        refreshBadges()
+      }
+    } catch {
+      if (wasUnread) adjustBadges({ notifs: 1 })
+      refreshBadges()
+    }
   }
 
   async function clearAll(){
@@ -214,6 +267,7 @@ export default function Notifications(){
     if (!confirm('Clear all notifications? This cannot be undone.')) return
     try{
       setClearing(true)
+      setSwipeNotifId(null)
       adjustBadges({ notifs: -Infinity })
       await fetch('/api/notifications/mark-all-read', { method:'POST', credentials:'include' })
       await fetch('/api/notifications/delete-read', { method:'POST', credentials:'include' })
@@ -225,6 +279,7 @@ export default function Notifications(){
   }
 
   async function onClick(n: Notif){
+    setSwipeNotifId(null)
     if (!n.is_read) adjustBadges({ notifs: -1 })
     try {
       await fetch(`/api/notifications/${n.id}/read`, { method:'POST', credentials:'include' })
@@ -351,67 +406,135 @@ export default function Notifications(){
                   const avatarUrl = n.avatar && (n.avatar.startsWith('http') || n.avatar.startsWith('/')) 
                     ? n.avatar 
                     : n.avatar ? `/static/${n.avatar}` : null
+                  const isDragging = notifDraggingIdRef.current === n.id
+                  const tx = isDragging ? notifDragX : (swipeNotifId === n.id ? -NOTIF_SWIPE_ACTION_WIDTH : 0)
+                  const transition = isDragging ? 'none' : 'transform 150ms ease-out'
+                  const showActions = isDragging ? notifDragX < -12 : swipeNotifId === n.id
                   return (
-                    <button
-                      key={n.id}
-                      onClick={() => onClick(n)}
-                      className={`text-left w-full px-3 py-2.5 rounded-xl border ${n.is_read ? 'border-white/10 bg-white/[0.03]' : 'border-[#4db6ac]/40 bg-[#4db6ac]/10'}`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="relative flex-shrink-0">
-                          {avatarUrl ? (
-                            <img 
-                              src={avatarUrl} 
-                              alt={n.from_user || ''} 
-                              className="w-10 h-10 rounded-full object-cover bg-white/10"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = 'none';
-                                (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-                              }}
-                            />
-                          ) : null}
-                          <div className={`w-10 h-10 rounded-full bg-[#1a2526] flex items-center justify-center ${avatarUrl ? 'hidden' : ''}`}>
-                            <i className={`${iconFor(n.type)} text-[#4db6ac] text-lg`} />
-                          </div>
-                          <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#0b0f10] border border-white/10 flex items-center justify-center">
-                            <i className={`${iconFor(n.type)} text-[#4db6ac] text-[10px]`} />
-                          </div>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm">
-                            {typeKey === 'event_invitation' ? (n.message || 'Event invitation') :
-                             typeKey === 'community_post' ? (n.message || `@${n.from_user} made a new post`) :
-                             typeKey === 'new_member' ? (n.message || `@${n.from_user} joined the community`) :
-                             typeKey === 'poll' ? (n.message || `@${n.from_user} created a new poll`) :
-                             typeKey === 'admin_broadcast' ? (n.message || 'Administrator announcement') : (
-                              n.message ? (n.message) : (
-                                <>
-                                  <span className="font-medium text-white">@{n.from_user}</span>{' '}
-                                  <span className="text-white/70">
-                                    {typeKey === 'task_assigned' ? 'assigned you a task' :
-                                    typeKey === 'reaction' ? 'reacted to your post' :
-                                    typeKey === 'story_reaction' ? 'reacted to your story' :
-                                    typeKey === 'reply' ? 'replied to your post' :
-                                    typeKey === 'story_comment' ? 'commented on your story' :
-                                    typeKey === 'mention_post' ? 'mentioned you in a post' :
-                                    typeKey === 'mention_reply' ? 'mentioned you in a reply' : 'interacted with you'}
-                                  </span>
-                                </>
-                              )
-                            )}
-                          </div>
-                          {n.preview ? (
-                            <div className="text-xs text-white/55 mt-1 line-clamp-2 break-words">
-                              {renderTextWithLinks(n.preview, undefined, undefined)}
-                            </div>
-                          ) : null}
-                          <div className="text-[11px] text-[#9fb0b5] mt-0.5">{timeAgo(n.created_at)}</div>
-                        </div>
-                        {!n.is_read && (
-                          <div className="w-2 h-2 rounded-full bg-[#4db6ac] flex-shrink-0 mt-2" />
-                        )}
+                    <div key={n.id} className="relative w-full overflow-hidden rounded-xl">
+                      <div
+                        className="absolute inset-y-0 right-0 flex items-stretch gap-1 pr-2"
+                        style={{
+                          opacity: showActions ? 1 : 0,
+                          pointerEvents: showActions ? 'auto' : 'none',
+                          transition: 'opacity 150ms ease-out',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={e => void markOneRead(n, e)}
+                          disabled={n.is_read}
+                          className="my-1 h-[calc(100%-0.5rem)] min-h-[44px] w-[52px] rounded-md bg-[#4db6ac]/25 text-[#4db6ac] hover:bg-[#4db6ac]/35 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center"
+                          aria-label="Mark as read"
+                        >
+                          <i className="fa-regular fa-eye" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={e => void deleteOneNotif(n, e)}
+                          className="my-1 h-[calc(100%-0.5rem)] min-h-[44px] w-[52px] rounded-md bg-red-500/20 text-red-300 hover:bg-red-500/30 flex items-center justify-center"
+                          aria-label="Delete notification"
+                        >
+                          <i className="fa-solid fa-trash" />
+                        </button>
                       </div>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => onClick(n)}
+                        onTouchStart={e => {
+                          notifGestureRef.current = {
+                            startX: e.touches[0].clientX,
+                            startY: e.touches[0].clientY,
+                            wasOpen: swipeNotifId === n.id,
+                          }
+                          notifDraggingIdRef.current = n.id
+                          const startX = notifGestureRef.current.wasOpen ? -NOTIF_SWIPE_ACTION_WIDTH : 0
+                          notifLiveXRef.current = startX
+                          setNotifDragX(startX)
+                        }}
+                        onTouchMove={e => {
+                          if (notifDraggingIdRef.current !== n.id || !notifGestureRef.current) return
+                          const dx = e.touches[0].clientX - notifGestureRef.current.startX
+                          const dy = e.touches[0].clientY - notifGestureRef.current.startY
+                          if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 12) return
+                          const base = notifGestureRef.current.wasOpen ? -NOTIF_SWIPE_ACTION_WIDTH : 0
+                          const x = Math.max(-NOTIF_SWIPE_ACTION_WIDTH, Math.min(0, base + dx))
+                          notifLiveXRef.current = x
+                          setNotifDragX(x)
+                        }}
+                        onTouchEnd={() => {
+                          if (notifDraggingIdRef.current !== n.id) return
+                          const x = notifLiveXRef.current
+                          setSwipeNotifId(x < -NOTIF_SWIPE_ACTION_WIDTH / 2 ? n.id : null)
+                          setNotifDragX(0)
+                          notifDraggingIdRef.current = null
+                          notifGestureRef.current = null
+                        }}
+                        onTouchCancel={() => {
+                          if (notifDraggingIdRef.current !== n.id) return
+                          setNotifDragX(0)
+                          notifDraggingIdRef.current = null
+                          notifGestureRef.current = null
+                        }}
+                        className={`text-left w-full px-3 py-2.5 rounded-xl border touch-pan-y ${n.is_read ? 'border-white/10 bg-white/[0.03]' : 'border-[#4db6ac]/40 bg-[#4db6ac]/10'}`}
+                        style={{ transform: `translateX(${tx}px)`, transition }}
+                      >
+                        <div className="flex items-start gap-3 pointer-events-none">
+                          <div className="relative flex-shrink-0">
+                            {avatarUrl ? (
+                              <img 
+                                src={avatarUrl} 
+                                alt={n.from_user || ''} 
+                                className="w-10 h-10 rounded-full object-cover bg-white/10"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                  (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                                }}
+                              />
+                            ) : null}
+                            <div className={`w-10 h-10 rounded-full bg-[#1a2526] flex items-center justify-center ${avatarUrl ? 'hidden' : ''}`}>
+                              <i className={`${iconFor(n.type)} text-[#4db6ac] text-lg`} />
+                            </div>
+                            <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#0b0f10] border border-white/10 flex items-center justify-center">
+                              <i className={`${iconFor(n.type)} text-[#4db6ac] text-[10px]`} />
+                            </div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm">
+                              {typeKey === 'event_invitation' ? (n.message || 'Event invitation') :
+                               typeKey === 'community_post' ? (n.message || `@${n.from_user} made a new post`) :
+                               typeKey === 'new_member' ? (n.message || `@${n.from_user} joined the community`) :
+                               typeKey === 'poll' ? (n.message || `@${n.from_user} created a new poll`) :
+                               typeKey === 'admin_broadcast' ? (n.message || 'Administrator announcement') : (
+                                n.message ? (n.message) : (
+                                  <>
+                                    <span className="font-medium text-white">@{n.from_user}</span>{' '}
+                                    <span className="text-white/70">
+                                      {typeKey === 'task_assigned' ? 'assigned you a task' :
+                                      typeKey === 'reaction' ? 'reacted to your post' :
+                                      typeKey === 'story_reaction' ? 'reacted to your story' :
+                                      typeKey === 'reply' ? 'replied to your post' :
+                                      typeKey === 'story_comment' ? 'commented on your story' :
+                                      typeKey === 'mention_post' ? 'mentioned you in a post' :
+                                      typeKey === 'mention_reply' ? 'mentioned you in a reply' : 'interacted with you'}
+                                    </span>
+                                  </>
+                                )
+                              )}
+                            </div>
+                            {n.preview ? (
+                              <div className="text-xs text-white/55 mt-1 line-clamp-2 break-words">
+                                {renderTextWithLinks(n.preview, undefined, undefined)}
+                              </div>
+                            ) : null}
+                            <div className="text-[11px] text-[#9fb0b5] mt-0.5">{timeAgo(n.created_at)}</div>
+                          </div>
+                          {!n.is_read && (
+                            <div className="w-2 h-2 rounded-full bg-[#4db6ac] flex-shrink-0 mt-2" />
+                          )}
+                        </div>
+                      </button>
+                    </div>
                   )
                 })}
               </div>

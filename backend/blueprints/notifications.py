@@ -682,6 +682,50 @@ def mark_notification_read(notification_id: int):
         return jsonify({"success": False, "error": "Server error"}), 500
 
 
+@notifications_bp.route(
+    "/api/notifications/<int:notification_id>",
+    methods=["DELETE"],
+    endpoint="delete_notification",
+)
+@_login_required
+def delete_notification(notification_id: int):
+    """Delete a single notification owned by the current user."""
+    username = session["username"]
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                """
+                DELETE FROM notifications
+                WHERE id = ? AND user_id = ?
+                """,
+                (notification_id, username),
+            )
+            conn.commit()
+            deleted = c.rowcount
+
+        try:
+            from backend.services.firebase_notifications import send_fcm_to_user_badge_only, get_total_badge_count
+
+            badge_count = get_total_badge_count(username)
+            send_fcm_to_user_badge_only(username, badge_count=badge_count)
+            current_app.logger.info(
+                "Sent badge=%s to %s after delete notification %s",
+                badge_count,
+                username,
+                notification_id,
+            )
+        except Exception as badge_err:
+            current_app.logger.warning("Could not send badge update: %s", badge_err)
+
+        if deleted:
+            return jsonify({"success": True})
+        return jsonify({"success": False, "error": "Not found"}), 404
+    except Exception as exc:
+        current_app.logger.error("Error deleting notification: %s", exc)
+        return jsonify({"success": False, "error": "Server error"}), 500
+
+
 @notifications_bp.route("/api/notifications/mark-community-read", methods=["POST"], endpoint="mark_community_notifications_read")
 @_login_required
 def mark_community_notifications_read():
