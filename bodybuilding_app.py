@@ -26577,7 +26577,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 logger.warning("Steve community context failed: %s", ctx_err)
 
             # Inject Grok-analyzed profile context for the post author (scrub for commenter's view)
-            author_profile_ctx = get_steve_context_for_user(author_username, viewer_username=username)
+            author_profile_ctx = get_steve_context_for_user(author_username)
 
             context = "\n\n".join(context_parts)
             
@@ -26585,7 +26585,12 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             system_prompt = f"""You are Steve, with real-time knowledge and web search capabilities.
 
 {base_system_prompt}"""
-            system_prompt += "\nYou have access to this community's upcoming events, useful links, document excerpts, and active polls. Use them when answering questions about community resources."
+            system_prompt += (
+                "\nYou have access to this community's upcoming events, useful links, document excerpts, and active polls. "
+                "Use them when answering questions about community resources. "
+                "If the user asks about an uploaded document, base your answer only on the document excerpts in the context; "
+                "if there is no excerpt or it says the document could not be read, say so instead of inventing content."
+            )
             if author_profile_ctx:
                 system_prompt += f"\n\nWHAT YOU KNOW ABOUT @{author_username}:\n{author_profile_ctx}\nUse this knowledge naturally — don't announce it, but let it guide your tone and relevance."
             
@@ -26960,54 +26965,17 @@ def ai_steve_reply():
             context_parts.append(f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]")
             context_parts.append("\nNote: If the user asks you to respond to or help another user, look through the comments above to find that user's question or message and address it directly.")
             
-            # Add community inner pages context (links, events, polls)
+            # Community context: same as post @Steve — calendar, links, PDF excerpts, polls
             if community_id:
                 try:
-                    # Useful links and documents
-                    c.execute(f"SELECT title, url, description FROM useful_links WHERE community_id = {placeholder} ORDER BY created_at DESC LIMIT 10", (community_id,))
-                    links = c.fetchall()
-                    if links:
-                        context_parts.append("\n--- Community Links & Documents ---")
-                        for lnk in links:
-                            title = lnk['title'] if hasattr(lnk, 'keys') else lnk[0]
-                            url = lnk['url'] if hasattr(lnk, 'keys') else lnk[1]
-                            desc = (lnk['description'] if hasattr(lnk, 'keys') else lnk[2]) or ''
-                            context_parts.append(f"- {title}: {url}" + (f" ({desc})" if desc else ""))
-                        context_parts.append("--- End of links ---")
-                except Exception:
-                    pass
-                
-                try:
-                    # Calendar events (upcoming and recent)
-                    c.execute(f"SELECT title, date, start_time, description FROM calendar_events WHERE community_id = {placeholder} ORDER BY date DESC LIMIT 10", (community_id,))
-                    events = c.fetchall()
-                    if events:
-                        context_parts.append("\n--- Community Calendar Events ---")
-                        for evt in events:
-                            title = evt['title'] if hasattr(evt, 'keys') else evt[0]
-                            date = evt['date'] if hasattr(evt, 'keys') else evt[1]
-                            time = evt['start_time'] if hasattr(evt, 'keys') else evt[2]
-                            desc = (evt['description'] if hasattr(evt, 'keys') else evt[3]) or ''
-                            context_parts.append(f"- {title} on {date}" + (f" at {time}" if time else "") + (f": {desc[:100]}" if desc else ""))
-                        context_parts.append("--- End of events ---")
-                except Exception:
-                    pass
-                
-                try:
-                    # Active polls
-                    c.execute(f"SELECT p.question, p.created_at, p.is_active FROM polls p JOIN posts pt ON p.post_id = pt.id WHERE pt.community_id = {placeholder} ORDER BY p.created_at DESC LIMIT 10", (community_id,))
-                    polls = c.fetchall()
-                    if polls:
-                        context_parts.append("\n--- Community Polls ---")
-                        for poll in polls:
-                            question = poll['question'] if hasattr(poll, 'keys') else poll[0]
-                            created = poll['created_at'] if hasattr(poll, 'keys') else poll[1]
-                            active = poll['is_active'] if hasattr(poll, 'keys') else poll[2]
-                            status = "Active" if active else "Archived"
-                            context_parts.append(f"- [{status}] {question} (created {created})")
-                        context_parts.append("--- End of polls ---")
-                except Exception:
-                    pass
+                    community_context = _build_steve_community_context(c, community_id, placeholder)
+                    if community_context and community_context.strip():
+                        context_parts.append(
+                            "Community context (use this to answer questions about events, links, documents, and polls):\n"
+                            + community_context
+                        )
+                except Exception as ctx_err:
+                    logger.warning("Steve community context (comment reply) failed: %s", ctx_err)
             
             # Inject Grok-analyzed profile context for the commenting user
             commenter_profile_ctx = get_steve_context_for_user(username)
@@ -27017,6 +26985,13 @@ def ai_steve_reply():
             logger.info(f"[Steve AI] Context built, length: {len(context)} chars, personality: {ai_personality}")
             
             system_prompt = get_ai_personality_prompt(ai_personality)
+            if community_id:
+                system_prompt += (
+                    "\nYou have access to this community's upcoming events, useful links, "
+                    "document excerpts, and active polls. Use them when answering questions about community resources. "
+                    "If the user asks about an uploaded document, base your answer only on the document excerpts in the context; "
+                    "if there is no excerpt or it says the document could not be read, say so instead of inventing content."
+                )
             if commenter_profile_ctx:
                 system_prompt += f"\n\nWHAT YOU KNOW ABOUT @{username}:\n{commenter_profile_ctx}\nUse this knowledge naturally — don't announce it, but let it guide your tone and relevance."
             ai_response = None
