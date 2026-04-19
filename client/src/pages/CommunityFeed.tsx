@@ -5166,7 +5166,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           onClick={() => setShowSummaryModal(false)}
         >
           <div 
-            className="bg-[#1a1f25] rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden border border-white/10 shadow-2xl"
+            className="bg-black rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden border border-white/10 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
