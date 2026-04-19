@@ -107,6 +107,25 @@ export default function MobileLogin() {
   const postGoogleIdToken = useCallback(
     async (idToken: string) => {
       setError(null)
+      const isAndroidGoogleDebug = Capacitor.getPlatform() === 'android'
+      const finishSuccess = async (j: { username?: string }) => {
+        if (inviteToken) {
+          try {
+            await fetch('/api/join_with_invite', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ invite_token: inviteToken }),
+            })
+          } catch {}
+        }
+        try {
+          localStorage.setItem('current_username', j.username ?? '')
+        } catch {}
+        await (window as any).__reregisterPushToken?.()
+        await triggerDashboardServerPull()
+        navigate('/premium_dashboard')
+      }
       try {
         const r = await fetch('/api/auth/google', {
           method: 'POST',
@@ -118,29 +137,40 @@ export default function MobileLogin() {
             invite_token: inviteToken || undefined,
           }),
         })
+
+        // Android only: surface HTTP status + non-JSON bodies (iOS/web unchanged).
+        if (isAndroidGoogleDebug) {
+          const text = await r.text()
+          let j: { success?: boolean; username?: string; error?: string } | null = null
+          try {
+            j = text ? (JSON.parse(text) as { success?: boolean; username?: string; error?: string }) : null
+          } catch {
+            const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 280)
+            setError(
+              `Google sign-in HTTP ${r.status}: response was not JSON${snippet ? ` — ${snippet}` : ''}`,
+            )
+            return
+          }
+          if (j?.success) {
+            await finishSuccess(j)
+          } else {
+            setError(j?.error || `Google sign-in failed (HTTP ${r.status})`)
+          }
+          return
+        }
+
         const j = await r.json()
         if (j?.success) {
-          if (inviteToken) {
-            try {
-              await fetch('/api/join_with_invite', {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ invite_token: inviteToken }),
-              })
-            } catch {}
-          }
-          try {
-            localStorage.setItem('current_username', j.username)
-          } catch {}
-          await (window as any).__reregisterPushToken?.()
-          await triggerDashboardServerPull()
-          navigate('/premium_dashboard')
+          await finishSuccess(j)
         } else {
           setError(j?.error || 'Google sign-in failed')
         }
       } catch {
-        setError('Google sign-in failed. Please try again.')
+        setError(
+          isAndroidGoogleDebug
+            ? 'Google sign-in: network error or request failed before a response.'
+            : 'Google sign-in failed. Please try again.',
+        )
       }
     },
     [inviteToken, navigate],
@@ -573,6 +603,7 @@ export default function MobileLogin() {
                   disabled={googleLoading || isSubmitting || !window.__googleAuthReady}
                   className="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 text-sm font-medium active:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
                   onClick={async () => {
+                    const isAndroid = Capacitor.getPlatform() === 'android'
                     setGoogleLoading(true)
                     setError(null)
                     try {
@@ -580,13 +611,30 @@ export default function MobileLogin() {
                       const result = await GoogleAuth.signIn()
                       const idToken = result?.authentication?.idToken
                       if (!idToken) {
-                        setError('Google sign-in failed')
+                        if (isAndroid) {
+                          const hint = result?.authentication
+                            ? 'authentication object present but idToken missing (check Web client ID / SHA-1).'
+                            : 'no authentication in sign-in result.'
+                          console.error('[Google Sign-In Android]', hint, result)
+                          setError(`Google sign-in failed: ${hint}`)
+                        } else {
+                          setError('Google sign-in failed')
+                        }
                         return
                       }
                       await postGoogleIdToken(idToken)
                     } catch (err: any) {
                       if (err?.message !== 'The user canceled the sign-in flow.') {
-                        setError('Google sign-in failed. Please try again.')
+                        if (isAndroid) {
+                          const msg =
+                            typeof err?.message === 'string' && err.message.trim()
+                              ? err.message.trim()
+                              : String(err ?? 'unknown error')
+                          console.error('[Google Sign-In Android]', err)
+                          setError(`Google sign-in: ${msg}`)
+                        } else {
+                          setError('Google sign-in failed. Please try again.')
+                        }
                       }
                     } finally {
                       setGoogleLoading(false)
