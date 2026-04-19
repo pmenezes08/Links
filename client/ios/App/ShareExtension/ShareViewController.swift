@@ -19,7 +19,7 @@ final class ShareViewController: UIViewController {
         view.backgroundColor = .systemBackground
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Adding to C.Point…"
+        label.text = "Adding to C-Point…"
         label.textAlignment = .center
         label.textColor = .label
         label.font = .preferredFont(forTextStyle: .body)
@@ -402,7 +402,7 @@ final class ShareViewController: UIViewController {
         // INSIDE the completion handler. The completion handler fires after the
         // share sheet has dismissed in the source app (Instagram, X, …), which
         // lets that app finish its dismissal animation cleanly. If we instead
-        // called UIApplication.open first, iOS would foreground C.Point while
+        // called UIApplication.open first, iOS would foreground C-Point while
         // the source app is mid-dismissal, preempting its scene transition and
         // leaving it visually frozen on the share UI.
         //

@@ -190,7 +190,7 @@ export default function Signup(){
               </p>
             </div>
           ) : (
-            <p className="text-white/60 text-sm">Join C.Point today</p>
+            <p className="text-white/60 text-sm">Join C-Point today</p>
           )}
         </div>
 

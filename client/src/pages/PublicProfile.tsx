@@ -234,15 +234,6 @@ export default function PublicProfile() {
       </div>
       <div className="glass-card glass-card--plain max-w-3xl mx-auto px-4 py-4 space-y-4">
 
-        {profile.username.toLowerCase() === 'steve' && (
-          <div className="rounded-lg border border-[#4db6ac]/30 bg-[#4db6ac]/10 px-4 py-3 text-sm">
-            <p className="font-medium text-[#7fe7df]">C.Point assistant</p>
-            <p className="text-xs text-white/70 mt-1">
-              This is Steve&apos;s public profile. You can message Steve from your inbox like any other member.
-            </p>
-          </div>
-        )}
-
         <section className="glass-section">
           <div className="flex flex-wrap items-center gap-4">
             <button

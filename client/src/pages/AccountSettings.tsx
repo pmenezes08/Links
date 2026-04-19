@@ -89,12 +89,12 @@ export default function AccountSettings(){
         const { App: CapApp } = await import('@capacitor/app')
         // @ts-ignore
         if (CapApp.openUrl) await CapApp.openUrl({ url: 'android.settings.APP_NOTIFICATION_SETTINGS' })
-        else alert('Please open your device Settings > Apps > C.Point > Notifications to enable them.')
+        else alert('Please open your device Settings > Apps > C-Point > Notifications to enable them.')
       } else {
         alert('Please enable notifications in your browser settings for this site.')
       }
     } catch {
-      alert('Please open your device Settings and enable notifications for C.Point.')
+      alert('Please open your device Settings and enable notifications for C-Point.')
     }
   }, [])
 
@@ -339,7 +339,7 @@ export default function AccountSettings(){
                 </button>
                 <p className="text-xs text-white/40 text-center">
                   {Capacitor.isNativePlatform()
-                    ? "This will open your device settings where you can enable notifications for C.Point."
+                    ? "This will open your device settings where you can enable notifications for C-Point."
                     : "Please allow notifications when your browser prompts you."}
                 </p>
               </div>

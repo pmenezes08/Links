@@ -2,8 +2,8 @@
 <resources>
     <!-- Web OAuth client ID: Android ID token audience (backend verifies this Web client). -->
     <string name="server_client_id">739552904126-ini3ms8voub380vij0cgq79k1dreul5h.apps.googleusercontent.com</string>
-    <string name="app_name">C.Point</string>
-    <string name="title_activity_main">C.Point</string>
+    <string name="app_name">C-Point</string>
+    <string name="title_activity_main">C-Point</string>
     <string name="package_name">co.cpoint.app</string>
     <string name="custom_url_scheme">co.cpoint.app</string>
 </resources>

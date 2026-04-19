@@ -76,13 +76,13 @@ export default function ShareIncoming() {
   }
 
   useEffect(() => {
-    setTitle('Share to C.Point')
+    setTitle('Share to C-Point')
     return () => setTitle('')
   }, [setTitle])
 
   useEffect(() => {
     if (!isNative) {
-      setError('Sharing from other apps is only available in the C.Point mobile app.')
+      setError('Sharing from other apps is only available in the C-Point mobile app.')
       setLoading(false)
       return
     }
@@ -276,7 +276,7 @@ export default function ShareIncoming() {
   return (
     <div className="glass-page pb-28 max-w-lg mx-auto">
       <div className="mb-6 text-center space-y-2">
-        <h1 className="text-lg font-semibold text-white tracking-tight">Share to C.Point</h1>
+        <h1 className="text-lg font-semibold text-white tracking-tight">Share to C-Point</h1>
         <p className="text-sm text-white/55">Choose where to send this content.</p>
       </div>
 
