@@ -22,6 +22,7 @@ import { SENDING_MEDIA_LABEL } from '../chat/mediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
 import LinkPreview, { stripExtractedUrlsFromText, feedLinkPreviewUrls } from '../components/LinkPreview'
 import VideoEmbed from '../components/VideoEmbed'
+import YouTubeChatSnippet from '../components/YouTubeChatSnippet'
 import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
 import { openExternalNativeLink } from '../utils/openExternalInApp'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
@@ -2348,7 +2349,11 @@ export default function GroupChatThread() {
                                   )}
                                   {videoEmbed && (
                                     <div className="px-2 pb-2 w-full min-w-0">
-                                      <VideoEmbed embed={videoEmbed} />
+                                      {videoEmbed.type === 'youtube' ? (
+                                        <YouTubeChatSnippet videoId={videoEmbed.videoId} />
+                                      ) : (
+                                        <VideoEmbed embed={videoEmbed} />
+                                      )}
                                     </div>
                                   )}
                                   {linkPreviewUrls.map(u => (
