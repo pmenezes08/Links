@@ -470,7 +470,7 @@ export default function OnboardingChat({
         if (mode === 'profile_builder') {
           welcomeText = `${greeting} Let's update your profile together.\n\nI'll walk you through a few quick questions — anything you've already filled in, we can skip. Ready?`
         } else {
-          welcomeText = `${greeting} I'm Steve here at CPoint.`
+          welcomeText = `${greeting} I'm Steve here at C-Point.`
           if (communityName) {
             welcomeText += ` I see you were invited to ${communityName} — exciting!`
           }
@@ -1376,7 +1376,7 @@ export default function OnboardingChat({
         <div className="flex flex-col items-center gap-4 text-center">
           <img
             src={headerLogoSrc}
-            alt="CPoint"
+            alt="C-Point"
             className="w-14 h-14 rounded-2xl object-contain"
             onError={() => setHeaderLogoSrc('/static/cpoint-logo.svg')}
           />
@@ -1395,7 +1395,7 @@ export default function OnboardingChat({
           <div className="flex items-center gap-2 mb-2">
             <img
               src={headerLogoSrc}
-              alt="CPoint"
+              alt="C-Point"
               className="w-8 h-8 rounded-lg object-contain"
               onError={() => setHeaderLogoSrc('/static/cpoint-logo.svg')}
             />

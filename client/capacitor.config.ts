@@ -4,7 +4,7 @@ const appBackground = '#000000';
 
 const config: CapacitorConfig = {
   appId: 'co.cpoint.app',
-  appName: 'C.Point',
+  appName: 'C-Point',
   webDir: 'dist',
   server: {
     url: 'https://cpoint-app-staging-739552904126.europe-west1.run.app',
