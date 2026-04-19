@@ -2,8 +2,18 @@
 """
 One-off: set Steve's public profile bio in user_profiles (SQL source of truth for /api/profile/steve).
 
-Run from repo root with the same DB env as production, e.g.:
+Run from repo root. Production/staging use **MySQL** — Cloud Shell defaults to SQLite unless you export
+the same variables as your app (Cloud Run / Secret Manager).
+
+  export DB_BACKEND=mysql
+  export MYSQL_HOST=...          # e.g. Cloud SQL host or IP
+  export MYSQL_USER=...
+  export MYSQL_PASSWORD=...
+  export MYSQL_DB=...
+
   python scripts/set_steve_public_bio.py
+
+If you see *no such table: users*, you are on SQLite or the wrong database — set MySQL env vars above.
 """
 
 from __future__ import annotations
@@ -14,7 +24,7 @@ import sys
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _REPO)
 
-from backend.services.database import get_db_connection, get_sql_placeholder  # noqa: E402
+from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder  # noqa: E402
 
 STEVE_PUBLIC_BIO = """Hi, I'm Steve.
 
@@ -29,6 +39,19 @@ Pleased to meet you.
 
 
 def main() -> None:
+    if not USE_MYSQL:
+        print(
+            "This script targets MySQL. Your DB_BACKEND is not mysql (default is SQLite).\n\n"
+            "Set the same variables as production / Cloud Run, then run again:\n"
+            "  export DB_BACKEND=mysql\n"
+            "  export MYSQL_HOST=...\n"
+            "  export MYSQL_USER=...\n"
+            "  export MYSQL_PASSWORD=...\n"
+            "  export MYSQL_DB=...\n",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     ph = get_sql_placeholder()
     with get_db_connection() as conn:
         c = conn.cursor()
