@@ -13,6 +13,7 @@ import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { renderRichText } from '../utils/linkUtils'
 import { openExternalInApp } from '../utils/openExternalInApp'
+import { useAudioRecorder } from '../components/useAudioRecorder'
 
 type Reply = {
   id: number
@@ -66,6 +67,13 @@ export default function CommentReply() {
   const [sendingReply, setSendingReply] = useState(false)
   const [showGifPicker, setShowGifPicker] = useState(false)
   const [selectedGif, setSelectedGif] = useState<GifSelection | null>(null)
+  const [file, setFile] = useState<File | null>(null)
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null)
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const replyTokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
+  const { recording, recordMs, preview: replyPreview, start: startRec, stop: stopRec, clearPreview: clearReplyPreview, level } = useAudioRecorder() as any
 
   const openArticleReader = useCallback((url: string) => {
     void openExternalInApp(url)
@@ -316,29 +324,162 @@ export default function CommentReply() {
     }
   }, [loading, reply_id])
 
+  // Close attachment menu on outside click
+  useEffect(() => {
+    if (!showAttachMenu) return
+    const handleClickOutside = () => setShowAttachMenu(false)
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside)
+    }, 10)
+    return () => {
+      clearTimeout(timeoutId)
+      document.removeEventListener('click', handleClickOutside)
+    }
+  }, [showAttachMenu])
+
+  async function compressImageFile(input: File, maxEdge = 1600, quality = 0.82): Promise<File> {
+    try {
+      const isImage = typeof input.type === 'string' && input.type.startsWith('image/')
+      if (!isImage) return input
+      const bmp = ('createImageBitmap' in window)
+        ? await (window as any).createImageBitmap(input)
+        : await new Promise<HTMLImageElement>((resolve, reject) => {
+            const img = new Image()
+            const url = URL.createObjectURL(input)
+            img.onload = () => { URL.revokeObjectURL(url); resolve(img) }
+            img.onerror = (e) => { URL.revokeObjectURL(url); reject(e) }
+            img.src = url
+            ;(img as any).decoding = 'async'
+          })
+      const width = (bmp as any).width
+      const height = (bmp as any).height
+      const scale = Math.min(maxEdge / width, maxEdge / height, 1)
+      const outW = Math.max(1, Math.round(width * scale))
+      const outH = Math.max(1, Math.round(height * scale))
+      const canvas = document.createElement('canvas')
+      canvas.width = outW
+      canvas.height = outH
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return input
+      ctx.drawImage(bmp as any, 0, 0, outW, outH)
+      const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality))
+      if (!blob) return input
+      const outName = input.name.toLowerCase().endsWith('.jpg') || input.name.toLowerCase().endsWith('.jpeg') ? input.name : (input.name.split('.')[0] + '.jpg')
+      return new File([blob], outName, { type: 'image/jpeg' })
+    } catch {
+      return input
+    }
+  }
+
+  useEffect(() => {
+    let revokedUrl: string | null = null
+    let cancelled = false
+    async function buildPreview() {
+      if (selectedGif) { setFilePreviewUrl(null); setUploadFile(null); return }
+      if (!file) { setFilePreviewUrl(null); setUploadFile(null); return }
+      if (typeof file.type === 'string' && file.type === 'image/gif') {
+        try {
+          const url = URL.createObjectURL(file)
+          setFilePreviewUrl(url)
+          revokedUrl = url
+        } catch {}
+        if (!cancelled) setUploadFile(file)
+        return
+      }
+      try {
+        const isImage = typeof file.type === 'string' && file.type.startsWith('image/')
+        if (isImage && 'createImageBitmap' in window) {
+          const maxEdge = 256
+          const bmp = await (window as any).createImageBitmap(file, { resizeWidth: maxEdge, resizeHeight: maxEdge, resizeQuality: 'high' })
+          const scale = Math.min(maxEdge / bmp.width, maxEdge / bmp.height, 1)
+          const w = Math.max(1, Math.round(bmp.width * scale))
+          const h = Math.max(1, Math.round(bmp.height * scale))
+          const canvas = document.createElement('canvas')
+          canvas.width = w
+          canvas.height = h
+          const ctx = canvas.getContext('2d')
+          if (ctx) ctx.drawImage(bmp, 0, 0, w, h)
+          await new Promise<void>((resolve) => {
+            canvas.toBlob((blob) => {
+              if (cancelled) return resolve()
+              if (blob) {
+                const url = URL.createObjectURL(blob)
+                setFilePreviewUrl(url)
+                revokedUrl = url
+              } else {
+                const fallback = URL.createObjectURL(file)
+                setFilePreviewUrl(fallback)
+                revokedUrl = fallback
+              }
+              resolve()
+            }, 'image/jpeg', 0.8)
+          })
+          if (!cancelled) {
+            const compressed = await compressImageFile(file, 1600, 0.82)
+            if (!cancelled) setUploadFile(compressed)
+          }
+        } else {
+          const url = URL.createObjectURL(file)
+          setFilePreviewUrl(url)
+          revokedUrl = url
+          const compressed = await compressImageFile(file, 1600, 0.82)
+          if (!cancelled) setUploadFile(compressed)
+        }
+      } catch {
+        try {
+          const url = URL.createObjectURL(file)
+          setFilePreviewUrl(url)
+          revokedUrl = url
+        } catch {}
+        if (!cancelled && file) setUploadFile(file)
+      }
+    }
+    buildPreview()
+    return () => {
+      cancelled = true
+      if (revokedUrl) {
+        try { URL.revokeObjectURL(revokedUrl) } catch {}
+      }
+    }
+  }, [file, selectedGif])
+
   // Submit a reply
   const handleSubmitReply = async () => {
-    if (!reply || (!replyText.trim() && !selectedGif)) return
+    if (!reply || !post) return
+    const hasMedia = !!(selectedGif || file || uploadFile || replyPreview?.blob)
+    if (!replyText.trim() && !hasMedia) return
     setSendingReply(true)
     try {
       const fd = new FormData()
-      fd.append('post_id', String(reply.id))
+      fd.append('post_id', String(post.id))
       fd.append('content', replyText.trim())
       fd.append('parent_reply_id', String(reply.id))
-      fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
-      
-      if (selectedGif) {
-        const gifFile = await gifSelectionToFile(selectedGif, 'reply-gif')
-        fd.append('image', gifFile)
+      fd.append('dedupe_token', replyTokenRef.current)
+
+      try {
+        let imageFile: File | null = null
+        if (selectedGif) {
+          imageFile = await gifSelectionToFile(selectedGif, 'reply-gif')
+        } else if (uploadFile) {
+          imageFile = uploadFile
+        } else if (file) {
+          imageFile = file
+        }
+        if (imageFile) fd.append('image', imageFile)
+      } catch (err) {
+        console.error('Failed to prepare image/GIF attachment', err)
+        setSendingReply(false)
+        alert('Unable to attach media. Please try again.')
+        return
       }
 
-      if (post) {
-        fd.set('post_id', String(post.id))
+      if (replyPreview?.blob) {
+        fd.append('audio', replyPreview.blob, (replyPreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm'))
       }
 
       const res = await fetch('/post_reply', { method: 'POST', credentials: 'include', body: fd })
       const data = await res.json()
-      
+
       if (data.success && data.reply) {
         setReply((prev) => {
           if (!prev) return prev
@@ -348,7 +489,6 @@ export default function CommentReply() {
             reply_count: (prev.reply_count || 0) + 1,
           }
         })
-        // Check if user mentioned @Steve and trigger AI reply
         const messageText = replyText.trim()
         console.log('[Steve AI] Reply posted, checking message:', messageText)
         if (containsSteveMention(messageText)) {
@@ -357,6 +497,13 @@ export default function CommentReply() {
         }
         setReplyText('')
         setSelectedGif(null)
+        setFile(null)
+        setUploadFile(null)
+        setFilePreviewUrl(null)
+        clearReplyPreview()
+        if (fileInputRef.current) fileInputRef.current.value = ''
+        setShowAttachMenu(false)
+        replyTokenRef.current = `${Date.now()}_${Math.random().toString(36).slice(2)}`
       } else {
         alert(data.error || 'Failed to post reply')
       }
@@ -994,21 +1141,109 @@ export default function CommentReply() {
         style={{ bottom: showKeyboard ? keyboardLift : 0 }}
       >
         <div className="max-w-2xl mx-auto px-3 py-3">
-          {selectedGif && (
-            <div className="mb-2 flex items-center gap-2 p-2 bg-white/5 rounded-lg">
-              <img src={selectedGif.previewUrl} alt="GIF" className="h-12 rounded" />
-              <button onClick={() => setSelectedGif(null)} className="ml-auto text-white/60 hover:text-white">
-                <i className="fa-solid fa-xmark" />
-              </button>
+          {(file || selectedGif || replyPreview) && (
+            <div className="mb-2 flex items-center gap-2 flex-wrap">
+              {file && filePreviewUrl && (
+                <div className="flex items-center gap-2">
+                  <div className="w-12 h-12 rounded-md overflow-hidden border border-white/10">
+                    {typeof file.type === 'string' && file.type.startsWith('video/') ? (
+                      <video src={filePreviewUrl} className="w-full h-full object-cover" muted playsInline />
+                    ) : (
+                      <img src={filePreviewUrl} alt="preview" className="w-full h-full object-cover" />
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setFile(null); setUploadFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
+                    className="text-red-400 hover:text-red-300"
+                    aria-label="Remove file"
+                  >
+                    <i className="fa-solid fa-times" />
+                  </button>
+                </div>
+              )}
+              {selectedGif && (
+                <div className="flex items-center gap-2">
+                  <div className="w-12 h-12 rounded-md overflow-hidden border border-white/10">
+                    <img src={selectedGif.previewUrl} alt="GIF" className="w-full h-full object-cover" loading="lazy" />
+                  </div>
+                  <button type="button" onClick={() => setSelectedGif(null)} className="text-red-400 hover:text-red-300" aria-label="Remove GIF">
+                    <i className="fa-solid fa-times" />
+                  </button>
+                </div>
+              )}
+              {replyPreview && (
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <audio controls className="flex-1 h-8" playsInline webkit-playsinline="true" src={replyPreview.url} />
+                  <button type="button" onClick={() => clearReplyPreview()} className="text-[#9fb0b5] hover:text-white" aria-label="Remove audio">
+                    <i className="fa-regular fa-trash-can" />
+                  </button>
+                </div>
+              )}
             </div>
           )}
+
+          {recording && (
+            <div className="mb-2 flex items-center gap-3 px-1">
+              <span className="inline-block w-2 h-2 bg-[#4db6ac] rounded-full animate-pulse" />
+              <div className="flex-1 h-2 bg-white/10 rounded overflow-hidden">
+                <div className="h-full bg-[#7fe7df] transition-all" style={{ width: `${Math.max(6, Math.min(96, (level || 0) * 100))}%` }} />
+              </div>
+              <div className="text-xs text-white/70">{Math.min(60, Math.round((recordMs || 0) / 1000))}s</div>
+            </div>
+          )}
+
           <div className="flex items-end gap-2">
-            <button
-              onClick={() => setShowGifPicker(true)}
-              className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/15"
-            >
-              <i className="fa-solid fa-images text-sm text-white/70" />
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/15"
+                onClick={() => setShowAttachMenu(!showAttachMenu)}
+                aria-label="Add attachment"
+              >
+                <i className={`fa-solid ${showAttachMenu ? 'fa-times' : 'fa-plus'} text-sm`} style={{ color: (file || selectedGif) ? '#7fe7df' : '#fff' }} />
+              </button>
+              {showAttachMenu && (
+                <div className="absolute bottom-full left-0 mb-2 w-40 rounded-xl bg-[#1a1a1c] border border-white/10 shadow-xl overflow-hidden z-10">
+                  <button
+                    type="button"
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-left"
+                    onClick={() => {
+                      fileInputRef.current?.click()
+                      setShowAttachMenu(false)
+                    }}
+                  >
+                    <i className="fa-solid fa-image text-[#4db6ac]" />
+                    <span className="text-sm text-white">Photo / Video</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-left border-t border-white/5"
+                    onClick={() => {
+                      setShowGifPicker(true)
+                      setShowAttachMenu(false)
+                    }}
+                  >
+                    <i className="fa-solid fa-images text-[#4db6ac]" />
+                    <span className="text-sm text-white">GIF</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,video/*"
+              onChange={(e) => {
+                const next = (e.target as HTMLInputElement).files?.[0] || null
+                setFile(next)
+                setUploadFile(null)
+                setSelectedGif(null)
+              }}
+              className="hidden"
+            />
+
             <div className="flex-1 min-w-0 flex items-center rounded-lg border border-white/20 bg-white/5">
               <MentionTextarea
                 value={replyText}
@@ -1020,15 +1255,42 @@ export default function CommentReply() {
                 className="bg-transparent px-3 py-2 text-[15px] text-white placeholder-white/40 outline-none resize-none max-h-24 min-h-[36px]"
                 rows={1}
                 autoExpand
+                perfDegraded={!!uploadFile}
               />
             </div>
-            <button
-              onClick={handleSubmitReply}
-              disabled={sendingReply || (!replyText.trim() && !selectedGif)}
-              className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac] text-white disabled:opacity-40"
-            >
-              {sendingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
-            </button>
+
+            {!recording && !replyText.trim() && (
+              <button
+                type="button"
+                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/15"
+                onClick={() => startRec()}
+                aria-label="Record audio"
+              >
+                <i className="fa-solid fa-microphone text-sm text-white/70" />
+              </button>
+            )}
+
+            {recording && (
+              <button
+                type="button"
+                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac] text-white"
+                onClick={() => stopRec()}
+                aria-label="Stop recording"
+              >
+                <i className="fa-solid fa-stop text-sm" />
+              </button>
+            )}
+
+            {!recording && (replyText.trim() || file || replyPreview || selectedGif) && (
+              <button
+                type="button"
+                onClick={handleSubmitReply}
+                disabled={sendingReply}
+                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac] text-white disabled:opacity-40"
+              >
+                {sendingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
+              </button>
+            )}
           </div>
         </div>
         {/* Safe area spacer for iOS - only when keyboard is closed */}
@@ -1043,6 +1305,10 @@ export default function CommentReply() {
         onSelect={(gif) => {
           setSelectedGif(gif)
           setShowGifPicker(false)
+          setFile(null)
+          setUploadFile(null)
+          setFilePreviewUrl(null)
+          if (fileInputRef.current) fileInputRef.current.value = ''
         }}
         onClose={() => setShowGifPicker(false)}
       />
