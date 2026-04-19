@@ -14,7 +14,9 @@ import { memo } from 'react'
 import type { ChatMessage } from '../types/chat'
 import MessageImage from '../components/MessageImage'
 import MessageVideo from '../components/MessageVideo'
-import LinkPreview, { extractUrls, stripExtractedUrlsFromText } from '../components/LinkPreview'
+import LinkPreview, { feedLinkPreviewUrls, stripExtractedUrlsFromText } from '../components/LinkPreview'
+import VideoEmbed from '../components/VideoEmbed'
+import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
 import { normalizeMediaPath, formatMessageTime, parseMessageTime } from './utils'
 import AudioMessage from './AudioMessage'
 import LongPressActionable from './LongPressActionable'
@@ -107,16 +109,19 @@ function MessageBubbleInner({
   linkifyText,
   onRetry,
 }: MessageBubbleProps) {
-  const previewUrls = extractUrls(m.text || '')
+  const textBase = m.text || ''
+  const videoEmbed = extractVideoEmbedFromPost(textBase, undefined)
+  const textAfterVideo = videoEmbed ? removeVideoUrlFromText(textBase, videoEmbed) : textBase
+  const previewUrls = feedLinkPreviewUrls(textAfterVideo, videoEmbed?.embedUrl ?? null)
   const textWithoutPreviewUrls =
-    previewUrls.length > 0 ? stripExtractedUrlsFromText(m.text || '', previewUrls) : m.text || ''
+    previewUrls.length > 0 ? stripExtractedUrlsFromText(textAfterVideo, previewUrls) : textAfterVideo
   const showLinkPreviews = previewUrls.length > 0
   const showLinkifiedBody = textWithoutPreviewUrls.trim().length > 0
   // Only render the "bubble" (liquid-glass background) when there is actual text,
-  // a reply/story to quote, or an active editor. Media and link previews are
+  // a reply/story to quote, inline video, or an active editor. Media and link previews are
   // rendered as siblings of the bubble so they appear with their own thin
   // frame rather than inside a big rounded box. Mirrors GroupChatThread.tsx.
-  const showTextBubble = isEditing || showLinkifiedBody || !!m.replySnippet || !!m.storyReply
+  const showTextBubble = isEditing || showLinkifiedBody || !!m.replySnippet || !!m.storyReply || !!videoEmbed
 
   return (
     <LongPressActionable
@@ -488,6 +493,11 @@ function MessageBubbleInner({
               }}
             >
               {showLinkifiedBody ? linkifyText(textWithoutPreviewUrls) : null}
+              {videoEmbed ? (
+                <div className="block w-full min-w-0 mt-2 max-w-[280px]">
+                  <VideoEmbed embed={videoEmbed} />
+                </div>
+              ) : null}
               {m.edited_at ? (
                 <span className="text-[10px] text-white/50 ml-1">edited</span>
               ) : null}

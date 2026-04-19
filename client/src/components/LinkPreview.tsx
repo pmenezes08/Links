@@ -1,5 +1,7 @@
 import { useState, useEffect, memo } from 'react'
 import { Capacitor } from '@capacitor/core'
+import type { VideoEmbed } from '../utils/videoEmbed'
+import { extractVideoEmbed } from '../utils/videoEmbed'
 
 export type LinkPreviewData = {
   title: string
@@ -136,16 +138,25 @@ export function parseLinkUrlsField(raw: unknown): string[] {
   return []
 }
 
+function storedUrlCoveredByVideoEmbed(u: string, ve: VideoEmbed): boolean {
+  const hit = extractVideoEmbed(u)
+  return hit !== null && hit.type === ve.type && hit.videoId === ve.videoId
+}
+
 /**
  * Link preview cards: stored `link_urls` (caption posts) plus legacy URLs embedded in `content`.
+ * When `videoEmbed` is set, matching URLs are omitted (inline player handles them).
  */
 export function feedPostLinkPreviewUrls(
   content: string,
   linkUrls: unknown,
-  videoEmbedUrl?: string | null
+  videoEmbed?: VideoEmbed | null
 ): string[] {
-  const fromStored = parseLinkUrlsField(linkUrls)
-  const fromBody = feedLinkPreviewUrls(content, videoEmbedUrl)
+  const embedUrl = videoEmbed?.embedUrl ?? null
+  const fromStored = parseLinkUrlsField(linkUrls).filter(
+    u => !videoEmbed || !storedUrlCoveredByVideoEmbed(u, videoEmbed),
+  )
+  const fromBody = feedLinkPreviewUrls(content, embedUrl)
   const seen = new Set<string>()
   const out: string[] = []
   for (const u of [...fromStored, ...fromBody]) {

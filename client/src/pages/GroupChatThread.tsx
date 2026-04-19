@@ -20,7 +20,10 @@ import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMed
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
 import { SENDING_MEDIA_LABEL } from '../chat/mediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
-import LinkPreview, { extractUrls, stripExtractedUrlsFromText } from '../components/LinkPreview'
+import LinkPreview, { stripExtractedUrlsFromText, feedLinkPreviewUrls } from '../components/LinkPreview'
+import VideoEmbed from '../components/VideoEmbed'
+import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
+import { openExternalInApp } from '../utils/openExternalInApp'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
 import {
@@ -90,6 +93,9 @@ function isConfirmedGroupMessage(
 export default function GroupChatThread() {
   const { group_id } = useParams()
   const navigate = useNavigate()
+  const openExternalArticle = useCallback((url: string) => {
+    void openExternalInApp(url)
+  }, [])
   const [searchParams, setSearchParams] = useSearchParams()
   const { profile: currentUserProfile } = useUserProfile()
   // Get username from profile context, with localStorage fallback
@@ -1600,7 +1606,7 @@ export default function GroupChatThread() {
   // Render text with @mentions highlighted and links clickable
   const renderTextWithMentions = (text: string) => {
     if (!text) return null
-    return renderTextWithSourceLinks(text)
+    return renderTextWithSourceLinks(text, false, undefined, openExternalArticle)
   }
 
   // Message action handlers
@@ -2191,11 +2197,13 @@ export default function GroupChatThread() {
                     }
                   }
 
-                  const linkPreviewUrls = displayText ? extractUrls(displayText) : []
+                  const videoEmbed = extractVideoEmbedFromPost(displayText || '', undefined)
+                  const textAfterVideo = videoEmbed ? removeVideoUrlFromText(displayText || '', videoEmbed) : (displayText || '')
+                  const linkPreviewUrls = textAfterVideo ? feedLinkPreviewUrls(textAfterVideo, videoEmbed?.embedUrl ?? null) : []
                   const bubbleTextWithoutUrls =
-                    linkPreviewUrls.length > 0 && displayText
-                      ? stripExtractedUrlsFromText(displayText, linkPreviewUrls)
-                      : displayText
+                    linkPreviewUrls.length > 0 && textAfterVideo
+                      ? stripExtractedUrlsFromText(textAfterVideo, linkPreviewUrls)
+                      : textAfterVideo
                   
                   // Date separator logic - matching ChatThread
                   const messageDate = getDateKey(msg.created_at)
@@ -2336,6 +2344,11 @@ export default function GroupChatThread() {
                                           (edited)
                                         </span>
                                       )}
+                                    </div>
+                                  )}
+                                  {videoEmbed && (
+                                    <div className="px-2 pb-2 w-full min-w-0">
+                                      <VideoEmbed embed={videoEmbed} />
                                     </div>
                                   )}
                                   {linkPreviewUrls.map(u => (
