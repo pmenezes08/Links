@@ -22,6 +22,8 @@ import PushInit from './components/PushInit'
 import NotificationPrompt from './components/NotificationPrompt'
 import { NetworkProvider } from './contexts/NetworkContext'
 import { BadgeProvider } from './contexts/BadgeContext'
+import { EntitlementsProvider } from './contexts/EntitlementsContext'
+import MembershipAIUsage from './pages/MembershipAIUsage'
 import OfflineBanner from './components/OfflineBanner'
 import OutboxDrainer from './components/OutboxDrainer'
 // NativePushInit disabled (clear logic now centralized in BadgeContext with resume listener + always-on-native clear in poll for robustness)
@@ -721,6 +723,7 @@ function AppRoutes(){
   return (
     <UserProfileContext.Provider value={userProfileValue}>
       <BadgeProvider>
+      <EntitlementsProvider>
       <HeaderContext.Provider value={{ setTitle, setHeaderHidden: setHeaderHiddenOverride }}>
         {showHeader && (
           <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} />
@@ -760,6 +763,17 @@ function AppRoutes(){
                   <Route path="/steve-knows-me" element={<SteveKnowsMe />} />
                   <Route path="/profile/:username" element={<PublicProfile />} />
                 <Route path="/account_settings" element={<AccountSettings />} />
+                <Route path="/settings" element={<AccountSettings />} />
+                <Route path="/settings/membership" element={<AccountSettings />} />
+                <Route path="/account_settings/membership" element={<AccountSettings />} />
+                {/*
+                 * The modal-based Manage Membership lives inside AccountSettings and
+                 * is opened via a ?tab= query param, but we keep these legacy paths
+                 * pointed at the read-only MembershipAIUsage page so bookmarks /
+                 * "See my usage" CTAs that landed here in Wave 4 keep working.
+                 */}
+                <Route path="/settings/membership/ai-usage" element={<MembershipAIUsage />} />
+                <Route path="/account_settings/membership/ai-usage" element={<MembershipAIUsage />} />
                 <Route path="/account_settings_react" element={<AccountSettings />} />
                 <Route path="/account_settings/security" element={<AccountSecurity />} />
                 <Route path="/account_settings/danger" element={<AccountDangerZone />} />
@@ -821,6 +835,7 @@ function AppRoutes(){
           </div>
         )}
       </HeaderContext.Provider>
+      </EntitlementsProvider>
       </BadgeProvider>
     </UserProfileContext.Provider>
   )

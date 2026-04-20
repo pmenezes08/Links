@@ -46,6 +46,7 @@ from encryption_endpoints import register_encryption_endpoints
 from signal_endpoints import register_signal_endpoints
 from backend import init_app
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
+from backend.services import ai_usage as _ai_usage
 from backend.services.community import (
     fetch_community_names,
     get_community_ancestors,
@@ -799,7 +800,16 @@ def _block_unverified_users():
             '/api/invitation/verify',
             '/api/push/register_fcm',  # FCM token registration (can be anonymous initially)
             '/api/admin/login-by-email',  # Phase 2: tenant lookup by email (no auth)
+            # Subscription-state webhooks: Stripe/Apple/Google never have a
+            # session cookie. Each handler verifies its own signature.
+            '/api/webhooks/stripe',
+            '/api/webhooks/apple',
+            '/api/webhooks/google',
         ]
+        # Cron endpoints authenticate via X-Cron-Secret, not session cookies.
+        # Cloud Scheduler cannot send cookies, so they must bypass this gate.
+        if path.startswith('/api/cron/'):
+            return None
         # Session required, but must run even if email not verified (logout cleanup)
         session_auth_unverified_ok = (
             '/api/push/unregister_fcm',
@@ -2058,7 +2068,54 @@ def add_user_to_community(cursor, user_id: int, community_id: int, role: Optiona
     
     # Invalidate user's caches so they see the new community immediately
     _invalidate_user_community_caches(cursor, user_id, username)
-    
+
+    # Enterprise seat lifecycle: if the community is tagged ``enterprise``,
+    # open a seat for the joining user and (when they're on a mobile-IAP
+    # Premium sub) start an in-app nag record so the client shows the
+    # "cancel your Apple/Google sub" banner after the 7-day grace window.
+    # Best-effort — never fail the join flow on a lifecycle hook error.
+    try:
+        from backend.services import enterprise_membership as _em
+        from backend.services import enterprise_iap_nag as _nag
+        from backend.services import subscription_audit as _audit
+        if _em.is_enterprise_community(int(community_id)):
+            join_username = username
+            if not join_username:
+                ph = get_sql_placeholder()
+                cursor.execute(f"SELECT username FROM users WHERE id = {ph}", (user_id,))
+                _row = cursor.fetchone()
+                if _row:
+                    join_username = _row['username'] if hasattr(_row, 'keys') else _row[0]
+            if join_username:
+                _em.start_seat(
+                    username=join_username,
+                    community_id=int(community_id),
+                    source="community_join",
+                    actor_username=join_username,
+                )
+                # If they already hold a personal Premium, open the nag.
+                try:
+                    ph = get_sql_placeholder()
+                    cursor.execute(
+                        f"SELECT subscription FROM users WHERE username = {ph}",
+                        (join_username,),
+                    )
+                    _sr = cursor.fetchone()
+                    _sub = (_sr['subscription'] if hasattr(_sr, 'keys') else (_sr[0] if _sr else '')) or ''
+                    if str(_sub).lower() in ('premium', 'pro', 'paid'):
+                        _nag.start_nag(username=join_username, community_id=int(community_id))
+                        _audit.log(
+                            username=join_username,
+                            action="iap_conflict_detected",
+                            source="community_join",
+                            community_id=int(community_id),
+                            metadata={"reason": "premium_plus_enterprise_seat"},
+                        )
+                except Exception:
+                    logger.warning("[SEAT] IAP nag bootstrap failed (non-fatal)", exc_info=True)
+    except Exception:
+        logger.warning("[SEAT] start_seat hook failed (non-fatal)", exc_info=True)
+
     # Steve welcome posts disabled - community admins prefer to manage welcome messaging themselves
     if False and not skip_welcome_post and role not in ['owner', 'admin']:
         try:
@@ -4984,41 +5041,144 @@ Content requirements:
         logger.error(f"Error summarizing text: {str(e)}")
         return None
 
-def process_audio_for_summary(audio_file_path, username=None):
+def process_audio_for_summary(
+    audio_file_path,
+    username=None,
+    duration_seconds=None,
+    community_id=None,
+):
     """
-    Complete pipeline: transcribe audio and generate summary
-    Returns summary text or None
+    Complete pipeline: transcribe audio and generate summary.
+
+    Writes two rows to ``ai_usage_log`` so the Manage Membership modal and
+    the entitlements gate have accurate counters:
+
+      1. ``surface='whisper'`` with ``duration_seconds`` → counts against
+         ``whisper_minutes_per_month``.
+      2. ``surface='voice_summary'`` → counts against
+         ``steve_uses_per_month`` + ``ai_daily_limit``.
+
+    Callers should pass ``duration_seconds`` when the client uploaded a
+    reliable length (e.g. the DM audio endpoint reads it from form data).
+    When omitted, we try to probe with mutagen/ffprobe, and finally fall
+    back to a word-rate estimate from the transcript.
+
+    Args:
+        audio_file_path: local path or R2 CDN URL for the audio file.
+        username: actor. Required for usage accounting — pass ``None`` only
+            when called from an anonymous / internal pipeline.
+        duration_seconds: optional client-provided audio length (seconds).
+        community_id: optional community context, for pool accounting later.
+
+    Returns the summary text or None on failure.
     """
     if not audio_file_path:
         return None
-    
+
     logger.info(f"Processing audio for AI summary: {audio_file_path} (user: {username})")
-    
+
     # Step 1: Transcribe audio (returns (text, language) tuple)
     result = transcribe_audio_file(audio_file_path)
     if not result:
         logger.warning("Transcription failed, no summary generated")
+        # Log failed whisper attempt for analytics (no usage charged).
+        try:
+            if username:
+                from backend.services import ai_usage as _au
+                _au.log_usage(
+                    username,
+                    surface=_au.SURFACE_WHISPER,
+                    request_type="whisper_failed",
+                    success=False,
+                    reason_blocked="api_error",
+                    community_id=community_id,
+                    model="whisper-1",
+                )
+        except Exception:
+            pass
         return None
-    
+
     # Handle both old (string) and new (tuple) return format
     if isinstance(result, tuple):
         transcription, detected_lang = result
     else:
         transcription = result
         detected_lang = 'en'
-    
+
     if not transcription:
         return None
-    
+
     logger.info(f"Detected language: {detected_lang}")
-    
+
+    # ── Log Whisper usage ──
+    # Source of truth for the "Voice transcription this month" counter. If
+    # the caller gave us a duration, use it; otherwise probe the file; last
+    # resort is a word-rate estimate (≈150 wpm = 2.5 wps).
+    try:
+        from backend.services import ai_usage as _au
+        from backend.services.whisper_service import (
+            _probe_duration_seconds as _probe,
+            _whisper_cost_usd as _wcost,
+            WHISPER_MODEL as _WHISPER_MODEL,
+        )
+
+        final_duration = None
+        try:
+            final_duration = float(duration_seconds) if duration_seconds else None
+        except Exception:
+            final_duration = None
+        if not final_duration:
+            try:
+                final_duration = _probe(audio_file_path)
+            except Exception:
+                final_duration = None
+        if not final_duration and transcription:
+            words = len(transcription.split())
+            final_duration = max(1.0, words / 2.5)
+
+        whisper_cost = _wcost(final_duration or 0.0)
+
+        if username:
+            _au.log_usage(
+                username,
+                surface=_au.SURFACE_WHISPER,
+                request_type="whisper",
+                duration_seconds=final_duration,
+                cost_usd=whisper_cost,
+                success=True,
+                community_id=community_id,
+                model=_WHISPER_MODEL,
+            )
+    except Exception as _log_err:
+        logger.warning(f"Could not log Whisper usage: {_log_err}")
+
     # Step 2: Summarize transcription with username and detected language
     summary = summarize_text(transcription, username=username, language=detected_lang)
+
+    # ── Log the voice-summary GPT call ──
+    # The summarization is a separate LLM call against OpenAI; it counts as
+    # one Steve use on the ``voice_summary`` surface. We log both success
+    # and failure so analytics capture failed summarizations too.
+    try:
+        from backend.services import ai_usage as _au2
+        if username:
+            _au2.log_usage(
+                username,
+                surface=_au2.SURFACE_VOICE_SUMMARY,
+                request_type="voice_summary",
+                success=bool(summary),
+                community_id=community_id,
+                model="gpt-4o-mini",
+                reason_blocked=None if summary else "api_error",
+            )
+    except Exception as _log_err2:
+        logger.warning(f"Could not log voice_summary usage: {_log_err2}")
+
     if not summary:
         logger.warning("Summarization failed, returning transcription")
         # Return first 200 chars of transcription as fallback
         return transcription[:200] + "..." if len(transcription) > 200 else transcription
-    
+
     return summary
 
 
@@ -10083,19 +10243,64 @@ def admin_users_api():
             r = c.fetchone()
             total = r['cnt'] if hasattr(r, 'keys') else r[0]
             offset = (page - 1) * per_page
-            if search:
-                c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE (username LIKE {ph} OR email LIKE {ph}){tf} ORDER BY username LIMIT {ph} OFFSET {ph}", (f'%{search}%', f'%{search}%') + tp + (per_page, offset))
-            else:
-                c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE 1=1{tf} ORDER BY username LIMIT {ph} OFFSET {ph}", tp + (per_page, offset))
+            # Include is_special in the projection where available; fall back if the column doesn't exist.
+            try:
+                if search:
+                    c.execute(f"SELECT id, username, email, subscription, is_special, created_at FROM users WHERE (username LIKE {ph} OR email LIKE {ph}){tf} ORDER BY username LIMIT {ph} OFFSET {ph}", (f'%{search}%', f'%{search}%') + tp + (per_page, offset))
+                else:
+                    c.execute(f"SELECT id, username, email, subscription, is_special, created_at FROM users WHERE 1=1{tf} ORDER BY username LIMIT {ph} OFFSET {ph}", tp + (per_page, offset))
+                _has_is_special_col = True
+            except Exception:
+                if search:
+                    c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE (username LIKE {ph} OR email LIKE {ph}){tf} ORDER BY username LIMIT {ph} OFFSET {ph}", (f'%{search}%', f'%{search}%') + tp + (per_page, offset))
+                else:
+                    c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE 1=1{tf} ORDER BY username LIMIT {ph} OFFSET {ph}", tp + (per_page, offset))
+                _has_is_special_col = False
+            # Lazy import to avoid circulars at module load time.
+            try:
+                from backend.services.entitlements import resolve_entitlements as _resolve_ent  # type: ignore
+            except Exception:
+                _resolve_ent = None  # type: ignore
             users = []
             for u in c.fetchall():
+                uname = u['username'] if hasattr(u,'keys') else u[1]
+                sub = u['subscription'] if hasattr(u,'keys') else u[3]
+                if _has_is_special_col:
+                    is_special_raw = u['is_special'] if hasattr(u,'keys') else u[4]
+                    created_raw = u['created_at'] if hasattr(u,'keys') else u[5]
+                else:
+                    is_special_raw = 0
+                    created_raw = u['created_at'] if hasattr(u,'keys') else u[4]
+                try:
+                    is_special_val = bool(int(is_special_raw or 0))
+                except Exception:
+                    is_special_val = bool(is_special_raw)
+                # effective_tier + inherited_from come from the entitlements resolver
+                # so admin UI matches what the enforcement layer actually applies.
+                effective_tier = None
+                inherited_from = None
+                if _resolve_ent is not None:
+                    try:
+                        ent = _resolve_ent(uname)
+                        effective_tier = ent.get('tier')
+                        # inherited_from is only set when the tier comes from an
+                        # Enterprise seat (Wave 5 will populate this). For now the
+                        # resolver returns plain tier names, so this is None for
+                        # personal Premium/Free/Trial and 'enterprise:<slug>' once
+                        # the Enterprise lifecycle lands.
+                        inherited_from = ent.get('inherited_from')
+                    except Exception:
+                        effective_tier = None
                 users.append({
                     'id': u['id'] if hasattr(u,'keys') else u[0],
-                    'username': u['username'] if hasattr(u,'keys') else u[1],
+                    'username': uname,
                     'email': u['email'] if hasattr(u,'keys') else u[2],
-                    'subscription': u['subscription'] if hasattr(u,'keys') else u[3],
-                    'created_at': str(u['created_at'] if hasattr(u,'keys') else u[4]) if (u['created_at'] if hasattr(u,'keys') else u[4]) else None,
-                    'is_admin': is_app_admin(u['username'] if hasattr(u,'keys') else u[1])
+                    'subscription': sub,
+                    'is_special': is_special_val,
+                    'effective_tier': effective_tier or (sub or 'free'),
+                    'inherited_from': inherited_from,
+                    'created_at': str(created_raw) if created_raw else None,
+                    'is_admin': is_app_admin(uname),
                 })
             return jsonify({'success': True, 'users': users, 'total': total, 'page': page, 'per_page': per_page, 'pages': (total + per_page - 1) // per_page})
     except Exception as e:
@@ -11703,6 +11908,25 @@ def api_stripe_create_checkout_session():
     price_key = STRIPE_PRICE_IDS.get(f'{plan_id}_{billing_cycle}')
     if not price_key:
         return jsonify({'success': False, 'error': 'Pricing is not configured'}), 400
+
+    # Block the upsell if the user already gets Premium through an Enterprise
+    # community seat. Stripe would happily take their money, but we'd be
+    # double-billing for benefits they already have. The client should read
+    # the ``reason: 'enterprise_seat_active'`` code and route them to the
+    # "you already have Premium via <community>" explainer instead.
+    try:
+        from backend.services import enterprise_membership as _em
+        _seat = _em.active_seat_for(username)
+        if _seat and _seat.get("active"):
+            return jsonify({
+                'success': False,
+                'error': 'You already have Premium through your Enterprise community.',
+                'reason': 'enterprise_seat_active',
+                'community_id': _seat.get('community_id'),
+                'community_slug': _seat.get('community_slug'),
+            }), 409
+    except Exception:
+        logger.exception("checkout preflight: enterprise seat check failed")
 
     try:
         email_value = None
@@ -14329,6 +14553,34 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
         logger.warning("XAI_API_KEY not configured, Steve cannot reply in DM")
         return
     
+    # ── Entitlements gate ──
+    try:
+        from backend.services.entitlements_gate import gate_or_reason as _gate
+        from backend.services.feature_flags import entitlements_enforcement_enabled as _enforce
+        from backend.services import entitlements_errors as _errs
+        _allowed, _reason, _ent = _gate(sender_username, _ai_usage.SURFACE_DM)
+        if not _allowed and _enforce():
+            try:
+                from backend.services.content_generation.delivery import send_steve_dm as _send_dm
+                if _reason == _errs.REASON_PREMIUM_REQUIRED:
+                    blocked = (
+                        "Steve is a Premium feature. Upgrade in Settings → "
+                        "Manage Membership to keep chatting with me."
+                    )
+                elif _reason == _errs.REASON_DAILY_CAP:
+                    blocked = "You've hit today's Steve limit. It resets at midnight UTC."
+                else:
+                    blocked = (
+                        "You've used up your Steve calls for this month. "
+                        "See Settings → AI Usage."
+                    )
+                _send_dm(receiver_username=sender_username, content=blocked)
+            except Exception:
+                pass
+            return
+    except Exception as gate_err:
+        logger.warning("DM Steve gate check failed (non-fatal): %s", gate_err)
+
     try:
         # Determine the chat thread to read context from and reply into
         if other_username:
@@ -14618,7 +14870,17 @@ Only share this information if asked. Be factual — do not embellish or invent 
                 pass
             
             logger.info(f"Steve replied to DM from {sender_username}" + (f" (mentioned in chat with {other_username})" if other_username else ""))
-    
+
+        try:
+            _ai_usage.log_usage(
+                sender_username,
+                surface=_ai_usage.SURFACE_DM,
+                request_type='steve_dm_reply',
+                model='grok-4-1-fast-reasoning',
+            )
+        except Exception:
+            pass
+
     except Exception as e:
         logger.error(f"Error in Steve DM reply: {e}", exc_info=True)
 
@@ -15544,7 +15806,11 @@ def send_audio_message():
             audio_summary = None
             try:
                 logger.info(f"Generating AI summary for chat voice note: {rel_path}")
-                audio_summary = process_audio_for_summary(rel_path, username=username)
+                audio_summary = process_audio_for_summary(
+                    rel_path,
+                    username=username,
+                    duration_seconds=duration_seconds,
+                )
                 if audio_summary:
                     logger.info(f"AI summary generated for chat: {audio_summary[:100]}...")
             except Exception as e:
@@ -20256,7 +20522,11 @@ def post_status():
             if audio_path:
                 try:
                     logger.info(f"Generating AI summary for audio post: {audio_path}")
-                    audio_summary = process_audio_for_summary(audio_path, username=username)
+                    audio_summary = process_audio_for_summary(
+                        audio_path,
+                        username=username,
+                        community_id=community_id,
+                    )
                     if audio_summary:
                         logger.info(f"AI summary generated successfully: {audio_summary[:100]}...")
                     else:
@@ -26474,13 +26744,30 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
     
     logger.info(f"Steve replying to post {post_id} in community {community_id}")
     
+    # ── Entitlements gate ──
+    _enforcement_on = False
+    try:
+        from backend.services.entitlements_gate import gate_or_reason as _gate
+        from backend.services.feature_flags import entitlements_enforcement_enabled as _enforce
+        _enforcement_on = _enforce()
+        _allowed, _reason, _ent = _gate(author_username, _ai_usage.SURFACE_FEED)
+        if not _allowed and _enforcement_on:
+            logger.info(
+                "Steve post-reply blocked by entitlements: user=%s reason=%s",
+                author_username, _reason,
+            )
+            return
+    except Exception as gate_err:
+        logger.warning("Feed Steve gate check failed (non-fatal): %s", gate_err)
+
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             placeholder = get_sql_placeholder()
-            
-            # Check rate limiting (unless unlimited user)
-            if author_username.lower() not in AI_UNLIMITED_USERS:
+
+            # Legacy daily-limit check — only runs when the entitlements flag
+            # is off. With the flag on, the gate above already did this.
+            if not _enforcement_on and author_username.lower() not in AI_UNLIMITED_USERS:
                 today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
                 c.execute(f"""
                     SELECT COUNT(*) as cnt FROM ai_usage_log 
@@ -26488,7 +26775,6 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 """, (author_username, today_start.strftime('%Y-%m-%d %H:%M:%S')))
                 row = c.fetchone()
                 usage_count = row['cnt'] if hasattr(row, 'keys') else row[0]
-                
                 if usage_count >= AI_DAILY_LIMIT:
                     logger.info(f"User {author_username} hit AI daily limit, skipping Steve reply to post")
                     return
@@ -26652,13 +26938,15 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             steve_reply_id = c.lastrowid
             conn.commit()
             
-            # Log AI usage
+            # MIGRATED to backend/services/ai_usage.py — safe to delete when monolith-split runs
             try:
-                c.execute(f"""
-                    INSERT INTO ai_usage_log (username, request_type, created_at)
-                    VALUES ({placeholder}, {placeholder}, {placeholder})
-                """, (author_username, 'steve_post_reply', timestamp_db))
-                conn.commit()
+                _ai_usage.log_usage(
+                    author_username,
+                    surface=_ai_usage.SURFACE_FEED,
+                    request_type='steve_post_reply',
+                    community_id=community_id,
+                    model='grok-4-1-fast-reasoning',
+                )
             except Exception:
                 pass
             
@@ -26770,16 +27058,30 @@ def ai_steve_reply():
         if not XAI_API_KEY:
             logger.error("XAI_API_KEY not configured for Steve")
             return jsonify({'success': False, 'error': 'AI service temporarily unavailable'}), 503
-        
+
+        # ── Entitlements gate (flag-aware) ──
+        _enforcement_on = False
+        try:
+            from backend.services.entitlements_gate import check_steve_access
+            from backend.services.feature_flags import entitlements_enforcement_enabled as _enforce
+            _enforcement_on = _enforce()
+            _allowed, _err_payload, _err_status, _ent = check_steve_access(
+                username, _ai_usage.SURFACE_FEED
+            )
+            if not _allowed and _enforcement_on:
+                return jsonify(_err_payload), _err_status
+        except Exception as gate_err:
+            logger.warning("ai_steve_reply gate failed (non-fatal): %s", gate_err)
+
         with get_db_connection() as conn:
             c = conn.cursor()
             placeholder = get_sql_placeholder()
-            
-            # Rate limiting: Check daily usage (skip for unlimited users)
+
+            # Legacy daily-limit fallback when entitlements enforcement is off.
             usage_count = 0
             is_unlimited = username.lower() in AI_UNLIMITED_USERS
-            
-            if not is_unlimited:
+
+            if not _enforcement_on and not is_unlimited:
                 try:
                     if USE_MYSQL:
                         c.execute(f"""
@@ -27070,41 +27372,17 @@ def ai_steve_reply():
             
             steve_reply_id = c.lastrowid
             
-            # Log AI usage
+            # MIGRATED to backend/services/ai_usage.py — safe to delete when monolith-split runs
             try:
-                c.execute(f"""
-                    INSERT INTO ai_usage_log (username, request_type, created_at)
-                    VALUES ({placeholder}, {placeholder}, {placeholder})
-                """, (username, 'steve_reply', timestamp_db))
+                _ai_usage.log_usage(
+                    username,
+                    surface=_ai_usage.SURFACE_FEED,
+                    request_type='steve_reply',
+                    community_id=community_id if community_id else None,
+                    model=model_to_use,
+                )
             except Exception as log_err:
-                # Table might not exist, create it
-                try:
-                    if USE_MYSQL:
-                        c.execute("""
-                            CREATE TABLE IF NOT EXISTS ai_usage_log (
-                                id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                                username VARCHAR(191) NOT NULL,
-                                request_type VARCHAR(50) NOT NULL,
-                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                INDEX idx_ai_usage_user (username),
-                                INDEX idx_ai_usage_time (created_at)
-                            )
-                        """)
-                    else:
-                        c.execute("""
-                            CREATE TABLE IF NOT EXISTS ai_usage_log (
-                                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                username TEXT NOT NULL,
-                                request_type TEXT NOT NULL,
-                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                            )
-                        """)
-                    c.execute(f"""
-                        INSERT INTO ai_usage_log (username, request_type, created_at)
-                        VALUES ({placeholder}, {placeholder}, {placeholder})
-                    """, (username, 'steve_reply', timestamp_db))
-                except Exception as create_err:
-                    logger.warning(f"Could not log AI usage: {create_err}")
+                logger.warning(f"Could not log AI usage: {log_err}")
             
             conn.commit()
             
@@ -30268,8 +30546,35 @@ def leave_community():
             # Invalidate dashboard cache so left community disappears immediately
             invalidate_user_cache(username)
             logger.info(f"Invalidated dashboard cache for {username} after leaving community")
-            
-        return jsonify({'success': True, 'message': 'Successfully left the community'})
+
+        # Enterprise seat lifecycle: close any active seat and offer winback
+        # if eligible. Best-effort — a lifecycle-hook error must not prevent
+        # the user from actually leaving the community.
+        winback_offer = None
+        try:
+            from backend.services import enterprise_membership as _em
+            from backend.services import enterprise_iap_nag as _nag
+            from backend.services import winback_promo as _winback
+            if _em.is_enterprise_community(int(community_id)):
+                _em.end_seat(
+                    username=username,
+                    community_id=int(community_id),
+                    end_reason="voluntary_leave",
+                    source="community_leave",
+                    actor_username=username,
+                )
+                try:
+                    _nag.acknowledge(username=username, community_id=int(community_id), actor=username)
+                except Exception:
+                    pass
+                try:
+                    winback_offer = _winback.issue_if_eligible(username, source="seat_end")
+                except Exception:
+                    logger.warning("[SEAT] winback offer failed (non-fatal)", exc_info=True)
+        except Exception:
+            logger.warning("[SEAT] end_seat hook failed (non-fatal)", exc_info=True)
+
+        return jsonify({'success': True, 'message': 'Successfully left the community', 'winback_offer': winback_offer})
         
     except Exception as e:
         logger.error(f"Error leaving community: {str(e)}")

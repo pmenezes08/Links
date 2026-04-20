@@ -15,6 +15,9 @@ import Settings from './pages/Settings'
 import FindAdmin from './pages/FindAdmin'
 import Tenants from './pages/Tenants'
 import UserProfiles from './pages/UserProfiles'
+import KnowledgeBase from './pages/KnowledgeBase'
+import Calculator from './pages/Calculator'
+import Enterprise from './pages/Enterprise'
 
 export default function App() {
   return (
@@ -34,6 +37,9 @@ export default function App() {
         <Route path="content-generation" element={<ContentGeneration />} />
         <Route path="settings" element={<Settings />} />
         <Route path="tenants" element={<Tenants />} />
+        <Route path="kb" element={<KnowledgeBase />} />
+        <Route path="calculator" element={<Calculator />} />
+        <Route path="enterprise" element={<Enterprise />} />
       </Route>
     </Routes>
   )

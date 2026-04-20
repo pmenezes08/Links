@@ -16,7 +16,7 @@ steps:
     args:
       - 'run'
       - 'deploy'
-      - 'cpoint-admin'
+      - 'cpoint-admin-staging'
       - '--image=gcr.io/$PROJECT_ID/cpoint-admin-staging:latest'
       - '--region=europe-west1'
       - '--platform=managed'

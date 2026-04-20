@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
+import ManageMembershipModal, { type MembershipTab } from '../components/membership/ManageMembershipModal'
 
 type ProfileData = {
   username: string
@@ -28,6 +29,24 @@ export default function AccountSettings(){
   const [message, setMessage] = useState<{type: 'success'|'error', text: string}|null>(null)
   const [showVerifyModal, setShowVerifyModal] = useState(false)
   const [notifStatus, setNotifStatus] = useState<'granted' | 'denied' | 'default' | 'loading'>('loading')
+  const [membershipTab, setMembershipTab] = useState<MembershipTab | null>(null)
+
+  const openMembership = useCallback((tab: MembershipTab = 'plan') => {
+    setMembershipTab(tab)
+  }, [])
+  const closeMembership = useCallback(() => setMembershipTab(null), [])
+
+  // Honor /account_settings/membership and /settings/membership with optional
+  // ?tab=ai|billing|payment|notifications|plan to open the modal directly.
+  useEffect(() => {
+    const path = window.location.pathname
+    if (!/membership/.test(path)) return
+    const params = new URLSearchParams(window.location.search)
+    const tab = params.get('tab') as MembershipTab | null
+    const allowed: MembershipTab[] = ['plan', 'ai', 'billing', 'payment', 'notifications']
+    const initial = tab && allowed.includes(tab) ? tab : 'plan'
+    setMembershipTab(initial)
+  }, [])
 
   const checkNotifPermission = useCallback(async () => {
     try {
@@ -292,11 +311,19 @@ export default function AccountSettings(){
               </div>
               <button
                 type="button"
-                onClick={() => navigate('/subscription_plans')}
+                onClick={() => openMembership('plan')}
                 className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-white hover:border-white/40"
               >
                 <i className="fa-regular fa-credit-card" />
-                Manage your subscription
+                Manage Membership
+              </button>
+              <button
+                type="button"
+                onClick={() => openMembership('ai')}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 px-4 py-2 text-xs font-medium text-white/80 hover:border-white/30"
+              >
+                <i className="fa-solid fa-robot" />
+                View AI usage
               </button>
             </div>
           </div>
@@ -419,6 +446,12 @@ export default function AccountSettings(){
           </div>
         )}
       </div>
+
+      <ManageMembershipModal
+        open={membershipTab !== null}
+        initialTab={membershipTab ?? 'plan'}
+        onClose={closeMembership}
+      />
     </div>
   )
 }

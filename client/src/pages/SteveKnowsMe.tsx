@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
+import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
 
 type SteveProfilePayload = {
   username: string
@@ -90,6 +91,7 @@ function visibleSectionKeys(analysis: Record<string, unknown>): string[] {
 export default function SteveKnowsMe() {
   const navigate = useNavigate()
   const { setTitle } = useHeader()
+  const entitlementsHandler = useEntitlementsHandler()
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<SteveProfilePayload | null>(null)
   const [meta, setMeta] = useState<{
@@ -227,7 +229,8 @@ export default function SteveKnowsMe() {
         credentials: 'include',
         headers: { Accept: 'application/json' },
       })
-      const d = await r.json().catch(() => null)
+      const d = await entitlementsHandler.handleResponse<{ success?: boolean; error?: string; message?: string }>(r)
+      if (!d) { await load(); return } // entitlements modal already shown
       if (r.status === 429) {
         setFeedback(d?.error || 'Please wait before asking again.')
         await load()

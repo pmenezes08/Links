@@ -21,6 +21,7 @@ import EditableAISummary from '../components/EditableAISummary'
 import { clearDeviceCache, readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 import { renderRichText } from '../utils/linkUtils'
 import { openExternalInApp } from '../utils/openExternalInApp'
+import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, reply_count?: number, view_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
@@ -52,6 +53,7 @@ export default function PostDetail(){
   const { post_id } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
+  const entitlementsHandler = useEntitlementsHandler()
   const [post, setPost] = useState<Post|null>(null)
   const [isGroupPost, setIsGroupPost] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -100,9 +102,11 @@ export default function PostDetail(){
         })
       })
       
-      const data = await response.json()
+      const data = await entitlementsHandler.handleResponse<{ success?: boolean; reply?: Reply; error?: string }>(response)
+      if (!data) return // entitlements modal already shown
       
       if (data.success && data.reply) {
+        const steveReply = data.reply as Reply
         // Add Steve's reply to the post
         setPost(p => {
           if (!p) return p
@@ -110,7 +114,7 @@ export default function PostDetail(){
             function attachSteve(list: Reply[]): Reply[] {
               return list.map(item => {
                 if (item.id === parentReplyId) {
-                  const children = item.children ? [data.reply, ...item.children] : [data.reply]
+                  const children = item.children ? [steveReply, ...item.children] : [steveReply]
                   return { ...item, children }
                 }
                 return { ...item, children: item.children ? attachSteve(item.children) : item.children }
@@ -118,7 +122,7 @@ export default function PostDetail(){
             }
             return { ...p, replies: attachSteve(p.replies) }
           }
-          return { ...p, replies: [data.reply, ...p.replies] }
+          return { ...p, replies: [steveReply, ...p.replies] }
         })
       } else if (!data.success) {
         console.error('[Steve AI] Error:', data.error)
@@ -271,14 +275,17 @@ export default function PostDetail(){
         credentials: 'include',
         headers: { 'Accept': 'application/json' }
       })
-      const data = await response.json()
-      
+      const data = await entitlementsHandler.handleResponse<{ success?: boolean; summary?: string; error?: string }>(response)
+      if (!data) {
+        setShowSummaryModal(false)
+        return
+      }
       if (data.success) {
-        setSummaryText(data.summary)
+        setSummaryText(data.summary || null)
       } else {
         setSummaryError(data.error || 'Failed to generate summary')
       }
-    } catch (err) {
+    } catch {
       setSummaryError('Network error. Please try again.')
     } finally {
       setSummaryLoading(false)

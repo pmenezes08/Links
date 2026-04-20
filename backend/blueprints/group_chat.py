@@ -15,6 +15,9 @@ from werkzeug.utils import secure_filename
 
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.media import save_uploaded_file
+from backend.services import ai_usage
+from backend.services.entitlements_gate import gate_or_reason
+from backend.services.feature_flags import entitlements_enforcement_enabled
 
 # Allowed extensions for chat uploads
 # Include HEIC/HEIF for iOS devices
@@ -1348,6 +1351,12 @@ def send_group_message(group_id: int):
     image_path = data.get("image_path", "").strip() or data.get("image", "").strip() or None
     # Support voice messages
     voice_path = data.get("voice", "").strip() or None
+    # Optional client-provided duration (seconds). Used for accurate
+    # Whisper-minute accounting; falls back to probe/estimate when absent.
+    try:
+        voice_duration_seconds = float(data.get("voice_duration_seconds") or 0) or None
+    except Exception:
+        voice_duration_seconds = None
     # Support video messages
     video_path = data.get("video_path", "").strip() or data.get("video", "").strip() or None
     
@@ -1361,7 +1370,12 @@ def send_group_message(group_id: int):
             # Import the audio processing function from main app
             from bodybuilding_app import process_audio_for_summary
             logger.info(f"Generating AI summary for group voice note: {voice_path}")
-            audio_summary = process_audio_for_summary(voice_path, username=username)
+            audio_summary = process_audio_for_summary(
+                voice_path,
+                username=username,
+                duration_seconds=voice_duration_seconds,
+                community_id=None,  # group_chat is not a community feed
+            )
             if audio_summary:
                 logger.info(f"AI summary generated for group chat: {audio_summary[:100]}...")
         except Exception as e:
@@ -2639,6 +2653,51 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         except Exception as remember_err:
             logger.error(f"Error unsuppressing topic for Steve: {remember_err}")
     
+    # ── Entitlements gate: before any LLM spend, check the caller's caps. ──
+    # Always resolves so we capture the metric; only blocks when enforcement
+    # is flipped on in the environment.
+    _ent_allowed, _ent_reason, _ent = gate_or_reason(sender_username, ai_usage.SURFACE_GROUP)
+    if not _ent_allowed and entitlements_enforcement_enabled():
+        try:
+            from backend.services import entitlements_errors as _errs
+            from datetime import datetime as _dt
+            now_iso = _dt.now().isoformat()
+            if _ent_reason == _errs.REASON_PREMIUM_REQUIRED:
+                blocked_text = (
+                    f"@{sender_username} Steve is a Premium feature. "
+                    "Upgrade in Settings → Manage Membership to keep chatting with me here."
+                )
+            elif _ent_reason == _errs.REASON_DAILY_CAP:
+                blocked_text = (
+                    f"@{sender_username} you've hit today's Steve limit. "
+                    "It resets at midnight UTC — see Settings → AI Usage."
+                )
+            else:
+                blocked_text = (
+                    f"@{sender_username} you've used up your Steve calls for this month. "
+                    "See Settings → AI Usage for details."
+                )
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                c.execute(
+                    f"INSERT INTO group_chat_messages (group_id, sender_username, message_text, created_at) VALUES ({ph}, {ph}, {ph}, {ph})",
+                    (group_id, AI_USERNAME, blocked_text, now_iso),
+                )
+                steve_msg_id = c.lastrowid
+                c.execute(f"UPDATE group_chats SET updated_at = {ph} WHERE id = {ph}", (now_iso, group_id))
+                conn.commit()
+                try:
+                    from backend.services.firestore_writes import write_group_chat_message
+                    write_group_chat_message(group_id=group_id, message_id=steve_msg_id, sender=AI_USERNAME, text=blocked_text)
+                except Exception:
+                    pass
+            if group_id in _steve_typing_status:
+                del _steve_typing_status[group_id]
+        except Exception as block_err:
+            logger.warning("Could not post entitlements-blocked Steve notice: %s", block_err)
+        return
+
     current_date = datetime.now().strftime('%A, %B %d, %Y at %H:%M UTC')
     
     try:
@@ -2922,6 +2981,20 @@ RESPONSE FORMAT:
         )
         
         try:
+            # Apply entitlement caps resolved earlier in this function.
+            _max_out = 1500
+            _max_imgs = len(image_urls) if image_urls else 0
+            try:
+                if _ent:
+                    if isinstance(_ent.get("max_output_tokens_group"), int):
+                        _max_out = min(_max_out, int(_ent["max_output_tokens_group"]))
+                    if isinstance(_ent.get("max_images_per_turn"), int):
+                        _max_imgs = min(_max_imgs, int(_ent["max_images_per_turn"]))
+            except Exception:
+                pass
+            if image_urls and _max_imgs < len(image_urls):
+                image_urls = image_urls[:_max_imgs]
+
             # Build user input — attach images if available
             if image_urls:
                 user_content = [{"type": "input_text", "text": context}]
@@ -2942,7 +3015,7 @@ RESPONSE FORMAT:
                     {"type": "web_search"},
                     {"type": "x_search"}
                 ],
-                max_output_tokens=1500
+                max_output_tokens=_max_out
             )
             
             ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
@@ -2996,7 +3069,19 @@ RESPONSE FORMAT:
             logger.info(f"Steve replied to group {group_id} with message ID {steve_message_id}")
             
             conn.commit()
-            
+
+        # Log a successful Steve group call against the sender's allowance.
+        try:
+            ai_usage.log_usage(
+                sender_username,
+                surface=ai_usage.SURFACE_GROUP,
+                request_type='steve_group_reply',
+                model='grok-4-1-fast-reasoning',
+                community_id=None,
+            )
+        except Exception:
+            pass
+
     except Exception as e:
         # Clear typing indicator on error too
         if group_id in _steve_typing_status:
