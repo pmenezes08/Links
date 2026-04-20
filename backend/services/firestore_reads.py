@@ -140,10 +140,17 @@ def get_dm_messages(username: str, peer: str, since_id: int = None, before_id: i
         raise
 
 
-def get_group_chat_messages(group_id: int, username: str, before_id: int = None, limit: int = 50):
+def get_group_chat_messages(
+    group_id: int,
+    username: str,
+    before_id: int = None,
+    limit: int = 50,
+    min_id_exclusive: int = 0,
+):
     """
     Read group chat messages from Firestore with pagination.
     Returns messages list matching /api/group_chat/{id}/messages response format.
+    min_id_exclusive: hide messages with id <= this (per-user clear history; MySQL source of truth).
     """
     try:
         fs = _get_client()
@@ -170,6 +177,8 @@ def get_group_chat_messages(group_id: int, username: str, before_id: int = None,
         for doc in docs:
             d = doc.to_dict()
             mid = int(doc.id) if doc.id.isdigit() else d.get('mysql_id', 0)
+            if min_id_exclusive and mid <= min_id_exclusive:
+                continue
             messages.append({
                 'id': mid,
                 'sender': d.get('sender', ''),

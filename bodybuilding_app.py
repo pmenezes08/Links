@@ -17591,9 +17591,16 @@ def api_chat_threads():
                         profile_username = profile_row['username'] if hasattr(profile_row, 'keys') else profile_row[0]
                         display_name = profile_row['display_name'] if hasattr(profile_row, 'keys') else profile_row[1]
                         profile_picture_rel = profile_row['profile_picture'] if hasattr(profile_row, 'keys') else profile_row[2]
+                        pic_url = None
+                        if profile_picture_rel:
+                            pr = str(profile_picture_rel).strip()
+                            if pr.startswith('http://') or pr.startswith('https://'):
+                                pic_url = pr
+                            else:
+                                pic_url = url_for('static', filename=pr)
                         profile_map[profile_username] = {
                             'display_name': display_name,
-                            'profile_picture_url': url_for('static', filename=profile_picture_rel) if profile_picture_rel else None,
+                            'profile_picture_url': pic_url,
                         }
                 except Exception as profile_err:
                     logger.warning(f"Could not batch fetch chat thread profiles: {profile_err}")
@@ -17611,31 +17618,58 @@ def api_chat_threads():
                     if other_username in blocked_set:
                         continue
 
-                    # Last message in either direction (preview)
+                    # Last message in either direction (preview) — after clear, only messages newer than deleted_at
+                    del_at_for_preview = deleted_threads.get(other_username) if other_username in deleted_threads else None
                     # Include is_encrypted to handle encrypted messages
                     try:
-                        c.execute(
-                            """
-                            SELECT message, timestamp, sender, is_encrypted
-                            FROM messages
-                            WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)
-                            ORDER BY timestamp DESC
-                            LIMIT 1
-                            """,
-                            (username, other_username, other_username, username),
-                        )
+                        if del_at_for_preview:
+                            c.execute(
+                                """
+                                SELECT message, timestamp, sender, is_encrypted
+                                FROM messages
+                                WHERE ((sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?))
+                                  AND timestamp > ?
+                                ORDER BY timestamp DESC
+                                LIMIT 1
+                                """,
+                                (username, other_username, other_username, username, del_at_for_preview),
+                            )
+                        else:
+                            c.execute(
+                                """
+                                SELECT message, timestamp, sender, is_encrypted
+                                FROM messages
+                                WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)
+                                ORDER BY timestamp DESC
+                                LIMIT 1
+                                """,
+                                (username, other_username, other_username, username),
+                            )
                     except Exception:
                         # Fallback if is_encrypted column doesn't exist
-                        c.execute(
-                            """
-                            SELECT message, timestamp, sender
-                            FROM messages
-                            WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)
-                            ORDER BY timestamp DESC
-                            LIMIT 1
-                            """,
-                            (username, other_username, other_username, username),
-                        )
+                        if del_at_for_preview:
+                            c.execute(
+                                """
+                                SELECT message, timestamp, sender
+                                FROM messages
+                                WHERE ((sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?))
+                                  AND timestamp > ?
+                                ORDER BY timestamp DESC
+                                LIMIT 1
+                                """,
+                                (username, other_username, other_username, username, del_at_for_preview),
+                            )
+                        else:
+                            c.execute(
+                                """
+                                SELECT message, timestamp, sender
+                                FROM messages
+                                WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)
+                                ORDER BY timestamp DESC
+                                LIMIT 1
+                                """,
+                                (username, other_username, other_username, username),
+                            )
                     last_row = c.fetchone()
                     last_message_text = None
                     last_activity_time = None
@@ -17657,26 +17691,16 @@ def api_chat_threads():
                     if is_encrypted and not last_message_text:
                         last_message_text = '🔒 Encrypted message'
 
-                    # Unread count for this thread (messages sent by other -> me)
-                    c.execute("SELECT COUNT(*) as count FROM messages WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
+                    # Unread count for this thread (messages sent by other -> me, after clear only)
+                    if del_at_for_preview:
+                        c.execute(
+                            "SELECT COUNT(*) as count FROM messages WHERE sender=? AND receiver=? AND is_read=0 AND timestamp > ?",
+                            (other_username, username, del_at_for_preview),
+                        )
+                    else:
+                        c.execute("SELECT COUNT(*) as count FROM messages WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
                     unread_row = c.fetchone()
                     unread_count = unread_row['count'] if hasattr(unread_row, 'keys') else (unread_row[0] if unread_row else 0)
-
-                    # WhatsApp-style delete: hide if no new activity since delete
-                    if other_username in deleted_threads:
-                        del_at_str = deleted_threads[other_username]
-                        if del_at_str:
-                            try:
-                                from datetime import datetime as _dt
-                                del_dt = _dt.strptime(str(del_at_str)[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
-                                if last_activity_time:
-                                    act_dt = _dt.strptime(str(last_activity_time)[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
-                                    if act_dt <= del_dt:
-                                        continue
-                                else:
-                                    continue
-                            except Exception:
-                                continue
 
                     profile = profile_map.get(other_username) or {}
                     display_name = profile.get('display_name') or other_username

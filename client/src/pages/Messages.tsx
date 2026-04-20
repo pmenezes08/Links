@@ -1193,6 +1193,7 @@ export default function Messages(){
               <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={async () => {
                 await fetch('/api/chat/clear_history', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ other_username: chatMoreTarget.username }) }).catch(() => {})
                 setChatMoreTarget(null)
+                loadThreads(true)
               }}>
                 <i className="fa-solid fa-broom text-white/60 w-6 text-center" />
                 Clear Chat
@@ -1211,6 +1212,7 @@ export default function Messages(){
               <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={async () => {
                 await fetch(`/api/group_chat/${chatMoreTarget.groupId}/clear_history`, { method: 'POST', credentials: 'include' }).catch(() => {})
                 setChatMoreTarget(null)
+                loadGroupChats(true)
               }}>
                 <i className="fa-solid fa-broom text-white/60 w-6 text-center" />
                 Clear Chat
