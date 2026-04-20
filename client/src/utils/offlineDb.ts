@@ -186,6 +186,17 @@ export async function getCachedConversations(): Promise<unknown[] | null> {
   }
 }
 
+/** Remove one DM thread row from IndexedDB (e.g. after clear chat so preview cannot stay stale). */
+export async function deleteCachedConversationRow(username: string): Promise<void> {
+  if (!username) return
+  try {
+    const db = await getDb()
+    await db.delete('conversations', username)
+  } catch {
+    /* ignore */
+  }
+}
+
 // ---------- Community feed ----------
 
 export async function cacheFeed(communityId: string, feedData: unknown): Promise<void> {
