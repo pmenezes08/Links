@@ -1373,7 +1373,12 @@ export default function CommentReply() {
               <button
                 type="button"
                 className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac] text-white"
-                onClick={() => stopRec()}
+                onClick={async () => {
+                  const p = await stopRec()
+                  if (!p?.blob?.size) {
+                    alert('Could not capture audio. Try recording for at least one second.')
+                  }
+                }}
                 aria-label="Stop recording"
               >
                 <i className="fa-solid fa-stop text-sm" />

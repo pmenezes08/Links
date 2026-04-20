@@ -31,6 +31,18 @@ export default function CreatePost(){
   const [submitting, setSubmitting] = useState(false)
   const [mediaCarouselIndex, setMediaCarouselIndex] = useState(0)
   const { recording, preview, start, stop, clearPreview, ensurePreview, level, recordMs } = useAudioRecorder() as any
+
+  const handleMicButton = () => {
+    if (recording) {
+      void stop().then((p: { blob?: Blob } | null) => {
+        if (!p?.blob?.size) {
+          alert('Could not capture audio. Try recording a bit longer, then tap stop again.')
+        }
+      })
+    } else {
+      void start()
+    }
+  }
   const [showPraise, setShowPraise] = useState(false)
   const [detectedLinks, setDetectedLinks] = useState<DetectedLink[]>([])
   /** Shared links (e.g. share extension) — stored separately from caption, not merged into body text. */
@@ -755,7 +767,7 @@ export default function CreatePost(){
             >
               <i className="fa-solid fa-images" />
             </button>
-            <button className={`px-3 py-2 rounded-full text-[#4db6ac] hover:bg-white/5 ${recording ? 'brightness-125' : ''}`} aria-label={recording ? "Stop recording" : "Record audio"} onClick={()=> recording ? stop() : start()}>
+            <button className={`px-3 py-2 rounded-full text-[#4db6ac] hover:bg-white/5 ${recording ? 'brightness-125' : ''}`} aria-label={recording ? "Stop recording" : "Record audio"} onClick={handleMicButton}>
               <i className={`fa-solid ${recording ? 'fa-stop' : 'fa-microphone'}`} />
             </button>
             {preview && (
