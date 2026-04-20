@@ -49,6 +49,15 @@ def get_db_connection():
         user = os.environ.get("MYSQL_USER")
         password = os.environ.get("MYSQL_PASSWORD")
         database = os.environ.get("MYSQL_DB")
+        # Port is optional — defaults to MySQL's standard 3306 when unset,
+        # which matches Cloud SQL via the Auth Proxy and most managed MySQL
+        # deployments. Honouring MYSQL_PORT lets CI (testcontainers maps
+        # MySQL to a random host port) and any future non-standard
+        # deployment target work without code changes.
+        try:
+            port = int(os.environ.get("MYSQL_PORT", "3306"))
+        except ValueError:
+            raise RuntimeError("MYSQL_PORT must be an integer if set")
         if not all([host, user, password, database]):
             raise RuntimeError("Missing MySQL env vars: MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DB")
 
@@ -57,6 +66,7 @@ def get_db_connection():
             try:
                 conn = pymysql.connect(
                     host=host,
+                    port=port,
                     user=user,
                     password=password,
                     database=database,
