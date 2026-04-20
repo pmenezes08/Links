@@ -61,6 +61,13 @@ jobs:
           # library emits on teardown. These are non-fatal but clutter
           # CI logs.
           PYTHONWARNINGS: 'ignore::DeprecationWarning,ignore::ResourceWarning'
+          # Without a pyproject.toml / pytest.ini, pytest 7+ only adds
+          # ``tests/`` (the rootdir of test collection) to sys.path —
+          # imports like ``from backend.services...`` fail with
+          # ``ModuleNotFoundError: No module named 'backend'``. Pinning
+          # PYTHONPATH to the workspace root fixes this without forcing
+          # an unrelated ``pyproject.toml`` on the monolith.
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           pytest tests/test_ai_usage_counters.py tests/test_entitlements_resolve.py \
             -v --tb=short --maxfail=5
