@@ -13989,7 +13989,7 @@ def get_messages():
                                 cached_messages = [m for m in cached_messages if m.get('time') and _dt.strptime(str(m['time'])[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S') > _del_dt]
                 except Exception:
                     pass
-                return jsonify({'success': True, 'messages': cached_messages})
+                return jsonify({'success': True, 'messages': cached_messages, 'has_more': False})
     
     # --- Firestore dual-read (feature flag) ---
     try:
@@ -14036,20 +14036,8 @@ def get_messages():
                                     messages = [m for m in messages if m.get('time') and _dt.strptime(str(m['time'])[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S') > _del_dt2]
                     except Exception:
                         pass
-                    # WhatsApp-style delete: filter Firestore messages by deleted_at
-                    try:
-                        with get_db_connection() as _dfc:
-                            _dfcc = _dfc.cursor()
-                            _dfcc.execute("SELECT deleted_at FROM deleted_chat_threads WHERE username = ? AND other_username = ?", (username, peer_username))
-                            _dfr = _dfcc.fetchone()
-                            if _dfr:
-                                _dfa = str(_dfr['deleted_at'] if hasattr(_dfr, 'keys') else _dfr[0])
-                                if _dfa:
-                                    from datetime import datetime as _dt
-                                    _del_dt = _dt.strptime(_dfa[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
-                                    messages = [m for m in messages if m.get('time') and _dt.strptime(str(m['time'])[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S') > _del_dt]
-                    except Exception:
-                        pass
+                    if not messages:
+                        has_more = False
                     return jsonify({'success': True, 'messages': messages, 'is_delta': is_delta, 'has_more': has_more})
     except Exception as fs_err:
         logger.warning(f"Firestore DM read failed, falling back to MySQL: {fs_err}")
@@ -14285,8 +14273,8 @@ def get_messages():
             except Exception:
                 pass
             
-            # Include delta indicator in response for client-side optimization
-            return jsonify({'success': True, 'messages': messages, 'is_delta': bool(since_id_int)})
+            # Include delta indicator and pagination hint (MySQL path loads full thread; older pages use Firestore)
+            return jsonify({'success': True, 'messages': messages, 'is_delta': bool(since_id_int), 'has_more': False})
             
     except Exception as e:
         logger.error(f"Error fetching messages: {str(e)}")
@@ -17691,6 +17679,14 @@ def api_chat_threads():
                     if is_encrypted and not last_message_text:
                         last_message_text = '🔒 Encrypted message'
 
+                    # After clear there may be no visible preview; use clear time for sort so the thread stays near the top
+                    if del_at_for_preview and not last_activity_time:
+                        da = str(del_at_for_preview).strip()
+                        if len(da) >= 19:
+                            last_activity_time = da[:10] + 'T' + da[11:19] + 'Z'
+                        else:
+                            last_activity_time = da
+
                     # Unread count for this thread (messages sent by other -> me, after clear only)
                     if del_at_for_preview:
                         c.execute(
@@ -17932,9 +17928,12 @@ def clear_chat_history():
                 c.execute(f"INSERT INTO deleted_chat_threads (username, other_username, deleted_at) VALUES ({ph},{ph},datetime('now')) ON CONFLICT(username, other_username) DO UPDATE SET deleted_at=datetime('now')", (username, other_username))
             conn.commit()
             try:
-                cache.delete(f"chat_threads:{username}")
+                invalidate_message_cache(username, other_username)
             except Exception:
-                pass
+                try:
+                    cache.delete(f"chat_threads:{username}")
+                except Exception:
+                    pass
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"clear_chat_history error: {e}")

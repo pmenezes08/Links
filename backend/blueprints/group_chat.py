@@ -1896,6 +1896,11 @@ def clear_group_chat_history(group_id: int):
                     """,
                     (group_id, username, max_id, now, max_id),
                 )
+            # Bump sort time so the group stays near the top of the list after a clear (same UX as DM threads)
+            if USE_MYSQL:
+                c.execute(f"UPDATE group_chats SET updated_at = NOW() WHERE id = {ph}", (group_id,))
+            else:
+                c.execute(f"UPDATE group_chats SET updated_at = {ph} WHERE id = {ph}", (now, group_id))
             conn.commit()
             return jsonify({"success": True})
     except Exception as e:

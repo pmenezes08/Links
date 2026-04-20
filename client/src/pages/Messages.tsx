@@ -5,8 +5,8 @@ import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ParentCommunityPicker from '../components/ParentCommunityPicker'
 import GroupChatCreator from '../components/GroupChatCreator'
-import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
-import { cacheConversations, getCachedConversations, cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
+import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
+import { cacheConversations, getCachedConversations, cacheKeyVal, getCachedKeyVal, clearConversationMessages } from '../utils/offlineDb'
 
 type Thread = {
   other_username: string
@@ -1191,8 +1191,15 @@ export default function Messages(){
             )}
             {chatMoreTarget.type === 'dm' && (
               <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={async () => {
-                await fetch('/api/chat/clear_history', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ other_username: chatMoreTarget.username }) }).catch(() => {})
+                const u = chatMoreTarget.username
+                await fetch('/api/chat/clear_history', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ other_username: u }) }).catch(() => {})
                 setChatMoreTarget(null)
+                if (u) {
+                  clearDeviceCache(`chat-messages:${u}`)
+                  clearDeviceCache(`chat-profile:${u}`)
+                  clearDeviceCache(THREADS_CACHE_KEY)
+                  void clearConversationMessages(`dm:${u}`)
+                }
                 loadThreads(true)
               }}>
                 <i className="fa-solid fa-broom text-white/60 w-6 text-center" />
