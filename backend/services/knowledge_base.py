@@ -472,7 +472,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 # Free
                 {"name": "free_steve_access", "label": "Steve access", "type": "boolean", "value": False, "group": "free"},
                 {"name": "free_communities_max", "label": "Max communities owned", "type": "integer", "value": 5, "group": "free"},
-                {"name": "free_members_per_owned_community", "label": "Members per owned community", "type": "integer", "value": 50, "group": "free"},
+                {"name": "free_members_per_owned_community", "label": "Members per owned community", "type": "integer", "value": 25, "group": "free"},
                 {"name": "free_voice_post_summaries", "label": "Voice / post summaries", "type": "boolean", "value": False, "group": "free"},
                 {"name": "free_trial_on_signup", "label": "Auto-trial on signup", "type": "boolean", "value": True,
                  "help": "Every new user gets a 30-day Trial. Settings below.", "group": "free"},

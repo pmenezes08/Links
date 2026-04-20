@@ -7,11 +7,12 @@ Each section maps 1:1 to a row on the **KB → Audit → Tests** page with
 `runner = manual`, so after running each step you can go mark it
 successful or unsuccessful from the admin-web.
 
-> **How to use this**: run through sections §1–§9 after any deploy
+> **How to use this**: run through sections §1–§10 after any deploy
 > that touches Steve, Whisper, entitlements, or the enterprise seat
-> lifecycle. A full pass takes ~25 minutes. File any failing step as
-> a GitHub issue and flip the corresponding Tests-page row to
-> `unsuccessful` so the product-roadmap pills show red.
+> lifecycle. A full pass takes ~25 minutes (plus ~90 seconds for the
+> §10 automated harness). File any failing step as a GitHub issue
+> and flip the corresponding Tests-page row to `unsuccessful` so the
+> product-roadmap pills show red.
 
 ---
 
@@ -144,6 +145,42 @@ Uses `test_doublepay` (has personal Premium) to verify the IAP nag.
 - [ ] As `test_premium`, verify Manage Membership → AI Usage now shows
       `0 / 50` (not `0 / 100`).
 - [ ] Revert the edit back to 100.
+
+## §10 — Free-tier community & member caps
+
+Locks the April-2026 bug where Free users were capped at 100 members /
+2 communities regardless of what the KB said.
+
+**Automated harness:** most of this section is already covered by
+`scripts/run_qa_verification.py` (24 checks for §8, 4 checks for the
+26-member block, 5 checks for Scope A). Run it before falling back to
+the manual UI steps below:
+
+```powershell
+$env:MYSQL_PASSWORD = (gcloud secrets versions access latest --secret=mysql-password)
+$env:MYSQL_HOST = "34.78.168.84"; $env:MYSQL_USER = "app_user"; $env:MYSQL_DB = "cpoint"
+python scripts/run_qa_verification.py
+```
+
+Expected: `36 PASS, 0 FAIL` against a healthy staging DB.
+
+**Manual UI verification (do one of these per release):**
+
+- [ ] As `test_free`, create 5 communities — the 5th must succeed.
+- [ ] As `test_free`, attempt to create a 6th community — the client
+      must show "Free plan can create up to 5 communities" and the API
+      must return a 4xx (not 500).
+- [ ] Pick any Free-owned community and add 25 members (the seed
+      script already does this via synthetic users; otherwise invite
+      25 real testers). The 25th must succeed.
+- [ ] Attempt to add a 26th member — client shows
+      `"Free plan communities can have up to 25 members. Upgrade to
+      add more members."` and API returns a 4xx.
+- [ ] In admin-web, edit `Product → User Tiers` and change
+      `free_members_per_owned_community` from 25 → 30. Save with a
+      reason. Re-run `scripts/run_qa_verification.py` and confirm the
+      `[PASS] test_free: members_per_owned_community — got=30` line.
+      Revert the edit when done.
 
 ---
 

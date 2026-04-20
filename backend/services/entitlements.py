@@ -88,7 +88,11 @@ _DEFAULTS: Dict[str, Any] = {
     # (``free_members_per_owned_community`` / ``premium_members_per_owned_community``);
     # Trial inherits the Free cap (documented policy — trial communities that
     # overshoot Free limits lock read-only on trial lapse).
-    "free_members_per_owned_community": 50,
+    #
+    # Free cap is intentionally conservative (25) to anchor the value proposition
+    # for upgrading to Premium; Premium's 50 is the current business call and
+    # can be raised via the KB user-tiers page without a redeploy.
+    "free_members_per_owned_community": 25,
     "premium_members_per_owned_community": 50,
     # Legacy generic key preserved for any caller still reading it; new code
     # should use the tier-specific keys above.
