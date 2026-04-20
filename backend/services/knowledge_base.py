@@ -1518,6 +1518,15 @@ def _seed_pages() -> List[Dict[str, Any]]:
                             "last_run_at": "", "last_run_by": "", "last_run_notes": "",
                         },
                         {
+                            "id": "entitlements:per_tier_member_caps",
+                            "feature": "User Tiers — per-tier community & member caps",
+                            "behaviour": "resolve_entitlements() reads free_/premium_members_per_owned_community from the KB and applies them per tier (Trial inherits Free; Special is unlimited). Locks the bug where Free users were capped at 100 members / 2 communities regardless of KB.",
+                            "runner": "pytest",
+                            "target": "tests/test_entitlements_resolve.py::TestPerTierMemberCaps",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
                             "id": "staging:webhooks_not_401",
                             "feature": "Stripe / Apple / Google webhooks",
                             "behaviour": "Webhook endpoints reject unsigned requests with 400 (not 401 from session middleware).",
