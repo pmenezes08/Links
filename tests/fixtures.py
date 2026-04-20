@@ -151,28 +151,59 @@ def seed_kb(pages: Optional[Iterable[Dict[str, Any]]] = None) -> Dict[str, int]:
     ph = get_sql_placeholder()
     now = _now_str()
     inserted = 0
+    # Upsert semantics — tests frequently chain ``kb_override_field`` +
+    # ``seed_kb`` on the same slug (e.g. override a scalar cap, then
+    # replace the page with a richer one). MySQL gives us
+    # ``INSERT ... ON DUPLICATE KEY UPDATE``; SQLite uses
+    # ``INSERT OR REPLACE``. Both preserve the PK on conflict.
     with get_db_connection() as conn:
         c = conn.cursor()
         for seed in pages:
-            c.execute(
-                f"""
-                INSERT INTO kb_pages
-                    (slug, title, category, icon, description, sort_order,
-                     fields_json, field_groups_json, body_markdown,
-                     version, updated_by, created_at, updated_at)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph},
-                        1, {ph}, {ph}, {ph})
-                """,
-                (
-                    seed["slug"], seed.get("title") or seed["slug"],
-                    seed.get("category") or "reference", seed.get("icon"),
-                    seed.get("description"), seed.get("sort_order", 0),
-                    json.dumps(seed.get("fields") or []),
-                    json.dumps(seed.get("field_groups") or []),
-                    seed.get("body") or "",
-                    "test-fixture", now, now,
-                ),
+            params = (
+                seed["slug"], seed.get("title") or seed["slug"],
+                seed.get("category") or "reference", seed.get("icon"),
+                seed.get("description"), seed.get("sort_order", 0),
+                json.dumps(seed.get("fields") or []),
+                json.dumps(seed.get("field_groups") or []),
+                seed.get("body") or "",
+                "test-fixture", now, now,
             )
+            if ph == "%s":  # MySQL
+                c.execute(
+                    f"""
+                    INSERT INTO kb_pages
+                        (slug, title, category, icon, description, sort_order,
+                         fields_json, field_groups_json, body_markdown,
+                         version, updated_by, created_at, updated_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph},
+                            1, {ph}, {ph}, {ph})
+                    ON DUPLICATE KEY UPDATE
+                        title=VALUES(title),
+                        category=VALUES(category),
+                        icon=VALUES(icon),
+                        description=VALUES(description),
+                        sort_order=VALUES(sort_order),
+                        fields_json=VALUES(fields_json),
+                        field_groups_json=VALUES(field_groups_json),
+                        body_markdown=VALUES(body_markdown),
+                        version=version+1,
+                        updated_by=VALUES(updated_by),
+                        updated_at=VALUES(updated_at)
+                    """,
+                    params,
+                )
+            else:  # SQLite
+                c.execute(
+                    f"""
+                    INSERT OR REPLACE INTO kb_pages
+                        (slug, title, category, icon, description, sort_order,
+                         fields_json, field_groups_json, body_markdown,
+                         version, updated_by, created_at, updated_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph},
+                            1, {ph}, {ph}, {ph})
+                    """,
+                    params,
+                )
             inserted += 1
         try:
             conn.commit()
