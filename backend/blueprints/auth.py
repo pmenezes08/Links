@@ -29,6 +29,11 @@ from flask import (
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from backend.services.native_push import associate_install_tokens_with_user
+from backend.services import disposable_email
+from backend.services.email_normalization import (
+    canonicalize_with_policy,
+    is_well_formed as _email_is_well_formed,
+)
 
 
 auth_bp = Blueprint("auth", __name__)
@@ -312,12 +317,28 @@ def signup():
         return _react_error("Passwords do not match")
     if len(password) < 6:
         return _react_error("Password must be at least 6 characters long")
+    if not _email_is_well_formed(email):
+        return _react_error("Please enter a valid email address")
+    if disposable_email.should_block(email):
+        logger.info("Blocked signup from disposable domain: %s", email)
+        return _react_error(
+            "This email provider isn't supported. Please use a permanent "
+            "email address (not a disposable / temporary one)."
+        )
+    canonical = canonicalize_with_policy(email)
 
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
 
-            c.execute("SELECT 1 FROM users WHERE email = ?", (email,))
+            # Uniqueness is enforced on canonical_email (post-
+            # normalization form). We OR with raw email to catch rows
+            # created before the canonical_email column existed — they
+            # still have NULL there but their raw email collides.
+            c.execute(
+                "SELECT 1 FROM users WHERE canonical_email = ? OR email = ?",
+                (canonical, email),
+            )
             if c.fetchone():
                 return _react_error("Email already registered")
 
@@ -363,10 +384,10 @@ def signup():
 
                     c.execute(
                         """
-                        INSERT INTO users (username, first_name, last_name, email, mobile, password, subscription, email_verified, email_verified_at)
-                        VALUES (?, ?, ?, ?, ?, ?, 'free', 1, ?)
+                        INSERT INTO users (username, first_name, last_name, email, canonical_email, mobile, password, subscription, email_verified, email_verified_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 'free', 1, ?)
                         """,
-                        (username, first_name, last_name, email, mobile, hashed_password, datetime.now().isoformat()),
+                        (username, first_name, last_name, email, canonical, mobile, hashed_password, datetime.now().isoformat()),
                     )
 
                     c.execute("SELECT id FROM users WHERE username = ?", (username,))

@@ -82,13 +82,15 @@ def build_steve_profiling_firestore_payloads(
             c.execute(
                 f"""
                 SELECT p.id, p.content, p.timestamp, p.image_path, p.video_path, p.audio_path,
-                       c.name AS community_name
+                       p.audio_summary, c.name AS community_name
                 FROM posts p
                 LEFT JOIN communities c ON p.community_id = c.id
                 WHERE p.username = {ph}
-                  AND p.content IS NOT NULL
-                  AND TRIM(p.content) != ''
                   AND p.timestamp >= {ph}
+                  AND (
+                    (p.content IS NOT NULL AND TRIM(p.content) != '')
+                    OR (p.audio_summary IS NOT NULL AND TRIM(p.audio_summary) != '')
+                  )
                 ORDER BY p.timestamp DESC
                 LIMIT {int(post_limit)}
                 """,
@@ -106,16 +108,24 @@ def build_steve_profiling_firestore_payloads(
                         "image_path",
                         "video_path",
                         "audio_path",
+                        "audio_summary",
                         "community_name",
                     ],
                 )
                 content = (post.get("content") or "").strip()
+                audio_summary = (post.get("audio_summary") or "").strip()
+                snippet_parts = []
+                if content:
+                    snippet_parts.append(content[:250])
+                if audio_summary:
+                    snippet_parts.append(f"[Voice note] {audio_summary[:220]}")
+                snippet = " ".join(snippet_parts).strip()[:300]
                 urls = URL_PATTERN.findall(content)
                 base = {
                     "postId": post.get("id"),
                     "date": _safe_date(post.get("timestamp")),
                     "community": post.get("community_name") or "",
-                    "userCaption": content[:500],
+                    "userCaption": (content[:500] if content else (audio_summary[:500] if audio_summary else "")),
                     "hasMedia": bool(
                         post.get("image_path")
                         or post.get("video_path")
@@ -131,45 +141,104 @@ def build_steve_profiling_firestore_payloads(
                             "signal": "third_party_share",
                         }
                     )
-                else:
+                elif snippet:
                     authored_posts.append(
                         {
                             "postId": post.get("id"),
-                            "snippet": content[:250],
+                            "snippet": snippet,
                             "date": _safe_date(post.get("timestamp")),
                             "community": post.get("community_name") or "",
                             "hasMedia": base["hasMedia"],
                         }
                     )
 
-            c.execute(
-                f"""
-                SELECT r.id, r.post_id, r.content, r.timestamp, c.name AS community_name,
-                       SUBSTRING(p.content, 1, 120) AS parent_snippet
-                FROM replies r
-                LEFT JOIN posts p ON r.post_id = p.id
-                LEFT JOIN communities c ON r.community_id = c.id
-                WHERE r.username = {ph}
-                  AND r.content IS NOT NULL
-                  AND TRIM(r.content) != ''
-                  AND r.timestamp >= {ph}
-                ORDER BY r.timestamp DESC
-                LIMIT {int(reply_limit)}
-                """,
-                (username, cutoff_dt),
-            )
-            raw_replies = c.fetchall()
+            raw_replies = []
+            replies_include_audio_summary = True
+            try:
+                c.execute(
+                    f"""
+                    SELECT r.id, r.post_id, r.content, r.timestamp, c.name AS community_name,
+                           SUBSTRING(p.content, 1, 120) AS parent_snippet,
+                           r.audio_summary
+                    FROM replies r
+                    LEFT JOIN posts p ON r.post_id = p.id
+                    LEFT JOIN communities c ON r.community_id = c.id
+                    WHERE r.username = {ph}
+                      AND r.timestamp >= {ph}
+                      AND (
+                        (r.content IS NOT NULL AND TRIM(r.content) != '')
+                        OR (r.audio_summary IS NOT NULL AND TRIM(r.audio_summary) != '')
+                      )
+                    ORDER BY r.timestamp DESC
+                    LIMIT {int(reply_limit)}
+                    """,
+                    (username, cutoff_dt),
+                )
+                raw_replies = c.fetchall() or []
+            except Exception as rep_q_err:
+                logger.debug(
+                    "replies profiling query without audio_summary column: %s",
+                    rep_q_err,
+                )
+                replies_include_audio_summary = False
+                c.execute(
+                    f"""
+                    SELECT r.id, r.post_id, r.content, r.timestamp, c.name AS community_name,
+                           SUBSTRING(p.content, 1, 120) AS parent_snippet
+                    FROM replies r
+                    LEFT JOIN posts p ON r.post_id = p.id
+                    LEFT JOIN communities c ON r.community_id = c.id
+                    WHERE r.username = {ph}
+                      AND r.content IS NOT NULL
+                      AND TRIM(r.content) != ''
+                      AND r.timestamp >= {ph}
+                    ORDER BY r.timestamp DESC
+                    LIMIT {int(reply_limit)}
+                    """,
+                    (username, cutoff_dt),
+                )
+                raw_replies = c.fetchall() or []
 
             for row in raw_replies or []:
-                reply = _row_to_dict(
-                    row,
-                    ["id", "post_id", "content", "timestamp", "community_name", "parent_snippet"],
-                )
+                if replies_include_audio_summary:
+                    reply = _row_to_dict(
+                        row,
+                        [
+                            "id",
+                            "post_id",
+                            "content",
+                            "timestamp",
+                            "community_name",
+                            "parent_snippet",
+                            "audio_summary",
+                        ],
+                    )
+                    rcontent = (reply.get("content") or "").strip()
+                    raudio_sum = (reply.get("audio_summary") or "").strip()
+                    text_parts = []
+                    if rcontent:
+                        text_parts.append(rcontent[:200])
+                    if raudio_sum:
+                        text_parts.append(f"[Voice] {raudio_sum[:180]}")
+                    combined = " ".join(text_parts).strip()[:250]
+                else:
+                    reply = _row_to_dict(
+                        row,
+                        [
+                            "id",
+                            "post_id",
+                            "content",
+                            "timestamp",
+                            "community_name",
+                            "parent_snippet",
+                        ],
+                    )
+                    combined = (reply.get("content") or "").strip()[:200]
                 replies.append(
                     {
                         "replyId": reply.get("id"),
                         "postId": reply.get("post_id"),
-                        "content": (reply.get("content") or "").strip()[:200],
+                        "content": combined,
                         "date": _safe_date(reply.get("timestamp")),
                         "community": reply.get("community_name") or "",
                         "replyingTo": (reply.get("parent_snippet") or "").strip()[:120],

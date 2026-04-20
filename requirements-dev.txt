@@ -1,0 +1,17 @@
+# Development-only dependencies — test runner + MySQL testcontainer.
+# Install into a venv: python -m pip install -r requirements-dev.txt
+#
+# Notes:
+#   * testcontainers[mysql] spins up an ephemeral MySQL 8 Docker container,
+#     so Docker Desktop (or any Docker daemon) must be running locally.
+#   * PyMySQL is already pinned in requirements.txt; we re-pin here so the
+#     test env can be installed without pulling the full runtime.
+#   * `requests` is used by scripts/staging_smoke.ps1's Python fallback and
+#     by the test-user seed/teardown scripts.
+
+pytest==8.3.3
+pytest-cov==5.0.0
+pytest-xdist==3.6.1
+testcontainers[mysql]==4.8.2
+PyMySQL==1.1.0
+requests==2.32.3

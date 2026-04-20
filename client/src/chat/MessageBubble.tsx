@@ -16,6 +16,7 @@ import MessageImage from '../components/MessageImage'
 import MessageVideo from '../components/MessageVideo'
 import LinkPreview, { feedLinkPreviewUrls, stripExtractedUrlsFromText } from '../components/LinkPreview'
 import VideoEmbed from '../components/VideoEmbed'
+import YouTubeChatSnippet from '../components/YouTubeChatSnippet'
 import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
 import { normalizeMediaPath, formatMessageTime, parseMessageTime } from './utils'
 import AudioMessage from './AudioMessage'
@@ -495,7 +496,11 @@ function MessageBubbleInner({
               {showLinkifiedBody ? linkifyText(textWithoutPreviewUrls) : null}
               {videoEmbed ? (
                 <div className="block w-full min-w-0 mt-2 max-w-[280px]">
-                  <VideoEmbed embed={videoEmbed} />
+                  {videoEmbed.type === 'youtube' ? (
+                    <YouTubeChatSnippet videoId={videoEmbed.videoId} />
+                  ) : (
+                    <VideoEmbed embed={videoEmbed} />
+                  )}
                 </div>
               ) : null}
               {m.edited_at ? (

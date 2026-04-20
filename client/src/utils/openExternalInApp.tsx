@@ -82,3 +82,38 @@ export async function openExternalInApp(rawUrl: string): Promise<void> {
     <WebArticleFallback url={url} onClose={closeWebOverlay} />,
   )
 }
+
+/**
+ * Open an external URL so Universal Links / App Links can route to the native app (YouTube, etc.).
+ * On iOS, `target="_blank"` in the Capacitor WKWebView often does not call `UIApplication.open`;
+ * `App.openUrl` forwards to the OS first. If that does not complete, falls back to `openExternalInApp`.
+ */
+export async function openExternalNativeLink(rawUrl: string): Promise<void> {
+  const url = normalizeUrlForOpen(rawUrl)
+  if (!url) {
+    console.warn('openExternalNativeLink: invalid URL', rawUrl)
+    return
+  }
+
+  if (!Capacitor.isNativePlatform()) {
+    window.open(url, '_blank', 'noopener,noreferrer')
+    return
+  }
+
+  try {
+    const { App: CapApp } = await import('@capacitor/app')
+    const anyApp = CapApp as unknown as {
+      openUrl?: (opts: { url: string }) => Promise<{ completed?: boolean }>
+    }
+    if (anyApp.openUrl) {
+      const res = await anyApp.openUrl({ url })
+      if (res && res.completed === false) {
+        await openExternalInApp(url)
+      }
+      return
+    }
+  } catch {
+    // fall through to in-app browser
+  }
+  await openExternalInApp(url)
+}

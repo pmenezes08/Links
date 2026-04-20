@@ -1,0 +1,88 @@
+name: tests
+
+# Run the Matrix A + B + C pytest suite against a real MySQL 8 instance
+# on every push + PR. The testcontainers[mysql] library spins up the DB
+# as a sibling Docker container from inside the GitHub Actions runner,
+# so we don't need a ``services:`` block — the test code manages the
+# container lifecycle itself (see ``tests/conftest.py``).
+#
+# Why not ``services: mysql:``?  Because the conftest already handles
+# start-up / teardown + schema bootstrap, and re-doing it at the
+# workflow level would duplicate config. Keep all MySQL knobs in one
+# place.
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main, staging]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: Matrix A + B + C (pytest on MySQL 8)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          # The service modules under test import from the runtime tree,
+          # so we also need the prod deps. Install them second so they
+          # don't shadow any pinned test-time versions.
+          pip install -r requirements.txt
+
+      - name: Pull MySQL image ahead of time
+        # Pre-pulling avoids the first-test timeout when testcontainers
+        # blocks on the image download inside pytest.
+        run: docker pull mysql:8.0
+
+      - name: Run pytest
+        env:
+          # Silence noisy urllib3 + docker-py warnings the containers
+          # library emits on teardown. These are non-fatal but clutter
+          # CI logs.
+          PYTHONWARNINGS: 'ignore::DeprecationWarning,ignore::ResourceWarning'
+          # Without a pyproject.toml / pytest.ini, pytest 7+ only adds
+          # ``tests/`` (the rootdir of test collection) to sys.path —
+          # imports like ``from backend.services...`` fail with
+          # ``ModuleNotFoundError: No module named 'backend'``. Pinning
+          # PYTHONPATH to the workspace root fixes this without forcing
+          # an unrelated ``pyproject.toml`` on the monolith.
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          pytest \
+            tests/test_ai_usage_counters.py \
+            tests/test_entitlements_resolve.py \
+            tests/test_email_normalization.py \
+            tests/test_disposable_email.py \
+            tests/test_signup_canonical_uniqueness.py \
+            -v --tb=short --maxfail=5
+
+      - name: Upload test logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-logs
+          path: |
+            .pytest_cache/
+            pytest-*.log
+          retention-days: 7

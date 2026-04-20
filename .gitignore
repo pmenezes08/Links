@@ -6,3 +6,9 @@ fix_database.py
 static/community_files/
 templates/build_workout.html
 templates/choose_workout_type.html
+
+# Deploy / CI / diagnostic logs (generated during scripts, never commit)
+*-deploy.log
+ci-job-*.log
+gcm-diagnose.log
+staging-smoke-*.log

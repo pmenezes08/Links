@@ -22,8 +22,9 @@ import { SENDING_MEDIA_LABEL } from '../chat/mediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
 import LinkPreview, { stripExtractedUrlsFromText, feedLinkPreviewUrls } from '../components/LinkPreview'
 import VideoEmbed from '../components/VideoEmbed'
+import YouTubeChatSnippet from '../components/YouTubeChatSnippet'
 import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
-import { openExternalInApp } from '../utils/openExternalInApp'
+import { openExternalNativeLink } from '../utils/openExternalInApp'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
 import {
@@ -94,7 +95,7 @@ export default function GroupChatThread() {
   const { group_id } = useParams()
   const navigate = useNavigate()
   const openExternalArticle = useCallback((url: string) => {
-    void openExternalInApp(url)
+    void openExternalNativeLink(url)
   }, [])
   const [searchParams, setSearchParams] = useSearchParams()
   const { profile: currentUserProfile } = useUserProfile()
@@ -2348,7 +2349,11 @@ export default function GroupChatThread() {
                                   )}
                                   {videoEmbed && (
                                     <div className="px-2 pb-2 w-full min-w-0">
-                                      <VideoEmbed embed={videoEmbed} />
+                                      {videoEmbed.type === 'youtube' ? (
+                                        <YouTubeChatSnippet videoId={videoEmbed.videoId} />
+                                      ) : (
+                                        <VideoEmbed embed={videoEmbed} />
+                                      )}
                                     </div>
                                   )}
                                   {linkPreviewUrls.map(u => (
@@ -2990,17 +2995,11 @@ export default function GroupChatThread() {
             {MIC_ENABLED && !recording && !recordingPreview && !draftDisplay.trim() && !sending && (
               <button
                 className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
-                onPointerDown={(e) => {
-                  if (justSentRef.current) return
-                  e.preventDefault()
-                  e.stopPropagation()
-                  checkMicrophonePermission()
-                }}
                 onClick={(e) => {
                   if (justSentRef.current) return
                   e.preventDefault()
                   e.stopPropagation()
-                  checkMicrophonePermission()
+                  void checkMicrophonePermission()
                 }}
                 aria-label="Start voice message"
                 style={{
@@ -3017,15 +3016,10 @@ export default function GroupChatThread() {
               <>
                 <button
                   className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-white/15 hover:bg-white/25 text-white transition-colors active:scale-95"
-                  onPointerDown={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    stopVoiceRecording()
-                  }}
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
-                    stopVoiceRecording()
+                    void stopVoiceRecording()
                   }}
                   aria-label="Pause recording"
                   style={{
@@ -3037,15 +3031,10 @@ export default function GroupChatThread() {
                 </button>
                 <button
                   className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
-                  onPointerDown={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    sendVoiceDirectly()
-                  }}
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
-                    sendVoiceDirectly()
+                    void sendVoiceDirectly()
                   }}
                   aria-label="Send voice message"
                   style={{
@@ -3062,17 +3051,11 @@ export default function GroupChatThread() {
             {MIC_ENABLED && !recording && recordingPreview && (
               <button
                 className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
-                onPointerDown={(e) => {
-                  if (sending) return
-                  e.preventDefault()
-                  e.stopPropagation()
-                  sendRecordingPreview()
-                }}
                 onClick={(e) => {
                   if (sending) return
                   e.preventDefault()
                   e.stopPropagation()
-                  sendRecordingPreview()
+                  void sendRecordingPreview()
                 }}
                 disabled={sending}
                 aria-label="Send voice message"

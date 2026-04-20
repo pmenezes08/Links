@@ -14,6 +14,7 @@ import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import ImageLoader from '../components/ImageLoader'
 import ZoomableImage from '../components/ZoomableImage'
 import { useHeader } from '../contexts/HeaderContext'
+import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
 import VideoEmbed from '../components/VideoEmbed'
 import LinkPreview, { feedPostLinkPreviewUrls } from '../components/LinkPreview'
 import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
@@ -3913,6 +3914,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   const mentionToProfile = useCallback((u: string) => {
     navigate?.(`/profile/${encodeURIComponent(u)}`)
   }, [navigate])
+  const entitlementsHandler = useEntitlementsHandler()
   const openExternalArticle = useCallback((url: string) => {
     void openExternalInApp(url)
   }, [])
@@ -3976,14 +3978,17 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         credentials: 'include',
         headers: { 'Accept': 'application/json' }
       })
-      const data = await response.json()
-      
+      const data = await entitlementsHandler.handleResponse<{ success?: boolean; summary?: string; error?: string }>(response)
+      if (!data) {
+        setShowSummaryModal(false)
+        return
+      }
       if (data.success) {
-        setSummaryText(data.summary)
+        setSummaryText(data.summary || null)
       } else {
         setSummaryError(data.error || 'Failed to generate summary')
       }
-    } catch (err) {
+    } catch {
       setSummaryError('Network error. Please try again.')
     } finally {
       setSummaryLoading(false)
@@ -4027,7 +4032,8 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         })
       })
       
-      const data = await response.json()
+      const data = await entitlementsHandler.handleResponse<{ success?: boolean; reply?: Reply; error?: string }>(response)
+      if (!data) return // entitlements modal already shown
       console.log('[Steve AI] API response:', data)
       
       if (data.success && data.reply && onAddReply) {

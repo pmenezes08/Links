@@ -2,6 +2,21 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 export type RecordingPreview = { blob: Blob; url: string; duration: number }
 
+/** iOS Safari / WKWebView need periodic chunks; without timeslice, ondataavailable often stays empty until stop and blob assembly fails. */
+const RECORDER_TIMESLICE_MS = 200
+
+function isAppleWebKitMediaRecorder(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  if (/iPhone|iPad|iPod/i.test(ua)) return true
+  // iPadOS 13+ desktop UA
+  const mtp = (navigator as Navigator & { maxTouchPoints?: number }).maxTouchPoints ?? 0
+  if (navigator.platform === 'MacIntel' && mtp > 1) {
+    return true
+  }
+  return false
+}
+
 export function useAudioRecorder() {
   const [recording, setRecording] = useState(false)
   const [recordMs, setRecordMs] = useState(0)
@@ -11,6 +26,8 @@ export function useAudioRecorder() {
   const recorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
+  /** Prevents double stop (iOS often fires pointerdown + click on one tap). */
+  const stoppingRef = useRef(false)
   const startTimeRef = useRef<number>(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
@@ -70,13 +87,17 @@ export function useAudioRecorder() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
 
-      // Find supported MIME type (iOS prefers mp4)
-      const mimeTypes = ['audio/mp4', 'audio/webm', 'audio/ogg', 'audio/wav']
+      // Find supported MIME type (iOS / Safari prefers mp4; Android Chrome often webm)
+      const mimeTypes = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg', 'audio/wav']
       let mimeType = ''
       for (const type of mimeTypes) {
-        if (MediaRecorder.isTypeSupported(type)) {
-          mimeType = type
-          break
+        try {
+          if (MediaRecorder.isTypeSupported(type)) {
+            mimeType = type
+            break
+          }
+        } catch {
+          /* some WebViews throw instead of returning false */
         }
       }
 
@@ -84,7 +105,7 @@ export function useAudioRecorder() {
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
       recorderRef.current = recorder
 
-      // Collect audio data
+      // Collect audio data (must not skip empty-looking events; merge small final chunks on iOS)
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
           chunksRef.current.push(e.data)
@@ -119,7 +140,8 @@ export function useAudioRecorder() {
         }
       } catch {}
 
-      recorder.start()
+      // Timeslice required for Safari / iOS WKWebView to emit any chunks; safe on Android Chrome too.
+      recorder.start(RECORDER_TIMESLICE_MS)
       startTimeRef.current = Date.now()
       setRecording(true)
       setRecordMs(0)
@@ -139,46 +161,75 @@ export function useAudioRecorder() {
   // Internal stop function - setPreviewState controls whether to set preview state
   const stopInternal = useCallback((setPreviewState: boolean): Promise<RecordingPreview | null> => {
     return new Promise((resolve) => {
-      const recorder = recorderRef.current
-      const duration = Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000))
-
-      if (!recorder || recorder.state === 'inactive') {
-        cleanup()
-        setRecording(false)
+      if (stoppingRef.current) {
         resolve(null)
         return
       }
 
-      recorder.onstop = () => {
-        setTimeout(() => {
-          if (chunksRef.current.length > 0) {
-            const mimeType = recorder.mimeType || 'audio/mp4'
-            const blob = new Blob(chunksRef.current, { type: mimeType })
-            
-            if (blob.size > 0) {
-              const url = URL.createObjectURL(blob)
-              const previewData = { blob, url, duration }
-              // Only set preview state if requested (pause button)
-              if (setPreviewState) {
-                setPreview(previewData)
-              }
-              cleanup()
-              setRecording(false)
-              resolve(previewData)
-              return
-            }
-          }
-          
-          cleanup()
-          setRecording(false)
-          resolve(null)
-        }, 100)
+      const recorder = recorderRef.current
+      const duration = Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000))
+      const apple = isAppleWebKitMediaRecorder()
+      /** Last data may arrive slightly after onstop on WebKit; give it time before assembling. */
+      const flushDelayMs = apple ? 350 : 80
+
+      if (!recorder || recorder.state === 'inactive') {
+        cleanup()
+        setRecording(false)
+        stoppingRef.current = false
+        resolve(null)
+        return
       }
 
-      // Stop recording
+      stoppingRef.current = true
+
+      const finish = (previewData: RecordingPreview | null) => {
+        stoppingRef.current = false
+        if (previewData) {
+          if (setPreviewState) {
+            setPreview(previewData)
+          }
+        }
+        cleanup()
+        setRecording(false)
+        resolve(previewData)
+      }
+
+      recorder.onstop = () => {
+        setTimeout(() => {
+          try {
+            if (chunksRef.current.length > 0) {
+              const mimeType =
+                recorder.mimeType ||
+                chunksRef.current[0]?.type ||
+                (apple ? 'audio/mp4' : 'audio/webm')
+              const blob = new Blob(chunksRef.current, { type: mimeType })
+
+              if (blob.size > 0) {
+                const url = URL.createObjectURL(blob)
+                finish({ blob, url, duration })
+                return
+              }
+            }
+            finish(null)
+          } catch {
+            finish(null)
+          }
+        }, flushDelayMs)
+      }
+
+      try {
+        // Flush any buffered data before stop (Chrome / spec); ignored if unsupported.
+        if (recorder.state === 'recording' && typeof recorder.requestData === 'function') {
+          recorder.requestData()
+        }
+      } catch {
+        /* ignore */
+      }
+
       try {
         recorder.stop()
       } catch {
+        stoppingRef.current = false
         cleanup()
         setRecording(false)
         resolve(null)

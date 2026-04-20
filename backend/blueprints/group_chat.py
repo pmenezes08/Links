@@ -10,11 +10,14 @@ import threading
 from datetime import datetime
 from functools import wraps
 
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request, session, url_for
 from werkzeug.utils import secure_filename
 
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.media import save_uploaded_file
+from backend.services import ai_usage
+from backend.services.entitlements_gate import gate_or_reason
+from backend.services.feature_flags import entitlements_enforcement_enabled
 
 # Allowed extensions for chat uploads
 # Include HEIC/HEIF for iOS devices
@@ -31,6 +34,86 @@ XAI_API_KEY = os.getenv('XAI_API_KEY', '')
 # Track when Steve is typing (in-memory, per group_id)
 # Format: {group_id: timestamp_when_started}
 _steve_typing_status: dict[int, float] = {}
+
+
+def _public_profile_picture_url(picture_rel):
+    """Resolve user_profiles.profile_picture to a browser-usable URL (matches DM chat_threads)."""
+    if not picture_rel:
+        return None
+    p = str(picture_rel).strip()
+    if p.startswith("http://") or p.startswith("https://"):
+        return p
+    try:
+        return url_for("static", filename=p)
+    except Exception:
+        return p if p.startswith("/") else f"/static/{p}"
+
+
+def _ensure_cleared_before_message_id_column(cursor):
+    """Per-user 'clear chat' hides messages with id <= cleared_before_message_id."""
+    from backend.services.database import USE_MYSQL
+    try:
+        cursor.execute("SELECT cleared_before_message_id FROM group_chat_read_receipts LIMIT 1")
+    except Exception:
+        try:
+            if USE_MYSQL:
+                cursor.execute(
+                    "ALTER TABLE group_chat_read_receipts ADD COLUMN cleared_before_message_id INT DEFAULT NULL"
+                )
+            else:
+                cursor.execute(
+                    "ALTER TABLE group_chat_read_receipts ADD COLUMN cleared_before_message_id INTEGER DEFAULT NULL"
+                )
+            logger.info("Added cleared_before_message_id to group_chat_read_receipts")
+        except Exception as e:
+            logger.warning(f"Could not add cleared_before_message_id column: {e}")
+
+
+def _get_cleared_before_message_id(cursor, group_id: int, username: str, ph: str) -> int:
+    try:
+        cursor.execute(
+            f"SELECT cleared_before_message_id FROM group_chat_read_receipts WHERE group_id = {ph} AND username = {ph}",
+            (group_id, username),
+        )
+        row = cursor.fetchone()
+        if row:
+            v = row["cleared_before_message_id"] if hasattr(row, "keys") else row[0]
+            if v is not None:
+                return max(0, int(v))
+    except Exception:
+        pass
+    return 0
+
+
+def _enrich_group_message_profile_pictures(messages: list) -> list:
+    """Set profile_picture URLs for group messages (needed for Firestore reads and raw DB paths)."""
+    if not messages:
+        return messages
+    need = [m for m in messages if m.get("sender") and not m.get("profile_picture")]
+    if not need:
+        return messages
+    senders = list({m["sender"] for m in need})
+    try:
+        with get_db_connection() as conn:
+            cc = conn.cursor()
+            ph = get_sql_placeholder()
+            placeholders = ",".join([ph] * len(senders))
+            cc.execute(
+                f"SELECT username, profile_picture FROM user_profiles WHERE username IN ({placeholders})",
+                tuple(senders),
+            )
+            by_user = {}
+            for row in cc.fetchall():
+                u = row["username"] if hasattr(row, "keys") else row[0]
+                pic = row["profile_picture"] if hasattr(row, "keys") else row[1]
+                by_user[u] = _public_profile_picture_url(pic)
+            for m in messages:
+                s = m.get("sender")
+                if s and not m.get("profile_picture"):
+                    m["profile_picture"] = by_user.get(s)
+    except Exception as ex:
+        logger.warning(f"group message profile enrichment failed: {ex}")
+    return messages
 
 
 def _login_required(view_func):
@@ -273,6 +356,7 @@ def _ensure_group_chat_tables(cursor):
         _ensure_group_message_reactions_table(cursor)  # Ensure reactions table exists
         _ensure_steve_personality_column(cursor)  # Ensure steve_personality columns exist
         _ensure_steve_suppressed_topics_table(cursor)  # Ensure suppressed topics table exists
+        _ensure_cleared_before_message_id_column(cursor)
         return  # Table exists, no need to create
     except Exception:
         pass  # Table doesn't exist, create it
@@ -324,6 +408,7 @@ def _ensure_group_chat_tables(cursor):
                 username VARCHAR(100) NOT NULL,
                 last_read_message_id INT DEFAULT 0,
                 last_read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                cleared_before_message_id INT DEFAULT NULL,
                 UNIQUE KEY unique_receipt (group_id, username)
             )
         """)
@@ -371,6 +456,7 @@ def _ensure_group_chat_tables(cursor):
                 username VARCHAR(100) NOT NULL,
                 last_read_message_id INTEGER DEFAULT 0,
                 last_read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                cleared_before_message_id INTEGER DEFAULT NULL,
                 UNIQUE(group_id, username)
             )
         """)
@@ -549,6 +635,7 @@ def list_group_chats():
             ph = get_sql_placeholder()
             
             _ensure_group_chat_tables(c)
+            _ensure_cleared_before_message_id_column(c)
             
             # Load muted group chats for this user
             muted_groups = set()
@@ -588,14 +675,24 @@ def list_group_chats():
                 count_row = c.fetchone()
                 member_count = count_row["cnt"] if hasattr(count_row, "keys") else count_row[0]
                 
-                # Get last message
-                c.execute(f"""
-                    SELECT sender_username, message_text, created_at
-                    FROM group_chat_messages
-                    WHERE group_id = {ph} AND is_deleted = 0
-                    ORDER BY created_at DESC
-                    LIMIT 1
-                """, (group_id,))
+                # Get last message (after per-user clear)
+                cleared_before_id = _get_cleared_before_message_id(c, group_id, username, ph)
+                if cleared_before_id > 0:
+                    c.execute(f"""
+                        SELECT sender_username, message_text, created_at
+                        FROM group_chat_messages
+                        WHERE group_id = {ph} AND is_deleted = 0 AND id > {ph}
+                        ORDER BY id DESC
+                        LIMIT 1
+                    """, (group_id, cleared_before_id))
+                else:
+                    c.execute(f"""
+                        SELECT sender_username, message_text, created_at
+                        FROM group_chat_messages
+                        WHERE group_id = {ph} AND is_deleted = 0
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                    """, (group_id,))
                 last_msg_row = c.fetchone()
                 last_message = None
                 if last_msg_row:
@@ -614,11 +711,12 @@ def list_group_chats():
                 last_read_id = 0
                 if receipt_row:
                     last_read_id = receipt_row["last_read_message_id"] if hasattr(receipt_row, "keys") else receipt_row[0]
+                effective_floor = max(int(last_read_id or 0), cleared_before_id)
                 
                 c.execute(f"""
                     SELECT COUNT(*) as cnt FROM group_chat_messages
                     WHERE group_id = {ph} AND id > {ph} AND is_deleted = 0 AND sender_username != {ph}
-                """, (group_id, last_read_id, username))
+                """, (group_id, effective_floor, username))
                 unread_row = c.fetchone()
                 unread_count = unread_row["cnt"] if hasattr(unread_row, "keys") else unread_row[0]
                 
@@ -696,7 +794,9 @@ def get_group_chat(group_id: int):
                     "username": m_row["username"] if hasattr(m_row, "keys") else m_row[0],
                     "is_admin": bool(m_row["is_admin"] if hasattr(m_row, "keys") else m_row[1]),
                     "joined_at": m_row["joined_at"] if hasattr(m_row, "keys") else m_row[2],
-                    "profile_picture": m_row["profile_picture"] if hasattr(m_row, "keys") else m_row[3],
+                    "profile_picture": _public_profile_picture_url(
+                        m_row["profile_picture"] if hasattr(m_row, "keys") else m_row[3]
+                    ),
                 })
             
             return jsonify({
@@ -802,7 +902,22 @@ def get_group_messages(group_id: int):
         from backend.services.firestore_reads import USE_FIRESTORE_READS
         if USE_FIRESTORE_READS:
             from backend.services.firestore_reads import get_group_chat_messages as fs_get_gcm
-            messages = fs_get_gcm(group_id, username, before_id=before_id, limit=limit)
+
+            cleared_fs = 0
+            try:
+                with get_db_connection() as _cconn:
+                    _cc = _cconn.cursor()
+                    _ensure_group_chat_tables(_cc)
+                    _ensure_cleared_before_message_id_column(_cc)
+                    _cph = get_sql_placeholder()
+                    cleared_fs = _get_cleared_before_message_id(_cc, group_id, username, _cph)
+            except Exception:
+                pass
+
+            messages = fs_get_gcm(
+                group_id, username, before_id=before_id, limit=limit, min_id_exclusive=cleared_fs
+            )
+            messages = _enrich_group_message_profile_pictures(messages)
             logger.info(f"Firestore group chat read: {len(messages)} messages for group {group_id}")
             # Update read receipt even when using Firestore reads
             if messages:
@@ -865,27 +980,32 @@ def get_group_messages(group_id: int):
             if not c.fetchone():
                 return jsonify({"success": False, "error": "Access denied"}), 403
             
-            # Get messages
+            _ensure_cleared_before_message_id_column(c)
+            cleared_before_id = _get_cleared_before_message_id(c, group_id, username, ph)
+            cleared_sql = f" AND m.id > {ph}" if cleared_before_id > 0 else ""
+            cleared_param = (cleared_before_id,) if cleared_before_id > 0 else ()
+
+            # Get messages (hide rows at or before per-user clear)
             if before_id:
                 c.execute(f"""
                     SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.client_key, m.created_at,
                            up.profile_picture, m.is_edited, m.audio_summary
                     FROM group_chat_messages m
                     LEFT JOIN user_profiles up ON m.sender_username = up.username
-                    WHERE m.group_id = {ph} AND m.id < {ph} AND m.is_deleted = 0
+                    WHERE m.group_id = {ph} AND m.id < {ph} AND m.is_deleted = 0{cleared_sql}
                     ORDER BY m.created_at DESC
                     LIMIT {ph}
-                """, (group_id, before_id, limit))
+                """, (group_id, before_id) + cleared_param + (limit,))
             else:
                 c.execute(f"""
                     SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.client_key, m.created_at,
                            up.profile_picture, m.is_edited, m.audio_summary
                     FROM group_chat_messages m
                     LEFT JOIN user_profiles up ON m.sender_username = up.username
-                    WHERE m.group_id = {ph} AND m.is_deleted = 0
+                    WHERE m.group_id = {ph} AND m.is_deleted = 0{cleared_sql}
                     ORDER BY m.created_at DESC
                     LIMIT {ph}
-                """, (group_id, limit))
+                """, (group_id,) + cleared_param + (limit,))
             
             messages = []
             message_ids = []
@@ -915,7 +1035,9 @@ def get_group_messages(group_id: int):
                     "media_paths": media_paths,
                     "client_key": row["client_key"] if hasattr(row, "keys") else row[7],
                     "created_at": row["created_at"] if hasattr(row, "keys") else row[8],
-                    "profile_picture": row["profile_picture"] if hasattr(row, "keys") else row[9],
+                    "profile_picture": _public_profile_picture_url(
+                        row["profile_picture"] if hasattr(row, "keys") else row[9]
+                    ),
                     "is_edited": is_edited,
                     "audio_summary": audio_summary,
                     "reaction": None,  # Will be filled below
@@ -972,6 +1094,7 @@ def get_group_messages(group_id: int):
             
             # Reverse to show oldest first
             messages.reverse()
+            messages = _enrich_group_message_profile_pictures(messages)
             
             # Check if Steve is typing (with 30 second timeout)
             import time
@@ -1018,14 +1141,20 @@ def get_group_media(group_id: int):
             if not c.fetchone():
                 return jsonify({"success": False, "error": "Access denied"}), 403
             
-            # Get all messages with media
+            _ensure_cleared_before_message_id_column(c)
+            cleared_mid = _get_cleared_before_message_id(c, group_id, username, ph)
+            cleared_media_sql = f" AND id > {ph}" if cleared_mid > 0 else ""
+            cleared_media_param = (cleared_mid,) if cleared_mid > 0 else ()
+            
+            # Get all messages with media (respect per-user clear)
             c.execute(f"""
                 SELECT id, sender_username, image_path, video_path, media_paths, created_at
                 FROM group_chat_messages
                 WHERE group_id = {ph} AND is_deleted = 0 
                   AND (image_path IS NOT NULL OR video_path IS NOT NULL OR media_paths IS NOT NULL)
+                  {cleared_media_sql}
                 ORDER BY created_at DESC
-            """, (group_id,))
+            """, (group_id,) + cleared_media_param)
             
             media_items = []
             item_id = 0
@@ -1326,7 +1455,7 @@ def send_group_media(group_id: int):
                     "video": None,
                     "media_paths": uploaded_paths,
                     "created_at": now,
-                    "profile_picture": profile_picture,
+                    "profile_picture": _public_profile_picture_url(profile_picture),
                 }
             })
             
@@ -1348,6 +1477,12 @@ def send_group_message(group_id: int):
     image_path = data.get("image_path", "").strip() or data.get("image", "").strip() or None
     # Support voice messages
     voice_path = data.get("voice", "").strip() or None
+    # Optional client-provided duration (seconds). Used for accurate
+    # Whisper-minute accounting; falls back to probe/estimate when absent.
+    try:
+        voice_duration_seconds = float(data.get("voice_duration_seconds") or 0) or None
+    except Exception:
+        voice_duration_seconds = None
     # Support video messages
     video_path = data.get("video_path", "").strip() or data.get("video", "").strip() or None
     
@@ -1361,7 +1496,12 @@ def send_group_message(group_id: int):
             # Import the audio processing function from main app
             from bodybuilding_app import process_audio_for_summary
             logger.info(f"Generating AI summary for group voice note: {voice_path}")
-            audio_summary = process_audio_for_summary(voice_path, username=username)
+            audio_summary = process_audio_for_summary(
+                voice_path,
+                username=username,
+                duration_seconds=voice_duration_seconds,
+                community_id=None,  # group_chat is not a community feed
+            )
             if audio_summary:
                 logger.info(f"AI summary generated for group chat: {audio_summary[:100]}...")
         except Exception as e:
@@ -1395,7 +1535,7 @@ def send_group_message(group_id: int):
                         c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (username,))
                         pp_row = c.fetchone()
                         pp = (pp_row["profile_picture"] if hasattr(pp_row, "keys") else pp_row[0]) if pp_row else None
-                        return jsonify({"success": True, "message": {"id": eid, "sender": username, "text": message_text, "image": image_path, "voice": voice_path, "video": video_path, "audio_summary": None, "client_key": client_key, "created_at": eat, "profile_picture": pp}})
+                        return jsonify({"success": True, "message": {"id": eid, "sender": username, "text": message_text, "image": image_path, "voice": voice_path, "video": video_path, "audio_summary": None, "client_key": client_key, "created_at": eat, "profile_picture": _public_profile_picture_url(pp)}})
                 except Exception as ik_err:
                     logger.warning(f"client_key idempotency check failed (non-fatal): {ik_err}")
             
@@ -1712,9 +1852,11 @@ def delete_group_chat(group_id: int):
 @group_chat_bp.route("/api/group_chat/<int:group_id>/clear_history", methods=["POST"])
 @_login_required
 def clear_group_chat_history(group_id: int):
-    """Clear all messages in a group chat for the requesting user by updating their read receipt to the latest message."""
+    """Hide all current messages for this user; new messages still appear. Clears unread."""
     username = session["username"]
     try:
+        from backend.services.database import USE_MYSQL
+
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
@@ -1728,12 +1870,37 @@ def clear_group_chat_history(group_id: int):
             c.execute(f"SELECT MAX(id) FROM group_chat_messages WHERE group_id = {ph}", (group_id,))
             row = c.fetchone()
             max_id = (row[0] if row else 0) or 0
-            c.execute(f"""
-                INSERT INTO group_chat_read_receipts (group_id, username, last_read_message_id)
-                VALUES ({ph}, {ph}, {ph})
-                ON {'DUPLICATE KEY UPDATE' if get_sql_placeholder() == '%s' else 'CONFLICT(group_id, username) DO UPDATE SET'}
-                last_read_message_id = {ph}
-            """, (group_id, username, max_id, max_id))
+            now = datetime.now().isoformat()
+            _ensure_cleared_before_message_id_column(c)
+            if USE_MYSQL:
+                c.execute(
+                    f"""
+                    INSERT INTO group_chat_read_receipts (group_id, username, last_read_message_id, last_read_at, cleared_before_message_id)
+                    VALUES ({ph}, {ph}, {ph}, NOW(), {ph})
+                    ON DUPLICATE KEY UPDATE
+                        last_read_message_id = GREATEST(last_read_message_id, VALUES(last_read_message_id)),
+                        last_read_at = VALUES(last_read_at),
+                        cleared_before_message_id = VALUES(cleared_before_message_id)
+                    """,
+                    (group_id, username, max_id, max_id),
+                )
+            else:
+                c.execute(
+                    f"""
+                    INSERT INTO group_chat_read_receipts (group_id, username, last_read_message_id, last_read_at, cleared_before_message_id)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
+                    ON CONFLICT(group_id, username) DO UPDATE SET
+                        last_read_message_id = MAX(last_read_message_id, excluded.last_read_message_id),
+                        last_read_at = excluded.last_read_at,
+                        cleared_before_message_id = excluded.cleared_before_message_id
+                    """,
+                    (group_id, username, max_id, now, max_id),
+                )
+            # Bump sort time so the group stays near the top of the list after a clear (same UX as DM threads)
+            if USE_MYSQL:
+                c.execute(f"UPDATE group_chats SET updated_at = NOW() WHERE id = {ph}", (group_id,))
+            else:
+                c.execute(f"UPDATE group_chats SET updated_at = {ph} WHERE id = {ph}", (now, group_id))
             conn.commit()
             return jsonify({"success": True})
     except Exception as e:
@@ -2276,7 +2443,9 @@ def get_available_members(group_id: int):
                     available.append({
                         "username": member_username,
                         "display_name": m_row["display_name"] if hasattr(m_row, "keys") else m_row[1],
-                        "profile_picture": m_row["profile_picture"] if hasattr(m_row, "keys") else m_row[2],
+                        "profile_picture": _public_profile_picture_url(
+                            m_row["profile_picture"] if hasattr(m_row, "keys") else m_row[2]
+                        ),
                         "community_name": m_row["community_name"] if hasattr(m_row, "keys") else m_row[3],
                     })
             
@@ -2639,6 +2808,51 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         except Exception as remember_err:
             logger.error(f"Error unsuppressing topic for Steve: {remember_err}")
     
+    # ── Entitlements gate: before any LLM spend, check the caller's caps. ──
+    # Always resolves so we capture the metric; only blocks when enforcement
+    # is flipped on in the environment.
+    _ent_allowed, _ent_reason, _ent = gate_or_reason(sender_username, ai_usage.SURFACE_GROUP)
+    if not _ent_allowed and entitlements_enforcement_enabled():
+        try:
+            from backend.services import entitlements_errors as _errs
+            from datetime import datetime as _dt
+            now_iso = _dt.now().isoformat()
+            if _ent_reason == _errs.REASON_PREMIUM_REQUIRED:
+                blocked_text = (
+                    f"@{sender_username} Steve is a Premium feature. "
+                    "Upgrade in Settings → Manage Membership to keep chatting with me here."
+                )
+            elif _ent_reason == _errs.REASON_DAILY_CAP:
+                blocked_text = (
+                    f"@{sender_username} you've hit today's Steve limit. "
+                    "It resets at midnight UTC — see Settings → AI Usage."
+                )
+            else:
+                blocked_text = (
+                    f"@{sender_username} you've used up your Steve calls for this month. "
+                    "See Settings → AI Usage for details."
+                )
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                c.execute(
+                    f"INSERT INTO group_chat_messages (group_id, sender_username, message_text, created_at) VALUES ({ph}, {ph}, {ph}, {ph})",
+                    (group_id, AI_USERNAME, blocked_text, now_iso),
+                )
+                steve_msg_id = c.lastrowid
+                c.execute(f"UPDATE group_chats SET updated_at = {ph} WHERE id = {ph}", (now_iso, group_id))
+                conn.commit()
+                try:
+                    from backend.services.firestore_writes import write_group_chat_message
+                    write_group_chat_message(group_id=group_id, message_id=steve_msg_id, sender=AI_USERNAME, text=blocked_text)
+                except Exception:
+                    pass
+            if group_id in _steve_typing_status:
+                del _steve_typing_status[group_id]
+        except Exception as block_err:
+            logger.warning("Could not post entitlements-blocked Steve notice: %s", block_err)
+        return
+
     current_date = datetime.now().strftime('%A, %B %d, %Y at %H:%M UTC')
     
     try:
@@ -2922,6 +3136,20 @@ RESPONSE FORMAT:
         )
         
         try:
+            # Apply entitlement caps resolved earlier in this function.
+            _max_out = 1500
+            _max_imgs = len(image_urls) if image_urls else 0
+            try:
+                if _ent:
+                    if isinstance(_ent.get("max_output_tokens_group"), int):
+                        _max_out = min(_max_out, int(_ent["max_output_tokens_group"]))
+                    if isinstance(_ent.get("max_images_per_turn"), int):
+                        _max_imgs = min(_max_imgs, int(_ent["max_images_per_turn"]))
+            except Exception:
+                pass
+            if image_urls and _max_imgs < len(image_urls):
+                image_urls = image_urls[:_max_imgs]
+
             # Build user input — attach images if available
             if image_urls:
                 user_content = [{"type": "input_text", "text": context}]
@@ -2942,7 +3170,7 @@ RESPONSE FORMAT:
                     {"type": "web_search"},
                     {"type": "x_search"}
                 ],
-                max_output_tokens=1500
+                max_output_tokens=_max_out
             )
             
             ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
@@ -2996,7 +3224,19 @@ RESPONSE FORMAT:
             logger.info(f"Steve replied to group {group_id} with message ID {steve_message_id}")
             
             conn.commit()
-            
+
+        # Log a successful Steve group call against the sender's allowance.
+        try:
+            ai_usage.log_usage(
+                sender_username,
+                surface=ai_usage.SURFACE_GROUP,
+                request_type='steve_group_reply',
+                model='grok-4-1-fast-reasoning',
+                community_id=None,
+            )
+        except Exception:
+            pass
+
     except Exception as e:
         # Clear typing indicator on error too
         if group_id in _steve_typing_status:

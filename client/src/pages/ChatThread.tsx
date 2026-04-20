@@ -26,6 +26,7 @@ import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/de
 import { sendImageMessage, sendVideoMessage, sendMultiMediaMessage, SENDING_MEDIA_LABEL, type UploadProgress } from '../chat/mediaSenders'
 import type { ChatMessage } from '../types/chat'
 import { isInternalLink, isLandingPageLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from '../utils/internalLinkHandler'
+import { openExternalNativeLink } from '../utils/openExternalInApp'
 
 // Import utilities and components from chat module
 import {
@@ -599,6 +600,16 @@ export default function ChatThread(){
               e.preventDefault()
               e.stopPropagation()
               handleInternalLinkClick(href)
+              return
+            }
+            if (Capacitor.isNativePlatform()) {
+              e.preventDefault()
+              e.stopPropagation()
+              if (isLanding) {
+                window.open(href, '_blank', 'noopener,noreferrer')
+              } else {
+                void openExternalNativeLink(href)
+              }
             }
           }}
         >
@@ -3408,17 +3419,11 @@ export default function ChatThread(){
           {MIC_ENABLED && !recording && !recordingPreview && !draftDisplay.trim() && (
             <button
               className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
-              onPointerDown={(e) => {
-                if (justSentRef.current) return
-                e.preventDefault()
-                e.stopPropagation()
-                checkMicrophonePermission()
-              }}
               onClick={(e) => {
                 if (justSentRef.current) return
                 e.preventDefault()
                 e.stopPropagation()
-                checkMicrophonePermission()
+                void checkMicrophonePermission()
               }}
               aria-label="Start voice message"
               style={{
@@ -3438,15 +3443,10 @@ export default function ChatThread(){
               {/* Pause button - stops recording, goes to preview */}
               <button
                 className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-white/15 hover:bg-white/25 text-white transition-colors active:scale-95"
-                onPointerDown={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  stopVoiceRecording()
-                }}
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
-                  stopVoiceRecording()
+                  void stopVoiceRecording()
                 }}
                 aria-label="Pause recording"
                 style={{
@@ -3460,15 +3460,10 @@ export default function ChatThread(){
               {/* Send button - sends directly */}
               <button
                 className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
-                onPointerDown={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  sendVoiceDirectly()
-                }}
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
-                  sendVoiceDirectly()
+                  void sendVoiceDirectly()
                 }}
                 aria-label="Send voice message"
                 style={{
@@ -3486,17 +3481,11 @@ export default function ChatThread(){
             <>
               <button
                 className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
-                onPointerDown={(e) => {
-                  if (sending) return
-                  e.preventDefault()
-                  e.stopPropagation()
-                  sendRecordingPreview()
-                }}
                 onClick={(e) => {
                   if (sending) return
                   e.preventDefault()
                   e.stopPropagation()
-                  sendRecordingPreview()
+                  void sendRecordingPreview()
                 }}
                 disabled={sending}
                 aria-label="Send voice message"

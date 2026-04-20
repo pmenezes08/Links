@@ -46,6 +46,7 @@ from encryption_endpoints import register_encryption_endpoints
 from signal_endpoints import register_signal_endpoints
 from backend import init_app
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
+from backend.services import ai_usage as _ai_usage
 from backend.services.community import (
     fetch_community_names,
     get_community_ancestors,
@@ -462,7 +463,7 @@ def add_cors_headers(response):
         response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Access-Control-Allow-Credentials'] = 'true'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
     return response
 
 @app.after_request
@@ -799,7 +800,16 @@ def _block_unverified_users():
             '/api/invitation/verify',
             '/api/push/register_fcm',  # FCM token registration (can be anonymous initially)
             '/api/admin/login-by-email',  # Phase 2: tenant lookup by email (no auth)
+            # Subscription-state webhooks: Stripe/Apple/Google never have a
+            # session cookie. Each handler verifies its own signature.
+            '/api/webhooks/stripe',
+            '/api/webhooks/apple',
+            '/api/webhooks/google',
         ]
+        # Cron endpoints authenticate via X-Cron-Secret, not session cookies.
+        # Cloud Scheduler cannot send cookies, so they must bypass this gate.
+        if path.startswith('/api/cron/'):
+            return None
         # Session required, but must run even if email not verified (logout cleanup)
         session_auth_unverified_ok = (
             '/api/push/unregister_fcm',
@@ -2058,7 +2068,54 @@ def add_user_to_community(cursor, user_id: int, community_id: int, role: Optiona
     
     # Invalidate user's caches so they see the new community immediately
     _invalidate_user_community_caches(cursor, user_id, username)
-    
+
+    # Enterprise seat lifecycle: if the community is tagged ``enterprise``,
+    # open a seat for the joining user and (when they're on a mobile-IAP
+    # Premium sub) start an in-app nag record so the client shows the
+    # "cancel your Apple/Google sub" banner after the 7-day grace window.
+    # Best-effort — never fail the join flow on a lifecycle hook error.
+    try:
+        from backend.services import enterprise_membership as _em
+        from backend.services import enterprise_iap_nag as _nag
+        from backend.services import subscription_audit as _audit
+        if _em.is_enterprise_community(int(community_id)):
+            join_username = username
+            if not join_username:
+                ph = get_sql_placeholder()
+                cursor.execute(f"SELECT username FROM users WHERE id = {ph}", (user_id,))
+                _row = cursor.fetchone()
+                if _row:
+                    join_username = _row['username'] if hasattr(_row, 'keys') else _row[0]
+            if join_username:
+                _em.start_seat(
+                    username=join_username,
+                    community_id=int(community_id),
+                    source="community_join",
+                    actor_username=join_username,
+                )
+                # If they already hold a personal Premium, open the nag.
+                try:
+                    ph = get_sql_placeholder()
+                    cursor.execute(
+                        f"SELECT subscription FROM users WHERE username = {ph}",
+                        (join_username,),
+                    )
+                    _sr = cursor.fetchone()
+                    _sub = (_sr['subscription'] if hasattr(_sr, 'keys') else (_sr[0] if _sr else '')) or ''
+                    if str(_sub).lower() in ('premium', 'pro', 'paid'):
+                        _nag.start_nag(username=join_username, community_id=int(community_id))
+                        _audit.log(
+                            username=join_username,
+                            action="iap_conflict_detected",
+                            source="community_join",
+                            community_id=int(community_id),
+                            metadata={"reason": "premium_plus_enterprise_seat"},
+                        )
+                except Exception:
+                    logger.warning("[SEAT] IAP nag bootstrap failed (non-fatal)", exc_info=True)
+    except Exception:
+        logger.warning("[SEAT] start_seat hook failed (non-fatal)", exc_info=True)
+
     # Steve welcome posts disabled - community admins prefer to manage welcome messaging themselves
     if False and not skip_welcome_post and role not in ['owner', 'admin']:
         try:
@@ -3355,7 +3412,14 @@ def init_db():
                 ('skills', 'TEXT'),
                 ('linkedin', 'TEXT'),
                 ('experience', 'INTEGER'),
-                ('mobile', 'TEXT')
+                ('mobile', 'TEXT'),
+                # canonical_email — lower-cased, dot/plus-stripped form of
+                # ``email``. New rows write both (see
+                # ``backend.services.email_normalization``). Existing rows
+                # are backfilled lazily by a one-shot admin script; until
+                # then the signup uniqueness check ORs against raw email
+                # so we don't falsely reject.
+                ('canonical_email', 'VARCHAR(255)'),
             ]
             
             for column_name, column_type in columns_to_add:
@@ -4984,41 +5048,144 @@ Content requirements:
         logger.error(f"Error summarizing text: {str(e)}")
         return None
 
-def process_audio_for_summary(audio_file_path, username=None):
+def process_audio_for_summary(
+    audio_file_path,
+    username=None,
+    duration_seconds=None,
+    community_id=None,
+):
     """
-    Complete pipeline: transcribe audio and generate summary
-    Returns summary text or None
+    Complete pipeline: transcribe audio and generate summary.
+
+    Writes two rows to ``ai_usage_log`` so the Manage Membership modal and
+    the entitlements gate have accurate counters:
+
+      1. ``surface='whisper'`` with ``duration_seconds`` → counts against
+         ``whisper_minutes_per_month``.
+      2. ``surface='voice_summary'`` → counts against
+         ``steve_uses_per_month`` + ``ai_daily_limit``.
+
+    Callers should pass ``duration_seconds`` when the client uploaded a
+    reliable length (e.g. the DM audio endpoint reads it from form data).
+    When omitted, we try to probe with mutagen/ffprobe, and finally fall
+    back to a word-rate estimate from the transcript.
+
+    Args:
+        audio_file_path: local path or R2 CDN URL for the audio file.
+        username: actor. Required for usage accounting — pass ``None`` only
+            when called from an anonymous / internal pipeline.
+        duration_seconds: optional client-provided audio length (seconds).
+        community_id: optional community context, for pool accounting later.
+
+    Returns the summary text or None on failure.
     """
     if not audio_file_path:
         return None
-    
+
     logger.info(f"Processing audio for AI summary: {audio_file_path} (user: {username})")
-    
+
     # Step 1: Transcribe audio (returns (text, language) tuple)
     result = transcribe_audio_file(audio_file_path)
     if not result:
         logger.warning("Transcription failed, no summary generated")
+        # Log failed whisper attempt for analytics (no usage charged).
+        try:
+            if username:
+                from backend.services import ai_usage as _au
+                _au.log_usage(
+                    username,
+                    surface=_au.SURFACE_WHISPER,
+                    request_type="whisper_failed",
+                    success=False,
+                    reason_blocked="api_error",
+                    community_id=community_id,
+                    model="whisper-1",
+                )
+        except Exception:
+            pass
         return None
-    
+
     # Handle both old (string) and new (tuple) return format
     if isinstance(result, tuple):
         transcription, detected_lang = result
     else:
         transcription = result
         detected_lang = 'en'
-    
+
     if not transcription:
         return None
-    
+
     logger.info(f"Detected language: {detected_lang}")
-    
+
+    # ── Log Whisper usage ──
+    # Source of truth for the "Voice transcription this month" counter. If
+    # the caller gave us a duration, use it; otherwise probe the file; last
+    # resort is a word-rate estimate (≈150 wpm = 2.5 wps).
+    try:
+        from backend.services import ai_usage as _au
+        from backend.services.whisper_service import (
+            _probe_duration_seconds as _probe,
+            _whisper_cost_usd as _wcost,
+            WHISPER_MODEL as _WHISPER_MODEL,
+        )
+
+        final_duration = None
+        try:
+            final_duration = float(duration_seconds) if duration_seconds else None
+        except Exception:
+            final_duration = None
+        if not final_duration:
+            try:
+                final_duration = _probe(audio_file_path)
+            except Exception:
+                final_duration = None
+        if not final_duration and transcription:
+            words = len(transcription.split())
+            final_duration = max(1.0, words / 2.5)
+
+        whisper_cost = _wcost(final_duration or 0.0)
+
+        if username:
+            _au.log_usage(
+                username,
+                surface=_au.SURFACE_WHISPER,
+                request_type="whisper",
+                duration_seconds=final_duration,
+                cost_usd=whisper_cost,
+                success=True,
+                community_id=community_id,
+                model=_WHISPER_MODEL,
+            )
+    except Exception as _log_err:
+        logger.warning(f"Could not log Whisper usage: {_log_err}")
+
     # Step 2: Summarize transcription with username and detected language
     summary = summarize_text(transcription, username=username, language=detected_lang)
+
+    # ── Log the voice-summary GPT call ──
+    # The summarization is a separate LLM call against OpenAI; it counts as
+    # one Steve use on the ``voice_summary`` surface. We log both success
+    # and failure so analytics capture failed summarizations too.
+    try:
+        from backend.services import ai_usage as _au2
+        if username:
+            _au2.log_usage(
+                username,
+                surface=_au2.SURFACE_VOICE_SUMMARY,
+                request_type="voice_summary",
+                success=bool(summary),
+                community_id=community_id,
+                model="gpt-4o-mini",
+                reason_blocked=None if summary else "api_error",
+            )
+    except Exception as _log_err2:
+        logger.warning(f"Could not log voice_summary usage: {_log_err2}")
+
     if not summary:
         logger.warning("Summarization failed, returning transcription")
         # Return first 200 chars of transcription as fallback
         return transcription[:200] + "..." if len(transcription) > 200 else transcription
-    
+
     return summary
 
 
@@ -10083,19 +10250,64 @@ def admin_users_api():
             r = c.fetchone()
             total = r['cnt'] if hasattr(r, 'keys') else r[0]
             offset = (page - 1) * per_page
-            if search:
-                c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE (username LIKE {ph} OR email LIKE {ph}){tf} ORDER BY username LIMIT {ph} OFFSET {ph}", (f'%{search}%', f'%{search}%') + tp + (per_page, offset))
-            else:
-                c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE 1=1{tf} ORDER BY username LIMIT {ph} OFFSET {ph}", tp + (per_page, offset))
+            # Include is_special in the projection where available; fall back if the column doesn't exist.
+            try:
+                if search:
+                    c.execute(f"SELECT id, username, email, subscription, is_special, created_at FROM users WHERE (username LIKE {ph} OR email LIKE {ph}){tf} ORDER BY username LIMIT {ph} OFFSET {ph}", (f'%{search}%', f'%{search}%') + tp + (per_page, offset))
+                else:
+                    c.execute(f"SELECT id, username, email, subscription, is_special, created_at FROM users WHERE 1=1{tf} ORDER BY username LIMIT {ph} OFFSET {ph}", tp + (per_page, offset))
+                _has_is_special_col = True
+            except Exception:
+                if search:
+                    c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE (username LIKE {ph} OR email LIKE {ph}){tf} ORDER BY username LIMIT {ph} OFFSET {ph}", (f'%{search}%', f'%{search}%') + tp + (per_page, offset))
+                else:
+                    c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE 1=1{tf} ORDER BY username LIMIT {ph} OFFSET {ph}", tp + (per_page, offset))
+                _has_is_special_col = False
+            # Lazy import to avoid circulars at module load time.
+            try:
+                from backend.services.entitlements import resolve_entitlements as _resolve_ent  # type: ignore
+            except Exception:
+                _resolve_ent = None  # type: ignore
             users = []
             for u in c.fetchall():
+                uname = u['username'] if hasattr(u,'keys') else u[1]
+                sub = u['subscription'] if hasattr(u,'keys') else u[3]
+                if _has_is_special_col:
+                    is_special_raw = u['is_special'] if hasattr(u,'keys') else u[4]
+                    created_raw = u['created_at'] if hasattr(u,'keys') else u[5]
+                else:
+                    is_special_raw = 0
+                    created_raw = u['created_at'] if hasattr(u,'keys') else u[4]
+                try:
+                    is_special_val = bool(int(is_special_raw or 0))
+                except Exception:
+                    is_special_val = bool(is_special_raw)
+                # effective_tier + inherited_from come from the entitlements resolver
+                # so admin UI matches what the enforcement layer actually applies.
+                effective_tier = None
+                inherited_from = None
+                if _resolve_ent is not None:
+                    try:
+                        ent = _resolve_ent(uname)
+                        effective_tier = ent.get('tier')
+                        # inherited_from is only set when the tier comes from an
+                        # Enterprise seat (Wave 5 will populate this). For now the
+                        # resolver returns plain tier names, so this is None for
+                        # personal Premium/Free/Trial and 'enterprise:<slug>' once
+                        # the Enterprise lifecycle lands.
+                        inherited_from = ent.get('inherited_from')
+                    except Exception:
+                        effective_tier = None
                 users.append({
                     'id': u['id'] if hasattr(u,'keys') else u[0],
-                    'username': u['username'] if hasattr(u,'keys') else u[1],
+                    'username': uname,
                     'email': u['email'] if hasattr(u,'keys') else u[2],
-                    'subscription': u['subscription'] if hasattr(u,'keys') else u[3],
-                    'created_at': str(u['created_at'] if hasattr(u,'keys') else u[4]) if (u['created_at'] if hasattr(u,'keys') else u[4]) else None,
-                    'is_admin': is_app_admin(u['username'] if hasattr(u,'keys') else u[1])
+                    'subscription': sub,
+                    'is_special': is_special_val,
+                    'effective_tier': effective_tier or (sub or 'free'),
+                    'inherited_from': inherited_from,
+                    'created_at': str(created_raw) if created_raw else None,
+                    'is_admin': is_app_admin(uname),
                 })
             return jsonify({'success': True, 'users': users, 'total': total, 'page': page, 'per_page': per_page, 'pages': (total + per_page - 1) // per_page})
     except Exception as e:
@@ -11704,6 +11916,25 @@ def api_stripe_create_checkout_session():
     if not price_key:
         return jsonify({'success': False, 'error': 'Pricing is not configured'}), 400
 
+    # Block the upsell if the user already gets Premium through an Enterprise
+    # community seat. Stripe would happily take their money, but we'd be
+    # double-billing for benefits they already have. The client should read
+    # the ``reason: 'enterprise_seat_active'`` code and route them to the
+    # "you already have Premium via <community>" explainer instead.
+    try:
+        from backend.services import enterprise_membership as _em
+        _seat = _em.active_seat_for(username)
+        if _seat and _seat.get("active"):
+            return jsonify({
+                'success': False,
+                'error': 'You already have Premium through your Enterprise community.',
+                'reason': 'enterprise_seat_active',
+                'community_id': _seat.get('community_id'),
+                'community_slug': _seat.get('community_slug'),
+            }), 409
+    except Exception:
+        logger.exception("checkout preflight: enterprise seat check failed")
+
     try:
         email_value = None
         with get_db_connection() as conn:
@@ -12014,22 +12245,34 @@ def verify_email():
                         username = f"{base_username}{suffix}"
                 except Exception:
                     pass
-                # if email exists, just mark verified, else insert
-                c.execute(f"SELECT id FROM users WHERE email={ph}", (pend_email,))
+                # Compute canonical form once; we match on canonical OR
+                # raw email to catch rows that predate the column.
+                try:
+                    from backend.services.email_normalization import canonicalize_with_policy
+                    pend_canonical = canonicalize_with_policy(pend_email)
+                except Exception:
+                    pend_canonical = (pend_email or '').strip().lower()
+                c.execute(
+                    f"SELECT id FROM users WHERE canonical_email={ph} OR email={ph}",
+                    (pend_canonical, pend_email),
+                )
                 exists = c.fetchone()
                 user_id = None
                 if exists:
                     user_id = exists['id'] if hasattr(exists, 'keys') else exists[0]
-                    c.execute(f"UPDATE users SET email_verified=1, email_verified_at=COALESCE(email_verified_at, {ph}) WHERE email={ph}", (datetime.now().isoformat(), pend_email))
+                    c.execute(
+                        f"UPDATE users SET email_verified=1, email_verified_at=COALESCE(email_verified_at, {ph}), canonical_email=COALESCE(canonical_email, {ph}) WHERE id={ph}",
+                        (datetime.now().isoformat(), pend_canonical, user_id),
+                    )
                 else:
                     first_name = _val(row, 'first_name', 4) or ''
                     last_name = _val(row, 'last_name', 5) or ''
                     password_hash = _val(row, 'password', 3)
                     mobile = _val(row, 'mobile', 6) or ''
                     c.execute(f"""
-                        INSERT INTO users (username, email, password, first_name, last_name, age, gender, primary_goal, subscription, created_at, email_verified, email_verified_at)
-                        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, 'free', {ph}, 1, {ph})
-                    """, (username, pend_email, password_hash, first_name, last_name, None, '', '', datetime.now().strftime('%Y-%m-%d %H:%M:%S'), datetime.now().isoformat()))
+                        INSERT INTO users (username, email, canonical_email, password, first_name, last_name, age, gender, primary_goal, subscription, created_at, email_verified, email_verified_at)
+                        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, 'free', {ph}, 1, {ph})
+                    """, (username, pend_email, pend_canonical, password_hash, first_name, last_name, None, '', '', datetime.now().strftime('%Y-%m-%d %H:%M:%S'), datetime.now().isoformat()))
                     if mobile:
                         c.execute(f"UPDATE users SET mobile={ph} WHERE username={ph}", (mobile, username))
                     # Get the new user's ID
@@ -13360,6 +13603,7 @@ _LINK_PREVIEW_MAX_CACHE = 2000
 
 _LINK_PREVIEW_ALLOWED_DOMAINS = {
     'youtube.com', 'youtu.be', 'www.youtube.com', 'm.youtube.com',
+    'music.youtube.com', 'www.music.youtube.com',
     'vimeo.com', 'www.vimeo.com',
     'instagram.com', 'www.instagram.com',
     'linkedin.com', 'www.linkedin.com',
@@ -13382,6 +13626,30 @@ _LINK_PREVIEW_ALLOWED_DOMAINS = {
     'forbes.com', 'www.forbes.com',
     'wsj.com', 'www.wsj.com',
 }
+
+
+def _youtube_video_id_from_share_url(url: str) -> str | None:
+    """Extract 11-char video id from common YouTube / YouTube Music share URLs."""
+    import re as _re
+    patterns = (
+        r'(?:www\.|m\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})',
+        r'(?:www\.|m\.)?youtube\.com/watch\?[^#\s]*[?&]v=([a-zA-Z0-9_-]{11})',
+        r'(?:www\.)?music\.youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})',
+        r'(?:www\.)?music\.youtube\.com/watch\?[^#\s]*[?&]v=([a-zA-Z0-9_-]{11})',
+        r'(?:www\.)?youtu\.be/([a-zA-Z0-9_-]{11})',
+        r'(?:www\.)?youtube\.com/embed/([a-zA-Z0-9_-]{11})',
+        r'(?:www\.)?youtube\.com/shorts/([a-zA-Z0-9_-]{11})',
+        r'(?:www\.)?youtube\.com/live/([a-zA-Z0-9_-]{11})',
+    )
+    for p in patterns:
+        m = _re.search(p, url, _re.IGNORECASE)
+        if m:
+            return m.group(1)
+    return None
+
+
+def _domain_is_youtube_family(domain_lower: str) -> bool:
+    return domain_lower == 'youtu.be' or 'youtube.com' in domain_lower
 
 
 def _extract_og_metadata(url: str) -> dict | None:
@@ -13413,6 +13681,26 @@ def _extract_og_metadata(url: str) -> dict | None:
     if neg_ts:
         _link_preview_negative_cache.pop(cache_key, None)
 
+    def _store_youtube_fallback_preview() -> dict | None:
+        vid = _youtube_video_id_from_share_url(url)
+        if not vid or not _domain_is_youtube_family(domain):
+            return None
+        result = {
+            'title': '',
+            'description': '',
+            'image': f'https://img.youtube.com/vi/{vid}/hqdefault.jpg',
+            'site_name': 'YouTube',
+            'domain': domain,
+            'type': 'video',
+            'url': url.strip(),
+            '_ts': _time.time(),
+        }
+        if len(_link_preview_cache) >= _LINK_PREVIEW_MAX_CACHE:
+            oldest_key = min(_link_preview_cache, key=lambda k: _link_preview_cache[k]['_ts'])
+            del _link_preview_cache[oldest_key]
+        _link_preview_cache[cache_key] = result
+        return result
+
     try:
         import requests as _req
         # Facebook/Instagram serve full OG tags to facebookexternalhit but a login wall
@@ -13441,6 +13729,9 @@ def _extract_og_metadata(url: str) -> dict | None:
                 resp.close()
             except Exception:
                 pass
+            fb = _store_youtube_fallback_preview()
+            if fb:
+                return fb
             _link_preview_negative_cache[cache_key] = _time.time()
             return None
 
@@ -13461,6 +13752,9 @@ def _extract_og_metadata(url: str) -> dict | None:
                 pass
         html = content.decode('utf-8', errors='replace')
     except Exception:
+        fb = _store_youtube_fallback_preview()
+        if fb:
+            return fb
         _link_preview_negative_cache[cache_key] = _time.time()
         return None
 
@@ -13526,10 +13820,7 @@ def _extract_og_metadata(url: str) -> dict | None:
     site_name = _og('site_name') or domain
     og_type = _og('type') or ''
 
-    yt_match = _re.search(
-        r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})',
-        url)
-    video_id = yt_match.group(1) if yt_match else None
+    video_id = _youtube_video_id_from_share_url(url)
     if video_id and not image:
         image = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
 
@@ -13565,6 +13856,9 @@ def _extract_og_metadata(url: str) -> dict | None:
     }
 
     if not title and not description and not image:
+        fb = _store_youtube_fallback_preview()
+        if fb:
+            return fb
         _link_preview_negative_cache[cache_key] = _time.time()
         return None
 
@@ -13714,7 +14008,7 @@ def get_messages():
                                 cached_messages = [m for m in cached_messages if m.get('time') and _dt.strptime(str(m['time'])[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S') > _del_dt]
                 except Exception:
                     pass
-                return jsonify({'success': True, 'messages': cached_messages})
+                return jsonify({'success': True, 'messages': cached_messages, 'has_more': False})
     
     # --- Firestore dual-read (feature flag) ---
     try:
@@ -13761,20 +14055,8 @@ def get_messages():
                                     messages = [m for m in messages if m.get('time') and _dt.strptime(str(m['time'])[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S') > _del_dt2]
                     except Exception:
                         pass
-                    # WhatsApp-style delete: filter Firestore messages by deleted_at
-                    try:
-                        with get_db_connection() as _dfc:
-                            _dfcc = _dfc.cursor()
-                            _dfcc.execute("SELECT deleted_at FROM deleted_chat_threads WHERE username = ? AND other_username = ?", (username, peer_username))
-                            _dfr = _dfcc.fetchone()
-                            if _dfr:
-                                _dfa = str(_dfr['deleted_at'] if hasattr(_dfr, 'keys') else _dfr[0])
-                                if _dfa:
-                                    from datetime import datetime as _dt
-                                    _del_dt = _dt.strptime(_dfa[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
-                                    messages = [m for m in messages if m.get('time') and _dt.strptime(str(m['time'])[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S') > _del_dt]
-                    except Exception:
-                        pass
+                    if not messages:
+                        has_more = False
                     return jsonify({'success': True, 'messages': messages, 'is_delta': is_delta, 'has_more': has_more})
     except Exception as fs_err:
         logger.warning(f"Firestore DM read failed, falling back to MySQL: {fs_err}")
@@ -14010,8 +14292,8 @@ def get_messages():
             except Exception:
                 pass
             
-            # Include delta indicator in response for client-side optimization
-            return jsonify({'success': True, 'messages': messages, 'is_delta': bool(since_id_int)})
+            # Include delta indicator and pagination hint (MySQL path loads full thread; older pages use Firestore)
+            return jsonify({'success': True, 'messages': messages, 'is_delta': bool(since_id_int), 'has_more': False})
             
     except Exception as e:
         logger.error(f"Error fetching messages: {str(e)}")
@@ -14278,6 +14560,34 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
         logger.warning("XAI_API_KEY not configured, Steve cannot reply in DM")
         return
     
+    # ── Entitlements gate ──
+    try:
+        from backend.services.entitlements_gate import gate_or_reason as _gate
+        from backend.services.feature_flags import entitlements_enforcement_enabled as _enforce
+        from backend.services import entitlements_errors as _errs
+        _allowed, _reason, _ent = _gate(sender_username, _ai_usage.SURFACE_DM)
+        if not _allowed and _enforce():
+            try:
+                from backend.services.content_generation.delivery import send_steve_dm as _send_dm
+                if _reason == _errs.REASON_PREMIUM_REQUIRED:
+                    blocked = (
+                        "Steve is a Premium feature. Upgrade in Settings → "
+                        "Manage Membership to keep chatting with me."
+                    )
+                elif _reason == _errs.REASON_DAILY_CAP:
+                    blocked = "You've hit today's Steve limit. It resets at midnight UTC."
+                else:
+                    blocked = (
+                        "You've used up your Steve calls for this month. "
+                        "See Settings → AI Usage."
+                    )
+                _send_dm(receiver_username=sender_username, content=blocked)
+            except Exception:
+                pass
+            return
+    except Exception as gate_err:
+        logger.warning("DM Steve gate check failed (non-fatal): %s", gate_err)
+
     try:
         # Determine the chat thread to read context from and reply into
         if other_username:
@@ -14567,7 +14877,17 @@ Only share this information if asked. Be factual — do not embellish or invent 
                 pass
             
             logger.info(f"Steve replied to DM from {sender_username}" + (f" (mentioned in chat with {other_username})" if other_username else ""))
-    
+
+        try:
+            _ai_usage.log_usage(
+                sender_username,
+                surface=_ai_usage.SURFACE_DM,
+                request_type='steve_dm_reply',
+                model='grok-4-1-fast-reasoning',
+            )
+        except Exception:
+            pass
+
     except Exception as e:
         logger.error(f"Error in Steve DM reply: {e}", exc_info=True)
 
@@ -15493,7 +15813,11 @@ def send_audio_message():
             audio_summary = None
             try:
                 logger.info(f"Generating AI summary for chat voice note: {rel_path}")
-                audio_summary = process_audio_for_summary(rel_path, username=username)
+                audio_summary = process_audio_for_summary(
+                    rel_path,
+                    username=username,
+                    duration_seconds=duration_seconds,
+                )
                 if audio_summary:
                     logger.info(f"AI summary generated for chat: {audio_summary[:100]}...")
             except Exception as e:
@@ -17274,9 +17598,16 @@ def api_chat_threads():
                         profile_username = profile_row['username'] if hasattr(profile_row, 'keys') else profile_row[0]
                         display_name = profile_row['display_name'] if hasattr(profile_row, 'keys') else profile_row[1]
                         profile_picture_rel = profile_row['profile_picture'] if hasattr(profile_row, 'keys') else profile_row[2]
+                        pic_url = None
+                        if profile_picture_rel:
+                            pr = str(profile_picture_rel).strip()
+                            if pr.startswith('http://') or pr.startswith('https://'):
+                                pic_url = pr
+                            else:
+                                pic_url = url_for('static', filename=pr)
                         profile_map[profile_username] = {
                             'display_name': display_name,
-                            'profile_picture_url': url_for('static', filename=profile_picture_rel) if profile_picture_rel else None,
+                            'profile_picture_url': pic_url,
                         }
                 except Exception as profile_err:
                     logger.warning(f"Could not batch fetch chat thread profiles: {profile_err}")
@@ -17294,31 +17625,58 @@ def api_chat_threads():
                     if other_username in blocked_set:
                         continue
 
-                    # Last message in either direction (preview)
+                    # Last message in either direction (preview) — after clear, only messages newer than deleted_at
+                    del_at_for_preview = deleted_threads.get(other_username) if other_username in deleted_threads else None
                     # Include is_encrypted to handle encrypted messages
                     try:
-                        c.execute(
-                            """
-                            SELECT message, timestamp, sender, is_encrypted
-                            FROM messages
-                            WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)
-                            ORDER BY timestamp DESC
-                            LIMIT 1
-                            """,
-                            (username, other_username, other_username, username),
-                        )
+                        if del_at_for_preview:
+                            c.execute(
+                                """
+                                SELECT message, timestamp, sender, is_encrypted
+                                FROM messages
+                                WHERE ((sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?))
+                                  AND timestamp > ?
+                                ORDER BY timestamp DESC
+                                LIMIT 1
+                                """,
+                                (username, other_username, other_username, username, del_at_for_preview),
+                            )
+                        else:
+                            c.execute(
+                                """
+                                SELECT message, timestamp, sender, is_encrypted
+                                FROM messages
+                                WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)
+                                ORDER BY timestamp DESC
+                                LIMIT 1
+                                """,
+                                (username, other_username, other_username, username),
+                            )
                     except Exception:
                         # Fallback if is_encrypted column doesn't exist
-                        c.execute(
-                            """
-                            SELECT message, timestamp, sender
-                            FROM messages
-                            WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)
-                            ORDER BY timestamp DESC
-                            LIMIT 1
-                            """,
-                            (username, other_username, other_username, username),
-                        )
+                        if del_at_for_preview:
+                            c.execute(
+                                """
+                                SELECT message, timestamp, sender
+                                FROM messages
+                                WHERE ((sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?))
+                                  AND timestamp > ?
+                                ORDER BY timestamp DESC
+                                LIMIT 1
+                                """,
+                                (username, other_username, other_username, username, del_at_for_preview),
+                            )
+                        else:
+                            c.execute(
+                                """
+                                SELECT message, timestamp, sender
+                                FROM messages
+                                WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)
+                                ORDER BY timestamp DESC
+                                LIMIT 1
+                                """,
+                                (username, other_username, other_username, username),
+                            )
                     last_row = c.fetchone()
                     last_message_text = None
                     last_activity_time = None
@@ -17340,26 +17698,24 @@ def api_chat_threads():
                     if is_encrypted and not last_message_text:
                         last_message_text = '🔒 Encrypted message'
 
-                    # Unread count for this thread (messages sent by other -> me)
-                    c.execute("SELECT COUNT(*) as count FROM messages WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
+                    # After clear there may be no visible preview; use clear time for sort so the thread stays near the top
+                    if del_at_for_preview and not last_activity_time:
+                        da = str(del_at_for_preview).strip()
+                        if len(da) >= 19:
+                            last_activity_time = da[:10] + 'T' + da[11:19] + 'Z'
+                        else:
+                            last_activity_time = da
+
+                    # Unread count for this thread (messages sent by other -> me, after clear only)
+                    if del_at_for_preview:
+                        c.execute(
+                            "SELECT COUNT(*) as count FROM messages WHERE sender=? AND receiver=? AND is_read=0 AND timestamp > ?",
+                            (other_username, username, del_at_for_preview),
+                        )
+                    else:
+                        c.execute("SELECT COUNT(*) as count FROM messages WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
                     unread_row = c.fetchone()
                     unread_count = unread_row['count'] if hasattr(unread_row, 'keys') else (unread_row[0] if unread_row else 0)
-
-                    # WhatsApp-style delete: hide if no new activity since delete
-                    if other_username in deleted_threads:
-                        del_at_str = deleted_threads[other_username]
-                        if del_at_str:
-                            try:
-                                from datetime import datetime as _dt
-                                del_dt = _dt.strptime(str(del_at_str)[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
-                                if last_activity_time:
-                                    act_dt = _dt.strptime(str(last_activity_time)[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
-                                    if act_dt <= del_dt:
-                                        continue
-                                else:
-                                    continue
-                            except Exception:
-                                continue
 
                     profile = profile_map.get(other_username) or {}
                     display_name = profile.get('display_name') or other_username
@@ -17591,9 +17947,12 @@ def clear_chat_history():
                 c.execute(f"INSERT INTO deleted_chat_threads (username, other_username, deleted_at) VALUES ({ph},{ph},datetime('now')) ON CONFLICT(username, other_username) DO UPDATE SET deleted_at=datetime('now')", (username, other_username))
             conn.commit()
             try:
-                cache.delete(f"chat_threads:{username}")
+                invalidate_message_cache(username, other_username)
             except Exception:
-                pass
+                try:
+                    cache.delete(f"chat_threads:{username}")
+                except Exception:
+                    pass
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"clear_chat_history error: {e}")
@@ -20205,7 +20564,11 @@ def post_status():
             if audio_path:
                 try:
                     logger.info(f"Generating AI summary for audio post: {audio_path}")
-                    audio_summary = process_audio_for_summary(audio_path, username=username)
+                    audio_summary = process_audio_for_summary(
+                        audio_path,
+                        username=username,
+                        community_id=community_id,
+                    )
                     if audio_summary:
                         logger.info(f"AI summary generated successfully: {audio_summary[:100]}...")
                     else:
@@ -20421,6 +20784,11 @@ def post_reply():
     # Idempotency token (optional)
     dedupe_token = (request.form.get('dedupe_token') or '').strip()
 
+    try:
+        voice_duration_seconds = float((request.form.get('voice_duration_seconds') or '').strip() or 0) or None
+    except Exception:
+        voice_duration_seconds = None
+
     # Use DB-friendly ISO for storage in UTC; frontend will format for display
     now = datetime.utcnow()
     timestamp_db = now.strftime('%Y-%m-%d %H:%M:%S')
@@ -20490,15 +20858,46 @@ def post_reply():
                 c.execute("ALTER TABLE replies ADD COLUMN audio_mime TEXT")
             except Exception:
                 pass
-            c.execute("INSERT INTO replies (post_id, username, content, image_path, audio_path, timestamp, community_id, parent_reply_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                      (post_id, username, content, image_path, audio_path, timestamp_db, community_id, parent_reply_id))
+            try:
+                c.execute("ALTER TABLE replies ADD COLUMN audio_summary TEXT")
+            except Exception:
+                pass
+
+            audio_summary = None
+            if audio_path:
+                try:
+                    logger.info(f"Generating AI summary for feed reply audio: {audio_path}")
+                    audio_summary = process_audio_for_summary(
+                        audio_path,
+                        username=username,
+                        duration_seconds=voice_duration_seconds,
+                        community_id=int(community_id) if community_id else None,
+                    )
+                    if audio_summary:
+                        logger.info(f"AI summary generated for reply: {audio_summary[:100]}...")
+                except Exception as sum_err:
+                    logger.warning(f"Could not generate audio summary for reply: {sum_err}")
+                    audio_summary = None
+
+            c.execute(
+                "INSERT INTO replies (post_id, username, content, image_path, audio_path, audio_summary, timestamp, community_id, parent_reply_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (post_id, username, content, image_path, audio_path, audio_summary, timestamp_db, community_id, parent_reply_id),
+            )
             reply_id = c.lastrowid
 
             # Dual-write reply to Firestore
             try:
                 from backend.services.firestore_writes import write_reply
-                write_reply(post_id=post_id, reply_id=reply_id, username=username, content=content,
-                           parent_reply_id=parent_reply_id, image_path=image_path)
+                write_reply(
+                    post_id=post_id,
+                    reply_id=reply_id,
+                    username=username,
+                    content=content,
+                    parent_reply_id=parent_reply_id,
+                    image_path=image_path,
+                    audio_path=audio_path,
+                    audio_summary=audio_summary,
+                )
             except Exception:
                 pass
             try:
@@ -20565,8 +20964,9 @@ def post_reply():
                 'post_id': post_id,
                 'username': username,
                 'content': content,
-            'image_path': image_path,
-            'audio_path': audio_path,
+                'image_path': image_path,
+                'audio_path': audio_path,
+                'audio_summary': audio_summary,
                 'timestamp': timestamp_db,  # Return precise timestamp for clients
                 'reactions': {},
                 'user_reaction': None,
@@ -25523,43 +25923,64 @@ def edit_post():
 @app.route('/update_audio_summary', methods=['POST'])
 @login_required
 def update_audio_summary():
-    """Update the AI summary for an audio post (post owner or admin only)."""
+    """Update the AI summary for an audio post or reply (owner or admin only)."""
     username = session['username']
-    data = request.get_json()
+    data = request.get_json() or {}
     post_id = data.get('post_id')
+    reply_id = data.get('reply_id')
     new_summary = (data.get('summary') or '').strip()
-    
-    if not post_id:
-        return jsonify({'success': False, 'error': 'Post ID is required'}), 400
-    
+    conn = None
+
+    if not post_id and not reply_id:
+        return jsonify({'success': False, 'error': 'Post ID or reply ID is required'}), 400
+
     if not new_summary:
         return jsonify({'success': False, 'error': 'Summary cannot be empty'}), 400
-    
+
     try:
         conn = get_db_connection()
         c = conn.cursor()
-        
-        # Check if user owns the post or is admin
         ph = get_sql_placeholder()
+
+        if reply_id:
+            try:
+                reply_id = int(reply_id)
+            except Exception:
+                return jsonify({'success': False, 'error': 'Invalid reply ID'}), 400
+            c.execute(f"SELECT username FROM replies WHERE id = {ph}", (reply_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
+            author = row['username'] if hasattr(row, 'keys') else row[0]
+            if author != username and username != 'admin':
+                return jsonify({'success': False, 'error': 'Not authorized to edit this summary'}), 403
+            try:
+                c.execute(f"ALTER TABLE replies ADD COLUMN audio_summary TEXT")
+                conn.commit()
+            except Exception:
+                pass
+            c.execute(f"UPDATE replies SET audio_summary = {ph} WHERE id = {ph}", (new_summary, reply_id))
+            conn.commit()
+            logger.info(f"User {username} updated audio summary for reply {reply_id}")
+            return jsonify({'success': True, 'summary': new_summary})
+
         c.execute(f"SELECT username FROM posts WHERE id = {ph}", (post_id,))
         row = c.fetchone()
-        
+
         if not row:
             return jsonify({'success': False, 'error': 'Post not found'}), 404
-        
+
         post_owner = row[0] if isinstance(row, tuple) else row['username']
-        
-        # Check if user is admin or post owner
+
         if post_owner != username and username != 'admin':
             return jsonify({'success': False, 'error': 'Not authorized to edit this summary'}), 403
-        
-        # Update the audio summary
+
         c.execute(f"UPDATE posts SET audio_summary = {ph} WHERE id = {ph}", (new_summary, post_id))
         conn.commit()
-        
+
         logger.info(f"User {username} updated audio summary for post {post_id}")
         return jsonify({'success': True, 'summary': new_summary})
-        
+
     except Exception as e:
         logger.error(f"Error updating audio summary: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -26423,13 +26844,30 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
     
     logger.info(f"Steve replying to post {post_id} in community {community_id}")
     
+    # ── Entitlements gate ──
+    _enforcement_on = False
+    try:
+        from backend.services.entitlements_gate import gate_or_reason as _gate
+        from backend.services.feature_flags import entitlements_enforcement_enabled as _enforce
+        _enforcement_on = _enforce()
+        _allowed, _reason, _ent = _gate(author_username, _ai_usage.SURFACE_FEED)
+        if not _allowed and _enforcement_on:
+            logger.info(
+                "Steve post-reply blocked by entitlements: user=%s reason=%s",
+                author_username, _reason,
+            )
+            return
+    except Exception as gate_err:
+        logger.warning("Feed Steve gate check failed (non-fatal): %s", gate_err)
+
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             placeholder = get_sql_placeholder()
-            
-            # Check rate limiting (unless unlimited user)
-            if author_username.lower() not in AI_UNLIMITED_USERS:
+
+            # Legacy daily-limit check — only runs when the entitlements flag
+            # is off. With the flag on, the gate above already did this.
+            if not _enforcement_on and author_username.lower() not in AI_UNLIMITED_USERS:
                 today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
                 c.execute(f"""
                     SELECT COUNT(*) as cnt FROM ai_usage_log 
@@ -26437,7 +26875,6 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 """, (author_username, today_start.strftime('%Y-%m-%d %H:%M:%S')))
                 row = c.fetchone()
                 usage_count = row['cnt'] if hasattr(row, 'keys') else row[0]
-                
                 if usage_count >= AI_DAILY_LIMIT:
                     logger.info(f"User {author_username} hit AI daily limit, skipping Steve reply to post")
                     return
@@ -26526,7 +26963,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 logger.warning("Steve community context failed: %s", ctx_err)
 
             # Inject Grok-analyzed profile context for the post author (scrub for commenter's view)
-            author_profile_ctx = get_steve_context_for_user(author_username, viewer_username=username)
+            author_profile_ctx = get_steve_context_for_user(author_username)
 
             context = "\n\n".join(context_parts)
             
@@ -26534,7 +26971,12 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             system_prompt = f"""You are Steve, with real-time knowledge and web search capabilities.
 
 {base_system_prompt}"""
-            system_prompt += "\nYou have access to this community's upcoming events, useful links, document excerpts, and active polls. Use them when answering questions about community resources."
+            system_prompt += (
+                "\nYou have access to this community's upcoming events, useful links, document excerpts, and active polls. "
+                "Use them when answering questions about community resources. "
+                "If the user asks about an uploaded document, base your answer only on the document excerpts in the context; "
+                "if there is no excerpt or it says the document could not be read, say so instead of inventing content."
+            )
             if author_profile_ctx:
                 system_prompt += f"\n\nWHAT YOU KNOW ABOUT @{author_username}:\n{author_profile_ctx}\nUse this knowledge naturally — don't announce it, but let it guide your tone and relevance."
             
@@ -26596,13 +27038,15 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             steve_reply_id = c.lastrowid
             conn.commit()
             
-            # Log AI usage
+            # MIGRATED to backend/services/ai_usage.py — safe to delete when monolith-split runs
             try:
-                c.execute(f"""
-                    INSERT INTO ai_usage_log (username, request_type, created_at)
-                    VALUES ({placeholder}, {placeholder}, {placeholder})
-                """, (author_username, 'steve_post_reply', timestamp_db))
-                conn.commit()
+                _ai_usage.log_usage(
+                    author_username,
+                    surface=_ai_usage.SURFACE_FEED,
+                    request_type='steve_post_reply',
+                    community_id=community_id,
+                    model='grok-4-1-fast-reasoning',
+                )
             except Exception:
                 pass
             
@@ -26714,16 +27158,30 @@ def ai_steve_reply():
         if not XAI_API_KEY:
             logger.error("XAI_API_KEY not configured for Steve")
             return jsonify({'success': False, 'error': 'AI service temporarily unavailable'}), 503
-        
+
+        # ── Entitlements gate (flag-aware) ──
+        _enforcement_on = False
+        try:
+            from backend.services.entitlements_gate import check_steve_access
+            from backend.services.feature_flags import entitlements_enforcement_enabled as _enforce
+            _enforcement_on = _enforce()
+            _allowed, _err_payload, _err_status, _ent = check_steve_access(
+                username, _ai_usage.SURFACE_FEED
+            )
+            if not _allowed and _enforcement_on:
+                return jsonify(_err_payload), _err_status
+        except Exception as gate_err:
+            logger.warning("ai_steve_reply gate failed (non-fatal): %s", gate_err)
+
         with get_db_connection() as conn:
             c = conn.cursor()
             placeholder = get_sql_placeholder()
-            
-            # Rate limiting: Check daily usage (skip for unlimited users)
+
+            # Legacy daily-limit fallback when entitlements enforcement is off.
             usage_count = 0
             is_unlimited = username.lower() in AI_UNLIMITED_USERS
-            
-            if not is_unlimited:
+
+            if not _enforcement_on and not is_unlimited:
                 try:
                     if USE_MYSQL:
                         c.execute(f"""
@@ -26909,54 +27367,17 @@ def ai_steve_reply():
             context_parts.append(f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]")
             context_parts.append("\nNote: If the user asks you to respond to or help another user, look through the comments above to find that user's question or message and address it directly.")
             
-            # Add community inner pages context (links, events, polls)
+            # Community context: same as post @Steve — calendar, links, PDF excerpts, polls
             if community_id:
                 try:
-                    # Useful links and documents
-                    c.execute(f"SELECT title, url, description FROM useful_links WHERE community_id = {placeholder} ORDER BY created_at DESC LIMIT 10", (community_id,))
-                    links = c.fetchall()
-                    if links:
-                        context_parts.append("\n--- Community Links & Documents ---")
-                        for lnk in links:
-                            title = lnk['title'] if hasattr(lnk, 'keys') else lnk[0]
-                            url = lnk['url'] if hasattr(lnk, 'keys') else lnk[1]
-                            desc = (lnk['description'] if hasattr(lnk, 'keys') else lnk[2]) or ''
-                            context_parts.append(f"- {title}: {url}" + (f" ({desc})" if desc else ""))
-                        context_parts.append("--- End of links ---")
-                except Exception:
-                    pass
-                
-                try:
-                    # Calendar events (upcoming and recent)
-                    c.execute(f"SELECT title, date, start_time, description FROM calendar_events WHERE community_id = {placeholder} ORDER BY date DESC LIMIT 10", (community_id,))
-                    events = c.fetchall()
-                    if events:
-                        context_parts.append("\n--- Community Calendar Events ---")
-                        for evt in events:
-                            title = evt['title'] if hasattr(evt, 'keys') else evt[0]
-                            date = evt['date'] if hasattr(evt, 'keys') else evt[1]
-                            time = evt['start_time'] if hasattr(evt, 'keys') else evt[2]
-                            desc = (evt['description'] if hasattr(evt, 'keys') else evt[3]) or ''
-                            context_parts.append(f"- {title} on {date}" + (f" at {time}" if time else "") + (f": {desc[:100]}" if desc else ""))
-                        context_parts.append("--- End of events ---")
-                except Exception:
-                    pass
-                
-                try:
-                    # Active polls
-                    c.execute(f"SELECT p.question, p.created_at, p.is_active FROM polls p JOIN posts pt ON p.post_id = pt.id WHERE pt.community_id = {placeholder} ORDER BY p.created_at DESC LIMIT 10", (community_id,))
-                    polls = c.fetchall()
-                    if polls:
-                        context_parts.append("\n--- Community Polls ---")
-                        for poll in polls:
-                            question = poll['question'] if hasattr(poll, 'keys') else poll[0]
-                            created = poll['created_at'] if hasattr(poll, 'keys') else poll[1]
-                            active = poll['is_active'] if hasattr(poll, 'keys') else poll[2]
-                            status = "Active" if active else "Archived"
-                            context_parts.append(f"- [{status}] {question} (created {created})")
-                        context_parts.append("--- End of polls ---")
-                except Exception:
-                    pass
+                    community_context = _build_steve_community_context(c, community_id, placeholder)
+                    if community_context and community_context.strip():
+                        context_parts.append(
+                            "Community context (use this to answer questions about events, links, documents, and polls):\n"
+                            + community_context
+                        )
+                except Exception as ctx_err:
+                    logger.warning("Steve community context (comment reply) failed: %s", ctx_err)
             
             # Inject Grok-analyzed profile context for the commenting user
             commenter_profile_ctx = get_steve_context_for_user(username)
@@ -26966,6 +27387,13 @@ def ai_steve_reply():
             logger.info(f"[Steve AI] Context built, length: {len(context)} chars, personality: {ai_personality}")
             
             system_prompt = get_ai_personality_prompt(ai_personality)
+            if community_id:
+                system_prompt += (
+                    "\nYou have access to this community's upcoming events, useful links, "
+                    "document excerpts, and active polls. Use them when answering questions about community resources. "
+                    "If the user asks about an uploaded document, base your answer only on the document excerpts in the context; "
+                    "if there is no excerpt or it says the document could not be read, say so instead of inventing content."
+                )
             if commenter_profile_ctx:
                 system_prompt += f"\n\nWHAT YOU KNOW ABOUT @{username}:\n{commenter_profile_ctx}\nUse this knowledge naturally — don't announce it, but let it guide your tone and relevance."
             ai_response = None
@@ -27044,41 +27472,17 @@ def ai_steve_reply():
             
             steve_reply_id = c.lastrowid
             
-            # Log AI usage
+            # MIGRATED to backend/services/ai_usage.py — safe to delete when monolith-split runs
             try:
-                c.execute(f"""
-                    INSERT INTO ai_usage_log (username, request_type, created_at)
-                    VALUES ({placeholder}, {placeholder}, {placeholder})
-                """, (username, 'steve_reply', timestamp_db))
+                _ai_usage.log_usage(
+                    username,
+                    surface=_ai_usage.SURFACE_FEED,
+                    request_type='steve_reply',
+                    community_id=community_id if community_id else None,
+                    model=model_to_use,
+                )
             except Exception as log_err:
-                # Table might not exist, create it
-                try:
-                    if USE_MYSQL:
-                        c.execute("""
-                            CREATE TABLE IF NOT EXISTS ai_usage_log (
-                                id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                                username VARCHAR(191) NOT NULL,
-                                request_type VARCHAR(50) NOT NULL,
-                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                INDEX idx_ai_usage_user (username),
-                                INDEX idx_ai_usage_time (created_at)
-                            )
-                        """)
-                    else:
-                        c.execute("""
-                            CREATE TABLE IF NOT EXISTS ai_usage_log (
-                                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                username TEXT NOT NULL,
-                                request_type TEXT NOT NULL,
-                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                            )
-                        """)
-                    c.execute(f"""
-                        INSERT INTO ai_usage_log (username, request_type, created_at)
-                        VALUES ({placeholder}, {placeholder}, {placeholder})
-                    """, (username, 'steve_reply', timestamp_db))
-                except Exception as create_err:
-                    logger.warning(f"Could not log AI usage: {create_err}")
+                logger.warning(f"Could not log AI usage: {log_err}")
             
             conn.commit()
             
@@ -27412,6 +27816,32 @@ def get_post():
                             except Exception:
                                 pass
 
+                            reply_media = {}
+                            try:
+                                hc.execute(
+                                    f"SELECT id, image_path, video_path, audio_path, audio_summary FROM replies WHERE id IN ({phs})",
+                                    tuple(all_reply_ids),
+                                )
+                                for row in hc.fetchall() or []:
+                                    if hasattr(row, 'keys'):
+                                        rid = int(row['id'])
+                                        reply_media[rid] = {
+                                            'image_path': row.get('image_path'),
+                                            'video_path': row.get('video_path'),
+                                            'audio_path': row.get('audio_path'),
+                                            'audio_summary': row.get('audio_summary'),
+                                        }
+                                    else:
+                                        rid = int(row[0])
+                                        reply_media[rid] = {
+                                            'image_path': row[1] if len(row) > 1 else None,
+                                            'video_path': row[2] if len(row) > 2 else None,
+                                            'audio_path': row[3] if len(row) > 3 else None,
+                                            'audio_summary': row[4] if len(row) > 4 else None,
+                                        }
+                            except Exception:
+                                pass
+
                             # Apply hydrated data to replies
                             def _hydrate(replies):
                                 for r in replies:
@@ -27420,6 +27850,16 @@ def get_post():
                                     r['profile_picture'] = pp_map.get(r.get('username'))
                                     r['reactions'] = reply_rxs.get(rid, {})
                                     r['user_reaction'] = user_reply_rxs.get(rid)
+                                    media = reply_media.get(int(rid))
+                                    if media:
+                                        if media.get('image_path'):
+                                            r['image_path'] = media['image_path']
+                                        if media.get('video_path'):
+                                            r['video_path'] = media['video_path']
+                                        if media.get('audio_path'):
+                                            r['audio_path'] = media['audio_path']
+                                        if media.get('audio_summary') is not None:
+                                            r['audio_summary'] = media['audio_summary']
                                     _hydrate(r.get('children', []))
                             _hydrate(fs_post.get('replies', []))
 
@@ -27762,7 +28202,10 @@ def api_get_reply(reply_id):
             parent_chain = []
             current_parent_id = reply.get('parent_reply_id')
             while current_parent_id:
-                c.execute(f"SELECT id, username, content, timestamp, parent_reply_id, image_path FROM replies WHERE id = {ph}", (current_parent_id,))
+                c.execute(
+                    f"SELECT id, username, content, timestamp, parent_reply_id, image_path, video_path, audio_path, audio_summary FROM replies WHERE id = {ph}",
+                    (current_parent_id,),
+                )
                 parent_raw = c.fetchone()
                 if not parent_raw:
                     break
@@ -30242,8 +30685,35 @@ def leave_community():
             # Invalidate dashboard cache so left community disappears immediately
             invalidate_user_cache(username)
             logger.info(f"Invalidated dashboard cache for {username} after leaving community")
-            
-        return jsonify({'success': True, 'message': 'Successfully left the community'})
+
+        # Enterprise seat lifecycle: close any active seat and offer winback
+        # if eligible. Best-effort — a lifecycle-hook error must not prevent
+        # the user from actually leaving the community.
+        winback_offer = None
+        try:
+            from backend.services import enterprise_membership as _em
+            from backend.services import enterprise_iap_nag as _nag
+            from backend.services import winback_promo as _winback
+            if _em.is_enterprise_community(int(community_id)):
+                _em.end_seat(
+                    username=username,
+                    community_id=int(community_id),
+                    end_reason="voluntary_leave",
+                    source="community_leave",
+                    actor_username=username,
+                )
+                try:
+                    _nag.acknowledge(username=username, community_id=int(community_id), actor=username)
+                except Exception:
+                    pass
+                try:
+                    winback_offer = _winback.issue_if_eligible(username, source="seat_end")
+                except Exception:
+                    logger.warning("[SEAT] winback offer failed (non-fatal)", exc_info=True)
+        except Exception:
+            logger.warning("[SEAT] end_seat hook failed (non-fatal)", exc_info=True)
+
+        return jsonify({'success': True, 'message': 'Successfully left the community', 'winback_offer': winback_offer})
         
     except Exception as e:
         logger.error(f"Error leaving community: {str(e)}")
@@ -34746,9 +35216,18 @@ def api_group_post():
             # Replies (with nested tree, matching /get_post format)
             gr_table = '`group_replies`' if USE_MYSQL else 'group_replies'
             grr_table = '`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'
+            try:
+                c.execute(f"ALTER TABLE {gr_table} ADD COLUMN audio_path TEXT")
+            except Exception:
+                pass
+            try:
+                c.execute(f"ALTER TABLE {gr_table} ADD COLUMN audio_summary TEXT")
+            except Exception:
+                pass
             c.execute(f"""
                 SELECT gr.id, gr.username, gr.content, gr.image_path, gr.created_at,
-                       gr.parent_reply_id, up.profile_picture
+                       gr.parent_reply_id, up.profile_picture,
+                       gr.audio_path, gr.audio_summary
                 FROM {gr_table} gr
                 LEFT JOIN user_profiles up ON up.username = gr.username
                 WHERE gr.group_post_id = {get_sql_placeholder()}
@@ -34757,8 +35236,26 @@ def api_group_post():
             rep_rows = c.fetchall() or []
             all_replies = []
             for rr in rep_rows:
-                rid = rr['id'] if hasattr(rr, 'keys') else rr[0]
-                parent_rid = rr['parent_reply_id'] if hasattr(rr, 'keys') else rr[5]
+                if hasattr(rr, 'keys'):
+                    rid = rr['id']
+                    parent_rid = rr['parent_reply_id']
+                    apath = rr.get('audio_path')
+                    asum = rr.get('audio_summary')
+                    uname = rr['username']
+                    rcontent = rr['content']
+                    rimg = rr['image_path']
+                    rts = rr['created_at']
+                    rpp = rr.get('profile_picture')
+                else:
+                    rid = rr[0]
+                    uname = rr[1]
+                    rcontent = rr[2]
+                    rimg = rr[3]
+                    rts = rr[4]
+                    parent_rid = rr[5]
+                    rpp = rr[6] if len(rr) > 6 else None
+                    apath = rr[7] if len(rr) > 7 else None
+                    asum = rr[8] if len(rr) > 8 else None
                 c.execute(f"SELECT reaction, COUNT(*) as c FROM {grr_table} WHERE group_reply_id = {get_sql_placeholder()} GROUP BY reaction", (rid,))
                 rrx = c.fetchall() or []
                 rreactions = { (r3['reaction'] if hasattr(r3, 'keys') else r3[0]): (r3['c'] if hasattr(r3, 'keys') else r3[1]) for r3 in rrx }
@@ -34770,12 +35267,14 @@ def api_group_post():
                 reply_count = (cnt_row['cnt'] if hasattr(cnt_row, 'keys') else cnt_row[0]) if cnt_row else 0
                 all_replies.append({
                     'id': rid,
-                    'username': rr['username'] if hasattr(rr, 'keys') else rr[1],
-                    'content': rr['content'] if hasattr(rr, 'keys') else rr[2],
-                    'image_path': rr['image_path'] if hasattr(rr, 'keys') else rr[3],
-                    'timestamp': rr['created_at'] if hasattr(rr, 'keys') else rr[4],
+                    'username': uname,
+                    'content': rcontent,
+                    'image_path': rimg,
+                    'audio_path': apath,
+                    'audio_summary': asum,
+                    'timestamp': rts,
                     'parent_reply_id': parent_rid,
-                    'profile_picture': rr['profile_picture'] if hasattr(rr, 'keys') else rr[6],
+                    'profile_picture': rpp,
                     'reactions': rreactions,
                     'user_reaction': reply_user_reaction,
                     'reply_count': reply_count,
@@ -35011,38 +35510,122 @@ def api_group_replies_create():
     parent_id_raw = request.form.get('parent_reply_id', '').strip()
     content = (request.form.get('content', '') or '').strip()
     try:
+        voice_duration_seconds = float((request.form.get('voice_duration_seconds') or '').strip() or 0) or None
+    except Exception:
+        voice_duration_seconds = None
+    try:
         post_id = int(post_id_raw)
     except Exception:
         return jsonify({'success': False, 'error': 'Invalid group_post_id'})
     parent_id = None
     if parent_id_raw:
-        try: parent_id = int(parent_id_raw)
-        except Exception: parent_id = None
-    if not content and 'image' not in request.files:
-        return jsonify({'success': False, 'error': 'Content or image is required'})
+        try:
+            parent_id = int(parent_id_raw)
+        except Exception:
+            parent_id = None
+    has_image = 'image' in request.files and bool(request.files['image'].filename)
+    has_audio = 'audio' in request.files and bool(request.files['audio'].filename)
+    if not content and not has_image and not has_audio:
+        return jsonify({'success': False, 'error': 'Content, image, or audio is required'})
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
             image_path = None
-            if 'image' in request.files and request.files['image'].filename:
+            audio_path = None
+            audio_summary = None
+            if has_image:
                 image_path = save_uploaded_file(request.files['image'])
+            if has_audio:
+                audio_path = save_uploaded_file(request.files['audio'], subfolder='audio')
+                if not audio_path:
+                    return jsonify({'success': False, 'error': 'Invalid audio type'}), 400
+
+            community_id = None
+            try:
+                gp_t = '`group_posts`' if USE_MYSQL else 'group_posts'
+                g_t = '`groups`' if USE_MYSQL else 'groups'
+                c.execute(
+                    f"SELECT g.community_id FROM {gp_t} gp JOIN {g_t} g ON g.id = gp.group_id WHERE gp.id = {ph}",
+                    (post_id,),
+                )
+                crow = c.fetchone()
+                if crow:
+                    community_id = crow['community_id'] if hasattr(crow, 'keys') else crow[0]
+            except Exception:
+                community_id = None
+
+            gr_table = '`group_replies`' if USE_MYSQL else 'group_replies'
+            for alter in (
+                f"ALTER TABLE {gr_table} ADD COLUMN audio_path TEXT",
+                f"ALTER TABLE {gr_table} ADD COLUMN audio_summary TEXT",
+            ):
+                try:
+                    c.execute(alter)
+                except Exception:
+                    pass
+
+            if audio_path:
+                try:
+                    logger.info(f"Generating AI summary for group reply audio: {audio_path}")
+                    audio_summary = process_audio_for_summary(
+                        audio_path,
+                        username=username,
+                        duration_seconds=voice_duration_seconds,
+                        community_id=int(community_id) if community_id else None,
+                    )
+                except Exception as sum_err:
+                    logger.warning(f"group reply audio summary failed: {sum_err}")
+                    audio_summary = None
+
             now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-            c.execute(f"INSERT INTO {'`group_replies`' if USE_MYSQL else 'group_replies'} (group_post_id, parent_reply_id, username, content, image_path, created_at) VALUES ({get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()})",
-                      (post_id, parent_id, username, content, image_path, now))
-            if not USE_MYSQL: conn.commit()
+            try:
+                c.execute(
+                    f"INSERT INTO {gr_table} (group_post_id, parent_reply_id, username, content, image_path, audio_path, audio_summary, created_at) "
+                    f"VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})",
+                    (post_id, parent_id, username, content, image_path, audio_path, audio_summary, now),
+                )
+            except Exception as ins_err:
+                logger.warning(f"group_replies insert with audio columns failed, retrying legacy shape: {ins_err}")
+                c.execute(
+                    f"INSERT INTO {gr_table} (group_post_id, parent_reply_id, username, content, image_path, created_at) "
+                    f"VALUES ({ph},{ph},{ph},{ph},{ph},{ph})",
+                    (post_id, parent_id, username, content, image_path, now),
+                )
+            if not USE_MYSQL:
+                conn.commit()
             reply_id = c.lastrowid
             pp = None
             try:
                 c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (username,))
                 pp_row = c.fetchone()
-                if pp_row: pp = pp_row['profile_picture'] if hasattr(pp_row, 'keys') else pp_row[0]
-            except Exception: pass
-            return jsonify({'success': True, 'reply': {
-                'id': reply_id, 'username': username, 'content': content,
-                'image_path': image_path, 'timestamp': now,
-                'parent_reply_id': parent_id, 'profile_picture': pp,
-                'reactions': {}, 'user_reaction': None, 'children': [], 'reply_count': 0,
-            }})
+                if pp_row:
+                    pp = pp_row['profile_picture'] if hasattr(pp_row, 'keys') else pp_row[0]
+            except Exception:
+                pass
+            try:
+                from backend.services.steve_profiling_snapshot import schedule_steve_profiling_snapshot_refresh
+                schedule_steve_profiling_snapshot_refresh(username)
+            except Exception:
+                pass
+            return jsonify({
+                'success': True,
+                'reply': {
+                    'id': reply_id,
+                    'username': username,
+                    'content': content,
+                    'image_path': image_path,
+                    'audio_path': audio_path,
+                    'audio_summary': audio_summary,
+                    'timestamp': now,
+                    'parent_reply_id': parent_id,
+                    'profile_picture': pp,
+                    'reactions': {},
+                    'user_reaction': None,
+                    'children': [],
+                    'reply_count': 0,
+                },
+            })
     except Exception as e:
         logger.error(f"api_group_replies_create error: {e}")
         return jsonify({'success': False, 'error': 'Server error'})

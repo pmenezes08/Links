@@ -2,6 +2,7 @@ import { useState, useEffect, memo } from 'react'
 import { Capacitor } from '@capacitor/core'
 import type { VideoEmbed } from '../utils/videoEmbed'
 import { extractVideoEmbed } from '../utils/videoEmbed'
+import { openExternalNativeLink } from '../utils/openExternalInApp'
 
 export type LinkPreviewData = {
   title: string
@@ -105,13 +106,17 @@ export function feedLinkPreviewUrls(text: string, videoEmbedUrl?: string | null)
   return urls.filter(u => {
     const lu = u.toLowerCase()
     if (ve && (lu.includes(ve.slice(0, 48)) || ve.includes(lu.slice(0, 48)))) return false
-    if (
-      lu.includes('youtube.com') ||
-      lu.includes('youtu.be') ||
-      lu.includes('vimeo.com') ||
-      lu.includes('tiktok.com')
-    ) {
-      return false
+    // Only hide video-platform URLs from cards when an inline embed is already rendered.
+    if (ve) {
+      if (
+        lu.includes('youtube.com') ||
+        lu.includes('youtu.be') ||
+        lu.includes('music.youtube') ||
+        lu.includes('vimeo.com') ||
+        lu.includes('tiktok.com')
+      ) {
+        return false
+      }
     }
     return true
   })
@@ -166,43 +171,6 @@ export function feedPostLinkPreviewUrls(
     out.push(u)
   }
   return out.slice(0, 5)
-}
-
-/**
- * Open an external URL so that iOS Universal Links / Android App Links can route
- * to the native app that owns the domain (Instagram, X, TikTok, YouTube, etc.).
- *
- * On iOS inside the Capacitor WKWebView a plain <a target="_blank"> does NOT call
- * UIApplication.open and therefore never triggers Universal Links — the URL loads
- * in a web view and Instagram's "Open in app" interstitial deep-links to the home
- * feed instead of the specific post. Routing through @capacitor/app's openUrl
- * forwards the URL to UIApplication.open at the OS level, which lets AASA match
- * and hand off to the native Instagram/X/TikTok app with the exact URL.
- *
- * If the native app isn't installed we fall back to our in-app browser so the
- * card never becomes a dead end.
- */
-async function openExternalNative(url: string): Promise<void> {
-  try {
-    const { App: CapApp } = await import('@capacitor/app')
-    const anyApp = CapApp as unknown as {
-      openUrl?: (opts: { url: string }) => Promise<{ completed?: boolean }>
-    }
-    if (anyApp.openUrl) {
-      const res = await anyApp.openUrl({ url })
-      if (res && res.completed === false) {
-        const { openExternalInApp } = await import('../utils/openExternalInApp')
-        await openExternalInApp(url)
-      }
-      return
-    }
-  } catch {
-    // fall through to in-app browser fallback
-  }
-  try {
-    const { openExternalInApp } = await import('../utils/openExternalInApp')
-    await openExternalInApp(url)
-  } catch { /* noop */ }
 }
 
 function getDomainIcon(domain: string): string {
@@ -295,7 +263,7 @@ function LinkPreviewCard({ url, sent }: Props) {
           e.stopPropagation()
           if (Capacitor.isNativePlatform()) {
             e.preventDefault()
-            void openExternalNative(openUrl)
+            void openExternalNativeLink(openUrl)
           }
         }}
       >
@@ -330,7 +298,7 @@ function LinkPreviewCard({ url, sent }: Props) {
         e.stopPropagation()
         if (Capacitor.isNativePlatform()) {
           e.preventDefault()
-          void openExternalNative(openUrl)
+          void openExternalNativeLink(openUrl)
         }
       }}
     >

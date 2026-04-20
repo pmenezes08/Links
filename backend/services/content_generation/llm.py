@@ -206,8 +206,36 @@ def filter_links(links: Iterable[str], allowed_domains: Sequence[str]) -> List[s
     return results
 
 
-def generate_json(system_prompt: str, user_prompt: str, *, max_tokens: int = 700, temperature: float = 0.6) -> Dict[str, Any]:
+def _apply_output_cap(requested: int, caps: Optional[Dict[str, Any]]) -> int:
+    """Return the lower of the caller's request and any entitlement cap.
+
+    Callers pass ``caps`` through from ``resolve_entitlements()`` so that
+    Free / Trial / Premium / Special users get their surface-specific
+    ceiling enforced centrally without sprinkling the logic everywhere.
+    """
+    try:
+        req = int(requested)
+    except Exception:
+        req = 700
+    if not caps:
+        return req
+    for key in ("max_output_tokens", "max_output_tokens_feed", "max_output_tokens_group"):
+        val = caps.get(key)
+        if isinstance(val, int) and val > 0:
+            req = min(req, val)
+    return max(1, req)
+
+
+def generate_json(
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    max_tokens: int = 700,
+    temperature: float = 0.6,
+    caps: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     client = _require_client()
+    effective_max = _apply_output_cap(max_tokens, caps)
     completion = client.chat.completions.create(
         model=GROK_MODEL_FAST,
         messages=[
@@ -215,7 +243,7 @@ def generate_json(system_prompt: str, user_prompt: str, *, max_tokens: int = 700
             {"role": "user", "content": user_prompt},
         ],
         temperature=temperature,
-        max_tokens=max_tokens,
+        max_tokens=effective_max,
         response_format={"type": "json_object"},
     )
     content = completion.choices[0].message.content if completion.choices else ""
@@ -228,8 +256,10 @@ def generate_web_search_json(
     *,
     max_output_tokens: int = 1200,
     temperature: float = 0.3,
+    caps: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     client = _require_client()
+    effective_max = _apply_output_cap(max_output_tokens, caps)
     response = client.responses.create(
         model=GROK_MODEL_FAST,
         input=[
@@ -237,11 +267,44 @@ def generate_web_search_json(
             {"role": "user", "content": user_prompt},
         ],
         tools=[{"type": "web_search"}],
-        max_output_tokens=max_output_tokens,
+        max_output_tokens=effective_max,
         temperature=temperature,
     )
     raw = (response.output_text or "").strip() if hasattr(response, "output_text") else ""
     return _extract_json(raw)
+
+
+def trim_messages(messages: List[Dict[str, Any]], caps: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Trim a conversation ``messages`` list to ``caps['max_context_messages']``.
+
+    The system prompt (first role=``system`` message) is preserved; only
+    historical user/assistant turns are dropped from the oldest end.
+    """
+    if not caps or not messages:
+        return messages
+    try:
+        limit = int(caps.get("max_context_messages") or 0)
+    except Exception:
+        return messages
+    if limit <= 0 or len(messages) <= limit:
+        return messages
+    system_msgs = [m for m in messages if (m.get("role") == "system")]
+    other_msgs = [m for m in messages if (m.get("role") != "system")]
+    keep = other_msgs[-max(1, limit - len(system_msgs)):]
+    return system_msgs + keep
+
+
+def cap_images(image_urls: List[str], caps: Optional[Dict[str, Any]]) -> List[str]:
+    """Truncate ``image_urls`` to ``caps['max_images_per_turn']``."""
+    if not caps:
+        return image_urls
+    try:
+        limit = int(caps.get("max_images_per_turn") or 0)
+    except Exception:
+        return image_urls
+    if limit <= 0:
+        return image_urls
+    return list(image_urls)[:limit]
 
 
 def plan_timely_topic(

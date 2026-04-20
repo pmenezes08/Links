@@ -65,6 +65,13 @@ A comprehensive fitness and community platform built with Flask (Python) and Rea
 └── README.md                    # This file
 ```
 
+## Engineering guides
+
+Required reading before you touch any AI / monetization code:
+
+- [`docs/STEVE_AND_VOICE_NOTES.md`](docs/STEVE_AND_VOICE_NOTES.md) — how Steve (LLM) and voice notes (Whisper) are wired, logged, gated, and billed. Bootstrap new Steve surfaces or voice-note entry points on top of the services described here.
+- [`docs/cloud-scheduler-cron.md`](docs/cloud-scheduler-cron.md) — Cloud Scheduler jobs + `CRON_SHARED_SECRET` setup for entitlements / Enterprise lifecycle crons.
+
 ## Contributing
 
 1. Fork the repository

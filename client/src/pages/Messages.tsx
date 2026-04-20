@@ -5,8 +5,8 @@ import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ParentCommunityPicker from '../components/ParentCommunityPicker'
 import GroupChatCreator from '../components/GroupChatCreator'
-import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
-import { cacheConversations, getCachedConversations, cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
+import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
+import { cacheConversations, getCachedConversations, cacheKeyVal, getCachedKeyVal, clearConversationMessages, deleteCachedConversationRow } from '../utils/offlineDb'
 
 type Thread = {
   other_username: string
@@ -160,23 +160,8 @@ export default function Messages(){
           const newThreads = j.threads as Thread[]
           writeDeviceCache(THREADS_CACHE_KEY, newThreads, CACHE_TTL_MS, CACHE_VERSION)
           cacheConversations(newThreads)
-          
-          setThreads(prev => {
-            const a = prev
-            const b = newThreads
-            if (a.length !== b.length) return b
-            const changed = a.some((x, idx) => {
-              const y = b[idx]
-              return !y
-                || x.other_username !== y.other_username
-                || x.display_name !== y.display_name
-                || x.profile_picture_url !== y.profile_picture_url
-                || x.last_message_text !== y.last_message_text
-                || x.last_activity_time !== y.last_activity_time
-                || (x.unread_count || 0) !== (y.unread_count || 0)
-            })
-            return changed ? b : a
-          })
+          // Always take server list (sorted by activity). Index-based merge was wrong when order changed.
+          setThreads(newThreads)
         }
       })
       .catch(() => {})
@@ -1191,8 +1176,25 @@ export default function Messages(){
             )}
             {chatMoreTarget.type === 'dm' && (
               <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={async () => {
-                await fetch('/api/chat/clear_history', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ other_username: chatMoreTarget.username }) }).catch(() => {})
+                const u = chatMoreTarget.username
+                await fetch('/api/chat/clear_history', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ other_username: u }) }).catch(() => {})
                 setChatMoreTarget(null)
+                if (u) {
+                  clearDeviceCache(`chat-messages:${u}`)
+                  clearDeviceCache(`chat-profile:${u}`)
+                  clearDeviceCache(THREADS_CACHE_KEY)
+                  void clearConversationMessages(`dm:${u}`)
+                  void deleteCachedConversationRow(u)
+                  const nowIso = new Date().toISOString()
+                  setThreads(prev =>
+                    prev.map(t =>
+                      t.other_username === u
+                        ? { ...t, last_message_text: null, unread_count: 0, last_activity_time: nowIso }
+                        : t
+                    )
+                  )
+                }
+                loadThreads(true)
               }}>
                 <i className="fa-solid fa-broom text-white/60 w-6 text-center" />
                 Clear Chat
@@ -1211,6 +1213,7 @@ export default function Messages(){
               <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={async () => {
                 await fetch(`/api/group_chat/${chatMoreTarget.groupId}/clear_history`, { method: 'POST', credentials: 'include' }).catch(() => {})
                 setChatMoreTarget(null)
+                loadGroupChats(true)
               }}>
                 <i className="fa-solid fa-broom text-white/60 w-6 text-center" />
                 Clear Chat
