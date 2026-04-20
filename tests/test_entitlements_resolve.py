@@ -212,6 +212,129 @@ class TestKBDrivenConfiguration:
         assert resolve_entitlements("special_u")["ai_daily_limit"] == 200
 
 
+# ── 4b. Per-tier community / member caps ────────────────────────────────
+
+
+class TestPerTierMemberCaps:
+    """The Free and Premium tiers expose *different* per-community member
+    caps via separate KB fields (``free_members_per_owned_community`` vs
+    ``premium_members_per_owned_community``). A previous bug looked up a
+    single generic ``members_per_owned_community`` field instead, so admin
+    edits to the tier-specific KB fields silently fell back to the bundled
+    default of 50 regardless of tier. These tests lock down the fix.
+    """
+
+    def test_free_member_cap_reads_from_kb_free_field(self, mysql_dsn):
+        from tests.fixtures import seed_kb
+        seed_kb([
+            {
+                "slug": "user-tiers",
+                "title": "User Tiers",
+                "category": "product",
+                "fields": [
+                    {"name": "free_communities_max", "type": "integer",
+                     "label": "free_communities_max", "value": 5},
+                    {"name": "free_members_per_owned_community", "type": "integer",
+                     "label": "free_members_per_owned_community", "value": 25},
+                    {"name": "premium_members_per_owned_community", "type": "integer",
+                     "label": "premium_members_per_owned_community", "value": 50},
+                ],
+            },
+        ])
+        make_user("free_user", subscription="free", created_at=days_ago(60))
+        ent = resolve_entitlements("free_user")
+        assert ent["tier"] == TIER_FREE
+        # The value the user reported in the bug: Free cap = 25 from the KB.
+        assert ent["members_per_owned_community"] == 25
+
+    def test_premium_member_cap_reads_from_kb_premium_field(self, mysql_dsn):
+        from tests.fixtures import seed_kb
+        seed_kb([
+            {
+                "slug": "user-tiers",
+                "title": "User Tiers",
+                "category": "product",
+                "fields": [
+                    {"name": "free_members_per_owned_community", "type": "integer",
+                     "label": "free_members_per_owned_community", "value": 25},
+                    {"name": "premium_members_per_owned_community", "type": "integer",
+                     "label": "premium_members_per_owned_community", "value": 200},
+                ],
+            },
+        ])
+        make_user("paying", subscription="premium", created_at=days_ago(30))
+        ent = resolve_entitlements("paying")
+        assert ent["tier"] == TIER_PREMIUM
+        # Premium admin-set cap must flow through — independent of Free's cap.
+        assert ent["members_per_owned_community"] == 200
+
+    def test_trial_inherits_free_member_cap(self, mysql_dsn):
+        """Documented policy: trial communities that overshoot Free limits
+        lock read-only on trial lapse, so the trial member cap tracks Free."""
+        from tests.fixtures import seed_kb
+        seed_kb([
+            {
+                "slug": "user-tiers",
+                "title": "User Tiers",
+                "category": "product",
+                "fields": [
+                    {"name": "free_members_per_owned_community", "type": "integer",
+                     "label": "free_members_per_owned_community", "value": 25},
+                    {"name": "premium_members_per_owned_community", "type": "integer",
+                     "label": "premium_members_per_owned_community", "value": 200},
+                ],
+            },
+        ])
+        make_user("trial_user", subscription="free", created_at=days_ago(5))
+        ent = resolve_entitlements("trial_user")
+        assert ent["tier"] == TIER_TRIAL
+        assert ent["members_per_owned_community"] == 25
+
+    def test_free_communities_max_reads_from_kb(self, mysql_dsn):
+        """The Free-tier community-count cap is the count limit the
+        ``/create_community`` route enforces. Admin must be able to raise
+        it from 2 to 5 (or any value) via the KB without a redeploy."""
+        from tests.fixtures import seed_kb
+        seed_kb([
+            {
+                "slug": "user-tiers",
+                "title": "User Tiers",
+                "category": "product",
+                "fields": [
+                    {"name": "free_communities_max", "type": "integer",
+                     "label": "free_communities_max", "value": 5},
+                ],
+            },
+        ])
+        make_user("free_user", subscription="free", created_at=days_ago(60))
+        ent = resolve_entitlements("free_user")
+        assert ent["tier"] == TIER_FREE
+        assert ent["communities_max"] == 5
+
+    def test_special_user_member_cap_is_unlimited(self, mysql_dsn):
+        """Special users get unlimited member caps (represented as None).
+        KB edits to Free/Premium caps must not leak into Special."""
+        from tests.fixtures import seed_kb
+        seed_kb([
+            {
+                "slug": "user-tiers",
+                "title": "User Tiers",
+                "category": "product",
+                "fields": [
+                    {"name": "free_members_per_owned_community", "type": "integer",
+                     "label": "free_members_per_owned_community", "value": 25},
+                    {"name": "premium_members_per_owned_community", "type": "integer",
+                     "label": "premium_members_per_owned_community", "value": 200},
+                ],
+            },
+        ])
+        make_user("founder", subscription="free", is_special=True,
+                  created_at=days_ago(400))
+        ent = resolve_entitlements("founder")
+        assert ent["tier"] == TIER_SPECIAL
+        assert ent["members_per_owned_community"] is None
+
+
 # ── 5. Cross-cutting invariants ─────────────────────────────────────────
 
 

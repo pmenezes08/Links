@@ -84,6 +84,14 @@ _DEFAULTS: Dict[str, Any] = {
     "free_communities_max": 5,
     "premium_communities_max": 10,
     "trial_communities_max": 5,
+    # Tier-specific member caps. The KB defines these per-tier
+    # (``free_members_per_owned_community`` / ``premium_members_per_owned_community``);
+    # Trial inherits the Free cap (documented policy — trial communities that
+    # overshoot Free limits lock read-only on trial lapse).
+    "free_members_per_owned_community": 50,
+    "premium_members_per_owned_community": 50,
+    # Legacy generic key preserved for any caller still reading it; new code
+    # should use the tier-specific keys above.
     "members_per_owned_community": 50,
 }
 
@@ -143,10 +151,27 @@ def _load_kb_defaults() -> Dict[str, Any]:
     except Exception:
         out["monthly_spend_ceiling_eur_special"] = _DEFAULTS["monthly_spend_ceiling_eur_special"]
 
-    # User Tiers
-    for k in ("free_communities_max", "premium_communities_max",
-              "trial_communities_max", "members_per_owned_community"):
+    # User Tiers — community-count caps and tier-specific member caps.
+    # The KB exposes these as separate fields (``free_members_per_owned_community``
+    # and ``premium_members_per_owned_community``); admin edits must flow
+    # through at request time so pricing changes don't need a redeploy.
+    for k in (
+        "free_communities_max",
+        "premium_communities_max",
+        "trial_communities_max",
+        "free_members_per_owned_community",
+        "premium_members_per_owned_community",
+    ):
         out[k] = int(_kb_field_value("user-tiers", k, _DEFAULTS[k]) or _DEFAULTS[k])
+
+    # Back-compat: old generic key. Prefer the KB's generic value if set,
+    # else fall back to the Premium tier value so any legacy caller still
+    # gets a sensible number.
+    legacy_generic = _kb_field_value("user-tiers", "members_per_owned_community", None)
+    try:
+        out["members_per_owned_community"] = int(legacy_generic) if legacy_generic is not None else out["premium_members_per_owned_community"]
+    except Exception:
+        out["members_per_owned_community"] = out["premium_members_per_owned_community"]
 
     return out
 
@@ -314,7 +339,7 @@ def resolve_entitlements(username: Optional[str]) -> Dict[str, Any]:
             "steve_uses_per_month": defaults["steve_uses_per_month"],
             "whisper_minutes_per_month": defaults["whisper_minutes_per_month"],
             "communities_max": defaults["premium_communities_max"],
-            "members_per_owned_community": defaults["members_per_owned_community"],
+            "members_per_owned_community": defaults["premium_members_per_owned_community"],
             "ai_daily_limit": defaults["ai_daily_limit"],
             "max_tool_invocations_per_turn": defaults["max_tool_invocations_per_turn"],
             "monthly_spend_ceiling_eur": defaults["monthly_spend_ceiling_eur"],
@@ -328,7 +353,9 @@ def resolve_entitlements(username: Optional[str]) -> Dict[str, Any]:
             "steve_uses_per_month": defaults["steve_uses_per_month"],
             "whisper_minutes_per_month": defaults["whisper_minutes_per_month"],
             "communities_max": defaults["trial_communities_max"],
-            "members_per_owned_community": defaults["members_per_owned_community"],
+            # Trial inherits the Free member cap by design — trial
+            # communities that overshoot Free limits lock read-only on lapse.
+            "members_per_owned_community": defaults["free_members_per_owned_community"],
             "ai_daily_limit": defaults["ai_daily_limit"],
             "max_tool_invocations_per_turn": defaults["max_tool_invocations_per_turn"],
             "monthly_spend_ceiling_eur": defaults["monthly_spend_ceiling_eur"],
@@ -342,7 +369,7 @@ def resolve_entitlements(username: Optional[str]) -> Dict[str, Any]:
             "steve_uses_per_month": 0,
             "whisper_minutes_per_month": 0,
             "communities_max": defaults["free_communities_max"],
-            "members_per_owned_community": defaults["members_per_owned_community"],
+            "members_per_owned_community": defaults["free_members_per_owned_community"],
             "ai_daily_limit": 0,
             "max_tool_invocations_per_turn": defaults["max_tool_invocations_per_turn"],
             "monthly_spend_ceiling_eur": 0.0,

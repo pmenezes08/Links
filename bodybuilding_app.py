@@ -1866,8 +1866,25 @@ def ensure_free_parent_member_capacity(cursor, community_id: Optional[int], extr
         current_count = int(current_count or 0)
     except Exception:
         current_count = 0
-    if current_count + extra_members > 100:
-        raise CommunityMembershipLimitError('Free plan communities can have up to 100 members. Upgrade to add more members.')
+    # Read the Free-tier per-community member cap from entitlements (KB-driven).
+    # Fail closed on resolver error to a safe legacy cap of 100 so we never
+    # uncap a free community because the KB is temporarily broken.
+    free_members_cap = 100
+    try:
+        from backend.services.entitlements import resolve_entitlements as _resolve_ent
+        _ent = _resolve_ent(creator_username) or {}
+        _cap = _ent.get("members_per_owned_community")
+        if isinstance(_cap, int) and _cap > 0:
+            free_members_cap = _cap
+    except Exception:
+        logger.exception(
+            "ensure_free_parent_member_capacity: resolve_entitlements failed for %s",
+            creator_username,
+        )
+    if current_count + extra_members > free_members_cap:
+        raise CommunityMembershipLimitError(
+            f'Free plan communities can have up to {free_members_cap} members. Upgrade to add more members.'
+        )
 
 
 # ============================================================================
@@ -28537,8 +28554,20 @@ def create_community():
                         parent_count = int(parent_count)
                     except Exception:
                         parent_count = 0
-                    if parent_count >= 2:
-                        return jsonify({'success': False, 'error': 'Free plan allows up to 2 parent communities. Upgrade to create more communities.'}), 403
+                    # Read the Free-tier cap from entitlements (KB-driven).
+                    # Falls back to the historical cap of 2 if the resolver blows up,
+                    # so we never fail-open on a broken KB.
+                    free_communities_cap = 2
+                    try:
+                        from backend.services.entitlements import resolve_entitlements as _resolve_ent
+                        _ent = _resolve_ent(username) or {}
+                        _cap = _ent.get("communities_max")
+                        if isinstance(_cap, int) and _cap > 0:
+                            free_communities_cap = _cap
+                    except Exception:
+                        logger.exception("create_community: resolve_entitlements failed for %s", username)
+                    if parent_count >= free_communities_cap:
+                        return jsonify({'success': False, 'error': f'Free plan allows up to {free_communities_cap} parent communities. Upgrade to create more communities.'}), 403
                 else:
                     parent_info = get_community_basic(c, parent_id_int)
                     if not parent_info:
