@@ -350,6 +350,74 @@ def list_changelog(slug: Optional[str] = None, limit: int = 100) -> List[Dict[st
     return out
 
 
+# ── Tests-page helpers ──────────────────────────────────────────────────
+
+TEST_STATUSES = ("not_run", "successful", "unsuccessful")
+
+
+def update_test_status(
+    test_id: str,
+    status: str,
+    *,
+    actor_username: str,
+    notes: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Patch a single row in the 'tests' page and return the updated row.
+
+    Called from:
+      * ``PATCH /api/admin/kb/tests/<id>/status`` (admin-web "Run now"
+        and manual Mark buttons)
+      * CI jobs reporting pytest / PowerShell results (same endpoint, via
+        a service-account token)
+
+    Raises :class:`KeyError` if ``test_id`` doesn't exist and
+    :class:`ValueError` for invalid status.
+    """
+    if status not in TEST_STATUSES:
+        raise ValueError(
+            f"Invalid status {status!r}; expected one of {TEST_STATUSES}"
+        )
+    page = get_page("tests")
+    if not page:
+        raise KeyError("Tests page not seeded")
+
+    fields = page.get("fields") or []
+    tests_field = next((f for f in fields if f.get("name") == "tests"), None)
+    if tests_field is None:
+        raise KeyError("Tests page has no 'tests' field")
+
+    rows = list(tests_field.get("value") or [])
+    target_idx = next(
+        (i for i, r in enumerate(rows) if (r.get("id") or "") == test_id),
+        None,
+    )
+    if target_idx is None:
+        raise KeyError(f"Test id {test_id!r} not found")
+
+    updated_row = dict(rows[target_idx])
+    updated_row["status"] = status
+    updated_row["last_run_at"] = _utc_now_str()
+    updated_row["last_run_by"] = actor_username
+    if notes is not None:
+        updated_row["last_run_notes"] = notes
+    rows[target_idx] = updated_row
+
+    # Rebuild the fields list with the mutated value. We go through
+    # ``save_page`` so the write is properly changelogged — this is the
+    # audit trail admins use to reconstruct "who marked this green".
+    new_fields = [
+        {**f, "value": rows} if f.get("name") == "tests" else f
+        for f in fields
+    ]
+    save_page(
+        "tests",
+        fields=new_fields,
+        reason=f"Test status update: {test_id} → {status}",
+        actor_username=actor_username,
+    )
+    return updated_row
+
+
 # ── Seed ────────────────────────────────────────────────────────────────
 
 def _seed_pages() -> List[Dict[str, Any]]:
@@ -1236,6 +1304,15 @@ def _seed_pages() -> List[Dict[str, Any]]:
                         {"name": "effort", "type": "enum", "label": "Effort",
                          "allowed_values": ["S", "M", "L", "XL"]},
                         {"name": "target_quarter", "type": "string", "label": "Target quarter"},
+                        # Test traceability — Option C hybrid: the roadmap
+                        # row points at *the* canonical behaviour in the
+                        # Tests page (free-text ref, kept short), plus a
+                        # stand-alone rollup status so the roadmap alone
+                        # tells you whether shipping it broke anything.
+                        {"name": "test", "type": "string", "label": "Test",
+                         "help": "Short ref to the matching Tests-page row (e.g. 'ai_usage:whisper_minutes')."},
+                        {"name": "test_status", "type": "enum", "label": "Test status",
+                         "allowed_values": ["not_run", "successful", "unsuccessful"]},
                         {"name": "notes", "type": "markdown", "label": "Notes"},
                     ],
                     "value": [
@@ -1331,6 +1408,173 @@ def _seed_pages() -> List[Dict[str, Any]]:
         },
 
         # ── Audit ───────────────────────────────────────────────────
+        {
+            "slug": "tests",
+            "title": "Tests",
+            "category": "audit",
+            "icon": "fa-vial-circle-check",
+            "description": (
+                "Authoritative test tracker — one row per behaviour the "
+                "platform promises. 'Run now' re-executes the associated "
+                "pytest / smoke script and updates the status pill."
+            ),
+            "sort_order": 5,
+            "fields": [
+                {
+                    "name": "tests",
+                    "label": "Test suites",
+                    "type": "list_of_objects",
+                    "schema": [
+                        {"name": "id", "type": "string", "label": "ID",
+                         "help": "Stable key used by scripts to update status (e.g. 'ai_usage:whisper_minutes')."},
+                        {"name": "feature", "type": "string", "label": "Feature",
+                         "help": "Which KB page / product area this test covers."},
+                        {"name": "behaviour", "type": "string", "label": "Behaviour under test"},
+                        {"name": "runner", "type": "enum", "label": "Runner",
+                         "allowed_values": ["pytest", "powershell", "manual"]},
+                        {"name": "target", "type": "string", "label": "Target",
+                         "help": "pytest node-id OR script path. e.g. 'tests/test_ai_usage_counters.py::TestWhisperMinutes'."},
+                        {"name": "status", "type": "enum", "label": "Status",
+                         "allowed_values": ["not_run", "successful", "unsuccessful"]},
+                        {"name": "last_run_at", "type": "string", "label": "Last run (UTC)"},
+                        {"name": "last_run_by", "type": "string", "label": "Last run by"},
+                        {"name": "last_run_notes", "type": "markdown", "label": "Last run notes"},
+                    ],
+                    "value": [
+                        {
+                            "id": "ai_usage:whisper_minutes",
+                            "feature": "Credits & Entitlements",
+                            "behaviour": "whisper_minutes_this_month sums successful whisper rows only.",
+                            "runner": "pytest",
+                            "target": "tests/test_ai_usage_counters.py::TestWhisperMinutes",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
+                            "id": "ai_usage:daily_vs_monthly",
+                            "feature": "Credits & Entitlements",
+                            "behaviour": "daily_count is scoped to STEVE_SURFACES and never exceeds monthly_steve_count.",
+                            "runner": "pytest",
+                            "target": "tests/test_ai_usage_counters.py::TestDailyMonthlyConsistency",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
+                            "id": "ai_usage:blocked_rows_excluded",
+                            "feature": "Credits & Entitlements",
+                            "behaviour": "Rows with success=0 are logged but excluded from counters.",
+                            "runner": "pytest",
+                            "target": "tests/test_ai_usage_counters.py::TestBlockedRowsExcluded",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
+                            "id": "ai_usage:summary_consistency",
+                            "feature": "Manage Membership — AI Usage",
+                            "behaviour": "current_month_summary() matches the individual counters.",
+                            "runner": "pytest",
+                            "target": "tests/test_ai_usage_counters.py::TestCurrentMonthSummary",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
+                            "id": "entitlements:tier_resolution",
+                            "feature": "User Tiers",
+                            "behaviour": "Tier priority Special > Premium > Trial > Free.",
+                            "runner": "pytest",
+                            "target": "tests/test_entitlements_resolve.py::TestTierResolution",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
+                            "id": "entitlements:enterprise_seat",
+                            "feature": "Enterprise Seat lifecycle",
+                            "behaviour": "Enterprise seat flips Free → Premium and stamps inherited_from.",
+                            "runner": "pytest",
+                            "target": "tests/test_entitlements_resolve.py::TestEnterpriseSeatInteraction",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
+                            "id": "entitlements:kb_driven_config",
+                            "feature": "Credits & Entitlements",
+                            "behaviour": "KB edits to caps flow into resolve_entitlements() without redeploy.",
+                            "runner": "pytest",
+                            "target": "tests/test_entitlements_resolve.py::TestKBDrivenConfiguration",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
+                            "id": "entitlements:invariants",
+                            "feature": "Hard Limits",
+                            "behaviour": "Every tier gets technical safety caps + weights.",
+                            "runner": "pytest",
+                            "target": "tests/test_entitlements_resolve.py::TestCrossCuttingInvariants",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
+                            "id": "staging:webhooks_not_401",
+                            "feature": "Stripe / Apple / Google webhooks",
+                            "behaviour": "Webhook endpoints reject unsigned requests with 400 (not 401 from session middleware).",
+                            "runner": "powershell",
+                            "target": "scripts/staging_smoke.ps1",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
+                            "id": "staging:cron_auth",
+                            "feature": "Cloud Scheduler cron",
+                            "behaviour": "Cron endpoints require X-Cron-Secret (403 without, 200 with).",
+                            "runner": "powershell",
+                            "target": "scripts/staging_smoke.ps1",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
+                            "id": "staging:kb_auth",
+                            "feature": "Knowledge Base admin API",
+                            "behaviour": "GET /api/admin/kb/pages denies unauthenticated callers with 401.",
+                            "runner": "powershell",
+                            "target": "scripts/staging_smoke.ps1",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
+                            "id": "manual:voice_note_ui",
+                            "feature": "Voice-note DM / group / feed",
+                            "behaviour": "Uploading a voice note adds whisper minutes AND a voice_summary row (verified via Manage Membership modal).",
+                            "runner": "manual",
+                            "target": "QA_CHECKLIST.md §3",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                        {
+                            "id": "manual:enterprise_invite_nag",
+                            "feature": "Enterprise Seat — Join flow",
+                            "behaviour": "Joining an Enterprise community while holding personal IAP Premium shows the daily nag banner.",
+                            "runner": "manual",
+                            "target": "QA_CHECKLIST.md §5",
+                            "status": "not_run",
+                            "last_run_at": "", "last_run_by": "", "last_run_notes": "",
+                        },
+                    ],
+                },
+            ],
+            "body": (
+                "Each row is one **observable behaviour**, not one code path. "
+                "Update the ``status`` pill after each run — the 'Run now' "
+                "button on the admin-web calls ``PATCH /api/admin/kb/tests/<id>/status`` "
+                "and, for pytest / powershell runners, can optionally kick off "
+                "the actual run via the CI.\n\n"
+                "Add new rows whenever you ship a new feature. The ``id`` is a "
+                "stable key — never rename one once shipped; create a new row "
+                "if the behaviour changes substantively.\n\n"
+                "See also: ``docs/QA_CHECKLIST.md`` for manual verification "
+                "steps that aren't tracked as individual rows."
+            ),
+        },
+
         {
             "slug": "changelog",
             "title": "Changelog",

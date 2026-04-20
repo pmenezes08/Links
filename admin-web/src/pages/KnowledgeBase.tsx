@@ -62,9 +62,14 @@ interface PageDetail extends PageSummary {
 }
 
 const STATUS_COLORS: Record<string, string> = {
+  // Roadmap statuses
   not_started: 'bg-white/10 text-white/60 border-white/15',
   ongoing: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
   completed: 'bg-green-500/15 text-green-400 border-green-500/30',
+  // Tests-page statuses (one list, one vocabulary per row)
+  not_run: 'bg-white/10 text-white/60 border-white/15',
+  successful: 'bg-green-500/15 text-green-400 border-green-500/30',
+  unsuccessful: 'bg-red-500/15 text-red-400 border-red-500/30',
 }
 
 function StatusPill({ value }: { value: string }) {
@@ -121,7 +126,17 @@ const fmtValue = (v: any): string => {
 
 // ── Field editor ─────────────────────────────────────────────────────────
 
-function FieldEditor({ field, onChange }: { field: Field; onChange: (newValue: any) => void }) {
+function FieldEditor({
+  field,
+  onChange,
+  pageSlug,
+  onTestRun,
+}: {
+  field: Field
+  onChange: (newValue: any) => void
+  pageSlug?: string
+  onTestRun?: (row: any) => void
+}) {
   const common =
     'w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none'
 
@@ -235,6 +250,8 @@ function FieldEditor({ field, onChange }: { field: Field; onChange: (newValue: a
           schema={field.schema || []}
           value={Array.isArray(field.value) ? field.value : []}
           onChange={onChange}
+          pageSlug={pageSlug}
+          onTestRun={onTestRun}
         />
       )
     default:
@@ -307,10 +324,19 @@ function ListOfObjectsEditor({
   schema,
   value,
   onChange,
+  pageSlug,
+  onTestRun,
 }: {
   schema: { name: string; type: FieldType; label: string; allowed_values?: string[] }[]
   value: any[]
   onChange: (v: any[]) => void
+  // Optional: the page slug, used to enable page-specific row affordances
+  // (e.g. the "Run now" button on the Tests page).
+  pageSlug?: string
+  // Called when the user clicks "Run now" on a Tests-page row. The parent
+  // owns the PATCH call + toast notifications so this editor stays purely
+  // presentational.
+  onTestRun?: (row: any) => void
 }) {
   const addRow = () => {
     const blank: Record<string, any> = {}
@@ -334,6 +360,9 @@ function ListOfObjectsEditor({
   const hasTitleCol = schema.some((c) => c.name === 'title')
   const hasTermCol = schema.some((c) => c.name === 'term')
   const hasUsernameCol = schema.some((c) => c.name === 'username')
+  const hasBehaviourCol = schema.some((c) => c.name === 'behaviour')
+  const hasRunnerCol = schema.some((c) => c.name === 'runner')
+  const isTestsPage = pageSlug === 'tests'
   return (
     <div className="space-y-2">
       {value.map((row, i) => (
@@ -356,10 +385,34 @@ function ListOfObjectsEditor({
                   @{row.username}
                 </span>
               )}
+              {hasBehaviourCol && row.behaviour && (
+                <span className="text-sm font-medium text-white/90 truncate max-w-[420px]">
+                  {row.behaviour}
+                </span>
+              )}
               {hasPhaseCol && row.phase && <PhasePill value={row.phase} />}
-              {hasStatusCol && <StatusPill value={row.status || 'not_started'} />}
+              {hasStatusCol && (
+                <StatusPill
+                  value={row.status || (isTestsPage ? 'not_run' : 'not_started')}
+                />
+              )}
+              {hasRunnerCol && row.runner && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full border font-medium uppercase tracking-wide bg-white/5 text-white/60 border-white/10">
+                  {row.runner}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-1">
+              {isTestsPage && onTestRun && row.id && (
+                <button
+                  type="button"
+                  onClick={() => onTestRun(row)}
+                  className="text-xs px-2 py-1 rounded-md bg-accent/10 text-accent hover:bg-accent/20 border border-accent/30 whitespace-nowrap"
+                  title="Mark this test run as successful / unsuccessful / not run"
+                >
+                  <i className="fa-solid fa-play mr-1" /> Run now
+                </button>
+              )}
               <button type="button" onClick={() => move(i, -1)} className="text-muted hover:text-white text-xs px-2 py-1">
                 <i className="fa-solid fa-arrow-up" />
               </button>
@@ -572,6 +625,69 @@ export default function KnowledgeBase() {
   }
   const toggleTbd = (idx: number) => {
     setEditFields((prev) => prev.map((f, i) => (i === idx ? { ...f, tbd: !f.tbd } : f)))
+  }
+
+  /**
+   * Mark a test row on the Tests page as successful / unsuccessful / not run.
+   *
+   * Posted directly (bypassing the per-page save flow) because the PATCH
+   * endpoint writes its own changelog row — the user gets immediate
+   * persistence without having to click the main "Save" button. We then
+   * hot-patch local state so the status pill updates without a refetch.
+   */
+  const handleTestRun = async (row: any) => {
+    const testId = row.id
+    if (!testId) {
+      setToast('This row has no stable ID — save the page first.')
+      return
+    }
+    const target = row.target || ''
+    const runner = row.runner || 'manual'
+    // Prompt the user for the outcome. Keep it boring and reliable — a
+    // three-way confirm over a fully-fledged modal, because the common
+    // case is "I just ran the test locally; click to record the result".
+    const msg =
+      `Runner: ${runner}\nTarget: ${target}\n\n` +
+      `Press OK to mark this test as SUCCESSFUL,\n` +
+      `Cancel to mark as UNSUCCESSFUL.`
+    const successful = window.confirm(msg)
+    const status = successful ? 'successful' : 'unsuccessful'
+    const notes = window.prompt(
+      `Optional notes for this run (visible in the Tests row):`,
+      '',
+    )
+    try {
+      const base = import.meta.env.VITE_API_BASE || ''
+      const r = await fetch(
+        `${base}/api/admin/kb/tests/${encodeURIComponent(testId)}/status`,
+        {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status, notes: notes || '' }),
+        },
+      )
+      const data = await r.json()
+      if (!data.success) {
+        setToast(`Run failed: ${data.error || 'unknown'}`)
+        return
+      }
+      // Patch local state so the pill flips immediately.
+      setEditFields((prev) =>
+        prev.map((f) => {
+          if (f.name !== 'tests' || !Array.isArray(f.value)) return f
+          return {
+            ...f,
+            value: f.value.map((r: any) =>
+              (r.id || '') === testId ? { ...r, ...data.row } : r,
+            ),
+          }
+        }),
+      )
+      setToast(`Marked ${testId} as ${status}`)
+    } catch (err: any) {
+      setToast(`Run failed: ${err?.message || String(err)}`)
+    }
   }
 
   const handleReseed = async (force = false) => {
@@ -836,7 +952,12 @@ export default function KnowledgeBase() {
                         {f.tbd ? 'Clear TBD' : 'Mark TBD'}
                       </button>
                     </div>
-                    <FieldEditor field={f} onChange={(v) => updateFieldValue(i, v)} />
+                    <FieldEditor
+                      field={f}
+                      onChange={(v) => updateFieldValue(i, v)}
+                      pageSlug={detail.slug}
+                      onTestRun={handleTestRun}
+                    />
                   </div>
                 )
 

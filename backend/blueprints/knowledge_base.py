@@ -11,6 +11,7 @@ from flask import Blueprint, jsonify, request, session
 from backend.services.content_generation.permissions import is_app_admin
 from backend.services import special_access
 from backend.services.knowledge_base import (
+    TEST_STATUSES,
     ensure_tables,
     get_categories,
     get_page,
@@ -18,6 +19,7 @@ from backend.services.knowledge_base import (
     list_pages,
     save_page,
     seed_default_pages,
+    update_test_status,
 )
 
 
@@ -200,6 +202,46 @@ def kb_seed():
         return jsonify({"success": True, "result": result})
     except Exception as e:
         logger.exception("kb_seed failed")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@knowledge_base_bp.route("/api/admin/kb/tests/<test_id>/status", methods=["PATCH"])
+@_admin_required
+def kb_update_test_status(test_id: str):
+    """Update the status pill for one row on the Tests page.
+
+    Body::
+
+        {
+            "status": "successful" | "unsuccessful" | "not_run",
+            "notes":  "<optional markdown>"
+        }
+
+    The heavy lifting lives in
+    :func:`backend.services.knowledge_base.update_test_status` — this
+    endpoint is a thin validation + audit wrapper. The underlying save
+    path writes a ``kb_changelog`` row so every status change is
+    attributable to the clicker.
+    """
+    data = _body_json()
+    status = str(data.get("status") or "").strip()
+    notes = data.get("notes")
+    if status not in TEST_STATUSES:
+        return jsonify({
+            "success": False,
+            "error": f"Invalid status. Expected one of: {list(TEST_STATUSES)}",
+        }), 400
+    actor = session.get("username") or "unknown"
+    try:
+        row = update_test_status(test_id, status, actor_username=actor,
+                                 notes=notes)
+        return jsonify({"success": True, "row": row})
+    except KeyError as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.exception("kb_update_test_status failed")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
