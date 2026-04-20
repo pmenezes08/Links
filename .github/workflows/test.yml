@@ -1,9 +1,9 @@
 name: tests
 
-# Run the Matrix A + B pytest suite against a real MySQL 8 instance on
-# every push + PR. The testcontainers[mysql] library spins up the DB as
-# a sibling Docker container from inside the GitHub Actions runner, so
-# we don't need a ``services:`` block — the test code manages the
+# Run the Matrix A + B + C pytest suite against a real MySQL 8 instance
+# on every push + PR. The testcontainers[mysql] library spins up the DB
+# as a sibling Docker container from inside the GitHub Actions runner,
+# so we don't need a ``services:`` block — the test code manages the
 # container lifecycle itself (see ``tests/conftest.py``).
 #
 # Why not ``services: mysql:``?  Because the conftest already handles
@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   pytest:
-    name: Matrix A + B (pytest on MySQL 8)
+    name: Matrix A + B + C (pytest on MySQL 8)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -69,7 +69,12 @@ jobs:
           # an unrelated ``pyproject.toml`` on the monolith.
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          pytest tests/test_ai_usage_counters.py tests/test_entitlements_resolve.py \
+          pytest \
+            tests/test_ai_usage_counters.py \
+            tests/test_entitlements_resolve.py \
+            tests/test_email_normalization.py \
+            tests/test_disposable_email.py \
+            tests/test_signup_canonical_uniqueness.py \
             -v --tb=short --maxfail=5
 
       - name: Upload test logs (on failure)

@@ -144,6 +144,7 @@ CREATE TABLE IF NOT EXISTS users (
     id INT PRIMARY KEY AUTO_INCREMENT,
     username VARCHAR(191) UNIQUE NOT NULL,
     email VARCHAR(255),
+    canonical_email VARCHAR(255),
     subscription VARCHAR(32) DEFAULT 'free',
     password TEXT,
     first_name TEXT,
@@ -151,7 +152,8 @@ CREATE TABLE IF NOT EXISTS users (
     is_special TINYINT(1) DEFAULT 0,
     is_active TINYINT(1) DEFAULT 1,
     is_admin TINYINT(1) DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_users_canonical_email (canonical_email)
 )
 """
 

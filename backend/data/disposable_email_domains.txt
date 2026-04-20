@@ -1,0 +1,67 @@
+# Disposable / throwaway email domains.
+#
+# Source: curated subset of the public
+# ``disposable-email-domains/disposable-email-domains`` GitHub list.
+# Intentionally tight — false-positives here block legit signups. When we
+# grow, pull the full list at build time (see issue tracker).
+#
+# Format: one lower-case domain per line. Lines starting with ``#`` and
+# blank lines are ignored. Do not include the leading ``@``.
+#
+# To override at runtime, set the KB field
+# ``trial-abuse-prevention.disposable_domains_blocklist_extra`` — entries
+# there are unioned with this file.
+
+# Classic temporary-mail services
+mailinator.com
+10minutemail.com
+10minutemail.net
+tempmail.com
+tempmail.net
+temp-mail.org
+temp-mail.io
+guerrillamail.com
+guerrillamail.net
+guerrillamail.org
+guerrillamail.biz
+sharklasers.com
+grr.la
+yopmail.com
+yopmail.net
+yopmail.fr
+throwaway.email
+throwawaymail.com
+getnada.com
+nada.email
+getairmail.com
+dispostable.com
+mintemail.com
+trashmail.com
+trashmail.net
+trashmail.de
+spamgourmet.com
+mohmal.com
+mailnesia.com
+maildrop.cc
+fakeinbox.com
+mytemp.email
+emailondeck.com
+fakemailgenerator.com
+mailcatch.com
+mail-temporaire.fr
+
+# "Burner" tier
+burnermail.io
+einrot.com
+anonymbox.com
+armyspy.com
+
+# 2023-2025 era services
+inboxbear.com
+disposablemail.com
+mailtemp.info
+mail-temp.com
+moakt.com
+mail7.io
+mail.tm
+33mail.com

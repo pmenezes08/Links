@@ -3412,7 +3412,14 @@ def init_db():
                 ('skills', 'TEXT'),
                 ('linkedin', 'TEXT'),
                 ('experience', 'INTEGER'),
-                ('mobile', 'TEXT')
+                ('mobile', 'TEXT'),
+                # canonical_email — lower-cased, dot/plus-stripped form of
+                # ``email``. New rows write both (see
+                # ``backend.services.email_normalization``). Existing rows
+                # are backfilled lazily by a one-shot admin script; until
+                # then the signup uniqueness check ORs against raw email
+                # so we don't falsely reject.
+                ('canonical_email', 'VARCHAR(255)'),
             ]
             
             for column_name, column_type in columns_to_add:
@@ -12238,22 +12245,34 @@ def verify_email():
                         username = f"{base_username}{suffix}"
                 except Exception:
                     pass
-                # if email exists, just mark verified, else insert
-                c.execute(f"SELECT id FROM users WHERE email={ph}", (pend_email,))
+                # Compute canonical form once; we match on canonical OR
+                # raw email to catch rows that predate the column.
+                try:
+                    from backend.services.email_normalization import canonicalize_with_policy
+                    pend_canonical = canonicalize_with_policy(pend_email)
+                except Exception:
+                    pend_canonical = (pend_email or '').strip().lower()
+                c.execute(
+                    f"SELECT id FROM users WHERE canonical_email={ph} OR email={ph}",
+                    (pend_canonical, pend_email),
+                )
                 exists = c.fetchone()
                 user_id = None
                 if exists:
                     user_id = exists['id'] if hasattr(exists, 'keys') else exists[0]
-                    c.execute(f"UPDATE users SET email_verified=1, email_verified_at=COALESCE(email_verified_at, {ph}) WHERE email={ph}", (datetime.now().isoformat(), pend_email))
+                    c.execute(
+                        f"UPDATE users SET email_verified=1, email_verified_at=COALESCE(email_verified_at, {ph}), canonical_email=COALESCE(canonical_email, {ph}) WHERE id={ph}",
+                        (datetime.now().isoformat(), pend_canonical, user_id),
+                    )
                 else:
                     first_name = _val(row, 'first_name', 4) or ''
                     last_name = _val(row, 'last_name', 5) or ''
                     password_hash = _val(row, 'password', 3)
                     mobile = _val(row, 'mobile', 6) or ''
                     c.execute(f"""
-                        INSERT INTO users (username, email, password, first_name, last_name, age, gender, primary_goal, subscription, created_at, email_verified, email_verified_at)
-                        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, 'free', {ph}, 1, {ph})
-                    """, (username, pend_email, password_hash, first_name, last_name, None, '', '', datetime.now().strftime('%Y-%m-%d %H:%M:%S'), datetime.now().isoformat()))
+                        INSERT INTO users (username, email, canonical_email, password, first_name, last_name, age, gender, primary_goal, subscription, created_at, email_verified, email_verified_at)
+                        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, 'free', {ph}, 1, {ph})
+                    """, (username, pend_email, pend_canonical, password_hash, first_name, last_name, None, '', '', datetime.now().strftime('%Y-%m-%d %H:%M:%S'), datetime.now().isoformat()))
                     if mobile:
                         c.execute(f"UPDATE users SET mobile={ph} WHERE username={ph}", (mobile, username))
                     # Get the new user's ID
