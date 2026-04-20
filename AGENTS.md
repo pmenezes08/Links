@@ -67,6 +67,29 @@ flows.
 - Use `git mv` rather than delete+add when moving files so history
   follows.
 
+## CI + manual QA
+
+- **Automated tests** run via `.github/workflows/test.yml` on every
+  push and on pull requests targeting `main` or `staging`. The workflow
+  spins up a MySQL 8 testcontainer (so tests run against the same DB
+  engine as production) and executes `pytest`. Triggers also include
+  `workflow_dispatch` so you can re-run on demand from the Actions tab.
+- **Test dashboards** live in the Knowledge Base:
+  - `KB → Audit → Tests` — authoritative list of test rows, with
+    runner (automated / manual), target service, and last-known status.
+    Clicking **Run now** on a row records a new status + changelog entry.
+  - `KB → Planning → Product Roadmap` — every roadmap item has a
+    `Test` ref and a rollup `Test status` pill. Green pill = the
+    matching Tests row last ran successful; red = failed; grey = not
+    run. Do not close a roadmap item with a grey or red pill.
+- **Manual QA** follows `docs/QA_CHECKLIST.md`. Run it after any deploy
+  that touches Steve, Whisper, entitlements, or the enterprise seat
+  lifecycle. Each checklist section maps 1:1 to a `runner=manual` row
+  on the Tests page.
+- **Do not** skip writing a test for a new AI surface / counter /
+  entitlement. CI is cheaper than re-debugging a production counter
+  mismatch — we've fixed that class of bug twice already.
+
 ## When in doubt
 
 Stop and ask. It is cheaper to clarify the business rule for a new

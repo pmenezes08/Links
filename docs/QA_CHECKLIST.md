@@ -17,8 +17,17 @@ successful or unsuccessful from the admin-web.
 
 ## Setup (run once per test session)
 
-1. Make sure `cpoint-app-staging` is on the commit you want to verify
-   (check the service's revision tag).
+1. Make sure `cpoint-app-staging` is on the commit you want to verify.
+   Grab the live URL and currently-deployed revision with:
+   ```powershell
+   gcloud run services describe cpoint-app-staging `
+     --region=europe-west1 --project=cpoint-127c2 `
+     --format="value(status.url,status.latestReadyRevisionName)"
+   ```
+   Also confirm CI is green for the same commit on GitHub
+   Actions (the `test.yml` workflow — look for a green tick on
+   the branch/commit you're about to verify). If CI is red, stop
+   and fix before running manual QA.
 2. Seed the shared test accounts:
    ```powershell
    python scripts/seed_staging_test_users.py

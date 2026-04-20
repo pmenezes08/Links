@@ -325,6 +325,33 @@ Cloud Run instance. Make it a manual, audited migration.
 
 ---
 
+## Verification
+
+Every service documented above has a row on the **KB → Audit → Tests**
+page. When you change one of these services, flip the matching row to
+`not_run` until you've re-verified — automated and manual alike.
+
+| Service / behaviour | Tests-page row id | Runner |
+|---|---|---|
+| `ai_usage.log_usage` one-row-per-call, correct surface | `ai_usage:log_usage_writes_row` | automated (`tests/test_ai_usage_counters.py`) |
+| `whisper_minutes_this_month` sums `duration_seconds/60` | `ai_usage:whisper_minutes` | automated |
+| `daily_count` scope matches `monthly_steve_count` (invariant) | `ai_usage:daily_vs_monthly` | automated |
+| Blocked rows excluded from counters | `ai_usage:blocked_rows_excluded` | automated |
+| `current_month_summary` grouped totals are consistent | `ai_usage:summary_consistency` | automated |
+| `entitlements.resolve_entitlements` tier resolution | `entitlements:tier_resolution` | automated (`tests/test_entitlements_resolve.py`) |
+| Enterprise seat bumps tier to premium with inherited_from | `entitlements:enterprise_seat` | automated |
+| KB-driven caps overlay correctly | `entitlements:kb_driven_config` | automated |
+| Special override + unknown/anonymous invariants | `entitlements:invariants` | automated |
+| `entitlements_gate` returns canonical `entitlements_errors` shape | `entitlements:error_shape` | automated + manual §8 |
+| Voice-note pipeline logs both whisper and voice_summary rows | `manual:voice_note_double_log` | manual §3 |
+| Manage Membership modal surfaces the counters | `manual:manage_membership_usage` | manual §4, §9 |
+
+If you add a new AI surface, add a corresponding row on the Tests page
+**before** the code lands. CI will remind you if you don't — the
+product-roadmap rollup pill goes yellow for rows without a `test` ref.
+
+---
+
 ## Where the tests live (and what to add)
 
 There is no dedicated test suite for this pipeline yet. When you touch
