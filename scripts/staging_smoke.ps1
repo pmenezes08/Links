@@ -49,7 +49,7 @@ function Add-Result {
     }
     $results.Add($row)
     $colour = if ($Passed) { 'Green' } else { 'Red' }
-    Write-Host ("[{0}] {1} — {2}" -f $row.Status, $Name, $Detail) -ForegroundColor $colour
+    Write-Host ("[{0}] {1} - {2}" -f $row.Status, $Name, $Detail) -ForegroundColor $colour
 }
 
 function Invoke-Http {
@@ -66,12 +66,20 @@ function Invoke-Http {
     )
 
     try {
+        # GET / HEAD cannot have a body — PS throws ProtocolViolation if you pass one.
+        $iwrArgs = @{
+            Method      = $Method
+            Uri         = $Uri
+            Headers     = $Headers
+            ErrorAction = 'Stop'
+        }
+        if ($Method -notin @('GET', 'HEAD') -and $Body) {
+            $iwrArgs.Body = $Body
+        }
         if ($PSVersionTable.PSVersion.Major -ge 7) {
-            $resp = Invoke-WebRequest -Method $Method -Uri $Uri -Headers $Headers `
-                -Body $Body -SkipHttpErrorCheck -ErrorAction Stop
+            $resp = Invoke-WebRequest @iwrArgs -SkipHttpErrorCheck
         } else {
-            $resp = Invoke-WebRequest -Method $Method -Uri $Uri -Headers $Headers `
-                -Body $Body -ErrorAction Stop -UseBasicParsing
+            $resp = Invoke-WebRequest @iwrArgs -UseBasicParsing
         }
         return [pscustomobject]@{
             Status = [int]$resp.StatusCode
@@ -182,10 +190,10 @@ $passed = ($results | Where-Object { $_.Status -eq 'PASS' }).Count
 $failed = ($results | Where-Object { $_.Status -eq 'FAIL' }).Count
 
 Write-Host ""
-Write-Host "────────────────────────────────────────────"
+Write-Host ("=" * 60)
 Write-Host ("Smoke test: {0} passed / {1} failed" -f $passed, $failed) `
     -ForegroundColor $(if ($failed -eq 0) { 'Green' } else { 'Red' })
-Write-Host "────────────────────────────────────────────"
+Write-Host ("=" * 60)
 
 if ($failed -gt 0) {
     $results | Where-Object { $_.Status -eq 'FAIL' } | Format-Table -AutoSize
