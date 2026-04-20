@@ -20766,6 +20766,11 @@ def post_reply():
     # Idempotency token (optional)
     dedupe_token = (request.form.get('dedupe_token') or '').strip()
 
+    try:
+        voice_duration_seconds = float((request.form.get('voice_duration_seconds') or '').strip() or 0) or None
+    except Exception:
+        voice_duration_seconds = None
+
     # Use DB-friendly ISO for storage in UTC; frontend will format for display
     now = datetime.utcnow()
     timestamp_db = now.strftime('%Y-%m-%d %H:%M:%S')
@@ -20835,15 +20840,46 @@ def post_reply():
                 c.execute("ALTER TABLE replies ADD COLUMN audio_mime TEXT")
             except Exception:
                 pass
-            c.execute("INSERT INTO replies (post_id, username, content, image_path, audio_path, timestamp, community_id, parent_reply_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                      (post_id, username, content, image_path, audio_path, timestamp_db, community_id, parent_reply_id))
+            try:
+                c.execute("ALTER TABLE replies ADD COLUMN audio_summary TEXT")
+            except Exception:
+                pass
+
+            audio_summary = None
+            if audio_path:
+                try:
+                    logger.info(f"Generating AI summary for feed reply audio: {audio_path}")
+                    audio_summary = process_audio_for_summary(
+                        audio_path,
+                        username=username,
+                        duration_seconds=voice_duration_seconds,
+                        community_id=int(community_id) if community_id else None,
+                    )
+                    if audio_summary:
+                        logger.info(f"AI summary generated for reply: {audio_summary[:100]}...")
+                except Exception as sum_err:
+                    logger.warning(f"Could not generate audio summary for reply: {sum_err}")
+                    audio_summary = None
+
+            c.execute(
+                "INSERT INTO replies (post_id, username, content, image_path, audio_path, audio_summary, timestamp, community_id, parent_reply_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (post_id, username, content, image_path, audio_path, audio_summary, timestamp_db, community_id, parent_reply_id),
+            )
             reply_id = c.lastrowid
 
             # Dual-write reply to Firestore
             try:
                 from backend.services.firestore_writes import write_reply
-                write_reply(post_id=post_id, reply_id=reply_id, username=username, content=content,
-                           parent_reply_id=parent_reply_id, image_path=image_path)
+                write_reply(
+                    post_id=post_id,
+                    reply_id=reply_id,
+                    username=username,
+                    content=content,
+                    parent_reply_id=parent_reply_id,
+                    image_path=image_path,
+                    audio_path=audio_path,
+                    audio_summary=audio_summary,
+                )
             except Exception:
                 pass
             try:
@@ -20910,8 +20946,9 @@ def post_reply():
                 'post_id': post_id,
                 'username': username,
                 'content': content,
-            'image_path': image_path,
-            'audio_path': audio_path,
+                'image_path': image_path,
+                'audio_path': audio_path,
+                'audio_summary': audio_summary,
                 'timestamp': timestamp_db,  # Return precise timestamp for clients
                 'reactions': {},
                 'user_reaction': None,
@@ -25868,43 +25905,64 @@ def edit_post():
 @app.route('/update_audio_summary', methods=['POST'])
 @login_required
 def update_audio_summary():
-    """Update the AI summary for an audio post (post owner or admin only)."""
+    """Update the AI summary for an audio post or reply (owner or admin only)."""
     username = session['username']
-    data = request.get_json()
+    data = request.get_json() or {}
     post_id = data.get('post_id')
+    reply_id = data.get('reply_id')
     new_summary = (data.get('summary') or '').strip()
-    
-    if not post_id:
-        return jsonify({'success': False, 'error': 'Post ID is required'}), 400
-    
+    conn = None
+
+    if not post_id and not reply_id:
+        return jsonify({'success': False, 'error': 'Post ID or reply ID is required'}), 400
+
     if not new_summary:
         return jsonify({'success': False, 'error': 'Summary cannot be empty'}), 400
-    
+
     try:
         conn = get_db_connection()
         c = conn.cursor()
-        
-        # Check if user owns the post or is admin
         ph = get_sql_placeholder()
+
+        if reply_id:
+            try:
+                reply_id = int(reply_id)
+            except Exception:
+                return jsonify({'success': False, 'error': 'Invalid reply ID'}), 400
+            c.execute(f"SELECT username FROM replies WHERE id = {ph}", (reply_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
+            author = row['username'] if hasattr(row, 'keys') else row[0]
+            if author != username and username != 'admin':
+                return jsonify({'success': False, 'error': 'Not authorized to edit this summary'}), 403
+            try:
+                c.execute(f"ALTER TABLE replies ADD COLUMN audio_summary TEXT")
+                conn.commit()
+            except Exception:
+                pass
+            c.execute(f"UPDATE replies SET audio_summary = {ph} WHERE id = {ph}", (new_summary, reply_id))
+            conn.commit()
+            logger.info(f"User {username} updated audio summary for reply {reply_id}")
+            return jsonify({'success': True, 'summary': new_summary})
+
         c.execute(f"SELECT username FROM posts WHERE id = {ph}", (post_id,))
         row = c.fetchone()
-        
+
         if not row:
             return jsonify({'success': False, 'error': 'Post not found'}), 404
-        
+
         post_owner = row[0] if isinstance(row, tuple) else row['username']
-        
-        # Check if user is admin or post owner
+
         if post_owner != username and username != 'admin':
             return jsonify({'success': False, 'error': 'Not authorized to edit this summary'}), 403
-        
-        # Update the audio summary
+
         c.execute(f"UPDATE posts SET audio_summary = {ph} WHERE id = {ph}", (new_summary, post_id))
         conn.commit()
-        
+
         logger.info(f"User {username} updated audio summary for post {post_id}")
         return jsonify({'success': True, 'summary': new_summary})
-        
+
     except Exception as e:
         logger.error(f"Error updating audio summary: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -27740,6 +27798,32 @@ def get_post():
                             except Exception:
                                 pass
 
+                            reply_media = {}
+                            try:
+                                hc.execute(
+                                    f"SELECT id, image_path, video_path, audio_path, audio_summary FROM replies WHERE id IN ({phs})",
+                                    tuple(all_reply_ids),
+                                )
+                                for row in hc.fetchall() or []:
+                                    if hasattr(row, 'keys'):
+                                        rid = int(row['id'])
+                                        reply_media[rid] = {
+                                            'image_path': row.get('image_path'),
+                                            'video_path': row.get('video_path'),
+                                            'audio_path': row.get('audio_path'),
+                                            'audio_summary': row.get('audio_summary'),
+                                        }
+                                    else:
+                                        rid = int(row[0])
+                                        reply_media[rid] = {
+                                            'image_path': row[1] if len(row) > 1 else None,
+                                            'video_path': row[2] if len(row) > 2 else None,
+                                            'audio_path': row[3] if len(row) > 3 else None,
+                                            'audio_summary': row[4] if len(row) > 4 else None,
+                                        }
+                            except Exception:
+                                pass
+
                             # Apply hydrated data to replies
                             def _hydrate(replies):
                                 for r in replies:
@@ -27748,6 +27832,16 @@ def get_post():
                                     r['profile_picture'] = pp_map.get(r.get('username'))
                                     r['reactions'] = reply_rxs.get(rid, {})
                                     r['user_reaction'] = user_reply_rxs.get(rid)
+                                    media = reply_media.get(int(rid))
+                                    if media:
+                                        if media.get('image_path'):
+                                            r['image_path'] = media['image_path']
+                                        if media.get('video_path'):
+                                            r['video_path'] = media['video_path']
+                                        if media.get('audio_path'):
+                                            r['audio_path'] = media['audio_path']
+                                        if media.get('audio_summary') is not None:
+                                            r['audio_summary'] = media['audio_summary']
                                     _hydrate(r.get('children', []))
                             _hydrate(fs_post.get('replies', []))
 
@@ -28090,7 +28184,10 @@ def api_get_reply(reply_id):
             parent_chain = []
             current_parent_id = reply.get('parent_reply_id')
             while current_parent_id:
-                c.execute(f"SELECT id, username, content, timestamp, parent_reply_id, image_path FROM replies WHERE id = {ph}", (current_parent_id,))
+                c.execute(
+                    f"SELECT id, username, content, timestamp, parent_reply_id, image_path, video_path, audio_path, audio_summary FROM replies WHERE id = {ph}",
+                    (current_parent_id,),
+                )
                 parent_raw = c.fetchone()
                 if not parent_raw:
                     break
@@ -35101,9 +35198,18 @@ def api_group_post():
             # Replies (with nested tree, matching /get_post format)
             gr_table = '`group_replies`' if USE_MYSQL else 'group_replies'
             grr_table = '`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'
+            try:
+                c.execute(f"ALTER TABLE {gr_table} ADD COLUMN audio_path TEXT")
+            except Exception:
+                pass
+            try:
+                c.execute(f"ALTER TABLE {gr_table} ADD COLUMN audio_summary TEXT")
+            except Exception:
+                pass
             c.execute(f"""
                 SELECT gr.id, gr.username, gr.content, gr.image_path, gr.created_at,
-                       gr.parent_reply_id, up.profile_picture
+                       gr.parent_reply_id, up.profile_picture,
+                       gr.audio_path, gr.audio_summary
                 FROM {gr_table} gr
                 LEFT JOIN user_profiles up ON up.username = gr.username
                 WHERE gr.group_post_id = {get_sql_placeholder()}
@@ -35112,8 +35218,26 @@ def api_group_post():
             rep_rows = c.fetchall() or []
             all_replies = []
             for rr in rep_rows:
-                rid = rr['id'] if hasattr(rr, 'keys') else rr[0]
-                parent_rid = rr['parent_reply_id'] if hasattr(rr, 'keys') else rr[5]
+                if hasattr(rr, 'keys'):
+                    rid = rr['id']
+                    parent_rid = rr['parent_reply_id']
+                    apath = rr.get('audio_path')
+                    asum = rr.get('audio_summary')
+                    uname = rr['username']
+                    rcontent = rr['content']
+                    rimg = rr['image_path']
+                    rts = rr['created_at']
+                    rpp = rr.get('profile_picture')
+                else:
+                    rid = rr[0]
+                    uname = rr[1]
+                    rcontent = rr[2]
+                    rimg = rr[3]
+                    rts = rr[4]
+                    parent_rid = rr[5]
+                    rpp = rr[6] if len(rr) > 6 else None
+                    apath = rr[7] if len(rr) > 7 else None
+                    asum = rr[8] if len(rr) > 8 else None
                 c.execute(f"SELECT reaction, COUNT(*) as c FROM {grr_table} WHERE group_reply_id = {get_sql_placeholder()} GROUP BY reaction", (rid,))
                 rrx = c.fetchall() or []
                 rreactions = { (r3['reaction'] if hasattr(r3, 'keys') else r3[0]): (r3['c'] if hasattr(r3, 'keys') else r3[1]) for r3 in rrx }
@@ -35125,12 +35249,14 @@ def api_group_post():
                 reply_count = (cnt_row['cnt'] if hasattr(cnt_row, 'keys') else cnt_row[0]) if cnt_row else 0
                 all_replies.append({
                     'id': rid,
-                    'username': rr['username'] if hasattr(rr, 'keys') else rr[1],
-                    'content': rr['content'] if hasattr(rr, 'keys') else rr[2],
-                    'image_path': rr['image_path'] if hasattr(rr, 'keys') else rr[3],
-                    'timestamp': rr['created_at'] if hasattr(rr, 'keys') else rr[4],
+                    'username': uname,
+                    'content': rcontent,
+                    'image_path': rimg,
+                    'audio_path': apath,
+                    'audio_summary': asum,
+                    'timestamp': rts,
                     'parent_reply_id': parent_rid,
-                    'profile_picture': rr['profile_picture'] if hasattr(rr, 'keys') else rr[6],
+                    'profile_picture': rpp,
                     'reactions': rreactions,
                     'user_reaction': reply_user_reaction,
                     'reply_count': reply_count,
@@ -35366,38 +35492,122 @@ def api_group_replies_create():
     parent_id_raw = request.form.get('parent_reply_id', '').strip()
     content = (request.form.get('content', '') or '').strip()
     try:
+        voice_duration_seconds = float((request.form.get('voice_duration_seconds') or '').strip() or 0) or None
+    except Exception:
+        voice_duration_seconds = None
+    try:
         post_id = int(post_id_raw)
     except Exception:
         return jsonify({'success': False, 'error': 'Invalid group_post_id'})
     parent_id = None
     if parent_id_raw:
-        try: parent_id = int(parent_id_raw)
-        except Exception: parent_id = None
-    if not content and 'image' not in request.files:
-        return jsonify({'success': False, 'error': 'Content or image is required'})
+        try:
+            parent_id = int(parent_id_raw)
+        except Exception:
+            parent_id = None
+    has_image = 'image' in request.files and bool(request.files['image'].filename)
+    has_audio = 'audio' in request.files and bool(request.files['audio'].filename)
+    if not content and not has_image and not has_audio:
+        return jsonify({'success': False, 'error': 'Content, image, or audio is required'})
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
             image_path = None
-            if 'image' in request.files and request.files['image'].filename:
+            audio_path = None
+            audio_summary = None
+            if has_image:
                 image_path = save_uploaded_file(request.files['image'])
+            if has_audio:
+                audio_path = save_uploaded_file(request.files['audio'], subfolder='audio')
+                if not audio_path:
+                    return jsonify({'success': False, 'error': 'Invalid audio type'}), 400
+
+            community_id = None
+            try:
+                gp_t = '`group_posts`' if USE_MYSQL else 'group_posts'
+                g_t = '`groups`' if USE_MYSQL else 'groups'
+                c.execute(
+                    f"SELECT g.community_id FROM {gp_t} gp JOIN {g_t} g ON g.id = gp.group_id WHERE gp.id = {ph}",
+                    (post_id,),
+                )
+                crow = c.fetchone()
+                if crow:
+                    community_id = crow['community_id'] if hasattr(crow, 'keys') else crow[0]
+            except Exception:
+                community_id = None
+
+            gr_table = '`group_replies`' if USE_MYSQL else 'group_replies'
+            for alter in (
+                f"ALTER TABLE {gr_table} ADD COLUMN audio_path TEXT",
+                f"ALTER TABLE {gr_table} ADD COLUMN audio_summary TEXT",
+            ):
+                try:
+                    c.execute(alter)
+                except Exception:
+                    pass
+
+            if audio_path:
+                try:
+                    logger.info(f"Generating AI summary for group reply audio: {audio_path}")
+                    audio_summary = process_audio_for_summary(
+                        audio_path,
+                        username=username,
+                        duration_seconds=voice_duration_seconds,
+                        community_id=int(community_id) if community_id else None,
+                    )
+                except Exception as sum_err:
+                    logger.warning(f"group reply audio summary failed: {sum_err}")
+                    audio_summary = None
+
             now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-            c.execute(f"INSERT INTO {'`group_replies`' if USE_MYSQL else 'group_replies'} (group_post_id, parent_reply_id, username, content, image_path, created_at) VALUES ({get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()})",
-                      (post_id, parent_id, username, content, image_path, now))
-            if not USE_MYSQL: conn.commit()
+            try:
+                c.execute(
+                    f"INSERT INTO {gr_table} (group_post_id, parent_reply_id, username, content, image_path, audio_path, audio_summary, created_at) "
+                    f"VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})",
+                    (post_id, parent_id, username, content, image_path, audio_path, audio_summary, now),
+                )
+            except Exception as ins_err:
+                logger.warning(f"group_replies insert with audio columns failed, retrying legacy shape: {ins_err}")
+                c.execute(
+                    f"INSERT INTO {gr_table} (group_post_id, parent_reply_id, username, content, image_path, created_at) "
+                    f"VALUES ({ph},{ph},{ph},{ph},{ph},{ph})",
+                    (post_id, parent_id, username, content, image_path, now),
+                )
+            if not USE_MYSQL:
+                conn.commit()
             reply_id = c.lastrowid
             pp = None
             try:
                 c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (username,))
                 pp_row = c.fetchone()
-                if pp_row: pp = pp_row['profile_picture'] if hasattr(pp_row, 'keys') else pp_row[0]
-            except Exception: pass
-            return jsonify({'success': True, 'reply': {
-                'id': reply_id, 'username': username, 'content': content,
-                'image_path': image_path, 'timestamp': now,
-                'parent_reply_id': parent_id, 'profile_picture': pp,
-                'reactions': {}, 'user_reaction': None, 'children': [], 'reply_count': 0,
-            }})
+                if pp_row:
+                    pp = pp_row['profile_picture'] if hasattr(pp_row, 'keys') else pp_row[0]
+            except Exception:
+                pass
+            try:
+                from backend.services.steve_profiling_snapshot import schedule_steve_profiling_snapshot_refresh
+                schedule_steve_profiling_snapshot_refresh(username)
+            except Exception:
+                pass
+            return jsonify({
+                'success': True,
+                'reply': {
+                    'id': reply_id,
+                    'username': username,
+                    'content': content,
+                    'image_path': image_path,
+                    'audio_path': audio_path,
+                    'audio_summary': audio_summary,
+                    'timestamp': now,
+                    'parent_reply_id': parent_id,
+                    'profile_picture': pp,
+                    'reactions': {},
+                    'user_reaction': None,
+                    'children': [],
+                    'reply_count': 0,
+                },
+            })
     except Exception as e:
         logger.error(f"api_group_replies_create error: {e}")
         return jsonify({'success': False, 'error': 'Server error'})

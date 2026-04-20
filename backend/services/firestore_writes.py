@@ -254,6 +254,8 @@ def update_post(post_id: int, content: str = None, image_path: str = None,
 
 def write_reply(post_id: int, reply_id: int, username: str, content: str = '',
                 parent_reply_id: int = None, image_path: str = None,
+                audio_path: str = None, audio_summary: str = None,
+                video_path: str = None,
                 post_type: str = 'community', timestamp=None):
     """Write a reply to Firestore after MySQL insert."""
     if not USE_FIRESTORE_WRITES:
@@ -262,14 +264,21 @@ def write_reply(post_id: int, reply_id: int, username: str, content: str = '',
         fs = _get_client()
         doc_id = f"gp_{post_id}" if post_type == 'group' else str(post_id)
         ts = timestamp if isinstance(timestamp, datetime) else datetime.utcnow()
-        fs.collection('posts').document(doc_id).collection('replies').document(str(reply_id)).set({
+        payload = {
             'mysql_id': reply_id,
             'username': username,
             'content': content or '',
             'parent_reply_id': parent_reply_id,
             'image_path': image_path,
             'created_at': ts,
-        })
+        }
+        if audio_path:
+            payload['audio_path'] = audio_path
+        if audio_summary:
+            payload['audio_summary'] = audio_summary
+        if video_path:
+            payload['video_path'] = video_path
+        fs.collection('posts').document(doc_id).collection('replies').document(str(reply_id)).set(payload)
     except Exception as e:
         logger.warning(f"Firestore reply write failed (non-fatal): {e}")
 

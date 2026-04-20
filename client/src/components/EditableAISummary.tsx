@@ -1,13 +1,15 @@
 import { useState } from 'react'
 
 interface EditableAISummaryProps {
-  postId: number;
+  postId?: number;
+  /** When set, updates `replies.audio_summary` instead of the post. */
+  replyId?: number;
   initialSummary: string;
   isOwner: boolean;
   onSummaryUpdate: (newSummary: string) => void;
 }
 
-export default function EditableAISummary({ postId, initialSummary, isOwner, onSummaryUpdate }: EditableAISummaryProps) {
+export default function EditableAISummary({ postId, replyId, initialSummary, isOwner, onSummaryUpdate }: EditableAISummaryProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [summary, setSummary] = useState(initialSummary);
   const [isSaving, setIsSaving] = useState(false);
@@ -56,10 +58,18 @@ export default function EditableAISummary({ postId, initialSummary, isOwner, onS
     
     setIsSaving(true);
     try {
+      const body: Record<string, unknown> = { summary: summary.trim() }
+      if (replyId != null) body.reply_id = replyId
+      else if (postId != null) body.post_id = postId
+      else {
+        alert('Missing post or reply id')
+        setIsSaving(false)
+        return
+      }
       const response = await fetch('/update_audio_summary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ post_id: postId, summary: summary.trim() })
+        body: JSON.stringify(body),
       });
       
       const respData = await response.json();

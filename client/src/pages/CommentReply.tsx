@@ -14,6 +14,7 @@ import { gifSelectionToFile } from '../utils/gif'
 import { renderRichText } from '../utils/linkUtils'
 import { openExternalInApp } from '../utils/openExternalInApp'
 import { useAudioRecorder } from '../components/useAudioRecorder'
+import EditableAISummary from '../components/EditableAISummary'
 
 type Reply = {
   id: number
@@ -25,6 +26,7 @@ type Reply = {
   profile_picture?: string | null
   image_path?: string | null
   audio_path?: string | null
+  audio_summary?: string | null
   parent_reply_id?: number | null
   reply_count?: number
   view_count?: number
@@ -51,6 +53,9 @@ type ParentReply = {
   timestamp: string
   profile_picture?: string | null
   image_path?: string | null
+  video_path?: string | null
+  audio_path?: string | null
+  audio_summary?: string | null
   parent_reply_id?: number | null
 }
 
@@ -475,6 +480,8 @@ export default function CommentReply() {
 
       if (replyPreview?.blob) {
         fd.append('audio', replyPreview.blob, (replyPreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm'))
+        const durSec = (replyPreview as { duration?: number }).duration ?? (recordMs / 1000)
+        if (durSec > 0) fd.append('voice_duration_seconds', String(durSec))
       }
 
       const res = await fetch('/post_reply', { method: 'POST', credentials: 'include', body: fd })
@@ -818,6 +825,29 @@ export default function CommentReply() {
                       />
                     </div>
                   )}
+                  {parent.audio_path && (
+                    <div className="mt-2 space-y-1" onClick={(e) => e.stopPropagation()}>
+                      {parent.audio_summary ? (
+                        <p className="text-[12px] text-white/70 italic line-clamp-4">{parent.audio_summary}</p>
+                      ) : (() => {
+                        const t = parseFlexibleDate(parent.timestamp)?.getTime()
+                        if (t != null && !Number.isNaN(t) && Date.now() - t < 120000) {
+                          return (
+                            <div className="flex items-center gap-1">
+                              <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-white/40" />
+                              <span className="text-[11px] text-white/40">Steve summary generating</span>
+                            </div>
+                          )
+                        }
+                        return null
+                      })()}
+                      <audio
+                        controls
+                        className="w-full max-h-8"
+                        src={parent.audio_path.startsWith('http') || parent.audio_path.startsWith('/') ? parent.audio_path : `/uploads/${parent.audio_path}`}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -909,7 +939,33 @@ export default function CommentReply() {
 
                 {/* Reply audio */}
                 {reply.audio_path && !isEditingMain && (
-                  <div className="mt-3">
+                  <div className="mt-3 space-y-2">
+                    {reply.audio_summary ? (
+                      <EditableAISummary
+                        replyId={reply.id}
+                        initialSummary={reply.audio_summary}
+                        isOwner={currentUser === reply.username || currentUser === 'admin'}
+                        onSummaryUpdate={(newSummary) =>
+                          setReply((prev) => (prev ? { ...prev, audio_summary: newSummary } : prev))
+                        }
+                      />
+                    ) : (() => {
+                      const t = parseFlexibleDate(reply.timestamp)?.getTime()
+                      if (t != null && !Number.isNaN(t) && Date.now() - t < 120000) {
+                        return (
+                          <div className="flex items-center gap-1">
+                            <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-white/40" />
+                            <span className="text-[11px] text-white/40">Steve summary generating</span>
+                            <span className="flex gap-0.5 ml-0.5">
+                              <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                              <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                              <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                            </span>
+                          </div>
+                        )
+                      }
+                      return null
+                    })()}
                     <audio
                       controls
                       className="w-full"
@@ -1062,6 +1118,49 @@ export default function CommentReply() {
                               }
                               alt="Reply image"
                               className="rounded-lg max-h-[200px] object-contain"
+                            />
+                          </div>
+                        )}
+
+                        {nr.audio_path && !isEditingThis && (
+                          <div className="mt-2 space-y-2" onClick={(e) => e.stopPropagation()}>
+                            {nr.audio_summary ? (
+                              <EditableAISummary
+                                replyId={nr.id}
+                                initialSummary={nr.audio_summary}
+                                isOwner={currentUser === nr.username || currentUser === 'admin'}
+                                onSummaryUpdate={(newSummary) =>
+                                  setReply((prev) => {
+                                    if (!prev?.nested_replies) return prev
+                                    return {
+                                      ...prev,
+                                      nested_replies: prev.nested_replies.map((x) =>
+                                        x.id === nr.id ? { ...x, audio_summary: newSummary } : x
+                                      ),
+                                    }
+                                  })
+                                }
+                              />
+                            ) : (() => {
+                              const t = parseFlexibleDate(nr.timestamp)?.getTime()
+                              if (t != null && !Number.isNaN(t) && Date.now() - t < 120000) {
+                                return (
+                                  <div className="flex items-center gap-1 text-[11px] text-white/40">
+                                    <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
+                                    Steve summary generating
+                                  </div>
+                                )
+                              }
+                              return null
+                            })()}
+                            <audio
+                              controls
+                              className="w-full"
+                              src={
+                                nr.audio_path.startsWith('http') || nr.audio_path.startsWith('/')
+                                  ? nr.audio_path
+                                  : `/uploads/${nr.audio_path}`
+                              }
                             />
                           </div>
                         )}

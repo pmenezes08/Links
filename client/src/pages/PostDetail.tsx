@@ -23,7 +23,7 @@ import { renderRichText } from '../utils/linkUtils'
 import { openExternalInApp } from '../utils/openExternalInApp'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
 
-type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, reply_count?: number, view_count?: number }
+type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, audio_path?: string|null, audio_summary?: string|null, reply_count?: number, view_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
 type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}>; view_count?: number; media_paths?: MediaItem[] | string | null }
 
@@ -802,6 +802,21 @@ export default function PostDetail(){
     }
   }
 
+  const patchReplyAudioSummary = useCallback((replyId: number, summary: string) => {
+    setPost(p => {
+      if (!p) return p
+      function patch(list: Reply[]): Reply[] {
+        return list.map(item => {
+          if (item.id === replyId) return { ...item, audio_summary: summary }
+          const ch = item.children
+          if (ch?.length) return { ...item, children: patch(ch) }
+          return item
+        })
+      }
+      return { ...p, replies: patch(p.replies) }
+    })
+  }, [])
+
   async function toggleReplyReaction(replyId: number, reaction: string){
     const form = new URLSearchParams({ reply_id: String(replyId), reaction })
     const endpoint = isGroupPost ? '/api/group_replies/react' : '/add_reply_reaction'
@@ -852,7 +867,11 @@ export default function PostDetail(){
       alert('Unable to attach GIF. Please try again.')
       return
     }
-    if (replyPreview?.blob) fd.append('audio', replyPreview.blob, (replyPreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm'))
+    if (replyPreview?.blob) {
+      fd.append('audio', replyPreview.blob, (replyPreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm'))
+      const durSec = (replyPreview as { duration?: number }).duration ?? (recordMs / 1000)
+      if (durSec > 0) fd.append('voice_duration_seconds', String(durSec))
+    }
     fd.append('dedupe_token', replyTokenRef.current)
     const replyEndpoint = isGroupPost ? '/api/group_replies' : '/post_reply'
     const r = await fetch(replyEndpoint, { method:'POST', credentials:'include', body: fd })
@@ -885,7 +904,7 @@ export default function PostDetail(){
     }
   }
 
-  async function submitInlineReply(parentId: number, text: string, file?: File){
+  async function submitInlineReply(parentId: number, text: string, file?: File, voiceDurationSec?: number){
     if (!post || (!text && !file)) return
     if (inlineSending[parentId]) return
     setInlineSending(s => ({ ...s, [parentId]: true }))
@@ -900,6 +919,9 @@ export default function PostDetail(){
     if (file) {
       if (typeof (file as any).type === 'string' && (file as any).type.startsWith('audio/')) {
         fd.append('audio', file)
+        if (typeof voiceDurationSec === 'number' && voiceDurationSec > 0) {
+          fd.append('voice_duration_seconds', String(voiceDurationSec))
+        }
       } else if (typeof (file as any).type === 'string' && (file as any).type.startsWith('image/')) {
         fd.append('image', file)
       } else {
@@ -1616,7 +1638,7 @@ export default function PostDetail(){
                 ) : null}
                 {post.audio_path ? (
                   <div className="px-3 space-y-2">
-                    {post.audio_summary && (
+                    {post.audio_summary ? (
                       <EditableAISummary
                         postId={post.id}
                         initialSummary={post.audio_summary}
@@ -1625,7 +1647,23 @@ export default function PostDetail(){
                           setPost(prev => prev ? {...prev, audio_summary: newSummary} as any : null);
                         }}
                       />
-                    )}
+                    ) : (() => {
+                      const t = parseFlexibleDate(post.timestamp)?.getTime()
+                      if (t != null && !Number.isNaN(t) && Date.now() - t < 120000) {
+                        return (
+                          <div className="flex items-center gap-1 py-1">
+                            <i className="fa-solid fa-wand-magic-sparkles text-[10px] text-white/40" />
+                            <span className="text-[12px] text-white/40">Steve summary generating</span>
+                            <span className="flex gap-0.5 ml-0.5">
+                              <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                              <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                              <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                            </span>
+                          </div>
+                        )
+                      }
+                      return null
+                    })()}
                     <audio controls className="w-full" playsInline webkit-playsinline="true" src={(() => {
                       const path = normalizePath(post.audio_path as string);
                       const separator = path.includes('?') ? '&' : '?';
@@ -1732,7 +1770,8 @@ export default function PostDetail(){
               reply={r}
               currentUser={currentUser?.username || null}
               onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)}
-              onInlineReply={(id, text, file)=> submitInlineReply(id, text, file)}
+              onInlineReply={(id, text, file, voiceSec)=> submitInlineReply(id, text, file, voiceSec)}
+              onReplyAudioSummaryUpdate={patchReplyAudioSummary}
               onDelete={(id)=> deleteReply(id)}
               onPreviewImage={(src)=> setPreviewSrc(src)}
               inlineSendingFlag={!!inlineSending[r.id]}
@@ -2395,10 +2434,11 @@ const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
   if (prev.activeInlineReplyFor !== next.activeInlineReplyFor) return false
   if (prev.onNavigateToReply !== next.onNavigateToReply) return false
   if (prev.onArticleOpen !== next.onArticleOpen) return false
+  if (prev.onReplyAudioSummaryUpdate !== next.onReplyAudioSummaryUpdate) return false
   return true
 })
 
-function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, activeInlineReplyFor, onSetActiveInlineReply, onNavigateToReply, onOpenReactors, onArticleOpen }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, activeInlineReplyFor?: number | null, onSetActiveInlineReply?: (id: number | null) => void, onNavigateToReply?: (id: number) => void, onOpenReactors?: (id: number) => void, onArticleOpen?: (url: string) => void }){
+function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, activeInlineReplyFor, onSetActiveInlineReply, onNavigateToReply, onOpenReactors, onArticleOpen, onReplyAudioSummaryUpdate }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File, voiceDurationSec?: number)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, activeInlineReplyFor?: number | null, onSetActiveInlineReply?: (id: number | null) => void, onNavigateToReply?: (id: number) => void, onOpenReactors?: (id: number) => void, onArticleOpen?: (url: string) => void, onReplyAudioSummaryUpdate?: (replyId: number, summary: string) => void }){
   const navigate = useNavigate()
   const currentUser = currentUserName
   // Use parent's activeInlineReplyFor if provided, otherwise use local state
@@ -2533,7 +2573,31 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             </div>
           ) : null}
           {(reply as any)?.audio_path ? (
-            <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+            <div className="mt-2 space-y-2" onClick={(e) => e.stopPropagation()}>
+              {reply.audio_summary ? (
+                <EditableAISummary
+                  replyId={reply.id}
+                  initialSummary={reply.audio_summary}
+                  isOwner={currentUser === reply.username || currentUser === 'admin'}
+                  onSummaryUpdate={(newSummary) => onReplyAudioSummaryUpdate?.(reply.id, newSummary)}
+                />
+              ) : (() => {
+                const t = parseFlexibleDate(reply.timestamp)?.getTime()
+                if (t != null && !Number.isNaN(t) && Date.now() - t < 120000) {
+                  return (
+                    <div className="flex items-center gap-1">
+                      <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-white/40" />
+                      <span className="text-[11px] text-white/40">Steve summary generating</span>
+                      <span className="flex gap-0.5 ml-0.5">
+                        <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </span>
+                    </div>
+                  )
+                }
+                return null
+              })()}
               <audio controls className="w-full" playsInline webkit-playsinline="true" src={(() => {
                 const path = normalizePath((reply as any).audio_path as string);
                 const separator = path.includes('?') ? '&' : '?';
@@ -2683,7 +2747,10 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                       const attachment = inlinePreview
                         ? new File([inlinePreview.blob], inlinePreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm', { type: inlinePreview.blob.type })
                         : (img || gifFile || undefined)
-                      onInlineReply(reply.id, text, attachment as any)
+                      const voiceSec = inlinePreview
+                        ? ((inlinePreview as { duration?: number }).duration ?? (recMs / 1000))
+                        : undefined
+                      onInlineReply(reply.id, text, attachment as any, voiceSec)
                       setText('')
                       setImg(null)
                       setInlineGif(null)
