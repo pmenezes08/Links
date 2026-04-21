@@ -20316,6 +20316,18 @@ def post_status():
             else:
                 return redirect(url_for('feed') + '?error=' + str(e))
 
+
+def _reply_upload_is_video(saved_path: str, file_storage) -> bool:
+    """True if uploaded reply media should be stored as video (not image)."""
+    if not saved_path:
+        return False
+    lower = saved_path.split('?')[0].lower()
+    if any(lower.endswith('.' + ext) for ext in ('mp4', 'webm', 'mov', 'm4v', 'avi')):
+        return True
+    mime = (getattr(file_storage, 'mimetype', None) or '').lower()
+    return mime.startswith('video/')
+
+
 @app.route('/post_reply', methods=['POST'])
 @login_required
 def post_reply():
@@ -20333,15 +20345,20 @@ def post_reply():
     if not post_id:
         return jsonify({'success': False, 'error': 'Post ID is required!'}), 400
 
-    # Handle file upload for reply (image or audio)
+    # Handle file upload for reply (image, video, or audio)
     image_path = None
+    video_path = None
     audio_path = None
     if 'image' in request.files:
         file = request.files['image']
         if file.filename != '':
-            image_path = save_uploaded_file(file)
-            if not image_path:
-                return jsonify({'success': False, 'error': 'Invalid file type. Allowed: png, jpg, jpeg, gif, webp'}), 400
+            saved_media = save_uploaded_file(file)
+            if not saved_media:
+                return jsonify({'success': False, 'error': 'Invalid file type for attachment.'}), 400
+            if _reply_upload_is_video(saved_media, file):
+                video_path = saved_media
+            else:
+                image_path = saved_media
     if 'audio' in request.files:
         afile = request.files['audio']
         if afile.filename != '':
@@ -20349,8 +20366,8 @@ def post_reply():
             if not audio_path:
                 return jsonify({'success': False, 'error': 'Invalid audio type'}), 400
 
-    if not content and not image_path and not audio_path:
-        return jsonify({'success': False, 'error': 'Content, image or audio is required!'}), 400
+    if not content and not image_path and not video_path and not audio_path:
+        return jsonify({'success': False, 'error': 'Content, image, video, or audio is required!'}), 400
 
     # Idempotency token (optional)
     dedupe_token = (request.form.get('dedupe_token') or '').strip()
@@ -20433,6 +20450,10 @@ def post_reply():
                 c.execute("ALTER TABLE replies ADD COLUMN audio_summary TEXT")
             except Exception:
                 pass
+            try:
+                c.execute("ALTER TABLE replies ADD COLUMN video_path TEXT")
+            except Exception:
+                pass
 
             audio_summary = None
             if audio_path:
@@ -20451,8 +20472,8 @@ def post_reply():
                     audio_summary = None
 
             c.execute(
-                "INSERT INTO replies (post_id, username, content, image_path, audio_path, audio_summary, timestamp, community_id, parent_reply_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (post_id, username, content, image_path, audio_path, audio_summary, timestamp_db, community_id, parent_reply_id),
+                "INSERT INTO replies (post_id, username, content, image_path, video_path, audio_path, audio_summary, timestamp, community_id, parent_reply_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (post_id, username, content, image_path, video_path, audio_path, audio_summary, timestamp_db, community_id, parent_reply_id),
             )
             reply_id = c.lastrowid
 
@@ -20466,6 +20487,7 @@ def post_reply():
                     content=content,
                     parent_reply_id=parent_reply_id,
                     image_path=image_path,
+                    video_path=video_path,
                     audio_path=audio_path,
                     audio_summary=audio_summary,
                 )
@@ -20536,6 +20558,7 @@ def post_reply():
                 'username': username,
                 'content': content,
                 'image_path': image_path,
+                'video_path': video_path,
                 'audio_path': audio_path,
                 'audio_summary': audio_summary,
                 'timestamp': timestamp_db,  # Return precise timestamp for clients
@@ -35138,10 +35161,18 @@ def api_group_replies_create():
             c = conn.cursor()
             ph = get_sql_placeholder()
             image_path = None
+            video_path = None
             audio_path = None
             audio_summary = None
             if has_image:
-                image_path = save_uploaded_file(request.files['image'])
+                uf = request.files['image']
+                saved_media = save_uploaded_file(uf)
+                if not saved_media:
+                    return jsonify({'success': False, 'error': 'Invalid attachment'}), 400
+                if _reply_upload_is_video(saved_media, uf):
+                    video_path = saved_media
+                else:
+                    image_path = saved_media
             if has_audio:
                 audio_path = save_uploaded_file(request.files['audio'], subfolder='audio')
                 if not audio_path:
@@ -35165,6 +35196,7 @@ def api_group_replies_create():
             for alter in (
                 f"ALTER TABLE {gr_table} ADD COLUMN audio_path TEXT",
                 f"ALTER TABLE {gr_table} ADD COLUMN audio_summary TEXT",
+                f"ALTER TABLE {gr_table} ADD COLUMN video_path TEXT",
             ):
                 try:
                     c.execute(alter)
@@ -35185,18 +35217,19 @@ def api_group_replies_create():
                     audio_summary = None
 
             now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            legacy_image_slot = image_path or video_path
             try:
                 c.execute(
-                    f"INSERT INTO {gr_table} (group_post_id, parent_reply_id, username, content, image_path, audio_path, audio_summary, created_at) "
-                    f"VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})",
-                    (post_id, parent_id, username, content, image_path, audio_path, audio_summary, now),
+                    f"INSERT INTO {gr_table} (group_post_id, parent_reply_id, username, content, image_path, video_path, audio_path, audio_summary, created_at) "
+                    f"VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})",
+                    (post_id, parent_id, username, content, image_path, video_path, audio_path, audio_summary, now),
                 )
             except Exception as ins_err:
-                logger.warning(f"group_replies insert with audio columns failed, retrying legacy shape: {ins_err}")
+                logger.warning(f"group_replies insert with audio/video columns failed, retrying legacy shape: {ins_err}")
                 c.execute(
                     f"INSERT INTO {gr_table} (group_post_id, parent_reply_id, username, content, image_path, created_at) "
                     f"VALUES ({ph},{ph},{ph},{ph},{ph},{ph})",
-                    (post_id, parent_id, username, content, image_path, now),
+                    (post_id, parent_id, username, content, legacy_image_slot, now),
                 )
             if not USE_MYSQL:
                 conn.commit()
@@ -35221,6 +35254,7 @@ def api_group_replies_create():
                     'username': username,
                     'content': content,
                     'image_path': image_path,
+                    'video_path': video_path,
                     'audio_path': audio_path,
                     'audio_summary': audio_summary,
                     'timestamp': now,

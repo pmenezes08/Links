@@ -20,6 +20,7 @@ import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/vide
 import EditableAISummary from '../components/EditableAISummary'
 import { clearDeviceCache, readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 import { renderRichText } from '../utils/linkUtils'
+import { isVideoAttachmentPath } from '../utils/replyMedia'
 import { openExternalInApp } from '../utils/openExternalInApp'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
 
@@ -2559,7 +2560,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
               </div>
             </div>
           )}
-          {reply.image_path ? (
+          {reply.image_path && !isVideoAttachmentPath(reply.image_path) ? (
             <div className="mt-2 flex justify-center" onClick={(e) => e.stopPropagation()}>
               <div onClick={()=> onPreviewImage(normalizePath(reply.image_path as string))}>
                 <ImageLoader
@@ -2570,13 +2571,14 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
               </div>
             </div>
           ) : null}
-          {reply.video_path ? (
+          {(reply.video_path || (reply.image_path && isVideoAttachmentPath(reply.image_path))) ? (
             <div className="mt-2" onClick={(e) => e.stopPropagation()}>
               <video
                 className="w-full max-h-[320px] rounded border border-white/10 bg-black"
-                src={normalizePath(reply.video_path)}
+                src={normalizePath((reply.video_path || reply.image_path) as string) + '#t=0.1'}
                 controls
                 playsInline
+                preload="metadata"
               />
             </div>
           ) : null}

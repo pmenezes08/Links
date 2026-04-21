@@ -6,6 +6,7 @@ import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
+import ZoomableImage from '../components/ZoomableImage'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import MentionTextarea from '../components/MentionTextarea'
 import GifPicker from '../components/GifPicker'
@@ -15,6 +16,14 @@ import { renderRichText } from '../utils/linkUtils'
 import { openExternalInApp } from '../utils/openExternalInApp'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import EditableAISummary from '../components/EditableAISummary'
+import { isVideoAttachmentPath } from '../utils/replyMedia'
+
+function replyDisplayUrl(raw: string): string {
+  const s = (raw || '').trim()
+  if (!s) return ''
+  if (s.startsWith('http') || s.startsWith('/')) return s
+  return `/uploads/${s}`
+}
 
 type Reply = {
   id: number
@@ -25,6 +34,7 @@ type Reply = {
   user_reaction: string | null
   profile_picture?: string | null
   image_path?: string | null
+  video_path?: string | null
   audio_path?: string | null
   audio_summary?: string | null
   parent_reply_id?: number | null
@@ -104,6 +114,10 @@ export default function CommentReply() {
 
   // Steve AI state
   const [steveIsTyping, setSteveIsTyping] = useState(false)
+
+  const [lightboxImageSrc, setLightboxImageSrc] = useState<string | null>(null)
+  const [lightboxVideoSrc, setLightboxVideoSrc] = useState<string | null>(null)
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null)
 
   // Check if message contains @Steve mention (case insensitive) - same as CommunityFeed
   const containsSteveMention = (text: string) => {
@@ -195,9 +209,11 @@ export default function CommentReply() {
     }
   }, [])
 
-  // Visual viewport tracking for web keyboard
+  // Visual viewport tracking for web keyboard only (native uses Capacitor Keyboard;
+  // dual sources caused bogus keyboard offset after iOS resume).
   useEffect(() => {
     if (typeof window === 'undefined') return
+    if (Capacitor.getPlatform() !== 'web') return
     const viewport = window.visualViewport
     if (!viewport) return
 
@@ -263,6 +279,44 @@ export default function CommentReply() {
     return () => {
       showSub?.remove()
       hideSub?.remove()
+    }
+  }, [])
+
+  // Reset keyboard lift and nudge layout after app resume (fixes frozen / dead touches on iOS WebView).
+  useEffect(() => {
+    const nudgeLayout = () => {
+      keyboardOffsetRef.current = 0
+      setKeyboardOffset(0)
+      requestAnimationFrame(() => {
+        window.dispatchEvent(new Event('resize'))
+        requestAnimationFrame(() => {
+          try {
+            scrollAreaRef.current?.scrollBy({ top: 0, left: 0 })
+          } catch {
+            /* ignore */
+          }
+        })
+      })
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') nudgeLayout()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    let resumeHandle: { remove: () => Promise<void> } | undefined
+    const setupResume = async () => {
+      if (!Capacitor.isNativePlatform()) return
+      const { App } = await import('@capacitor/app')
+      resumeHandle = await App.addListener('resume', () => {
+        nudgeLayout()
+      })
+    }
+    void setupResume()
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      void resumeHandle?.remove()
     }
   }, [])
 
@@ -752,6 +806,7 @@ export default function CommentReply() {
 
       {/* Scrollable content */}
       <div 
+        ref={scrollAreaRef}
         className="flex-1 overflow-y-auto"
         style={{ 
           paddingBottom: showKeyboard 
@@ -781,12 +836,24 @@ export default function CommentReply() {
                   <div className="mt-1 text-[14px] text-white/70 line-clamp-3">
                     {renderRichText(post.content, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`), openArticleReader)}
                   </div>
-                  {post.image_path && (
-                    <div className="mt-2">
+                  {post.image_path && !isVideoAttachmentPath(post.image_path) && (
+                    <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                       <ImageLoader
-                        src={post.image_path.startsWith('http') || post.image_path.startsWith('/') ? post.image_path : `/uploads/${post.image_path}`}
+                        src={replyDisplayUrl(post.image_path)}
                         alt="Post image"
-                        className="rounded-lg max-h-[150px] object-contain"
+                        className="rounded-lg max-h-[150px] object-contain cursor-zoom-in"
+                        onClick={() => setLightboxImageSrc(replyDisplayUrl(post.image_path))}
+                      />
+                    </div>
+                  )}
+                  {post.image_path && isVideoAttachmentPath(post.image_path) && (
+                    <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                      <video
+                        src={replyDisplayUrl(post.image_path) + '#t=0.1'}
+                        className="w-full max-h-[150px] rounded-lg bg-black"
+                        controls
+                        playsInline
+                        preload="metadata"
                       />
                     </div>
                   )}
@@ -816,12 +883,24 @@ export default function CommentReply() {
                   <div className="mt-1 text-[13px] text-white/60 line-clamp-2">
                     {renderRichText(parent.content, false, (u) => navigate(`/profile/${encodeURIComponent(u)}`), openArticleReader)}
                   </div>
-                  {parent.image_path && (
-                    <div className="mt-2">
+                  {parent.image_path && !isVideoAttachmentPath(parent.image_path) && (
+                    <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                       <ImageLoader
-                        src={parent.image_path.startsWith('http') || parent.image_path.startsWith('/') ? parent.image_path : `/uploads/${parent.image_path}`}
+                        src={replyDisplayUrl(parent.image_path)}
                         alt="Reply image"
-                        className="rounded-lg max-h-[100px] object-contain"
+                        className="rounded-lg max-h-[100px] object-contain cursor-zoom-in"
+                        onClick={() => setLightboxImageSrc(replyDisplayUrl(parent.image_path))}
+                      />
+                    </div>
+                  )}
+                  {(parent.video_path || (parent.image_path && isVideoAttachmentPath(parent.image_path))) && (
+                    <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                      <video
+                        src={replyDisplayUrl((parent.video_path || parent.image_path) as string) + '#t=0.1'}
+                        className="w-full max-h-[120px] rounded-lg bg-black"
+                        controls
+                        playsInline
+                        preload="metadata"
                       />
                     </div>
                   )}
@@ -922,20 +1001,42 @@ export default function CommentReply() {
                   </div>
                 )}
 
-                {/* Reply image */}
-                {reply.image_path && !isEditingMain && (
+                {/* Reply image or video */}
+                {reply.image_path && !isVideoAttachmentPath(reply.image_path) && !isEditingMain && (
                   <div className="mt-3">
                     <ImageLoader
-                      src={
-                        reply.image_path.startsWith('http') || reply.image_path.startsWith('/')
-                          ? reply.image_path
-                          : `/uploads/${reply.image_path}`
-                      }
+                      src={replyDisplayUrl(reply.image_path)}
                       alt="Reply image"
-                      className="rounded-xl max-h-[400px] object-contain"
+                      className="rounded-xl max-h-[400px] object-contain cursor-zoom-in"
+                      onClick={() => setLightboxImageSrc(replyDisplayUrl(reply.image_path))}
                     />
                   </div>
                 )}
+                {(reply.video_path || (reply.image_path && isVideoAttachmentPath(reply.image_path))) &&
+                  !isEditingMain && (
+                    <div className="mt-3 space-y-2">
+                      <video
+                        src={
+                          replyDisplayUrl((reply.video_path || reply.image_path) as string) + '#t=0.1'
+                        }
+                        className="w-full max-h-[360px] rounded-xl bg-black"
+                        controls
+                        playsInline
+                        preload="metadata"
+                      />
+                      <button
+                        type="button"
+                        className="text-sm text-[#4db6ac] hover:underline"
+                        onClick={() =>
+                          setLightboxVideoSrc(
+                            replyDisplayUrl((reply.video_path || reply.image_path) as string)
+                          )
+                        }
+                      >
+                        Open full screen
+                      </button>
+                    </div>
+                  )}
 
                 {/* Reply audio */}
                 {reply.audio_path && !isEditingMain && (
@@ -1108,19 +1209,43 @@ export default function CommentReply() {
                           </div>
                         )}
 
-                        {nr.image_path && !isEditingThis && (
+                        {nr.image_path && !isVideoAttachmentPath(nr.image_path) && !isEditingThis && (
                           <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                             <ImageLoader
-                              src={
-                                nr.image_path.startsWith('http') || nr.image_path.startsWith('/')
-                                  ? nr.image_path
-                                  : `/uploads/${nr.image_path}`
-                              }
+                              src={replyDisplayUrl(nr.image_path)}
                               alt="Reply image"
-                              className="rounded-lg max-h-[200px] object-contain"
+                              className="rounded-lg max-h-[200px] object-contain cursor-zoom-in"
+                              onClick={() => setLightboxImageSrc(replyDisplayUrl(nr.image_path))}
                             />
                           </div>
                         )}
+                        {(nr.video_path ||
+                          (nr.image_path && isVideoAttachmentPath(nr.image_path))) &&
+                          !isEditingThis && (
+                            <div className="mt-2 space-y-1" onClick={(e) => e.stopPropagation()}>
+                              <video
+                                src={
+                                  replyDisplayUrl((nr.video_path || nr.image_path) as string) +
+                                  '#t=0.1'
+                                }
+                                className="w-full max-h-[220px] rounded-lg bg-black"
+                                controls
+                                playsInline
+                                preload="metadata"
+                              />
+                              <button
+                                type="button"
+                                className="text-xs text-[#4db6ac] hover:underline"
+                                onClick={() =>
+                                  setLightboxVideoSrc(
+                                    replyDisplayUrl((nr.video_path || nr.image_path) as string)
+                                  )
+                                }
+                              >
+                                Open full screen
+                              </button>
+                            </div>
+                          )}
 
                         {nr.audio_path && !isEditingThis && (
                           <div className="mt-2 space-y-2" onClick={(e) => e.stopPropagation()}>
@@ -1404,6 +1529,53 @@ export default function CommentReply() {
           <div style={{ height: 'env(safe-area-inset-bottom, 0px)' }} />
         )}
       </div>
+
+      {lightboxImageSrc ? (
+        <div
+          className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex items-center justify-center"
+          onClick={() => setLightboxImageSrc(null)}
+        >
+          <button
+            type="button"
+            className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center z-10"
+            onClick={() => setLightboxImageSrc(null)}
+            aria-label="Close preview"
+          >
+            <i className="fa-solid fa-xmark" />
+          </button>
+          <div className="w-[94vw] h-[86vh] max-w-4xl" onClick={(e) => e.stopPropagation()}>
+            <ZoomableImage
+              src={lightboxImageSrc}
+              alt="Preview"
+              className="w-full h-full"
+              onRequestClose={() => setLightboxImageSrc(null)}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {lightboxVideoSrc ? (
+        <div
+          className="fixed inset-0 z-[1000] bg-black/95 flex flex-col items-center justify-center p-4"
+          onClick={() => setLightboxVideoSrc(null)}
+        >
+          <button
+            type="button"
+            className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center z-10"
+            onClick={() => setLightboxVideoSrc(null)}
+            aria-label="Close video"
+          >
+            <i className="fa-solid fa-xmark" />
+          </button>
+          <video
+            src={lightboxVideoSrc.includes('#') ? lightboxVideoSrc : `${lightboxVideoSrc}#t=0.1`}
+            controls
+            playsInline
+            className="max-h-[88vh] max-w-full rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      ) : null}
 
       {/* GIF Picker Modal */}
       <GifPicker
