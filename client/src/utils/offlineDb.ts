@@ -77,6 +77,22 @@ export interface OfflineDB {
 
 let dbPromise: Promise<IDBPDatabase<OfflineDB>> | null = null
 
+/** Wipe offline DM/feed cache DB (call on logout / account switch so another user cannot see prior data). */
+export async function deleteCpointOfflineDatabase(): Promise<void> {
+  dbPromise = null
+  try {
+    await new Promise<void>((resolve) => {
+      const request = indexedDB.deleteDatabase(DB_NAME)
+      request.onsuccess = () => resolve()
+      request.onerror = () => resolve()
+      request.onblocked = () => resolve()
+      setTimeout(resolve, 1000)
+    })
+  } catch {
+    /* ignore */
+  }
+}
+
 function getDb(): Promise<IDBPDatabase<OfflineDB>> {
   if (dbPromise) return dbPromise
   dbPromise = openDB<OfflineDB>(DB_NAME, DB_VERSION, {

@@ -2,6 +2,8 @@
  * Proper logout utility that clears all client-side state before navigating to /logout
  */
 
+import { VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES } from './chatThreadsCache'
+
 // Dynamic import for Capacitor to avoid issues on web
 async function clearCapacitorStorage(): Promise<void> {
   try {
@@ -99,12 +101,7 @@ export async function performLogout(): Promise<void> {
     'cpoint_',
     'onboarding_',
     'signal-store-',
-    // Per-viewer DM / messages caches (see chatThreadsCache.ts)
-    'chat-threads-list',
-    'group-chats-list',
-    'chat-communities-tree',
-    'chat-messages:',
-    'chat-profile:',
+    ...VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES,
   ]
   
   try {
@@ -133,7 +130,14 @@ export async function performLogout(): Promise<void> {
     console.warn('Error clearing sessionStorage:', e)
   }
 
-  // 4. Clear IndexedDB databases (encryption, signal protocol)
+  // 4. Clear IndexedDB databases (encryption, signal protocol, offline DM/feed)
+  try {
+    const { deleteCpointOfflineDatabase } = await import('./offlineDb')
+    await deleteCpointOfflineDatabase()
+  } catch {
+    /* ignore */
+  }
+
   const dbsToDelete = [
     'chat-encryption',
     'signal-protocol',

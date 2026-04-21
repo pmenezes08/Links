@@ -28,6 +28,7 @@ import OfflineBanner from './components/OfflineBanner'
 import OutboxDrainer from './components/OutboxDrainer'
 // NativePushInit disabled (clear logic now centralized in BadgeContext with resume listener + always-on-native clear in poll for robustness)
 import BrandAssetsInit from './components/BrandAssetsInit'
+import { VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES } from './utils/chatThreadsCache'
 // Encryption removed — not in use
 import CrossfitExact from './pages/CrossfitExact'
 import CommunityFeed from './pages/CommunityFeed'
@@ -547,45 +548,79 @@ function AppRoutes(){
       const json = await response.json().catch(() => null)
       if (json?.success && json.profile) {
         const profile = json.profile as UserProfile
-        setProfileData(profile)
-        setIsVerified(!!(profile as any)?.email_verified)
-        setProfileError(null)
-        try { localStorage.setItem('cached_profile', JSON.stringify(profile)) } catch {}
+        const username = (profile as any)?.username as string | undefined
 
-        const username = (profile as any)?.username
-        
-        // Detect user change and clear stale caches from previous user
+        let cachedProfileUsername: string | null = null
+        try {
+          const raw = localStorage.getItem('cached_profile')
+          if (raw) {
+            const parsed = JSON.parse(raw) as { username?: string }
+            cachedProfileUsername = parsed?.username ?? null
+          }
+        } catch {
+          /* ignore */
+        }
+
         const previousUsername = localStorage.getItem('current_username')
-        if (username && previousUsername && previousUsername !== username) {
+        const accountChanged =
+          !!username &&
+          ((!!previousUsername && previousUsername !== username) ||
+            (!!cachedProfileUsername && cachedProfileUsername !== username))
+
+        if (accountChanged) {
           const keysToRemove = ['home-timeline', 'communityManagementShowNested']
-          const prefixesToClear = ['community_', 'chat_', 'dashboard-', 'community-feed:', 'group-feed:']
-          
+          const prefixesToClear = [
+            'community_',
+            'chat_',
+            'dashboard-',
+            'community-feed:',
+            'group-feed:',
+            ...VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES,
+          ]
+
           try {
-            keysToRemove.forEach(key => localStorage.removeItem(key))
-            Object.keys(localStorage).forEach(key => {
-              if (prefixesToClear.some(prefix => key.startsWith(prefix))) {
+            keysToRemove.forEach((key) => {
+              try {
                 localStorage.removeItem(key)
+              } catch {}
+            })
+            Object.keys(localStorage).forEach((key) => {
+              if (prefixesToClear.some((prefix) => key.startsWith(prefix))) {
+                try {
+                  localStorage.removeItem(key)
+                } catch {}
               }
             })
           } catch (e) {
             console.warn('Error clearing localStorage for user change:', e)
           }
-          
+
           if ('caches' in window) {
-            caches.keys().then(names => {
-              names.forEach(name => {
+            caches.keys().then((names) => {
+              names.forEach((name) => {
                 if (name.includes('runtime') || name.includes('cp-')) {
                   caches.delete(name)
                 }
               })
             }).catch(() => {})
           }
-          
+
           try {
             import('./utils/avatarCache').then(({ clearAllAvatarCache }) => clearAllAvatarCache()).catch(() => {})
           } catch {}
+
+          try {
+            import('./utils/offlineDb').then(({ deleteCpointOfflineDatabase }) => deleteCpointOfflineDatabase()).catch(() => {})
+          } catch {}
         }
-        
+
+        setProfileData(profile)
+        setIsVerified(!!(profile as any)?.email_verified)
+        setProfileError(null)
+        try {
+          localStorage.setItem('cached_profile', JSON.stringify(profile))
+        } catch {}
+
         if (username) {
           localStorage.setItem('current_username', username)
         }
@@ -612,7 +647,10 @@ function AppRoutes(){
     } catch (err) {
       try {
         const cached = JSON.parse(localStorage.getItem('cached_profile') || '')
-        if (cached) {
+        const cu = localStorage.getItem('current_username')
+        if (cached && cu && (cached as any).username !== cu) {
+          // Do not restore another user's cached profile when session expects a different user
+        } else if (cached) {
           setProfileData(cached)
           setIsVerified(!!(cached as any)?.email_verified)
           setProfileError(null)

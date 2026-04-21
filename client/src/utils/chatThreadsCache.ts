@@ -3,6 +3,15 @@
  * so switching accounts cannot show another user's thread list or offline DM rows.
  */
 
+/** localStorage key prefixes that must be cleared on logout and account switch (keep in sync with logout.ts). */
+export const VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES: readonly string[] = [
+  'chat-threads-list',
+  'group-chats-list',
+  'chat-communities-tree',
+  'chat-messages:',
+  'chat-profile:',
+]
+
 export function threadsListCacheKey(viewerUsername: string): string {
   return `chat-threads-list:${viewerUsername}`
 }
