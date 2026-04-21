@@ -18,8 +18,8 @@ import { useAudioRecorder } from '../components/useAudioRecorder'
 import EditableAISummary from '../components/EditableAISummary'
 import { isVideoAttachmentPath } from '../utils/replyMedia'
 
-function replyDisplayUrl(raw: string): string {
-  const s = (raw || '').trim()
+function replyDisplayUrl(raw: string | null | undefined): string {
+  const s = (raw ?? '').trim()
   if (!s) return ''
   if (s.startsWith('http') || s.startsWith('/')) return s
   return `/uploads/${s}`
