@@ -8,7 +8,13 @@ export default function EditCommunity(){
   const { community_id } = useParams()
   const navigate = useNavigate()
   const [name, setName] = useState('')
-  const [type, setType] = useState('public')
+  // NOTE: public/private/closed type dropdown was removed April 2026.
+  // The `type` column on `communities` is overloaded — it stores the
+  // functional category (Gym / University / Business / General) set at
+  // creation, not an access-control flag. The old dropdown was
+  // cosmetic-only and could silently overwrite the category on save.
+  // See bodybuilding_app.py::update_community for the fallback that
+  // preserves the stored type when the client no longer sends it.
   const [networkType, setNetworkType] = useState('professional')
   const [imageFile, setImageFile] = useState<File|null>(null)
   const [loading, setLoading] = useState(true)
@@ -48,7 +54,6 @@ export default function EditCommunity(){
         const jc = await rc.json().catch(()=>null)
         if (jc?.success && jc.community){
           setName(jc.community.name || '')
-          setType(jc.community.type || 'public')
           setNetworkType(jc.community.network_type || 'professional')
           const pid = jc.community.parent_community_id
           if (pid){ setIsChild(true); setSelectedParentId(String(pid)) }
@@ -96,7 +101,8 @@ export default function EditCommunity(){
     const fd = new FormData()
     fd.append('community_id', String(community_id))
     fd.append('name', name.trim())
-    fd.append('type', type)
+    // Intentionally no `type` field — see comment next to the state init.
+    // The backend preserves the existing category when omitted.
     fd.append('network_type', networkType)
     // Parent setting
     fd.append('parent_community_id', isChild && selectedParentId !== 'none' ? selectedParentId : 'none')
@@ -208,14 +214,6 @@ export default function EditCommunity(){
           <div>
             <label className="block text-sm text-[#9fb0b5] mb-1">Community name</label>
             <input className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none" value={name} onChange={e=> setName(e.target.value)} required />
-          </div>
-          <div>
-            <label className="block text-sm text-[#9fb0b5] mb-1">Community type</label>
-            <select className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none" value={type} onChange={e=> setType(e.target.value)}>
-              <option value="public">Public</option>
-              <option value="private">Private</option>
-              <option value="closed">Closed</option>
-            </select>
           </div>
           <div>
             <label className="block text-sm text-[#9fb0b5] mb-1">Network Type <span className="text-[#4db6ac] text-xs">(Parent owners &amp; @Admin only)</span></label>

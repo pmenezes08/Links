@@ -28908,13 +28908,28 @@ def update_community():
             ph = get_sql_placeholder()
 
             # Check if community exists and who is the owner
-            c.execute(f"SELECT creator_username FROM communities WHERE id = {ph}", (community_id,))
+            # Also fetch the existing ``type`` so we can preserve it when the
+            # client doesn't send one. The April-2026 UI removed the
+            # Public/Private/Closed dropdown, which was the only thing that
+            # ever populated this form field — without the fallback, a
+            # blank-string submit would clobber the functional category
+            # (Gym / University / Business / General) set at creation.
+            c.execute(
+                f"SELECT creator_username, type FROM communities WHERE id = {ph}",
+                (community_id,),
+            )
             community = c.fetchone()
-            
+
             if not community:
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
-            
-            owner_username = community['creator_username'] if hasattr(community, 'keys') else community[0]
+
+            if hasattr(community, 'keys'):
+                owner_username = community['creator_username']
+                current_type = community.get('type') or ''
+            else:
+                owner_username = community[0]
+                current_type = (community[1] if len(community) > 1 else '') or ''
+            effective_type = community_type if community_type else current_type
             is_owner = (owner_username == username)
             is_app_admin = (username == 'admin')
             # Allow community admins to edit general fields
@@ -28963,7 +28978,7 @@ def update_community():
                     WHERE id = {ph}
                     """,
                     (
-                        name, description, community_type, network_type or None, template,
+                        name, description, effective_type, network_type or None, template,
                         background_color, card_color, accent_color, text_color,
                         (parent_community_id if parent_community_id and parent_community_id != 'none' else None),
                         notify_on_new_member,
@@ -28983,7 +28998,7 @@ def update_community():
                     WHERE id = {ph}
                     """,
                     (
-                        name, description, community_type, network_type or None, background_path, template,
+                        name, description, effective_type, network_type or None, background_path, template,
                         background_color, card_color, accent_color, text_color,
                         (parent_community_id if parent_community_id and parent_community_id != 'none' else None),
                         notify_on_new_member,
@@ -29003,7 +29018,7 @@ def update_community():
                     WHERE id = {ph}
                     """,
                     (
-                        name, description, community_type, network_type or None, template,
+                        name, description, effective_type, network_type or None, template,
                         background_color, card_color, accent_color, text_color,
                         (parent_community_id if parent_community_id and parent_community_id != 'none' else None),
                         notify_on_new_member,
