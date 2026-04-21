@@ -244,14 +244,29 @@ def kb_override_field(
 # ── Communities + Enterprise seats ──────────────────────────────────────
 
 
-def make_community(name: str, *, tier: str = "free") -> int:
-    """Insert a community row and return its id."""
+def make_community(
+    name: str,
+    *,
+    tier: str = "free",
+    creator_username: Optional[str] = None,
+    parent_community_id: Optional[int] = None,
+) -> int:
+    """Insert a community row and return its id.
+
+    ``creator_username`` / ``parent_community_id`` are plumbed so tests of
+    tier-cap enforcement can build both the owner and sub-community
+    shapes without manually poking the table.
+    """
     ph = get_sql_placeholder()
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(
-            f"INSERT INTO communities (name, tier, created_at) VALUES ({ph}, {ph}, {ph})",
-            (name, tier, _now_str()),
+            f"""
+            INSERT INTO communities
+                (name, tier, creator_username, parent_community_id, created_at)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
+            """,
+            (name, tier, creator_username, parent_community_id, _now_str()),
         )
         cid = c.lastrowid
         try:
@@ -259,6 +274,59 @@ def make_community(name: str, *, tier: str = "free") -> int:
         except Exception:
             pass
     return int(cid)
+
+
+def fill_community_members(community_id: int, count: int, *, prefix: str = "member") -> List[str]:
+    """Create ``count`` users and attach them to the community.
+
+    Returns the list of usernames inserted so the caller can reference a
+    specific row (e.g. remove one to dip back under the cap). Each
+    insert is wrapped in a try/except so tests can call this multiple
+    times with overlapping prefixes without fighting unique constraints.
+    """
+    ph = get_sql_placeholder()
+    names: List[str] = []
+    joined = _now_str()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        for i in range(count):
+            uname = f"{prefix}_{community_id}_{i}"
+            try:
+                c.execute(
+                    f"""
+                    INSERT INTO users (username, email, subscription, created_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph})
+                    """,
+                    (uname, f"{uname}@test.local", "free", joined),
+                )
+                user_id = c.lastrowid
+            except Exception:
+                # User already exists (test calling this twice with the
+                # same prefix). Look up the id and continue.
+                c.execute(
+                    f"SELECT id FROM users WHERE username = {ph}",
+                    (uname,),
+                )
+                row = c.fetchone()
+                if not row:
+                    continue
+                user_id = row["id"] if hasattr(row, "keys") else row[0]
+            try:
+                c.execute(
+                    f"""
+                    INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph})
+                    """,
+                    (int(user_id), community_id, "member", joined),
+                )
+            except Exception:
+                pass
+            names.append(uname)
+        try:
+            conn.commit()
+        except Exception:
+            pass
+    return names
 
 
 def make_enterprise_seat(
