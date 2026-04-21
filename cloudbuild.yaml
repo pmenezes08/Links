@@ -1,5 +1,7 @@
 # Cloud Build config for cpoint-app-staging
-# Use: gcloud builds submit --config=cloudbuild.yaml .
+# Staging source of truth: the `staging` branch (not `main`; `main` is for production).
+# From a clean checkout: git checkout staging && git pull
+# Then: gcloud builds submit --config=cloudbuild.yaml .
 # More reliable than gcloud run deploy --source (avoids gcloud streaming crash)
 
 steps:
