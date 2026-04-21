@@ -1939,7 +1939,11 @@ def _seed_pages() -> List[Dict[str, Any]]:
     ]
 
 
-def seed_default_pages(force: bool = False) -> Dict[str, int]:
+def seed_default_pages(
+    force: bool = False,
+    slug: Optional[str] = None,
+    actor_username: str = "system-seed",
+) -> Dict[str, Any]:
     """Idempotent seeding with auto-upgrade of untouched pages.
 
     Behavior per page:
@@ -1950,10 +1954,33 @@ def seed_default_pages(force: bool = False) -> Dict[str, int]:
         replace.
       * Page exists and has been edited         → SKIP, unless force=True.
       * force=True                              → overwrite regardless.
+
+    Targeted re-seed:
+      * ``slug`` — if provided, only the matching page is considered.
+        Returns ``{"matched": False, ...}`` if no seed has that slug so the
+        caller can surface a 404.
+      * ``actor_username`` — recorded in ``kb_pages.updated_by`` for
+        force-overwritten rows (defaults to ``"system-seed"``). Auto-upgrades
+        of untouched pages always remain marked ``"system-seed"`` so the
+        next deploy can still auto-upgrade them.
     """
     ensure_tables()
     ph = get_sql_placeholder()
     seeds = _seed_pages()
+    if slug:
+        target_slug = str(slug).strip().lower()
+        seeds = [s for s in seeds if str(s.get("slug", "")).strip().lower() == target_slug]
+        if not seeds:
+            return {
+                "matched": False,
+                "slug": slug,
+                "inserted": 0,
+                "auto_upgraded": 0,
+                "force_updated": 0,
+                "skipped": 0,
+                "total_seeds": 0,
+            }
+
     inserted = 0
     auto_upgraded = 0
     force_updated = 0
@@ -2002,6 +2029,13 @@ def seed_default_pages(force: bool = False) -> Dict[str, int]:
                 skipped += 1
                 continue
 
+            # Auto-upgrades of untouched rows keep the system-seed signature
+            # so a later deploy can still upgrade them. Explicit force
+            # overwrites record the admin who triggered the reseed so the
+            # changelog / updated_by audit is meaningful.
+            is_force_overwrite = force and not is_untouched
+            updated_by = (actor_username or "system-seed") if is_force_overwrite else "system-seed"
+
             c.execute(
                 f"""
                 UPDATE kb_pages SET
@@ -2016,13 +2050,13 @@ def seed_default_pages(force: bool = False) -> Dict[str, int]:
                     seed["title"], seed["category"], seed.get("icon"),
                     seed.get("description"), seed.get("sort_order", 0),
                     fields_json, field_groups_json, body,
-                    "system-seed", now, seed["slug"],
+                    updated_by, now, seed["slug"],
                 ),
             )
-            if is_untouched and not force:
-                auto_upgraded += 1
-            else:
+            if is_force_overwrite:
                 force_updated += 1
+            else:
+                auto_upgraded += 1
 
         try:
             conn.commit()
@@ -2030,6 +2064,8 @@ def seed_default_pages(force: bool = False) -> Dict[str, int]:
             pass
 
     return {
+        "matched": True if slug else None,
+        "slug": slug,
         "inserted": inserted,
         "auto_upgraded": auto_upgraded,
         "force_updated": force_updated,

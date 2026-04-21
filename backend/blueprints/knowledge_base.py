@@ -190,14 +190,45 @@ def kb_changelog():
 @knowledge_base_bp.route("/api/admin/kb/seed", methods=["POST"])
 @_admin_required
 def kb_seed():
-    """Re-seed any missing pages. Untouched seeded pages auto-upgrade. ``force=true`` overwrites edits."""
+    """Re-seed missing pages or force-overwrite a single page.
+
+    Body (all optional)::
+
+        {
+            "force": true,               // overwrite admin edits (ignored without "page")
+            "page":  "community-tiers"   // or "slug": ... — scope to one page
+        }
+
+    Shapes:
+
+    * No body / ``{}``                    → insert any missing pages +
+      auto-upgrade untouched seed pages (same as the on-boot seed).
+    * ``{"force": true}``                 → overwrite all edited pages from
+      the latest in-code defaults (dangerous; use sparingly).
+    * ``{"page": "community-tiers"}``     → insert/auto-upgrade that page
+      only; edited pages are still skipped.
+    * ``{"page": "community-tiers", "force": true}`` → overwrite that one
+      page from the in-code defaults even if an admin has edited it.
+      The caller's username is recorded on ``updated_by`` for audit.
+
+    Returns 404 if ``page`` is supplied and no seed with that slug exists.
+    """
     global _seed_run_this_process
     data = _body_json()
     force = bool(data.get("force"))
+    slug_raw = data.get("page") or data.get("slug")
+    slug = str(slug_raw).strip() if slug_raw is not None else ""
+    slug = slug or None
+    actor = session.get("username") or "admin"
+
     try:
-        result = seed_default_pages(force=force)
-        # Mark as seeded so the once-per-process guard doesn't re-run the same
-        # work on the next list call.
+        result = seed_default_pages(force=force, slug=slug, actor_username=actor)
+        if slug and result.get("matched") is False:
+            return jsonify({
+                "success": False,
+                "error": f"No seed page with slug {slug!r}",
+                "result": result,
+            }), 404
         _seed_run_this_process = True
         return jsonify({"success": True, "result": result})
     except Exception as e:
