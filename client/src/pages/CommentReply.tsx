@@ -1292,7 +1292,7 @@ export default function CommentReply() {
             </div>
           )}
 
-          <div className="flex items-end gap-2">
+          <div className="flex min-w-0 items-end gap-2">
             <div className="relative">
               <button
                 type="button"
@@ -1390,9 +1390,11 @@ export default function CommentReply() {
                 type="button"
                 onClick={handleSubmitReply}
                 disabled={sendingReply}
-                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac] text-white disabled:opacity-40"
+                className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#4db6ac] text-white transition-opacity disabled:opacity-40"
               >
-                {sendingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
+                <span className="inline-flex size-4 items-center justify-center" aria-hidden>
+                  {sendingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
+                </span>
               </button>
             )}
           </div>

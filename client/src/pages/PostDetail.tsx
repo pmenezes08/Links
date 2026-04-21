@@ -1891,7 +1891,7 @@ export default function PostDetail(){
           )}
 
           {/* Main input row */}
-          <div className="flex items-end gap-1.5">
+          <div className="flex min-w-0 items-end gap-1.5">
             {/* Attachment + button with dropdown */}
             <div className="relative">
               <button 
@@ -1993,12 +1993,15 @@ export default function PostDetail(){
             {/* Send button - when has content or attachment */}
             {!recording && (content.trim() || file || replyPreview || replyGif) && (
               <button
-                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-[#4db6ac] text-white hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                type="button"
+                className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#4db6ac] text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 transition-opacity"
                 onClick={() => submitReply()}
                 aria-label="Send reply"
                 disabled={submittingReply}
               >
-                {submittingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
+                <span className="inline-flex size-4 items-center justify-center" aria-hidden>
+                  {submittingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
+                </span>
               </button>
             )}
           </div>
@@ -2678,7 +2681,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             </div>
           )}
           {/* Input row */}
-          <div className="flex items-end gap-1.5">
+          <div className="flex min-w-0 items-end gap-1.5">
             {/* + button with dropdown */}
             <div className="relative">
               <button 
@@ -2754,7 +2757,8 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                 {/* Has content - show send button */}
                 {(text.trim() || img || inlinePreview || gifFile) ? (
                   <button 
-                    className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac] disabled:opacity-50"
+                    type="button"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#4db6ac] disabled:opacity-50 transition-opacity"
                     disabled={inlineSendingFlag}
                     onClick={() => {
                       if (!text && !img && !inlinePreview && !gifFile) return
@@ -2774,7 +2778,9 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                       setShowComposer(false)
                     }}
                   >
-                    {inlineSendingFlag ? <i className="fa-solid fa-spinner fa-spin text-xs text-white" /> : <i className="fa-solid fa-paper-plane text-xs text-white" />}
+                    <span className="inline-flex size-3.5 items-center justify-center text-white" aria-hidden>
+                      {inlineSendingFlag ? <i className="fa-solid fa-spinner fa-spin text-xs" /> : <i className="fa-solid fa-paper-plane text-xs" />}
+                    </span>
                   </button>
                 ) : (
                   /* No content - show mic button */
