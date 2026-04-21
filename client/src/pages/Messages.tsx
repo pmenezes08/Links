@@ -82,7 +82,8 @@ export default function Messages(){
     getCachedConversations().then(idbThreads => {
       if (idbThreads?.length) {
         setThreads(prev => {
-          if (prev.length >= (idbThreads as Thread[]).length) return prev
+          // Never replace a non-empty list with IndexedDB: IDB can be longer but stale (e.g. previews after clear).
+          if (prev.length > 0) return prev
           return idbThreads as Thread[]
         })
       }
@@ -151,7 +152,6 @@ export default function Messages(){
 
   // Fetch threads with caching
   const loadThreads = useCallback((silent: boolean = false) => {
-    if (!navigator.onLine) return
     if (!silent) setLoading(true)
     fetch('/api/chat_threads', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
@@ -172,7 +172,6 @@ export default function Messages(){
 
   // Load archived threads
   const loadArchivedThreads = useCallback(() => {
-    if (!navigator.onLine) return
     setArchivedLoading(true)
     fetch('/api/archived_chats', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
@@ -187,7 +186,6 @@ export default function Messages(){
 
   // Load group chats
   const loadGroupChats = useCallback((silent = false) => {
-    if (!navigator.onLine) return
     if (!silent) setGroupChatsLoading(true)
     fetch('/api/group_chat/list', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
@@ -296,7 +294,6 @@ export default function Messages(){
     
     // Poll every 3 seconds for faster updates (skip when offline)
     const t = setInterval(() => {
-      if (!navigator.onLine) return
       loadThreads(true)
       loadGroupChats(true)
     }, 3000)

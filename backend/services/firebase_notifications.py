@@ -431,12 +431,13 @@ def get_total_badge_count(username: str) -> int:
     Badge = unread notifications + total unread messages
     """
     from backend.services.database import get_db_connection, get_sql_placeholder
-    
+    from backend.services.dm_unread import count_dm_unread_excluding_cleared
+
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         ph = get_sql_placeholder()
-        
+
         # Count unread notifications (EXCLUDE 'message' and 'reaction' types)
         cursor.execute(
             f"SELECT COUNT(*) FROM notifications WHERE user_id = {ph} AND is_read = 0 AND type != 'message' AND type != 'reaction'",
@@ -447,17 +448,9 @@ def get_total_badge_count(username: str) -> int:
             notif_count = list(row.values())[0] or 0
         else:
             notif_count = row[0] if row else 0
-        
-        # Count ALL unread messages (total count, not just conversations)
-        cursor.execute(
-            f"SELECT COUNT(*) FROM messages WHERE receiver = {ph} AND is_read = 0",
-            (username,)
-        )
-        row = cursor.fetchone()
-        if hasattr(row, 'keys'):
-            msg_count = list(row.values())[0] or 0
-        else:
-            msg_count = row[0] if row else 0
+
+        # Unread DMs excluding messages hidden by one-sided clear/delete
+        msg_count = count_dm_unread_excluding_cleared(cursor, username)
         
         cursor.close()
         conn.close()

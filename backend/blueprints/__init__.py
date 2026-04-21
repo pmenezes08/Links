@@ -21,6 +21,7 @@ def register_blueprints(app: Flask) -> None:
     from .summaries import summaries_bp
     from .enterprise import enterprise_bp
     from .subscription_webhooks import subscription_webhooks_bp
+    from .dm_chats import dm_chats_bp
 
     app.register_blueprint(public_bp)
     app.register_blueprint(auth_bp)
@@ -36,3 +37,4 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(summaries_bp)
     app.register_blueprint(enterprise_bp)
     app.register_blueprint(subscription_webhooks_bp)
+    app.register_blueprint(dm_chats_bp)
