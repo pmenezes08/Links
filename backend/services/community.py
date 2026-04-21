@@ -12,6 +12,68 @@ from backend.services.database import get_db_connection, get_sql_placeholder
 logger = logging.getLogger(__name__)
 
 
+# ── Community tier taxonomy ────────────────────────────────────────────
+#
+# These mirror the five groups on the ``community-tiers`` KB page. Stored
+# in ``communities.tier`` as a free-form string (we don't fight MySQL's
+# ENUM vs. VARCHAR semantics), but normalized through ``_normalize_tier``
+# at every read site so "Paid L1", "paid_l1", "  PAID-L1 " all collapse
+# to the same constant.
+COMMUNITY_TIER_FREE = "free"
+COMMUNITY_TIER_PAID_L1 = "paid_l1"
+COMMUNITY_TIER_PAID_L2 = "paid_l2"
+COMMUNITY_TIER_PAID_L3 = "paid_l3"
+COMMUNITY_TIER_ENTERPRISE = "enterprise"
+
+_COMMUNITY_TIERS = {
+    COMMUNITY_TIER_FREE,
+    COMMUNITY_TIER_PAID_L1,
+    COMMUNITY_TIER_PAID_L2,
+    COMMUNITY_TIER_PAID_L3,
+    COMMUNITY_TIER_ENTERPRISE,
+}
+
+# KB field names that hold the member cap per tier. Free communities are
+# handled by ``ensure_free_parent_member_capacity`` via the owner's user
+# tier, so we deliberately don't map ``free`` here — the tier helper
+# short-circuits on ``free`` to avoid double-enforcement.
+_TIER_CAP_KB_FIELD = {
+    COMMUNITY_TIER_PAID_L1: "paid_l1_max_members",
+    COMMUNITY_TIER_PAID_L2: "paid_l2_max_members",
+    COMMUNITY_TIER_PAID_L3: "paid_l3_max_members",
+}
+
+# Legacy hard fallbacks in case the KB lookup fails catastrophically.
+# These match the current KB defaults; they only activate when the KB
+# table is unavailable (first boot, migration window).
+_TIER_CAP_FALLBACK = {
+    COMMUNITY_TIER_PAID_L1: 75,
+    COMMUNITY_TIER_PAID_L2: 150,
+    COMMUNITY_TIER_PAID_L3: 250,
+}
+
+_TIER_DISPLAY_LABEL = {
+    COMMUNITY_TIER_FREE: "Free",
+    COMMUNITY_TIER_PAID_L1: "Paid L1",
+    COMMUNITY_TIER_PAID_L2: "Paid L2",
+    COMMUNITY_TIER_PAID_L3: "Paid L3",
+    COMMUNITY_TIER_ENTERPRISE: "Enterprise",
+}
+
+
+def _normalize_tier(value: Any) -> Optional[str]:
+    """Return a canonical tier key or ``None`` for unset / unrecognised values."""
+    if value is None:
+        return None
+    text = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    if not text:
+        return None
+    # Collapse common variants without being permissive about typos.
+    if text in _COMMUNITY_TIERS:
+        return text
+    return None
+
+
 # ── Free-tier membership-cap enforcement ────────────────────────────────
 #
 # The exception + helper below were lifted out of ``bodybuilding_app.py``
@@ -242,6 +304,172 @@ def ensure_free_parent_member_capacity(
             attempted_username=attempted_username,
             creator_username=str(creator_username),
         )
+
+
+def _read_kb_member_cap(tier: str) -> Optional[int]:
+    """Resolve the member-cap integer for a paid tier from the KB page.
+
+    Returns ``None`` when the tier has no cap (``enterprise``) or the KB
+    cannot be read. Callers that receive ``None`` treat the community as
+    uncapped — the enterprise semantics.
+    """
+    if tier == COMMUNITY_TIER_ENTERPRISE:
+        return None
+    field_name = _TIER_CAP_KB_FIELD.get(tier)
+    if not field_name:
+        return None
+    try:
+        # Local import avoids importing KB service during early bootstrap
+        # of the community service (the KB service touches its own tables
+        # on first call, which we don't want on every capacity check).
+        from backend.services.knowledge_base import get_page
+
+        page = get_page("community-tiers") or {}
+        fields = page.get("fields") or []
+        for f in fields:
+            if f.get("name") == field_name:
+                value = f.get("value")
+                try:
+                    resolved = int(value)
+                    if resolved > 0:
+                        return resolved
+                except (TypeError, ValueError):
+                    pass
+                break
+    except Exception:
+        logger.exception(
+            "_read_kb_member_cap: KB lookup failed for tier=%s field=%s",
+            tier,
+            field_name,
+        )
+    return _TIER_CAP_FALLBACK.get(tier)
+
+
+def _count_community_members(cursor, community_id: int) -> int:
+    placeholder = get_sql_placeholder()
+    try:
+        cursor.execute(
+            f"SELECT COUNT(*) FROM user_communities WHERE community_id = {placeholder}",
+            (community_id,),
+        )
+        row = cursor.fetchone()
+    except Exception:
+        logger.exception(
+            "_count_community_members: query failed for community %s",
+            community_id,
+        )
+        return 0
+    if not row:
+        return 0
+    if hasattr(row, "keys"):
+        return int(list(row.values())[0] or 0)
+    if isinstance(row, (list, tuple)) and row:
+        return int(row[0] or 0)
+    try:
+        return int(row or 0)
+    except Exception:
+        return 0
+
+
+def get_community_tier(cursor, community_id: int) -> Optional[str]:
+    """Return the normalised tier stored on a community row.
+
+    Returns ``None`` when:
+      * the community does not exist, or
+      * the ``tier`` column is absent from the schema (pre-migration), or
+      * the stored value is empty / unrecognised.
+
+    Callers treat ``None`` as "no tier-based enforcement" so the helper is
+    safe to call in environments that have not yet run the tier column
+    migration.
+    """
+    if not community_id:
+        return None
+    placeholder = get_sql_placeholder()
+    try:
+        cursor.execute(
+            f"SELECT tier FROM communities WHERE id = {placeholder}",
+            (community_id,),
+        )
+        row = cursor.fetchone()
+    except Exception:
+        # Almost certainly "column not found" on environments where the
+        # tier column hasn't been added yet. Fail soft — enforcement
+        # simply doesn't activate until the column exists.
+        return None
+    if not row:
+        return None
+    if hasattr(row, "keys"):
+        return _normalize_tier(row.get("tier"))
+    if isinstance(row, (list, tuple)) and row:
+        return _normalize_tier(row[0])
+    return _normalize_tier(row)
+
+
+def ensure_community_tier_member_capacity(
+    cursor,
+    community_id: Optional[int],
+    extra_members: int = 1,
+    *,
+    attempted_username: Optional[str] = None,
+) -> None:
+    """Raise ``CommunityMembershipLimitError`` when a Paid community would
+    exceed its **own** tier's member cap after adding ``extra_members``.
+
+    Unlike :func:`ensure_free_parent_member_capacity` (which uses the
+    *owner's* user tier), this helper reads the community's own
+    ``tier`` column and compares against the cap published on the
+    ``community-tiers`` KB page. The two helpers compose — the caller
+    runs the owner-side check first (Free caps) and then this one (Paid
+    L1/L2/L3 caps). Enterprise communities are uncapped.
+
+    Noops for:
+      * missing ``community_id``
+      * sub-communities (tier enforcement applies to the root only)
+      * communities with no tier set (treated as untiered — covered by
+        ``ensure_free_parent_member_capacity`` when the owner is Free)
+      * tier == ``free`` (already covered by the owner helper)
+      * tier == ``enterprise`` (unlimited by design)
+      * KB misconfiguration (cap <= 0 or non-integer)
+    """
+    if not community_id:
+        return
+    info = get_community_basic(cursor, community_id)
+    if not info:
+        return
+    if info.get("parent_community_id"):
+        return
+
+    tier = get_community_tier(cursor, community_id)
+    if not tier:
+        return
+    if tier in (COMMUNITY_TIER_FREE, COMMUNITY_TIER_ENTERPRISE):
+        return
+
+    cap = _read_kb_member_cap(tier)
+    if cap is None or cap <= 0:
+        return
+
+    current_count = _count_community_members(cursor, community_id)
+    try:
+        extra = max(1, int(extra_members or 1))
+    except Exception:
+        extra = 1
+    if current_count + extra <= cap:
+        return
+
+    # Over cap — raise with structured context so render_member_cap_error
+    # can produce owner-vs-invitee copy. We reuse the existing error
+    # class so every catch site in the codebase keeps working untouched.
+    community_name = _fetch_community_name(cursor, community_id)
+    creator_username = str(info.get("creator_username") or "")
+    raise CommunityMembershipLimitError(
+        community_id=community_id,
+        community_name=community_name,
+        cap=cap,
+        attempted_username=attempted_username,
+        creator_username=creator_username,
+    )
 
 
 def is_community_owner(username, community_id):

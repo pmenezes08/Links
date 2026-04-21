@@ -1848,6 +1848,7 @@ def get_follow_counts(cursor, username: str) -> Tuple[int, int]:
 # ``attempted_username`` kw-arg enables owner+admin notifications on
 # block, and the raised exception carries structured context).
 from backend.services.community import ensure_free_parent_member_capacity  # noqa: E402,F401
+from backend.services.community import ensure_community_tier_member_capacity  # noqa: E402,F401
 
 
 # ============================================================================
@@ -2010,6 +2011,12 @@ def add_user_to_community(cursor, user_id: int, community_id: int, role: Optiona
         skip_welcome_post: If True, don't create a Steve welcome post (use for migrations, admin setup, etc.)
     """
     ensure_free_parent_member_capacity(
+        cursor, community_id, attempted_username=username
+    )
+    # Paid community tier caps (Paid L1 / L2 / L3). Enterprise is
+    # uncapped, Free is covered by the call above. Helper is a noop on
+    # environments where the communities.tier column is not yet present.
+    ensure_community_tier_member_capacity(
         cursor, community_id, attempted_username=username
     )
     joined_at_value = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
