@@ -15,7 +15,7 @@ const Privacy = () => {
       {/* Content */}
       <main className="container mx-auto px-4 py-12 max-w-4xl">
         <h1 className="text-4xl font-bold mb-8">Privacy Policy</h1>
-        <p className="text-white/60 mb-8">Last updated: December 2024</p>
+        <p className="text-white/60 mb-8">Last updated: April 2026</p>
 
         <div className="prose prose-invert prose-lg max-w-none space-y-8">
           <section>
@@ -111,18 +111,27 @@ const Privacy = () => {
           <section>
             <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">7. Your Rights (GDPR)</h2>
             <p className="text-white/80 leading-relaxed mb-4">
-              If you are in the European Economic Area (EEA), you have the following rights:
+              If you are in the European Economic Area (EEA), the following rights apply to your personal data:
             </p>
             <ul className="list-disc list-inside text-white/80 space-y-2 ml-4">
-              <li><strong>Access:</strong> Request a copy of your personal data</li>
-              <li><strong>Rectification:</strong> Request correction of inaccurate data</li>
-              <li><strong>Erasure:</strong> Request deletion of your data ("right to be forgotten")</li>
-              <li><strong>Portability:</strong> Request transfer of your data</li>
-              <li><strong>Restriction:</strong> Request limitation of processing</li>
-              <li><strong>Objection:</strong> Object to processing of your data</li>
+              <li><strong>Access:</strong> Request a copy of the personal data we hold about you.</li>
+              <li><strong>Rectification:</strong> Request correction of inaccurate or incomplete data.</li>
+              <li><strong>Erasure:</strong> Request deletion of your data ("right to be forgotten").</li>
+              <li><strong>Portability:</strong> Request a machine-readable copy of the data you've provided to us.</li>
+              <li><strong>Restriction:</strong> Request limitation of processing under certain circumstances.</li>
+              <li><strong>Objection:</strong> Object to processing that relies on our legitimate interests.</li>
             </ul>
             <p className="text-white/80 leading-relaxed mt-4">
-              To exercise these rights, please contact us at <a href="mailto:privacy@c-point.co" className="text-[#4db6ac] hover:underline">privacy@c-point.co</a>
+              These rights cover your own personal data — posts, messages, profile fields, and media you have
+              personally authored or uploaded. They do not extend to other members' content or to community-level
+              material (member rosters, thread history, analytics), which remains platform data. See §7.3 of our
+              Terms for the distinction between personal data and community data.
+            </p>
+            <p className="text-white/80 leading-relaxed mt-4">
+              To exercise these rights, open the in-app flow at <strong>Settings &rarr; Privacy &amp; Security &rarr; Request my data</strong>,
+              or email us directly at <a href="mailto:privacy@c-point.co" className="text-[#4db6ac] hover:underline">privacy@c-point.co</a>
+              {' '}from the account you want a copy of. We respond within 30 days, in line with GDPR Art. 12(3);
+              complex requests may be extended by up to two further months with written notice.
             </p>
           </section>
 

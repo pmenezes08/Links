@@ -15,7 +15,7 @@ const Terms = () => {
       {/* Content */}
       <main className="container mx-auto px-4 py-12 max-w-4xl">
         <h1 className="text-4xl font-bold mb-8">Terms of Service</h1>
-        <p className="text-white/60 mb-4">Last updated: January 2026</p>
+        <p className="text-white/60 mb-4">Last updated: April 2026</p>
         <div className="bg-[#4db6ac]/10 border border-[#4db6ac]/30 rounded-lg p-4 mb-8">
           <p className="text-[#4db6ac] font-semibold">Age Rating: 16+</p>
           <p className="text-white/70 text-sm">This app is intended for users aged 16 and older.</p>
@@ -102,22 +102,72 @@ const Terms = () => {
 
           <section>
             <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">7. Community Administration & Content Responsibility</h2>
+
+            <h3 className="text-lg font-semibold mt-2 mb-2 text-white">7.1 Responsibility of Community Owners</h3>
             <p className="text-white/80 leading-relaxed mb-4">
-              <strong>Community owners and administrators bear full responsibility for monitoring, moderating, 
-              reporting, and managing all content posted within their communities.</strong> This includes but 
-              is not limited to: reviewing posts, removing inappropriate content, responding to user reports, 
+              <strong>Community owners and administrators bear full responsibility for monitoring, moderating,
+              reporting, and managing all content posted within their communities.</strong> This includes but
+              is not limited to: reviewing posts, removing inappropriate content, responding to user reports,
               enforcing community rules, and taking action against users who violate guidelines.
             </p>
             <p className="text-white/80 leading-relaxed mb-4">
-              Community administrators may establish additional rules for their communities, provided they 
-              do not conflict with these Terms. By creating or administering a community, you acknowledge 
+              Community administrators may establish additional rules for their communities, provided they
+              do not conflict with these Terms. By creating or administering a community, you acknowledge
               and accept this responsibility.
             </p>
-            <p className="text-white/80 leading-relaxed font-semibold">
-              C-Point is not responsible or liable for any user-generated content, including but not 
-              limited to posts, comments, images, videos, polls, or any other content uploaded or shared 
-              by users. C-Point acts solely as a platform provider and does not endorse, verify, or 
+            <p className="text-white/80 leading-relaxed font-semibold mb-4">
+              C-Point is not responsible or liable for any user-generated content, including but not
+              limited to posts, comments, images, videos, polls, or any other content uploaded or shared
+              by users. C-Point acts solely as a platform provider and does not endorse, verify, or
               assume responsibility for any content created by users or community administrators.
+            </p>
+
+            <h3 className="text-lg font-semibold mt-6 mb-2 text-white">7.2 Community Lifecycle</h3>
+            <p className="text-white/80 leading-relaxed mb-4">
+              Free communities with no owner or moderator activity for an extended period may be archived
+              automatically. Owners receive in-app warnings before archiving and can restore an archived
+              community in one click during the restore window. After the restore window elapses, archived
+              communities and their contents may be permanently purged. Current thresholds are published in
+              the product knowledge base and may be adjusted with notice.
+            </p>
+
+            <h3 className="text-lg font-semibold mt-6 mb-2 text-white">7.3 Data Ownership and Data Requests</h3>
+            <p className="text-white/80 leading-relaxed mb-4">
+              <strong>Personal data vs. community data.</strong> We distinguish two categories:
+            </p>
+            <ul className="list-disc list-inside text-white/80 space-y-2 ml-4 mb-4">
+              <li>
+                <strong>Your personal data</strong> — the posts, comments, messages, profile fields, and
+                media you have personally authored or uploaded. You retain ownership of this content
+                (see §4) and may exercise the GDPR rights described in our{' '}
+                <Link to="/privacy" className="text-[#4db6ac] hover:underline">Privacy Policy</Link>,
+                including access, rectification, erasure, and portability.
+              </li>
+              <li>
+                <strong>Community data</strong> — the aggregated record of a community, including its
+                member roster, thread history, engagement metrics, moderation logs, and analytics. This
+                material is platform data and is not made available for bulk self-serve export by owners,
+                moderators, or members. Community data is retained, used, and protected under the terms
+                of our Privacy Policy.
+              </li>
+            </ul>
+            <p className="text-white/80 leading-relaxed mb-4">
+              <strong>Individual data requests (GDPR).</strong> To request a copy of the personal data we hold
+              about you, use the in-app flow at <strong>Settings &rarr; Privacy &amp; Security &rarr; Request my data</strong>,
+              or email{' '}
+              <a href="mailto:privacy@c-point.co" className="text-[#4db6ac] hover:underline">privacy@c-point.co</a>{' '}
+              from the account you want a copy of. We respond within 30 days, in line with GDPR Art. 12(3);
+              complex requests may be extended by up to two further months with written notice. The scope of
+              these requests is your own authored content and account metadata — not other members' content or
+              community-level material.
+            </p>
+            <p className="text-white/80 leading-relaxed">
+              <strong>Community-level exports.</strong> We do not currently offer a self-serve bulk export of
+              community data. Community owners with a legitimate need (for example, continuity of operations
+              or migration on enterprise plans) may contact{' '}
+              <a href="mailto:support@c-point.co" className="text-[#4db6ac] hover:underline">support@c-point.co</a>.
+              Where appropriate, C-Point staff may provide a discretionary export on a case-by-case basis;
+              all such exports are audit-logged and scoped to the requesting community.
             </p>
           </section>
 
