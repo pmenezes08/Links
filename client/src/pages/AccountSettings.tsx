@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 import ManageMembershipModal, { type MembershipTab } from '../components/membership/ManageMembershipModal'
+import RequestMyDataModal from '../components/privacy/RequestMyDataModal'
 
 type ProfileData = {
   username: string
@@ -30,6 +31,7 @@ export default function AccountSettings(){
   const [showVerifyModal, setShowVerifyModal] = useState(false)
   const [notifStatus, setNotifStatus] = useState<'granted' | 'denied' | 'default' | 'loading'>('loading')
   const [membershipTab, setMembershipTab] = useState<MembershipTab | null>(null)
+  const [showRequestMyData, setShowRequestMyData] = useState(false)
 
   const openMembership = useCallback((tab: MembershipTab = 'plan') => {
     setMembershipTab(tab)
@@ -288,6 +290,18 @@ export default function AccountSettings(){
               <i className="fa-solid fa-shield"></i>
               Open Privacy &amp; Security
             </button>
+            <button
+              type="button"
+              onClick={() => setShowRequestMyData(true)}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 px-4 py-2 text-sm font-medium text-white/80 hover:border-white/30"
+            >
+              <i className="fa-solid fa-download"></i>
+              Request my data
+            </button>
+            <p className="mt-2 text-xs text-white/40">
+              Ask us for a copy of the personal data we hold about you. We
+              respond within 30 days.
+            </p>
           </div>
 
           {/* Subscription Management */}
@@ -451,6 +465,12 @@ export default function AccountSettings(){
         open={membershipTab !== null}
         initialTab={membershipTab ?? 'plan'}
         onClose={closeMembership}
+      />
+      <RequestMyDataModal
+        open={showRequestMyData}
+        onClose={() => setShowRequestMyData(false)}
+        username={profile?.username}
+        accountEmail={profile?.email}
       />
     </div>
   )
