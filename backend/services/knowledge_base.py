@@ -496,7 +496,11 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "premium_steve_uses_per_month", "label": "Steve uses / month", "type": "integer", "value": 100, "group": "premium"},
                 {"name": "premium_whisper_minutes_per_month", "label": "Whisper minutes / month", "type": "integer", "value": 100, "group": "premium"},
                 {"name": "premium_communities_max", "label": "Max communities owned", "type": "integer", "value": 10, "group": "premium"},
-                {"name": "premium_members_per_owned_community", "label": "Members per owned community", "type": "integer", "value": 50, "group": "premium"},
+                # Per-community member cap intentionally not here anymore
+                # (April-2026 Phase 3). Community member caps live on
+                # the *community's* own tier on the Community Tiers page
+                # (Free 25, Paid L1 75 / L2 150 / L3 250, Enterprise
+                # unlimited) — independent of the owner's user tier.
                 {"name": "premium_voice_summaries", "label": "Voice summaries", "type": "boolean", "value": True, "group": "premium"},
                 {"name": "premium_post_summaries", "label": "Post summaries", "type": "boolean", "value": True, "group": "premium"},
                 {"name": "premium_cancel_refund_policy", "label": "Cancel & refund policy", "type": "string",
@@ -518,19 +522,32 @@ def _seed_pages() -> List[Dict[str, Any]]:
                  "group": "special"},
             ],
             "body": (
-                "Four user states in the system:\n\n"
+                "Four user states in the system. Phase 3 (April 2026) **decoupled** "
+                "per-community member caps from the user tier — those now live on the "
+                "community's own tier (see Community Tiers). The user tier only gates "
+                "Steve access and the *count* of communities a user can own.\n\n"
                 "- **Free** — no Steve, no voice/post summaries, can own up to "
-                "`free_communities_max` free communities.\n"
-                "- **Premium (early adoption)** — first 3 months of launch at "
-                "`premium_price_early_eur`. Full Steve access, owns up to "
-                "`premium_communities_max` communities.\n"
-                "- **Premium (standard)** — from month 4 at `premium_price_standard_eur`.\n"
+                "`free_communities_max` (5) communities. Each Free community caps at "
+                "25 members (`free_members_per_owned_community`).\n"
+                "- **Premium (early adoption)** — first 3 months at "
+                "`premium_price_early_eur` (€4.99/mo). Full Steve access + owns up to "
+                "`premium_communities_max` (10) communities. **No user-tier member "
+                "cap**: a Premium owner's communities still cap at whatever the "
+                "community's tier allows (Free 25 → Paid L1 75 → L2 150 → L3 250 → "
+                "Enterprise unlimited).\n"
+                "- **Premium (standard)** — from month 4 at `premium_price_standard_eur` "
+                "(€7.99/mo). Same entitlements as early adoption.\n"
                 "- **Free Trial** — 30 days of Premium-equivalent AI on signup, "
-                "community ownership capped at `trial_communities_max` (not the Premium limit). "
-                "Converts to paid only if a card is added; otherwise silently downgrades to Free.\n\n"
-                "**Trial lapse policy**: communities created during trial that exceed Free tier "
-                "limits (> 5 owned, or > 50 members) are locked read-only until the user "
-                "subscribes or trims down."
+                "community ownership capped at `trial_communities_max` (5). Member caps "
+                "inherit Free (25/community). Converts to paid only if a card is added; "
+                "otherwise silently downgrades to Free.\n\n"
+                "**Trial lapse policy**: communities created during trial that exceed Free "
+                "tier limits (> 5 owned, or > 25 members) lock read-only until the user "
+                "subscribes or trims down.\n\n"
+                "> Retired field: `premium_members_per_owned_community` (removed April "
+                "2026). The resolver reports `members_per_owned_community = null` for "
+                "Premium/Special to make the new \"cap comes from the community\" model "
+                "explicit."
             ),
         },
         {
@@ -538,31 +555,90 @@ def _seed_pages() -> List[Dict[str, Any]]:
             "title": "Community Tiers",
             "category": "product",
             "icon": "fa-people-group",
-            "description": "Free / Paid / Enterprise community definitions, caps, and perks.",
+            "description": "Free / Paid L1-L3 / Enterprise community caps, prices, and non-payment policy.",
             "sort_order": 20,
             "field_groups": [
-                {"id": "free", "label": "Free Community", "icon": "fa-user-group"},
-                {"id": "paid", "label": "Paid Community", "icon": "fa-building-columns"},
+                {"id": "free", "label": "Free Community (≤25 members)", "icon": "fa-user-group"},
+                {"id": "paid_l1", "label": "Paid L1 (26–75 members)", "icon": "fa-building"},
+                {"id": "paid_l2", "label": "Paid L2 (76–150 members)", "icon": "fa-building-columns"},
+                {"id": "paid_l3", "label": "Paid L3 (151–250 members)", "icon": "fa-building-flag"},
+                {"id": "enterprise", "label": "Enterprise (≥251 members)", "icon": "fa-crown"},
+                {"id": "economics", "label": "Unit economics", "icon": "fa-calculator"},
                 {"id": "paid_steve_package", "label": "Paid: Steve Package (add-on)", "icon": "fa-robot"},
                 {"id": "paid_content_gen", "label": "Paid: Content Generation", "icon": "fa-pen-nib"},
-                {"id": "enterprise", "label": "Enterprise Community", "icon": "fa-crown"},
+                {"id": "trial", "label": "Paid community trial", "icon": "fa-hourglass"},
+                {"id": "lifecycle", "label": "Non-payment & archive lifecycle", "icon": "fa-clock-rotate-left"},
             ],
             "fields": [
                 # Free
-                {"name": "free_community_max_members", "label": "Max members", "type": "integer", "value": 50, "group": "free"},
+                {"name": "free_community_max_members", "label": "Max members", "type": "integer", "value": 25,
+                 "help": "Matches ``free_members_per_owned_community`` on the User Tiers page. "
+                         "Beyond 25 the community must move to Paid L1.", "group": "free"},
                 {"name": "free_community_shown_on_networking", "label": "Shown on networking page", "type": "boolean", "value": False, "group": "free"},
                 {"name": "free_community_content_creation", "label": "Content creation enabled", "type": "boolean", "value": False, "group": "free"},
                 {"name": "free_community_media_gb", "label": "Media quota (GB)", "type": "decimal", "suffix": "GB", "value": 1, "tbd": True, "group": "free"},
-                {"name": "free_community_posts_per_day", "label": "Posts per day (per community)", "type": "integer", "value": 0, "help": "0 = unlimited. Posts are cheap — no cap for free communities.", "group": "free"},
+                {"name": "free_community_posts_per_day", "label": "Posts per day (per community)", "type": "integer", "value": 0,
+                 "help": "0 = unlimited. Posts are cheap — no cap for free communities.", "group": "free"},
+                {"name": "free_community_upgrade_cta", "label": "Upgrade CTA shown to owner", "type": "string",
+                 "value": "Your community has reached 25 members. Upgrade to Paid L1 (€25/mo) to grow up to 75.",
+                 "group": "free"},
 
-                # Paid
-                {"name": "paid_community_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 29, "tbd": True,
-                 "help": "Starting point — needs market validation.", "group": "paid"},
-                {"name": "paid_community_media_gb", "label": "Media quota (GB)", "type": "decimal", "suffix": "GB", "value": 20, "tbd": True, "group": "paid"},
-                {"name": "paid_community_member_limit", "label": "Member limit (0 = unlimited)", "type": "integer", "value": 0, "group": "paid"},
-                {"name": "paid_community_shown_on_networking", "label": "Networking page (included)", "type": "boolean", "value": False,
-                 "help": "Not included by default — sold as an add-on (see Networking Page).", "group": "paid"},
-                {"name": "paid_community_content_creation_available", "label": "Content creation available", "type": "boolean", "value": True, "group": "paid"},
+                # Paid L1 — 26–75 members
+                {"name": "paid_l1_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 25, "group": "paid_l1"},
+                {"name": "paid_l1_max_members", "label": "Max members", "type": "integer", "value": 75, "group": "paid_l1"},
+                {"name": "paid_l1_media_gb", "label": "Media quota (GB)", "type": "decimal", "suffix": "GB", "value": 5, "tbd": True, "group": "paid_l1"},
+                {"name": "paid_l1_networking_page_included", "label": "Shown on networking page", "type": "boolean", "value": False,
+                 "help": "Not included at L1 — sold as add-on (see Networking Page).", "group": "paid_l1"},
+                {"name": "paid_l1_content_creation_available", "label": "Content creation available", "type": "boolean", "value": True, "group": "paid_l1"},
+                {"name": "paid_l1_upgrade_cta", "label": "Upgrade CTA shown to owner", "type": "string",
+                 "value": "You're at 75 members. Upgrade to Paid L2 (€50/mo) to grow up to 150.",
+                 "group": "paid_l1"},
+
+                # Paid L2 — 76–150 members
+                {"name": "paid_l2_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 50, "group": "paid_l2"},
+                {"name": "paid_l2_max_members", "label": "Max members", "type": "integer", "value": 150, "group": "paid_l2"},
+                {"name": "paid_l2_media_gb", "label": "Media quota (GB)", "type": "decimal", "suffix": "GB", "value": 10, "tbd": True, "group": "paid_l2"},
+                {"name": "paid_l2_networking_page_included", "label": "Shown on networking page", "type": "boolean", "value": False, "group": "paid_l2"},
+                {"name": "paid_l2_content_creation_available", "label": "Content creation available", "type": "boolean", "value": True, "group": "paid_l2"},
+                {"name": "paid_l2_upgrade_cta", "label": "Upgrade CTA shown to owner", "type": "string",
+                 "value": "You're at 150 members. Upgrade to Paid L3 (€80/mo) to grow up to 250.",
+                 "group": "paid_l2"},
+
+                # Paid L3 — 151–250 members
+                {"name": "paid_l3_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 80, "group": "paid_l3"},
+                {"name": "paid_l3_max_members", "label": "Max members", "type": "integer", "value": 250, "group": "paid_l3"},
+                {"name": "paid_l3_media_gb", "label": "Media quota (GB)", "type": "decimal", "suffix": "GB", "value": 25, "tbd": True, "group": "paid_l3"},
+                {"name": "paid_l3_networking_page_included", "label": "Shown on networking page", "type": "boolean", "value": False, "group": "paid_l3"},
+                {"name": "paid_l3_content_creation_available", "label": "Content creation available", "type": "boolean", "value": True, "group": "paid_l3"},
+                {"name": "paid_l3_upgrade_cta", "label": "Upgrade CTA shown to owner", "type": "string",
+                 "value": "You're at 250 members. Contact sales about Enterprise (custom pricing) to grow further.",
+                 "group": "paid_l3"},
+
+                # Unit economics — the flat €/member basis all paid tiers are derived from.
+                {"name": "flat_price_per_member_eur", "label": "Flat price per member (internal)", "type": "decimal", "prefix": "€", "value": 0.33,
+                 "help": "Internal unit-economics anchor: Paid L1 (75 × €0.33 ≈ €25), "
+                         "L2 (150 × €0.33 ≈ €50), L3 (250 × €0.33 ≈ €80). Must stay "
+                         "above infra + support cost per member — revisit if Cloud Run / "
+                         "Cloud SQL unit costs change. Not shown to end-users.",
+                 "group": "economics"},
+                {"name": "break_even_members_paid_l1", "label": "Break-even members for L1", "type": "integer", "value": 8,
+                 "help": "With €25 revenue/mo on a ~€3 per-active-member cost basis "
+                         "(Cloud Run + egress + Steve weight), L1 turns profit around "
+                         "member #8. Keeps the cheapest paid tier from being a loss leader "
+                         "at low member counts.",
+                 "group": "economics"},
+                {"name": "break_even_members_paid_l2", "label": "Break-even members for L2", "type": "integer", "value": 17, "group": "economics"},
+                {"name": "break_even_members_paid_l3", "label": "Break-even members for L3", "type": "integer", "value": 27, "group": "economics"},
+
+                # Paid-community trial (separate from the user-tier trial).
+                {"name": "paid_trial_duration_days", "label": "Paid-community trial duration (days)", "type": "integer", "value": 14,
+                 "help": "One per billing customer across *all* communities they own — "
+                         "prevents owners cycling trials by cancelling and re-creating.",
+                 "group": "trial"},
+                {"name": "paid_trial_one_per_customer", "label": "One trial per customer lifetime", "type": "boolean", "value": True, "group": "trial"},
+                {"name": "paid_trial_auto_convert", "label": "Auto-convert to paid at end", "type": "boolean", "value": True,
+                 "help": "If a valid payment method is on file. Otherwise see non-payment lifecycle below.",
+                 "group": "trial"},
 
                 # Paid · Steve package (add-on)
                 {"name": "paid_steve_package_price_eur_monthly", "label": "Package price / month", "type": "decimal", "prefix": "€", "value": 20, "tbd": True, "group": "paid_steve_package"},
@@ -606,24 +682,127 @@ def _seed_pages() -> List[Dict[str, Any]]:
                  "value": "Monthly or annual. Annual via invoice + bank transfer accepted. Stripe for card payments.", "group": "enterprise"},
                 {"name": "enterprise_contract_required", "label": "Written contract required", "type": "boolean", "value": True,
                  "help": "DPA + T&Cs. Template lives in Legal drive.", "group": "enterprise"},
+
+                # Lifecycle — non-payment, archive, purge, owner recovery.
+                {"name": "nonpay_grace_days", "label": "Non-payment grace period (days)", "type": "integer", "value": 7,
+                 "help": "Time we retry the card + email the owner before moving to read-only.",
+                 "group": "lifecycle"},
+                {"name": "nonpay_readonly_days", "label": "Read-only period after grace (days)", "type": "integer", "value": 30,
+                 "help": "Members can still read existing content but no new posts / no new joins. "
+                         "Community is hidden from discovery (networking page) while read-only.",
+                 "group": "lifecycle"},
+                {"name": "nonpay_archive_days", "label": "Auto-archive after (days from delinquency)", "type": "integer", "value": 45,
+                 "help": "After read-only expires, the community is archived: removed from "
+                         "member feeds, owner sees a one-click Restore (requires valid card).",
+                 "group": "lifecycle"},
+                {"name": "purge_after_archive_days", "label": "Hard purge after archive (days)", "type": "integer", "value": 365,
+                 "help": "One full year in archive before rows are deleted. Ample window for "
+                         "owner to restore or export via T&Cs-defined self-service.",
+                 "group": "lifecycle"},
+                {"name": "free_inactivity_archive_days", "label": "Free community inactivity archive (days)", "type": "integer", "value": 90,
+                 "help": "Free communities with zero posts AND zero new members for 90 days "
+                         "are auto-archived. Owner keeps one-click restore for the full "
+                         "purge window.",
+                 "group": "lifecycle"},
+                {"name": "free_inactivity_purge_days", "label": "Free archived purge (days)", "type": "integer", "value": 365, "group": "lifecycle"},
+                {"name": "nonpay_block_ownership_transfer", "label": "Block ownership transfer while delinquent", "type": "boolean", "value": True,
+                 "help": "Prevents an owner from escaping a past-due balance by handing the "
+                         "community to a co-admin. Transfer is re-enabled the moment the "
+                         "account is current again.",
+                 "group": "lifecycle"},
+                {"name": "nonpay_grace_uses_per_year", "label": "Grace-period uses per year", "type": "integer", "value": 2,
+                 "help": "An owner gets 2 free full grace+read-only cycles per rolling 12 "
+                         "months. A third delinquency inside the window skips straight to "
+                         "archive (still 365-day purge). Discourages cycling the grace "
+                         "period as a free ride.",
+                 "group": "lifecycle"},
+                {"name": "owner_data_export_policy", "label": "Owner data-export policy", "type": "string",
+                 "value": "Self-service: owners can download a JSON + media archive of their "
+                         "community from the Settings page *while it is current or read-only*. "
+                         "After archive, export is still available via the owner dashboard for "
+                         "the full 365-day purge window. T&Cs §7.3 documents the format + "
+                         "retention; admin staff never run ad-hoc exports on behalf of "
+                         "owners (privacy + auditability).",
+                 "group": "lifecycle"},
+                {"name": "admin_adhoc_export_allowed", "label": "Admin-triggered ad-hoc exports allowed", "type": "boolean", "value": False,
+                 "help": "Staff export flow disabled by design. Prevents the data-access "
+                         "loophole where an owner pressures support to extract data they "
+                         "could not access themselves.",
+                 "group": "lifecycle"},
+                {"name": "owner_recovery_cta", "label": "Archived-community owner recovery CTA", "type": "string",
+                 "value": "Your community \"{name}\" has been archived due to inactivity. "
+                         "Click Restore to bring it back — members and posts are preserved "
+                         "for 365 days from today.",
+                 "group": "lifecycle"},
+                {"name": "owner_recovery_requires_card_for_paid", "label": "Restore requires valid card for Paid tiers", "type": "boolean", "value": True,
+                 "help": "Free-tier restores are one-click. Paid-tier restores require a "
+                         "current payment method to avoid re-entering the grace cycle "
+                         "immediately.",
+                 "group": "lifecycle"},
             ],
             "body": (
                 "Community tiers are independent from user tiers. Owning a Paid community "
                 "does **not** grant the owner Premium Steve — they must subscribe separately. "
                 "The Enterprise tier is the only one that grants Premium Steve to its members.\n\n"
-                "**Steve package (Paid only)**: opt-in add-on at "
-                "`paid_steve_package_price_eur_monthly`/month. Gives the community a shared "
+                "### Tier matrix\n\n"
+                "| Tier | Members | Price | Networking page | Content creation |\n"
+                "|---|---|---|---|---|\n"
+                "| Free | ≤ 25 | €0 | No | No |\n"
+                "| Paid L1 | 26–75 | €25/mo | Add-on | Yes |\n"
+                "| Paid L2 | 76–150 | €50/mo | Add-on | Yes |\n"
+                "| Paid L3 | 151–250 | €80/mo | Add-on | Yes |\n"
+                "| Enterprise | ≥ 251 | Custom (€299+ starting) | Included | Included |\n\n"
+                "Prices are derived from the internal `flat_price_per_member_eur = €0.33` "
+                "anchor (see Unit economics group) — any tier change must keep margin per "
+                "active member above the per-member infra + support cost.\n\n"
+                "### Paid community trial\n\n"
+                "New Paid subscriptions start with a **14-day trial**, one per billing "
+                "customer across all communities they own (prevents trial-recycling via "
+                "cancel + re-create). If a valid card is on file the trial auto-converts; "
+                "otherwise the community drops to the non-payment lifecycle below.\n\n"
+                "### Non-payment lifecycle\n\n"
+                "Escalating, reversible, and bounded — designed so an owner who genuinely "
+                "wants to come back can always do so, and a bad-faith owner can't keep "
+                "running a paid tier for free.\n\n"
+                "1. **Grace (7 days)** — card retries + email, community still fully live.\n"
+                "2. **Read-only (30 days)** — existing members can read; no new posts, no "
+                "new joins, community hidden from discovery. Ownership transfer is "
+                "**blocked** while delinquent (`nonpay_block_ownership_transfer`).\n"
+                "3. **Archive (day 45)** — community is removed from member feeds. Owner "
+                "sees a one-click Restore in their dashboard; Paid-tier restore requires a "
+                "current card to avoid looping the grace cycle.\n"
+                "4. **Purge (day 365 of archive)** — rows are hard-deleted.\n\n"
+                "Owners get **2 full grace+read-only cycles per rolling 12 months**; a third "
+                "delinquency inside the same 12-month window skips straight to archive, "
+                "which keeps the same 365-day purge window — so no data is ever lost "
+                "without the full year of recovery room, even for repeat offenders.\n\n"
+                "### Archived-community recovery (Free tier)\n\n"
+                "Free communities also auto-archive after 90 days of zero activity "
+                "(`free_inactivity_archive_days`). The owner always keeps one-click Restore "
+                "from the owner dashboard for the full 365-day purge window. Restoring a "
+                "Free community is free and doesn't require a card.\n\n"
+                "### Data export + privacy\n\n"
+                "Data export is **owner self-service only** — staff never run ad-hoc "
+                "exports (`admin_adhoc_export_allowed = false`). This is a deliberate "
+                "anti-loophole: it prevents the pattern where a departing owner pressures "
+                "support to extract data they otherwise couldn't get. The owner dashboard "
+                "keeps the export button enabled throughout grace, read-only, and the "
+                "365-day archive window. T&Cs §7.3 documents format, retention, and the "
+                "fact that admins cannot bypass this flow.\n\n"
+                "### Steve package (Paid only, opt-in add-on)\n\n"
+                "Separate product — see the Paid · Steve Package fields above. A Paid "
+                "community can operate with or without it; the tier price covers seats + "
+                "content creation but not Steve credits. Gives the community a shared "
                 "credit pool. Free members can use it; Premium members use the pool first "
                 "(saving their personal credits), falling back to personal credits when the "
                 "pool is empty. Free members are blocked when the pool hits zero.\n\n"
-                "**Content generation (Paid only)**: opt-in feature with a small free "
-                "allowance to drive adoption. Debited from the Steve pool if the package is "
-                "active; otherwise from the standalone allowance. Safety knobs "
-                "(`paid_content_gen_pool_reserve_cap_pct`, `paid_content_gen_runs_per_day_max`, "
-                "`paid_content_gen_autopause_threshold_pct`) prevent content jobs from burning "
-                "the budget or starving interactive Steve.\n\n"
-                "**Open decisions**\n\n"
-                "- Paid community monthly price (market-validate).\n"
+                "### Content generation (Paid only)\n\n"
+                "Opt-in feature with a small free allowance to drive adoption. Debited from "
+                "the Steve pool if the package is active; otherwise from the standalone "
+                "allowance. Safety knobs (`paid_content_gen_pool_reserve_cap_pct`, "
+                "`paid_content_gen_runs_per_day_max`, `paid_content_gen_autopause_threshold_pct`) "
+                "prevent content jobs from burning the budget or starving interactive Steve.\n\n"
+                "### Open decisions\n\n"
                 "- Steve package price and pool size.\n"
                 "- Media quotas per tier.\n"
                 "- Enterprise starting price (quote-based; we publish a \"starting at\" figure)."
@@ -1519,8 +1698,8 @@ def _seed_pages() -> List[Dict[str, Any]]:
                         },
                         {
                             "id": "entitlements:per_tier_member_caps",
-                            "feature": "User Tiers — per-tier community & member caps",
-                            "behaviour": "resolve_entitlements() reads free_/premium_members_per_owned_community from the KB and applies them per tier (Trial inherits Free; Special is unlimited). Locks the bug where Free users were capped at 100 members / 2 communities regardless of KB.",
+                            "feature": "User Tiers — community caps decoupled from subscription",
+                            "behaviour": "resolve_entitlements() reads free_members_per_owned_community from the KB for Free/Trial; Premium / Special report members_per_owned_community = None because per-community member caps now live on the community's own tier (Free 25, Paid L1 75 / L2 150 / L3 250, Enterprise unlimited), not on the owner's user tier. Locks both the original 100-member bug and the Phase-3 (April 2026) decoupling.",
                             "runner": "pytest",
                             "target": "tests/test_entitlements_resolve.py::TestPerTierMemberCaps",
                             "status": "not_run",

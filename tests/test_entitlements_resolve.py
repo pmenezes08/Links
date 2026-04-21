@@ -216,12 +216,15 @@ class TestKBDrivenConfiguration:
 
 
 class TestPerTierMemberCaps:
-    """The Free and Premium tiers expose *different* per-community member
-    caps via separate KB fields (``free_members_per_owned_community`` vs
-    ``premium_members_per_owned_community``). A previous bug looked up a
-    single generic ``members_per_owned_community`` field instead, so admin
-    edits to the tier-specific KB fields silently fell back to the bundled
-    default of 50 regardless of tier. These tests lock down the fix.
+    """Phase 3 (April 2026) decoupled per-community member caps from the
+    user's subscription. Member caps now live on the *community* tier
+    (Free=25, Paid L1/L2/L3, Enterprise) — the user tier only gates
+    Steve access and the count of communities a user can own.
+
+    The resolver still projects ``members_per_owned_community`` but only
+    as a Free-specific fallback used by
+    :func:`ensure_free_parent_member_capacity`; Premium / Special set it
+    to ``None`` to make "user-tier cap" absence explicit.
     """
 
     def test_free_member_cap_reads_from_kb_free_field(self, mysql_dsn):
@@ -236,8 +239,6 @@ class TestPerTierMemberCaps:
                      "label": "free_communities_max", "value": 5},
                     {"name": "free_members_per_owned_community", "type": "integer",
                      "label": "free_members_per_owned_community", "value": 25},
-                    {"name": "premium_members_per_owned_community", "type": "integer",
-                     "label": "premium_members_per_owned_community", "value": 50},
                 ],
             },
         ])
@@ -247,7 +248,16 @@ class TestPerTierMemberCaps:
         # The value the user reported in the bug: Free cap = 25 from the KB.
         assert ent["members_per_owned_community"] == 25
 
-    def test_premium_member_cap_reads_from_kb_premium_field(self, mysql_dsn):
+    def test_premium_has_no_user_tier_member_cap(self, mysql_dsn):
+        """Phase 3: Premium users do not carry a user-tier member cap.
+
+        ``members_per_owned_community`` is ``None`` for Premium — the
+        community's own tier (Free 25 / Paid L1 75 / L2 150 / L3 250 /
+        Enterprise unlimited) drives the cap. The
+        ``premium_members_per_owned_community`` KB field has been
+        retired; even if a stale KB still carries it, it must be
+        ignored.
+        """
         from tests.fixtures import seed_kb
         seed_kb([
             {
@@ -257,6 +267,7 @@ class TestPerTierMemberCaps:
                 "fields": [
                     {"name": "free_members_per_owned_community", "type": "integer",
                      "label": "free_members_per_owned_community", "value": 25},
+                    # Stale KB entry — must be ignored by the resolver.
                     {"name": "premium_members_per_owned_community", "type": "integer",
                      "label": "premium_members_per_owned_community", "value": 200},
                 ],
@@ -265,8 +276,9 @@ class TestPerTierMemberCaps:
         make_user("paying", subscription="premium", created_at=days_ago(30))
         ent = resolve_entitlements("paying")
         assert ent["tier"] == TIER_PREMIUM
-        # Premium admin-set cap must flow through — independent of Free's cap.
-        assert ent["members_per_owned_community"] == 200
+        assert ent["members_per_owned_community"] is None
+        # The field must not be exposed on ent either.
+        assert "premium_members_per_owned_community" not in ent
 
     def test_trial_inherits_free_member_cap(self, mysql_dsn):
         """Documented policy: trial communities that overshoot Free limits
@@ -280,8 +292,6 @@ class TestPerTierMemberCaps:
                 "fields": [
                     {"name": "free_members_per_owned_community", "type": "integer",
                      "label": "free_members_per_owned_community", "value": 25},
-                    {"name": "premium_members_per_owned_community", "type": "integer",
-                     "label": "premium_members_per_owned_community", "value": 200},
                 ],
             },
         ])
@@ -313,7 +323,7 @@ class TestPerTierMemberCaps:
 
     def test_special_user_member_cap_is_unlimited(self, mysql_dsn):
         """Special users get unlimited member caps (represented as None).
-        KB edits to Free/Premium caps must not leak into Special."""
+        KB edits to Free caps must not leak into Special."""
         from tests.fixtures import seed_kb
         seed_kb([
             {
@@ -323,8 +333,6 @@ class TestPerTierMemberCaps:
                 "fields": [
                     {"name": "free_members_per_owned_community", "type": "integer",
                      "label": "free_members_per_owned_community", "value": 25},
-                    {"name": "premium_members_per_owned_community", "type": "integer",
-                     "label": "premium_members_per_owned_community", "value": 200},
                 ],
             },
         ])

@@ -98,7 +98,10 @@ def run_section_8() -> bool:
         #  member_cap_predicate)
         ("test_free",    "free",    False, 0,    lambda v: v == 5,        lambda v: v == 25),
         ("test_trial",   "trial",   True,  100,  lambda v: v == 5,        lambda v: v == 25),
-        ("test_premium", "premium", True,  100,  lambda v: v == 10,       lambda v: isinstance(v, int) and v > 0),
+        # Phase 3 (April 2026): Premium user tier no longer carries a
+        # per-community member cap — the community's own tier drives it.
+        # Resolver reports None for Premium, same as Special.
+        ("test_premium", "premium", True,  100,  lambda v: v == 10,       lambda v: v is None),
         ("test_special", "special", True,  None, lambda v: v is None,     lambda v: v is None),
     ]
 

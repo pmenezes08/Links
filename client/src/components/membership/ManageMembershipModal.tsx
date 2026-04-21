@@ -195,11 +195,20 @@ function PlanTab() {
             ? 'Free'
             : tier
 
+  // Premium / Special have no user-tier member cap — their owned
+  // communities use each community's own tier (Free 25, Paid L1 75,
+  // L2 150, L3 250, Enterprise unlimited). Showing "Unlimited" here
+  // would mislead — the cap depends on the community, not on the plan.
+  const perCommunityLabel =
+    entitlements.members_per_owned_community == null
+      ? 'Based on community tier'
+      : capLabel(entitlements.members_per_owned_community, '')
+
   const rows: Array<[string, string]> = [
     ['Steve uses / month', capLabel(entitlements.steve_uses_per_month, '')],
     ['Voice transcription / month', capLabel(entitlements.whisper_minutes_per_month, 'min')],
     ['Communities you can own', capLabel(entitlements.communities_max, '')],
-    ['Members per community', capLabel(entitlements.members_per_owned_community, '')],
+    ['Members per community', perCommunityLabel],
   ]
 
   return (
