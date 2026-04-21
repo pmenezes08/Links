@@ -1,0 +1,25 @@
+[
+  {
+    "name": "keep-5-most-recent",
+    "action": {"type": "Keep"},
+    "mostRecentVersions": {
+      "keepCount": 5
+    }
+  },
+  {
+    "name": "delete-untagged-over-7d",
+    "action": {"type": "Delete"},
+    "condition": {
+      "tagState": "UNTAGGED",
+      "olderThan": "7d"
+    }
+  },
+  {
+    "name": "delete-tagged-over-30d",
+    "action": {"type": "Delete"},
+    "condition": {
+      "tagState": "TAGGED",
+      "olderThan": "30d"
+    }
+  }
+]

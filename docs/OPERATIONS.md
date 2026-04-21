@@ -31,6 +31,88 @@ Source of truth for entitlements is **resolve_entitlements()** in
    `special-users` (editable live from admin-web, no redeploy needed).
 3. `user_enterprise_seats` (active seat → Premium-via-Enterprise).
 
+### 0.1 Infrastructure cost snapshot (2026-04-20)
+
+Last 30 days billing: **€121.78/month**. Breakdown (approximate, from
+Console billing report):
+
+| Service                   | €/mo | Notes                                                          |
+|---------------------------|------|----------------------------------------------------------------|
+| Cloud Run (all services)  | 103.35 | Dominant cost; two services at `min-instances=1` was the cause |
+| Artifact Registry         | 8.71 | Growing creep from stale source-deploy image layers            |
+| Cloud SQL (cpoint-db)     | 7.81 | `db-f1-micro` — already lean, no action                       |
+| Other (Cloud Storage, SM) | 1.91 | Noise                                                         |
+
+Services actually in use for CPoint: `cpoint-app`, `cpoint-app-staging`,
+`cpoint-admin`, `cpoint-admin-staging`, `cpoint-landing`. Services
+`evalio` and `links` belong to other projects and are out of scope for
+this project's cost optimisation.
+
+**Cost-hygiene actions applied 2026-04-20** (Phase 0 of the hygiene PR):
+
+1. `cpoint-app-staging` scaled to `min-instances=0` (was 1). Cold-start
+   on first hit per idle period is acceptable for staging. Prod stays at
+   `min-instances=1` so users never pay the cold-start tax.
+2. Artifact Registry cleanup policies applied to both repos
+   (`cloud-run-source-deploy` in `europe-west1`, `gcr.io` in `us`):
+   keep 5 most-recent versions, delete untagged >7d, delete tagged >30d.
+   Policy source-of-truth: `[scripts/ar_cleanup_policy.json](../scripts/ar_cleanup_policy.json)`.
+3. BigQuery dataset `cpoint-127c2:billing_export` created (EU multi-region)
+   as the target for Cloud Billing → BigQuery export. **The Console
+   linking step is still pending** — see §0.3.
+4. Four Cloud Monitoring alert policies defined in
+   `[scripts/monitoring_alerts/](../scripts/monitoring_alerts/)` with
+   apply instructions in `[scripts/monitoring_alerts/README.md](../scripts/monitoring_alerts/README.md)`.
+   **Apply pending** — see §0.3.
+
+Projected fixed floor after all actions settle: **~€55–60/month**.
+Current break-even on community pricing (€0.33/member flat) recalculated
+against the reduced floor: ~180 paying members, or roughly 1 Enterprise
+customer OR 3–4 L1 paid communities.
+
+### 0.2 When to review staging scaling
+
+Keep `cpoint-app-staging` at `min-instances=0` until one of:
+- You need to run joint testing sessions with external testers where a
+  15s cold-start would disrupt the flow.
+- Staging is the target of a recurring external smoke/probe job.
+
+When promoting back, the command is simply:
+
+```powershell
+gcloud run services update cpoint-app-staging --min-instances=1 --region=europe-west1
+```
+
+and note the change in this file.
+
+### 0.3 Open follow-ups (Cloud-Shell-only tasks)
+
+Two Phase-0 items need an interactive Cloud Shell session (the local
+gcloud CLI can't run `gcloud alpha monitoring` or the Console-only
+billing export link). Doing them later doesn't change run-rate; they
+only gate observability:
+
+1. **Apply monitoring alerts** — from Cloud Shell:
+   ```bash
+   cd /path/to/Links
+   # First create the email notification channel if it doesn't exist:
+   gcloud beta monitoring channels create \
+     --display-name="Founder email" --type=email \
+     --channel-labels=email_address=paulo.miguel.menezes@gmail.com
+   # Capture the returned channel name, then:
+   export CHAN="projects/cpoint-127c2/notificationChannels/XXXXX"
+   for f in scripts/monitoring_alerts/*_high.json; do
+     gcloud alpha monitoring policies create \
+       --policy-from-file="$f" --notification-channels="$CHAN"
+   done
+   ```
+2. **Link BigQuery billing export** (Console only) — Navigation menu
+   → Billing → Billing export → BigQuery export → Edit settings:
+   - Project: `cpoint-127c2`
+   - Dataset: `billing_export` (already created)
+   - Enable both *Standard usage cost* and *Pricing* exports.
+   First data appears ~24h after enabling.
+
 ---
 
 ## 1. Deploying code

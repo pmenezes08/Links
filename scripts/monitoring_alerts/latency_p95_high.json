@@ -1,0 +1,22 @@
+{
+  "displayName": "cpoint-app: p95 request latency > 2s (5m)",
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "p95 latency > 2000ms for 5 minutes",
+      "conditionThreshold": {
+        "filter": "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"cpoint-app\" AND metric.type=\"run.googleapis.com/request_latencies\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 2000,
+        "duration": "300s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "perSeriesAligner": "ALIGN_PERCENTILE_95"
+          }
+        ]
+      }
+    }
+  ],
+  "enabled": true
+}
