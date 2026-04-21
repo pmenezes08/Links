@@ -547,7 +547,13 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 "> Retired field: `premium_members_per_owned_community` (removed April "
                 "2026). The resolver reports `members_per_owned_community = null` for "
                 "Premium/Special to make the new \"cap comes from the community\" model "
-                "explicit."
+                "explicit.\n\n"
+                "**Personal data & GDPR**: individual users can request a copy of their "
+                "personal data (posts, comments, messages, profile, media they authored) "
+                "any time via *Settings → Privacy & Security → Request my data* or by "
+                "emailing `privacy@c-point.co` — 30-day response SLA (GDPR Art. 12(3)). "
+                "Community-level data is out of scope for personal requests (see "
+                "Community Tiers → Data ownership & GDPR)."
             ),
         },
         {
@@ -568,6 +574,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"id": "paid_content_gen", "label": "Paid: Content Generation", "icon": "fa-pen-nib"},
                 {"id": "trial", "label": "Paid community trial", "icon": "fa-hourglass"},
                 {"id": "lifecycle", "label": "Non-payment & archive lifecycle", "icon": "fa-clock-rotate-left"},
+                {"id": "data_ownership", "label": "Data ownership & GDPR", "icon": "fa-shield-halved"},
             ],
             "fields": [
                 # Free
@@ -705,6 +712,61 @@ def _seed_pages() -> List[Dict[str, Any]]:
                          "purge window.",
                  "group": "lifecycle"},
                 {"name": "free_inactivity_purge_days", "label": "Free archived purge (days)", "type": "integer", "value": 365, "group": "lifecycle"},
+                {"name": "community_lifecycle_notifications_enabled", "label": "Lifecycle notifications enabled (kill-switch)", "type": "boolean", "value": True,
+                 "help": "Master feature flag for the daily dispatcher that sends pre-archive "
+                         "warnings (day 75, day 88) and purge reminders (day 300 after "
+                         "archive) to Free community owners. Flip to False to pause all "
+                         "lifecycle emails + in-app notifications without touching "
+                         "Cloud Scheduler.",
+                 "group": "lifecycle"},
+                {"name": "free_inactivity_warn_day", "label": "First inactivity warning (day)", "type": "integer", "value": 75,
+                 "help": "Day of inactivity on which we send the first pre-archive warning "
+                         "to Free community owners (default: 15 days before auto-archive "
+                         "on day 90). Moving this value changes when the first warning "
+                         "fires; the dispatcher dedupes so bringing it earlier won't "
+                         "re-send to owners already warned.",
+                 "group": "lifecycle"},
+                {"name": "free_inactivity_warn_last_day", "label": "Last inactivity warning (day)", "type": "integer", "value": 88,
+                 "help": "Final pre-archive warning, 2 days before auto-archive. Uses "
+                         "stronger copy than the first warning.",
+                 "group": "lifecycle"},
+                {"name": "archive_purge_reminder_day", "label": "Post-archive purge reminder (day of archive)", "type": "integer", "value": 300,
+                 "help": "Day N of archive (counted from archived_at) on which we nudge the "
+                         "owner that permanent deletion is approaching. Default 300 gives "
+                         "the owner 65 days of lead time before the default 365-day purge.",
+                 "group": "lifecycle"},
+                {"name": "owner_warning_pre_archive_subject", "label": "Subject — first inactivity warning", "type": "string",
+                 "value": "Your community \"{name}\" will be archived in 15 days",
+                 "group": "lifecycle"},
+                {"name": "owner_warning_pre_archive_body", "label": "Body — first inactivity warning", "type": "string",
+                 "value": "Hi {owner},\n\nYour community \"{name}\" has had no posts or new "
+                         "members for 75 days. Free communities are automatically archived "
+                         "after 90 days of inactivity.\n\nPost something, invite a member, "
+                         "or reply to this email to keep it active. If the community is "
+                         "archived you'll have one-click Restore for the following 365 "
+                         "days before any data is removed.\n\n— The C-Point team",
+                 "group": "lifecycle"},
+                {"name": "owner_warning_pre_archive_last_subject", "label": "Subject — last inactivity warning", "type": "string",
+                 "value": "Last chance: \"{name}\" will be archived in 2 days",
+                 "group": "lifecycle"},
+                {"name": "owner_warning_pre_archive_last_body", "label": "Body — last inactivity warning", "type": "string",
+                 "value": "Hi {owner},\n\nFinal reminder: your community \"{name}\" will be "
+                         "archived in 2 days if it stays inactive.\n\nA single post or a "
+                         "new member invite resets the clock. If the community is archived "
+                         "you keep one-click Restore for the next 365 days before any data "
+                         "is removed.\n\n— The C-Point team",
+                 "group": "lifecycle"},
+                {"name": "owner_warning_purge_reminder_subject", "label": "Subject — purge reminder", "type": "string",
+                 "value": "\"{name}\" will be permanently deleted in 65 days",
+                 "group": "lifecycle"},
+                {"name": "owner_warning_purge_reminder_body", "label": "Body — purge reminder", "type": "string",
+                 "value": "Hi {owner},\n\nYour archived community \"{name}\" has been in "
+                         "archive for 300 days. In 65 days it will be permanently "
+                         "deleted, along with its posts and media, as documented in our "
+                         "Terms §7.2.\n\nOpen the community in C-Point and click "
+                         "Restore to bring it back at any time before the purge date.\n\n"
+                         "— The C-Point team",
+                 "group": "lifecycle"},
                 {"name": "nonpay_block_ownership_transfer", "label": "Block ownership transfer while delinquent", "type": "boolean", "value": True,
                  "help": "Prevents an owner from escaping a past-due balance by handing the "
                          "community to a co-admin. Transfer is re-enabled the moment the "
@@ -717,17 +779,19 @@ def _seed_pages() -> List[Dict[str, Any]]:
                          "period as a free ride.",
                  "group": "lifecycle"},
                 {"name": "owner_data_export_policy", "label": "Owner data-export policy", "type": "string",
-                 "value": "Self-service: owners can download a JSON + media archive of their "
-                         "community from the Settings page *while it is current or read-only*. "
-                         "After archive, export is still available via the owner dashboard for "
-                         "the full 365-day purge window. T&Cs §7.3 documents the format + "
-                         "retention; admin staff never run ad-hoc exports on behalf of "
-                         "owners (privacy + auditability).",
+                 "value": "Community-level data (member rosters, thread history, engagement "
+                         "metrics, moderation logs) is platform data — no self-serve bulk "
+                         "export for owners or members. Owners with a legitimate need can "
+                         "contact support@c-point.co; C-Point staff may provide a "
+                         "discretionary, audit-logged export on a case-by-case basis. "
+                         "Individual members retain full GDPR rights over their own "
+                         "personal data — see the Data ownership & GDPR group below.",
                  "group": "lifecycle"},
-                {"name": "admin_adhoc_export_allowed", "label": "Admin-triggered ad-hoc exports allowed", "type": "boolean", "value": False,
-                 "help": "Staff export flow disabled by design. Prevents the data-access "
-                         "loophole where an owner pressures support to extract data they "
-                         "could not access themselves.",
+                {"name": "admin_adhoc_export_allowed", "label": "Admin-triggered discretionary exports allowed", "type": "boolean", "value": True,
+                 "help": "C-Point staff may provide a community export on owner request, "
+                         "case by case, audit-logged. Scoped to the requesting community. "
+                         "Until the dedicated tool ships (see admin_community_export_tool_status) "
+                         "these run as ad-hoc DB extractions by the on-call engineer.",
                  "group": "lifecycle"},
                 {"name": "owner_recovery_cta", "label": "Archived-community owner recovery CTA", "type": "string",
                  "value": "Your community \"{name}\" has been archived due to inactivity. "
@@ -739,6 +803,63 @@ def _seed_pages() -> List[Dict[str, Any]]:
                          "current payment method to avoid re-entering the grace cycle "
                          "immediately.",
                  "group": "lifecycle"},
+
+                # Data ownership & GDPR — the distinction between personal data
+                # (user-owned, GDPR-covered) and community data (platform-owned,
+                # staff-mediated discretionary export). Mirrors Terms §7.3 and
+                # Privacy §7. Keeping these as KB fields lets legal / support
+                # adjust copy without a code deploy.
+                {"name": "community_data_ownership_policy", "label": "Community data ownership policy", "type": "string",
+                 "value": "Community-level data — member rosters, thread history, "
+                         "engagement metrics, moderation logs, analytics — is platform "
+                         "data retained, used, and protected by C-Point under the "
+                         "Privacy Policy. Owners and members do not have self-serve "
+                         "bulk export of community data; owners with a legitimate "
+                         "continuity or migration need can contact support and C-Point "
+                         "staff may provide a discretionary export on a case-by-case "
+                         "basis. Individual members always retain GDPR rights over "
+                         "their own personal data (posts, comments, messages, profile "
+                         "fields, media they authored).",
+                 "group": "data_ownership"},
+                {"name": "individual_gdpr_export_available", "label": "Individual GDPR data-request available", "type": "boolean", "value": True,
+                 "help": "Personal data requests (access, rectification, erasure, "
+                         "portability) are always supported per GDPR Art. 15-20 "
+                         "regardless of product tier.",
+                 "group": "data_ownership"},
+                {"name": "individual_gdpr_request_mechanism", "label": "Request mechanism", "type": "string",
+                 "value": "In-app: Settings → Privacy & Security → Request my data (opens a "
+                         "prefilled mailto modal). Email fallback: privacy@c-point.co "
+                         "from the account being requested.",
+                 "group": "data_ownership"},
+                {"name": "individual_gdpr_request_email", "label": "GDPR contact email", "type": "string", "value": "privacy@c-point.co",
+                 "help": "Inbox monitored by the DPO. Must be provisioned before "
+                         "production launch of the Request-my-data modal.",
+                 "group": "data_ownership"},
+                {"name": "individual_gdpr_response_sla_days", "label": "Response SLA (days)", "type": "integer", "value": 30,
+                 "help": "GDPR Art. 12(3): respond within 30 days; complex requests "
+                         "may be extended by up to two further months with written "
+                         "notice to the data subject.",
+                 "group": "data_ownership"},
+                {"name": "individual_gdpr_scope_description", "label": "Scope of individual requests", "type": "string",
+                 "value": "Personal data: posts, comments, messages, profile fields, "
+                         "and media the requester has personally authored or uploaded, "
+                         "plus account metadata (signup date, subscription status, "
+                         "login history). Excluded: other members' content and "
+                         "community-level material.",
+                 "group": "data_ownership"},
+                {"name": "admin_community_export_tool_status", "label": "Admin community-export tool status", "type": "enum",
+                 "allowed_values": ["planned", "in_progress", "shipped"],
+                 "value": "planned",
+                 "help": "Staff-only admin tool to generate discretionary community "
+                         "exports on owner request. Planned for paid GA; until "
+                         "shipped, discretionary exports run as ad-hoc engineering "
+                         "tasks (still audit-logged).",
+                 "group": "data_ownership"},
+                {"name": "admin_community_export_audit_logged", "label": "All discretionary exports audit-logged", "type": "boolean", "value": True,
+                 "help": "Required by policy. Audit row captures: requester, "
+                         "community_id, scope, requesting owner, approving staff, "
+                         "timestamp.",
+                 "group": "data_ownership"},
             ],
             "body": (
                 "Community tiers are independent from user tiers. Owning a Paid community "
