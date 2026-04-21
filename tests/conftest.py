@@ -164,7 +164,23 @@ CREATE TABLE IF NOT EXISTS communities (
     tier VARCHAR(32) DEFAULT 'free',
     creator_username VARCHAR(191),
     parent_community_id INT NULL,
+    archived_at DATETIME NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
+# Minimal posts shape — the lifecycle dispatcher only reads MAX(timestamp)
+# by community_id, and a handful of existing suites touch posts for smoke
+# tests. We deliberately keep this thin so adding a column to the real
+# ``posts`` table in the monolith doesn't force a test-schema edit.
+_POSTS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS posts (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    community_id INT,
+    username VARCHAR(191),
+    content TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_posts_community_ts (community_id, timestamp)
 )
 """
 
@@ -219,6 +235,7 @@ def _bootstrap_schema() -> None:
         c.execute(_USERS_TABLE_SQL)
         c.execute(_COMMUNITIES_TABLE_SQL)
         c.execute(_USER_COMMUNITIES_TABLE_SQL)
+        c.execute(_POSTS_TABLE_SQL)
         c.execute(_NOTIFICATIONS_TABLE_SQL)
         try:
             conn.commit()
@@ -250,6 +267,7 @@ _TRUNCATE_TABLES: List[str] = [
     "users",
     "communities",
     "user_communities",
+    "posts",
     "notifications",
     "ai_usage_log",
     "special_access_log",
@@ -259,6 +277,7 @@ _TRUNCATE_TABLES: List[str] = [
     "enterprise_iap_nag",
     "winback_tokens",
     "subscription_audit_log",
+    "community_lifecycle_notifications",
 ]
 
 
