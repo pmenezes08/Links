@@ -733,3 +733,46 @@ def _get_ancestor_communities(cursor, community_id: int) -> list:
         row = cursor.fetchone()
     
     return ancestors
+
+
+# ---------------------------------------------------------------------------
+# Cron endpoint — community-lifecycle dispatcher
+#
+# Wired from Cloud Scheduler (see docs/cloud-scheduler-cron.md). Runs once a
+# day and delegates to :mod:`backend.services.community_lifecycle`. Auth is
+# the shared ``X-Cron-Secret`` header, not a session cookie — Cloud
+# Scheduler has no browser context.
+# ---------------------------------------------------------------------------
+
+
+def _cron_authed() -> bool:
+    expected = os.environ.get("CRON_SHARED_SECRET") or ""
+    if not expected:
+        return False
+    provided = request.headers.get("X-Cron-Secret") or ""
+    return provided == expected
+
+
+@communities_bp.route("/api/cron/communities/lifecycle-dispatch", methods=["POST"])
+def cron_community_lifecycle_dispatch():
+    """Fire due Free-community lifecycle warnings (pre-archive + purge).
+
+    Query params:
+      ``dry_run`` (``1``/``true``/``yes``) — preview what would send
+      without writing dedup rows or calling the email / in-app APIs.
+      Useful for one-off verification after a KB threshold change.
+    """
+    if not _cron_authed():
+        return jsonify({"success": False, "error": "forbidden"}), 403
+
+    raw = (request.args.get("dry_run") or "").strip().lower()
+    dry_run = raw in {"1", "true", "yes", "on"}
+
+    from backend.services import community_lifecycle
+
+    try:
+        result = community_lifecycle.dispatch_due_notifications(dry_run=dry_run)
+        return jsonify({"success": True, **result})
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.exception("community_lifecycle dispatch failed: %s", exc)
+        return jsonify({"success": False, "error": "dispatch_failed"}), 500
