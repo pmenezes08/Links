@@ -96,6 +96,30 @@ gcloud scheduler jobs create http usage-cycle-notify \
   --http-method=POST \
   --headers="X-Cron-Secret=$SECRET" \
   --attempt-deadline=300s
+
+# Community lifecycle warnings — fires pre-archive warnings for Free
+# communities (day 75, day 88) and purge reminders for archived Free
+# communities (day 300). Daily at 10:05 Europe/Dublin so warnings land
+# in the owner's inbox during waking hours.
+#
+# Kill switches (use either depending on urgency):
+#   * Fast (no code deploy): flip the KB field
+#     community_lifecycle_notifications_enabled → False on the
+#     "community-tiers" KB page. The endpoint still returns 200 with
+#     dry_run: true counts — great for verifying the flag flipped.
+#   * Full pause: `gcloud scheduler jobs pause communities-lifecycle-dispatch`
+#
+# Dry-run from the CLI:
+#   curl -X POST "$BASE/api/cron/communities/lifecycle-dispatch?dry_run=1" \
+#     -H "X-Cron-Secret: $CRON_SECRET"
+gcloud scheduler jobs create http communities-lifecycle-dispatch \
+  --location=europe-west1 \
+  --schedule="5 10 * * *" \
+  --time-zone=Europe/Dublin \
+  --uri="$BASE/api/cron/communities/lifecycle-dispatch" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=300s
 ```
 
 ## 3. Monitor the jobs
@@ -127,7 +151,8 @@ migration), run:
 
 ```bash
 for job in enterprise-grace-sweep enterprise-iap-nag enterprise-winback-expire \
-           subscriptions-revoke-expired usage-cycle-notify; do
+           subscriptions-revoke-expired usage-cycle-notify \
+           communities-lifecycle-dispatch; do
   gcloud scheduler jobs pause "$job" --location=europe-west1
 done
 ```
