@@ -137,6 +137,38 @@ Uses `test_doublepay` (has personal Premium) to verify the IAP nag.
 - [ ] As `test_trial`, same — trial gets Steve.
 - [ ] As `test_special`, same — unlimited.
 
+### §8a — Spend-ceiling circuit breaker + privacy scrub
+
+Locks the April-2026 Scope-B work where `monthly_spend_ceiling_eur`
+(a **private** cost-attribution signal) must never leak to the
+client, and must block Steve once breached — without naming itself.
+
+- [ ] Hit `/api/me/entitlements` as `test_premium` (e.g.
+      `curl -b cookies.txt https://staging.cpoint.pt/api/me/entitlements`).
+      The JSON body's `entitlements` object must **NOT** contain
+      any of: `monthly_spend_ceiling_eur`,
+      `monthly_spend_ceiling_eur_special`, `internal_weights`.
+- [ ] Hit `/api/me/ai-usage` as `test_premium`. The top-level body
+      must **NOT** contain `internal_weights`. The `month_summary`
+      object must **NOT** contain `total_cost_usd`,
+      `total_tokens_in`, or `total_tokens_out`.
+- [ ] Hit `/api/me/billing` as `test_premium`. The `caps` object
+      must **NOT** contain `monthly_spend_ceiling_eur`.
+- [ ] Simulate ceiling-hit (staging-only): in MySQL, insert a synthetic
+      `ai_usage_log` row for `test_premium` with
+      `cost_usd = 10.00`, `success = 1`, `created_at = NOW()`.
+      Then as `test_premium`, try to invoke Steve from a DM. The
+      response must be a 402/429 with `reason = "monthly_steve_cap"`
+      (**not** `"spend_ceiling"`, `"monthly_spend_ceiling"`, or
+      anything that exposes the EUR figure). The error copy the
+      client renders must be the generic "You've used all your
+      Steve calls for this month" message. Clean up the synthetic
+      row after verifying.
+- [ ] Verify in `ai_usage_log` (same DB) that the block row has
+      `reason_blocked = 'monthly_spend_ceiling'` — this is the
+      **internal** analytics breadcrumb and is allowed to be
+      explicit because it never leaves the server.
+
 ## §9 — Credits & Entitlements KB edit round-trip
 
 - [ ] In admin-web, edit `Pricing → Credits & Entitlements` and

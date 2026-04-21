@@ -37,6 +37,50 @@ def _session_username() -> str | None:
     return str(uname) if uname else None
 
 
+# ── Privacy scrub ──────────────────────────────────────────────────────
+#
+# These fields are used internally for cost-attribution + the spend
+# ceiling gate; they are never safe to return to the end user. Leaking
+# them would let anyone reverse-engineer:
+#   * the exact EUR budget of their plan  (monthly_spend_ceiling_eur*)
+#   * the "Steve weight" applied to each surface (internal_weights)
+#   * raw token and USD cost of their last month  (total_cost_usd, …)
+# which would turn the gate into a free calculator for "what's the
+# cheapest way to max out my plan".
+#
+# All three user-facing endpoints (/api/me/entitlements, /api/me/ai-usage,
+# /api/me/billing) run payloads through these scrubbers before jsonify.
+
+_ENT_INTERNAL_FIELDS = frozenset({
+    "monthly_spend_ceiling_eur",
+    "monthly_spend_ceiling_eur_special",
+    "internal_weights",
+})
+
+_SUMMARY_INTERNAL_FIELDS = frozenset({
+    "total_cost_usd",
+    "total_tokens_in",
+    "total_tokens_out",
+})
+
+
+def _scrub_entitlements(ent: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a shallow copy of ``ent`` with internal-only fields removed.
+
+    We don't mutate the original so the gate checks still see the real
+    values if someone downstream re-uses the dict.
+    """
+    if not isinstance(ent, dict):
+        return {}
+    return {k: v for k, v in ent.items() if k not in _ENT_INTERNAL_FIELDS}
+
+
+def _scrub_month_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(summary, dict):
+        return {}
+    return {k: v for k, v in summary.items() if k not in _SUMMARY_INTERNAL_FIELDS}
+
+
 def _pct(used: int | float, cap: int | float | None) -> float | None:
     """Return usage percentage rounded to 1 decimal, None if cap is unlimited."""
     if cap is None or cap == 0:
@@ -112,7 +156,7 @@ def me_entitlements():
 
     return jsonify({
         "success": True,
-        "entitlements": ent,
+        "entitlements": _scrub_entitlements(ent),
         "usage": usage,
         "enforcement_enabled": entitlements_enforcement_enabled(),
     })
@@ -137,12 +181,14 @@ def me_ai_usage():
             "detail": str(err),
         }), 500
 
+    # Strip cost/weight fields before the payload leaves the server;
+    # ``internal_weights`` is deliberately NOT surfaced here anymore —
+    # see the scrubber comment at the top of this module.
     return jsonify({
         "success": True,
-        "entitlements": ent,
+        "entitlements": _scrub_entitlements(ent),
         "usage": usage,
-        "month_summary": summary,
-        "internal_weights": ent.get("internal_weights") or {},
+        "month_summary": _scrub_month_summary(summary),
     })
 
 
@@ -290,10 +336,11 @@ def me_billing():
             "portal_available": bool(stripe_configured and subscription and subscription.get("customer_id")),
         },
         "caps": {
+            # monthly_spend_ceiling_eur deliberately omitted — see the
+            # privacy scrub note at the top of this module.
             "steve_uses_per_month": ent.get("steve_uses_per_month"),
             "whisper_minutes_per_month": ent.get("whisper_minutes_per_month"),
             "communities_max": ent.get("communities_max"),
-            "monthly_spend_ceiling_eur": ent.get("monthly_spend_ceiling_eur"),
         },
     })
 

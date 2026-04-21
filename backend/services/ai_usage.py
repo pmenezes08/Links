@@ -434,6 +434,48 @@ def monthly_count(username: str, surface: Optional[str] = None) -> int:
         return _fetch_count(c, sql, tuple(params))
 
 
+def monthly_spend_usd(username: str) -> float:
+    """Return SUM(``cost_usd``) for successful calls this calendar month.
+
+    Drives the internal ``monthly_spend_ceiling_eur`` gate in
+    :mod:`backend.services.entitlements_gate`. Deliberately **never**
+    returned to end users — this is a cost-attribution signal used to
+    pre-empt runaway AI spend, not a credit balance.
+
+    Returns ``0.0`` on any DB issue so a transient query failure can't
+    accidentally lock a user out (the ceiling check fails-open by
+    design).
+    """
+    if not username:
+        return 0.0
+    ensure_tables()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute(
+                f"""
+                SELECT COALESCE(SUM(cost_usd), 0) AS total_cost
+                FROM ai_usage_log
+                WHERE username = {ph}
+                  AND success = 1
+                  AND created_at >= {ph}
+                """,
+                (username, _first_of_current_month_utc()),
+            )
+            row = c.fetchone()
+        except Exception as err:
+            logger.debug("monthly_spend_usd query failed for %s: %s", username, err)
+            return 0.0
+    if not row:
+        return 0.0
+    raw = row["total_cost"] if hasattr(row, "keys") else row[0]
+    try:
+        return float(raw or 0)
+    except Exception:
+        return 0.0
+
+
 def whisper_minutes_this_month(username: str) -> float:
     """Return minutes of audio transcribed this calendar month.
 

@@ -112,6 +112,55 @@ def check_steve_access(
                 )
                 return False, payload, status, ent
 
+    # 5. Monthly spend ceiling (internal runaway-cost gate).
+    #
+    # This is the last line of defence against a runaway prompt or bug
+    # burning through API credit. It is **intentionally reused**:
+    # * The reason-code returned to the client is
+    #   ``REASON_MONTHLY_STEVE_CAP`` — same copy as hitting the Steve
+    #   cap — so the user is never told the exact EUR ceiling (and
+    #   therefore can never reverse-engineer how many AI calls their
+    #   plan "really" buys).
+    # * We log the block under a distinct internal reason for analytics.
+    # * Fails open on any read error so a transient KB outage can't
+    #   lock every paying user out.
+    ceiling_eur = ent.get("monthly_spend_ceiling_eur")
+    if isinstance(ceiling_eur, (int, float)) and ceiling_eur > 0:
+        try:
+            spend_usd = ai_usage.monthly_spend_usd(username)
+            # The usd_to_eur_rate lives in the KB (model-cost page) and
+            # isn't projected into ent; read it lazily here so we don't
+            # widen the resolver surface for a single consumer.
+            from backend.services.entitlements import _kb_field_value  # type: ignore
+
+            rate = _kb_field_value("credits-entitlements", "usd_to_eur_rate", 0.92)
+            try:
+                rate_f = float(rate) if rate else 0.92
+            except Exception:
+                rate_f = 0.92
+            spend_eur = float(spend_usd) * rate_f
+            if spend_eur >= float(ceiling_eur):
+                payload, status = errs.build_error(
+                    errs.REASON_MONTHLY_STEVE_CAP,
+                    ent=ent,
+                    usage=_snapshot(username, ent),
+                )
+                # Keep the internal breadcrumb separate from the user-facing
+                # reason so we can tell these two apart in analytics.
+                ai_usage.log_block(
+                    username, surface=surface, reason="monthly_spend_ceiling"
+                )
+                logger.info(
+                    "spend ceiling hit: user=%s surface=%s spend_eur=%.4f ceiling_eur=%.2f",
+                    username, surface, spend_eur, float(ceiling_eur),
+                )
+                return False, payload, status, ent
+        except Exception as err:  # pragma: no cover - fail-open guard
+            logger.warning(
+                "spend ceiling check errored (failing open): user=%s err=%s",
+                username, err,
+            )
+
     return True, None, None, ent
 
 
