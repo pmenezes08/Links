@@ -14008,18 +14008,23 @@ def get_messages():
                     messages, is_delta, has_more = fs_get_dm(username, peer_username, since_id=since_id_int, before_id=before_id_int)
                     logger.info(f"Firestore DM read: {len(messages)} msgs for {username}<->{peer_username} (delta={is_delta}, more={has_more})")
                     # Mark messages as read in MySQL (badges/unread counts come from MySQL)
+                    dm_marked_read = 0
                     if not before_id_int:
                         try:
                             with get_db_connection() as _mr_conn:
                                 _mr_c = _mr_conn.cursor()
                                 _mr_c.execute("UPDATE messages SET is_read=1 WHERE sender=%s AND receiver=%s AND is_read=0" if USE_MYSQL else "UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (peer_username, username))
-                                marked = _mr_c.rowcount
+                                dm_marked_read = _mr_c.rowcount or 0
                                 _mr_conn.commit()
-                                if marked > 0:
+                                if dm_marked_read > 0:
                                     try:
                                         from backend.services.firebase_notifications import send_fcm_to_user_badge_only, get_total_badge_count
                                         badge_count = get_total_badge_count(username)
                                         send_fcm_to_user_badge_only(username, badge_count=badge_count)
+                                    except Exception:
+                                        pass
+                                    try:
+                                        invalidate_message_cache(username, peer_username)
                                     except Exception:
                                         pass
                         except Exception as mr_err:
@@ -14265,6 +14270,10 @@ def get_messages():
                     logger.debug(f"Updated badge to {badge_count} for {username} after reading {marked_read} messages")
                 except Exception as badge_err:
                     logger.debug(f"Could not update badge: {badge_err}")
+                try:
+                    invalidate_message_cache(username, other_username)
+                except Exception:
+                    pass
             
             # Write-through cache for fast subsequent polls
             # PERFORMANCE: Only cache full fetches, not delta fetches
