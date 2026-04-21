@@ -16,6 +16,7 @@ import { useAudioRecorder } from '../components/useAudioRecorder'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import { useBadges } from '../contexts/BadgeContext'
+import { useUserProfile } from '../contexts/UserProfileContext'
 import Avatar from '../components/Avatar'
 import ZoomableImage from '../components/ZoomableImage'
 // Encryption removed — not in use
@@ -23,6 +24,13 @@ import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
+import {
+  threadsListCacheKey,
+  dmConversationOfflineKey,
+  dmUserIdKeyvalKey,
+  chatMessagesDeviceCacheKey,
+  chatProfileDeviceCacheKey,
+} from '../utils/chatThreadsCache'
 import { sendImageMessage, sendVideoMessage, sendMultiMediaMessage, SENDING_MEDIA_LABEL, type UploadProgress } from '../chat/mediaSenders'
 import type { ChatMessage } from '../types/chat'
 import { isInternalLink, isLandingPageLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from '../utils/internalLinkHandler'
@@ -57,6 +65,8 @@ type Message = ChatMessage
 export default function ChatThread(){
   const { setTitle } = useHeader()
   const { refreshBadges } = useBadges()
+  const { profile: myProfile } = useUserProfile()
+  const viewer = (myProfile as { username?: string } | null)?.username
   const { username } = useParams()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -111,8 +121,18 @@ export default function ChatThread(){
   const listRef = useRef<HTMLDivElement|null>(null)
   const textareaRef = useRef<HTMLTextAreaElement|null>(null)
   const storageKey = useMemo(() => `chat_meta_${username || ''}`, [username])
-  const chatCacheKey = useMemo(() => username ? `chat-messages:${username}` : null, [username])
-  const profileCacheKey = useMemo(() => username ? `chat-profile:${username}` : null, [username])
+  const chatCacheKey = useMemo(
+    () => (username && viewer ? chatMessagesDeviceCacheKey(viewer, username) : null),
+    [username, viewer],
+  )
+  const profileCacheKey = useMemo(
+    () => (username && viewer ? chatProfileDeviceCacheKey(viewer, username) : null),
+    [username, viewer],
+  )
+  const dmOfflineKey = useMemo(
+    () => (username && viewer ? dmConversationOfflineKey(viewer, username) : null),
+    [username, viewer],
+  )
   const metaRef = useRef<Record<string, { reaction?: string; replySnippet?: string }>>({})
   const [otherProfile, setOtherProfile] = useState<{ display_name:string; profile_picture?:string|null }|null>(null)
   const [, setTyping] = useState(false) // keep setter for API calls; UI label removed
@@ -694,11 +714,11 @@ export default function ChatThread(){
       processRawMessages(cached.messages).then(processed => {
         setMessages(processed)
       })
-    } else if (username) {
+    } else if (username && dmOfflineKey && viewer) {
       // Fallback: try IndexedDB (survives localStorage eviction, no TTL expiry)
       Promise.all([
-        getCachedMessages(`dm:${username}`),
-        getCachedKeyVal<number>(`dm-user-id:${username}`),
+        getCachedMessages(dmOfflineKey),
+        getCachedKeyVal<number>(dmUserIdKeyvalKey(viewer, username)),
       ]).then(([idbMsgs, idbUserId]) => {
         if (idbUserId) setOtherUserId(prev => prev || idbUserId)
         if (idbMsgs?.length) {
@@ -708,7 +728,7 @@ export default function ChatThread(){
         }
       })
     }
-  }, [chatCacheKey, processRawMessages, username])
+  }, [chatCacheKey, processRawMessages, username, dmOfflineKey, viewer])
 
   // Restore draft when entering chat (only if there's an actual saved draft)
   // Added extra protection for iOS navigation - clear any stale content first
@@ -720,7 +740,8 @@ export default function ChatThread(){
       textareaRef.current.value = ''
     }
     
-    const savedDraft = readDeviceCache<string>(`chat-draft:dm:${username}`)
+    const draftKey = viewer && username ? `chat-draft:dm:${viewer}:${username}` : `chat-draft:dm:${username}`
+    const savedDraft = readDeviceCache<string>(draftKey)
     if (savedDraft && savedDraft.trim()) {
       textareaRef.current.value = savedDraft
       draftRef.current = savedDraft
@@ -732,13 +753,13 @@ export default function ChatThread(){
       setDraftDisplay('')
       adjustTextareaHeight()
     }
-  }, [username])
+  }, [username, viewer])
 
   // Share handoff must run *after* draft restore above, or saved/cleared draft overwrites shared links.
   const shareAttach = searchParams.get('share')
   useEffect(() => {
     if (shareAttach !== '1' || !username) return
-    const handoffKey = `dm:${username}:share`
+    const handoffKey = viewer ? `dm:${viewer}:${username}:share` : `dm:${username}:share`
     if (shareAttachDoneRef.current) return
     const files = takePendingShareFilesOnce(handoffKey)
     const urls = takePendingShareUrlsOnce(handoffKey)
@@ -781,16 +802,16 @@ export default function ChatThread(){
       },
       { replace: true }
     )
-  }, [username, shareAttach, setSearchParams])
+  }, [username, shareAttach, setSearchParams, viewer])
 
   useEffect(() => {
     if (shareAttach === '1') return
     if (username) {
-      const k = `dm:${username}:share`
+      const k = viewer ? `dm:${viewer}:${username}:share` : `dm:${username}:share`
       releaseShareHandoffKey(k)
       releaseShareUrlHandoffKey(k)
     }
-  }, [shareAttach, username])
+  }, [shareAttach, username, viewer])
 
   // Save draft when leaving chat (cleanup)
   useEffect(() => {
@@ -799,11 +820,12 @@ export default function ChatThread(){
         clearTimeout(draftSaveTimeoutRef.current)
       }
       const currentText = textareaRef.current?.value || draftRef.current
-      if (currentText?.trim()) {
-        writeDeviceCache(`chat-draft:dm:${username}`, currentText)
+      if (currentText?.trim() && username) {
+        const dk = viewer ? `chat-draft:dm:${viewer}:${username}` : `chat-draft:dm:${username}`
+        writeDeviceCache(dk, currentText)
       }
     }
-  }, [username])
+  }, [username, viewer])
 
   // Initial load of messages and other user info (fresh fetch)
   useEffect(() => {
@@ -860,13 +882,13 @@ export default function ChatThread(){
               otherUserId: userId 
             }, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION)
           }
-          if (username) {
-            cacheMessages(`dm:${username}`, msgResponse.messages)
-            cacheKeyVal(`dm-user-id:${username}`, userId)
+          if (username && viewer && dmOfflineKey) {
+            cacheMessages(dmOfflineKey, msgResponse.messages)
+            cacheKeyVal(dmUserIdKeyvalKey(viewer, username), userId)
           }
           
           // Clear the chat threads cache so Messages list shows updated unread counts
-          clearDeviceCache('chat-threads-list')
+          if (viewer) clearDeviceCache(threadsListCacheKey(viewer))
           
           refreshBadges()
         }
@@ -912,7 +934,7 @@ export default function ChatThread(){
         }
       }).catch(()=>{})
     }
-  }, [username, chatCacheKey, profileCacheKey, processRawMessages])
+  }, [username, chatCacheKey, profileCacheKey, processRawMessages, viewer, dmOfflineKey])
 
   // Hydrate pending/failed outbox entries so they survive app restarts
   useEffect(() => {
@@ -1151,7 +1173,7 @@ export default function ChatThread(){
             lastKnownMessageIdRef.current = maxId
             
             // Persist to IndexedDB for offline access
-            if (username) cacheMessages(`dm:${username}`, j.messages)
+            if (username && dmOfflineKey) cacheMessages(dmOfflineKey, j.messages)
             
             const decryptedMessages = j.messages
             
@@ -1462,7 +1484,7 @@ export default function ChatThread(){
       if (pollTimer.current) clearInterval(pollTimer.current)
       document.removeEventListener('visibilitychange', handleVisibility)
     }
-  }, [username, otherUserId])
+  }, [username, otherUserId, dmOfflineKey])
 
   function adjustTextareaHeight(){
     const ta = textareaRef.current
@@ -1509,7 +1531,8 @@ export default function ChatThread(){
 
     // Clear the saved draft from device cache when message is sent
     if (username) {
-      clearDeviceCache(`chat-draft:dm:${username}`)
+      const dk = viewer ? `chat-draft:dm:${viewer}:${username}` : `chat-draft:dm:${username}`
+      clearDeviceCache(dk)
     }
 
     if (replySnapshot) {
@@ -3376,8 +3399,9 @@ export default function ChatThread(){
                   }
                   draftSaveTimeoutRef.current = setTimeout(() => {
                     const current = textareaRef.current?.value
-                    if (current && current.trim()) {
-                      writeDeviceCache(`chat-draft:dm:${username}`, current)
+                    if (current && current.trim() && username) {
+                      const dk = viewer ? `chat-draft:dm:${viewer}:${username}` : `chat-draft:dm:${username}`
+                      writeDeviceCache(dk, current)
                     }
                   }, 300)
 

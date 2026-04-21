@@ -99,6 +99,12 @@ export async function performLogout(): Promise<void> {
     'cpoint_',
     'onboarding_',
     'signal-store-',
+    // Per-viewer DM / messages caches (see chatThreadsCache.ts)
+    'chat-threads-list',
+    'group-chats-list',
+    'chat-communities-tree',
+    'chat-messages:',
+    'chat-profile:',
   ]
   
   try {

@@ -1,7 +1,14 @@
 import { openDB, type IDBPDatabase } from 'idb'
 
 const DB_NAME = 'cpoint-offline'
-const DB_VERSION = 2
+const DB_VERSION = 3
+
+/** Separates viewer username from peer in conversations store `username` field (v3+). */
+const VIEWER_PEER_SEP = '\x1e'
+
+export function conversationRowId(viewerUsername: string, peerUsername: string): string {
+  return `${viewerUsername}${VIEWER_PEER_SEP}${peerUsername}`
+}
 
 export interface OfflineDB {
   messages: {
@@ -73,7 +80,7 @@ let dbPromise: Promise<IDBPDatabase<OfflineDB>> | null = null
 function getDb(): Promise<IDBPDatabase<OfflineDB>> {
   if (dbPromise) return dbPromise
   dbPromise = openDB<OfflineDB>(DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion) {
+    upgrade(db, oldVersion, _newVersion, transaction) {
       if (oldVersion < 1) {
         const msgStore = db.createObjectStore('messages', { keyPath: 'id' })
         msgStore.createIndex('conversation', 'conversationKey')
@@ -93,6 +100,18 @@ function getDb(): Promise<IDBPDatabase<OfflineDB>> {
             db.deleteObjectStore('outbox')
           } catch { /* ignore */ }
           db.createObjectStore('outbox', { keyPath: 'id', autoIncrement: true })
+        }
+      }
+      if (oldVersion < 3) {
+        // v3: DM caches were keyed only by peer — clear so another account on same device
+        // cannot see the previous user's thread list / offline DM rows.
+        try {
+          if (transaction) {
+            transaction.objectStore('messages').clear()
+            transaction.objectStore('conversations').clear()
+          }
+        } catch {
+          /* ignore */
         }
       }
     },
@@ -157,15 +176,17 @@ export async function clearConversationMessages(conversationKey: string): Promis
 
 // ---------- Conversations list ----------
 
-export async function cacheConversations(threads: unknown[]): Promise<void> {
+export async function cacheConversations(viewerUsername: string, threads: unknown[]): Promise<void> {
+  if (!viewerUsername) return
   try {
     const db = await getDb()
     const tx = db.transaction('conversations', 'readwrite')
     const len = threads.length
     for (let i = 0; i < len; i++) {
       const t = (threads as any[])[i]
+      const peer = t.other_username || t.username || String(t.id)
       await tx.store.put({
-        username: t.other_username || t.username || String(t.id),
+        username: conversationRowId(viewerUsername, String(peer)),
         data: t,
         updatedAt: len - i,
       })
@@ -174,24 +195,27 @@ export async function cacheConversations(threads: unknown[]): Promise<void> {
   } catch { /* ignore */ }
 }
 
-export async function getCachedConversations(): Promise<unknown[] | null> {
+export async function getCachedConversations(viewerUsername: string): Promise<unknown[] | null> {
+  if (!viewerUsername) return null
   try {
     const db = await getDb()
     const all = await db.getAll('conversations')
-    if (!all.length) return null
-    all.sort((a, b) => b.updatedAt - a.updatedAt)
-    return all.map(r => r.data)
+    const prefix = `${viewerUsername}${VIEWER_PEER_SEP}`
+    const filtered = all.filter(r => String(r.username).startsWith(prefix))
+    if (!filtered.length) return null
+    filtered.sort((a, b) => b.updatedAt - a.updatedAt)
+    return filtered.map(r => r.data)
   } catch {
     return null
   }
 }
 
 /** Remove one DM thread row from IndexedDB (e.g. after clear chat so preview cannot stay stale). */
-export async function deleteCachedConversationRow(username: string): Promise<void> {
-  if (!username) return
+export async function deleteCachedConversationRow(viewerUsername: string, peerUsername: string): Promise<void> {
+  if (!viewerUsername || !peerUsername) return
   try {
     const db = await getDb()
-    await db.delete('conversations', username)
+    await db.delete('conversations', conversationRowId(viewerUsername, peerUsername))
   } catch {
     /* ignore */
   }

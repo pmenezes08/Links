@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useBadges } from '../contexts/BadgeContext'
+import { useUserProfile } from '../contexts/UserProfileContext'
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ParentCommunityPicker from '../components/ParentCommunityPicker'
 import GroupChatCreator from '../components/GroupChatCreator'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
+import {
+  threadsListCacheKey,
+  groupChatsListCacheKey,
+  communitiesTreeCacheKey,
+  dmConversationOfflineKey,
+  chatMessagesDeviceCacheKey,
+  chatProfileDeviceCacheKey,
+} from '../utils/chatThreadsCache'
 import { cacheConversations, getCachedConversations, cacheKeyVal, getCachedKeyVal, clearConversationMessages, deleteCachedConversationRow } from '../utils/offlineDb'
 
 type Thread = {
@@ -27,9 +36,7 @@ type CommunityNode = {
   children: CommunityNode[]
 }
 
-// Cache keys and settings
-const THREADS_CACHE_KEY = 'chat-threads-list'
-const COMMUNITIES_CACHE_KEY = 'chat-communities-tree'
+// Cache settings (keys are viewer-scoped — see chatThreadsCache.ts)
 const CACHE_VERSION = 'v1'
 const CACHE_TTL_MS = 10 * 60 * 1000 // 10 minutes
 
@@ -56,6 +63,8 @@ function formatLastMessagePreview(text: string | null): string {
 export default function Messages(){
   const { setTitle } = useHeader()
   const { refreshBadges, adjustBadges } = useBadges()
+  const { profile } = useUserProfile()
+  const me = (profile as { username?: string } | null)?.username
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
@@ -66,44 +75,49 @@ export default function Messages(){
     return () => setTitle('')
   }, [setTitle])
 
-  // Load cached threads immediately for instant display
-  const [threads, setThreads] = useState<Thread[]>(() => {
-    const cached = readDeviceCache<Thread[]>(THREADS_CACHE_KEY, CACHE_VERSION)
-    return cached || []
-  })
-  // Only show loading if no cached data
-  const [loading, setLoading] = useState(() => {
-    const cached = readDeviceCache<Thread[]>(THREADS_CACHE_KEY, CACHE_VERSION)
-    return !cached || cached.length === 0
-  })
+  const [threads, setThreads] = useState<Thread[]>([])
+  const [loading, setLoading] = useState(true)
 
-  // Fallback: always try IndexedDB — it may have more complete data than localStorage
+  // Hydrate from viewer-scoped caches only (never show another account's thread list).
   useEffect(() => {
-    getCachedConversations().then(idbThreads => {
+    if (!me) {
+      setThreads([])
+      setCommunityTree([])
+      setLoading(true)
+      setCommunitiesLoading(true)
+      return
+    }
+    const tCached = readDeviceCache<Thread[]>(threadsListCacheKey(me), CACHE_VERSION)
+    setThreads(tCached || [])
+    setLoading(!tCached || tCached.length === 0)
+
+    const cCached = readDeviceCache<CommunityNode[]>(communitiesTreeCacheKey(me), CACHE_VERSION)
+    setCommunityTree(cCached || [])
+    setCommunitiesLoading(!cCached)
+
+    getCachedConversations(me).then(idbThreads => {
       if (idbThreads?.length) {
         setThreads(prev => {
-          // Never replace a non-empty list with IndexedDB: IDB can be longer but stale (e.g. previews after clear).
           if (prev.length > 0) return prev
           return idbThreads as Thread[]
         })
       }
       setLoading(false)
     }).catch(() => setLoading(false))
-  }, [])
+
+    getCachedKeyVal<GroupChat[]>(groupChatsListCacheKey(me)).then(cached => {
+      if (cached?.length) {
+        setGroupChats(prev => prev.length >= cached.length ? prev : cached)
+      }
+    })
+  }, [me])
   const [activeTab, setActiveTab] = useState<'chats'|'new'>('chats')
   const [swipeId, setSwipeId] = useState<string|null>(null)
   const [dragX, setDragX] = useState(0)
   const startXRef = useRef(0)
   const draggingIdRef = useRef<string|null>(null)
-  // Load cached communities immediately
-  const [communityTree, setCommunityTree] = useState<CommunityNode[]>(() => {
-    const cached = readDeviceCache<CommunityNode[]>(COMMUNITIES_CACHE_KEY, CACHE_VERSION)
-    return cached || []
-  })
-  const [communitiesLoading, setCommunitiesLoading] = useState(() => {
-    const cached = readDeviceCache<CommunityNode[]>(COMMUNITIES_CACHE_KEY, CACHE_VERSION)
-    return !cached
-  })
+  const [communityTree, setCommunityTree] = useState<CommunityNode[]>([])
+  const [communitiesLoading, setCommunitiesLoading] = useState(true)
   const [communityFilter, setCommunityFilter] = useState<'all' | number>('all')
   const [subCommunityFilter, setSubCommunityFilter] = useState<number | null>(null)
   const [communityError, setCommunityError] = useState<string | null>(null)
@@ -128,15 +142,6 @@ export default function Messages(){
   const [_groupChatsLoading, setGroupChatsLoading] = useState(false)
   void _groupChatsLoading // Suppress unused warning - reserved for future loading state
 
-  // Fallback: always try IndexedDB for group chats
-  useEffect(() => {
-    getCachedKeyVal<GroupChat[]>('group-chats-list').then(cached => {
-      if (cached?.length) {
-        setGroupChats(prev => prev.length >= cached.length ? prev : cached)
-      }
-    })
-  }, [])
-  
   // Group chat swipe state
   const [groupSwipeId, setGroupSwipeId] = useState<number | null>(null)
   const [groupDragX, setGroupDragX] = useState(0)
@@ -150,17 +155,17 @@ export default function Messages(){
   const [groupSearchQuery, setGroupSearchQuery] = useState('')
   const [dmSearchQuery, setDmSearchQuery] = useState('')
 
-  // Fetch threads with caching
+  // Fetch threads with caching (per logged-in viewer)
   const loadThreads = useCallback((silent: boolean = false) => {
+    if (!me) return
     if (!silent) setLoading(true)
     fetch('/api/chat_threads', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(j => {
         if (j?.success && Array.isArray(j.threads)) {
           const newThreads = j.threads as Thread[]
-          writeDeviceCache(THREADS_CACHE_KEY, newThreads, CACHE_TTL_MS, CACHE_VERSION)
-          cacheConversations(newThreads)
-          // Always take server list (sorted by activity). Index-based merge was wrong when order changed.
+          writeDeviceCache(threadsListCacheKey(me), newThreads, CACHE_TTL_MS, CACHE_VERSION)
+          cacheConversations(me, newThreads)
           setThreads(newThreads)
         }
       })
@@ -168,7 +173,7 @@ export default function Messages(){
       .finally(() => {
         if (!silent) setLoading(false)
       })
-  }, [])
+  }, [me])
 
   // Load archived threads
   const loadArchivedThreads = useCallback(() => {
@@ -186,20 +191,21 @@ export default function Messages(){
 
   // Load group chats
   const loadGroupChats = useCallback((silent = false) => {
+    if (!me) return
     if (!silent) setGroupChatsLoading(true)
     fetch('/api/group_chat/list', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(j => {
         if (j?.success && Array.isArray(j.groups)) {
           setGroupChats(j.groups)
-          cacheKeyVal('group-chats-list', j.groups)
+          cacheKeyVal(groupChatsListCacheKey(me), j.groups)
         }
       })
       .catch(() => {})
       .finally(() => {
         if (!silent) setGroupChatsLoading(false)
       })
-  }, [])
+  }, [me])
   
   // Delete group chat (only creator can delete)
   const deleteGroupChat = useCallback((groupId: number) => {
@@ -266,15 +272,12 @@ export default function Messages(){
   }, [loadThreads])
 
   useEffect(() => {
-    // Fetch fresh data immediately (non-silent to ensure UI updates quickly)
+    if (!me) return
     loadThreads(false)
     loadGroupChats(false)
-    
-    // Also load archived chats count on mount
     loadArchivedThreads()
-    
     refreshBadges()
-    
+
     const onVis = () => {
       if (!document.hidden) {
         loadThreads(true)
@@ -283,28 +286,24 @@ export default function Messages(){
       }
     }
     document.addEventListener('visibilitychange', onVis)
-    
-    // Handle navigation back (popstate fires when user presses back/forward)
+
     const onPopState = () => {
-      console.log('🔙 Detected back navigation, refreshing threads')
-      loadThreads(false) // Non-silent refresh on back navigation
+      loadThreads(false)
       loadGroupChats(false)
     }
     window.addEventListener('popstate', onPopState)
-    
-    // Poll every 3 seconds for faster updates (skip when offline)
+
     const t = setInterval(() => {
       loadThreads(true)
       loadGroupChats(true)
     }, 3000)
-    
+
     return () => {
       document.removeEventListener('visibilitychange', onVis)
       window.removeEventListener('popstate', onPopState)
       clearInterval(t)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadThreads, loadArchivedThreads, loadGroupChats, location.key])
+  }, [me, loadThreads, loadArchivedThreads, loadGroupChats, location.key, refreshBadges])
 
   // Function to fetch communities with optional cache-busting
   const fetchCommunitiesData = useCallback(async (forceRefresh = false) => {
@@ -376,12 +375,11 @@ export default function Messages(){
   // Refresh communities on visibility change (when returning to app)
   useEffect(() => {
     const onVis = async () => {
-      if (!document.hidden) {
-        // Silently refresh communities when returning to the app
+      if (!document.hidden && me) {
         try {
           const result = await fetchCommunitiesData(true) // Force refresh
           if (result.success && result.tree) {
-            writeDeviceCache(COMMUNITIES_CACHE_KEY, result.tree, CACHE_TTL_MS, CACHE_VERSION)
+            writeDeviceCache(communitiesTreeCacheKey(me), result.tree, CACHE_TTL_MS, CACHE_VERSION)
             setCommunityTree(result.tree)
           }
         } catch {
@@ -390,16 +388,18 @@ export default function Messages(){
       }
     }
     document.addEventListener('visibilitychange', onVis)
-    
+
     return () => {
       document.removeEventListener('visibilitychange', onVis)
     }
-  }, [fetchCommunitiesData])
+  }, [fetchCommunitiesData, me])
 
   useEffect(() => {
+    if (!me) return
+    const viewer = me
     let cancelled = false
-    // Only show loading if no cached data
-    const hasCachedCommunities = communityTree.length > 0
+    const hasCachedCommunities =
+      (readDeviceCache<CommunityNode[]>(communitiesTreeCacheKey(viewer), CACHE_VERSION)?.length ?? 0) > 0
     if (!hasCachedCommunities) {
       setCommunitiesLoading(true)
     }
@@ -412,11 +412,9 @@ export default function Messages(){
         if (cancelled) return
 
         if (result.success && result.tree) {
-          // Cache the community tree
-          writeDeviceCache(COMMUNITIES_CACHE_KEY, result.tree, CACHE_TTL_MS, CACHE_VERSION)
+          writeDeviceCache(communitiesTreeCacheKey(viewer), result.tree, CACHE_TTL_MS, CACHE_VERSION)
           setCommunityTree(result.tree)
         } else {
-          // Only clear if we don't have cached data
           if (!hasCachedCommunities) {
             setCommunityTree([])
           }
@@ -426,7 +424,6 @@ export default function Messages(){
         if (cancelled) {
           return
         }
-        // Only clear if we don't have cached data
         if (!hasCachedCommunities) {
           setCommunityTree([])
         }
@@ -440,7 +437,7 @@ export default function Messages(){
 
     fetchCommunities()
     return () => { cancelled = true }
-  }, [fetchCommunitiesData])
+  }, [fetchCommunitiesData, me])
 
   const nodeById = useMemo(() => {
     const map = new Map<number, CommunityNode>()
@@ -937,8 +934,10 @@ export default function Messages(){
                               // Clear local caches for this chat
                               try {
                                 import('../utils/deviceCache').then(({ clearDeviceCache }) => {
-                                  clearDeviceCache(`chat-messages:${t.other_username}`)
-                                  clearDeviceCache(`chat-profile:${t.other_username}`)
+                                  if (me) {
+                                    clearDeviceCache(chatMessagesDeviceCacheKey(me, t.other_username))
+                                    clearDeviceCache(chatProfileDeviceCacheKey(me, t.other_username))
+                                  }
                                 })
                               } catch {}
                               // Refetch thread list
@@ -1176,12 +1175,12 @@ export default function Messages(){
                 const u = chatMoreTarget.username
                 await fetch('/api/chat/clear_history', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ other_username: u }) }).catch(() => {})
                 setChatMoreTarget(null)
-                if (u) {
-                  clearDeviceCache(`chat-messages:${u}`)
-                  clearDeviceCache(`chat-profile:${u}`)
-                  clearDeviceCache(THREADS_CACHE_KEY)
-                  void clearConversationMessages(`dm:${u}`)
-                  void deleteCachedConversationRow(u)
+                if (u && me) {
+                  clearDeviceCache(chatMessagesDeviceCacheKey(me, u))
+                  clearDeviceCache(chatProfileDeviceCacheKey(me, u))
+                  clearDeviceCache(threadsListCacheKey(me))
+                  void clearConversationMessages(dmConversationOfflineKey(me, u))
+                  void deleteCachedConversationRow(me, u)
                   const nowIso = new Date().toISOString()
                   setThreads(prev =>
                     prev.map(t =>
