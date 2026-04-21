@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date, datetime
 
 from flask import url_for
 
@@ -11,6 +12,18 @@ from backend.services.dm_chats_tables import ensure_archived_chats_table
 from redis_cache import CHAT_THREADS_TTL, cache
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_last_activity_time(value: object) -> str | None:
+    """Thread list JSON + sort: one comparable type (ISO-like string), never datetime vs str."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat(sep="T", timespec="seconds")
+    if isinstance(value, date):
+        return value.isoformat()
+    s = str(value).strip()
+    return s if s else None
 
 
 def build_chat_threads_payload(username: str) -> dict:
@@ -238,7 +251,7 @@ def build_chat_threads_payload(username: str) -> dict:
                             "display_name": display_name,
                             "profile_picture_url": profile_picture_url,
                             "last_message_text": last_message_text,
-                            "last_activity_time": last_activity_time,
+                            "last_activity_time": _normalize_last_activity_time(last_activity_time),
                             "last_sender": last_sender,
                             "unread_count": int(unread_count or 0),
                             "muted": other_username in muted_chats,
