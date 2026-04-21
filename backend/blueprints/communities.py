@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from functools import lru_cache, wraps
+from typing import Optional
 
 from flask import (
     Blueprint,
@@ -29,14 +30,30 @@ logger = logging.getLogger(__name__)
 
 @lru_cache(maxsize=1)
 def _legacy_community_helpers():
-    """Lazy import helpers from the legacy monolith to avoid circular imports."""
+    """Lazy import helpers from the legacy monolith to avoid circular imports.
+
+    ``CommunityMembershipLimitError`` now lives in
+    :mod:`backend.services.community`; we import it directly from there
+    and keep the shape of this tuple stable for the two call sites
+    (``add_member`` and ``add_member_to_subcommunity``).
+    """
+    from backend.services.community import CommunityMembershipLimitError
     from bodybuilding_app import (  # type: ignore import-not-found
-        CommunityMembershipLimitError,
         add_user_to_community,
         is_app_admin,
     )
 
     return CommunityMembershipLimitError, add_user_to_community, is_app_admin
+
+
+def _render_member_cap_payload(limit_err, *, session_username: Optional[str] = None):
+    """Thin shim around :func:`backend.services.community.render_member_cap_error`
+    so both this blueprint and the legacy monolith share a single copy of the
+    owner-vs-invitee branching logic.
+    """
+    from backend.services.community import render_member_cap_error
+
+    return render_member_cap_error(limit_err, session_username=session_username)
 
 
 def _login_required(view_func):
@@ -247,7 +264,9 @@ def add_community_member():
             try:
                 add_user_to_community_fn(c, new_member["id"], community_id_int, role="member", username=new_member_username)
             except CommunityMembershipLimitError as limit_err:
-                return jsonify({"success": False, "error": str(limit_err)}), 403
+                conn.commit()  # persist the owner notification fired from the helper
+                payload, status = _render_member_cap_payload(limit_err, session_username=username)
+                return jsonify(payload), status
             conn.commit()
         return jsonify({"success": True})
     except Exception as exc:
@@ -663,7 +682,9 @@ def add_member_to_subcommunity():
                 add_user_to_community_fn(c, target_user_id, target_community_id, role="member", username=target_username)
                 conn.commit()
             except CommunityMembershipLimitError as limit_err:
-                return jsonify({"success": False, "error": str(limit_err)}), 403
+                conn.commit()  # persist the owner notification fired from the helper
+                payload, status = _render_member_cap_payload(limit_err, session_username=username)
+                return jsonify(payload), status
             
             # Get community name for response
             c.execute("SELECT name FROM communities WHERE id = ?", (target_community_id,))

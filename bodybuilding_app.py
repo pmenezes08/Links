@@ -1684,9 +1684,13 @@ def normalize_id_list(raw) -> List[int]:
                 pass
     return result
 
-class CommunityMembershipLimitError(Exception):
-    """Raised when a free-plan community exceeds its member capacity."""
-    pass
+# CommunityMembershipLimitError now lives in backend.services.community.
+# The re-export below keeps legacy call sites (add_user_to_community,
+# the subcommunity adder, the /create_community free-tier gate) working
+# without edits. See backend/services/community.py for the structured
+# attributes (community_id, community_name, cap, attempted_username,
+# creator_username) callers should prefer over str(exc).
+from backend.services.community import CommunityMembershipLimitError  # noqa: E402,F401
 
 
 def normalize_subscription(value: Optional[str]) -> str:
@@ -1837,54 +1841,12 @@ def get_follow_counts(cursor, username: str) -> Tuple[int, int]:
     return summary['followers'], summary['following']
 
 
-def ensure_free_parent_member_capacity(cursor, community_id: Optional[int], extra_members: int = 1) -> None:
-    """Ensure a free-plan parent community has capacity for additional members."""
-    if not community_id:
-        return
-    community_info = get_community_basic(cursor, community_id)
-    if not community_info:
-        return
-    if community_info.get('parent_community_id'):
-        # Only enforce on parent communities
-        return
-    creator_username = community_info.get('creator_username')
-    if not creator_username or creator_username.lower() == 'admin':
-        return
-    subscription_value = fetch_user_subscription(cursor, creator_username)
-    if not is_free_subscription(subscription_value):
-        return
-    placeholder = get_sql_placeholder()
-    cursor.execute(f"SELECT COUNT(*) FROM user_communities WHERE community_id = {placeholder}", (community_id,))
-    row = cursor.fetchone()
-    current_count = 0
-    if row:
-        if hasattr(row, 'keys'):
-            current_count = list(row.values())[0]
-        else:
-            current_count = row[0] if isinstance(row, (list, tuple)) and row else 0
-    try:
-        current_count = int(current_count or 0)
-    except Exception:
-        current_count = 0
-    # Read the Free-tier per-community member cap from entitlements (KB-driven).
-    # Fail closed on resolver error to a safe legacy cap of 100 so we never
-    # uncap a free community because the KB is temporarily broken.
-    free_members_cap = 100
-    try:
-        from backend.services.entitlements import resolve_entitlements as _resolve_ent
-        _ent = _resolve_ent(creator_username) or {}
-        _cap = _ent.get("members_per_owned_community")
-        if isinstance(_cap, int) and _cap > 0:
-            free_members_cap = _cap
-    except Exception:
-        logger.exception(
-            "ensure_free_parent_member_capacity: resolve_entitlements failed for %s",
-            creator_username,
-        )
-    if current_count + extra_members > free_members_cap:
-        raise CommunityMembershipLimitError(
-            f'Free plan communities can have up to {free_members_cap} members. Upgrade to add more members.'
-        )
+# ensure_free_parent_member_capacity now lives in
+# backend.services.community. The re-export keeps the existing monolith
+# call sites working; see that module for the signature (the new
+# ``attempted_username`` kw-arg enables owner+admin notifications on
+# block, and the raised exception carries structured context).
+from backend.services.community import ensure_free_parent_member_capacity  # noqa: E402,F401
 
 
 # ============================================================================
@@ -2046,7 +2008,9 @@ def add_user_to_community(cursor, user_id: int, community_id: int, role: Optiona
         username: Optional username (used for cache invalidation and welcome posts)
         skip_welcome_post: If True, don't create a Steve welcome post (use for migrations, admin setup, etc.)
     """
-    ensure_free_parent_member_capacity(cursor, community_id)
+    ensure_free_parent_member_capacity(
+        cursor, community_id, attempted_username=username
+    )
     joined_at_value = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     if role is None:
         if USE_MYSQL:
@@ -11133,7 +11097,9 @@ def admin_add_user_to_community_api():
             conn.commit()
             return jsonify({'success': True, 'message': f'Added {target_username} to {comm_name}'})
     except CommunityMembershipLimitError as e:
-        return jsonify({'success': False, 'error': str(e)}), 403
+        from backend.services.community import render_member_cap_error
+        payload, status = render_member_cap_error(e, session_username=session.get('username'))
+        return jsonify(payload), status
     except Exception as e:
         logger.error(f"admin_add_user_to_community error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -28620,7 +28586,9 @@ def create_community():
                     add_user_to_community(c, user_id, community_id, role='owner')
                 except CommunityMembershipLimitError as limit_err:
                     conn.rollback()
-                    return jsonify({'success': False, 'error': str(limit_err)}), 403
+                    from backend.services.community import render_member_cap_error
+                    payload, status = render_member_cap_error(limit_err, session_username=username)
+                    return jsonify(payload), status
             
             # Ensure admin is also a member of every community
             c.execute("SELECT id FROM users WHERE username = 'admin'")
@@ -28633,7 +28601,9 @@ def create_community():
                         add_user_to_community(c, admin_id, community_id, role=None, skip_welcome_post=True)
                     except CommunityMembershipLimitError as limit_err:
                         conn.rollback()
-                        return jsonify({'success': False, 'error': str(limit_err)}), 403
+                        from backend.services.community import render_member_cap_error
+                        payload, status = render_member_cap_error(limit_err, session_username=username)
+                        return jsonify(payload), status
             
             conn.commit()
             
@@ -30097,7 +30067,9 @@ def join_with_invite():
                         add_user_to_community(c, user_id, int(comm_id), role='member', username=username)
                     except CommunityMembershipLimitError as limit_err:
                         conn.rollback()
-                        return jsonify({'success': False, 'error': str(limit_err)}), 403
+                        from backend.services.community import render_member_cap_error
+                        payload, status = render_member_cap_error(limit_err, session_username=username)
+                        return jsonify(payload), status
             
             # Check if community uses single-use invites
             _ensure_invite_single_use_column(c)
@@ -30281,7 +30253,9 @@ def invite_to_community():
                             add_user_to_community(c, existing_user_id, int(comm_id), role='member', username=existing_username)
                         except CommunityMembershipLimitError as limit_err:
                             conn.rollback()
-                            return jsonify({'success': False, 'error': str(limit_err)}), 403
+                            from backend.services.community import render_member_cap_error
+                            payload, status = render_member_cap_error(limit_err, session_username=existing_username)
+                            return jsonify(payload), status
                 
                 conn.commit()
                 

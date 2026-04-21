@@ -265,15 +265,24 @@ def run_section_10() -> bool:
                 all_ok &= pf(False, "boundary: 25 + 0 should not raise", str(e))
 
             # 4b. extra_members=1 MUST raise (this is the 26th-member block).
+            # As of the Phase-1 refactor, the exception carries structured
+            # attributes (cap, community_id, community_name, …) rather than a
+            # plain message, so we assert on ``.cap`` rather than grepping
+            # ``str(exc)``.
             try:
-                ensure_free_parent_member_capacity(c, community_id, extra_members=1)
+                ensure_free_parent_member_capacity(
+                    c, community_id, extra_members=1,
+                    attempted_username="qa_synthetic_extra",
+                )
                 all_ok &= pf(False, "26th member: expected raise but got through")
             except CommunityMembershipLimitError as e:
-                msg = str(e)
                 all_ok &= pf(True, "26th member raises")
-                all_ok &= pf("25 members" in msg,
-                             "error message cites 25-member cap",
-                             f"msg={msg!r}")
+                all_ok &= pf(e.cap == 25,
+                             "error carries cap=25",
+                             f"cap={e.cap!r}")
+                all_ok &= pf(e.community_id == community_id,
+                             "error carries community_id",
+                             f"got={e.community_id!r} expected={community_id}")
 
     except Exception as e:
         traceback.print_exc()

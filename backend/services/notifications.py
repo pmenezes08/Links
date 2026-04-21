@@ -135,6 +135,199 @@ def truncate_notification_preview(text: str, max_len: int = 160) -> str:
     return preview[: max_len - 1].rstrip() + "…"
 
 
+# ── Community member-blocked notification ──────────────────────────────
+#
+# Fired by ``ensure_free_parent_member_capacity`` callers when an invitee
+# is rejected due to the per-tier member cap. Fans out a single in-app
+# notification to the community owner + admins, deduped to once per
+# (community, recipient) per 24h so a spammy invite link doesn't flood
+# the bell. Intentionally link-less in this release — community-level
+# paid tiering (the actual "Upgrade" destination) ships in a later PR.
+
+
+_BLOCKED_DEDUPE_HOURS = 24
+
+
+def _iter_community_owner_and_admins(cursor, community_id: int) -> list[str]:
+    """Return the set of usernames who should be notified when a join attempt
+    is blocked: the community creator + anyone with an admin/owner/moderator
+    role on ``user_communities``. Deduplicated, lower-cased at comparison
+    time but returned in original casing for the ``notifications`` join.
+    """
+    placeholder = get_sql_placeholder()
+    recipients: list[str] = []
+    seen: set[str] = set()
+
+    try:
+        cursor.execute(
+            f"SELECT creator_username FROM communities WHERE id = {placeholder}",
+            (community_id,),
+        )
+        row = cursor.fetchone()
+        if row:
+            creator = row["creator_username"] if hasattr(row, "keys") else row[0]
+            if creator:
+                key = str(creator).strip().lower()
+                if key and key not in seen:
+                    recipients.append(str(creator))
+                    seen.add(key)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning(
+            "notify_community_member_blocked: creator lookup failed for %s: %s",
+            community_id,
+            exc,
+        )
+
+    try:
+        cursor.execute(
+            f"""
+            SELECT DISTINCT u.username
+            FROM user_communities uc
+            JOIN users u ON uc.user_id = u.id
+            WHERE uc.community_id = {placeholder}
+              AND LOWER(COALESCE(uc.role, '')) IN ('admin', 'owner', 'moderator', 'manager')
+            """,
+            (community_id,),
+        )
+        for row in cursor.fetchall() or []:
+            uname = row["username"] if hasattr(row, "keys") else row[0]
+            if not uname:
+                continue
+            key = str(uname).strip().lower()
+            if key and key not in seen:
+                recipients.append(str(uname))
+                seen.add(key)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning(
+            "notify_community_member_blocked: admin lookup failed for %s: %s",
+            community_id,
+            exc,
+        )
+
+    return recipients
+
+
+def _recently_notified_member_blocked(
+    cursor,
+    *,
+    recipient_username: str,
+    community_id: int,
+) -> bool:
+    """Dedupe guard: return True if we've already notified this recipient
+    for this community within ``_BLOCKED_DEDUPE_HOURS``.
+    """
+    placeholder = get_sql_placeholder()
+    try:
+        if USE_MYSQL:
+            cursor.execute(
+                f"""
+                SELECT 1 FROM notifications
+                WHERE user_id = {placeholder}
+                  AND community_id = {placeholder}
+                  AND type = 'member_blocked'
+                  AND created_at > NOW() - INTERVAL {int(_BLOCKED_DEDUPE_HOURS)} HOUR
+                LIMIT 1
+                """,
+                (recipient_username, community_id),
+            )
+        else:
+            cursor.execute(
+                f"""
+                SELECT 1 FROM notifications
+                WHERE user_id = {placeholder}
+                  AND community_id = {placeholder}
+                  AND type = 'member_blocked'
+                  AND datetime(created_at) > datetime('now', '-{int(_BLOCKED_DEDUPE_HOURS)} hours')
+                LIMIT 1
+                """,
+                (recipient_username, community_id),
+            )
+        return cursor.fetchone() is not None
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning(
+            "notify_community_member_blocked: dedupe check failed for %s/%s: %s",
+            recipient_username,
+            community_id,
+            exc,
+        )
+        return False
+
+
+def notify_community_member_blocked(
+    cursor,
+    *,
+    community_id: int,
+    community_name: str,
+    attempted_username: str,
+    cap: int,
+) -> int:
+    """Notify the community's owner + admins that a join attempt was
+    blocked by the member-cap. Dedupes to once per (community, recipient)
+    per 24h.
+
+    Runs in the caller's transaction (we accept a cursor, not a conn) so
+    the notification rolls back cleanly if the surrounding request fails.
+
+    Returns the number of notifications actually inserted (0 when every
+    recipient was deduped).
+    """
+    if not community_id or not attempted_username:
+        return 0
+
+    message = (
+        f"{attempted_username} tried to join \"{community_name}\" but it's at "
+        f"the {cap}-member limit. Paid community tiers are coming soon — "
+        f"we'll email you when upgrade is available."
+    )
+
+    placeholder = get_sql_placeholder()
+    inserted = 0
+    for recipient in _iter_community_owner_and_admins(cursor, community_id):
+        if _recently_notified_member_blocked(
+            cursor,
+            recipient_username=recipient,
+            community_id=community_id,
+        ):
+            continue
+        try:
+            if USE_MYSQL:
+                cursor.execute(
+                    f"""
+                    INSERT INTO notifications
+                        (user_id, from_user, type, community_id, message, link, created_at, is_read)
+                    VALUES ({placeholder}, {placeholder}, 'member_blocked', {placeholder}, {placeholder}, NULL, NOW(), 0)
+                    """,
+                    (recipient, attempted_username, community_id, message),
+                )
+            else:
+                now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                cursor.execute(
+                    f"""
+                    INSERT INTO notifications
+                        (user_id, from_user, type, community_id, message, link, created_at, is_read)
+                    VALUES ({placeholder}, {placeholder}, 'member_blocked', {placeholder}, {placeholder}, NULL, {placeholder}, 0)
+                    """,
+                    (recipient, attempted_username, community_id, message, now_str),
+                )
+            inserted += 1
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning(
+                "notify_community_member_blocked: insert failed for %s/%s: %s",
+                recipient,
+                community_id,
+                exc,
+            )
+
+    if inserted:
+        logger.info(
+            "notify_community_member_blocked: %d notification(s) for community=%s attempt=%s",
+            inserted,
+            community_id,
+            attempted_username,
+        )
+    return inserted
+
+
 def fanout_community_post_notifications(
     *,
     community_id: int,

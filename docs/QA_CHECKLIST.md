@@ -173,9 +173,27 @@ Expected: `36 PASS, 0 FAIL` against a healthy staging DB.
 - [ ] Pick any Free-owned community and add 25 members (the seed
       script already does this via synthetic users; otherwise invite
       25 real testers). The 25th must succeed.
-- [ ] Attempt to add a 26th member — client shows
-      `"Free plan communities can have up to 25 members. Upgrade to
-      add more members."` and API returns a 4xx.
+- [ ] Attempt to add a 26th member (as the **invitee**, e.g. open the
+      invite link in an incognito window while logged in as any
+      non-owner account). The client must show the **neutral**
+      message `"This community has reached its member limit. Please
+      reach out to the community owner or an admin for further
+      context."` and the API must return `403` with
+      `reason_code: "community_member_limit"`. The word **"Upgrade"
+      must not appear** — that was the bug this release fixes.
+- [ ] As the **community owner** (`test_free`), attempt the same 26th
+      add from the admin-web or the community settings. The client
+      must show `"This community is at its 25-member cap. Paid
+      community tiers are coming soon."` and the API must return
+      `403` with the same `reason_code`.
+- [ ] While logged in as the owner, open the notifications bell. You
+      must see a single in-app notification of the form
+      `"<invitee_username> tried to join \"<community>\" but it's at
+      the 25-member limit. Paid community tiers are coming soon —
+      we'll email you when upgrade is available."`. Trigger two more
+      blocked attempts from different accounts **within 24 h** — the
+      bell must **not** accumulate duplicates for the same
+      community (dedupe window).
 - [ ] In admin-web, edit `Product → User Tiers` and change
       `free_members_per_owned_community` from 25 → 30. Save with a
       reason. Re-run `scripts/run_qa_verification.py` and confirm the

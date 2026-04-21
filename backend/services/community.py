@@ -12,6 +12,238 @@ from backend.services.database import get_db_connection, get_sql_placeholder
 logger = logging.getLogger(__name__)
 
 
+# ── Free-tier membership-cap enforcement ────────────────────────────────
+#
+# The exception + helper below were lifted out of ``bodybuilding_app.py``
+# as part of the Phase 1 refactor (April 2026). They are imported back
+# into the monolith via a shim so the three existing call sites
+# (``add_user_to_community``, the subcommunity adder, and the
+# ``/create_community`` free-tier gate) keep working without edits.
+
+
+class CommunityMembershipLimitError(Exception):
+    """Raised when a community has exhausted its per-tier member cap.
+
+    The exception carries structured context so route handlers can render
+    tier-appropriate copy (owner vs. invitee) without relying on the
+    plain-text ``str()`` form — which was previously being returned
+    verbatim to the client and leaked "Upgrade" CTAs to users who aren't
+    the owner and can't act on them.
+    """
+
+    def __init__(
+        self,
+        *,
+        community_id: Optional[int],
+        community_name: Optional[str],
+        cap: Optional[int],
+        attempted_username: Optional[str],
+        creator_username: Optional[str],
+    ) -> None:
+        self.community_id = community_id
+        self.community_name = community_name or ""
+        self.cap = cap
+        self.attempted_username = attempted_username or ""
+        self.creator_username = creator_username or ""
+        # Keep ``str(exc)`` neutral — never render this directly to a user.
+        super().__init__(
+            f"community {community_id} at member cap {cap}"
+        )
+
+
+def render_member_cap_error(
+    exc: "CommunityMembershipLimitError",
+    *,
+    session_username: Optional[str] = None,
+) -> Tuple[Dict[str, Any], int]:
+    """Return ``(payload, http_status)`` for a member-cap exception.
+
+    Single source of truth for the user-facing copy so that all three
+    catch sites (the two blueprint routes and the legacy monolith routes
+    that still catch this exception) stay consistent without each having
+    to duplicate the owner-vs-invitee branch.
+
+    * **Owner** (``session_username`` matches the community creator) —
+      "coming soon" copy; no promise of a ship date.
+    * **Everyone else** — neutral "reach out to the owner/admin"; no
+      upgrade CTA, because they can't act on one.
+    """
+    cap = exc.cap if exc.cap is not None else 25
+    creator = (exc.creator_username or "").strip().lower()
+    current = (session_username or "").strip().lower()
+    is_owner = bool(creator) and creator == current
+
+    if is_owner:
+        msg = (
+            f"This community is at its {cap}-member cap. Paid community "
+            f"tiers are coming soon."
+        )
+    else:
+        msg = (
+            f"This community has reached its member limit. Please reach "
+            f"out to the community owner or an admin for further context."
+        )
+
+    return (
+        {
+            "success": False,
+            "error": msg,
+            "reason_code": "community_member_limit",
+            "community_id": exc.community_id,
+        },
+        403,
+    )
+
+
+def _normalize_subscription(value: Optional[str]) -> str:
+    return str(value or "").strip().lower()
+
+
+def _is_free_subscription(subscription_value: str) -> bool:
+    # Mirror the legacy helper from ``bodybuilding_app.py``: anyone who is
+    # not explicitly 'premium' is treated as free for capacity purposes.
+    # Trial and special are excluded separately at the resolver layer
+    # (special is uncapped; trial is treated as premium-equivalent here
+    # only if they have a live Stripe trial — resolved via ``resolve_entitlements``).
+    return _normalize_subscription(subscription_value) not in {"premium"}
+
+
+def _fetch_user_subscription(cursor, username: Optional[str]) -> str:
+    if not username:
+        return ""
+    placeholder = get_sql_placeholder()
+    cursor.execute(
+        f"SELECT subscription FROM users WHERE username = {placeholder}",
+        (username,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return ""
+    if hasattr(row, "keys"):
+        return _normalize_subscription(row.get("subscription"))
+    return _normalize_subscription(
+        row[0] if isinstance(row, (list, tuple)) and row else row
+    )
+
+
+def _fetch_community_name(cursor, community_id: int) -> str:
+    placeholder = get_sql_placeholder()
+    try:
+        cursor.execute(
+            f"SELECT name FROM communities WHERE id = {placeholder}",
+            (community_id,),
+        )
+        row = cursor.fetchone()
+    except Exception:
+        return ""
+    if not row:
+        return ""
+    if hasattr(row, "keys"):
+        return str(row.get("name") or "")
+    return str(row[0] if isinstance(row, (list, tuple)) and row else "")
+
+
+def ensure_free_parent_member_capacity(
+    cursor,
+    community_id: Optional[int],
+    extra_members: int = 1,
+    *,
+    attempted_username: Optional[str] = None,
+) -> None:
+    """Raise ``CommunityMembershipLimitError`` if a Free-plan parent community
+    would exceed its per-tier member cap after adding ``extra_members``.
+
+    Noops for:
+      * missing ``community_id``
+      * sub-communities (enforcement only applies to the root)
+      * admin-owned communities
+      * communities owned by a non-Free user
+
+    The cap is sourced from ``resolve_entitlements()`` so it stays
+    KB-driven; on resolver error we fail **closed** to a safe legacy
+    cap of 100 so we never accidentally uncap a Free community because
+    the KB is temporarily broken.
+
+    Owner notification (``notify_community_member_blocked``) is fired
+    from the caller, not here, so this helper stays purely about
+    enforcement and can be unit-tested without a notifications table.
+    """
+    if not community_id:
+        return
+    info = get_community_basic(cursor, community_id)
+    if not info:
+        return
+    if info.get("parent_community_id"):
+        return  # sub-communities inherit their parent's cap indirectly
+    creator_username = info.get("creator_username")
+    if not creator_username or str(creator_username).lower() == "admin":
+        return
+    subscription_value = _fetch_user_subscription(cursor, creator_username)
+    if not _is_free_subscription(subscription_value):
+        return
+
+    placeholder = get_sql_placeholder()
+    cursor.execute(
+        f"SELECT COUNT(*) FROM user_communities WHERE community_id = {placeholder}",
+        (community_id,),
+    )
+    row = cursor.fetchone()
+    current_count = 0
+    if row:
+        if hasattr(row, "keys"):
+            current_count = list(row.values())[0]
+        else:
+            current_count = row[0] if isinstance(row, (list, tuple)) and row else 0
+    try:
+        current_count = int(current_count or 0)
+    except Exception:
+        current_count = 0
+
+    free_members_cap = 100  # fail-closed legacy fallback
+    try:
+        from backend.services.entitlements import resolve_entitlements
+
+        entitlements = resolve_entitlements(creator_username) or {}
+        resolved_cap = entitlements.get("members_per_owned_community")
+        if isinstance(resolved_cap, int) and resolved_cap > 0:
+            free_members_cap = resolved_cap
+    except Exception:
+        logger.exception(
+            "ensure_free_parent_member_capacity: resolve_entitlements failed for %s",
+            creator_username,
+        )
+
+    if current_count + extra_members > free_members_cap:
+        community_name = _fetch_community_name(cursor, community_id)
+        # Fire the owner+admin notification *before* raising so it lands
+        # in the caller's transaction; if the caller rolls back the whole
+        # request, the notification rolls back too (no orphans).
+        if attempted_username:
+            try:
+                from backend.services.notifications import notify_community_member_blocked
+
+                notify_community_member_blocked(
+                    cursor,
+                    community_id=community_id,
+                    community_name=community_name,
+                    attempted_username=attempted_username,
+                    cap=free_members_cap,
+                )
+            except Exception:
+                logger.exception(
+                    "ensure_free_parent_member_capacity: notify failed (community=%s attempt=%s)",
+                    community_id,
+                    attempted_username,
+                )
+        raise CommunityMembershipLimitError(
+            community_id=community_id,
+            community_name=community_name,
+            cap=free_members_cap,
+            attempted_username=attempted_username,
+            creator_username=str(creator_username),
+        )
+
+
 def is_community_owner(username, community_id):
     """Check if a user is the owner of a community."""
     norm_username = (username or "").strip().lower()

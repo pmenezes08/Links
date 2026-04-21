@@ -162,7 +162,37 @@ CREATE TABLE IF NOT EXISTS communities (
     id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(191) UNIQUE NOT NULL,
     tier VARCHAR(32) DEFAULT 'free',
+    creator_username VARCHAR(191),
+    parent_community_id INT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
+_USER_COMMUNITIES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS user_communities (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    community_id INT NOT NULL,
+    role VARCHAR(32) DEFAULT 'member',
+    joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_user_community (user_id, community_id)
+)
+"""
+
+_NOTIFICATIONS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS notifications (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id VARCHAR(191) NOT NULL,
+    from_user VARCHAR(191),
+    type VARCHAR(64) NOT NULL,
+    post_id INT NULL,
+    community_id INT NULL,
+    message TEXT,
+    link VARCHAR(512),
+    preview_text VARCHAR(191),
+    is_read TINYINT(1) DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_notif_user_created (user_id, created_at)
 )
 """
 
@@ -188,6 +218,8 @@ def _bootstrap_schema() -> None:
         c = conn.cursor()
         c.execute(_USERS_TABLE_SQL)
         c.execute(_COMMUNITIES_TABLE_SQL)
+        c.execute(_USER_COMMUNITIES_TABLE_SQL)
+        c.execute(_NOTIFICATIONS_TABLE_SQL)
         try:
             conn.commit()
         except Exception:
@@ -217,6 +249,8 @@ def _bootstrap_schema() -> None:
 _TRUNCATE_TABLES: List[str] = [
     "users",
     "communities",
+    "user_communities",
+    "notifications",
     "ai_usage_log",
     "special_access_log",
     "kb_pages",
