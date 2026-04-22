@@ -18,6 +18,7 @@ import { useAudioRecorder } from '../components/useAudioRecorder'
 import EditableAISummary from '../components/EditableAISummary'
 import { isVideoAttachmentPath } from '../utils/replyMedia'
 import { ENTITLEMENTS_REFRESH_EVENT } from '../hooks/useEntitlements'
+import { clearDeviceCache } from '../utils/deviceCache'
 
 function replyDisplayUrl(raw: string | null | undefined): string {
   const s = (raw ?? '').trim()
@@ -652,6 +653,16 @@ export default function CommentReply() {
       const res = await fetch('/delete_reply', { method: 'POST', credentials: 'include', body: fd })
       const data = await res.json()
       if (data.success) {
+        // Invalidate caches so PostDetail and feeds don't resurrect the deleted reply
+        try {
+          if (post?.id) clearDeviceCache(`post-${post.id}`)
+          const cid = (post as any)?.community_id
+          if (cid !== undefined && cid !== null && cid !== '') {
+            clearDeviceCache(`community-feed:${cid}`)
+          }
+          clearDeviceCache('home-timeline')
+        } catch {}
+
         if (targetReplyId === reply?.id) {
           // Simple approach: always go to the post (PostDetail will handle community context)
           if (post) {
