@@ -51,6 +51,15 @@ function normalizePath(p?: string | null): string {
   return `/uploads/${s}`
 }
 
+/** Matches server AI_USERNAME (bodybuilding_app.py) — Steve replies have parent_reply_id but must list with top-level rows. */
+const STEVE_AI_USERNAME = 'steve'
+function isSteveAiReply(r: Reply): boolean {
+  return (r.username || '').toLowerCase() === STEVE_AI_USERNAME
+}
+function isReplyRowTopLevel(r: Reply): boolean {
+  return !r.parent_reply_id || isSteveAiReply(r)
+}
+
 export default function PostDetail(){
   const { post_id } = useParams()
   const navigate = useNavigate()
@@ -89,7 +98,12 @@ export default function PostDetail(){
   // Call Steve AI to generate a reply
   const callSteveAI = async (userMessage: string, parentReplyId: number | null) => {
     if (!post || !containsSteveMention(userMessage)) return
-    
+    const communityIdRaw = (post as { community_id?: number | string | null }).community_id
+    const communityId =
+      communityIdRaw !== undefined && communityIdRaw !== null && communityIdRaw !== ''
+        ? Number(communityIdRaw)
+        : null
+
     try {
       setSteveIsTyping(true)
       const response = await fetch('/api/ai/steve_reply', {
@@ -100,7 +114,7 @@ export default function PostDetail(){
           post_id: post.id,
           parent_reply_id: parentReplyId,
           user_message: userMessage,
-          community_id: null // PostDetail doesn't always have community context
+          community_id: Number.isFinite(communityId as number) ? communityId : null,
         })
       })
       
@@ -109,23 +123,8 @@ export default function PostDetail(){
       
       if (data.success && data.reply) {
         const steveReply = data.reply as Reply
-        // Add Steve's reply to the post
-        setPost(p => {
-          if (!p) return p
-          if (parentReplyId) {
-            function attachSteve(list: Reply[]): Reply[] {
-              return list.map(item => {
-                if (item.id === parentReplyId) {
-                  const children = item.children ? [steveReply, ...item.children] : [steveReply]
-                  return { ...item, children }
-                }
-                return { ...item, children: item.children ? attachSteve(item.children) : item.children }
-              })
-            }
-            return { ...p, replies: attachSteve(p.replies) }
-          }
-          return { ...p, replies: [steveReply, ...p.replies] }
-        })
+        // Prepend like CommunityFeed onAddReply so the row exists even if nested attach races; list filter shows Steve despite parent_reply_id.
+        setPost(p => (p ? { ...p, replies: [steveReply, ...(p.replies || [])] } : p))
         try { window.dispatchEvent(new Event(ENTITLEMENTS_REFRESH_EVENT)) } catch { /* noop */ }
       } else if (!data.success) {
         console.error('[Steve AI] Error:', data.error)
@@ -897,10 +896,13 @@ export default function PostDetail(){
         }
         return { ...p, replies: [j.reply, ...p.replies] }
       })
-      // Check if user mentioned @Steve and trigger AI reply
+      // Check if user mentioned @Steve and trigger AI reply (defer so user reply is committed first — avoids attach race)
       const messageText = content.trim()
       if (containsSteveMention(messageText)) {
-        callSteveAI(messageText, j.reply.id)
+        const parentId = j.reply.id as number
+        queueMicrotask(() => {
+          void callSteveAI(messageText, parentId)
+        })
       }
       setContent(''); setFile(null); setUploadFile(null); setReplyGif(null); setFilePreviewUrl(null); if (fileInputRef.current) fileInputRef.current.value = ''
       replyTokenRef.current = `${Date.now()}_${Math.random().toString(36).slice(2)}`
@@ -950,9 +952,12 @@ export default function PostDetail(){
         }
         return { ...p, replies: attach(p.replies) }
       })
-      // Check if user mentioned @Steve and trigger AI reply
       if (containsSteveMention(text)) {
-        callSteveAI(text, j.reply.id)
+        const parentId = j.reply.id as number
+        const msg = text
+        queueMicrotask(() => {
+          void callSteveAI(msg, parentId)
+        })
       }
     }
   }
@@ -1766,8 +1771,8 @@ export default function PostDetail(){
         </div>
 
         <div className="mt-3 rounded-2xl border border-white/10">
-          {/* Only show top-level replies (X-style: no nested replies inline) */}
-          {post.replies.filter(r => !r.parent_reply_id).map(r => (
+          {/* Top-level + Steve AI replies (Steve has parent_reply_id in DB but should appear in this list) */}
+          {post.replies.filter(r => isReplyRowTopLevel(r)).map(r => (
             <ReplyNodeMemo
               key={r.id}
               reply={r}

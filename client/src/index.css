@@ -196,7 +196,11 @@
 .app-scroll-region > .h-screen.overflow-hidden,
 .app-scroll-region > .overflow-hidden.h-screen,
 .app-scroll-region :where(.h-screen.overflow-hidden),
-.app-scroll-region :where(.overflow-hidden.h-screen) {
+.app-scroll-region :where(.overflow-hidden.h-screen),
+.app-scroll-region > .min-h-screen.overflow-hidden,
+.app-scroll-region > .overflow-hidden.min-h-screen,
+.app-scroll-region :where(.min-h-screen.overflow-hidden),
+.app-scroll-region :where(.overflow-hidden.min-h-screen) {
   min-height: 100%;
   height: auto !important;
   overflow: visible !important;
