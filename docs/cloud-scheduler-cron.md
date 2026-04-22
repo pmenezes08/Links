@@ -9,6 +9,17 @@ All endpoints reject unauthenticated requests. Auth is a shared secret
 passed in the `X-Cron-Secret` header and validated against the
 `CRON_SHARED_SECRET` env var on the Cloud Run service.
 
+**Current prod/staging services and secrets (as of 2026-04):**
+
+| Env | Cloud Run service | Canonical run.app URL | Secret in Secret Manager |
+|---|---|---|---|
+| Production | `cpoint-app` | `https://cpoint-app-739552904126.europe-west1.run.app` | `cron-shared-secret` |
+| Staging | `cpoint-app-staging` | `https://cpoint-app-staging-739552904126.europe-west1.run.app` | `cron-shared-secret-staging` |
+
+The custom domain `https://app.c-point.co` also reaches production, but
+Cloud Scheduler should hit the `run.app` URL directly because the custom
+domain 301-redirects and Scheduler does not preserve POST across redirects.
+
 ## 1. Generate + store the shared secret
 
 ```bash
@@ -20,29 +31,31 @@ printf "%s" "$CRON_SECRET" | gcloud secrets versions add cron-shared-secret --da
 
 # Grant the Cloud Run service account read access.
 gcloud secrets add-iam-policy-binding cron-shared-secret \
-  --member="serviceAccount:$(gcloud run services describe cpoint-backend \
+  --member="serviceAccount:$(gcloud run services describe cpoint-app \
       --region=europe-west1 --format='value(spec.template.spec.serviceAccountName)')" \
   --role=roles/secretmanager.secretAccessor
 ```
 
-Then wire it into the Cloud Run service as an env var:
+Then wire it into the Cloud Run service as an env var (this creates a new
+revision — expect ~60s of rolling traffic shift):
 
 ```bash
-gcloud run services update cpoint-backend \
+gcloud run services update cpoint-app \
   --region=europe-west1 \
   --update-secrets=CRON_SHARED_SECRET=cron-shared-secret:latest
 ```
 
-Repeat for `cpoint-backend-staging` with a *different* secret so leaks in
-one env can't be used against the other.
+Repeat for `cpoint-app-staging` using `cron-shared-secret-staging` with a
+*different* secret value so leaks in one env can't be used against the
+other.
 
 ## 2. Create the Scheduler jobs
 
 All jobs target the backend's base URL (replace with your Cloud Run URL):
 
 ```bash
-BASE=https://cpoint-backend-XXXXX-ew.a.run.app
-SECRET=$CRON_SECRET  # from step 1, or gcloud secrets versions access
+BASE=https://cpoint-app-739552904126.europe-west1.run.app
+SECRET=$(gcloud secrets versions access latest --secret=cron-shared-secret)
 
 # Grace-window sweep — closes seats whose grace has expired.
 # Runs every 15 min so the UX of "Steve paused" lands promptly.
@@ -171,9 +184,15 @@ curl -fsS -X POST "$BASE/api/cron/enterprise/grace-sweep" \
 
 ## 5. Staging
 
-Replicate every job for the staging service (`cpoint-backend-staging`)
-using a different `CRON_SHARED_SECRET`. Prefix job names with `staging-`
-so the lists don't collide in the console.
+Replicate every job for the staging service (`cpoint-app-staging`) using
+`cron-shared-secret-staging` for `X-Cron-Secret`. Prefix job names with
+`staging-` so the lists don't collide in the console.
+
+```bash
+BASE_STAGING=https://cpoint-app-staging-739552904126.europe-west1.run.app
+SECRET_STAGING=$(gcloud secrets versions access latest --secret=cron-shared-secret-staging)
+# then: gcloud scheduler jobs create http staging-<name> --uri="$BASE_STAGING/..." --headers="X-Cron-Secret=$SECRET_STAGING" ...
+```
 
 ## 6. Shutting it off
 
@@ -189,3 +208,108 @@ done
 ```
 
 Resume with `gcloud scheduler jobs resume ...`.
+
+To do the same for staging, prefix each name with `staging-` in the loop.
+
+## 7. Recipe: adding a new cron job
+
+When you add a new `@app.route('/api/cron/...')` endpoint, ship it
+end-to-end by following this sequence. The goal is that staging exercises
+the endpoint for at least one fire cycle before prod, and that prod
+registration happens only after a dry-run confirms the blast radius.
+
+### 7.1 Backend endpoint checklist
+
+The handler must:
+
+1. Reject unauthenticated callers. Use the same `X-Cron-Secret` header +
+   `CRON_SHARED_SECRET` env var pattern — or lift the helper used by
+   existing cron endpoints so the check is uniform.
+2. Accept `?dry_run=1` and return candidate counts with no side effects.
+   This is what lets you measure blast radius before enabling on prod.
+3. Return a JSON body shaped like `{"success": true, "scanned": N, ...}`
+   with counters that answer "what did this run actually do?". Logs
+   Explorer preserves the response body — these counters are the audit
+   trail.
+4. Respect a per-feature kill-switch env var (e.g.
+   `KB_WEEKLY_AUTO_ENABLED`, `COMMUNITY_LIFECYCLE_NOTIFICATIONS_ENABLED`).
+   When it's false, return `{"success": true, "skipped": true,
+   "reason": "..."}` rather than 503 — Scheduler treats 5xx as a retry
+   signal, and we don't want retries when a flag is intentionally off.
+
+### 7.2 Register on staging first
+
+```bash
+BASE_STAGING=https://cpoint-app-staging-739552904126.europe-west1.run.app
+SECRET_STAGING=$(gcloud secrets versions access latest --secret=cron-shared-secret-staging)
+
+gcloud scheduler jobs create http staging-<name> \
+  --location=europe-west1 \
+  --schedule="<cron>" --time-zone=<tz> \
+  --uri="$BASE_STAGING/api/cron/<path>" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET_STAGING" \
+  --attempt-deadline=<seconds>s \
+  --description="<one-line description>"
+```
+
+### 7.3 Dry-run smoke test
+
+Hit the endpoint directly and sanity-check the counters:
+
+```bash
+curl.exe -s -X POST \
+  "$BASE_STAGING/api/cron/<path>?dry_run=1" \
+  -H "X-Cron-Secret: $SECRET_STAGING" --data "" \
+  -w "`nHTTP_STATUS=%{http_code}`n"
+```
+
+Known quirks on Windows/PowerShell:
+- Use `curl.exe` (not the PowerShell alias), or `Invoke-RestMethod` will
+  strangle the headers.
+- `--data ""` is required on POSTs — GFE returns 411 without a
+  `Content-Length` header, and curl only sets one when a body is present.
+- Hit the `*.run.app` URL directly. `https://app.c-point.co` redirects,
+  and curl's default `-L` downgrades POST to GET on redirect.
+
+### 7.4 Register on production
+
+```bash
+BASE_PROD=https://cpoint-app-739552904126.europe-west1.run.app
+SECRET_PROD=$(gcloud secrets versions access latest --secret=cron-shared-secret)
+
+gcloud scheduler jobs create http <name> \
+  --location=europe-west1 \
+  --schedule="<cron>" --time-zone=<tz> \
+  --uri="$BASE_PROD/api/cron/<path>" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET_PROD" \
+  --attempt-deadline=<seconds>s \
+  --description="<one-line description>"
+```
+
+Before the first real fire, do one more `?dry_run=1` against prod to
+catch any env-specific surprises (prod data != staging data). If the
+blast radius is larger than expected, either:
+
+- temporarily flip the feature's kill-switch env var off on the Cloud
+  Run service, then re-deploy to land it; or
+- `gcloud scheduler jobs pause <name>` and investigate.
+
+### 7.5 Register the job name in §6's bulk-pause loop
+
+Add the new job name to the `for job in ...` list above so the emergency
+shutoff script covers it. Commit that change in the same PR as the
+backend endpoint.
+
+### 7.6 Don't forget
+
+- **Monitor the first fire.** `gcloud scheduler jobs describe <name>`
+  shows `lastAttemptTime` and `state`. If state becomes `FAILED`, check
+  Cloud Logging for the response body.
+- **Document the kill switch** in the job creation block above (the
+  `kb-weekly-synthesis` and `communities-lifecycle-dispatch` blocks are
+  good templates).
+- **Two secrets, one per env.** Never point a staging-prefixed job at
+  the prod secret or vice versa — the point of separate secrets is that
+  a leak in one env can't be weaponised against the other.
