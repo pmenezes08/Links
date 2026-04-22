@@ -207,7 +207,7 @@ export default function GroupChatThread() {
   const [selectedMessages, setSelectedMessages] = useState<Set<number>>(new Set())
   
   // Reply state
-  const [replyTo, setReplyTo] = useState<{ text: string; sender: string; image?: string; voice?: string; audio_summary?: string } | null>(null)
+  const [replyTo, setReplyTo] = useState<{ text: string; sender: string; image?: string; video?: string; voice?: string; audio_summary?: string } | null>(null)
   
   // @mention autocomplete state
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
@@ -861,6 +861,9 @@ export default function GroupChatThread() {
     if (replySnapshot) {
       if (replySnapshot.image) {
         replySnippet = `📷|${replySnapshot.image}|${(replySnapshot.text || 'Photo').slice(0, 60)}`
+      } else if (replySnapshot.video) {
+        const caption = replySnapshot.text || 'Video'
+        replySnippet = `🎥|${replySnapshot.video}|${caption.slice(0, 60)}`
       } else if (replySnapshot.voice) {
         const summarySnippet = replySnapshot.audio_summary ? replySnapshot.audio_summary.slice(0, 80) : ''
         replySnippet = summarySnippet ? `🎤|${summarySnippet}` : '🎤|Voice message'
@@ -877,6 +880,7 @@ export default function GroupChatThread() {
       sender: currentUsername || 'You',
       text: text,
       image: null,
+      video: null,
       voice: null,
       created_at: now,
       profile_picture: null,
@@ -2261,6 +2265,7 @@ export default function GroupChatThread() {
                                 text: msg.text || '',
                                 sender: isSentByMe ? 'You' : msg.sender,
                                 image: msg.image || undefined,
+                                video: msg.video || undefined,
                                 voice: msg.voice || undefined,
                                 audio_summary: msg.audio_summary || undefined,
                               })
@@ -2268,7 +2273,7 @@ export default function GroupChatThread() {
                             }}
                             onCopy={() => handleCopyMessage(msg.text)}
                             onDelete={() => handleDeleteMessage(msg.id, msg)}
-                            onEdit={isSentByMe && msg.text && !msg.image && !msg.voice ? () => handleStartEdit(msg.id, msg.text || '') : undefined}
+                            onEdit={isSentByMe && msg.text && !msg.image && !msg.video && !msg.voice ? () => handleStartEdit(msg.id, msg.text || '') : undefined}
                             onSelect={isSentByMe ? () => enterSelectionMode(msg.id) : undefined}
                             disabled={(isOptimistic && !sendFailed) || editingId === msg.id || selectionMode}
                           >
@@ -2318,6 +2323,10 @@ export default function GroupChatThread() {
                                             {replySnippet.startsWith('📷|') ? (
                                               <span className="inline-flex items-center gap-1">
                                                 <i className="fa-solid fa-image text-[9px]" /> Photo
+                                              </span>
+                                            ) : replySnippet.startsWith('🎥|') ? (
+                                              <span className="inline-flex items-center gap-1">
+                                                <i className="fa-solid fa-video text-[9px]" /> Video
                                               </span>
                                             ) : replySnippet.startsWith('🎤|') ? (
                                               <>
@@ -2699,7 +2708,16 @@ export default function GroupChatThread() {
                     />
                   </div>
                 )}
-                {replyTo.voice && !replyTo.image && (
+                {replyTo.video && !replyTo.image && (
+                  <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-black/30">
+                    <video 
+                      src={normalizeMediaPath(replyTo.video) + '#t=0.1'} 
+                      className="w-full h-full object-cover"
+                      muted
+                    />
+                  </div>
+                )}
+                {replyTo.voice && !replyTo.image && !replyTo.video && (
                   <div className="w-10 h-10 rounded bg-black/30 flex items-center justify-center flex-shrink-0">
                     <i className="fa-solid fa-microphone text-white/60 text-sm" />
                   </div>
@@ -2711,6 +2729,8 @@ export default function GroupChatThread() {
                   <div className="mt-0.5 text-[13px] text-white/70 whitespace-pre-wrap break-words leading-[1.25]">
                     {replyTo.voice ? (
                       <><i className="fa-solid fa-microphone text-xs mr-1" />{replyTo.audio_summary ? replyTo.audio_summary.slice(0, 80) + (replyTo.audio_summary.length > 80 ? '…' : '') : 'Voice message'}</>
+                    ) : replyTo.video ? (
+                      <><i className="fa-solid fa-video text-xs mr-1" />Video</>
                     ) : replyTo.image && !replyTo.text ? (
                       <><i className="fa-solid fa-image text-xs mr-1" />Photo</>
                     ) : (
