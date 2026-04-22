@@ -1121,6 +1121,16 @@ def synthesize_member_knowledge(
         except Exception as emb_err:
             logger.warning("Embedding recomputation failed for %s (non-fatal): %s", username, emb_err)
 
+        # Clear the Steve context cache so the next interaction renders from the fresh KB.
+        # Without this, cached context can serve stale renders for up to STEVE_CTX_CACHE_TTL
+        # (10 min) after synthesis — acceptable on admin triggers, but unwanted when the
+        # weekly cron updates silently in the background.
+        try:
+            from bodybuilding_app import invalidate_steve_context_cache
+            invalidate_steve_context_cache(username)
+        except Exception as cache_err:
+            logger.debug("Steve context cache invalidation skipped for %s: %s", username, cache_err)
+
         logger.info("Knowledge synthesis complete for %s", username)
         return True, None
     except Exception as e:
