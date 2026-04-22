@@ -94,6 +94,12 @@ export default function PostDetail(){
   const containsSteveMention = (text: string) => {
     return /@steve\b/i.test(text)
   }
+
+  // Keep the textarea focused on mobile so tapping composer controls
+  // doesn't dismiss the keyboard and shove the fixed bar into the safe area.
+  const preventComposerBlur = (event: { preventDefault(): void }) => {
+    event.preventDefault()
+  }
   
   // Call Steve AI to generate a reply
   const callSteveAI = async (userMessage: string, parentReplyId: number | null) => {
@@ -1850,6 +1856,7 @@ export default function PostDetail(){
                     ) : null}
                   </div>
                   <button 
+                    onPointerDown={preventComposerBlur}
                     onClick={() => { setFile(null); setUploadFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
                     className="text-red-400 hover:text-red-300"
                     aria-label="Remove file"
@@ -1864,6 +1871,7 @@ export default function PostDetail(){
                     <img src={replyGif.previewUrl} alt="Selected GIF" className="w-full h-full object-cover" loading="lazy" />
                   </div>
                   <button
+                    onPointerDown={preventComposerBlur}
                     onClick={() => { setReplyGif(null) }}
                     className="text-red-400 hover:text-red-300"
                     aria-label="Remove GIF"
@@ -1876,6 +1884,7 @@ export default function PostDetail(){
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <audio controls className="flex-1 h-8" playsInline webkit-playsinline="true" src={replyPreview.url} />
                   <button 
+                    onPointerDown={preventComposerBlur}
                     onClick={() => { clearReplyPreview(); }}
                     className="text-[#9fb0b5] hover:text-white"
                     aria-label="Remove audio"
@@ -1905,6 +1914,7 @@ export default function PostDetail(){
               <button 
                 type="button" 
                 className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
+                onPointerDown={preventComposerBlur}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => setShowAttachMenu(!showAttachMenu)}
                 aria-label="Add attachment"
@@ -1918,6 +1928,7 @@ export default function PostDetail(){
                   <button
                     type="button"
                     className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-left"
+                    onPointerDown={preventComposerBlur}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
                       fileInputRef.current?.click()
@@ -1930,6 +1941,7 @@ export default function PostDetail(){
                   <button
                     type="button"
                     className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-left border-t border-white/5"
+                    onPointerDown={preventComposerBlur}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
                       setGifPickerOpen(true)
@@ -1977,6 +1989,7 @@ export default function PostDetail(){
               <button
                 type="button"
                 className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
+                onPointerDown={preventComposerBlur}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => startRec()}
                 aria-label="Record audio"
@@ -1990,6 +2003,7 @@ export default function PostDetail(){
               <button
                 type="button"
                 className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-[#4db6ac] text-white transition-all"
+                onPointerDown={preventComposerBlur}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={async () => {
                   const p = await stopRec()
@@ -2008,6 +2022,7 @@ export default function PostDetail(){
               <button
                 type="button"
                 className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#4db6ac] text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 transition-opacity"
+                onPointerDown={preventComposerBlur}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => submitReply()}
                 aria-label="Send reply"
