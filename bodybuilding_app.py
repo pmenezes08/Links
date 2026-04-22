@@ -25970,17 +25970,64 @@ def delete_reply():
             if not can_delete:
                 return jsonify({'success': False, 'error': 'Unauthorized to delete this reply!'}), 403
             
-            # Delete image file if it exists
-            if reply['image_path']:
+            # Collect the full reply subtree before deleting the root row.
+            # Firestore stores replies as flat docs, so we need every descendant id
+            # to avoid orphaned children reappearing as top-level rows in PostDetail.
+            reply_ids_to_delete = [reply_id]
+            reply_media_paths_to_delete = []
+            root_image_path = reply['image_path'] if hasattr(reply, 'keys') else reply[1]
+            if root_image_path:
+                reply_media_paths_to_delete.append(root_image_path)
+
+            pending_parent_ids = [reply_id]
+            seen_reply_ids = {reply_id}
+            placeholder = get_sql_placeholder()
+            while pending_parent_ids:
+                placeholders = ','.join([placeholder] * len(pending_parent_ids))
+                c.execute(
+                    f"SELECT id, image_path FROM replies WHERE parent_reply_id IN ({placeholders})",
+                    tuple(pending_parent_ids),
+                )
+                child_rows = c.fetchall() or []
+                pending_parent_ids = []
+                for child_row in child_rows:
+                    child_id = child_row['id'] if hasattr(child_row, 'keys') else child_row[0]
+                    if not child_id or child_id in seen_reply_ids:
+                        continue
+                    seen_reply_ids.add(child_id)
+                    reply_ids_to_delete.append(child_id)
+                    pending_parent_ids.append(child_id)
+                    child_image_path = child_row['image_path'] if hasattr(child_row, 'keys') else child_row[1]
+                    if child_image_path:
+                        reply_media_paths_to_delete.append(child_image_path)
+
+            # Delete image files for the entire subtree when present
+            for media_path in reply_media_paths_to_delete:
                 try:
-                    image_file_path = os.path.join('static', reply['image_path'])
+                    image_file_path = os.path.join('static', media_path)
                     if os.path.exists(image_file_path):
                         os.remove(image_file_path)
                 except Exception as e:
-                    logger.warning(f"Could not delete reply image file {reply['image_path']}: {e}")
+                    logger.warning(f"Could not delete reply image file {media_path}: {e}")
             
             c.execute("DELETE FROM replies WHERE id= ?", (reply_id,))
             conn.commit()
+
+            # Firestore dual-write cleanup: remove the reply subtree docs too.
+            # Without this, PostDetail can still read stale Firestore replies even
+            # after MySQL delete + cache invalidation.
+            try:
+                from backend.services.firestore_writes import _get_client as _get_fs, USE_FIRESTORE_WRITES
+                if USE_FIRESTORE_WRITES and reply_post_id:
+                    fs = _get_fs()
+                    replies_ref = fs.collection('posts').document(str(reply_post_id)).collection('replies')
+                    for rid in reply_ids_to_delete:
+                        try:
+                            replies_ref.document(str(rid)).delete()
+                        except Exception as fs_doc_err:
+                            logger.warning(f"Could not delete Firestore reply doc {rid} for post {reply_post_id}: {fs_doc_err}")
+            except Exception as fs_err:
+                logger.warning(f"Firestore cleanup after reply delete failed: {fs_err}")
 
             # Invalidate caches so deleted comment no longer appears in post detail or feed
             try:
