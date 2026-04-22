@@ -1,19 +1,18 @@
 # Dockerfile for C-Point Landing Page
-FROM python:3.11-slim
 
+# Build stage — produce fresh dist/ from source
+FROM node:20-slim AS builder
 WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm install
+COPY . .
+RUN npm run build
 
-# Install Flask and gunicorn
+# Runtime stage — Flask/gunicorn serving the built SPA
+FROM python:3.11-slim
+WORKDIR /app
 RUN pip install --no-cache-dir flask gunicorn
-
-# Copy the server script
 COPY server.py /app/server.py
-
-# Copy the built landing page
-COPY dist /app/dist
-
-# Expose port
+COPY --from=builder /app/dist /app/dist
 EXPOSE 8080
-
-# Run with gunicorn
 CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "4", "server:app"]
