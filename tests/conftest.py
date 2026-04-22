@@ -184,6 +184,21 @@ CREATE TABLE IF NOT EXISTS posts (
 )
 """
 
+# Minimal replies shape — the KB weekly sweep joins on
+# ``replies.username`` and ``replies.timestamp`` to decide who's active.
+# Thin schema for the same reason as posts above.
+_REPLIES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS replies (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    post_id INT,
+    community_id INT,
+    username VARCHAR(191),
+    content TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_replies_user_ts (username, timestamp)
+)
+"""
+
 _USER_COMMUNITIES_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS user_communities (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -236,6 +251,7 @@ def _bootstrap_schema() -> None:
         c.execute(_COMMUNITIES_TABLE_SQL)
         c.execute(_USER_COMMUNITIES_TABLE_SQL)
         c.execute(_POSTS_TABLE_SQL)
+        c.execute(_REPLIES_TABLE_SQL)
         c.execute(_NOTIFICATIONS_TABLE_SQL)
         try:
             conn.commit()
@@ -268,6 +284,7 @@ _TRUNCATE_TABLES: List[str] = [
     "communities",
     "user_communities",
     "posts",
+    "replies",
     "notifications",
     "ai_usage_log",
     "special_access_log",
