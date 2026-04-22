@@ -29,6 +29,21 @@ interface AiUsageResponse {
  * `GET /api/me/ai-usage` + the cached entitlements snapshot so users
  * always have somewhere to land from a limit modal.
  */
+/**
+ * Format a rolling-window reset timestamp. For resets inside the next 48 hours
+ * we display hour + minute (more useful than a date); otherwise fall back to
+ * the date so distant resets don't render as "Tue 14:03" confusingly.
+ */
+function formatRollingReset(ts: string): string {
+  const d = new Date(ts)
+  const hoursUntil = (d.getTime() - Date.now()) / 3_600_000
+  if (hoursUntil <= 0) return 'shortly'
+  if (hoursUntil < 48) {
+    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  }
+  return d.toLocaleDateString()
+}
+
 export default function MembershipAIUsage() {
   const { setTitle } = useHeader()
   const navigate = useNavigate()
@@ -100,10 +115,15 @@ export default function MembershipAIUsage() {
         {renderBar('Steve uses', usage?.monthly_steve_used ?? 0, usage?.monthly_steve_cap ?? null)}
         {renderBar('Voice minutes', Math.round(usage?.whisper_minutes_used ?? 0), usage?.whisper_minutes_cap ?? null)}
         {entitlements?.ai_daily_limit != null
-          ? renderBar('Steve uses today', usage?.daily_used ?? 0, usage?.daily_cap ?? entitlements.ai_daily_limit)
+          ? renderBar('Steve uses (last 24h)', usage?.daily_used ?? 0, usage?.daily_cap ?? entitlements.ai_daily_limit)
           : null}
         <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 8 }}>
-          {usage?.resets_at_monthly ? `Resets ${new Date(usage.resets_at_monthly).toLocaleDateString()}` : ''}
+          {usage?.resets_at_monthly ? `Monthly resets ${new Date(usage.resets_at_monthly).toLocaleDateString()}` : ''}
+          {usage?.resets_at_daily ? (
+            <span style={{ marginLeft: 8 }}>
+              · 24h window resets {formatRollingReset(usage.resets_at_daily)}
+            </span>
+          ) : null}
         </div>
       </div>
 

@@ -51,7 +51,7 @@ export default function LimitReachedModal({ err, onClose }: Props) {
       case 'premium_required':
         return 'Steve is a Premium feature'
       case 'daily_cap':
-        return 'Daily limit reached'
+        return '24-hour limit reached'
       case 'monthly_steve_cap':
         return 'Monthly Steve allowance reached'
       case 'monthly_whisper_cap':
@@ -99,7 +99,7 @@ export default function LimitReachedModal({ err, onClose }: Props) {
     }
     if (u.daily_used != null || u.daily_cap != null) {
       rows.push({
-        label: 'Steve uses today',
+        label: 'Steve uses (last 24h)',
         used: u.daily_used ?? 0,
         cap: u.daily_cap ?? null,
       })

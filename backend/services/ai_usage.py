@@ -531,8 +531,17 @@ def current_month_summary(username: str) -> Dict[str, Any]:
             "total_cost_usd": 0.34,
             "whisper_minutes": 22.0,
             "resets_at_monthly": "2026-05-01T00:00:00Z",
-            "resets_at_daily": "2026-04-20T00:00:00Z"
+            "resets_at_daily": "2026-04-22T11:27:00Z"
         }
+
+    ``resets_at_daily`` is the **true rolling-window reset** — the moment the
+    oldest Steve call in the current 24h window ages out, which is the soonest
+    the ``daily_count`` can decrease. Computed as
+    ``oldest_counted_row.created_at + 24h``, or ``None`` if no calls are
+    currently within the window. This intentionally does **not** point to
+    calendar midnight; the ``daily_count`` enforcement is a sliding 24h
+    window (see :func:`daily_count`), so labeling it as "resets at midnight"
+    would mislead users.
     """
     if not username:
         return _empty_summary()
@@ -598,9 +607,8 @@ def current_month_summary(username: str) -> Dict[str, Any]:
     else:
         next_month = now.replace(month=now.month + 1, day=1,
                                  hour=0, minute=0, second=0, microsecond=0)
-    next_day = (now + timedelta(days=1)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+
+    rolling_daily_reset = _oldest_steve_in_window_plus_24h(username)
 
     return {
         "by_surface": by_surface,
@@ -611,8 +619,54 @@ def current_month_summary(username: str) -> Dict[str, Any]:
         "whisper_minutes": round(whisper_seconds / 60.0, 2),
         "steve_call_count": sum(by_surface[s] for s in STEVE_SURFACES),
         "resets_at_monthly": next_month.isoformat().replace("+00:00", "Z"),
-        "resets_at_daily": next_day.isoformat().replace("+00:00", "Z"),
+        "resets_at_daily": rolling_daily_reset,
     }
+
+
+def _oldest_steve_in_window_plus_24h(username: str) -> Optional[str]:
+    """Return the ISO timestamp at which the oldest currently-counted Steve
+    call will age out of the rolling 24h window, or ``None`` if the user has
+    no Steve calls in the window.
+
+    This is the true "daily reset" for UI display — as soon as the oldest
+    counted row crosses the 24h threshold, ``daily_count`` decreases by one.
+    We surface only the *earliest* such moment so the client can render a
+    single "resets at {ts}" hint without pretending the entire counter will
+    hit zero at that moment.
+    """
+    ph = get_sql_placeholder()
+    placeholders = ",".join([ph] * len(STEVE_SURFACES))
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"""
+                SELECT MIN(created_at) AS oldest FROM ai_usage_log
+                WHERE username = {ph}
+                  AND surface IN ({placeholders})
+                  AND success = 1
+                  AND created_at >= {ph}
+                """,
+                (username, *STEVE_SURFACES, _twenty_four_hours_ago()),
+            )
+            row = c.fetchone()
+    except Exception as err:
+        logger.debug("oldest-steve-row lookup failed: %s", err)
+        return None
+    if not row:
+        return None
+    oldest = row["oldest"] if hasattr(row, "keys") else row[0]
+    if not oldest:
+        return None
+    # ``created_at`` is a naive UTC string/datetime. Treat it as UTC.
+    if isinstance(oldest, datetime):
+        dt = oldest if oldest.tzinfo else oldest.replace(tzinfo=timezone.utc)
+    else:
+        try:
+            dt = datetime.strptime(str(oldest), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        except Exception:
+            return None
+    return (dt + timedelta(hours=24)).isoformat().replace("+00:00", "Z")
 
 
 def _empty_summary() -> Dict[str, Any]:

@@ -22,6 +22,21 @@ import { useEntitlements } from '../../hooks/useEntitlements'
 
 export type MembershipTab = 'plan' | 'ai' | 'billing' | 'payment' | 'notifications'
 
+/**
+ * Format a rolling-window reset timestamp. Keep consistent with the
+ * same-named helper in `pages/MembershipAIUsage.tsx` so both surfaces
+ * render the 24h Steve reset identically.
+ */
+function formatRollingReset(ts: string): string {
+  const d = new Date(ts)
+  const hoursUntil = (d.getTime() - Date.now()) / 3_600_000
+  if (hoursUntil <= 0) return 'shortly'
+  if (hoursUntil < 48) {
+    return `at ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
+  }
+  return `on ${d.toLocaleDateString()}`
+}
+
 interface Props {
   open: boolean
   onClose: () => void
@@ -295,10 +310,11 @@ function AiUsageTab() {
         resetAt={usage.resets_at_monthly}
       />
       <UsageRow
-        label="Steve uses today"
+        label="Steve uses (last 24h)"
         used={usage.daily_used}
         cap={usage.daily_cap}
         resetAt={usage.resets_at_daily}
+        rolling
       />
 
       {aiData?.by_surface && (
@@ -319,13 +335,20 @@ function AiUsageTab() {
 }
 
 function UsageRow({
-  label, used, cap, unit, resetAt,
+  label, used, cap, unit, resetAt, rolling,
 }: {
   label: string
   used: number
   cap: number | null
   unit?: string
   resetAt?: string | null
+  /**
+   * When true, ``resetAt`` is interpreted as a rolling-window reset
+   * (i.e. the moment the oldest counted row ages out) rather than a
+   * calendar boundary. We include time-of-day in the rendered string
+   * so it doesn't read like a midnight reset.
+   */
+  rolling?: boolean
 }) {
   const unlimited = cap === null
   const pct = !unlimited && cap && cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0
@@ -352,7 +375,9 @@ function UsageRow({
         </div>
       )}
       {resetAt && (
-        <div className="text-xs text-white/40">Resets {new Date(resetAt).toLocaleDateString()}</div>
+        <div className="text-xs text-white/40">
+          {rolling ? `Next slot frees up ${formatRollingReset(resetAt)}` : `Resets ${new Date(resetAt).toLocaleDateString()}`}
+        </div>
       )}
     </div>
   )
