@@ -79,11 +79,38 @@ export interface EntitlementsState {
 const ENDPOINT = '/api/me/entitlements'
 
 /**
+ * Minimum interval between focus-triggered refreshes. Users flick between
+ * tabs constantly; we don't want to hit /api/me/entitlements every time
+ * the window gains focus. 20s is long enough to be cheap and short enough
+ * that the counter feels live when you come back from using Steve in
+ * another tab / another device.
+ */
+const FOCUS_REFRESH_THROTTLE_MS = 20_000
+
+/**
+ * Custom event name that any Steve-calling surface can dispatch to force
+ * an immediate entitlements re-fetch. The hook listens globally so a
+ * DM/feed/group reply flow doesn't need to plumb `refresh()` down through
+ * props. Callers:
+ *
+ *     window.dispatchEvent(new Event('cpoint:entitlements-refresh'))
+ *
+ * Fired after a successful Steve reply so the Manage Membership modal
+ * and the usage page show the incremented counter without a full reload.
+ */
+export const ENTITLEMENTS_REFRESH_EVENT = 'cpoint:entitlements-refresh'
+
+/**
  * Client hook that fetches + caches the signed-in user's entitlements.
  *
- * The backend hot-computes these on every request so we intentionally
- * poll only on mount and on explicit `refresh()` — call `refresh()` after
- * a 402/429 response to pick up the new `near_hard_cap` state.
+ * Fetch triggers:
+ *   1. On mount (unless `skip` is true).
+ *   2. On window focus, throttled to at most once every
+ *      `FOCUS_REFRESH_THROTTLE_MS` ms.
+ *   3. When any code dispatches `ENTITLEMENTS_REFRESH_EVENT` on `window`
+ *      (intended to be fired after a successful Steve call so the counter
+ *      updates without reloading the page).
+ *   4. Explicit `refresh()` call from the consumer.
  *
  * Anonymous / logged-out responses return `entitlements.can_use_steve === false`
  * so the UI can still decide whether to show the Steve button.
@@ -96,6 +123,7 @@ export function useEntitlements(opts: { skip?: boolean } = {}): EntitlementsStat
   const [loading, setLoading] = useState(!skip)
   const [error, setError] = useState<string | null>(null)
   const inflight = useRef<Promise<void> | null>(null)
+  const lastRefreshAt = useRef<number>(0)
 
   const refresh = useCallback(async () => {
     if (inflight.current) return inflight.current
@@ -127,6 +155,7 @@ export function useEntitlements(opts: { skip?: boolean } = {}): EntitlementsStat
         setError(err instanceof Error ? err.message : String(err))
       } finally {
         setLoading(false)
+        lastRefreshAt.current = Date.now()
         inflight.current = null
       }
     })()
@@ -137,6 +166,32 @@ export function useEntitlements(opts: { skip?: boolean } = {}): EntitlementsStat
   useEffect(() => {
     if (skip) return
     void refresh()
+  }, [skip, refresh])
+
+  useEffect(() => {
+    if (skip) return
+
+    const onFocus = () => {
+      const since = Date.now() - lastRefreshAt.current
+      if (since >= FOCUS_REFRESH_THROTTLE_MS) {
+        void refresh()
+      }
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') onFocus()
+    }
+    const onManualRefresh = () => {
+      void refresh()
+    }
+
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener(ENTITLEMENTS_REFRESH_EVENT, onManualRefresh)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener(ENTITLEMENTS_REFRESH_EVENT, onManualRefresh)
+    }
   }, [skip, refresh])
 
   return { entitlements, usage, enforcement_enabled: enforcementEnabled, loading, error, refresh }

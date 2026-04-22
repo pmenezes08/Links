@@ -15,6 +15,7 @@ import ImageLoader from '../components/ImageLoader'
 import ZoomableImage from '../components/ZoomableImage'
 import { useHeader } from '../contexts/HeaderContext'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
+import { ENTITLEMENTS_REFRESH_EVENT } from '../hooks/useEntitlements'
 import VideoEmbed from '../components/VideoEmbed'
 import LinkPreview, { feedPostLinkPreviewUrls } from '../components/LinkPreview'
 import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
@@ -4040,6 +4041,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         console.log('[Steve AI] Success! Adding Steve reply to post')
         // Add Steve's reply to the post
         onAddReply(post.id, data.reply as any)
+        try { window.dispatchEvent(new Event(ENTITLEMENTS_REFRESH_EVENT)) } catch { /* noop */ }
       } else if (!data.success) {
         // Show error but don't alert for rate limits (show inline instead)
         if (response.status === 429) {

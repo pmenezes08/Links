@@ -17,6 +17,7 @@ import { openExternalInApp } from '../utils/openExternalInApp'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import EditableAISummary from '../components/EditableAISummary'
 import { isVideoAttachmentPath } from '../utils/replyMedia'
+import { ENTITLEMENTS_REFRESH_EVENT } from '../hooks/useEntitlements'
 
 function replyDisplayUrl(raw: string | null | undefined): string {
   const s = (raw ?? '').trim()
@@ -163,6 +164,7 @@ export default function CommentReply() {
             reply_count: (prev.reply_count || 0) + 1,
           }
         })
+        try { window.dispatchEvent(new Event(ENTITLEMENTS_REFRESH_EVENT)) } catch { /* noop */ }
       } else if (!data.success) {
         console.error('[Steve AI] Error:', data.error)
       }

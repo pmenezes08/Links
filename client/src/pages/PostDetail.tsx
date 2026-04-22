@@ -23,6 +23,7 @@ import { renderRichText } from '../utils/linkUtils'
 import { isVideoAttachmentPath } from '../utils/replyMedia'
 import { openExternalInApp } from '../utils/openExternalInApp'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
+import { ENTITLEMENTS_REFRESH_EVENT } from '../hooks/useEntitlements'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, audio_path?: string|null, audio_summary?: string|null, reply_count?: number, view_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
@@ -125,6 +126,7 @@ export default function PostDetail(){
           }
           return { ...p, replies: [steveReply, ...p.replies] }
         })
+        try { window.dispatchEvent(new Event(ENTITLEMENTS_REFRESH_EVENT)) } catch { /* noop */ }
       } else if (!data.success) {
         console.error('[Steve AI] Error:', data.error)
       }
