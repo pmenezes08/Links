@@ -1905,6 +1905,7 @@ export default function PostDetail(){
               <button 
                 type="button" 
                 className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => setShowAttachMenu(!showAttachMenu)}
                 aria-label="Add attachment"
               >
@@ -1917,6 +1918,7 @@ export default function PostDetail(){
                   <button
                     type="button"
                     className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-left"
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
                       fileInputRef.current?.click()
                       setShowAttachMenu(false)
@@ -1928,6 +1930,7 @@ export default function PostDetail(){
                   <button
                     type="button"
                     className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-left border-t border-white/5"
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
                       setGifPickerOpen(true)
                       setShowAttachMenu(false)
@@ -1974,6 +1977,7 @@ export default function PostDetail(){
               <button
                 type="button"
                 className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => startRec()}
                 aria-label="Record audio"
               >
@@ -1986,6 +1990,7 @@ export default function PostDetail(){
               <button
                 type="button"
                 className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-[#4db6ac] text-white transition-all"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={async () => {
                   const p = await stopRec()
                   if (!p?.blob?.size) {
@@ -2003,6 +2008,7 @@ export default function PostDetail(){
               <button
                 type="button"
                 className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#4db6ac] text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 transition-opacity"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => submitReply()}
                 aria-label="Send reply"
                 disabled={submittingReply}
@@ -2014,10 +2020,12 @@ export default function PostDetail(){
             )}
           </div>
         </div>
-        {/* Safe area spacer */}
+        {/* Safe area spacer — always reserve a minimum so the Send button never collides with the home indicator, even if keyboard dismissal races. */}
         <div 
           style={{
-            height: showKeyboard ? '4px' : 'env(safe-area-inset-bottom, 0px)',
+            height: showKeyboard
+              ? 'max(env(safe-area-inset-bottom, 0px), 6px)'
+              : 'max(env(safe-area-inset-bottom, 0px), 12px)',
             background: '#000',
             flexShrink: 0,
           }}
