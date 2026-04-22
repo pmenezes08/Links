@@ -27401,6 +27401,40 @@ def get_post():
                             ph = get_sql_placeholder()
                             phs = ','.join([ph] * len(all_reply_ids))
 
+                            # Firestore can contain stale reply docs if an older delete path
+                            # removed only the SQL row. Filter the visible reply tree against
+                            # authoritative SQL ids before hydrating anything else.
+                            valid_reply_ids = set(all_reply_ids)
+                            try:
+                                hc.execute(
+                                    f"SELECT id FROM replies WHERE id IN ({phs})",
+                                    tuple(all_reply_ids),
+                                )
+                                valid_reply_ids = {
+                                    int(row['id'] if hasattr(row, 'keys') else row[0])
+                                    for row in (hc.fetchall() or [])
+                                }
+                            except Exception:
+                                valid_reply_ids = set(all_reply_ids)
+
+                            if valid_reply_ids != set(all_reply_ids):
+                                def _filter_existing_replies(replies):
+                                    visible_replies = []
+                                    for reply in replies:
+                                        rid = int(reply.get('id') or 0)
+                                        if rid not in valid_reply_ids:
+                                            continue
+                                        children = _filter_existing_replies(reply.get('children', []))
+                                        reply['children'] = children
+                                        reply['reply_count'] = len(children)
+                                        visible_replies.append(reply)
+                                    return visible_replies
+                                fs_post['replies'] = _filter_existing_replies(fs_post.get('replies', []))
+                                all_reply_ids = [rid for rid in all_reply_ids if rid in valid_reply_ids]
+                                if not all_reply_ids:
+                                    fs_post['replies'] = []
+                                phs = ','.join([ph] * len(all_reply_ids)) if all_reply_ids else ''
+
                             # Reply view counts
                             reply_vcs = {}
                             try:
