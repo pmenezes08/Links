@@ -295,7 +295,8 @@ export default function Notifications(){
       return
     }
     const isPollNotification = typeKey === 'poll' || typeKey === 'poll_reminder' || typeKey === 'poll_closed'
-    const isReplyNotification = typeKey === 'reply' || typeKey === 'mention_reply' || typeKey === 'story_comment'
+    const isReplyNotification = typeKey === 'reply' || typeKey === 'mention_reply' || typeKey === 'story_comment' || typeKey === 'story_reaction'
+    const isStoryNotification = typeKey === 'story_reaction' || typeKey === 'story_comment'
 
     if (!url && isPollNotification && n.community_id) {
       url = `/community/${n.community_id}/polls_react`
@@ -303,7 +304,7 @@ export default function Notifications(){
       url = n.post_id ? `/post/${n.post_id}` : (n.community_id ? `/community_feed_react/${n.community_id}` : '/notifications')
     }
 
-    console.log('Notification clicked:', { id: n.id, type: n.type, link: n.link, url, isReplyNotification })
+    console.log('Notification clicked:', { id: n.id, type: n.type, link: n.link, url, isReplyNotification, isStoryNotification })
 
     // Enhanced navigation with state for better back button behavior
     if (url.startsWith('http') || url.startsWith('/')){
@@ -315,6 +316,10 @@ export default function Notifications(){
           from: 'notification',
           postId: n.post_id,
           communityId: n.community_id,
+          // For story notifications, backend sets post_id = story_id and link = feed URL.
+          // Passing openStoryId triggers CommunityFeed.tsx useEffect (~lines 1520-1547)
+          // to automatically open the specific story viewer (see also ChatThread.tsx:2959).
+          openStoryId: (isStoryNotification && n.post_id) ? Number(n.post_id) : undefined,
           isColdStart: true, // Will be overridden by actual navigation context
           returnToCommunity: isReplyNotification && !!n.community_id,
           communityFeedUrl: n.community_id ? `/community_feed_react/${n.community_id}` : undefined,
