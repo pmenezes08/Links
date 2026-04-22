@@ -29,8 +29,8 @@ type Reply = { id: number; username: string; content: string; timestamp: string;
 type MediaItem = { type: 'image' | 'video'; path: string }
 type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}>; view_count?: number; media_paths?: MediaItem[] | string | null }
 
-const POST_DETAIL_CACHE_VERSION = 'post-detail-v1'
-const POST_DETAIL_CACHE_TTL_MS = 3 * 60 * 1000
+const POST_DETAIL_CACHE_VERSION = 'post-detail-v2'
+const POST_DETAIL_CACHE_TTL_MS = 30 * 1000
 
 type PostDetailCachePayload = { post: Post; isGroupPost: boolean }
 

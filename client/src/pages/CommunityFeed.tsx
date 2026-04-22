@@ -4750,6 +4750,16 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                                 post.replies = post.replies.filter((rep: any) => rep.id !== r.id)
                                 // Force re-render
                                 setChildReplyText(prev => prev)
+                                // Invalidate caches so PostDetail and other feeds don't resurrect the deleted reply
+                                try { clearDeviceCache(`post-${post.id}`) } catch {}
+                                try {
+                                  const cid = (post as any)?.community_id
+                                  if (cid !== undefined && cid !== null && cid !== '') {
+                                    clearDeviceCache(`community-feed:${cid}`)
+                                  }
+                                  if (communityId) clearDeviceCache(`community-feed:${communityId}`)
+                                } catch {}
+                                try { clearDeviceCache('home-timeline') } catch {}
                               } else {
                                 alert(j?.error || 'Failed to delete reply')
                               }
