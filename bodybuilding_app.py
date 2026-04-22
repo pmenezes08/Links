@@ -39655,6 +39655,122 @@ STALE_PROFILE_DAYS = int(os.environ.get('STALE_PROFILE_DAYS', '30'))
 STALE_PROFILE_BATCH = int(os.environ.get('STALE_PROFILE_BATCH', '5'))
 
 
+# ── Weekly KB auto-synthesis dispatcher (Cloud Scheduler) ────────────────
+# Activated via Cloud Scheduler daily. Each day processes exactly one
+# bucket (hash(username) % 7 == today's weekday), so every active user is
+# refreshed once per calendar week without spikes. Gated by a KB-level
+# kill switch (KB_WEEKLY_AUTO_ENABLED) and the shared CRON_SHARED_SECRET.
+def _kb_weekly_auto_enabled() -> bool:
+    return (os.environ.get('KB_WEEKLY_AUTO_ENABLED', 'true') or '').strip().lower() == 'true'
+
+
+def _kb_weekly_batch_max() -> int:
+    try:
+        v = int(os.environ.get('KB_WEEKLY_BATCH_MAX', '200'))
+    except ValueError:
+        v = 200
+    return max(1, min(v, 2000))
+
+
+@app.route('/api/cron/kb/weekly-synthesis', methods=['POST'])
+def cron_kb_weekly_synthesis():
+    """Refresh the member Knowledge Base for one day's bucket of active users.
+
+    Triggered daily by Cloud Scheduler; each call handles the bucket
+    ``datetime.utcnow().weekday()`` (0=Mon..6=Sun) so every active user is
+    refreshed once per 7-day window. Users are considered active if they
+    have at least one post or reply in the last ``KB_ACTIVE_WINDOW_DAYS``
+    days (default 7).
+
+    Auth: shared ``X-Cron-Secret`` header (``CRON_SHARED_SECRET`` env).
+
+    Query params:
+      ``dry_run`` (``1``/``true``) — list candidates, don't synthesize.
+      ``bucket`` — override the computed day-of-week bucket (0..6).
+      ``window_days`` — override the active-window size.
+    """
+    expected = os.environ.get('CRON_SHARED_SECRET') or ''
+    provided = request.headers.get('X-Cron-Secret') or ''
+    if not expected or provided != expected:
+        return jsonify({'success': False, 'error': 'forbidden'}), 403
+
+    if not _kb_weekly_auto_enabled():
+        return jsonify({
+            'success': True,
+            'skipped': True,
+            'reason': 'kb_weekly_auto_disabled',
+            'dispatched': 0,
+        })
+
+    dry_run = (request.args.get('dry_run') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+    try:
+        bucket_override = request.args.get('bucket')
+        bucket = int(bucket_override) if bucket_override not in (None, '') else datetime.utcnow().weekday()
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'invalid_bucket'}), 400
+
+    try:
+        window_override = request.args.get('window_days')
+        window_days = int(window_override) if window_override not in (None, '') else None
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'invalid_window_days'}), 400
+
+    try:
+        from backend.services.steve_knowledge_base import (
+            USE_KNOWLEDGE_BASE_V1,
+            get_active_usernames_for_kb_sweep,
+            schedule_knowledge_synthesis,
+        )
+        if not USE_KNOWLEDGE_BASE_V1:
+            return jsonify({
+                'success': True,
+                'skipped': True,
+                'reason': 'kb_v1_disabled',
+                'dispatched': 0,
+            })
+
+        batch_max = _kb_weekly_batch_max()
+        usernames = get_active_usernames_for_kb_sweep(
+            bucket,
+            window_days=window_days,
+            limit=batch_max,
+        )
+
+        if dry_run:
+            return jsonify({
+                'success': True,
+                'dry_run': True,
+                'bucket': bucket,
+                'window_days': window_days,
+                'candidate_count': len(usernames),
+                'candidates': usernames[:50],
+                'dispatched': 0,
+            })
+
+        dispatched = 0
+        for u in usernames:
+            try:
+                schedule_knowledge_synthesis(u)
+                dispatched += 1
+            except Exception as disp_err:
+                logger.warning("KB weekly dispatch failed for %s: %s", u, disp_err)
+
+        logger.info(
+            "KB weekly synthesis: dispatched %d/%d for bucket %d (window=%s)",
+            dispatched, len(usernames), bucket, window_days,
+        )
+        return jsonify({
+            'success': True,
+            'bucket': bucket,
+            'candidate_count': len(usernames),
+            'dispatched': dispatched,
+        })
+    except Exception as e:
+        logger.exception("KB weekly synthesis error: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/admin/steve_profiles/refresh_stale', methods=['POST'])
 @login_required
 def admin_steve_profiles_refresh_stale():

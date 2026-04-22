@@ -27,8 +27,8 @@ import logging
 import os
 import re
 import threading
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +82,100 @@ def _kb_prompt_replies_cap() -> int:
 
 def _kb_prompt_externals_cap() -> int:
     return _kb_prompt_cap("KB_PROMPT_EXTERNALS_CAP", _KB_PROMPT_EXTERNALS_CAP_DEFAULT)
+
+
+# ── Weekly auto-synthesis: bucketed active-user sweep ────────────────────
+#
+# Each active user is refreshed exactly once per week. The sweep is split
+# across 7 daily buckets (bucket = hash(username) % 7) so the Grok/Firestore
+# load is spread evenly — no single-day spike of hundreds of syntheses.
+# The Cloud Scheduler job hits the dispatcher daily and only today's
+# bucket is processed.
+_KB_WEEKLY_BUCKET_COUNT_DEFAULT = 7
+_KB_ACTIVE_WINDOW_DAYS_DEFAULT = 7
+
+
+def _kb_weekly_bucket_count() -> int:
+    try:
+        v = int(os.environ.get("KB_WEEKLY_BUCKET_COUNT", str(_KB_WEEKLY_BUCKET_COUNT_DEFAULT)))
+    except ValueError:
+        v = _KB_WEEKLY_BUCKET_COUNT_DEFAULT
+    return max(1, min(v, 14))
+
+
+def _kb_active_window_days() -> int:
+    try:
+        v = int(os.environ.get("KB_ACTIVE_WINDOW_DAYS", str(_KB_ACTIVE_WINDOW_DAYS_DEFAULT)))
+    except ValueError:
+        v = _KB_ACTIVE_WINDOW_DAYS_DEFAULT
+    return max(1, min(v, 90))
+
+
+def username_bucket(username: str, buckets: Optional[int] = None) -> int:
+    """Stable bucket assignment for a username using CRC32."""
+    import zlib
+    n = buckets if (buckets is not None and buckets > 0) else _kb_weekly_bucket_count()
+    return zlib.crc32((username or "").encode("utf-8")) % n
+
+
+def get_active_usernames_for_kb_sweep(
+    bucket: int,
+    *,
+    window_days: Optional[int] = None,
+    buckets: Optional[int] = None,
+    limit: int = 500,
+) -> List[str]:
+    """Return a deterministic list of recently-active usernames in *bucket*.
+
+    Queries ``posts`` and ``replies`` for distinct usernames with activity in
+    the last ``window_days`` days, filters to those whose CRC32 bucket equals
+    ``bucket``, sorts deterministically, and returns at most ``limit`` entries.
+
+    Returns ``[]`` if the database is unavailable or both scans fail — the
+    caller treats this as an empty sweep (no-op), which is safe.
+    """
+    try:
+        from bodybuilding_app import get_db_connection, get_sql_placeholder
+    except Exception as imp_err:  # pragma: no cover - defensive
+        logger.warning("KB sweep: cannot import db helpers: %s", imp_err)
+        return []
+
+    n_buckets = buckets if (buckets is not None and buckets > 0) else _kb_weekly_bucket_count()
+    window = window_days if (window_days is not None and window_days > 0) else _kb_active_window_days()
+    cutoff = datetime.utcnow() - timedelta(days=window)
+
+    active: Set[str] = set()
+
+    def _collect(cursor, table_name: str, ts_col: str) -> None:
+        ph = get_sql_placeholder()
+        try:
+            cursor.execute(
+                f"SELECT DISTINCT username FROM {table_name} "
+                f"WHERE {ts_col} >= {ph} AND username IS NOT NULL AND username != ''",
+                (cutoff,),
+            )
+            rows = cursor.fetchall() or []
+            for row in rows:
+                if hasattr(row, "keys"):
+                    u = row["username"]
+                else:
+                    u = row[0]
+                if u:
+                    active.add(str(u))
+        except Exception as scan_err:
+            logger.debug("KB sweep: %s scan failed: %s", table_name, scan_err)
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            _collect(c, "posts", "timestamp")
+            _collect(c, "replies", "timestamp")
+    except Exception as db_err:
+        logger.warning("KB sweep: db unavailable: %s", db_err)
+        return []
+
+    in_bucket = sorted(u for u in active if username_bucket(u, n_buckets) == bucket)
+    return in_bucket[:max(0, int(limit))]
 
 
 # Founder awareness is now handled consistently at BOTH individual profile synthesis
