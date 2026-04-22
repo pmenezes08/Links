@@ -58,9 +58,9 @@ def _domains_from_urls(urls: List[str]) -> List[str]:
 
 def build_steve_profiling_firestore_payloads(
     username: str,
-    post_limit: int = 30,
-    reply_limit: int = 20,
-    starred_limit: int = 20,
+    post_limit: int = 60,
+    reply_limit: int = 40,
+    starred_limit: int = 30,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     Build the top-level profiling Firestore payloads for a user.

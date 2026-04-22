@@ -56,6 +56,34 @@ def _kb_synthesis_max_output_tokens() -> int:
     return max(_KB_SYNTHESIS_MAX_OUT_MIN, min(v, _KB_SYNTHESIS_MAX_OUT_CAP))
 
 
+# Caps applied when building the Grok synthesis prompt. Raising these gives
+# heavier posters more coverage at a small token-cost increase (~+$0.002 per
+# synthesis for the default bump). Override via env for emergency tuning.
+_KB_PROMPT_POSTS_CAP_DEFAULT = 40
+_KB_PROMPT_REPLIES_CAP_DEFAULT = 25
+_KB_PROMPT_EXTERNALS_CAP_DEFAULT = 20
+
+
+def _kb_prompt_cap(env_name: str, default: int, hard_cap: int = 200) -> int:
+    try:
+        v = int(os.environ.get(env_name, str(default)))
+    except ValueError:
+        v = default
+    return max(1, min(v, hard_cap))
+
+
+def _kb_prompt_posts_cap() -> int:
+    return _kb_prompt_cap("KB_PROMPT_POSTS_CAP", _KB_PROMPT_POSTS_CAP_DEFAULT)
+
+
+def _kb_prompt_replies_cap() -> int:
+    return _kb_prompt_cap("KB_PROMPT_REPLIES_CAP", _KB_PROMPT_REPLIES_CAP_DEFAULT)
+
+
+def _kb_prompt_externals_cap() -> int:
+    return _kb_prompt_cap("KB_PROMPT_EXTERNALS_CAP", _KB_PROMPT_EXTERNALS_CAP_DEFAULT)
+
+
 # Founder awareness is now handled consistently at BOTH individual profile synthesis
 # AND network synthesis levels (see synthesize_network_knowledge() and founderInfo
 # metadata in NetworkIndex/NetworkInferredContext). All references to
@@ -1290,18 +1318,20 @@ def _assemble_raw_text_for_synthesis(
 
     platform = profile_data.get("profilingPlatformActivity") or {}
     authored = platform.get("authoredPosts") or []
+    posts_cap = _kb_prompt_posts_cap()
     if authored:
         post_lines = []
-        for p in authored[:20]:  # Increased limit for better context
+        for p in authored[:posts_cap]:
             if isinstance(p, dict) and p.get("snippet"):
                 post_lines.append(f"[{p.get('date', '?')}] {p['snippet'][:300]}")
         if post_lines:
             parts.append(f"AUTHORED POSTS AND COMMENTS (high-signal platform activity):\n" + "\n".join(post_lines))
 
     replies_data = platform.get("replies") or []
+    replies_cap = _kb_prompt_replies_cap()
     if replies_data:
         reply_lines = []
-        for r in replies_data[:15]:  # Increased for better thread context
+        for r in replies_data[:replies_cap]:
             if isinstance(r, dict) and r.get("content"):
                 ctx = f" (replying to: '{r.get('replyingTo', '')[:100]}')" if r.get("replyingTo") else ""
                 reply_lines.append(f"[{r.get('date', '?')}]{ctx} {r['content'][:250]}")
@@ -1310,9 +1340,10 @@ def _assemble_raw_text_for_synthesis(
 
     externals = profile_data.get("profilingSharedExternals") or {}
     shared_items = externals.get("items") or []
+    externals_cap = _kb_prompt_externals_cap()
     if shared_items:
         ext_lines = []
-        for item in shared_items[:12]:
+        for item in shared_items[:externals_cap]:
             if isinstance(item, dict):
                 urls = item.get("urls", [])
                 caption = item.get("userCaption", "")[:200]
