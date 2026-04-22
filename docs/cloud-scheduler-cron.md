@@ -120,6 +120,37 @@ gcloud scheduler jobs create http communities-lifecycle-dispatch \
   --http-method=POST \
   --headers="X-Cron-Secret=$SECRET" \
   --attempt-deadline=300s
+
+# Steve member KB — weekly auto-synthesis. Refreshes every active
+# member's Knowledge Base once per calendar week by processing one of
+# seven daily buckets keyed off CRC32(username) % 7 (today's
+# day-of-week 0..6). Users with no post/reply in the last
+# KB_ACTIVE_WINDOW_DAYS (default 7) are skipped, so "quiet weeks"
+# cost nothing. This removes the need for the manual admin-dashboard
+# trigger for routine upkeep.
+#
+# Kill switches:
+#   * Fast (no code deploy): set env KB_WEEKLY_AUTO_ENABLED=false
+#     on the Cloud Run service. Endpoint returns skipped=true with
+#     reason=kb_weekly_auto_disabled.
+#   * Full pause: `gcloud scheduler jobs pause kb-weekly-synthesis`
+#
+# Dry-run from the CLI (lists candidate usernames, doesn't synthesize):
+#   curl -X POST "$BASE/api/cron/kb/weekly-synthesis?dry_run=1" \
+#     -H "X-Cron-Secret: $CRON_SECRET"
+#
+# Schedule rationale: 03:30 UTC is low-traffic for all timezones; Grok
+# latency (~5-15s per synthesis) and per-invocation cap
+# (KB_WEEKLY_BATCH_MAX, default 200) mean a single run finishes in
+# well under the attempt deadline for realistic rosters.
+gcloud scheduler jobs create http kb-weekly-synthesis \
+  --location=europe-west1 \
+  --schedule="30 3 * * *" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/kb/weekly-synthesis" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=900s
 ```
 
 ## 3. Monitor the jobs
@@ -152,7 +183,7 @@ migration), run:
 ```bash
 for job in enterprise-grace-sweep enterprise-iap-nag enterprise-winback-expire \
            subscriptions-revoke-expired usage-cycle-notify \
-           communities-lifecycle-dispatch; do
+           communities-lifecycle-dispatch kb-weekly-synthesis; do
   gcloud scheduler jobs pause "$job" --location=europe-west1
 done
 ```
