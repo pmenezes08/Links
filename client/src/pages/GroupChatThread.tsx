@@ -698,19 +698,33 @@ export default function GroupChatThread() {
         const existingKeys = new Set(prev.map(m => (m as any).clientKey).filter(Boolean))
         const toAdd = myEntries
           .filter(e => !existingKeys.has(e.clientKey))
-          .map(e => ({
-            id: -e.createdAt,
-            sender: currentUsername || 'You',
-            text: e.content.replace(/^\[REPLY:[^\]]*\]\n/, ''),
-            image: null,
-            voice: null,
-            created_at: new Date(e.createdAt).toISOString(),
-            profile_picture: null,
-            clientKey: e.clientKey,
-            isOptimistic: true,
-            sendFailed: e.status === 'failed',
-            _originalMessage: e.content,
-          }))
+          .map(e => {
+            let text = e.content
+            let replySnippet: string | undefined
+            let replySender: string | undefined
+            const replyMatch = text.match(/^\[REPLY:([^:]+):([^\]]+)\](?:\r?\n|\s)*(.*)$/s)
+            if (replyMatch) {
+              replySender = replyMatch[1]
+              replySnippet = replyMatch[2]
+              text = replyMatch[3]
+            }
+            return {
+              id: -e.createdAt,
+              sender: currentUsername || 'You',
+              text: text,
+              image: null,
+              video: null,
+              voice: null,
+              created_at: new Date(e.createdAt).toISOString(),
+              profile_picture: null,
+              clientKey: e.clientKey,
+              isOptimistic: true,
+              sendFailed: e.status === 'failed',
+              replySnippet,
+              replySender,
+              _originalMessage: e.content,
+            }
+          })
         return toAdd.length ? [...prev, ...toAdd as any[]] : prev
       })
     }).catch(() => {})
@@ -2194,7 +2208,7 @@ export default function GroupChatThread() {
                   let replySender = msgWithKey.replySender
                   
                   if (displayText && !replySnippet) {
-                    const replyMatch = displayText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
+                    const replyMatch = displayText.match(/^\[REPLY:([^:]+):([^\]]+)\](?:\r?\n|\s)*(.*)$/s)
                     if (replyMatch) {
                       replySender = replyMatch[1]
                       replySnippet = replyMatch[2]
@@ -2261,11 +2275,13 @@ export default function GroupChatThread() {
                           <LongPressActionable
                             onReact={(emoji) => handleReaction(msg.id, emoji)}
                             onReply={() => {
+                              const firstMedia = msg.media_paths?.[0] || '';
+                              const isMediaImage = firstMedia.match(/\.(jpg|jpeg|png|gif|webp)$/i);
                               setReplyTo({
                                 text: msg.text || '',
                                 sender: isSentByMe ? 'You' : msg.sender,
-                                image: msg.image || undefined,
-                                video: msg.video || undefined,
+                                image: msg.image || (isMediaImage ? firstMedia : undefined),
+                                video: msg.video || (!isMediaImage && firstMedia ? firstMedia : undefined),
                                 voice: msg.voice || undefined,
                                 audio_summary: msg.audio_summary || undefined,
                               })
@@ -2273,7 +2289,7 @@ export default function GroupChatThread() {
                             }}
                             onCopy={() => handleCopyMessage(msg.text)}
                             onDelete={() => handleDeleteMessage(msg.id, msg)}
-                            onEdit={isSentByMe && msg.text && !msg.image && !msg.video && !msg.voice ? () => handleStartEdit(msg.id, msg.text || '') : undefined}
+                            onEdit={isSentByMe && msg.text && !msg.image && !msg.video && !msg.voice && !msg.media_paths?.length ? () => handleStartEdit(msg.id, msg.text || '') : undefined}
                             onSelect={isSentByMe ? () => enterSelectionMode(msg.id) : undefined}
                             disabled={(isOptimistic && !sendFailed) || editingId === msg.id || selectionMode}
                           >
@@ -2320,22 +2336,28 @@ export default function GroupChatThread() {
                                             {replySender}
                                           </div>
                                           <div className="text-[11px] text-white/60 whitespace-pre-wrap break-words leading-[1.25]">
-                                            {replySnippet.startsWith('📷|') ? (
-                                              <span className="inline-flex items-center gap-1">
-                                                <i className="fa-solid fa-image text-[9px]" /> Photo
-                                              </span>
-                                            ) : replySnippet.startsWith('🎥|') ? (
-                                              <span className="inline-flex items-center gap-1">
-                                                <i className="fa-solid fa-video text-[9px]" /> Video
-                                              </span>
-                                            ) : replySnippet.startsWith('🎤|') ? (
-                                              <>
-                                                <i className="fa-solid fa-microphone text-[9px]" />
-                                                {replySnippet.length > 2 ? replySnippet.slice(2) : 'Voice message'}
-                                              </>
-                                            ) : (
-                                              replySnippet
-                                            )}
+                                            {(() => {
+                                              if (replySnippet.startsWith('📷|') || replySnippet.startsWith('🎥|')) {
+                                                const parts = replySnippet.split('|');
+                                                const isImage = replySnippet.startsWith('📷|');
+                                                const icon = isImage ? 'fa-image' : 'fa-video';
+                                                const defaultLabel = isImage ? 'Photo' : 'Video';
+                                                const caption = parts.length > 2 ? parts.slice(2).join('|').trim() || defaultLabel : defaultLabel;
+                                                return (
+                                                  <span className="inline-flex items-center gap-1">
+                                                    <i className={`fa-solid ${icon} text-[9px]`} /> {caption}
+                                                  </span>
+                                                );
+                                              } else if (replySnippet.startsWith('🎤|')) {
+                                                return (
+                                                  <>
+                                                    <i className="fa-solid fa-microphone text-[9px]" />
+                                                    {replySnippet.length > 2 ? replySnippet.slice(2).trim() : 'Voice message'}
+                                                  </>
+                                                );
+                                              }
+                                              return replySnippet;
+                                            })()}
                                           </div>
                                         </div>
                                       </div>
