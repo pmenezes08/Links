@@ -34,6 +34,8 @@ These two accounts (and Steve internally) always bypass and receive full KB. No 
 - Compute root networks for *all current group members*.
 - If any group member does not share a root network with the target → KB must be empty for the entire group.
 - Applies to both full KB and the fallback basic profile block.
+- **Natural-language references count**: bare names (no `@`) that match a known platform username are gated identically to explicit `@mentions`. Any candidate that fails the gate is added to the system prompt's `BLOCKED USERS` list.
+- **Community intelligence must also be gated**: the mutual-communities enrichment block in `_build_community_intelligence` may only include users whose root networks intersect the group-wide root intersection. Posts authored by blocked users are dropped before reaching Steve's prompt.
 
 ### DMs
 - Simple asker (`viewer_username`) vs target check using the same root-network logic.
@@ -49,12 +51,12 @@ These two accounts (and Steve internally) always bypass and receive full KB. No 
 
 ## Call Sites (Key Files)
 
-- `backend/blueprints/group_chat.py` (~2999 mention handler, `_trigger_steve_group_reply`)
-- DM reply path in monolith (minimal update only)
-- `client/src/pages/PostDetail.tsx`, `client/src/pages/CommentReply.tsx` (Steve reply flows, `@steve` detection)
-- Community feed and `backend/blueprints/communities.py` (personality, automation)
-- `bodybuilding_app.py:get_steve_context_for_user` (central gate point)
-- `backend/services/steve_knowledge_base.py` (network resolution helpers)
+- `backend/blueprints/group_chat.py` — `_trigger_steve_group_reply`: explicit `@mention` gate, natural-language candidate detection (`extract_candidate_usernames` + `filter_usernames_for_group`), `BLOCKED USERS` clause in the system prompt, and gated `_build_community_intelligence(group_id, sender_username)`.
+- DM reply path in monolith (`_trigger_steve_dm_reply` — minimal wiring only).
+- `client/src/pages/PostDetail.tsx`, `client/src/pages/CommentReply.tsx` (Steve reply flows, `@steve` detection — gate enforced backend-side).
+- Community feed and `backend/blueprints/communities.py` (personality, automation).
+- `bodybuilding_app.py:get_steve_context_for_user` (central KB fetch; must be preceded by the gate).
+- `backend/services/steve_profiling_gates.py` — canonical gate + helpers (`user_can_access_steve_kb`, `compute_group_root_intersection`, `filter_usernames_for_group`, `extract_candidate_usernames`, `_user_root_networks`).
 
 ## Architecture
 

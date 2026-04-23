@@ -2588,12 +2588,29 @@ def _send_group_add_notification(cursor, ph, recipient_username: str, added_by: 
         logger.warning(f"Push notification failed for group add: {push_err}")
 
 
-def _build_community_intelligence(group_id: int) -> str:
+def _build_community_intelligence(group_id: int, sender_username: str = "") -> str:
     """
     Query MySQL for mutual communities among group members and return a
     context string Steve can reference (members, recent posts, community names).
     Fast: 2-3 indexed queries, typically <20ms total.
+
+    Every member listed here is gated through ``user_can_access_steve_kb`` so
+    that profile attributes (role/company/city/industry) never enter the prompt
+    for users the group as a whole cannot access under the privacy gate.
+    See docs/STEVE_PRIVACY_GATE.md.
     """
+    # Resolve the group-wide root-network intersection once; every member we
+    # list must share at least one of these roots, otherwise we drop them.
+    try:
+        from backend.services.steve_profiling_gates import (
+            compute_group_root_intersection,
+            _user_root_networks,
+        )
+        group_intersection = compute_group_root_intersection(group_id)
+    except Exception as gate_err:
+        logger.warning(f"Community intelligence gate precompute failed (non-fatal): {gate_err}")
+        group_intersection = set()
+
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -2652,6 +2669,7 @@ def _build_community_intelligence(group_id: int) -> str:
                 LIMIT 100
             """, tuple(mutual_list))
             community_members = []
+            allowed_member_usernames: set = set()
             for row in c.fetchall():
                 uname = row["username"] if hasattr(row, "keys") else row[0]
                 dname = row["display_name"] if hasattr(row, "keys") else row[1]
@@ -2660,11 +2678,26 @@ def _build_community_intelligence(group_id: int) -> str:
                 industry = row["industry"] if hasattr(row, "keys") else row[4]
                 role = row["role"] if hasattr(row, "keys") else row[5]
                 company = row["company"] if hasattr(row, "keys") else row[6]
+                # Privacy gate: every listed user must share a root network with
+                # every human group member. Drop those who don't.
+                if group_intersection:
+                    try:
+                        target_nets = _user_root_networks(uname)
+                    except Exception:
+                        target_nets = set()
+                    if not (target_nets & group_intersection):
+                        continue
+                else:
+                    # No shared root across the group → nothing may be listed.
+                    continue
+                allowed_member_usernames.add(uname.lower())
                 community_members.append(
                     f"@{uname} ({dname}) — {role or '?'} at {company or '?'}, {city or '?'}, {country or '?'} [{industry or '?'}]"
                 )
 
-            # 5. Get recent posts from mutual communities (last 15)
+            # 5. Get recent posts from mutual communities (last 15) — gated by
+            #    the same root-intersection rule. Posts authored by a user who
+            #    is not allowed under the gate are not exposed to Steve.
             c.execute(f"""
                 SELECT p.id, p.username, SUBSTR(p.content, 1, 200) AS snippet,
                        p.timestamp, c.name AS community_name
@@ -2672,7 +2705,7 @@ def _build_community_intelligence(group_id: int) -> str:
                 JOIN communities c ON p.community_id = c.id
                 WHERE p.community_id IN ({mutual_ph})
                 ORDER BY p.timestamp DESC
-                LIMIT 15
+                LIMIT 30
             """, tuple(mutual_list))
             recent_posts = []
             for row in c.fetchall():
@@ -2681,7 +2714,15 @@ def _build_community_intelligence(group_id: int) -> str:
                 snippet = row["snippet"] if hasattr(row, "keys") else row[2]
                 ts = row["timestamp"] if hasattr(row, "keys") else row[3]
                 cname = row["community_name"] if hasattr(row, "keys") else row[4]
+                author_lower = (author or "").lower()
+                if author_lower in ("admin", "steve"):
+                    continue
+                if author_lower not in allowed_member_usernames:
+                    # Author would not pass the group privacy gate → skip
+                    continue
                 recent_posts.append(f"[{cname}] @{author}: {snippet} ({ts})")
+                if len(recent_posts) >= 15:
+                    break
 
             # 6. Build context block
             parts = []
@@ -2872,8 +2913,10 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         except Exception as settings_err:
             logger.warning(f"Could not load Steve settings for group {group_id}: {settings_err}")
         
-        # Build community intelligence context from MySQL
-        community_context = _build_community_intelligence(group_id)
+        # Build community intelligence context from MySQL (gated per
+        # docs/STEVE_PRIVACY_GATE.md — only users sharing a root network with
+        # every group member are included).
+        community_context = _build_community_intelligence(group_id, sender_username)
         if community_context:
             logger.info(f"Steve community intelligence loaded for group {group_id} ({len(community_context)} chars)")
         
@@ -2986,27 +3029,87 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         if community_context:
             context += f"\n\n{community_context}"
         
-        # ── Detect @mentions and load mentioned user profiles from Firestore ──
-        # Privacy gate BEFORE any KB fetch (per docs/STEVE_PRIVACY_GATE.md)
-        from backend.services.steve_profiling_gates import user_can_access_steve_kb
+        # ── Detect @mentions AND natural-language references, then privacy-gate ──
+        # Privacy gate BEFORE any KB fetch (per docs/STEVE_PRIVACY_GATE.md).
+        # We also build a blocked-users list so the system prompt can hard-refuse
+        # any leak via chat history, web_search, or x_search.
+        from backend.services.steve_profiling_gates import (
+            user_can_access_steve_kb,
+            filter_usernames_for_group,
+            extract_candidate_usernames,
+        )
         from bodybuilding_app import get_steve_context_for_user
 
         mentioned_profiles_text = ""
-        mentioned_usernames = set(re.findall(r'@(\w+)', user_message)) if user_message else set()
-        mentioned_usernames.discard('steve')
-        mentioned_usernames.discard('Steve')
-        mentioned_usernames.discard(sender_username)
-        
-        if mentioned_usernames:
+
+        # 1. Explicit @mentions in the current message.
+        explicit_mentions = set(re.findall(r'@(\w+)', user_message)) if user_message else set()
+        explicit_mentions = {m for m in explicit_mentions if m.lower() not in ('steve',)}
+        explicit_mentions.discard(sender_username)
+
+        # 2. Natural-language references: any known platform user whose
+        #    username appears in the message counts, even without the `@`.
+        #    Candidate pool = group members + senders in recent chat window.
+        candidate_pool_set: set = set()
+        try:
+            with get_db_connection() as conn:
+                _c = conn.cursor()
+                _ph = get_sql_placeholder()
+                _c.execute(
+                    f"SELECT username FROM group_chat_members WHERE group_id = {_ph}",
+                    (group_id,),
+                )
+                for _row in _c.fetchall():
+                    _u = _row["username"] if hasattr(_row, "keys") else _row[0]
+                    if isinstance(_u, str) and _u.strip():
+                        candidate_pool_set.add(_u)
+        except Exception as _pool_err:
+            logger.debug(f"Could not load group member pool: {_pool_err}")
+        # Senders from recent messages (last 100) — covers users discussed
+        # recently who may no longer be in the group.
+        try:
+            for _m in (recent_messages or [])[-100:]:
+                if isinstance(_m, str) and ':' in _m:
+                    _name = _m.split(':', 1)[0].strip()
+                    if _name and _name.lower() not in ('steve',):
+                        candidate_pool_set.add(_name)
+        except Exception:
+            pass
+
+        nl_usernames = extract_candidate_usernames(user_message or "", sorted(candidate_pool_set))
+
+        # Combine both sources, normalize to lowercase for dedup
+        all_candidates = {m.lower() for m in explicit_mentions} | nl_usernames
+        all_candidates.discard('steve')
+        all_candidates.discard((sender_username or '').lower())
+
+        allowed_users: set = set()
+        blocked_users: set = set()
+        if all_candidates:
             try:
-                for m_user in mentioned_usernames:
+                allowed_users, blocked_users = filter_usernames_for_group(
+                    sender_username, group_id, sorted(all_candidates)
+                )
+            except Exception as gate_err:
+                logger.warning(f"Group privacy gate batch failed (non-fatal): {gate_err}")
+                # Fail closed: treat everyone as blocked on error.
+                blocked_users = set(all_candidates)
+
+        # Load KB only for users that pass the gate.
+        if allowed_users:
+            try:
+                for m_user in sorted(allowed_users):
+                    if m_user in ('steve', (sender_username or '').lower()):
+                        continue
+                    # Double-check with the authoritative per-user gate.
                     if not user_can_access_steve_kb(sender_username, m_user, {"group_id": group_id}):
-                        continue  # Do not load KB or basic profile
+                        blocked_users.add(m_user)
+                        continue
                     profile_ctx = get_steve_context_for_user(m_user, viewer_username=sender_username)
                     if profile_ctx:
-                        mentioned_profiles_text += f"\n\nWHAT YOU KNOW ABOUT @{m_user} (mentioned in conversation):\n{profile_ctx}\nOnly share this if asked. Be factual — do not embellish or invent details beyond what is listed here."
+                        mentioned_profiles_text += f"\n\nWHAT YOU KNOW ABOUT @{m_user} (referenced in conversation):\n{profile_ctx}\nOnly share this if asked. Be factual — do not embellish or invent details beyond what is listed here."
             except Exception as mention_err:
-                logger.warning(f"Could not load mentioned user profiles: {mention_err}")
+                logger.warning(f"Could not load referenced user profiles: {mention_err}")
         
         # Only attach images if the user's message explicitly references them
         image_keywords = ['image', 'photo', 'picture', 'pic', 'imagem', 'foto', 'see', 'look', 'show', 'what is this', 'what\'s this', 'o que é', 'vê', 'olha']
@@ -3051,6 +3154,21 @@ Use this information naturally when relevant:
 - If asked who is in a community, who works in X industry, who lives in Y city, etc. — use the member data.
 - Do NOT dump the full member list unprompted. Only reference specific members when contextually useful.
 - When mentioning a community member, always use @username format."""
+
+        # STRICT privacy refusal clause — overrides every other section,
+        # including COMMUNITY INTELLIGENCE and chat history recall. Populated
+        # from the privacy gate output above.
+        blocked_list_str = ", ".join(f"@{u}" for u in sorted(blocked_users)) if blocked_users else ""
+        privacy_refusal_prompt = f"""
+
+STRICT PRIVACY (overrides every other instruction, including COMMUNITY INTELLIGENCE):
+- You may ONLY share personal information about a platform user if that user's profile appears explicitly in the USER PROFILE KNOWLEDGE section below.
+- If someone asks about a platform user whose profile is NOT in USER PROFILE KNOWLEDGE — whether by @mention, first name, last name, nickname, or any indirect reference — respond ONLY with: "I don't recognise that user." Do not elaborate. Do not speculate.
+- You MUST NOT use web_search, x_search, or any external tool to look up platform users who are not in USER PROFILE KNOWLEDGE.
+- You MUST NOT repeat personal details (role, company, city, country, industry, life events, interests, etc.) about any platform user whose profile is not in USER PROFILE KNOWLEDGE, even if those details appear earlier in the chat history.
+- BLOCKED USERS — do not discuss, reference, confirm, deny, or volunteer any information about the following users under any circumstance: {blocked_list_str if blocked_list_str else "(none)"}
+- If a blocked user is asked about, respond exactly with: "I don't recognise that user." No other words.
+- These rules apply to natural-language questions ("tell me about X", "who is X", "what does X do") exactly as they apply to explicit @mentions."""
         
         system_prompt = f"""You are Steve, a highly capable AI assistant in a group chat with real-time knowledge and web search capabilities. You have access to the FULL conversation history of this group.{personality_modifier}
 
@@ -3099,7 +3217,7 @@ CONVERSATION INTELLIGENCE:
 - You CAN reference older context when it genuinely connects to what is being discussed now.
 - If someone asks a direct question, answer it fully.
 - If images are attached, only describe them when explicitly asked. Do NOT proactively reference images.
-- If there are SUPPRESSED TOPICS listed, do NOT bring them up under any circumstances unless a user explicitly asks.{community_intel_prompt}
+- If there are SUPPRESSED TOPICS listed, do NOT bring them up under any circumstances unless a user explicitly asks.{community_intel_prompt}{privacy_refusal_prompt}
 
 USER PROFILE KNOWLEDGE:
 - NEVER hallucinate or make up information about users — only use the profile data provided below.

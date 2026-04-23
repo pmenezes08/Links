@@ -305,3 +305,174 @@ def user_can_access_steve_kb(
     # Default DM/simple viewer-vs-target rule.
     viewer_networks = get_user_root_networks(viewer_username)
     return bool(viewer_networks & target_networks)
+
+
+def _user_root_networks(username: str) -> Set[int]:
+    """Module-level helper that returns a user's root (parent) network IDs.
+
+    Mirrors the inline ``get_user_root_networks`` used inside
+    :func:`user_can_access_steve_kb` but callable from other services
+    (community-intelligence gating, natural-language username filtering).
+    """
+    if not username:
+        return set()
+    lower = username.lower().strip()
+    if lower in ("admin", "steve"):
+        return set()
+    try:
+        from backend.services.database import get_db_connection, get_sql_placeholder
+    except Exception:
+        return set()
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"SELECT uc.community_id FROM user_communities uc "
+                f"JOIN users u ON u.id = uc.user_id "
+                f"WHERE u.username = {ph} AND LOWER(u.username) NOT IN ('admin', 'steve')",
+                (username,),
+            )
+            community_ids = [r["community_id"] if hasattr(r, "keys") else r[0] for r in c.fetchall()]
+            root_ids: Set[int] = set()
+            for cid in community_ids:
+                current = cid
+                visited: Set[int] = set()
+                while current and current not in visited:
+                    visited.add(current)
+                    c.execute(f"SELECT parent_community_id FROM communities WHERE id = {ph}", (current,))
+                    row = c.fetchone()
+                    if not row:
+                        break
+                    parent = row["parent_community_id"] if hasattr(row, "keys") else row[0]
+                    if parent is None:
+                        root_ids.add(current)
+                        break
+                    current = parent
+            return root_ids
+    except Exception as e:
+        logger.debug("Could not fetch root networks for %s: %s", username, e)
+        return set()
+
+
+def compute_group_root_intersection(group_id: Any) -> Set[int]:
+    """Root networks shared by EVERY current human member of the group.
+
+    Returns the set of parent-community IDs that every member of the group
+    belongs to (transitively). If even one member has an empty intersection
+    with the others, the returned set is empty — meaning the group itself
+    has no shared root network and nothing about any user should be shared.
+
+    Excludes the synthetic ``admin`` and ``steve`` accounts.
+    """
+    try:
+        gid = int(group_id)
+    except Exception:
+        return set()
+    try:
+        from backend.services.database import get_db_connection, get_sql_placeholder
+    except Exception:
+        return set()
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"SELECT username FROM group_chat_members WHERE group_id = {ph}",
+                (gid,),
+            )
+            rows = c.fetchall()
+            members = [(row["username"] if hasattr(row, "keys") else row[0]) for row in rows]
+            members = [m for m in members if isinstance(m, str) and m.lower() not in ("admin", "steve")]
+    except Exception as e:
+        logger.debug("Could not fetch group members for %s: %s", group_id, e)
+        return set()
+
+    if not members:
+        return set()
+
+    intersection: Optional[Set[int]] = None
+    for m in members:
+        nets = _user_root_networks(m)
+        if not nets:
+            return set()
+        intersection = nets if intersection is None else (intersection & nets)
+        if not intersection:
+            return set()
+    return intersection or set()
+
+
+def filter_usernames_for_group(
+    sender_username: str,
+    group_id: Any,
+    candidate_usernames: List[str],
+) -> Tuple[Set[str], Set[str]]:
+    """Classify candidate usernames for a group-chat viewer.
+
+    Returns a tuple ``(allowed, blocked)`` of lowercase usernames:
+    * ``allowed`` — gate permits Steve to share KB info about that user.
+    * ``blocked`` — gate does not permit sharing; Steve must refuse.
+
+    Bypass users (``paulo``, ``admin``) receive an always-allowed view; the
+    synthetic ``steve`` username is always allowed (self-reference).
+    Computes the group's shared root-network intersection exactly once.
+    """
+    allowed: Set[str] = set()
+    blocked: Set[str] = set()
+    if not candidate_usernames:
+        return allowed, blocked
+
+    sender_lower = (sender_username or "").lower().strip()
+    bypass = sender_lower in ("paulo", "admin")
+
+    group_intersection: Optional[Set[int]] = None
+    for raw in candidate_usernames:
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        u = raw.strip()
+        u_lower = u.lower()
+        if u_lower in ("steve", "admin") or u_lower == sender_lower:
+            allowed.add(u_lower)
+            continue
+        if bypass:
+            allowed.add(u_lower)
+            continue
+        if group_intersection is None:
+            group_intersection = compute_group_root_intersection(group_id)
+        if not group_intersection:
+            blocked.add(u_lower)
+            continue
+        target_nets = _user_root_networks(u)
+        if target_nets & group_intersection:
+            allowed.add(u_lower)
+        else:
+            blocked.add(u_lower)
+    return allowed, blocked
+
+
+def extract_candidate_usernames(
+    message: str,
+    candidate_pool: List[str],
+) -> Set[str]:
+    """Return the subset of ``candidate_pool`` referenced in ``message``.
+
+    Matches both ``@username`` and bare ``username`` (case-insensitive,
+    word-boundary). Used to detect natural-language references to platform
+    users so the privacy gate can be applied even without an explicit ``@``.
+    """
+    if not message or not candidate_pool:
+        return set()
+    msg = message.lower()
+    hits: Set[str] = set()
+    for u in candidate_pool:
+        if not isinstance(u, str) or not u.strip():
+            continue
+        u_lower = u.strip().lower()
+        if u_lower in ("steve", "admin"):
+            continue
+        try:
+            if re.search(r"(?<![\w@])@?" + re.escape(u_lower) + r"\b", msg):
+                hits.add(u_lower)
+        except re.error:
+            continue
+    return hits
