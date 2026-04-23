@@ -1,0 +1,23 @@
+# Cloud Build config for the marketing site (www.c-point.co) on Cloud Run.
+# Requires: committed landing/dist/ from `cd landing && npm run build` (root Dockerfile.landing copies it).
+# Use from repo root: gcloud builds submit --config=cloudbuild-landing.yaml .
+
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/cpoint-landing:latest', '-f', 'Dockerfile.landing', '.']
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/cpoint-landing:latest']
+  - name: 'google/cloud-sdk:slim'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'cpoint-landing'
+      - '--image=gcr.io/$PROJECT_ID/cpoint-landing:latest'
+      - '--region=europe-west1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
