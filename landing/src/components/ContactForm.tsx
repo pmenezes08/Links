@@ -19,7 +19,7 @@ interface ContactFormProps {
 }
 
 // Using Formsubmit.co - free email forwarding service
-const CONTACT_EMAIL = "paulo.miguel.menezes@gmail.com";
+const CONTACT_EMAIL = "support@c-point.co";
 
 export const ContactForm = ({ open, onOpenChange }: ContactFormProps) => {
   const [name, setName] = useState("");
