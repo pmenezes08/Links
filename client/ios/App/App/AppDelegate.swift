@@ -101,6 +101,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     // MARK: - APNs Token Registration
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        // Required by @capacitor/push-notifications (enables removeAllDeliveredNotifications, etc.)
+        NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)
+
         let tokenString = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
         
         NSLog("🟢🟢🟢 APNS TOKEN RECEIVED 🟢🟢🟢")
@@ -118,6 +121,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
+
         NSLog("🔴🔴🔴 APNS REGISTRATION FAILED 🔴🔴🔴")
         NSLog("Error: %@", error.localizedDescription)
         print("❌ Failed to register for remote notifications!")
