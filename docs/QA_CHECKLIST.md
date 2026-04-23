@@ -253,3 +253,21 @@ python scripts/teardown_staging_test_users.py --confirm
   - The Tests-page row ID (e.g. `manual:enterprise_invite_nag`).
   - Steps taken + observed vs expected.
   - Screenshots / network-tab traces where useful.
+
+## §11 — Steve Privacy Gate
+
+Run after any change to Steve context, profiling, or KB access.
+
+- [ ] Verify `docs/STEVE_PRIVACY_GATE.md` is the single source of truth and matches current implementation.
+- [ ] Test Scenario 1 (group with partial connections): Steve must not share info about unconnected user.
+- [ ] Test Scenario 2 (group with one unconnected member): Block even if asker is connected.
+- [ ] Test Scenario 3 (all connected): Steve shares full KB.
+- [ ] Community surfaces (feed, post detail, comments, replies): Test sub-community B asking about user in parent A only — must allow (permissive root check).
+- [ ] Test DM with unconnected user: Steve says it does not recognise the user.
+- [ ] Bypass test: Login as paulo or admin — full KB always available.
+- [ ] Cache test: Change community membership and verify cached context is updated or invalidated.
+- [ ] Confirm no fallback basic profile leaks when check fails.
+- [ ] Update KB → Audit → Tests page with new manual runner rows for these scenarios.
+- [ ] Confirm no monolith bloat — all new logic in blueprints/services.
+
+Mark corresponding Tests-page rows successful only after full pass.
