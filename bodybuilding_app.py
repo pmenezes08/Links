@@ -14689,8 +14689,14 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
         
         current_date = datetime.now().strftime('%A, %B %d, %Y at %H:%M UTC')
         
+        # ── Privacy gate BEFORE any KB fetch (per docs/STEVE_PRIVACY_GATE.md) ──
+        from backend.services.steve_profiling_gates import user_can_access_steve_kb
+
         # ── Inject Grok-analyzed profile context for the sender ──
-        user_profile_ctx = get_steve_context_for_user(sender_username)
+        if user_can_access_steve_kb(sender_username, sender_username):
+            user_profile_ctx = get_steve_context_for_user(sender_username)
+        else:
+            user_profile_ctx = ""
 
         # ── Detect @mentions in the message and load mentioned user profiles ──
         mentioned_profiles = []
@@ -14700,37 +14706,16 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
         mentioned_usernames.discard(sender_username)
         
         for mentioned_user in mentioned_usernames:
-            profile_ctx = get_steve_context_for_user(mentioned_user, viewer_username=sender_username)
-            if profile_ctx:
-                mentioned_profiles.append((mentioned_user, profile_ctx))
-            else:
-                # Even if no AI profile, check if user exists and shares a community
-                try:
-                    with get_db_connection() as conn:
-                        c = conn.cursor()
-                        ph = get_sql_placeholder()
-                        c.execute(f"""
-                            SELECT u.first_name, u.last_name, u.company, u.role, u.city, u.industry
-                            FROM users u
-                            WHERE u.username = {ph}
-                        """, (mentioned_user,))
-                        urow = c.fetchone()
-                        if urow:
-                            fn = (urow['first_name'] if hasattr(urow, 'keys') else urow[0]) or ''
-                            ln = (urow['last_name'] if hasattr(urow, 'keys') else urow[1]) or ''
-                            co = (urow['company'] if hasattr(urow, 'keys') else urow[2]) or ''
-                            ro = (urow['role'] if hasattr(urow, 'keys') else urow[3]) or ''
-                            ci = (urow['city'] if hasattr(urow, 'keys') else urow[4]) or ''
-                            ind = (urow['industry'] if hasattr(urow, 'keys') else urow[5]) or ''
-                            basic_ctx = f"{fn} {ln}".strip()
-                            if co: basic_ctx += f", works at {co}"
-                            if ro: basic_ctx += f" as {ro}"
-                            if ci: basic_ctx += f", based in {ci}"
-                            if ind: basic_ctx += f" ({ind})"
-                            if basic_ctx:
-                                mentioned_profiles.append((mentioned_user, basic_ctx))
-                except Exception as mu_err:
-                    logger.warning(f"Could not load basic profile for @{mentioned_user}: {mu_err}")
+            if user_can_access_steve_kb(sender_username, mentioned_user):
+                profile_ctx = get_steve_context_for_user(mentioned_user, viewer_username=sender_username)
+                if profile_ctx:
+                    mentioned_profiles.append((mentioned_user, profile_ctx))
+                    continue
+            # Gate failed or no KB — do not fall back to basic profile
+            # (per privacy rules - no information leaked)
+            continue
+        except Exception as mu_err:
+            logger.warning(f"Could not load profile for @{mentioned_user}: {mu_err}")
 
         # ── Build conversation context with recency weighting ──
         all_messages = recent_messages[-200:]
@@ -26603,8 +26588,12 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             except Exception as ctx_err:
                 logger.warning("Steve community context failed: %s", ctx_err)
 
-            # Inject Grok-analyzed profile context for the post author (scrub for commenter's view)
-            author_profile_ctx = get_steve_context_for_user(author_username)
+            # Privacy gate BEFORE KB fetch (per docs/STEVE_PRIVACY_GATE.md and community rule)
+            from backend.services.steve_profiling_gates import user_can_access_steve_kb
+            if not user_can_access_steve_kb(username, author_username, {"community_id": community_id}):
+                author_profile_ctx = ""
+            else:
+                author_profile_ctx = get_steve_context_for_user(author_username)
 
             context = "\n\n".join(context_parts)
             
@@ -27020,8 +27009,12 @@ def ai_steve_reply():
                 except Exception as ctx_err:
                     logger.warning("Steve community context (comment reply) failed: %s", ctx_err)
             
-            # Inject Grok-analyzed profile context for the commenting user
-            commenter_profile_ctx = get_steve_context_for_user(username)
+            # Privacy gate BEFORE KB fetch (per docs/STEVE_PRIVACY_GATE.md and community rule)
+            from backend.services.steve_profiling_gates import user_can_access_steve_kb
+            if not user_can_access_steve_kb(username, username, {"community_id": community_id}):
+                commenter_profile_ctx = ""
+            else:
+                commenter_profile_ctx = get_steve_context_for_user(username)
 
             context = "\n\n".join(context_parts)
             

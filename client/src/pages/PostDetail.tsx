@@ -102,6 +102,8 @@ export default function PostDetail(){
   }
   
   // Call Steve AI to generate a reply
+  // Privacy gate is enforced on backend via user_can_access_steve_kb
+  // (see docs/STEVE_PRIVACY_GATE.md and backend steve_reply endpoint)
   const callSteveAI = async (userMessage: string, parentReplyId: number | null) => {
     if (!post || !containsSteveMention(userMessage)) return
     const communityIdRaw = (post as { community_id?: number | string | null }).community_id
