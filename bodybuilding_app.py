@@ -14714,8 +14714,6 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
             # Gate failed or no KB — do not fall back to basic profile
             # (per privacy rules - no information leaked)
             continue
-        except Exception as mu_err:
-            logger.warning(f"Could not load profile for @{mentioned_user}: {mu_err}")
 
         # ── Build conversation context with recency weighting ──
         all_messages = recent_messages[-200:]
