@@ -2987,6 +2987,10 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
             context += f"\n\n{community_context}"
         
         # ── Detect @mentions and load mentioned user profiles from Firestore ──
+        # Privacy gate BEFORE any KB fetch (per docs/STEVE_PRIVACY_GATE.md)
+        from backend.services.steve_profiling_gates import user_can_access_steve_kb
+        from bodybuilding_app import get_steve_context_for_user
+
         mentioned_profiles_text = ""
         mentioned_usernames = set(re.findall(r'@(\w+)', user_message)) if user_message else set()
         mentioned_usernames.discard('steve')
@@ -2995,32 +2999,12 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         
         if mentioned_usernames:
             try:
-                from bodybuilding_app import get_steve_context_for_user
                 for m_user in mentioned_usernames:
+                    if not user_can_access_steve_kb(sender_username, m_user):
+                        continue  # Do not load KB or basic profile
                     profile_ctx = get_steve_context_for_user(m_user, viewer_username=sender_username)
                     if profile_ctx:
                         mentioned_profiles_text += f"\n\nWHAT YOU KNOW ABOUT @{m_user} (mentioned in conversation):\n{profile_ctx}\nOnly share this if asked. Be factual — do not embellish or invent details beyond what is listed here."
-                    else:
-                        # Fall back to basic MySQL profile data
-                        with get_db_connection() as conn:
-                            c = conn.cursor()
-                            ph = get_sql_placeholder()
-                            c.execute(f"SELECT first_name, last_name, company, role, city, industry FROM users WHERE username = {ph}", (m_user,))
-                            urow = c.fetchone()
-                            if urow:
-                                fn = (urow['first_name'] if hasattr(urow, 'keys') else urow[0]) or ''
-                                ln = (urow['last_name'] if hasattr(urow, 'keys') else urow[1]) or ''
-                                co = (urow['company'] if hasattr(urow, 'keys') else urow[2]) or ''
-                                ro = (urow['role'] if hasattr(urow, 'keys') else urow[3]) or ''
-                                ci = (urow['city'] if hasattr(urow, 'keys') else urow[4]) or ''
-                                ind = (urow['industry'] if hasattr(urow, 'keys') else urow[5]) or ''
-                                basic_ctx = f"{fn} {ln}".strip()
-                                if co: basic_ctx += f", works at {co}"
-                                if ro: basic_ctx += f" as {ro}"
-                                if ci: basic_ctx += f", based in {ci}"
-                                if ind: basic_ctx += f" ({ind})"
-                                if basic_ctx:
-                                    mentioned_profiles_text += f"\n\nWHAT YOU KNOW ABOUT @{m_user} (mentioned in conversation):\n{basic_ctx}\nOnly share this if asked. Be factual — do not invent details."
             except Exception as mention_err:
                 logger.warning(f"Could not load mentioned user profiles: {mention_err}")
         

@@ -129,6 +129,8 @@ export default function CommentReply() {
   }
 
   // Call Steve AI to generate a reply - matching CommunityFeed implementation
+  // Privacy gate is enforced on backend via user_can_access_steve_kb
+  // (see docs/STEVE_PRIVACY_GATE.md - uses root parent of post's original community)
   const callSteveAI = async (userMessage: string, parentReplyId: number | null) => {
     console.log('[Steve AI] callSteveAI called with:', userMessage, 'parentReplyId:', parentReplyId)
     if (!containsSteveMention(userMessage)) {
