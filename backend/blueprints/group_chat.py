@@ -3000,7 +3000,7 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         if mentioned_usernames:
             try:
                 for m_user in mentioned_usernames:
-                    if not user_can_access_steve_kb(sender_username, m_user):
+                    if not user_can_access_steve_kb(sender_username, m_user, {"group_id": group_id}):
                         continue  # Do not load KB or basic profile
                     profile_ctx = get_steve_context_for_user(m_user, viewer_username=sender_username)
                     if profile_ctx:

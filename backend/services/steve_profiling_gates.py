@@ -8,10 +8,13 @@ X/Twitter is not gated here (Grok x_search on deep).
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 # Default netloc suffixes (without www.) — host_is_gated matches endswith or exact.
 _STEVE_GATED_SOCIAL_HOSTS_DEFAULT = (
@@ -188,18 +191,117 @@ def user_can_access_steve_kb(
     if v in ("paulo", "admin") or t == "steve" or v == t:
         return True
 
-    from backend.services.steve_knowledge_base import _get_user_network_ids
+    # Inline root network logic (standalone, no external deps)
+    def get_user_root_networks(username: str) -> Set[int]:
+        from backend.services.database import get_db_connection, get_sql_placeholder
+        ph = get_sql_placeholder()
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                c.execute(
+                    f"SELECT uc.community_id FROM user_communities uc "
+                    f"JOIN users u ON u.id = uc.user_id "
+                    f"WHERE u.username = {ph} AND LOWER(u.username) NOT IN ('admin', 'steve')",
+                    (username,),
+                )
+                community_ids = [r["community_id"] if hasattr(r, "keys") else r[0] for r in c.fetchall()]
+                root_ids = set()
+                for cid in community_ids:
+                    current = cid
+                    visited = set()
+                    while current and current not in visited:
+                        visited.add(current)
+                        c.execute(f"SELECT parent_community_id FROM communities WHERE id = {ph}", (current,))
+                        row = c.fetchone()
+                        if not row:
+                            break
+                        parent = row["parent_community_id"] if hasattr(row, "keys") else row[0]
+                        if parent is None:
+                            root_ids.add(current)
+                            break
+                        current = parent
+                return root_ids
+        except Exception as e:
+            logger.debug("Could not fetch root networks for %s: %s", username, e)
+            return set()
 
-    # Community context (implemented in later phase)
-    if context and context.get("community_id") is not None:
-        # For community surfaces: check membership in root parent of the post's
-        # original community (permissive as specified in STEVE_PRIVACY_GATE.md).
-        # Resolved in Phase 3.
-        target_networks = _get_user_network_ids(target_username)
-        viewer_networks = _get_user_network_ids(viewer_username)
-        return bool(set(viewer_networks) & set(target_networks))
+    def get_root_network_for_community(community_id: Any) -> Optional[int]:
+        from backend.services.database import get_db_connection, get_sql_placeholder
+        try:
+            cid = int(community_id)
+        except Exception:
+            return None
 
-    # Default: root network intersection (used for DMs and group fallback)
-    viewer_networks = _get_user_network_ids(viewer_username)
-    target_networks = _get_user_network_ids(target_username)
-    return bool(set(viewer_networks) & set(target_networks))
+        ph = get_sql_placeholder()
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                current = cid
+                visited: Set[int] = set()
+                while current and current not in visited:
+                    visited.add(current)
+                    c.execute(f"SELECT parent_community_id FROM communities WHERE id = {ph}", (current,))
+                    row = c.fetchone()
+                    if not row:
+                        return None
+                    parent = row["parent_community_id"] if hasattr(row, "keys") else row[0]
+                    if parent is None:
+                        return current
+                    current = parent
+        except Exception as e:
+            logger.debug("Could not resolve root network for community %s: %s", community_id, e)
+            return None
+        return None
+
+    def get_group_human_members(group_id: Any) -> List[str]:
+        from backend.services.database import get_db_connection, get_sql_placeholder
+        try:
+            gid = int(group_id)
+        except Exception:
+            return []
+
+        ph = get_sql_placeholder()
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                c.execute(
+                    f"SELECT username FROM group_chat_members WHERE group_id = {ph}",
+                    (gid,),
+                )
+                rows = c.fetchall()
+                members = [
+                    (row["username"] if hasattr(row, "keys") else row[0])
+                    for row in rows
+                ]
+                return [m for m in members if isinstance(m, str) and m.lower() not in ("admin", "steve")]
+        except Exception as e:
+            logger.debug("Could not fetch group members for %s: %s", group_id, e)
+            return []
+
+    target_networks = get_user_root_networks(target_username)
+    if not target_networks:
+        return False
+
+    ctx = context or {}
+
+    # Community surfaces: target must be in the root parent of the post's original community.
+    community_id = ctx.get("community_id")
+    if community_id is not None:
+        root_network_id = get_root_network_for_community(community_id)
+        return root_network_id is not None and root_network_id in target_networks
+
+    # Group chats: every current human member must share at least one root network with target.
+    group_id = ctx.get("group_id")
+    if group_id is not None:
+        members = get_group_human_members(group_id)
+        if not members:
+            return False
+        for member in members:
+            member_networks = get_user_root_networks(member)
+            if not (member_networks & target_networks):
+                return False
+        return True
+
+    # Default DM/simple viewer-vs-target rule.
+    viewer_networks = get_user_root_networks(viewer_username)
+    return bool(viewer_networks & target_networks)
