@@ -163,3 +163,43 @@ def url_allowed_for_activity_prefetch(
         return True
     n = normalize_url_for_allowlist(url)
     return n in allowlist_normalized
+
+
+def user_can_access_steve_kb(
+    viewer_username: str,
+    target_username: str,
+    context: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """Central privacy gate for Steve User KB access.
+
+    MUST be called BEFORE any call to get_steve_context_for_user,
+    KB synthesis, or Firestore steve_user_profiles read.
+
+    Returns True only if the viewer is allowed to see the target's full
+    synthesized profiling/KB data per the rules in docs/STEVE_PRIVACY_GATE.md.
+    """
+    if not viewer_username or not target_username:
+        return False
+
+    v = viewer_username.lower().strip()
+    t = target_username.lower().strip()
+
+    # Literal bypass users + Steve self-reference
+    if v in ("paulo", "admin") or t == "steve" or v == t:
+        return True
+
+    from backend.services.steve_knowledge_base import _get_user_network_ids
+
+    # Community context (implemented in later phase)
+    if context and context.get("community_id") is not None:
+        # For community surfaces: check membership in root parent of the post's
+        # original community (permissive as specified in STEVE_PRIVACY_GATE.md).
+        # Resolved in Phase 3.
+        target_networks = _get_user_network_ids(target_username)
+        viewer_networks = _get_user_network_ids(viewer_username)
+        return bool(set(viewer_networks) & set(target_networks))
+
+    # Default: root network intersection (used for DMs and group fallback)
+    viewer_networks = _get_user_network_ids(viewer_username)
+    target_networks = _get_user_network_ids(target_username)
+    return bool(set(viewer_networks) & set(target_networks))
