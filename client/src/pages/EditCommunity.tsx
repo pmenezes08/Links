@@ -4,12 +4,17 @@ import ContentGenerationModal from '../components/ContentGenerationModal'
 import { clearDeviceCache } from '../utils/deviceCache'
 import { invalidateDashboardCache } from '../utils/dashboardCache'
 
-// Billing is a root-community concern. Sub-communities inherit their
-// parent's tier server-side, so we only render this panel when
-// ``parent_community_id`` is null (isChild=false). Keep this struct in
-// sync with ``backend/blueprints/subscriptions.py::api_community_billing``.
+// Tiers and Stripe state live exclusively on the root community. The
+// API now also returns a payload for sub-community owners with
+// ``is_inherited=true`` so we can render a small read-only badge on
+// Manage Community. Keep this struct in sync with
+// ``backend/blueprints/subscriptions.py::api_community_billing``.
 interface CommunityBilling {
   tier: string
+  tier_label: string
+  is_inherited: boolean
+  inherited_from_root_id: number | null
+  inherited_from_root_name: string | null
   member_count: number
   member_cap: number | null
   subscription_status: string | null
@@ -120,12 +125,13 @@ export default function EditCommunity(){
     return () => { mounted = false }
   }, [community_id])
 
-  // Billing snapshot — only fetched for the ROOT community's owner.
-  // Sub-communities inherit tier from their parent, so the server
-  // returns 409 ``not_root_community`` for a child id; we keep the
-  // panel hidden in that case via the ``!isChild`` guard below.
+  // Billing snapshot — fetched for any community owner. Root owners see
+  // the full panel (status, renewal, portal CTA); sub-community owners
+  // see a small read-only "inherited from <root>" badge. The server
+  // resolves the parent chain for us and returns ``is_inherited=true``
+  // on children with everything Stripe-mutating cleared to null.
   useEffect(() => {
-    if (!isOwner || isChild || !community_id) return
+    if (!isOwner || !community_id) return
     let mounted = true
     async function loadBilling(){
       try {
@@ -138,6 +144,12 @@ export default function EditCommunity(){
         if (j?.success) {
           setBilling({
             tier: String(j.tier || 'free'),
+            tier_label: String(j.tier_label || TIER_LABEL[j.tier] || j.tier || 'Free'),
+            is_inherited: !!j.is_inherited,
+            inherited_from_root_id: j.inherited_from_root_id == null
+              ? null
+              : Number(j.inherited_from_root_id),
+            inherited_from_root_name: j.inherited_from_root_name || null,
             member_count: Number(j.member_count || 0),
             member_cap: j.member_cap === null || j.member_cap === undefined
               ? null
@@ -154,7 +166,7 @@ export default function EditCommunity(){
     }
     loadBilling()
     return () => { mounted = false }
-  }, [isOwner, isChild, community_id])
+  }, [isOwner, community_id])
 
   async function handleOpenPortal(){
     setPortalLoading(true)
@@ -380,10 +392,31 @@ export default function EditCommunity(){
             )}
           </div>
 
-          {/* Billing — root-community owner only. Tiers are enforced at
-              the parent level (see backend/services/community.py); a
-              child community has no billing of its own. */}
-          {isOwner && !isChild && billing && (
+          {/* Billing — visible to any community owner. The full panel
+              (status, renewal, portal CTA) only renders for the root
+              community's owner; sub-community owners see a small
+              read-only "inherited from <root>" badge so they know what
+              plan their group benefits from without being able to
+              mutate Stripe state from here. */}
+          {isOwner && billing && billing.is_inherited && (
+            <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+              <div className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
+                Billing
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1 text-[11px] font-medium text-cpoint-turquoise">
+                  {billing.tier_label || TIER_LABEL[billing.tier] || billing.tier}
+                </span>
+                <span className="text-xs text-white/60">
+                  {billing.inherited_from_root_name
+                    ? <>inherited from <span className="text-white/80">{billing.inherited_from_root_name}</span></>
+                    : 'inherited from parent community'}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {isOwner && billing && !billing.is_inherited && (
             <div className="rounded-xl border border-white/10 bg-white/5 p-5 space-y-4">
               <div className="flex items-start justify-between">
                 <div>
@@ -405,7 +438,7 @@ export default function EditCommunity(){
                   )}
                 </div>
                 <span className="inline-flex items-center rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1 text-[11px] font-medium text-cpoint-turquoise">
-                  {TIER_LABEL[billing.tier] || billing.tier}
+                  {billing.tier_label || TIER_LABEL[billing.tier] || billing.tier}
                 </span>
               </div>
 

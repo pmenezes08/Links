@@ -127,9 +127,17 @@ export default function Notifications(){
 
   useEffect(() => { setTitle('Notifications') }, [setTitle])
 
-  const load = useCallback(async function load(){
+  // ``load`` accepts ``{ silent: true }`` so background refreshes (badge
+  // poll, focus / visibility, foreground push) repopulate ``items``
+  // without flipping the page back to the "Loading…" placeholder.
+  // Without this guard, every ``adjustBadges`` call from a tap or
+  // delete cascades into the badge watcher below and flashes the page
+  // — on Android the focus/visibility events also fire often enough
+  // to make the list feel stuck in a loading loop.
+  const load = useCallback(async function load(opts: { silent?: boolean } = {}){
+    const silent = !!opts.silent
     try{
-      setLoading(true)
+      if (!silent) setLoading(true)
       const r = await fetch('/api/notifications?all=true', { credentials:'include', headers: { 'Accept': 'application/json' } })
       console.log('📋 Notifications API status:', r.status)
       const j = await r.json()
@@ -148,10 +156,12 @@ export default function Notifications(){
     } catch (err) {
       console.error('📋 Notifications fetch error:', err)
       setItems([])
-    } finally { setLoading(false) }
+    } finally {
+      if (!silent) setLoading(false)
+    }
   }, [])
 
-  useEffect(() => { 
+  useEffect(() => {
     load()
     refreshBadges()
   }, [load, refreshBadges])
@@ -164,14 +174,16 @@ export default function Notifications(){
     if (activeTab !== 'notifications') return
     if (previous === unreadNotifs) return
 
-    load()
+    // Silent so the page doesn't flash "Loading…" each time a tap /
+    // delete decrements the badge.
+    load({ silent: true })
   }, [activeTab, load, unreadNotifs])
 
   useEffect(() => {
     const refreshVisibleNotifications = () => {
       if (document.hidden) return
       if (activeTab !== 'notifications') return
-      load()
+      load({ silent: true })
       refreshBadges()
     }
 
@@ -244,6 +256,10 @@ export default function Notifications(){
 
   async function markAll(){
     setSwipeNotifId(null)
+    // Pre-sync the badge watcher ref so the post-adjustBadges effect
+    // run sees ``previous === unreadNotifs`` and skips an extra silent
+    // load — markAll already does its own explicit ``load()`` below.
+    lastUnreadNotifsRef.current = 0
     adjustBadges({ notifs: -Infinity })
     await fetch('/api/notifications/mark-all-read', { method:'POST', credentials:'include' })
     refreshBadges()
@@ -253,7 +269,12 @@ export default function Notifications(){
   async function markOneRead(n: Notif, e?: React.MouseEvent<HTMLButtonElement>) {
     e?.stopPropagation()
     const wasUnread = !n.is_read
-    if (wasUnread) adjustBadges({ notifs: -1 })
+    if (wasUnread) {
+      // Skip the badge watcher's silent reload; ``setItems`` below
+      // already flips this row to ``is_read=true`` locally.
+      lastUnreadNotifsRef.current = Math.max(0, unreadNotifs - 1)
+      adjustBadges({ notifs: -1 })
+    }
     try {
       const r = await fetch(`/api/notifications/${n.id}/read`, { method: 'POST', credentials: 'include' })
       const j = await r.json()
@@ -275,7 +296,10 @@ export default function Notifications(){
     e?.stopPropagation()
     if (!confirm('Delete this notification?')) return
     const wasUnread = !n.is_read
-    if (wasUnread) adjustBadges({ notifs: -1 })
+    if (wasUnread) {
+      lastUnreadNotifsRef.current = Math.max(0, unreadNotifs - 1)
+      adjustBadges({ notifs: -1 })
+    }
     try {
       const r = await fetch(`/api/notifications/${n.id}`, { method: 'DELETE', credentials: 'include' })
       const j = await r.json()
@@ -299,6 +323,7 @@ export default function Notifications(){
     try{
       setClearing(true)
       setSwipeNotifId(null)
+      lastUnreadNotifsRef.current = 0
       adjustBadges({ notifs: -Infinity })
       await fetch('/api/notifications/mark-all-read', { method:'POST', credentials:'include' })
       await fetch('/api/notifications/delete-read', { method:'POST', credentials:'include' })
@@ -311,7 +336,10 @@ export default function Notifications(){
 
   async function onClick(n: Notif){
     setSwipeNotifId(null)
-    if (!n.is_read) adjustBadges({ notifs: -1 })
+    if (!n.is_read) {
+      lastUnreadNotifsRef.current = Math.max(0, unreadNotifs - 1)
+      adjustBadges({ notifs: -1 })
+    }
     try {
       await fetch(`/api/notifications/${n.id}/read`, { method:'POST', credentials:'include' })
       refreshBadges()

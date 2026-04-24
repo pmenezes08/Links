@@ -380,6 +380,43 @@ def _tier_member_cap(tier_code: str) -> Optional[int]:
         return None
 
 
+def _fetch_community_name(community_id: int) -> str:
+    """Best-effort community name lookup for the inherited-tier badge.
+
+    Used by ``api_community_billing`` to surface "inherited from <name>"
+    on a sub-community owner's Manage Community page. Returns ``""`` on
+    any DB issue rather than blowing up the billing snapshot — the
+    panel renders a generic fallback in that case.
+    """
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"SELECT name FROM communities WHERE id = {ph}",
+                (int(community_id),),
+            )
+            row = c.fetchone()
+    except Exception:
+        return ""
+    if not row:
+        return ""
+    if hasattr(row, "keys"):
+        return str(row.get("name") or "")
+    if isinstance(row, (list, tuple)):
+        return str(row[0] or "") if row else ""
+    return str(row or "")
+
+
+_TIER_LABELS: Dict[str, str] = {
+    "free": "Free",
+    "paid_l1": "Paid L1",
+    "paid_l2": "Paid L2",
+    "paid_l3": "Paid L3",
+    "enterprise": "Enterprise",
+}
+
+
 def _resolve_root_community_id(community_id: int) -> Tuple[int, bool]:
     """Walk the parent chain and return ``(root_id, is_root)``.
 
@@ -519,18 +556,19 @@ def _preflight_community_tier(
 def api_community_billing(community_id: int):
     """Return the billing snapshot the EditCommunity Billing panel renders.
 
-    Owner-only **and root-only**. Surfaces the current tier, Stripe
-    subscription status, current period end, and enough cap-vs-count
-    math for the progress bar. Prices and Stripe IDs are deliberately
-    NOT included here — that data belongs to ``/api/kb/pricing`` which
-    is also login-only and already cached on the client.
-
-    Sub-communities (``parent_community_id IS NOT NULL``) are rejected
-    with ``reason=not_root_community`` because tiers are enforced at
-    the root only; see ``backend/services/community.py`` helpers
+    Owner-only. Tiers and Stripe state live exclusively on the root
+    community (see ``backend/services/community.py`` helpers
     ``ensure_free_parent_member_capacity`` and
     ``ensure_community_tier_member_capacity`` which both short-circuit
-    on child communities.
+    on child communities). For sub-communities we still return a
+    payload — read-only — so a group owner can see *what plan their
+    group inherits* on the Manage Community screen. The payload sets
+    ``is_inherited=True`` along with ``inherited_from_root_id`` /
+    ``inherited_from_root_name`` and clears the renewal/status fields
+    that only make sense on the billing-owning root.
+
+    Stripe-mutating actions (checkout, billing portal) remain root-only
+    — see ``_preflight_community_tier`` and ``api_billing_portal``.
     """
     username = _session_username()
     if not username:
@@ -541,21 +579,15 @@ def api_community_billing(community_id: int):
             "error": "Only the community owner can view billing.",
             "reason": "not_owner",
         }), 403
-    # Same root-only guard as the checkout preflight: a sub-community
-    # has no billing of its own. Return 409 + the root id so the client
-    # can navigate the user to the parent's Manage Community page.
-    root_id, is_root = _resolve_root_community_id(community_id)
-    if not is_root:
-        return jsonify({
-            "success": False,
-            "error": ("Billing is managed on the root community. "
-                      "Open the parent community to view billing."),
-            "reason": "not_root_community",
-            "root_community_id": root_id,
-        }), 409
 
-    state = community_billing.get_billing_state(community_id) or {}
+    root_id, is_root = _resolve_root_community_id(community_id)
+
+    # Always read billing state from the root — sub-communities don't
+    # have their own Stripe subscription rows.
+    state = community_billing.get_billing_state(root_id) or {}
     tier = state.get("tier") or community_svc.COMMUNITY_TIER_FREE
+    # Member count is the *requested* community's own count so the
+    # progress bar reflects whichever community is being managed.
     member_count = _count_members(community_id)
 
     # Cap for the tier. Free communities read the owner's entitlement
@@ -575,15 +607,25 @@ def api_community_billing(community_id: int):
         except Exception:
             cap = None
 
+    inherited = not is_root
+    inherited_root_name = _fetch_community_name(root_id) if inherited else None
+
     return jsonify({
         "success": True,
         "community_id": community_id,
         "tier": tier,
+        "tier_label": _TIER_LABELS.get(tier, tier),
+        "is_inherited": inherited,
+        "inherited_from_root_id": root_id if inherited else None,
+        "inherited_from_root_name": inherited_root_name,
         "member_count": member_count,
         "member_cap": cap,
-        "subscription_status": state.get("subscription_status"),
-        "current_period_end": state.get("current_period_end"),
-        "has_stripe_customer": bool(state.get("stripe_customer_id")),
+        # Status / renewal / customer flags only apply to the billing
+        # owner (the root). Children get nulls so the UI hides those
+        # rows entirely.
+        "subscription_status": None if inherited else state.get("subscription_status"),
+        "current_period_end": None if inherited else state.get("current_period_end"),
+        "has_stripe_customer": False if inherited else bool(state.get("stripe_customer_id")),
         "stripe_mode": _stripe_mode(),
     })
 
