@@ -690,21 +690,28 @@ export default function KnowledgeBase() {
     }
   }
 
-  const handleReseed = async (force = false) => {
+  const handleReseed = async (force = false, pageSlug?: string) => {
+    // When `pageSlug` is provided the reseed is scoped to a single page.
+    // That lets admins pull in new in-code fields (e.g. Stripe price IDs
+    // added in a later deploy) without clicking the global "Force" button,
+    // which would blow away edits on every other page.
     if (force) {
-      const ok = window.confirm(
-        'FORCE RESEED will overwrite ALL pages with the latest seed content, including pages you have edited. This cannot be undone (changelog kept). Continue?',
-      )
+      const scopeDesc = pageSlug
+        ? `FORCE RESEED "${pageSlug}" will overwrite THIS PAGE with the latest seed content, including any edits you've made. Other pages are not touched. Continue?`
+        : 'FORCE RESEED will overwrite ALL pages with the latest seed content, including pages you have edited. This cannot be undone (changelog kept). Continue?'
+      const ok = window.confirm(scopeDesc)
       if (!ok) return
     }
     setReseeding(true)
     try {
       const base = import.meta.env.VITE_API_BASE || ''
+      const body: Record<string, unknown> = { force }
+      if (pageSlug) body.page = pageSlug
       const r = await fetch(`${base}/api/admin/kb/seed`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ force }),
+        body: JSON.stringify(body),
       })
       const data = await r.json()
       if (!data.success) {
@@ -714,12 +721,13 @@ export default function KnowledgeBase() {
         const parts: string[] = []
         if (r2.inserted) parts.push(`${r2.inserted} new`)
         if (r2.auto_upgraded) parts.push(`${r2.auto_upgraded} upgraded`)
-        if (r2.forced) parts.push(`${r2.forced} forced`)
+        // Backend key is `force_updated`; keep legacy `forced` for older deploys.
+        const forcedCount = r2.force_updated ?? r2.forced
+        if (forcedCount) parts.push(`${forcedCount} forced`)
         if (r2.skipped) parts.push(`${r2.skipped} unchanged`)
         setToast(parts.length ? `Reseed OK: ${parts.join(', ')}` : 'Reseed OK')
         refreshPages()
         if (selectedSlug) {
-          // Re-fetch the currently selected page to show any new fields/groups.
           const cur = selectedSlug
           setSelectedSlug(null)
           setTimeout(() => setSelectedSlug(cur), 0)
@@ -891,6 +899,19 @@ export default function KnowledgeBase() {
                   >
                     <i className="fa-solid fa-clock-rotate-left mr-1.5" />
                     {showHistory ? 'Hide' : 'Show'} history
+                  </button>
+                  <button
+                    onClick={() => handleReseed(true, detail.slug)}
+                    disabled={reseeding || isDirty}
+                    title={
+                      isDirty
+                        ? "Save or discard your pending edits first, then force-reseed this page."
+                        : "Overwrite THIS page with the latest in-code defaults. Other pages are untouched. Use when a deploy adds new fields (e.g. Stripe price IDs) that this page hasn't picked up."
+                    }
+                    className="px-3 py-1.5 text-xs rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 hover:bg-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  >
+                    <i className={`fa-solid ${reseeding ? 'fa-spinner fa-spin' : 'fa-rotate-right'} mr-1.5`} />
+                    Force reseed this page
                   </button>
                   <button
                     onClick={() => setShowReasonModal(true)}
