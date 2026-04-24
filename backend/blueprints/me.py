@@ -350,6 +350,13 @@ def me_billing_portal():
     """Open a Stripe Customer Portal session for the signed-in user.
 
     Returns ``{success, url}``. The client should ``window.location = url``.
+
+    Supports two scopes:
+      * Personal — no ``community_id`` query param; the user's own
+        personal Premium subscription.
+      * Community — ``?community_id=<id>`` (or JSON body ``community_id``)
+        scopes the portal session to the community's own Stripe
+        customer. Only the community owner may request this scope.
     """
     username = _session_username()
     if not username:
@@ -359,17 +366,45 @@ def me_billing_portal():
     if stripe_mod is None:
         return jsonify({"success": False, "error": "stripe_not_configured"}), 400
 
-    user = _load_user_row(username) or {}
-    email = user.get("email") or ""
-    if not email:
-        return jsonify({"success": False, "error": "No email on file"}), 400
-
-    subscription = _find_stripe_subscription(stripe_mod, email)
-    customer_id = (subscription or {}).get("customer_id")
-    if not customer_id:
-        return jsonify({"success": False, "error": "No Stripe customer found"}), 404
-
     body = request.get_json(silent=True) or {}
+    community_id_raw = (
+        request.args.get("community_id")
+        or body.get("community_id")
+    )
+    try:
+        community_id = int(community_id_raw) if community_id_raw else 0
+    except (TypeError, ValueError):
+        community_id = 0
+
+    customer_id: Optional[str] = None
+    if community_id:
+        from backend.services import community as community_svc
+        from backend.services import community_billing
+        if not community_svc.is_community_owner(username, community_id):
+            return jsonify({
+                "success": False,
+                "error": "Only the community owner can manage billing.",
+                "reason": "not_owner",
+            }), 403
+        state = community_billing.get_billing_state(community_id) or {}
+        customer_id = state.get("stripe_customer_id") or None
+        if not customer_id:
+            return jsonify({
+                "success": False,
+                "error": "This community has no Stripe subscription yet.",
+                "reason": "no_customer",
+            }), 404
+    else:
+        user = _load_user_row(username) or {}
+        email = user.get("email") or ""
+        if not email:
+            return jsonify({"success": False, "error": "No email on file"}), 400
+
+        subscription = _find_stripe_subscription(stripe_mod, email)
+        customer_id = (subscription or {}).get("customer_id")
+        if not customer_id:
+            return jsonify({"success": False, "error": "No Stripe customer found"}), 404
+
     return_path = str(body.get("return_path") or "/account_settings").strip() or "/account_settings"
     # Scope to our own host to prevent open-redirect via return_url.
     try:

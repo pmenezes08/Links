@@ -37,6 +37,12 @@ ACTIONS = {
     "personal_premium_cancelled",
     "personal_premium_expired",
     "personal_premium_paused_for_enterprise",
+    # Community Paid Tier (Step E)
+    "community_tier_purchased",
+    "community_tier_renewed",
+    "community_tier_updated",
+    "community_tier_cancelled",
+    "community_tier_past_due",
     # Enterprise seats
     "enterprise_seat_joined",
     "enterprise_seat_left",

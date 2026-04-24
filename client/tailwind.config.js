@@ -6,6 +6,14 @@ export default {
   ],
   theme: {
     extend: {
+      colors: {
+        // C-Point design-system accent. Rolled out in Step E
+        // (Subscriptions UI) — not yet backfilled on legacy `#4db6ac`
+        // surfaces. Keep adding it to new screens going forward.
+        cpoint: {
+          turquoise: '#00CEC8',
+        },
+      },
       keyframes: {
         fadeIn: {
           '0%': { opacity: '0' },

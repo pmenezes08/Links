@@ -1569,15 +1569,14 @@ if not FLASK_SECRET_KEY:
         print("CRITICAL: FLASK_SECRET_KEY not set in production! Set it as an environment variable.", file=sys.stderr)
     FLASK_SECRET_KEY = os.getenv('SECRET_KEY') or 'dev-only-fallback-key-not-for-production'
 app.secret_key = FLASK_SECRET_KEY
-DEFAULT_STRIPE_API_KEY = 'sk_test_your_stripe_key'
-STRIPE_API_KEY = (os.getenv('STRIPE_API_KEY') or DEFAULT_STRIPE_API_KEY).strip()
-STRIPE_PUBLISHABLE_KEY = (os.getenv('STRIPE_PUBLISHABLE_KEY') or '').strip()
-STRIPE_PRICE_PREMIUM_MONTHLY = (os.getenv('STRIPE_PRICE_PREMIUM_MONTHLY') or '').strip()
-STRIPE_PRICE_PREMIUM_YEARLY = (os.getenv('STRIPE_PRICE_PREMIUM_YEARLY') or '').strip()
-STRIPE_PRICE_IDS = {
-    'premium_monthly': STRIPE_PRICE_PREMIUM_MONTHLY,
-    'premium_yearly': STRIPE_PRICE_PREMIUM_YEARLY,
-}
+# Stripe API key stays in the monolith for now because the legacy
+# ``stripe.api_key = STRIPE_API_KEY`` bootstrap below initializes the
+# ``stripe`` global still used by other routes. The publishable key and
+# Price IDs moved to ``backend/blueprints/subscriptions.py`` (Step E,
+# April 2026) — env vars ``STRIPE_PUBLISHABLE_KEY`` /
+# ``STRIPE_PRICE_PREMIUM_MONTHLY`` / ``STRIPE_PRICE_PREMIUM_YEARLY`` are
+# read directly there; no module-level constants are needed here.
+STRIPE_API_KEY = (os.getenv('STRIPE_API_KEY') or 'sk_test_your_stripe_key').strip()
 VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY', '')
 VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '')
 VAPID_SUBJECT = os.getenv('VAPID_SUBJECT', 'https://www.c-point.co')
@@ -11878,93 +11877,10 @@ def api_followers_feed():
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 
-@app.route('/api/stripe/config', methods=['GET'])
-@login_required
-def api_stripe_config():
-    """Expose publishable key so the client can initialize Stripe.js."""
-    if not STRIPE_PUBLISHABLE_KEY:
-        return jsonify({'success': False, 'error': 'stripe_not_configured'}), 400
-    return jsonify({'success': True, 'publishableKey': STRIPE_PUBLISHABLE_KEY})
-
-
-@app.route('/api/stripe/create_checkout_session', methods=['POST'])
-@login_required
-def api_stripe_create_checkout_session():
-    """Create a Checkout session for upgrading to premium."""
-    username = session.get('username')
-    if not stripe or not STRIPE_API_KEY or STRIPE_API_KEY == DEFAULT_STRIPE_API_KEY:
-        return jsonify({'success': False, 'error': 'Stripe is not configured'}), 400
-
-    payload = request.get_json(silent=True) or {}
-    plan_id = str(payload.get('plan_id', '')).strip().lower()
-    billing_cycle = str(payload.get('billing_cycle', 'monthly')).strip().lower()
-    if plan_id != 'premium':
-        return jsonify({'success': False, 'error': 'Unsupported plan'}), 400
-    if billing_cycle not in {'monthly', 'yearly'}:
-        billing_cycle = 'monthly'
-
-    price_key = STRIPE_PRICE_IDS.get(f'{plan_id}_{billing_cycle}')
-    if not price_key:
-        return jsonify({'success': False, 'error': 'Pricing is not configured'}), 400
-
-    # Block the upsell if the user already gets Premium through an Enterprise
-    # community seat. Stripe would happily take their money, but we'd be
-    # double-billing for benefits they already have. The client should read
-    # the ``reason: 'enterprise_seat_active'`` code and route them to the
-    # "you already have Premium via <community>" explainer instead.
-    try:
-        from backend.services import enterprise_membership as _em
-        _seat = _em.active_seat_for(username)
-        if _seat and _seat.get("active"):
-            return jsonify({
-                'success': False,
-                'error': 'You already have Premium through your Enterprise community.',
-                'reason': 'enterprise_seat_active',
-                'community_id': _seat.get('community_id'),
-                'community_slug': _seat.get('community_slug'),
-            }), 409
-    except Exception:
-        logger.exception("checkout preflight: enterprise seat check failed")
-
-    try:
-        email_value = None
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            placeholder = get_sql_placeholder()
-            c.execute(
-                f"SELECT email FROM users WHERE username = {placeholder}",
-                (username,),
-            )
-            row = c.fetchone()
-            if row:
-                email_value = row['email'] if hasattr(row, 'keys') else row[0]
-
-        success_url = urljoin(request.host_url, 'success')
-        cancel_url = urljoin(request.host_url, 'subscription_plans?status=cancelled')
-        session_args = {
-            'mode': 'subscription',
-            'line_items': [{'price': price_key, 'quantity': 1}],
-            'allow_promotion_codes': True,
-            'success_url': success_url,
-            'cancel_url': cancel_url,
-            'metadata': {
-                'plan_id': plan_id,
-                'billing_cycle': billing_cycle,
-                'username': username or '',
-            },
-        }
-        if email_value:
-            session_args['customer_email'] = email_value
-
-        checkout_session = stripe.checkout.Session.create(**session_args)
-        return jsonify({
-            'success': True,
-            'sessionId': checkout_session.get('id'),
-            'url': checkout_session.get('url'),
-        })
-    except Exception as exc:
-        logger.error(f"Stripe checkout creation failed for {username}: {exc}")
-        return jsonify({'success': False, 'error': 'Unable to start checkout'}), 500
+# /api/stripe/config and /api/stripe/create_checkout_session moved to
+# backend/blueprints/subscriptions.py in Step E (April 2026) — the
+# subscriptions surface is owned by the new ``subscriptions_bp`` so this
+# monolith stops accumulating new commerce code.
 
 
 @app.route('/api/follow_requests/<username>/accept', methods=['POST'])
@@ -13501,16 +13417,25 @@ def subscribe():
 @app.route('/success')
 @login_required
 def success():
-    username = session['username']
+    """Stripe Checkout success landing page.
+
+    Serves the React SPA (``client/src/pages/Success.tsx``) which polls
+    ``/api/me/entitlements`` until the Stripe webhook has processed the
+    ``checkout.session.completed`` event and written the new tier. We do
+    **not** update ``users.subscription`` here — that would let anyone
+    hit the URL and unlock Premium. The webhook is the single source of
+    truth for entitlement changes (see
+    ``backend/blueprints/subscription_webhooks.py``).
+    """
     try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("UPDATE users SET subscription='premium' WHERE username=?", (username,))
-            conn.commit()
-        return render_template('success.html', name=username, subscription='premium')
-    except Exception as e:
-        logger.error(f"Error in success for {username}: {str(e)}")
-        abort(500)
+        resp = serve_react_index()
+        if resp:
+            return resp
+        logger.error("React build missing while serving /success")
+        return ("React build missing", 503)
+    except Exception as exc:
+        logger.error(f"Error serving /success: {exc}")
+        return ("React build missing", 503)
 
 
 

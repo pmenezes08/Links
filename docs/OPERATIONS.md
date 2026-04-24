@@ -403,6 +403,89 @@ the raw counter for "5 of 100 this month" UX.
 
 See §6. Not blocking, tracked for when usage or incident-risk grows.
 
+### 9.5 Subscriptions UI — Step E (shipped) & deferred follow-ups
+
+Step E shipped the subscriptions hub at `/subscription_plans` as a KB-driven
+commerce surface. Two SKUs are live, two ship as "Coming soon" cards.
+
+**Live today:**
+
+- **User Premium Membership** — personal Steve (`users.subscription='premium'`).
+  Monthly Checkout via `POST /api/stripe/create_checkout_session` with
+  `plan_id='premium'`. Stripe price ID lives in KB
+  (`user-tiers.premium_stripe_price_id_{test,live}`).
+- **Community Paid Tier (L1 / L2 / L3)** — community-level
+  (`communities.tier='paid_l{1,2,3}'`). Community owner initiates
+  Checkout with `plan_id='community_tier'`, `community_id`, `tier_code`.
+  Prices live in KB (`community-tiers.paid_l{1,2,3}_stripe_price_id_{test,live}`).
+  Owner's personal `users.subscription` is deliberately **not** flipped
+  by a community-tier purchase — C-Point monetizes on two independent axes.
+
+**"Coming soon" (deferred, no live checkout):**
+
+- **Steve Community Package** — shared community credit pool. KB fields in
+  `community-tiers.paid_steve_package_*` already exist. Deferred: live
+  checkout + pool-allocation fulfillment.
+- **Networking Package** — directory listing add-on. KB fields in
+  `networking-page.networking_page_*` already exist. Deferred: live
+  checkout + `communities.on_networking_page` flag fulfillment.
+- **Premium Yearly price** — field reserved on `user-tiers`; no Stripe
+  price yet.
+- **Apple / Google IAP** — webhook stubs in
+  `backend/blueprints/subscription_webhooks.py` log events to the audit
+  table but don't yet mutate `users.subscription`. Needs the IAP link
+  table (original_transaction_id ↔ username) from a later mobile ticket.
+
+**KB-driven pricing pattern (mandatory for new SKUs):**
+
+- **Source of truth is the KB**, not env vars. Every purchasable SKU
+  stores its Stripe price ID in `kb_pages.fields_json` with `_test` and
+  `_live` suffixes. Never hardcode price IDs in blueprints or the client.
+- **Mode filtering is server-side.** `GET /api/kb/pricing` reads
+  `STRIPE_API_KEY` at request time — `sk_test_*` → emits `*_test` fields,
+  `sk_live_*` → emits `*_live`. The opposite mode's ID is stripped
+  before the response leaves the server, so a misconfigured prod can't
+  leak a live-mode ID to a staging client (or vice versa).
+- **Admin-editable without redeploy.** When a new Stripe price is
+  created, admin-web `KnowledgeBase.tsx` pastes the ID into the right
+  field and `/subscription_plans` reflects immediately on next load.
+  No Flask restart, no build, no PR.
+- **Fallback envs are the exception, not the rule.** Only Premium has
+  `STRIPE_PRICE_PREMIUM_MONTHLY` / `_YEARLY` env fallbacks — legacy
+  from before KB seeding landed. Community tiers have no env fallback
+  by design (the KB is the contract).
+- **New SKU checklist:**
+  1. Add `*_stripe_price_id_test` / `*_live` fields to the relevant KB
+     page in `backend/services/knowledge_base.py`.
+  2. Extend `backend/blueprints/subscriptions.py::api_kb_pricing` to
+     emit the SKU's card payload (strip internal/calculator fields).
+  3. Extend `api_stripe_create_checkout_session` to dispatch on the new
+     `plan_id`; put preflight gates (ownership, cap fit, duplicate sub)
+     next to the existing `_preflight_community_tier` helper.
+  4. Add a webhook dispatch branch in
+     `backend/blueprints/subscription_webhooks.py::stripe_webhook` keyed
+     on `metadata.sku` — keep the DB writes in a service module
+     (`backend/services/community_billing.py` pattern), not in the
+     blueprint.
+  5. Add tests: `tests/test_kb_pricing_endpoint.py`,
+     `tests/test_stripe_*_checkout.py`,
+     `tests/test_stripe_webhook_*.py`, client RTL smoke.
+
+**Operational runbook when a Stripe price changes:**
+
+1. Create the new Stripe **Product + Price** in dashboard (test mode
+   first). Copy the `price_...` ID.
+2. In admin-web KB editor, open the relevant page (`Community Tiers`,
+   `User Tiers`, or `Networking Page`), paste the new ID into the
+   matching `*_stripe_price_id_test` field, save with a change reason
+   (the KB changelog makes this audit-loggable).
+3. Visit `/subscription_plans` — the new price is live immediately.
+4. Repeat in production with the live-mode ID once staging e2e passes.
+
+**Never set the live price ID on staging or vice versa** — the mode
+filter will simply hide it, but having live IDs in a staging DB makes
+incident triage harder.
+
 ---
 
 ## Appendix — File index
@@ -416,6 +499,11 @@ See §6. Not blocking, tracked for when usage or incident-risk grows.
 | Community + member limits | `bodybuilding_app.py` (`ensure_free_parent_member_capacity`, `/create_community`) |
 | User-API endpoints | `backend/blueprints/me.py` |
 | Admin-API endpoints | `backend/blueprints/admin.py` |
+| Subscriptions (Stripe Checkout + pricing) | `backend/blueprints/subscriptions.py` |
+| Subscription webhooks (Stripe/Apple/Google) | `backend/blueprints/subscription_webhooks.py` |
+| Community-level Stripe state | `backend/services/community_billing.py` |
+| Subscriptions hub (client) | `client/src/pages/SubscriptionPlans.tsx` |
+| Post-checkout landing (client) | `client/src/pages/Success.tsx` |
 | QA harness | `scripts/run_qa_verification.py` |
 | QA manual checklist | `docs/QA_CHECKLIST.md` |
 | Reset survey | `scripts/preflight_reset_survey.py` |
