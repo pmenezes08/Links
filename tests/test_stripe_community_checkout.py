@@ -356,3 +356,139 @@ class TestMetadata:
         # preselect.
         assert str(cid) in kwargs["cancel_url"]
         assert "status=cancelled" in kwargs["cancel_url"]
+
+
+# ── 8. Parent-community guard (root-only billing) ──────────────────────
+
+
+class TestParentOnly:
+    """Billing / tier checkout lives on the root community only.
+
+    The cap-enforcement helpers in ``backend/services/community.py``
+    (``ensure_free_parent_member_capacity`` and
+    ``ensure_community_tier_member_capacity``) already short-circuit on
+    ``parent_community_id``, so a paid subscription attached to a
+    child community would silently grant nothing. The preflight and
+    billing endpoints must reject sub-community ids up front.
+    """
+
+    def test_child_community_blocked_at_preflight(self, client):
+        make_user("root_owner", subscription="free")
+        parent_id = make_community("c-parent-ok", tier="free",
+                                   creator_username="root_owner")
+        child_id = make_community("c-child-blocked", tier="free",
+                                  creator_username="root_owner",
+                                  parent_community_id=parent_id)
+        _seed_kb_with_l1_price("price_parent_guard")
+        _login(client, "root_owner")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": child_id,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 409
+        body = resp.get_json()
+        assert body["reason"] == "not_root_community"
+        # The client uses this id to redirect the user to the parent's
+        # Manage Community page instead of leaving them stuck.
+        assert body["root_community_id"] == parent_id
+
+    def test_root_community_passes_the_guard(self, client):
+        make_user("root_ok", subscription="free")
+        parent_id = make_community("c-parent-pass", tier="free",
+                                   creator_username="root_ok")
+        _seed_kb_with_l1_price("price_root_ok")
+        _login(client, "root_ok")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": parent_id,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 200
+
+    def test_deep_nesting_resolves_to_top_root(self, client):
+        """Grandchild → parent → root: root_community_id must be the top."""
+        make_user("deep_owner", subscription="free")
+        root_id = make_community("c-deep-root", tier="free",
+                                 creator_username="deep_owner")
+        mid_id = make_community("c-deep-mid", tier="free",
+                                creator_username="deep_owner",
+                                parent_community_id=root_id)
+        leaf_id = make_community("c-deep-leaf", tier="free",
+                                 creator_username="deep_owner",
+                                 parent_community_id=mid_id)
+        _seed_kb_with_l1_price("price_deep")
+        _login(client, "deep_owner")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": leaf_id,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 409
+        body = resp.get_json()
+        assert body["reason"] == "not_root_community"
+        assert body["root_community_id"] == root_id
+
+
+# ── 9. Billing snapshot endpoint ────────────────────────────────────────
+
+
+class TestBillingSnapshot:
+    """``GET /api/communities/<id>/billing`` feeds the EditCommunity
+    Billing panel. It shares the owner-only and root-only gates with
+    the checkout preflight, so a bug here would let a sub-community
+    owner see a misleading panel.
+    """
+
+    def test_anon_is_rejected(self, client):
+        resp = client.get("/api/communities/1/billing")
+        assert resp.status_code == 401
+
+    def test_non_owner_is_rejected(self, client):
+        make_user("bill_owner", subscription="free")
+        make_user("bill_outsider", subscription="free")
+        cid = make_community("c-bill-owner", tier="free",
+                             creator_username="bill_owner")
+        _login(client, "bill_outsider")
+
+        resp = client.get(f"/api/communities/{cid}/billing")
+        assert resp.status_code == 403
+        assert resp.get_json()["reason"] == "not_owner"
+
+    def test_child_community_rejected_with_root_pointer(self, client):
+        make_user("bill_root_owner", subscription="free")
+        parent_id = make_community("c-bill-parent", tier="free",
+                                   creator_username="bill_root_owner")
+        child_id = make_community("c-bill-child", tier="free",
+                                  creator_username="bill_root_owner",
+                                  parent_community_id=parent_id)
+        _login(client, "bill_root_owner")
+
+        resp = client.get(f"/api/communities/{child_id}/billing")
+        assert resp.status_code == 409
+        body = resp.get_json()
+        assert body["reason"] == "not_root_community"
+        assert body["root_community_id"] == parent_id
+
+    def test_root_community_returns_snapshot(self, client):
+        make_user("bill_root_pass", subscription="free")
+        cid = make_community("c-bill-root-pass", tier="paid_l1",
+                             creator_username="bill_root_pass")
+        community_billing.mark_subscription(
+            cid,
+            tier_code="paid_l1",
+            subscription_id="sub_bill_snapshot",
+            customer_id="cus_bill_snapshot",
+            status="active",
+        )
+        _seed_kb_with_l1_price("price_bill_snapshot")
+        _login(client, "bill_root_pass")
+
+        resp = client.get(f"/api/communities/{cid}/billing")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        assert body["community_id"] == cid
+        assert body["tier"] == "paid_l1"
+        assert body["subscription_status"] == "active"
+        assert body["has_stripe_customer"] is True

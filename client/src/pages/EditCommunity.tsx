@@ -4,6 +4,28 @@ import ContentGenerationModal from '../components/ContentGenerationModal'
 import { clearDeviceCache } from '../utils/deviceCache'
 import { invalidateDashboardCache } from '../utils/dashboardCache'
 
+// Billing is a root-community concern. Sub-communities inherit their
+// parent's tier server-side, so we only render this panel when
+// ``parent_community_id`` is null (isChild=false). Keep this struct in
+// sync with ``backend/blueprints/subscriptions.py::api_community_billing``.
+interface CommunityBilling {
+  tier: string
+  member_count: number
+  member_cap: number | null
+  subscription_status: string | null
+  current_period_end: string | null
+  has_stripe_customer: boolean
+  stripe_mode: 'test' | 'live'
+}
+
+const TIER_LABEL: Record<string, string> = {
+  free: 'Free',
+  paid_l1: 'Paid L1',
+  paid_l2: 'Paid L2',
+  paid_l3: 'Paid L3',
+  enterprise: 'Enterprise',
+}
+
 export default function EditCommunity(){
   const { community_id } = useParams()
   const navigate = useNavigate()
@@ -32,6 +54,9 @@ export default function EditCommunity(){
   const [aiPersonalities, setAiPersonalities] = useState<Array<{key: string, name: string}>>([])
   const [savingAiPersonality, setSavingAiPersonality] = useState(false)
   const [showContentGeneration, setShowContentGeneration] = useState(false)
+  const [billing, setBilling] = useState<CommunityBilling | null>(null)
+  const [portalLoading, setPortalLoading] = useState(false)
+  const [portalError, setPortalError] = useState<string|null>(null)
   const formRef = useRef<HTMLFormElement|null>(null)
 
   useEffect(() => {
@@ -94,6 +119,63 @@ export default function EditCommunity(){
     init()
     return () => { mounted = false }
   }, [community_id])
+
+  // Billing snapshot — only fetched for the ROOT community's owner.
+  // Sub-communities inherit tier from their parent, so the server
+  // returns 409 ``not_root_community`` for a child id; we keep the
+  // panel hidden in that case via the ``!isChild`` guard below.
+  useEffect(() => {
+    if (!isOwner || isChild || !community_id) return
+    let mounted = true
+    async function loadBilling(){
+      try {
+        const r = await fetch(`/api/communities/${community_id}/billing`, {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+        })
+        const j = await r.json()
+        if (!mounted) return
+        if (j?.success) {
+          setBilling({
+            tier: String(j.tier || 'free'),
+            member_count: Number(j.member_count || 0),
+            member_cap: j.member_cap === null || j.member_cap === undefined
+              ? null
+              : Number(j.member_cap),
+            subscription_status: j.subscription_status || null,
+            current_period_end: j.current_period_end || null,
+            has_stripe_customer: !!j.has_stripe_customer,
+            stripe_mode: j.stripe_mode === 'live' ? 'live' : 'test',
+          })
+        }
+      } catch {
+        // Billing column may not exist yet on older schemas — fail soft.
+      }
+    }
+    loadBilling()
+    return () => { mounted = false }
+  }, [isOwner, isChild, community_id])
+
+  async function handleOpenPortal(){
+    setPortalLoading(true)
+    setPortalError(null)
+    try {
+      const r = await fetch(`/api/me/billing/portal?community_id=${community_id}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ return_path: `/community/${community_id}/edit` }),
+      })
+      const j = await r.json()
+      if (!r.ok || !j?.success || !j?.url) {
+        throw new Error(j?.error || 'Unable to open billing portal')
+      }
+      window.location.assign(j.url)
+    } catch (err) {
+      setPortalError(err instanceof Error ? err.message : 'Unable to open billing portal')
+      setPortalLoading(false)
+    }
+  }
 
   async function onSubmit(e: React.FormEvent){
     e.preventDefault()
@@ -297,6 +379,86 @@ export default function EditCommunity(){
               </div>
             )}
           </div>
+
+          {/* Billing — root-community owner only. Tiers are enforced at
+              the parent level (see backend/services/community.py); a
+              child community has no billing of its own. */}
+          {isOwner && !isChild && billing && (
+            <div className="rounded-xl border border-white/10 bg-white/5 p-5 space-y-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
+                    Billing
+                  </div>
+                  <div className="mt-2 text-sm font-medium text-white">
+                    Community plan
+                  </div>
+                  {billing.current_period_end && (
+                    <div className="mt-1 text-xs text-white/40">
+                      Next renewal: {billing.current_period_end}
+                    </div>
+                  )}
+                  {billing.subscription_status && billing.subscription_status !== 'active' && (
+                    <div className="mt-1 text-xs text-amber-300/80">
+                      Status: {billing.subscription_status}
+                    </div>
+                  )}
+                </div>
+                <span className="inline-flex items-center rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1 text-[11px] font-medium text-cpoint-turquoise">
+                  {TIER_LABEL[billing.tier] || billing.tier}
+                </span>
+              </div>
+
+              {billing.member_cap !== null && billing.member_cap > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-baseline justify-between text-xs text-white/60">
+                    <span>Members</span>
+                    <span>
+                      {billing.member_count} / {billing.member_cap}
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-full bg-cpoint-turquoise"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          (billing.member_count / billing.member_cap) * 100,
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {portalError && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
+                  {portalError}
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/subscription_plans?community_id=${community_id}#community-tier`)}
+                  className="inline-flex w-full items-center justify-center rounded-full bg-cpoint-turquoise px-5 py-2.5 text-xs font-semibold text-black hover:bg-cpoint-turquoise/90 transition"
+                >
+                  Upgrade / change tier
+                </button>
+                {billing.has_stripe_customer && (
+                  <button
+                    type="button"
+                    onClick={handleOpenPortal}
+                    disabled={portalLoading}
+                    className="inline-flex w-full items-center justify-center rounded-full border border-white/20 px-5 py-2.5 text-xs font-semibold text-white hover:bg-white/5 transition disabled:opacity-50"
+                  >
+                    {portalLoading ? 'Opening portal…' : 'Open billing portal'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm text-[#9fb0b5] mb-1">Community image</label>
             

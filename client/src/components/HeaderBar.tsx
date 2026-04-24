@@ -128,6 +128,13 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
               </button>
 
               <button
+                onClick={() => navigate('/subscription_plans')}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
+              >
+                <i className="fa-solid fa-crown w-5" /> Subscriptions
+              </button>
+
+              <button
                 onClick={handleLogoutClick}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
               >
@@ -169,6 +176,7 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
               </button>
                 <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg:white/5 text:white" onClick={()=> { setMenuOpen(false); navigate('/followers') }}>Followers</button>
                 <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/networking') }}>Networking</button>
+                <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/subscription_plans') }}>Subscriptions</button>
             <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={handleLogoutClick}>Logout</button>
               <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/account_settings">Account Settings</a>
           </div>

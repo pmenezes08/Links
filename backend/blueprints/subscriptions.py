@@ -380,6 +380,56 @@ def _tier_member_cap(tier_code: str) -> Optional[int]:
         return None
 
 
+def _resolve_root_community_id(community_id: int) -> Tuple[int, bool]:
+    """Walk the parent chain and return ``(root_id, is_root)``.
+
+    Billing and tier enforcement live on the root (parent) community
+    exclusively — sub-communities / groups inherit everything from their
+    root (see ``backend/services/community.py:208`` free-tier helper and
+    ``:411`` paid-tier helper; both short-circuit on
+    ``parent_community_id``). Both the checkout preflight and the
+    billing snapshot endpoint use this helper to reject sub-community
+    IDs with a pointer to the right community id so the client can
+    auto-redirect the user.
+
+    Returns ``(community_id, True)`` on any DB failure so production
+    errs open rather than blocking owners out of their own billing
+    screen during a transient glitch. The cycle guard (16 hops) matches
+    ``community_svc.get_community_ancestors``.
+    """
+    ph = get_sql_placeholder()
+    current = int(community_id)
+    original = current
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            for _ in range(16):
+                c.execute(
+                    f"SELECT parent_community_id FROM communities WHERE id = {ph}",
+                    (current,),
+                )
+                row = c.fetchone()
+                if not row:
+                    break
+                if hasattr(row, "keys"):
+                    parent = row.get("parent_community_id")
+                elif isinstance(row, (list, tuple)):
+                    parent = row[0] if row else None
+                else:
+                    parent = row
+                if parent is None or parent == "":
+                    break
+                try:
+                    current = int(parent)
+                except (TypeError, ValueError):
+                    break
+    except Exception:
+        logger.exception("_resolve_root_community_id: DB read failed for %s",
+                         community_id)
+        return original, True
+    return current, current == original
+
+
 def _preflight_premium(username: str) -> Optional[Tuple[Dict[str, Any], int]]:
     """Return ``(payload, status)`` if the upsell must be blocked, else None.
 
@@ -427,6 +477,20 @@ def _preflight_community_tier(
              "reason": "not_owner"},
             403,
         )
+    # Billing lives on the root community only — sub-communities inherit
+    # their parent's tier. Reject with a pointer to the root so the
+    # client can redirect the owner to the correct Manage Community
+    # screen instead of leaving them stuck on a group page.
+    root_id, is_root = _resolve_root_community_id(community_id)
+    if not is_root:
+        return (
+            {"success": False,
+             "error": ("Tiers are managed on the root community. "
+                       "Open the parent community to change billing."),
+             "reason": "not_root_community",
+             "root_community_id": root_id},
+            409,
+        )
     if community_billing.has_active_subscription(community_id):
         return (
             {"success": False,
@@ -453,13 +517,20 @@ def _preflight_community_tier(
 
 @subscriptions_bp.route("/api/communities/<int:community_id>/billing", methods=["GET"])
 def api_community_billing(community_id: int):
-    """Return the billing snapshot the EditGroup Billing panel renders.
+    """Return the billing snapshot the EditCommunity Billing panel renders.
 
-    Owner-only. Surfaces the current tier, Stripe subscription status,
-    current period end, and enough cap-vs-count math for the progress
-    bar. Prices and Stripe IDs are deliberately NOT included here —
-    that data belongs to ``/api/kb/pricing`` which is also login-only
-    and already cached on the client.
+    Owner-only **and root-only**. Surfaces the current tier, Stripe
+    subscription status, current period end, and enough cap-vs-count
+    math for the progress bar. Prices and Stripe IDs are deliberately
+    NOT included here — that data belongs to ``/api/kb/pricing`` which
+    is also login-only and already cached on the client.
+
+    Sub-communities (``parent_community_id IS NOT NULL``) are rejected
+    with ``reason=not_root_community`` because tiers are enforced at
+    the root only; see ``backend/services/community.py`` helpers
+    ``ensure_free_parent_member_capacity`` and
+    ``ensure_community_tier_member_capacity`` which both short-circuit
+    on child communities.
     """
     username = _session_username()
     if not username:
@@ -470,6 +541,18 @@ def api_community_billing(community_id: int):
             "error": "Only the community owner can view billing.",
             "reason": "not_owner",
         }), 403
+    # Same root-only guard as the checkout preflight: a sub-community
+    # has no billing of its own. Return 409 + the root id so the client
+    # can navigate the user to the parent's Manage Community page.
+    root_id, is_root = _resolve_root_community_id(community_id)
+    if not is_root:
+        return jsonify({
+            "success": False,
+            "error": ("Billing is managed on the root community. "
+                      "Open the parent community to view billing."),
+            "reason": "not_root_community",
+            "root_community_id": root_id,
+        }), 409
 
     state = community_billing.get_billing_state(community_id) or {}
     tier = state.get("tier") or community_svc.COMMUNITY_TIER_FREE
