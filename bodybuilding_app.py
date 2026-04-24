@@ -39,7 +39,7 @@ from redis_cache import (
     user_community_tree_cache_key,
 )
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from urllib.parse import urlencode, urljoin, quote_plus, urlparse
+from urllib.parse import urlencode, urljoin, quote, quote_plus, urlparse
 from typing import Optional, Dict, Any, List, Iterable, Tuple, Set, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from encryption_endpoints import register_encryption_endpoints
@@ -29275,10 +29275,24 @@ def invite_landing(token):
     except Exception as e:
         logger.error(f"Error in invite_landing: {e}")
     
-    app_url = f"cpoint://invite/{token}"
     app_store_url = APP_STORE_URL if 'APP_STORE_URL' in dir() else "https://apps.apple.com/app/id6755534074"
     play_store_url = f"https://play.google.com/store/apps/details?id=co.cpoint.app"
-    
+
+    # Build the "Open in App" target. On Android we use an intent:// URL so Chrome
+    # can open the app (via the verified https App Link) or fall back to the Play
+    # Store natively — no confirm() dialog, no JS timer required. iOS / desktop
+    # fall back to the custom cpoint:// scheme, which Safari routes through the
+    # system "Open in C.Point?" sheet or Universal Links.
+    if is_android:
+        android_fallback = quote(play_store_url, safe='')
+        app_url = (
+            f"intent://app.c-point.co/invite/{token}"
+            f"#Intent;scheme=https;package=co.cpoint.app;"
+            f"S.browser_fallback_url={android_fallback};end"
+        )
+    else:
+        app_url = f"cpoint://invite/{token}"
+
     store_href = app_store_url if is_ios else (play_store_url if is_android else app_store_url)
     store_label = "Download from App Store" if is_ios else ("Download from Google Play" if is_android else "Download the App")
     store_btn = f'<a href="{store_href}" class="btn btn-secondary" id="storeDownloadBtn">{store_label}</a>'
@@ -29286,6 +29300,8 @@ def invite_landing(token):
     token_js = json.dumps(token)
     invite_https_js = json.dumps(invite_https_url)
     store_href_js = json.dumps(store_href)
+    is_android_js = 'true' if is_android else 'false'
+    is_ios_js = 'true' if is_ios else 'false'
 
     return f"""<!DOCTYPE html>
 <html><head>
@@ -29324,6 +29340,8 @@ def invite_landing(token):
     </div>
     <script>
 (function() {{
+        var IS_ANDROID = {is_android_js};
+        var IS_IOS = {is_ios_js};
         var INVITE_TOKEN = {token_js};
         var INVITE_HTTPS_URL = {invite_https_js};
         var STORE_HREF = {store_href_js};
@@ -29343,16 +29361,33 @@ def invite_landing(token):
         var openBtn = document.getElementById('openAppBtn');
         if (openBtn) {{
             openBtn.addEventListener('click', function(e) {{
+                // Stash the token on the clipboard so a fresh install can pick it up.
                 copyDeferredInvite().catch(function() {{}});
-                var start = Date.now();
-                var t = setTimeout(function() {{
-                    if (Date.now() - start < 2000) {{
-                        if (confirm('C.Point app not found. Would you like to download it?')) {{
-                            window.location.href = STORE_HREF;
-                        }}
-                    }}
-                }}, 1500);
-                window.addEventListener('pagehide', function() {{ clearTimeout(t); }});
+
+                // Android: href is an intent:// URL with S.browser_fallback_url.
+                // Chrome opens the app via the verified https App Link if installed,
+                // otherwise redirects to the Play Store on its own. No JS timer
+                // and no confirm() dialog needed.
+                if (IS_ANDROID) return;
+
+                // iOS / desktop: let the anchor trigger cpoint://. If the app is
+                // installed, Safari shows the system "Open in C.Point?" sheet and
+                // the page goes hidden when it launches. If the app is not
+                // installed, nothing happens — after a short delay we silently
+                // redirect to the App Store. visibilitychange is the reliable
+                // signal on iOS that the system handed off to the app.
+                var cancelled = false;
+                function cancelFallback() {{ cancelled = true; }}
+                document.addEventListener('visibilitychange', function() {{
+                    if (document.hidden) cancelFallback();
+                }});
+                window.addEventListener('pagehide', cancelFallback);
+                window.addEventListener('blur', cancelFallback);
+                setTimeout(function() {{
+                    if (cancelled) return;
+                    if (document.hidden) return;
+                    window.location.href = STORE_HREF;
+                }}, 2500);
             }});
         }}
         var storeBtn = document.getElementById('storeDownloadBtn');
