@@ -29485,12 +29485,12 @@ def generate_invite_link():
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
             
             community_name = community['name'] if hasattr(community, 'keys') else community[0]
-            creator = community['creator_username'] if hasattr(community, 'keys') else community[1]
-            role = community['role'] if hasattr(community, 'keys') else community[2]
             
-            # Check if user is admin or creator
-            is_admin = (username == creator) or (role == 'admin')
-            if not is_admin:
+            try:
+                cid = int(community_id)
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': 'Invalid community ID'}), 400
+            if not has_community_management_permission(username, cid):
                 return jsonify({'success': False, 'error': 'Only community admins can generate invite links'}), 403
             
             # Generate unique token (use generic email for QR code invites)
@@ -29812,12 +29812,12 @@ def invite_to_community():
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
             
             community_name = community['name'] if hasattr(community, 'keys') else community[0]
-            creator = community['creator_username'] if hasattr(community, 'keys') else community[1]
-            role = community['role'] if hasattr(community, 'keys') else community[2]
             
-            # Check if user is admin or creator
-            is_admin = (username == creator) or (role == 'admin')
-            if not is_admin:
+            try:
+                cid = int(community_id)
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': 'Invalid community ID'}), 400
+            if not has_community_management_permission(username, cid):
                 return jsonify({'success': False, 'error': 'Only community admins can send invitations'}), 403
             
             # Extract nested/parent selections from payload
@@ -30158,6 +30158,12 @@ def invite_to_community_bulk():
     emails_raw = data.get('emails', '')
     if not community_id:
         return jsonify({'success': False, 'error': 'community_id required'}), 400
+    try:
+        bulk_cid = int(community_id)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Invalid community_id'}), 400
+    if not has_community_management_permission(username, bulk_cid):
+        return jsonify({'success': False, 'error': 'Only community admins can send invitations'}), 403
     
     import re
     emails = [e.strip().lower() for e in re.split(r'[,;\n\r]+', str(emails_raw)) if e.strip()]
