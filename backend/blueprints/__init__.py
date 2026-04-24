@@ -21,6 +21,7 @@ def register_blueprints(app: Flask) -> None:
     from .summaries import summaries_bp
     from .enterprise import enterprise_bp
     from .subscription_webhooks import subscription_webhooks_bp
+    from .subscriptions import subscriptions_bp
     from .dm_chats import dm_chats_bp
 
     app.register_blueprint(public_bp)
@@ -37,4 +38,19 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(summaries_bp)
     app.register_blueprint(enterprise_bp)
     app.register_blueprint(subscription_webhooks_bp)
+    app.register_blueprint(subscriptions_bp)
     app.register_blueprint(dm_chats_bp)
+
+    # Make sure the Stripe/community-billing columns exist before the
+    # first webhook fires. Each service's ensure_tables() is already
+    # idempotent; calling it here keeps schema drift from silently
+    # breaking writes when the service is only reached via webhook.
+    try:
+        from backend.services import community_billing as _cb
+        _cb.ensure_tables()
+    except Exception:
+        # Never let schema-bootstrap crash app startup — log and move on.
+        import logging
+        logging.getLogger(__name__).exception(
+            "community_billing.ensure_tables failed during blueprint registration"
+        )

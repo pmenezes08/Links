@@ -1,0 +1,358 @@
+"""Step E — ``POST /api/stripe/create_checkout_session`` (community tier).
+
+The community-tier Checkout branch has three preflight gates the Stripe
+API itself would not enforce for us — and any bug in them means we'd
+happily take money for a configuration that can't ship:
+
+1. **Owner-only** — only the community's creator (or the app-level
+   ``admin`` user) can initiate the upgrade.
+2. **Single active sub** — a community with an active Stripe
+   subscription can't buy a second one. Upgrades / downgrades run via
+   the billing portal, not a second Checkout.
+3. **Cap fits member count** — you can't downgrade a 200-member
+   community to Paid L1 (75-cap). Stripe would happily bill; our own
+   enforcement would lock the community out next time someone tries to
+   read it.
+
+On top of those gates, the request body must carry both ``community_id``
+and ``tier_code``; the price ID must come from the KB (not an env var);
+and the metadata must include ``sku=community_tier`` + both IDs so the
+webhook can route correctly. This test file asserts each.
+"""
+
+from __future__ import annotations
+
+import pytest
+from flask import Flask
+
+from backend.blueprints.subscriptions import subscriptions_bp
+from backend.services import community_billing, knowledge_base as kb
+
+from tests.fixtures import (
+    fill_community_members,
+    make_community,
+    make_user,
+)
+
+pytestmark = pytest.mark.usefixtures("mysql_dsn")
+
+
+# ── Fixtures / helpers ──────────────────────────────────────────────────
+
+
+class _FakeCheckoutSession(dict):
+    """Stand-in for ``stripe.checkout.Session.create(...)`` return value.
+
+    Stripe returns an object supporting both ``.get("id")`` and ``["id"]``.
+    A plain ``dict`` satisfies both because the blueprint uses ``.get``.
+    """
+
+
+@pytest.fixture
+def client(mysql_dsn, monkeypatch):
+    """Flask app wrapping just the subscriptions blueprint + Stripe mock.
+
+    We always set a non-default ``STRIPE_API_KEY`` so ``_stripe_client``
+    returns a real module handle; the actual ``Session.create`` call is
+    monkey-patched below so no HTTP traffic escapes the test.
+    """
+    monkeypatch.setenv("STRIPE_API_KEY", "sk_test_dummy_for_tests")
+    community_billing.ensure_tables()
+
+    captured: dict = {}
+
+    def _fake_create(**kwargs):
+        # Record the args for assertions + return a fake session object.
+        captured["kwargs"] = kwargs
+        return _FakeCheckoutSession(id="cs_test_fake_123",
+                                    url="https://stripe.test/cs_test_fake_123")
+
+    import stripe  # type: ignore
+    monkeypatch.setattr(stripe.checkout.Session, "create", _fake_create)
+
+    app = Flask(__name__)
+    app.secret_key = "test-secret"
+    app.register_blueprint(subscriptions_bp)
+
+    with app.test_client() as c:
+        c._captured = captured  # type: ignore[attr-defined]
+        yield c
+
+
+def _login(client, username: str) -> None:
+    with client.session_transaction() as sess:
+        sess["username"] = username
+
+
+def _seed_kb_with_l1_price(price_id: str = "price_l1_from_kb") -> None:
+    """Seed the community-tiers page with a real L1 Stripe price ID."""
+    kb.seed_default_pages(force=True)
+    page = kb.get_page("community-tiers") or {}
+    fields = list(page.get("fields") or [])
+    for f in fields:
+        if f.get("name") == "paid_l1_stripe_price_id_test":
+            f["value"] = price_id
+    kb.save_page(
+        "community-tiers",
+        fields=fields,
+        reason="test-fixture",
+        actor_username="test-fixture",
+    )
+
+
+# ── 1. Auth gate ────────────────────────────────────────────────────────
+
+
+class TestAuth:
+    def test_anon_is_rejected(self, client):
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": 1,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 401
+
+
+# ── 2. Missing params ───────────────────────────────────────────────────
+
+
+class TestMissingParams:
+    def test_missing_community_id(self, client):
+        make_user("miss_user", subscription="free")
+        _login(client, "miss_user")
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 400
+        assert resp.get_json()["reason"] == "missing_params"
+
+    def test_invalid_tier_code(self, client):
+        make_user("bad_tier_user", subscription="free")
+        cid = make_community("c-bad-tier", tier="free",
+                             creator_username="bad_tier_user")
+        _login(client, "bad_tier_user")
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": cid,
+                                 "tier_code": "platinum"})
+        # Unknown tier codes are normalized to None -> same gate.
+        assert resp.status_code == 400
+        assert resp.get_json()["reason"] == "missing_params"
+
+    def test_enterprise_tier_rejected(self, client):
+        """Enterprise is sales-driven, not self-serve via Checkout."""
+        make_user("ent_user", subscription="free")
+        cid = make_community("c-ent", tier="free", creator_username="ent_user")
+        _login(client, "ent_user")
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": cid,
+                                 "tier_code": "enterprise"})
+        assert resp.status_code == 400
+        assert resp.get_json()["reason"] == "invalid_tier"
+
+
+# ── 3. Owner-only ───────────────────────────────────────────────────────
+
+
+class TestOwnerOnly:
+    def test_non_owner_is_blocked(self, client):
+        make_user("owner_good", subscription="free")
+        make_user("outsider", subscription="free")
+        cid = make_community("c-owner", tier="free",
+                             creator_username="owner_good")
+        _seed_kb_with_l1_price()
+        _login(client, "outsider")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": cid,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 403
+        assert resp.get_json()["reason"] == "not_owner"
+
+    def test_owner_is_allowed_through_preflight(self, client):
+        make_user("owner_pass", subscription="free")
+        cid = make_community("c-owner-pass", tier="free",
+                             creator_username="owner_pass")
+        _seed_kb_with_l1_price("price_l1_from_kb")
+        _login(client, "owner_pass")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": cid,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 200, resp.get_json()
+        body = resp.get_json()
+        assert body["success"] is True
+        assert body["sessionId"] == "cs_test_fake_123"
+
+
+# ── 4. Already subscribed ───────────────────────────────────────────────
+
+
+class TestAlreadySubscribed:
+    def test_active_sub_blocks_second_checkout(self, client):
+        make_user("already_owner", subscription="free")
+        cid = make_community("c-already", tier="paid_l1",
+                             creator_username="already_owner")
+        community_billing.mark_subscription(
+            cid,
+            tier_code="paid_l1",
+            subscription_id="sub_already_live",
+            customer_id="cus_live",
+            status="active",
+        )
+        _seed_kb_with_l1_price()
+        _login(client, "already_owner")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": cid,
+                                 "tier_code": "paid_l2"})
+        assert resp.status_code == 409
+        assert resp.get_json()["reason"] == "already_subscribed"
+
+    def test_cancelled_sub_does_not_block(self, client):
+        """Cancelled/past-due owners re-enter Checkout to restore service."""
+        make_user("cancelled_owner", subscription="free")
+        cid = make_community("c-cancelled", tier="paid_l1",
+                             creator_username="cancelled_owner")
+        community_billing.mark_subscription(
+            cid,
+            tier_code="paid_l1",
+            subscription_id="sub_cancelled_x",
+            status="cancelled",
+        )
+        _seed_kb_with_l1_price()
+        _login(client, "cancelled_owner")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": cid,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 200, resp.get_json()
+
+
+# ── 5. Member cap fit ───────────────────────────────────────────────────
+
+
+class TestMemberCapFit:
+    def test_oversized_community_cannot_downgrade(self, client):
+        """150-member community trying to buy L1 (75-cap) is blocked."""
+        make_user("big_owner", subscription="free")
+        cid = make_community("c-big", tier="free",
+                             creator_username="big_owner")
+        # Put 80 members in — over the 75 cap of paid_l1.
+        fill_community_members(cid, 80)
+        _seed_kb_with_l1_price()
+        _login(client, "big_owner")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": cid,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 409
+        body = resp.get_json()
+        assert body["reason"] == "tier_too_small"
+        assert body["current_members"] == 80
+        assert body["tier_cap"] == 75
+
+
+# ── 6. Price ID sourced from KB ─────────────────────────────────────────
+
+
+class TestPriceFromKB:
+    """Community tier prices have no env fallback — KB is the source."""
+
+    def test_missing_kb_price_blocks_checkout(self, client):
+        make_user("no_kb_owner", subscription="free")
+        cid = make_community("c-no-kb", tier="free",
+                             creator_username="no_kb_owner")
+        # Seed KB but leave the L1 Stripe price ID empty.
+        _seed_kb_with_l1_price(price_id="")
+        _login(client, "no_kb_owner")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": cid,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 400
+        body = resp.get_json()
+        assert body["reason"] == "price_missing"
+        assert body["tier_code"] == "paid_l1"
+
+    def test_populated_kb_price_forwards_to_stripe(self, client):
+        make_user("kb_owner", subscription="free")
+        cid = make_community("c-kb", tier="free",
+                             creator_username="kb_owner")
+        _seed_kb_with_l1_price("price_unique_xyz")
+        _login(client, "kb_owner")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": cid,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 200
+        kwargs = client._captured["kwargs"]
+        # The KB value is what we hand Stripe — confirms the endpoint
+        # isn't silently falling back to an env var.
+        assert kwargs["line_items"] == [{"price": "price_unique_xyz",
+                                         "quantity": 1}]
+
+
+# ── 7. Metadata + client_reference_id ───────────────────────────────────
+
+
+class TestMetadata:
+    """The webhook dispatcher depends on the metadata we send here."""
+
+    def test_metadata_shape(self, client):
+        make_user("meta_owner", subscription="free")
+        cid = make_community("c-meta", tier="free",
+                             creator_username="meta_owner")
+        _seed_kb_with_l1_price("price_meta")
+        _login(client, "meta_owner")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": cid,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 200
+        kwargs = client._captured["kwargs"]
+
+        meta = kwargs["metadata"]
+        assert meta["sku"] == "community_tier"
+        assert meta["plan_id"] == "community_tier"
+        assert meta["username"] == "meta_owner"
+        assert meta["community_id"] == str(cid)
+        assert meta["tier_code"] == "paid_l1"
+
+        # subscription_data must carry the same metadata so
+        # ``customer.subscription.updated`` events dispatch correctly.
+        assert kwargs["subscription_data"]["metadata"] == meta
+
+        # client_reference_id is the webhook's fallback when metadata is
+        # stripped (it's visible in Stripe CLI replay tools).
+        assert kwargs["client_reference_id"] == f"community:{cid}"
+
+    def test_mode_is_subscription_and_urls_carry_session_id(self, client):
+        make_user("mode_owner", subscription="free")
+        cid = make_community("c-mode", tier="free",
+                             creator_username="mode_owner")
+        _seed_kb_with_l1_price("price_mode")
+        _login(client, "mode_owner")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": cid,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 200
+        kwargs = client._captured["kwargs"]
+
+        assert kwargs["mode"] == "subscription"
+        # ``Success.tsx`` polls entitlements using session_id.
+        assert "session_id={CHECKOUT_SESSION_ID}" in kwargs["success_url"]
+        # Cancel flows back with the community_id so the picker can
+        # preselect.
+        assert str(cid) in kwargs["cancel_url"]
+        assert "status=cancelled" in kwargs["cancel_url"]

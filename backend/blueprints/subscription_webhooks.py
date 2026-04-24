@@ -31,7 +31,7 @@ from typing import Any, Dict, Optional
 
 from flask import Blueprint, jsonify, request
 
-from backend.services import enterprise_iap_nag, subscription_audit
+from backend.services import community_billing, enterprise_iap_nag, subscription_audit
 from backend.services.database import get_db_connection, get_sql_placeholder
 
 
@@ -70,66 +70,178 @@ def stripe_webhook():
 
     event_type = event.get("type") or ""
     obj = (event.get("data") or {}).get("object") or {}
+    sku = _extract_sku(obj)
     username = _extract_username_from_stripe(obj)
 
     try:
-        if event_type == "checkout.session.completed":
-            _mark_subscription(username, "premium", provider="stripe")
-            subscription_audit.log(
-                username=username or "",
-                action="personal_premium_purchased",
-                source="stripe",
-                metadata={"event_type": event_type,
-                          "subscription_id": obj.get("subscription"),
-                          "customer": obj.get("customer")},
-            )
-        elif event_type == "customer.subscription.deleted":
-            _mark_subscription(username, "free", provider="stripe")
-            subscription_audit.log(
-                username=username or "",
-                action="personal_premium_cancelled",
-                source="stripe",
-                metadata={"event_type": event_type,
-                          "subscription_id": obj.get("id"),
-                          "customer": obj.get("customer")},
-            )
-            # Clear any stale nag rows; the conflict is gone.
-            if username:
-                try:
-                    enterprise_iap_nag.acknowledge(username=username, actor="stripe-webhook")
-                except Exception:
-                    pass
-        elif event_type == "customer.subscription.updated":
-            cancel_at_period_end = bool(obj.get("cancel_at_period_end"))
-            status = obj.get("status")
-            action = "personal_premium_renewed"
-            if cancel_at_period_end:
-                action = "personal_premium_paused_for_enterprise"
-            elif status == "past_due":
-                action = "personal_premium_cancelled"  # conservative logging
-            subscription_audit.log(
-                username=username or "",
-                action=action,
-                source="stripe",
-                metadata={"event_type": event_type,
-                          "subscription_id": obj.get("id"),
-                          "status": status,
-                          "cancel_at_period_end": cancel_at_period_end},
-            )
-        elif event_type == "invoice.payment_failed":
-            subscription_audit.log(
-                username=username or "",
-                action="personal_premium_cancelled",
-                source="stripe",
-                reason="invoice_payment_failed",
-                metadata={"event_type": event_type, "invoice": obj.get("id")},
-            )
+        if sku == "community_tier":
+            _handle_community_tier_event(event_type, obj, username)
         else:
-            logger.info("stripe_webhook: unhandled event %s", event_type)
+            _handle_premium_event(event_type, obj, username)
     except Exception:
-        logger.exception("stripe_webhook: dispatch failed for %s", event_type)
+        logger.exception(
+            "stripe_webhook: dispatch failed for %s (sku=%s)", event_type, sku
+        )
 
-    return jsonify({"success": True, "event_type": event_type})
+    return jsonify({"success": True, "event_type": event_type, "sku": sku})
+
+
+def _handle_premium_event(event_type: str, obj: Dict[str, Any], username: Optional[str]) -> None:
+    """Personal Premium flow — the pre-existing Step D behavior."""
+    if event_type == "checkout.session.completed":
+        _mark_subscription(username, "premium", provider="stripe")
+        subscription_audit.log(
+            username=username or "",
+            action="personal_premium_purchased",
+            source="stripe",
+            metadata={"event_type": event_type,
+                      "subscription_id": obj.get("subscription"),
+                      "customer": obj.get("customer")},
+        )
+    elif event_type == "customer.subscription.deleted":
+        _mark_subscription(username, "free", provider="stripe")
+        subscription_audit.log(
+            username=username or "",
+            action="personal_premium_cancelled",
+            source="stripe",
+            metadata={"event_type": event_type,
+                      "subscription_id": obj.get("id"),
+                      "customer": obj.get("customer")},
+        )
+        if username:
+            try:
+                enterprise_iap_nag.acknowledge(username=username, actor="stripe-webhook")
+            except Exception:
+                pass
+    elif event_type == "customer.subscription.updated":
+        cancel_at_period_end = bool(obj.get("cancel_at_period_end"))
+        status = obj.get("status")
+        action = "personal_premium_renewed"
+        if cancel_at_period_end:
+            action = "personal_premium_paused_for_enterprise"
+        elif status == "past_due":
+            action = "personal_premium_cancelled"
+        subscription_audit.log(
+            username=username or "",
+            action=action,
+            source="stripe",
+            metadata={"event_type": event_type,
+                      "subscription_id": obj.get("id"),
+                      "status": status,
+                      "cancel_at_period_end": cancel_at_period_end},
+        )
+    elif event_type == "invoice.payment_failed":
+        subscription_audit.log(
+            username=username or "",
+            action="personal_premium_cancelled",
+            source="stripe",
+            reason="invoice_payment_failed",
+            metadata={"event_type": event_type, "invoice": obj.get("id")},
+        )
+    else:
+        logger.info("stripe_webhook: unhandled premium event %s", event_type)
+
+
+def _handle_community_tier_event(
+    event_type: str,
+    obj: Dict[str, Any],
+    username: Optional[str],
+) -> None:
+    """Community Paid Tier flow — writes to ``communities`` via community_billing.
+
+    We keep ``subscription_audit`` append-only rows here too so the admin
+    audit UI shows Community Tier activity alongside personal Premium
+    events — the ``action`` names are distinct ("community_tier_*") so
+    no dashboard counts collide.
+    """
+    community_id = _extract_community_id(obj)
+    tier_code = _extract_tier_code(obj)
+    subscription_id = (
+        obj.get("subscription")  # checkout.session.completed
+        if event_type == "checkout.session.completed"
+        else obj.get("id")       # customer.subscription.* events
+    )
+    customer_id = obj.get("customer")
+
+    # Events that don't carry community_id in metadata (like renewal
+    # ``customer.subscription.updated``) — look up by subscription_id.
+    if not community_id and subscription_id:
+        community_id = community_billing.find_by_subscription_id(str(subscription_id))
+
+    if not community_id:
+        logger.warning(
+            "stripe_webhook: community_tier event %s missing community_id "
+            "(sub=%s)", event_type, subscription_id,
+        )
+        return
+
+    if event_type == "checkout.session.completed":
+        community_billing.mark_subscription(
+            community_id,
+            tier_code=tier_code,
+            subscription_id=subscription_id,
+            customer_id=customer_id,
+            status="active",
+        )
+        subscription_audit.log(
+            username=username or "",
+            action="community_tier_purchased",
+            source="stripe",
+            metadata={"event_type": event_type,
+                      "community_id": community_id,
+                      "tier_code": tier_code,
+                      "subscription_id": subscription_id,
+                      "customer": customer_id},
+        )
+    elif event_type == "customer.subscription.deleted":
+        community_billing.mark_subscription(
+            community_id,
+            status="cancelled",
+        )
+        subscription_audit.log(
+            username=username or "",
+            action="community_tier_cancelled",
+            source="stripe",
+            metadata={"event_type": event_type,
+                      "community_id": community_id,
+                      "subscription_id": subscription_id,
+                      "customer": customer_id},
+        )
+    elif event_type == "customer.subscription.updated":
+        status = (obj.get("status") or "").lower() or None
+        cancel_at_period_end = bool(obj.get("cancel_at_period_end"))
+        community_billing.mark_subscription(
+            community_id,
+            status=status,
+            current_period_end=obj.get("current_period_end"),
+        )
+        subscription_audit.log(
+            username=username or "",
+            action="community_tier_renewed" if status == "active" and not cancel_at_period_end
+                   else "community_tier_updated",
+            source="stripe",
+            metadata={"event_type": event_type,
+                      "community_id": community_id,
+                      "subscription_id": subscription_id,
+                      "status": status,
+                      "cancel_at_period_end": cancel_at_period_end},
+        )
+    elif event_type == "invoice.payment_failed":
+        community_billing.mark_subscription(
+            community_id,
+            status="past_due",
+        )
+        subscription_audit.log(
+            username=username or "",
+            action="community_tier_past_due",
+            source="stripe",
+            reason="invoice_payment_failed",
+            metadata={"event_type": event_type,
+                      "community_id": community_id,
+                      "invoice": obj.get("id")},
+        )
+    else:
+        logger.info("stripe_webhook: unhandled community_tier event %s", event_type)
 
 
 def _extract_username_from_stripe(obj: Dict[str, Any]) -> Optional[str]:
@@ -141,6 +253,50 @@ def _extract_username_from_stripe(obj: Dict[str, Any]) -> Optional[str]:
     email = obj.get("customer_email") or obj.get("customer_details", {}).get("email")
     if email:
         return _lookup_username_by_email(email)
+    return None
+
+
+def _extract_sku(obj: Dict[str, Any]) -> str:
+    """Return the SKU stored in Checkout / Subscription metadata.
+
+    We set ``metadata.sku = 'premium' | 'community_tier'`` in
+    :mod:`backend.blueprints.subscriptions` at Checkout creation. Missing
+    or unknown values default to ``'premium'`` so legacy Checkouts (from
+    pre-Step-E) still route to the personal-Premium handler.
+    """
+    metadata = obj.get("metadata") or {}
+    sku = str(metadata.get("sku") or "").strip().lower()
+    if sku in ("premium", "community_tier"):
+        return sku
+    plan_id = str(metadata.get("plan_id") or "").strip().lower()
+    if plan_id == "community_tier":
+        return "community_tier"
+    return "premium"
+
+
+def _extract_community_id(obj: Dict[str, Any]) -> Optional[int]:
+    metadata = obj.get("metadata") or {}
+    raw = metadata.get("community_id")
+    if raw in (None, ""):
+        # ``client_reference_id='community:<id>'`` for checkout.session.completed
+        ref = str(obj.get("client_reference_id") or "")
+        if ref.startswith("community:"):
+            raw = ref.split(":", 1)[1]
+    try:
+        value = int(raw)
+        return value if value > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_tier_code(obj: Dict[str, Any]) -> Optional[str]:
+    metadata = obj.get("metadata") or {}
+    raw = metadata.get("tier_code")
+    if not raw:
+        return None
+    value = str(raw).strip().lower()
+    if value in ("paid_l1", "paid_l2", "paid_l3"):
+        return value
     return None
 
 

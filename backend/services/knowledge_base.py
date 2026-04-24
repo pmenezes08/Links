@@ -505,6 +505,19 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "premium_post_summaries", "label": "Post summaries", "type": "boolean", "value": True, "group": "premium"},
                 {"name": "premium_cancel_refund_policy", "label": "Cancel & refund policy", "type": "string",
                  "value": "Cancel any time; access continues until period end; no partial-month refunds (standard SaaS norm).", "group": "premium"},
+                # Stripe price IDs for User Premium Membership (monthly).
+                # Filled in by the admin after creating the Product + Price in
+                # Stripe. The client reads whichever matches the current
+                # ``STRIPE_API_KEY`` mode (test vs live); the opposite mode's ID
+                # is never exposed through the public pricing endpoint.
+                {"name": "premium_stripe_price_id_test", "label": "Stripe price ID — monthly (test)", "type": "string", "value": "", "tbd": True,
+                 "help": "Paste the ``price_...`` ID from Stripe test mode here. "
+                         "Used for staging checkouts only.",
+                 "group": "premium"},
+                {"name": "premium_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
+                 "help": "Paste the ``price_...`` ID from Stripe live mode here. "
+                         "Used for production checkouts only.",
+                 "group": "premium"},
 
                 # Enterprise-derived (Pro / effective tier)
                 {"name": "enterprise_derived_label", "label": "Public label for this effective tier", "type": "string",
@@ -600,6 +613,12 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "paid_l1_upgrade_cta", "label": "Upgrade CTA shown to owner", "type": "string",
                  "value": "You're at 75 members. Upgrade to Paid L2 (€50/mo) to grow up to 150.",
                  "group": "paid_l1"},
+                {"name": "paid_l1_stripe_price_id_test", "label": "Stripe price ID — monthly (test)", "type": "string", "value": "", "tbd": True,
+                 "help": "Paste the ``price_...`` ID from Stripe test mode. Read by /api/kb/pricing on staging only.",
+                 "group": "paid_l1"},
+                {"name": "paid_l1_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
+                 "help": "Paste the ``price_...`` ID from Stripe live mode. Read by /api/kb/pricing on production only.",
+                 "group": "paid_l1"},
 
                 # Paid L2 — 76–150 members
                 {"name": "paid_l2_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 50, "group": "paid_l2"},
@@ -610,6 +629,12 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "paid_l2_upgrade_cta", "label": "Upgrade CTA shown to owner", "type": "string",
                  "value": "You're at 150 members. Upgrade to Paid L3 (€80/mo) to grow up to 250.",
                  "group": "paid_l2"},
+                {"name": "paid_l2_stripe_price_id_test", "label": "Stripe price ID — monthly (test)", "type": "string", "value": "", "tbd": True,
+                 "help": "Paste the ``price_...`` ID from Stripe test mode. Read by /api/kb/pricing on staging only.",
+                 "group": "paid_l2"},
+                {"name": "paid_l2_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
+                 "help": "Paste the ``price_...`` ID from Stripe live mode. Read by /api/kb/pricing on production only.",
+                 "group": "paid_l2"},
 
                 # Paid L3 — 151–250 members
                 {"name": "paid_l3_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 80, "group": "paid_l3"},
@@ -619,6 +644,12 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "paid_l3_content_creation_available", "label": "Content creation available", "type": "boolean", "value": True, "group": "paid_l3"},
                 {"name": "paid_l3_upgrade_cta", "label": "Upgrade CTA shown to owner", "type": "string",
                  "value": "You're at 250 members. Contact sales about Enterprise (custom pricing) to grow further.",
+                 "group": "paid_l3"},
+                {"name": "paid_l3_stripe_price_id_test", "label": "Stripe price ID — monthly (test)", "type": "string", "value": "", "tbd": True,
+                 "help": "Paste the ``price_...`` ID from Stripe test mode. Read by /api/kb/pricing on staging only.",
+                 "group": "paid_l3"},
+                {"name": "paid_l3_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
+                 "help": "Paste the ``price_...`` ID from Stripe live mode. Read by /api/kb/pricing on production only.",
                  "group": "paid_l3"},
 
                 # Unit economics — the flat €/member basis all paid tiers are derived from.
@@ -655,6 +686,12 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "paid_steve_package_premium_priority", "label": "Premium members spend pool before personal credits", "type": "boolean", "value": True, "group": "paid_steve_package"},
                 {"name": "paid_steve_package_fallback_when_empty", "label": "When pool is empty: Premium members fall back to personal credits", "type": "boolean", "value": True, "group": "paid_steve_package"},
                 {"name": "paid_steve_package_free_members_blocked_when_empty", "label": "When pool is empty: free members blocked", "type": "boolean", "value": True, "group": "paid_steve_package"},
+                {"name": "paid_steve_package_stripe_price_id_test", "label": "Stripe price ID — monthly (test)", "type": "string", "value": "", "tbd": True,
+                 "help": "Not purchasable yet in Step E. Populate once the Stripe Product is created.",
+                 "group": "paid_steve_package"},
+                {"name": "paid_steve_package_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
+                 "help": "Not purchasable yet in Step E. Populate once the Stripe Product is created.",
+                 "group": "paid_steve_package"},
 
                 # Paid · Content generation
                 {"name": "paid_content_gen_free_allowance_credits_monthly", "label": "Free allowance (credits / month)", "type": "integer", "value": 20,
@@ -953,6 +990,10 @@ def _seed_pages() -> List[Dict[str, Any]]:
                  "value": "name, bio, owner, member_count, categories, last_activity"},
                 {"name": "steve_search_enabled", "label": "Steve-powered natural-language search", "type": "boolean", "value": False, "tbd": True,
                  "help": "Future — would add a new Steve cost line. Recompute pricing if enabled."},
+                {"name": "networking_page_stripe_price_id_test", "label": "Stripe price ID — monthly (test)", "type": "string", "value": "", "tbd": True,
+                 "help": "Not purchasable yet in Step E. Populate once the Stripe Product is created."},
+                {"name": "networking_page_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
+                 "help": "Not purchasable yet in Step E. Populate once the Stripe Product is created."},
             ],
             "body": (
                 "The Networking Page is C-Point's public community directory. It's the "

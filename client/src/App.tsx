@@ -62,6 +62,7 @@ import AccountSettings from './pages/AccountSettings'
 import AccountSecurity from './pages/AccountSecurity'
 import AccountDangerZone from './pages/AccountDangerZone'
 import SubscriptionPlans from './pages/SubscriptionPlans'
+import Success from './pages/Success'
 import Signup from './pages/Signup'
 import Notifications from './pages/Notifications'
 import AdminDashboard from './pages/AdminDashboard'
@@ -816,6 +817,7 @@ function AppRoutes(){
                 <Route path="/account_settings/security" element={<AccountSecurity />} />
                 <Route path="/account_settings/danger" element={<AccountDangerZone />} />
                   <Route path="/subscription_plans" element={<SubscriptionPlans />} />
+                <Route path="/success" element={<Success />} />
                 <Route path="/notifications" element={<Notifications />} />
                 <Route path="/admin" element={<AdminDashboard />} />
                 <Route path="/admin_dashboard" element={<AdminDashboard />} />
