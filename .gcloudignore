@@ -37,15 +37,11 @@ env/
 client/node_modules/
 client/.env*
 
-# Ignore landing source (we only need landing/dist)
-landing/src/
+# Landing: full source is uploaded for Dockerfile.landing (npm ci + vite build in image).
+# Exclude only heavy or secret paths (align with .dockerignore).
 landing/node_modules/
-landing/package*.json
-landing/tsconfig*.json
-landing/vite.config.ts
-landing/*.html
+landing/dist/
 landing/.env*
-landing/Dockerfile
 
 # Ignore test and debug files
 test_*.py
