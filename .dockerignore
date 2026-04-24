@@ -13,4 +13,6 @@ __pycache__
 .cursor
 .vscode
 admin-web
-landing
+# landing/ must be present for Dockerfile.landing; exclude heavy / generated paths only
+landing/node_modules
+landing/dist

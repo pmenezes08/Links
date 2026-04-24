@@ -1,5 +1,5 @@
 # Cloud Build config for the marketing site (www.c-point.co) on Cloud Run.
-# Requires: committed landing/dist/ from `cd landing && npm run build` (root Dockerfile.landing copies it).
+# Dockerfile.landing runs `npm ci` + `vite build` inside the image; no pre-built dist required.
 # Use from repo root: gcloud builds submit --config=cloudbuild-landing.yaml .
 
 steps:
