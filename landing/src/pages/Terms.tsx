@@ -15,7 +15,7 @@ const Terms = () => {
       {/* Content */}
       <main className="container mx-auto px-4 py-12 max-w-4xl">
         <h1 className="text-4xl font-bold mb-8">Terms of Service</h1>
-        <p className="text-white/60 mb-4">Last updated: April 2026</p>
+        <p className="text-white/60 mb-4">Last updated: April 24, 2026</p>
         <div className="bg-[#4db6ac]/10 border border-[#4db6ac]/30 rounded-lg p-4 mb-8">
           <p className="text-[#4db6ac] font-semibold">Age Rating: 16+</p>
           <p className="text-white/70 text-sm">This app is intended for users aged 16 and older.</p>
@@ -40,7 +40,35 @@ const Terms = () => {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">3. User Accounts</h2>
+            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">3. AI assistant (Steve) and third-party models</h2>
+            <p className="text-white/80 leading-relaxed mb-4">
+              The Service may include &quot;Steve,&quot; an AI-powered assistant and related features (for example voice
+              transcription, summaries, profile insights, and community-assisted suggestions). These features rely on
+              third-party infrastructure (including large language models and speech-to-text) as described in our{' '}
+              <Link to="/privacy" className="text-[#4db6ac] hover:underline">Privacy Policy</Link>, including Sections 5
+              and 6.
+            </p>
+            <p className="text-white/80 leading-relaxed mb-4">
+              <strong>No enterprise DPAs.</strong> We use AI vendors under their standard online or developer terms. We
+              do not currently maintain individually negotiated enterprise agreements or data processing addenda with
+              those vendors. If you require contractual guarantees that only a bespoke enterprise agreement can provide,
+              you should not submit sensitive personal information to Steve or the Service.
+            </p>
+            <p className="text-white/80 leading-relaxed mb-4">
+              <strong>No warranty on outputs.</strong> AI-generated content may be wrong, incomplete, or inappropriate.
+              Steve does not provide professional advice (legal, medical, financial, or otherwise). You are solely
+              responsible for how you use outputs.
+            </p>
+            <p className="text-white/80 leading-relaxed">
+              <strong>Acceptable use.</strong> You must not use Steve to generate unlawful content, to harass others, to
+              attempt to extract private information about people in violation of our{' '}
+              <Link to="/privacy" className="text-[#4db6ac] hover:underline">Privacy Policy</Link> or product rules, or
+              to circumvent technical or usage limits.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">4. User Accounts</h2>
             <ul className="list-disc list-inside text-white/80 space-y-2 ml-4">
               <li>You must be at least 16 years old to create an account</li>
               <li>You are responsible for maintaining the security of your account</li>
@@ -51,7 +79,7 @@ const Terms = () => {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">4. User Content & Liability</h2>
+            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">5. User Content & Liability</h2>
             <p className="text-white/80 leading-relaxed mb-4">
               You retain ownership of content you post on C-Point. By posting content, you grant us a 
               non-exclusive, worldwide, royalty-free license to use, display, and distribute your content 
@@ -69,7 +97,7 @@ const Terms = () => {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">5. Prohibited Conduct</h2>
+            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">6. Prohibited Conduct</h2>
             <p className="text-white/80 leading-relaxed mb-4">You agree not to:</p>
             <ul className="list-disc list-inside text-white/80 space-y-2 ml-4">
               <li>Post illegal, harmful, threatening, abusive, or harassing content</li>
@@ -88,7 +116,7 @@ const Terms = () => {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">6. Content Moderation</h2>
+            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">7. Content Moderation</h2>
             <p className="text-white/80 leading-relaxed mb-4">
               We reserve the right to remove any content that violates these Terms or that we find 
               objectionable, without prior notice. We may also suspend or terminate accounts that 
@@ -101,9 +129,9 @@ const Terms = () => {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">7. Community Administration & Content Responsibility</h2>
+            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">8. Community Administration & Content Responsibility</h2>
 
-            <h3 className="text-lg font-semibold mt-2 mb-2 text-white">7.1 Responsibility of Community Owners</h3>
+            <h3 className="text-lg font-semibold mt-2 mb-2 text-white">8.1 Responsibility of Community Owners</h3>
             <p className="text-white/80 leading-relaxed mb-4">
               <strong>Community owners and administrators bear full responsibility for monitoring, moderating,
               reporting, and managing all content posted within their communities.</strong> This includes but
@@ -122,7 +150,7 @@ const Terms = () => {
               assume responsibility for any content created by users or community administrators.
             </p>
 
-            <h3 className="text-lg font-semibold mt-6 mb-2 text-white">7.2 Community Lifecycle</h3>
+            <h3 className="text-lg font-semibold mt-6 mb-2 text-white">8.2 Community Lifecycle</h3>
             <p className="text-white/80 leading-relaxed mb-4">
               Free communities with no owner or moderator activity for an extended period may be archived
               automatically. Owners receive in-app warnings before archiving and can restore an archived
@@ -131,15 +159,16 @@ const Terms = () => {
               the product knowledge base and may be adjusted with notice.
             </p>
 
-            <h3 className="text-lg font-semibold mt-6 mb-2 text-white">7.3 Data Ownership and Data Requests</h3>
+            <h3 className="text-lg font-semibold mt-6 mb-2 text-white">8.3 Data Ownership and Data Requests</h3>
             <p className="text-white/80 leading-relaxed mb-4">
               <strong>Personal data vs. community data.</strong> We distinguish two categories:
             </p>
             <ul className="list-disc list-inside text-white/80 space-y-2 ml-4 mb-4">
               <li>
                 <strong>Your personal data</strong> — the posts, comments, messages, profile fields, and
-                media you have personally authored or uploaded. You retain ownership of this content
-                (see §4) and may exercise the GDPR rights described in our{' '}
+                media you have personally authored or uploaded, plus AI-derived material we hold about you (for example
+                structured profile insights or embeddings) where that constitutes your personal data. You retain
+                ownership of your content (see §5) and may exercise the GDPR rights described in our{' '}
                 <Link to="/privacy" className="text-[#4db6ac] hover:underline">Privacy Policy</Link>,
                 including access, rectification, erasure, and portability.
               </li>
@@ -172,7 +201,7 @@ const Terms = () => {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">8. Intellectual Property</h2>
+            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">9. Intellectual Property</h2>
             <p className="text-white/80 leading-relaxed">
               The Service and its original content (excluding user content), features, and functionality 
               are owned by C-Point and are protected by international copyright, trademark, and other 
@@ -181,7 +210,7 @@ const Terms = () => {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">9. Third-Party Links</h2>
+            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">10. Third-Party Links</h2>
             <p className="text-white/80 leading-relaxed">
               The Service may contain links to third-party websites. We are not responsible for the 
               content or practices of these websites. Access them at your own risk.
@@ -189,7 +218,7 @@ const Terms = () => {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">10. Disclaimer of Warranties</h2>
+            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">11. Disclaimer of Warranties</h2>
             <p className="text-white/80 leading-relaxed">
               The Service is provided "as is" and "as available" without warranties of any kind, 
               either express or implied. We do not warrant that the Service will be uninterrupted, 
@@ -198,7 +227,7 @@ const Terms = () => {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">11. Limitation of Liability</h2>
+            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">12. Limitation of Liability</h2>
             <p className="text-white/80 leading-relaxed mb-4">
               To the maximum extent permitted by law, C-Point shall not be liable for any indirect, 
               incidental, special, consequential, or punitive damages arising from your use of the Service.
@@ -216,7 +245,7 @@ const Terms = () => {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">12. Indemnification</h2>
+            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">13. Indemnification</h2>
             <p className="text-white/80 leading-relaxed">
               You agree to indemnify and hold harmless C-Point and its officers, directors, employees, 
               and agents from any claims, damages, or expenses arising from your use of the Service 
@@ -225,7 +254,7 @@ const Terms = () => {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">13. Termination</h2>
+            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">14. Termination</h2>
             <p className="text-white/80 leading-relaxed">
               We may terminate or suspend your account at any time, with or without cause, with or 
               without notice. Upon termination, your right to use the Service will immediately cease.
@@ -233,7 +262,7 @@ const Terms = () => {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">14. Changes to Terms</h2>
+            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">15. Changes to Terms</h2>
             <p className="text-white/80 leading-relaxed">
               We reserve the right to modify these Terms at any time. We will notify users of 
               significant changes. Continued use of the Service after changes constitutes acceptance 
@@ -242,15 +271,22 @@ const Terms = () => {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">15. Governing Law</h2>
+            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">16. Governing law and disputes</h2>
+            <p className="text-white/80 leading-relaxed mb-4">
+              These Terms apply to users worldwide. If you live in a country whose mandatory consumer or data protection
+              laws give you rights that cannot be waived by contract, those laws apply to you in addition to (and, where
+              there is a conflict, may override) the provisions below.
+            </p>
             <p className="text-white/80 leading-relaxed">
-              These Terms shall be governed by and construed in accordance with the laws of the 
-              European Union. Any disputes shall be resolved in the courts of the applicable jurisdiction.
+              Subject to the paragraph above, these Terms shall be governed by and construed in accordance with the laws
+              of the European Union and applicable Member State law, without regard to conflict-of-law rules. Disputes
+              shall be brought in the courts of the jurisdiction where we designate in any future update or, in the
+              absence of such designation, as mutually agreed or required by mandatory law.
             </p>
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">16. Contact Us</h2>
+            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">17. Contact Us</h2>
             <p className="text-white/80 leading-relaxed">
               If you have questions about these Terms, please contact us:
             </p>
