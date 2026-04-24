@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import { useBadges } from '../contexts/BadgeContext'
@@ -101,7 +101,7 @@ function timeAgo(ts?: string){
 
 export default function Notifications(){
   const { setTitle } = useHeader()
-  const { refreshBadges, adjustBadges } = useBadges()
+  const { unreadNotifs, refreshBadges, adjustBadges } = useBadges()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<TabType>('notifications')
   const [items, setItems] = useState<Notif[]|null>(null)
@@ -123,10 +123,11 @@ export default function Notifications(){
   const notifGestureRef = useRef<{ startX: number; startY: number; wasOpen: boolean } | null>(null)
   const notifLiveXRef = useRef(0)
   const notifDraggingIdRef = useRef<number | null>(null)
+  const lastUnreadNotifsRef = useRef<number | null>(null)
 
   useEffect(() => { setTitle('Notifications') }, [setTitle])
 
-  async function load(){
+  const load = useCallback(async function load(){
     try{
       setLoading(true)
       const r = await fetch('/api/notifications?all=true', { credentials:'include', headers: { 'Accept': 'application/json' } })
@@ -148,12 +149,42 @@ export default function Notifications(){
       console.error('📋 Notifications fetch error:', err)
       setItems([])
     } finally { setLoading(false) }
-  }
+  }, [])
 
   useEffect(() => { 
     load()
     refreshBadges()
-  }, [])
+  }, [load, refreshBadges])
+
+  useEffect(() => {
+    const previous = lastUnreadNotifsRef.current
+    lastUnreadNotifsRef.current = unreadNotifs
+
+    if (previous === null) return
+    if (activeTab !== 'notifications') return
+    if (previous === unreadNotifs) return
+
+    load()
+  }, [activeTab, load, unreadNotifs])
+
+  useEffect(() => {
+    const refreshVisibleNotifications = () => {
+      if (document.hidden) return
+      if (activeTab !== 'notifications') return
+      load()
+      refreshBadges()
+    }
+
+    document.addEventListener('visibilitychange', refreshVisibleNotifications)
+    window.addEventListener('focus', refreshVisibleNotifications)
+    window.addEventListener('cpoint:push-notification-received', refreshVisibleNotifications)
+
+    return () => {
+      document.removeEventListener('visibilitychange', refreshVisibleNotifications)
+      window.removeEventListener('focus', refreshVisibleNotifications)
+      window.removeEventListener('cpoint:push-notification-received', refreshVisibleNotifications)
+    }
+  }, [activeTab, load, refreshBadges])
   
   // Load events, polls, tasks when switching tabs
   useEffect(() => {
