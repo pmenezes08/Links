@@ -126,6 +126,7 @@ export default function Notifications(){
   const [polls, setPolls] = useState<Poll[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
   const [pendingInvites, setPendingInvites] = useState<PendingCommunityInvite[]>([])
+  const [unreadInviteCount, setUnreadInviteCount] = useState(0)
   const [inviteActionLoading, setInviteActionLoading] = useState<number | null>(null)
   const [inviteActionError, setInviteActionError] = useState('')
   const [eventsLoading, setEventsLoading] = useState(false)
@@ -159,7 +160,14 @@ export default function Notifications(){
       if (j?.success){
         console.log('📋 Total notifications received:', j.notifications?.length || 0)
         console.log('📋 Notification types:', j.notifications?.map((n: Notif) => n?.type))
-        const filtered = (j.notifications as Notif[]).filter(n => {
+        const notifications = (j.notifications as Notif[]) || []
+        const unreadInvites = notifications.filter(n => {
+          const typeKey = n?.type?.split(':')[0] ?? n?.type
+          return !n?.is_read && INVITE_NOTIFICATION_TYPES.has(typeKey || '')
+        })
+        setUnreadInviteCount(unreadInvites.length)
+
+        const filtered = notifications.filter(n => {
           const typeKey = n?.type?.split(':')[0] ?? n?.type
           return n?.type !== 'message' && n?.type !== 'reaction' && !INVITE_NOTIFICATION_TYPES.has(typeKey || '')
         })
@@ -169,10 +177,12 @@ export default function Notifications(){
         console.error('📋 Notifications API error:', j?.error || 'Unknown error')
         // Still set items to empty array so page doesn't get stuck on "Loading..."
         setItems([])
+        setUnreadInviteCount(0)
       }
     } catch (err) {
       console.error('📋 Notifications fetch error:', err)
       setItems([])
+      setUnreadInviteCount(0)
     } finally {
       if (!silent) setLoading(false)
     }
@@ -209,14 +219,14 @@ export default function Notifications(){
 
     // Silent so the page doesn't flash "Loading…" each time a tap /
     // delete decrements the badge.
-    if (activeTab === 'notifications') load({ silent: true })
+    if (activeTab === 'notifications' || activeTab === 'invites') load({ silent: true })
     loadPendingInvites()
   }, [activeTab, load, loadPendingInvites, unreadNotifs])
 
   useEffect(() => {
     const refreshVisibleNotifications = () => {
       if (document.hidden) return
-      if (activeTab === 'notifications') load({ silent: true })
+      if (activeTab === 'notifications' || activeTab === 'invites') load({ silent: true })
       loadPendingInvites()
       refreshBadges()
     }
@@ -481,20 +491,26 @@ export default function Notifications(){
             { key: 'calendar' as TabType, label: 'Calendar', icon: 'fa-regular fa-calendar' },
             { key: 'polls' as TabType, label: 'Polls', icon: 'fa-solid fa-chart-bar' },
             { key: 'tasks' as TabType, label: 'Tasks', icon: 'fa-solid fa-list-check' },
-          ].map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${
-                activeTab === tab.key 
-                  ? 'bg-[#4db6ac] text-black font-semibold' 
-                  : 'text-white/60 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <i className={tab.icon} />
-              {tab.label}
-            </button>
-          ))}
+          ].map(tab => {
+            const showInviteDot = tab.key === 'invites' && unreadInviteCount > 0
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${
+                  activeTab === tab.key 
+                    ? 'bg-[#4db6ac] text-black font-semibold' 
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                {showInviteDot ? (
+                  <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#7fffd4] ring-2 ring-black" />
+                ) : null}
+                <i className={tab.icon} />
+                {tab.label}
+              </button>
+            )
+          })}
         </div>
         
         {/* Notifications Tab */}
