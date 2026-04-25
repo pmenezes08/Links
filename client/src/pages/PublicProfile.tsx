@@ -53,6 +53,13 @@ type PublicProfileResponse = {
   ai_enhanced?: Record<string, any>
 }
 
+type ManageableCommunity = {
+  id: number
+  name: string
+  parent_community_id?: number | null
+  target_is_member?: boolean
+}
+
 export default function PublicProfile() {
   const { username = '' } = useParams()
   const navigate = useNavigate()
@@ -66,6 +73,12 @@ export default function PublicProfile() {
   const [followersCount, setFollowersCount] = useState(0)
   const [followingCount, setFollowingCount] = useState(0)
   const [followLoading, setFollowLoading] = useState(false)
+  const [manageableCommunities, setManageableCommunities] = useState<ManageableCommunity[]>([])
+  const [inviteModalOpen, setInviteModalOpen] = useState(false)
+  const [selectedInviteCommunityIds, setSelectedInviteCommunityIds] = useState<number[]>([])
+  const [inviteSubmitting, setInviteSubmitting] = useState(false)
+  const [inviteError, setInviteError] = useState('')
+  const [inviteSuccess, setInviteSuccess] = useState('')
   const currentUsername = useMemo(() => {
     if (!currentUser || typeof currentUser !== 'object') return ''
     const record = currentUser as Record<string, any>
@@ -117,6 +130,38 @@ export default function PublicProfile() {
     setTitle(titleText)
   }, [profile, setTitle, username])
 
+  useEffect(() => {
+    if (!profile || !currentUsername || profile.is_self) {
+      setManageableCommunities([])
+      return
+    }
+
+    const profileUsername = profile.username
+    let cancelled = false
+    async function loadManageableCommunities() {
+      try {
+        const resp = await fetch(`/api/community/manageable?target_username=${encodeURIComponent(profileUsername)}`, {
+          credentials: 'include',
+          headers: { 'Accept': 'application/json' }
+        })
+        const data = await resp.json().catch(() => null)
+        if (cancelled) return
+        if (data?.success && Array.isArray(data.communities)) {
+          setManageableCommunities(data.communities)
+        } else {
+          setManageableCommunities([])
+        }
+      } catch {
+        if (!cancelled) setManageableCommunities([])
+      }
+    }
+
+    loadManageableCommunities()
+    return () => {
+      cancelled = true
+    }
+  }, [currentUsername, profile])
+
   const handleFollowToggle = async () => {
     if (!profile || !currentUsername) return
     if (followLoading) return
@@ -159,6 +204,52 @@ export default function PublicProfile() {
     }
   }
 
+  const handleOpenInviteModal = () => {
+    const available = manageableCommunities.filter(c => !c.target_is_member)
+    setSelectedInviteCommunityIds(available.length > 0 ? [available[0].id] : [])
+    setInviteError('')
+    setInviteSuccess('')
+    setInviteModalOpen(true)
+  }
+
+  const handleSendProfileInvite = async () => {
+    if (!profile) return
+    if (selectedInviteCommunityIds.length === 0) {
+      setInviteError('Select at least one community')
+      return
+    }
+
+    setInviteSubmitting(true)
+    setInviteError('')
+    setInviteSuccess('')
+    try {
+      const results = await Promise.all(selectedInviteCommunityIds.map(async communityId => {
+        const resp = await fetch('/api/community/invite_username', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ community_id: communityId, username: profile.username })
+        })
+        const data = await resp.json().catch(() => null)
+        if (!resp.ok || !data?.success) {
+          throw new Error(data?.error || 'Failed to send invite')
+        }
+        return data
+      }))
+
+      setInviteSuccess(
+        results.length === 1
+          ? (results[0]?.message || `Invite sent to @${profile.username}`)
+          : `Sent ${results.length} invites to @${profile.username}`
+      )
+      setSelectedInviteCommunityIds([])
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : 'Failed to send invite')
+    } finally {
+      setInviteSubmitting(false)
+    }
+  }
+
   if (loading) return <div className="glass-page min-h-screen text-white px-4">Loading…</div>
   if (error || !profile) return <div className="glass-page min-h-screen text-white px-4 text-red-400">{error || 'Profile not found'}</div>
 
@@ -168,6 +259,7 @@ export default function PublicProfile() {
   const bioText = (profile.bio || '').trim()
   const isFollowing = followStatus === 'accepted'
   const isPending = followStatus === 'pending'
+  const inviteableCommunities = manageableCommunities.filter(c => !c.target_is_member)
   const followButtonLabel = followLoading
     ? (isFollowing ? 'Unfollowing…' : isPending ? 'Cancelling…' : 'Following…')
     : (isFollowing ? 'Following' : isPending ? 'Requested' : 'Follow')
@@ -289,6 +381,15 @@ export default function PublicProfile() {
                     <i className="fa-regular fa-paper-plane mr-2" />
                     Send message
                   </button>
+                  {inviteableCommunities.length > 0 ? (
+                    <button
+                      className="px-3 py-1.5 rounded-md bg-[#4db6ac]/15 border border-[#4db6ac]/35 text-[#4db6ac] hover:bg-[#4db6ac]/25 text-sm"
+                      onClick={handleOpenInviteModal}
+                    >
+                      <i className="fa-solid fa-user-plus mr-2" />
+                      Invite to Community
+                    </button>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -535,6 +636,86 @@ export default function PublicProfile() {
               alt="Profile"
               className="w-full h-full object-contain rounded-lg border border-white/10"
             />
+          </div>
+        </div>
+      ) : null}
+      {inviteModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => e.currentTarget === e.target && setInviteModalOpen(false)}
+        >
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#111] p-5 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-semibold">Invite @{profile.username}</h2>
+                <p className="text-xs text-white/50">Choose communities you own or admin.</p>
+              </div>
+              <button className="p-2 rounded-lg hover:bg-white/10" onClick={() => setInviteModalOpen(false)} aria-label="Close invite modal">
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            {inviteSuccess ? (
+              <div className="mb-3 rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2 text-sm text-green-300">
+                {inviteSuccess}
+              </div>
+            ) : null}
+            {inviteError ? (
+              <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                {inviteError}
+              </div>
+            ) : null}
+
+            <div className="max-h-72 overflow-y-auto space-y-2">
+              {manageableCommunities.map(community => {
+                const disabled = !!community.target_is_member
+                const selected = selectedInviteCommunityIds.includes(community.id)
+                return (
+                  <button
+                    key={community.id}
+                    type="button"
+                    disabled={disabled || inviteSubmitting}
+                    onClick={() => {
+                      setInviteError('')
+                      setInviteSuccess('')
+                      setSelectedInviteCommunityIds(prev =>
+                        prev.includes(community.id)
+                          ? prev.filter(id => id !== community.id)
+                          : [...prev, community.id]
+                      )
+                    }}
+                    className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition disabled:opacity-45 disabled:cursor-not-allowed ${
+                      selected
+                        ? 'border-[#4db6ac]/60 bg-[#4db6ac]/15 text-white'
+                        : 'border-white/10 bg-white/[0.03] text-white/80 hover:bg-white/[0.06]'
+                    }`}
+                  >
+                    <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-white/20 bg-black/40 text-[10px] text-white/70">
+                      {selected ? <i className="fa-solid fa-check text-[#4db6ac]" /> : null}
+                    </span>
+                    <span className="ml-2">{community.name}</span>
+                    {disabled ? <span className="ml-2 text-xs text-white/40">Already a member</span> : null}
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <button
+                className="flex-1 rounded-lg bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110 disabled:opacity-50"
+                disabled={inviteSubmitting || selectedInviteCommunityIds.length === 0}
+                onClick={handleSendProfileInvite}
+              >
+                {inviteSubmitting ? 'Sending...' : 'Send Invite'}
+              </button>
+              <button
+                className="px-4 py-2 rounded-lg border border-white/10 bg-white/5 text-sm hover:bg-white/10"
+                disabled={inviteSubmitting}
+                onClick={() => setInviteModalOpen(false)}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

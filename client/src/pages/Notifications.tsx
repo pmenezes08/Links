@@ -53,6 +53,14 @@ type Task = {
   status?: string
 }
 
+type PendingCommunityInvite = {
+  id: number
+  community_id: number
+  community_name: string
+  invited_by_username: string
+  invited_at?: string
+}
+
 type TabType = 'notifications' | 'calendar' | 'polls' | 'tasks'
 
 /** Width uncovered when row is swiped left: two action buttons + gap (matches Messages list). */
@@ -74,6 +82,7 @@ function iconFor(type?: string){
       case 'follow': return 'fa-solid fa-user-plus'
       case 'follow_request': return 'fa-solid fa-user-plus'
       case 'follow_accept': return 'fa-solid fa-user-check'
+      case 'community_invite': return 'fa-solid fa-user-plus'
     case 'poll': return 'fa-solid fa-chart-bar'
     case 'poll_vote': return 'fa-solid fa-square-poll-vertical'
     case 'event_invitation': return 'fa-solid fa-calendar-check'
@@ -114,6 +123,9 @@ export default function Notifications(){
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [polls, setPolls] = useState<Poll[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
+  const [pendingInvites, setPendingInvites] = useState<PendingCommunityInvite[]>([])
+  const [inviteActionLoading, setInviteActionLoading] = useState<number | null>(null)
+  const [inviteActionError, setInviteActionError] = useState('')
   const [eventsLoading, setEventsLoading] = useState(false)
   const [pollsLoading, setPollsLoading] = useState(false)
   const [tasksLoading, setTasksLoading] = useState(false)
@@ -161,10 +173,26 @@ export default function Notifications(){
     }
   }, [])
 
+  const loadPendingInvites = useCallback(async function loadPendingInvites(){
+    try {
+      const r = await fetch('/api/community/invites/pending', {
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' },
+      })
+      const j = await r.json().catch(() => null)
+      if (j?.success && Array.isArray(j.invites)) {
+        setPendingInvites(j.invites)
+      }
+    } catch (err) {
+      console.error('Failed to load pending community invites:', err)
+    }
+  }, [])
+
   useEffect(() => {
     load()
+    loadPendingInvites()
     refreshBadges()
-  }, [load, refreshBadges])
+  }, [load, loadPendingInvites, refreshBadges])
 
   useEffect(() => {
     const previous = lastUnreadNotifsRef.current
@@ -177,13 +205,15 @@ export default function Notifications(){
     // Silent so the page doesn't flash "Loading…" each time a tap /
     // delete decrements the badge.
     load({ silent: true })
-  }, [activeTab, load, unreadNotifs])
+    loadPendingInvites()
+  }, [activeTab, load, loadPendingInvites, unreadNotifs])
 
   useEffect(() => {
     const refreshVisibleNotifications = () => {
       if (document.hidden) return
       if (activeTab !== 'notifications') return
       load({ silent: true })
+      loadPendingInvites()
       refreshBadges()
     }
 
@@ -196,7 +226,7 @@ export default function Notifications(){
       window.removeEventListener('focus', refreshVisibleNotifications)
       window.removeEventListener('cpoint:push-notification-received', refreshVisibleNotifications)
     }
-  }, [activeTab, load, refreshBadges])
+  }, [activeTab, load, loadPendingInvites, refreshBadges])
   
   // Load events, polls, tasks when switching tabs
   useEffect(() => {
@@ -334,6 +364,30 @@ export default function Notifications(){
     }
   }
 
+  async function respondToCommunityInvite(invite: PendingCommunityInvite, action: 'accept' | 'decline') {
+    if (inviteActionLoading) return
+    setInviteActionLoading(invite.id)
+    setInviteActionError('')
+    try {
+      const r = await fetch(`/api/community/invites/${invite.id}/${action}`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      const j = await r.json().catch(() => null)
+      if (r.ok && j?.success) {
+        setPendingInvites(prev => prev.filter(x => x.id !== invite.id))
+        await load({ silent: true })
+        refreshBadges()
+      } else {
+        setInviteActionError(j?.error || `Failed to ${action} invite`)
+      }
+    } catch {
+      setInviteActionError(`Failed to ${action} invite`)
+    } finally {
+      setInviteActionLoading(null)
+    }
+  }
+
   async function onClick(n: Notif){
     setSwipeNotifId(null)
     if (!n.is_read) {
@@ -456,6 +510,49 @@ export default function Notifications(){
                 Clear all
               </button>
             </div>
+            {inviteActionError ? (
+              <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                {inviteActionError}
+              </div>
+            ) : null}
+            {pendingInvites.length > 0 ? (
+              <div className="mb-4 space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-white/50">Community invites</div>
+                {pendingInvites.map(invite => (
+                  <div key={invite.id} className="rounded-xl border border-[#4db6ac]/35 bg-[#4db6ac]/10 p-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center text-[#4db6ac]">
+                        <i className="fa-solid fa-user-plus" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-white">
+                          You've been invited to community <span className="font-semibold">{invite.community_name}</span> by username <span className="font-semibold">{invite.invited_by_username}</span>
+                        </div>
+                        {invite.invited_at ? (
+                          <div className="text-[11px] text-[#9fb0b5] mt-0.5">{timeAgo(invite.invited_at)}</div>
+                        ) : null}
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            className="flex-1 rounded-lg bg-[#4db6ac] px-3 py-2 text-sm font-semibold text-black disabled:opacity-50"
+                            disabled={inviteActionLoading === invite.id}
+                            onClick={() => respondToCommunityInvite(invite, 'accept')}
+                          >
+                            {inviteActionLoading === invite.id ? 'Working...' : 'Accept'}
+                          </button>
+                          <button
+                            className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white disabled:opacity-50"
+                            disabled={inviteActionLoading === invite.id}
+                            onClick={() => respondToCommunityInvite(invite, 'decline')}
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             {loading || !items ? (
               <div className="text-[#9fb0b5] py-10 text-center">Loading…</div>
             ) : items.length === 0 ? (

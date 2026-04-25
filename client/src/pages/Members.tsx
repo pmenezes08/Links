@@ -38,9 +38,11 @@ export default function Members(){
   const [currentUserRole, setCurrentUserRole] = useState<'member'|'admin'|'owner'|'app_admin'>('member')
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteUsername, setInviteUsername] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
   const [inviteError, setInviteError] = useState('')
   const [inviteSuccess, setInviteSuccess] = useState(false)
+  const [inviteSuccessMessage, setInviteSuccessMessage] = useState('')
   const [showQRCode, setShowQRCode] = useState(false)
   const [qrCodeUrl, setQRCodeUrl] = useState('')
   const [inviteSingleUse, setInviteSingleUse] = useState(false)
@@ -224,8 +226,10 @@ export default function Members(){
   const resetInviteSelections = () => {
     setInviteCommunityId(numericCommunityId)
     setInviteEmail('')
+    setInviteUsername('')
     setInviteError('')
     setInviteSuccess(false)
+    setInviteSuccessMessage('')
     setInviteScope('parent-only')
     setInviteNestedOptions([])
     setInviteSelectedNestedIds([])
@@ -268,8 +272,10 @@ export default function Members(){
     if (!numericCommunityId) return
     setInviteCommunityId(numericCommunityId)
     setInviteEmail('')
+    setInviteUsername('')
     setInviteError('')
     setInviteSuccess(false)
+    setInviteSuccessMessage('')
     setInviteScope('parent-only')
     setShowQRCode(false)
 
@@ -378,6 +384,7 @@ export default function Members(){
 
       if (response.ok && data.success) {
         setInviteSuccess(true)
+        setInviteSuccessMessage('Invitation sent successfully!')
         setInviteEmail('')
         setTimeout(() => {
           handleCloseInviteModal()
@@ -388,6 +395,52 @@ export default function Members(){
     } catch (error) {
       console.error('Error sending invitation:', error)
       setInviteError('Failed to send invitation')
+    } finally {
+      setInviteLoading(false)
+    }
+  }
+
+  async function handleSendUsernameInvite() {
+    const targetUsername = inviteUsername.trim().replace(/^@+/, '')
+    if (!targetUsername) {
+      setInviteError('Username is required')
+      return
+    }
+    if (!inviteCommunityId) {
+      setInviteError('No community selected for invitation')
+      return
+    }
+    if (inviteScope === 'selected-nested' && inviteSelectedNestedIds.length === 0) {
+      setInviteError('Select at least one nested community')
+      return
+    }
+
+    setInviteLoading(true)
+    setInviteError('')
+    setInviteSuccess(false)
+    setInviteSuccessMessage('')
+
+    try {
+      const payload = buildInvitePayload({ username: targetUsername })
+      const response = await fetch('/api/community/invite_username', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        setInviteSuccess(true)
+        setInviteSuccessMessage(data.message || `Invite sent to @${targetUsername}`)
+        setInviteUsername('')
+      } else {
+        setInviteError(data.error || 'Failed to send username invitation')
+      }
+    } catch (error) {
+      console.error('Error sending username invitation:', error)
+      setInviteError('Failed to send username invitation')
     } finally {
       setInviteLoading(false)
     }
@@ -529,7 +582,7 @@ export default function Members(){
 
             {inviteSuccess && (
               <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg text-green-400 text-sm">
-                Invitation sent successfully!
+                {inviteSuccessMessage || 'Invitation sent successfully!'}
               </div>
             )}
 
@@ -697,6 +750,53 @@ export default function Members(){
                 >
                   {inviteLoading ? 'Sending...' : 'Send Email Invite'}
                 </button>
+              </div>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-white/10"></div>
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="px-2 bg-[#1a1a1a] text-white/40">OR</span>
+                </div>
+              </div>
+
+              {/* Username Invitation */}
+              <div>
+                <label className="block text-xs text-white/60 mb-2">Invite existing C.Point user</label>
+                <input
+                  type="text"
+                  value={inviteUsername}
+                  onChange={(e) => {
+                    setInviteUsername(e.target.value)
+                    setInviteError('')
+                    setInviteSuccess(false)
+                    setInviteSuccessMessage('')
+                  }}
+                  placeholder="@username"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none"
+                  disabled={inviteLoading}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleSendUsernameInvite()
+                    }
+                  }}
+                />
+                <button
+                  onClick={handleSendUsernameInvite}
+                  className="w-full mt-2 px-4 py-2 bg-[#4db6ac]/15 border border-[#4db6ac]/35 text-[#4db6ac] rounded-lg text-sm font-medium hover:bg-[#4db6ac]/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={
+                    inviteLoading ||
+                    !inviteUsername.trim() ||
+                    (inviteScope === 'selected-nested' && inviteSelectedNestedIds.length === 0)
+                  }
+                >
+                  {inviteLoading ? 'Sending...' : 'Send Username Invite'}
+                </button>
+                <p className="mt-1 text-[11px] text-white/40">
+                  The user will get an in-app and push notification, then can accept or decline.
+                </p>
               </div>
 
               <div className="relative">
