@@ -61,7 +61,9 @@ type PendingCommunityInvite = {
   invited_at?: string
 }
 
-type TabType = 'notifications' | 'calendar' | 'polls' | 'tasks'
+type TabType = 'notifications' | 'invites' | 'calendar' | 'polls' | 'tasks'
+
+const INVITE_NOTIFICATION_TYPES = new Set(['community_invite', 'dm_invite'])
 
 /** Width uncovered when row is swiped left: two action buttons + gap (matches Messages list). */
 const NOTIF_SWIPE_ACTION_WIDTH = 116
@@ -157,7 +159,10 @@ export default function Notifications(){
       if (j?.success){
         console.log('📋 Total notifications received:', j.notifications?.length || 0)
         console.log('📋 Notification types:', j.notifications?.map((n: Notif) => n?.type))
-        const filtered = (j.notifications as Notif[]).filter(n => n?.type !== 'message' && n?.type !== 'reaction')
+        const filtered = (j.notifications as Notif[]).filter(n => {
+          const typeKey = n?.type?.split(':')[0] ?? n?.type
+          return n?.type !== 'message' && n?.type !== 'reaction' && !INVITE_NOTIFICATION_TYPES.has(typeKey || '')
+        })
         console.log('📋 After filtering out messages and reactions:', filtered.length)
         setItems(filtered)
       } else {
@@ -199,20 +204,19 @@ export default function Notifications(){
     lastUnreadNotifsRef.current = unreadNotifs
 
     if (previous === null) return
-    if (activeTab !== 'notifications') return
+    if (activeTab !== 'notifications' && activeTab !== 'invites') return
     if (previous === unreadNotifs) return
 
     // Silent so the page doesn't flash "Loading…" each time a tap /
     // delete decrements the badge.
-    load({ silent: true })
+    if (activeTab === 'notifications') load({ silent: true })
     loadPendingInvites()
   }, [activeTab, load, loadPendingInvites, unreadNotifs])
 
   useEffect(() => {
     const refreshVisibleNotifications = () => {
       if (document.hidden) return
-      if (activeTab !== 'notifications') return
-      load({ silent: true })
+      if (activeTab === 'notifications') load({ silent: true })
       loadPendingInvites()
       refreshBadges()
     }
@@ -473,6 +477,7 @@ export default function Notifications(){
         <div className="flex gap-1 mb-4 overflow-x-auto scrollbar-hide border-b border-white/10 pb-2">
           {[
             { key: 'notifications' as TabType, label: 'Notifications', icon: 'fa-regular fa-bell' },
+            { key: 'invites' as TabType, label: 'Invites', icon: 'fa-solid fa-user-plus' },
             { key: 'calendar' as TabType, label: 'Calendar', icon: 'fa-regular fa-calendar' },
             { key: 'polls' as TabType, label: 'Polls', icon: 'fa-solid fa-chart-bar' },
             { key: 'tasks' as TabType, label: 'Tasks', icon: 'fa-solid fa-list-check' },
@@ -510,49 +515,6 @@ export default function Notifications(){
                 Clear all
               </button>
             </div>
-            {inviteActionError ? (
-              <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-                {inviteActionError}
-              </div>
-            ) : null}
-            {pendingInvites.length > 0 ? (
-              <div className="mb-4 space-y-2">
-                <div className="text-xs font-semibold uppercase tracking-wide text-white/50">Community invites</div>
-                {pendingInvites.map(invite => (
-                  <div key={invite.id} className="rounded-xl border border-[#4db6ac]/35 bg-[#4db6ac]/10 p-3">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center text-[#4db6ac]">
-                        <i className="fa-solid fa-user-plus" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-white">
-                          You've been invited to community <span className="font-semibold">{invite.community_name}</span> by username <span className="font-semibold">{invite.invited_by_username}</span>
-                        </div>
-                        {invite.invited_at ? (
-                          <div className="text-[11px] text-[#9fb0b5] mt-0.5">{timeAgo(invite.invited_at)}</div>
-                        ) : null}
-                        <div className="mt-3 flex gap-2">
-                          <button
-                            className="flex-1 rounded-lg bg-[#4db6ac] px-3 py-2 text-sm font-semibold text-black disabled:opacity-50"
-                            disabled={inviteActionLoading === invite.id}
-                            onClick={() => respondToCommunityInvite(invite, 'accept')}
-                          >
-                            {inviteActionLoading === invite.id ? 'Working...' : 'Accept'}
-                          </button>
-                          <button
-                            className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white disabled:opacity-50"
-                            disabled={inviteActionLoading === invite.id}
-                            onClick={() => respondToCommunityInvite(invite, 'decline')}
-                          >
-                            Decline
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
             {loading || !items ? (
               <div className="text-[#9fb0b5] py-10 text-center">Loading…</div>
             ) : items.length === 0 ? (
@@ -698,6 +660,60 @@ export default function Notifications(){
                     </div>
                   )
                 })}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Invites Tab */}
+        {activeTab === 'invites' && (
+          <>
+            {inviteActionError ? (
+              <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                {inviteActionError}
+              </div>
+            ) : null}
+            {pendingInvites.length === 0 ? (
+              <div className="text-[#9fb0b5] py-10 text-center">
+                <i className="fa-solid fa-user-plus text-2xl" />
+                <div className="mt-2">No invites</div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-white/50">Community invites</div>
+                {pendingInvites.map(invite => (
+                  <div key={`community-${invite.id}`} className="rounded-xl border border-[#4db6ac]/35 bg-[#4db6ac]/10 p-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center text-[#4db6ac]">
+                        <i className="fa-solid fa-user-plus" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-white">
+                          You've been invited to community <span className="font-semibold">{invite.community_name}</span> by username <span className="font-semibold">{invite.invited_by_username}</span>
+                        </div>
+                        {invite.invited_at ? (
+                          <div className="text-[11px] text-[#9fb0b5] mt-0.5">{timeAgo(invite.invited_at)}</div>
+                        ) : null}
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            className="flex-1 rounded-lg bg-[#4db6ac] px-3 py-2 text-sm font-semibold text-black disabled:opacity-50"
+                            disabled={inviteActionLoading === invite.id}
+                            onClick={() => respondToCommunityInvite(invite, 'accept')}
+                          >
+                            {inviteActionLoading === invite.id ? 'Working...' : 'Accept'}
+                          </button>
+                          <button
+                            className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white disabled:opacity-50"
+                            disabled={inviteActionLoading === invite.id}
+                            onClick={() => respondToCommunityInvite(invite, 'decline')}
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </>

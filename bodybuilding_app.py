@@ -29532,7 +29532,7 @@ def generate_invite_link():
             user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
             
             c.execute("""
-                SELECT c.name, c.creator_username, uc.role
+                SELECT c.name, c.creator_username, uc.role, c.parent_community_id
                 FROM communities c
                 LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.user_id = ?
                 WHERE c.id = ?
@@ -29543,6 +29543,9 @@ def generate_invite_link():
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
             
             community_name = community['name'] if hasattr(community, 'keys') else community[0]
+            parent_community_id = community['parent_community_id'] if hasattr(community, 'keys') else community[3]
+            if parent_community_id:
+                return jsonify({'success': False, 'error': 'Invites can only be created from root communities'}), 400
             
             try:
                 cid = int(community_id)
@@ -29555,11 +29558,6 @@ def generate_invite_link():
             import secrets
             token = secrets.token_urlsafe(32)
             
-            include_nested_ids = normalize_id_list(data.get('include_nested_ids', []))
-            raw_parent_payload = data.get('include_parent_ids', None)
-            include_parent_ids = None if raw_parent_payload is None else normalize_id_list(raw_parent_payload)
-            parent_ids_to_join = include_parent_ids if include_parent_ids is not None else get_parent_chain_ids(c, community_id)
-            
             # Store invitation with placeholder email
             c.execute("""
                 INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token, include_nested_ids, include_parent_ids)
@@ -29569,8 +29567,8 @@ def generate_invite_link():
                 f'qr-invite-{token[:8]}@placeholder.local',
                 username,
                 token,
-                json.dumps(include_nested_ids),
-                json.dumps(parent_ids_to_join)
+                json.dumps([]),
+                json.dumps([])
             ))
             conn.commit()
             
@@ -29590,37 +29588,11 @@ def generate_invite_link():
 
 
 def _community_invite_join_ids(cursor, community_id: int, raw_nested_values=None, raw_parent_values=None) -> List[int]:
-    """Return primary + selected parent/nested communities for an invite."""
-    nested_ids = normalize_id_list(raw_nested_values) if raw_nested_values else []
-    parent_ids_to_join = (
-        normalize_id_list(raw_parent_values)
-        if raw_parent_values is not None
-        else get_parent_chain_ids(cursor, community_id)
-    )
-
-    communities_to_join: List[int] = []
-    seen: Set[int] = set()
-
-    def add_community(target_id: Optional[int]):
-        if not target_id:
-            return
-        try:
-            normalized_id = int(target_id)
-        except (TypeError, ValueError):
-            return
-        if normalized_id not in seen:
-            seen.add(normalized_id)
-            communities_to_join.append(normalized_id)
-
-    add_community(community_id)
-    for pid in parent_ids_to_join:
-        add_community(pid)
-    for nid in nested_ids:
-        add_community(nid)
-        for ancestor_id in get_parent_chain_ids(cursor, nid):
-            add_community(ancestor_id)
-
-    return communities_to_join
+    """Return the root community for username invite acceptance."""
+    try:
+        return [int(community_id)]
+    except (TypeError, ValueError):
+        return []
 
 
 def _fetch_manageable_communities(cursor, username: str, target_username: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -29644,6 +29616,7 @@ def _fetch_manageable_communities(cursor, username: str, target_username: Option
                    {target_select}
             FROM communities c
             {target_join}
+            WHERE c.parent_community_id IS NULL
             ORDER BY c.name
             """,
             tuple(params),
@@ -29658,8 +29631,11 @@ def _fetch_manageable_communities(cursor, username: str, target_username: Option
             {target_join}
             LEFT JOIN user_communities uc ON uc.community_id = c.id
             LEFT JOIN users u ON u.id = uc.user_id
-            WHERE c.creator_username = {ph}
-               OR (LOWER(u.username) = LOWER({ph}) AND LOWER(COALESCE(uc.role, '')) IN ('admin', 'owner'))
+            WHERE c.parent_community_id IS NULL
+              AND (
+                c.creator_username = {ph}
+                OR (LOWER(u.username) = LOWER({ph}) AND LOWER(COALESCE(uc.role, '')) IN ('admin', 'owner'))
+              )
             ORDER BY c.name
             """,
             tuple(params),
@@ -29731,11 +29707,14 @@ def invite_username_to_community():
             target_user_id = target_row['id'] if hasattr(target_row, 'keys') else target_row[0]
             resolved_target_username = target_row['username'] if hasattr(target_row, 'keys') else target_row[1]
 
-            c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+            c.execute("SELECT name, parent_community_id FROM communities WHERE id = ?", (community_id,))
             community_row = c.fetchone()
             if not community_row:
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
             community_name = community_row['name'] if hasattr(community_row, 'keys') else community_row[0]
+            parent_community_id = community_row['parent_community_id'] if hasattr(community_row, 'keys') else community_row[1]
+            if parent_community_id:
+                return jsonify({'success': False, 'error': 'Invites can only be created from root communities'}), 400
 
             c.execute(
                 "SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?",
@@ -29743,11 +29722,6 @@ def invite_username_to_community():
             )
             if c.fetchone():
                 return jsonify({'success': False, 'error': 'User is already a member of this community'}), 400
-
-            include_nested_ids = normalize_id_list(data.get('include_nested_ids', []))
-            raw_parent_payload = data.get('include_parent_ids', None)
-            include_parent_ids = None if raw_parent_payload is None else normalize_id_list(raw_parent_payload)
-            parent_ids_to_join = include_parent_ids if include_parent_ids is not None else get_parent_chain_ids(c, community_id)
 
             c.execute(
                 """
@@ -29775,8 +29749,8 @@ def invite_username_to_community():
                         inviter_username,
                         placeholder_email,
                         token,
-                        json.dumps(include_nested_ids),
-                        json.dumps(parent_ids_to_join),
+                        json.dumps([]),
+                        json.dumps([]),
                         invite_id,
                     ),
                 )
@@ -29793,8 +29767,8 @@ def invite_username_to_community():
                         resolved_target_username,
                         inviter_username,
                         token,
-                        json.dumps(include_nested_ids),
-                        json.dumps(parent_ids_to_join),
+                        json.dumps([]),
+                        json.dumps([]),
                     ),
                 )
                 invite_id = c.lastrowid
@@ -30271,7 +30245,7 @@ def invite_to_community():
             user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
             
             c.execute("""
-                SELECT c.name, c.creator_username, uc.role
+                SELECT c.name, c.creator_username, uc.role, c.parent_community_id
                 FROM communities c
                 LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.user_id = ?
                 WHERE c.id = ?
@@ -30282,6 +30256,9 @@ def invite_to_community():
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
             
             community_name = community['name'] if hasattr(community, 'keys') else community[0]
+            parent_community_id = community['parent_community_id'] if hasattr(community, 'keys') else community[3]
+            if parent_community_id:
+                return jsonify({'success': False, 'error': 'Invites can only be created from root communities'}), 400
             
             try:
                 cid = int(community_id)
@@ -30290,10 +30267,7 @@ def invite_to_community():
             if not has_community_management_permission(username, cid):
                 return jsonify({'success': False, 'error': 'Only community admins can send invitations'}), 403
             
-            # Extract nested/parent selections from payload
-            include_nested_ids = normalize_id_list(data.get('include_nested_ids', []))
-            raw_parent_payload = data.get('include_parent_ids', None)
-            include_parent_ids = None if raw_parent_payload is None else normalize_id_list(raw_parent_payload)
+            include_nested_ids: List[int] = []
 
             # Check if user already exists
             c.execute("SELECT id, username FROM users WHERE email = ?", (invited_email,))
@@ -30310,27 +30284,7 @@ def invite_to_community():
                 if c.fetchone():
                     return jsonify({'success': False, 'error': 'User is already a member of this community'}), 400
                 
-                # Determine parent communities to include
-                parent_ids_to_join = include_parent_ids if include_parent_ids is not None else get_parent_chain_ids(c, community_id)
-
-                # Build complete membership list (primary, selected parents, nested + their ancestors)
-                communities_to_join: List[int] = []
-                seen: Set[int] = set()
-
-                def add_community(target_id: Optional[int]):
-                    if not target_id:
-                        return
-                    if target_id not in seen:
-                        seen.add(target_id)
-                        communities_to_join.append(target_id)
-
-                add_community(community_id)
-                for pid in parent_ids_to_join:
-                    add_community(pid)
-                for nid in include_nested_ids:
-                    add_community(nid)
-                    for ancestor_id in get_parent_chain_ids(c, nid):
-                        add_community(ancestor_id)
+                communities_to_join: List[int] = [int(community_id)]
 
                 # Get the username for the existing user first (needed for welcome posts and notifications)
                 c.execute("SELECT username FROM users WHERE id = ?", (existing_user_id,))
@@ -30471,7 +30425,6 @@ Go to C.Point: https://www.c-point.co/login
                 import secrets
                 token = secrets.token_urlsafe(32)
                 
-                parent_ids_to_join = include_parent_ids if include_parent_ids is not None else get_parent_chain_ids(c, community_id)
                 nested_names = fetch_community_names(c, include_nested_ids)
                 nested_html_section = ""
                 nested_text_section = ""
@@ -30491,7 +30444,7 @@ Go to C.Point: https://www.c-point.co/login
                 c.execute("""
                     INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token, include_nested_ids, include_parent_ids)
                     VALUES (?, ?, ?, ?, ?, ?)
-                """, (community_id, invited_email, username, token, json.dumps(include_nested_ids), json.dumps(parent_ids_to_join)))
+                """, (community_id, invited_email, username, token, json.dumps([]), json.dumps([])))
                 conn.commit()
                 
                 # Send invitation email with smart redirect URL (detects iOS)

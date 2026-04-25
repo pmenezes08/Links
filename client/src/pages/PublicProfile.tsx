@@ -205,7 +205,7 @@ export default function PublicProfile() {
   }
 
   const handleOpenInviteModal = () => {
-    const available = manageableCommunities.filter(c => !c.target_is_member)
+    const available = manageableCommunities.filter(c => !c.parent_community_id && !c.target_is_member)
     setSelectedInviteCommunityIds(available.length > 0 ? [available[0].id] : [])
     setInviteError('')
     setInviteSuccess('')
@@ -259,7 +259,8 @@ export default function PublicProfile() {
   const bioText = (profile.bio || '').trim()
   const isFollowing = followStatus === 'accepted'
   const isPending = followStatus === 'pending'
-  const inviteableCommunities = manageableCommunities.filter(c => !c.target_is_member)
+  const rootManageableCommunities = manageableCommunities.filter(c => !c.parent_community_id)
+  const inviteableCommunities = rootManageableCommunities.filter(c => !c.target_is_member)
   const followButtonLabel = followLoading
     ? (isFollowing ? 'Unfollowing…' : isPending ? 'Cancelling…' : 'Following…')
     : (isFollowing ? 'Following' : isPending ? 'Requested' : 'Follow')
@@ -648,7 +649,7 @@ export default function PublicProfile() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-lg font-semibold">Invite @{profile.username}</h2>
-                <p className="text-xs text-white/50">Choose communities you own or admin.</p>
+                <p className="text-xs text-white/50">Choose root networks you own or admin.</p>
               </div>
               <button className="p-2 rounded-lg hover:bg-white/10" onClick={() => setInviteModalOpen(false)} aria-label="Close invite modal">
                 <i className="fa-solid fa-xmark" />
@@ -667,7 +668,7 @@ export default function PublicProfile() {
             ) : null}
 
             <div className="max-h-72 overflow-y-auto space-y-2">
-              {manageableCommunities.map(community => {
+              {rootManageableCommunities.map(community => {
                 const disabled = !!community.target_is_member
                 const selected = selectedInviteCommunityIds.includes(community.id)
                 return (

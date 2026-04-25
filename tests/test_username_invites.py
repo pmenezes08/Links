@@ -140,3 +140,61 @@ def test_non_admin_cannot_create_username_invite(mysql_dsn):
     )
     assert resp.status_code == 403
     assert resp.get_json()["success"] is False
+
+
+def test_username_invite_rejects_sub_community(mysql_dsn, monkeypatch):
+    import bodybuilding_app
+
+    monkeypatch.setattr(bodybuilding_app, "send_push_to_user", lambda username, payload: None)
+
+    make_user("owner_username_root_only", subscription="premium")
+    make_user("target_username_root_only", subscription="free")
+    root_id = make_community(
+        "username-invite-root-only",
+        tier="free",
+        creator_username="owner_username_root_only",
+    )
+    child_id = make_community(
+        "username-invite-child-only",
+        tier="free",
+        creator_username="owner_username_root_only",
+        parent_community_id=root_id,
+    )
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "owner_username_root_only")
+
+    resp = client.post(
+        "/api/community/invite_username",
+        json={"community_id": child_id, "username": "target_username_root_only"},
+    )
+    assert resp.status_code == 400
+    assert resp.get_json()["success"] is False
+    assert not _member_exists("target_username_root_only", child_id)
+
+
+def test_manageable_communities_lists_roots_only(mysql_dsn):
+    import bodybuilding_app
+
+    make_user("owner_username_manageable_roots", subscription="premium")
+    make_user("target_username_manageable_roots", subscription="free")
+    root_id = make_community(
+        "username-invite-manageable-root",
+        tier="free",
+        creator_username="owner_username_manageable_roots",
+    )
+    child_id = make_community(
+        "username-invite-manageable-child",
+        tier="free",
+        creator_username="owner_username_manageable_roots",
+        parent_community_id=root_id,
+    )
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "owner_username_manageable_roots")
+
+    resp = client.get("/api/community/manageable?target_username=target_username_manageable_roots")
+    assert resp.status_code == 200
+    community_ids = {community["id"] for community in resp.get_json()["communities"]}
+    assert root_id in community_ids
+    assert child_id not in community_ids
