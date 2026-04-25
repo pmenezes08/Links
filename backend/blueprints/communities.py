@@ -776,3 +776,44 @@ def cron_community_lifecycle_dispatch():
     except Exception as exc:  # pragma: no cover - defensive logging
         logger.exception("community_lifecycle dispatch failed: %s", exc)
         return jsonify({"success": False, "error": "dispatch_failed"}), 500
+
+
+@communities_bp.route(
+    "/api/communities/<int:community_id>/republish_welcome_post",
+    methods=["POST"],
+)
+@_login_required
+def republish_welcome_post(community_id: int):
+    """Re-publish Steve's community welcome post.
+
+    Owner / admin / app-admin only. Idempotent: a no-op when a live welcome
+    post already exists. See ``docs/STEVE_COMMUNITY_WELCOME.md``.
+    """
+    username = session["username"]
+
+    from backend.services.community import is_community_admin, is_community_owner
+    from backend.services.steve_community_welcome import publish_welcome_post
+
+    _, _, is_app_admin = _legacy_community_helpers()
+    if not (
+        is_app_admin(username)
+        or is_community_owner(username, community_id)
+        or is_community_admin(username, community_id)
+    ):
+        return jsonify({"success": False, "error": "forbidden"}), 403
+
+    try:
+        post_id = publish_welcome_post(community_id)
+    except Exception as exc:
+        logger.exception(
+            "republish_welcome_post failed for community %s: %s",
+            community_id, exc,
+        )
+        return jsonify({"success": False, "error": "republish_failed"}), 500
+
+    if post_id is None:
+        # Either community not found, owner is in skip-list, or insert hit a
+        # benign error (already logged inside the service).
+        return jsonify({"success": False, "error": "not_published"}), 200
+
+    return jsonify({"success": True, "post_id": post_id})

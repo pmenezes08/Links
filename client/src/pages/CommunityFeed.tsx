@@ -42,7 +42,7 @@ type PollOption = { id: number; text: string; votes: number; user_voted?: boolea
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, audio_path?: string|null, parent_reply_id?: number | null, reply_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
-type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean, media_paths?: MediaItem[] | string | null }
+type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean, media_paths?: MediaItem[] | string | null, is_system_post?: boolean | number | null, welcome_card_key?: string | null }
 type ReactionGroup = { reaction_type: string; users: Array<{ username: string; profile_picture?: string | null }> }
 type PostViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
 type TextOverlay = {
@@ -106,6 +106,21 @@ function normalizeMediaPath(p?: string | null){
   if (p.startsWith('http')) return p
   if (p.startsWith('/uploads') || p.startsWith('/static')) return p
   return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}`
+}
+
+const SYSTEM_POST_DELETE_LOCK_DAYS = 7
+
+/** Steve welcome posts are locked from delete for the first 7 days; the
+ * server enforces the same rule (see backend/services/steve_community_welcome.py).
+ * Hiding the delete button avoids a confusing 403 in the UI. */
+function isSystemPostLocked(post: { is_system_post?: boolean | number | null; timestamp?: string }): boolean {
+  if (!post?.is_system_post) return false
+  const raw = post.timestamp
+  if (!raw) return false
+  const t = Date.parse(raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z')
+  if (isNaN(t)) return false
+  const ageMs = Date.now() - t
+  return ageMs < SYSTEM_POST_DELETE_LOCK_DAYS * 24 * 60 * 60 * 1000
 }
 
 function SortableThumb({ id, file, isActive, onSelect, onRemove }: {
@@ -4242,6 +4257,14 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
           <Avatar username={post.username} url={post.profile_picture || undefined} size={32} linkToProfile />
           <div className="font-medium tracking-[-0.01em]">{post.username}</div>
+          {!!post.is_system_post && (
+            <span
+              className="px-1.5 py-0.5 rounded-full text-[10px] uppercase tracking-wide bg-[#4db6ac]/15 text-[#4db6ac] border border-[#4db6ac]/30"
+              title="Posted by Steve when this community was created"
+            >
+              Welcome
+            </span>
+          )}
           <div className="ml-auto flex items-center gap-2">
             <div className="text-xs text-[#9fb0b5] tabular-nums">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
             <div className="flex items-center gap-2">
@@ -4255,13 +4278,13 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   <i className={`${post.is_community_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: post.is_community_starred ? '#ffd54f' : '#6c757d' }} />
                 </button>
               )}
-              {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
+              {(post.username === currentUser || isAdmin || currentUser === 'admin') && !isSystemPostLocked(post) && (
                 <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Delete"
                   onClick={(e)=> { e.stopPropagation(); const ok = confirm('Delete this post?'); if(!ok) return; onDeletePost?.(post.id) }}>
                   <i className="fa-regular fa-trash-can" style={{ color: 'inherit' }} />
                 </button>
               )}
-              {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
+              {(post.username === currentUser || isAdmin || currentUser === 'admin') && !post.is_system_post && (
                 <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Edit"
                   onClick={(e)=> { e.stopPropagation(); setIsEditing(true) }}>
                   <i className="fa-regular fa-pen-to-square" />

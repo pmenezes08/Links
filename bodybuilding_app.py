@@ -24601,14 +24601,40 @@ def delete_post():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT username, image_path, video_path, community_id FROM posts WHERE id= ?", (post_id,))
-            post = c.fetchone()
+            try:
+                c.execute(
+                    "SELECT username, image_path, video_path, community_id, is_system_post, timestamp FROM posts WHERE id= ?",
+                    (post_id,),
+                )
+                post = c.fetchone()
+            except Exception:
+                # Fallback for environments where is_system_post hasn't been
+                # backfilled yet — re-run the legacy projection.
+                c.execute(
+                    "SELECT username, image_path, video_path, community_id FROM posts WHERE id= ?",
+                    (post_id,),
+                )
+                post = c.fetchone()
             if not post:
                 return jsonify({'success': False, 'error': 'Post not found!'}), 404
             
             # Use proper permission check that allows community owners/admins
             if not has_post_delete_permission(username, post['username'], post['community_id']):
                 return jsonify({'success': False, 'error': 'Post not found or unauthorized!'}), 403
+
+            # Steve welcome posts are locked from delete for the first 7 days
+            # so brand-new owners can't accidentally erase the community
+            # manual before they've had a chance to read it.
+            try:
+                from backend.services.steve_community_welcome import is_within_delete_lock
+                post_dict = dict(post) if hasattr(post, 'keys') else {}
+                if is_within_delete_lock(post_dict):
+                    return jsonify({
+                        'success': False,
+                        'error': "Steve's welcome post is locked from delete for the first 7 days. You can delete it after that if you'd rather.",
+                    }), 403
+            except Exception as lock_err:
+                logger.warning("delete_post: welcome lock check failed (non-fatal): %s", lock_err)
             
             # Get community_id for cache invalidation before deleting
             post_community_id = post['community_id'] if post else None
@@ -28241,12 +28267,28 @@ def create_community():
             # Invalidate dashboard cache so new community appears immediately
             invalidate_user_cache(username)
             logger.info(f"Invalidated dashboard cache for {username} after community creation")
-            
-            return jsonify({
-                'success': True, 
-                'community_id': community_id,
-                'message': f'Community "{name}" created successfully!'
-            })
+
+        # Steve community welcome flow (welcome post + owner DM). Best-effort —
+        # the create-community response must never fail because the welcome
+        # post or DM hit a snag. See docs/STEVE_COMMUNITY_WELCOME.md.
+        try:
+            from backend.services.steve_community_welcome import welcome_for_new_community
+            welcome_summary = welcome_for_new_community(community_id, is_brand_new=True)
+            logger.info(
+                "create_community: steve welcome summary for community %s: %s",
+                community_id, welcome_summary,
+            )
+        except Exception as welcome_err:
+            logger.warning(
+                "create_community: steve welcome flow failed for community %s (non-fatal): %s",
+                community_id, welcome_err,
+            )
+
+        return jsonify({
+            'success': True,
+            'community_id': community_id,
+            'message': f'Community "{name}" created successfully!'
+        })
             
     except Exception as e:
         logger.error(f"Error creating community: {str(e)}")

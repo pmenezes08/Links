@@ -635,6 +635,38 @@ export default function EditCommunity(){
           </div>
         </form>
 
+        {/* Steve welcome post — Only for owners */}
+        {isOwner && (
+          <div className="mt-8 pt-6 border-t border-white/10">
+            <div className="bg-[#4db6ac]/10 border border-[#4db6ac]/30 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-[#4db6ac] mb-2">Steve's welcome post</h3>
+              <p className="text-sm text-[#9fb0b5] mb-4">
+                When this community was created, Steve published a welcome post explaining what's inside. If it was deleted, or you'd like a fresh copy, republish it here. Existing posts are not duplicated.
+              </p>
+              <button
+                onClick={async () => {
+                  try {
+                    const r = await fetch(`/api/communities/${community_id}/republish_welcome_post`, {
+                      method: 'POST', credentials: 'include',
+                    })
+                    const j = await r.json().catch(() => null)
+                    if (j?.success) {
+                      alert('Welcome post is back in your feed.')
+                    } else {
+                      alert(j?.error === 'forbidden' ? 'Only the owner or admins can do this.' : 'Could not republish the welcome post.')
+                    }
+                  } catch {
+                    alert('Could not republish the welcome post.')
+                  }
+                }}
+                className="px-4 py-2 bg-[#4db6ac] hover:brightness-110 text-black rounded-md font-medium transition-colors"
+              >
+                Republish welcome post
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Delete Community Section - Only for owners */}
         {isOwner && (
           <div className="mt-8 pt-6 border-t border-white/10">
