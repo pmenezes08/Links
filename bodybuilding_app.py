@@ -14541,6 +14541,42 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
             logger.warning("Failed to clear Steve DM typing: %s", typing_err)
     
     time.sleep(1.5)
+
+    try:
+        from backend.services.steve_platform_manual import is_feedback_intent
+
+        if is_feedback_intent(user_message):
+            from backend.services.content_generation.delivery import send_steve_dm
+            text = (user_message or "").strip()
+            if len(text) < 24:
+                send_steve_dm(
+                    receiver_username=sender_username,
+                    content=(
+                        "Quick one: what happened, and what were you trying to do? "
+                        "Give me that and I'll send it through properly."
+                    ),
+                )
+                _clear_steve_typing()
+                return
+            from backend.services.steve_feedback import create_feedback_item
+
+            item = create_feedback_item(
+                submitted_by=sender_username,
+                raw_user_message=text,
+                steve_summary=text[:500],
+                surface="steve_dm",
+            )
+            send_steve_dm(
+                receiver_username=sender_username,
+                content=(
+                    f"Got it. I've sent this through as {item.get('type', 'feedback').replace('_', ' ')} "
+                    f"#{item.get('id')}. I'll keep it tied to your report."
+                ),
+            )
+            _clear_steve_typing()
+            return
+    except Exception as feedback_err:
+        logger.warning("Steve feedback capture failed, falling back to normal reply: %s", feedback_err)
     
     if not XAI_API_KEY:
         logger.warning("XAI_API_KEY not configured, Steve cannot reply in DM")
@@ -14734,15 +14770,42 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
         context += context_reset_note
 
         is_admin = is_app_admin(sender_username)
+        platform_manual_prompt = ""
+        platform_question = False
+        try:
+            from backend.services.steve_platform_manual import (
+                SURFACE_DM,
+                is_platform_question,
+                render_platform_manual_prompt,
+                select_platform_manual_cards,
+            )
 
-        system_prompt = f"""You are Steve, a helpful, witty, and intelligent AI assistant in a private 1:1 chat.
+            platform_question = is_platform_question(user_message)
+            platform_manual_prompt = render_platform_manual_prompt(
+                select_platform_manual_cards(user_message, surface=SURFACE_DM)
+            )
+        except Exception as manual_err:
+            logger.warning("Steve DM platform manual load failed (non-fatal): %s", manual_err)
+
+        system_prompt = f"""You are Steve, a member of C-Point with extra reach, in a private 1:1 chat.
 
 CURRENT DATE AND TIME: {current_date}
 
+IDENTITY RULES:
+- You are inside C-Point. "This platform", "the platform", "this app", "the app", and "here" mean C-Point unless the user explicitly names another platform.
+- Never answer as if the user is asking about X/Twitter unless they explicitly say X, Twitter, or x.com.
+- Do not call yourself an assistant, bot, chatbot, AI service, or support widget.
+
 YOUR CAPABILITIES:
 - You have access to the FULL conversation history of this chat
-- You can search the web and X/Twitter for information
+- You can search the web and X/Twitter for non-C-Point current information when it is relevant
 - {"As an admin, you have full platform access." if is_admin else ""}
+
+TOOL RULES:
+- For questions about C-Point, this platform, the app, communities, posts, DMs, Steve, privacy, pricing, onboarding, discovery, bugs, feedback, Paulo, founder, vision, or mission: use the C-Point Platform Manual below and do NOT use web_search or x_search.
+- Only discuss X/Twitter if the user explicitly asks about X, Twitter, or x.com.
+
+{platform_manual_prompt}
 
 CONVERSATION INTELLIGENCE:
 - You have two context sections: OLDER CONTEXT (background) and CURRENT CONVERSATION (active).
@@ -14790,7 +14853,7 @@ Only share this information if asked. Be factual — do not embellish or invent 
         response = client.responses.create(
             model=GROK_MODEL_FAST,
             input=messages,
-            tools=[{"type": "web_search"}, {"type": "x_search"}],
+            tools=[] if platform_question else [{"type": "web_search"}, {"type": "x_search"}],
             max_output_tokens=600,
             temperature=0.7
         )

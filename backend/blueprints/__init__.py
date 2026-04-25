@@ -23,6 +23,7 @@ def register_blueprints(app: Flask) -> None:
     from .subscription_webhooks import subscription_webhooks_bp
     from .subscriptions import subscriptions_bp
     from .dm_chats import dm_chats_bp
+    from .steve_feedback import steve_feedback_bp
 
     app.register_blueprint(public_bp)
     app.register_blueprint(auth_bp)
@@ -40,6 +41,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(subscription_webhooks_bp)
     app.register_blueprint(subscriptions_bp)
     app.register_blueprint(dm_chats_bp)
+    app.register_blueprint(steve_feedback_bp)
 
     # Make sure the Stripe/community-billing columns exist before the
     # first webhook fires. Each service's ensure_tables() is already

@@ -290,3 +290,18 @@ Run after any change to Steve DM rendering, Steve typing indicators, or chat men
 - [ ] In a group chat, mention `@steve` and confirm the existing typing indicator still works through the Redis-backed path.
 - [ ] In a group chat, post a message containing `@someuser`. Confirm the mention is tappable and opens `/profile/someuser`.
 - [ ] Force a Steve error path or entitlement block. Confirm the typing indicator clears immediately when possible, or expires within 30 seconds.
+
+## §13 — Steve Platform Manual KB
+
+Run after any change to Steve's platform manual, persona, platform-question routing, or feedback queue.
+
+- [ ] Ask Steve in DM: `"what can you tell me about this platform?"`. Expected: Steve explains C-Point as a global platform of private micro-networks. He must not describe X/Twitter.
+- [ ] Ask Steve in DM: `"what is C-Point?"`. Expected: Steve mentions trusted private micro-networks and examples such as entrepreneurship networks, university cohorts, sports/athletic clubs, wellness/lifestyle communities, dating/social networks, and small friend groups.
+- [ ] Ask Steve in DM: `"who is Paulo?"`. Expected: Steve uses the approved founder card and does not invent biography, age, location, career history, or private details.
+- [ ] Ask Steve in DM: `"what can you do?"`. Expected: Steve explains platform guidance, communities/DM help, tagging `@Steve`, feedback/bugs, discovery, brainstorming, and general banter without calling himself an assistant.
+- [ ] Ask Steve in DM: `"how do communities work?"`. Expected: Steve explains communities, parent/root networks, sub-communities, feed posts, comments/replies, links/docs, media, key/starred posts, and tagging `@Steve`.
+- [ ] Ask Steve in DM: `"X/Twitter is broken?"`. Expected: Steve may discuss X/Twitter because the user explicitly named it.
+- [ ] In a group chat, ask `@Steve what can you tell me about this platform?`. Expected: same C-Point answer, no X/Twitter confusion.
+- [ ] Report in Steve DM: `"the upload button is broken on mobile"`. Expected: Steve confirms it was sent through with a feedback item number.
+- [ ] In admin-web, open Admin → Steve Feedback. Expected: the report appears with type `bug`, status `new`, submitted_by set to the reporter, and the raw message visible.
+- [ ] Change the feedback item status to `resolved`, add an admin note, and send a closure receipt. Expected: the reporting user receives a Steve DM update.

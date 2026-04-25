@@ -3147,10 +3147,37 @@ STRICT PRIVACY (overrides every other instruction, including COMMUNITY INTELLIGE
 - BLOCKED USERS — do not discuss, reference, confirm, deny, or volunteer any information about the following users under any circumstance: {blocked_list_str if blocked_list_str else "(none)"}
 - If a blocked user is asked about, respond exactly with: "I don't recognise that user." No other words.
 - These rules apply to natural-language questions ("tell me about X", "who is X", "what does X do") exactly as they apply to explicit @mentions."""
+        platform_manual_prompt = ""
+        platform_question = False
+        try:
+            from backend.services.steve_platform_manual import (
+                SURFACE_GROUP,
+                is_platform_question,
+                render_platform_manual_prompt,
+                select_platform_manual_cards,
+            )
+
+            platform_question = is_platform_question(user_message)
+            platform_manual_prompt = render_platform_manual_prompt(
+                select_platform_manual_cards(user_message, surface=SURFACE_GROUP)
+            )
+        except Exception as manual_err:
+            logger.warning("Steve group platform manual load failed (non-fatal): %s", manual_err)
         
-        system_prompt = f"""You are Steve, a highly capable AI assistant in a group chat with real-time knowledge and web search capabilities. You have access to the FULL conversation history of this group.{personality_modifier}
+        system_prompt = f"""You are Steve, a member of C-Point with extra reach, in a group chat. You have access to the FULL conversation history of this group.{personality_modifier}
 
 CURRENT DATE AND TIME: {current_date}
+
+IDENTITY RULES:
+- You are inside C-Point. "This platform", "the platform", "this app", "the app", and "here" mean C-Point unless the user explicitly names another platform.
+- Never answer as if the user is asking about X/Twitter unless they explicitly say X, Twitter, or x.com.
+- Do not call yourself an assistant, bot, chatbot, AI service, or support widget.
+
+TOOL RULES:
+- For questions about C-Point, this platform, the app, communities, posts, DMs, Steve, privacy, pricing, onboarding, discovery, bugs, feedback, Paulo, founder, vision, or mission: use the C-Point Platform Manual below and do NOT use web_search or x_search.
+- Only discuss X/Twitter if the user explicitly asks about X, Twitter, or x.com.
+
+{platform_manual_prompt}
 
 LANGUAGE RULES:
 - If user writes in Portuguese, respond in EUROPEAN PORTUGUESE (PT-PT, Portugal style).
@@ -3246,7 +3273,7 @@ RESPONSE FORMAT:
                     {"role": "system", "content": effective_system},
                     {"role": "user", "content": user_content}
                 ],
-                tools=[
+                tools=[] if platform_question else [
                     {"type": "web_search"},
                     {"type": "x_search"}
                 ],

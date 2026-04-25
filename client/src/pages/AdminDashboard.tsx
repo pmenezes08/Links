@@ -142,7 +142,7 @@ export default function AdminDashboard() {
     [communityChildrenMap]
   )
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities' | 'metrics' | 'content_review' | 'blocked_users' | 'steve_profiling' | 'network_profiling'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities' | 'metrics' | 'content_review' | 'blocked_users' | 'steve_feedback' | 'steve_profiling' | 'network_profiling'>('overview')
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<'all' | 'premium' | 'free'>('all')
@@ -226,6 +226,28 @@ export default function AdminDashboard() {
   const [blockedUsers, setBlockedUsers] = useState<BlockedUserEntry[]>([])
   const [blockedUsersLoading, setBlockedUsersLoading] = useState(false)
   const [unblockingId, setUnblockingId] = useState<number | null>(null)
+
+  // Steve Feedback Queue state
+  type SteveFeedbackItem = {
+    id: number
+    created_at: string
+    submitted_by: string
+    type: string
+    severity: string
+    status: string
+    title: string
+    summary?: string | null
+    raw_user_message?: string | null
+    steve_summary?: string | null
+    surface?: string | null
+    community_id?: number | null
+    admin_notes?: string | null
+  }
+  const [steveFeedbackItems, setSteveFeedbackItems] = useState<SteveFeedbackItem[]>([])
+  const [steveFeedbackLoading, setSteveFeedbackLoading] = useState(false)
+  const [steveFeedbackFilter, setSteveFeedbackFilter] = useState<'all' | 'new' | 'triaged' | 'planned' | 'in_progress' | 'resolved' | 'closed'>('new')
+  const [selectedFeedbackId, setSelectedFeedbackId] = useState<number | null>(null)
+  const [feedbackNote, setFeedbackNote] = useState('')
 
   // Steve Profiles state (Phase 0)
   interface SteveProfile {
@@ -481,6 +503,79 @@ export default function AdminDashboard() {
     } finally {
       setBlockedUsersLoading(false)
     }
+  }, [])
+
+  const loadSteveFeedback = useCallback(async () => {
+    setSteveFeedbackLoading(true)
+    try {
+      const qs = new URLSearchParams()
+      if (steveFeedbackFilter !== 'all') qs.set('status', steveFeedbackFilter)
+      const response = await fetch(`/api/admin/steve_feedback?${qs.toString()}`, {
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' },
+      })
+      const data = await response.json()
+      if (data?.success) {
+        setSteveFeedbackItems(data.items || [])
+        if (!selectedFeedbackId && data.items?.length) {
+          setSelectedFeedbackId(data.items[0].id)
+        }
+      } else {
+        setSteveFeedbackItems([])
+      }
+    } catch (error) {
+      console.error('Error loading Steve feedback:', error)
+      setSteveFeedbackItems([])
+    } finally {
+      setSteveFeedbackLoading(false)
+    }
+  }, [steveFeedbackFilter, selectedFeedbackId])
+
+  const updateSteveFeedback = useCallback(async (feedbackId: number, body: Record<string, unknown>) => {
+    const response = await fetch(`/api/admin/steve_feedback/${feedbackId}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const data = await response.json()
+    if (!data?.success) {
+      alert(data?.error || 'Could not update feedback item')
+      return
+    }
+    setSteveFeedbackItems(prev => prev.map(item => item.id === feedbackId ? data.item : item))
+  }, [])
+
+  const addSteveFeedbackNote = useCallback(async () => {
+    if (!selectedFeedbackId || !feedbackNote.trim()) return
+    const response = await fetch(`/api/admin/steve_feedback/${selectedFeedbackId}/notes`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: feedbackNote.trim() }),
+    })
+    const data = await response.json()
+    if (!data?.success) {
+      alert(data?.error || 'Could not add note')
+      return
+    }
+    setFeedbackNote('')
+    setSteveFeedbackItems(prev => prev.map(item => item.id === selectedFeedbackId ? data.item : item))
+  }, [selectedFeedbackId, feedbackNote])
+
+  const sendFeedbackClosureReceipt = useCallback(async (feedbackId: number) => {
+    const response = await fetch(`/api/admin/steve_feedback/${feedbackId}/closure_receipt`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    const data = await response.json()
+    if (!data?.success) {
+      alert(data?.error || 'Could not send closure receipt')
+      return
+    }
+    alert('Closure receipt sent by Steve.')
   }, [])
 
   const loadSteveProfiles = useCallback(async () => {
@@ -957,6 +1052,12 @@ export default function AdminDashboard() {
     }
   }, [activeTab, loadBlockedUsers])
 
+  useEffect(() => {
+    if (activeTab === 'steve_feedback') {
+      loadSteveFeedback()
+    }
+  }, [activeTab, loadSteveFeedback])
+
   // Scroll to top when switching tabs
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -977,6 +1078,8 @@ export default function AdminDashboard() {
       setActiveTab('content_review')
     } else if (tab === 'blocked_users') {
       setActiveTab('blocked_users')
+    } else if (tab === 'steve_feedback') {
+      setActiveTab('steve_feedback')
     } else if (tab === 'steve_profiling') {
       setActiveTab('steve_profiling')
     } else if (tab === 'network_profiling') {
@@ -1369,6 +1472,8 @@ export default function AdminDashboard() {
     return name.includes(q) || type.includes(q) || creator.includes(q)
   })
 
+  const selectedFeedbackItem = steveFeedbackItems.find(item => item.id === selectedFeedbackId) || null
+
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -1392,6 +1497,7 @@ export default function AdminDashboard() {
             ['metrics', 'Metrics'],
             ['content_review', 'Reports'],
             ['blocked_users', 'Blocks'],
+            ['steve_feedback', 'Steve Feedback'],
             ['steve_profiling', 'Steve Profiling'],
             ['network_profiling', 'Network Profiling'],
           ] as const).map(([key, label]) => (
@@ -2247,6 +2353,141 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Steve Feedback Queue Tab */}
+        {activeTab === 'steve_feedback' && (
+          <div className="space-y-4">
+            <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-[#4db6ac]">
+                    <i className="fa-solid fa-inbox mr-2" />
+                    Steve Feedback Queue
+                  </h3>
+                  <p className="text-xs text-white/60 mt-1">Bugs, feature ideas, complaints, and product feedback submitted through Steve.</p>
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    value={steveFeedbackFilter}
+                    onChange={(e) => setSteveFeedbackFilter(e.target.value as typeof steveFeedbackFilter)}
+                    className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-[#4db6ac]"
+                  >
+                    {['all', 'new', 'triaged', 'planned', 'in_progress', 'resolved', 'closed'].map(status => (
+                      <option key={status} value={status}>{status.replace('_', ' ')}</option>
+                    ))}
+                  </select>
+                  <button onClick={loadSteveFeedback} className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-sm">
+                    Refresh
+                  </button>
+                </div>
+              </div>
+
+              {steveFeedbackLoading ? (
+                <div className="text-center py-8 text-white/60">Loading Steve feedback...</div>
+              ) : steveFeedbackItems.length === 0 ? (
+                <div className="text-center py-8 text-white/60">
+                  <i className="fa-solid fa-check-circle text-2xl mb-2 text-green-400" />
+                  <div>No feedback items for this filter</div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    {steveFeedbackItems.map(item => (
+                      <button
+                        key={item.id}
+                        onClick={() => setSelectedFeedbackId(item.id)}
+                        className={`w-full text-left p-3 rounded-xl border transition-colors ${
+                          selectedFeedbackId === item.id ? 'bg-[#4db6ac]/10 border-[#4db6ac]/40' : 'bg-black/30 border-white/10 hover:bg-white/5'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="font-medium text-white/90 truncate">{item.title}</div>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                            item.severity === 'critical' ? 'text-red-300 border-red-400/40 bg-red-500/10' :
+                            item.severity === 'high' ? 'text-orange-300 border-orange-400/40 bg-orange-500/10' :
+                            'text-white/60 border-white/10 bg-white/5'
+                          }`}>
+                            {item.severity}
+                          </span>
+                        </div>
+                        <div className="text-xs text-white/50 flex flex-wrap gap-2">
+                          <span>{item.type.replace('_', ' ')}</span>
+                          <span>•</span>
+                          <span>{item.status.replace('_', ' ')}</span>
+                          <span>•</span>
+                          <span>@{item.submitted_by}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="bg-black/30 border border-white/10 rounded-xl p-4 min-h-[320px]">
+                    {selectedFeedbackItem ? (
+                      <div className="space-y-4">
+                        <div>
+                          <div className="text-xs text-white/40 mb-1">#{selectedFeedbackItem.id} • {new Date(selectedFeedbackItem.created_at).toLocaleString()}</div>
+                          <h4 className="text-white font-semibold">{selectedFeedbackItem.title}</h4>
+                          <div className="text-xs text-white/50 mt-1">@{selectedFeedbackItem.submitted_by} via {selectedFeedbackItem.surface || 'steve_dm'}</div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <select
+                            value={selectedFeedbackItem.status}
+                            onChange={(e) => updateSteveFeedback(selectedFeedbackItem.id, { status: e.target.value })}
+                            className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-sm text-white"
+                          >
+                            {['new', 'triaged', 'planned', 'in_progress', 'resolved', 'closed'].map(status => <option key={status} value={status}>{status.replace('_', ' ')}</option>)}
+                          </select>
+                          <select
+                            value={selectedFeedbackItem.severity}
+                            onChange={(e) => updateSteveFeedback(selectedFeedbackItem.id, { status: selectedFeedbackItem.status, severity: e.target.value })}
+                            className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-sm text-white"
+                          >
+                            {['low', 'medium', 'high', 'critical'].map(sev => <option key={sev} value={sev}>{sev}</option>)}
+                          </select>
+                        </div>
+
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-white/40 mb-1">Steve summary</div>
+                          <div className="text-sm text-white/75 whitespace-pre-wrap">{selectedFeedbackItem.steve_summary || selectedFeedbackItem.summary || 'No summary'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-white/40 mb-1">Raw message</div>
+                          <div className="text-sm text-white/65 whitespace-pre-wrap">{selectedFeedbackItem.raw_user_message || 'No raw message'}</div>
+                        </div>
+                        {selectedFeedbackItem.admin_notes && (
+                          <div>
+                            <div className="text-xs uppercase tracking-wide text-white/40 mb-1">Admin notes</div>
+                            <div className="text-xs text-white/60 whitespace-pre-wrap">{selectedFeedbackItem.admin_notes}</div>
+                          </div>
+                        )}
+
+                        <div className="space-y-2">
+                          <textarea
+                            value={feedbackNote}
+                            onChange={(e) => setFeedbackNote(e.target.value)}
+                            placeholder="Add admin note..."
+                            className="w-full min-h-[70px] bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/35"
+                          />
+                          <div className="flex gap-2">
+                            <button onClick={addSteveFeedbackNote} className="flex-1 py-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-sm">
+                              Add note
+                            </button>
+                            <button onClick={() => sendFeedbackClosureReceipt(selectedFeedbackItem.id)} className="flex-1 py-2 rounded-lg bg-[#4db6ac]/20 border border-[#4db6ac]/30 text-[#4db6ac] hover:bg-[#4db6ac]/30 text-sm">
+                              Send receipt
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-white/50">Select a feedback item to view details.</div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
