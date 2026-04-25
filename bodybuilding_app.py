@@ -1013,8 +1013,12 @@ def ensure_community_invitations_table(c):
                           used_at TIMESTAMP NULL,
                           include_nested_ids TEXT,
                           include_parent_ids TEXT,
+                          invited_username VARCHAR(191) NULL,
+                          status VARCHAR(20) DEFAULT 'pending',
+                          responded_at TIMESTAMP NULL,
                           INDEX idx_community_id (community_id),
                           INDEX idx_invited_email (invited_email),
+                          INDEX idx_invited_username_status (invited_username, status),
                           INDEX idx_token (token),
                           FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE
                         )''')
@@ -1030,6 +1034,9 @@ def ensure_community_invitations_table(c):
                           used_at TEXT,
                           include_nested_ids TEXT,
                           include_parent_ids TEXT,
+                          invited_username TEXT,
+                          status TEXT DEFAULT 'pending',
+                          responded_at TEXT,
                           FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
                           FOREIGN KEY (invited_by_username) REFERENCES users(username) ON DELETE CASCADE
                         )''')
@@ -1040,6 +1047,22 @@ def ensure_community_invitations_table(c):
             pass
         try:
             c.execute("ALTER TABLE community_invitations ADD COLUMN include_parent_ids TEXT")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE community_invitations ADD COLUMN invited_username VARCHAR(191)")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE community_invitations ADD COLUMN status VARCHAR(20) DEFAULT 'pending'")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE community_invitations ADD COLUMN responded_at TIMESTAMP NULL")
+        except Exception:
+            pass
+        try:
+            c.execute("CREATE INDEX idx_community_invites_username_status ON community_invitations(invited_username, status)")
         except Exception:
             pass
     except Exception as e:
@@ -29509,7 +29532,7 @@ def generate_invite_link():
             user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
             
             c.execute("""
-                SELECT c.name, c.creator_username, uc.role
+                SELECT c.name, c.creator_username, uc.role, c.parent_community_id
                 FROM communities c
                 LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.user_id = ?
                 WHERE c.id = ?
@@ -29520,6 +29543,9 @@ def generate_invite_link():
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
             
             community_name = community['name'] if hasattr(community, 'keys') else community[0]
+            parent_community_id = community['parent_community_id'] if hasattr(community, 'keys') else community[3]
+            if parent_community_id:
+                return jsonify({'success': False, 'error': 'Invites can only be created from root communities'}), 400
             
             try:
                 cid = int(community_id)
@@ -29532,11 +29558,6 @@ def generate_invite_link():
             import secrets
             token = secrets.token_urlsafe(32)
             
-            include_nested_ids = normalize_id_list(data.get('include_nested_ids', []))
-            raw_parent_payload = data.get('include_parent_ids', None)
-            include_parent_ids = None if raw_parent_payload is None else normalize_id_list(raw_parent_payload)
-            parent_ids_to_join = include_parent_ids if include_parent_ids is not None else get_parent_chain_ids(c, community_id)
-            
             # Store invitation with placeholder email
             c.execute("""
                 INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token, include_nested_ids, include_parent_ids)
@@ -29546,8 +29567,8 @@ def generate_invite_link():
                 f'qr-invite-{token[:8]}@placeholder.local',
                 username,
                 token,
-                json.dumps(include_nested_ids),
-                json.dumps(parent_ids_to_join)
+                json.dumps([]),
+                json.dumps([])
             ))
             conn.commit()
             
@@ -29563,6 +29584,394 @@ def generate_invite_link():
             
     except Exception as e:
         logger.error(f"Error generating invite link: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+def _community_invite_join_ids(cursor, community_id: int, raw_nested_values=None, raw_parent_values=None) -> List[int]:
+    """Return the root community for username invite acceptance."""
+    try:
+        return [int(community_id)]
+    except (TypeError, ValueError):
+        return []
+
+
+def _fetch_manageable_communities(cursor, username: str, target_username: Optional[str] = None) -> List[Dict[str, Any]]:
+    """List communities the current user can manage, optionally annotated for a target user."""
+    ph = get_sql_placeholder()
+    params: List[Any] = []
+    target_join = ""
+    target_select = "0 AS target_is_member"
+    if target_username:
+        target_select = "CASE WHEN tuc.user_id IS NULL THEN 0 ELSE 1 END AS target_is_member"
+        target_join = f"""
+            LEFT JOIN users tu ON LOWER(tu.username) = LOWER({ph})
+            LEFT JOIN user_communities tuc ON tuc.community_id = c.id AND tuc.user_id = tu.id
+        """
+        params.append(target_username)
+
+    if is_app_admin(username):
+        cursor.execute(
+            f"""
+            SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id, c.creator_username,
+                   {target_select}
+            FROM communities c
+            {target_join}
+            WHERE c.parent_community_id IS NULL
+            ORDER BY c.name
+            """,
+            tuple(params),
+        )
+    else:
+        params.extend([username, username])
+        cursor.execute(
+            f"""
+            SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id, c.creator_username,
+                   {target_select}
+            FROM communities c
+            {target_join}
+            LEFT JOIN user_communities uc ON uc.community_id = c.id
+            LEFT JOIN users u ON u.id = uc.user_id
+            WHERE c.parent_community_id IS NULL
+              AND (
+                c.creator_username = {ph}
+                OR (LOWER(u.username) = LOWER({ph}) AND LOWER(COALESCE(uc.role, '')) IN ('admin', 'owner'))
+              )
+            ORDER BY c.name
+            """,
+            tuple(params),
+        )
+
+    communities: List[Dict[str, Any]] = []
+    for row in cursor.fetchall() or []:
+        target_is_member = row['target_is_member'] if hasattr(row, 'keys') else row[5]
+        communities.append({
+            'id': row['id'] if hasattr(row, 'keys') else row[0],
+            'name': row['name'] if hasattr(row, 'keys') else row[1],
+            'type': row['type'] if hasattr(row, 'keys') else row[2],
+            'parent_community_id': row['parent_community_id'] if hasattr(row, 'keys') else row[3],
+            'creator_username': row['creator_username'] if hasattr(row, 'keys') else row[4],
+            'target_is_member': bool(target_is_member),
+        })
+    return communities
+
+
+@app.route('/api/community/manageable', methods=['GET'])
+@login_required
+def list_manageable_communities():
+    """Return communities the current user can manage, for username invites."""
+    username = session.get('username')
+    target_username = (request.args.get('target_username') or '').strip() or None
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            communities = _fetch_manageable_communities(c, username, target_username)
+        return jsonify({'success': True, 'communities': communities})
+    except Exception as e:
+        logger.error(f"Error listing manageable communities for {username}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/community/invite_username', methods=['POST'])
+@login_required
+def invite_username_to_community():
+    """Create a pending invite for an existing C.Point username."""
+    inviter_username = session.get('username')
+    data = request.get_json(silent=True) or {}
+    target_username = (data.get('username') or '').strip().lstrip('@')
+    community_id_raw = data.get('community_id')
+
+    if not community_id_raw:
+        return jsonify({'success': False, 'error': 'Community ID required'}), 400
+    if not target_username:
+        return jsonify({'success': False, 'error': 'Username is required'}), 400
+    if target_username.lower() == (inviter_username or '').lower():
+        return jsonify({'success': False, 'error': 'You cannot invite yourself'}), 400
+
+    try:
+        community_id = int(community_id_raw)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Invalid community ID'}), 400
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_community_invitations_table(c)
+
+            if not has_community_management_permission(inviter_username, community_id):
+                return jsonify({'success': False, 'error': 'Only community owners or admins can invite members'}), 403
+
+            c.execute("SELECT id, username FROM users WHERE LOWER(username) = LOWER(?)", (target_username,))
+            target_row = c.fetchone()
+            if not target_row:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+            target_user_id = target_row['id'] if hasattr(target_row, 'keys') else target_row[0]
+            resolved_target_username = target_row['username'] if hasattr(target_row, 'keys') else target_row[1]
+
+            c.execute("SELECT name, parent_community_id FROM communities WHERE id = ?", (community_id,))
+            community_row = c.fetchone()
+            if not community_row:
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+            community_name = community_row['name'] if hasattr(community_row, 'keys') else community_row[0]
+            parent_community_id = community_row['parent_community_id'] if hasattr(community_row, 'keys') else community_row[1]
+            if parent_community_id:
+                return jsonify({'success': False, 'error': 'Invites can only be created from root communities'}), 400
+
+            c.execute(
+                "SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?",
+                (target_user_id, community_id),
+            )
+            if c.fetchone():
+                return jsonify({'success': False, 'error': 'User is already a member of this community'}), 400
+
+            c.execute(
+                """
+                SELECT id, token
+                FROM community_invitations
+                WHERE community_id = ? AND LOWER(invited_username) = LOWER(?) AND used = 0 AND COALESCE(status, 'pending') = 'pending'
+                LIMIT 1
+                """,
+                (community_id, resolved_target_username),
+            )
+            existing_invite = c.fetchone()
+            token = secrets.token_urlsafe(32)
+            placeholder_email = f"username-invite-{resolved_target_username.lower()}@placeholder.local"
+
+            if existing_invite:
+                invite_id = existing_invite['id'] if hasattr(existing_invite, 'keys') else existing_invite[0]
+                c.execute(
+                    """
+                    UPDATE community_invitations
+                    SET invited_by_username = ?, invited_email = ?, token = ?, invited_at = CURRENT_TIMESTAMP,
+                        include_nested_ids = ?, include_parent_ids = ?, status = 'pending', responded_at = NULL
+                    WHERE id = ?
+                    """,
+                    (
+                        inviter_username,
+                        placeholder_email,
+                        token,
+                        json.dumps([]),
+                        json.dumps([]),
+                        invite_id,
+                    ),
+                )
+            else:
+                c.execute(
+                    """
+                    INSERT INTO community_invitations
+                        (community_id, invited_email, invited_username, invited_by_username, token, include_nested_ids, include_parent_ids, status, used)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0)
+                    """,
+                    (
+                        community_id,
+                        placeholder_email,
+                        resolved_target_username,
+                        inviter_username,
+                        token,
+                        json.dumps([]),
+                        json.dumps([]),
+                    ),
+                )
+                invite_id = c.lastrowid
+
+            message = f"You've been invited to community {community_name} by username {inviter_username}"
+            create_notification(
+                resolved_target_username,
+                inviter_username,
+                'community_invite',
+                community_id=community_id,
+                message=message,
+                link='/notifications',
+            )
+            try:
+                send_push_to_user(resolved_target_username, {
+                    'title': 'Community invite',
+                    'body': message,
+                    'url': '/notifications',
+                    'tag': f'community-invite-{community_id}-{resolved_target_username}',
+                })
+            except Exception as push_err:
+                logger.warning(f"Failed to send username invite push to {resolved_target_username}: {push_err}")
+
+            conn.commit()
+            return jsonify({
+                'success': True,
+                'invite_id': invite_id,
+                'community_name': community_name,
+                'username': resolved_target_username,
+                'message': f'Invite sent to @{resolved_target_username}',
+            })
+    except Exception as e:
+        logger.error(f"Error creating username invite: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/community/invites/pending', methods=['GET'])
+@login_required
+def list_pending_username_invites():
+    """List pending community username invites for the current user."""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_community_invitations_table(c)
+            c.execute(
+                """
+                SELECT ci.id, ci.community_id, ci.invited_by_username, ci.invited_at,
+                       ci.include_nested_ids, ci.include_parent_ids, c.name as community_name
+                FROM community_invitations ci
+                JOIN communities c ON c.id = ci.community_id
+                WHERE LOWER(ci.invited_username) = LOWER(?) AND ci.used = 0 AND COALESCE(ci.status, 'pending') = 'pending'
+                ORDER BY ci.invited_at DESC
+                """,
+                (username,),
+            )
+            invites = []
+            for row in c.fetchall() or []:
+                raw_nested = row['include_nested_ids'] if hasattr(row, 'keys') else row[4]
+                raw_parent = row['include_parent_ids'] if hasattr(row, 'keys') else row[5]
+                invites.append({
+                    'id': row['id'] if hasattr(row, 'keys') else row[0],
+                    'community_id': row['community_id'] if hasattr(row, 'keys') else row[1],
+                    'invited_by_username': row['invited_by_username'] if hasattr(row, 'keys') else row[2],
+                    'invited_at': str(row['invited_at'] if hasattr(row, 'keys') else row[3]),
+                    'community_name': row['community_name'] if hasattr(row, 'keys') else row[6],
+                    'include_nested_ids': normalize_id_list(raw_nested) if raw_nested else [],
+                    'include_parent_ids': normalize_id_list(raw_parent) if raw_parent else [],
+                })
+        return jsonify({'success': True, 'invites': invites})
+    except Exception as e:
+        logger.error(f"Error listing pending username invites for {username}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/community/invites/<int:invite_id>/accept', methods=['POST'])
+@login_required
+def accept_username_invite(invite_id):
+    """Accept a pending username invite and create memberships."""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_community_invitations_table(c)
+            c.execute("SELECT id, email FROM users WHERE username = ?", (username,))
+            user_row = c.fetchone()
+            if not user_row:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
+
+            c.execute(
+                """
+                SELECT ci.id, ci.community_id, ci.invited_username, ci.used, ci.status,
+                       ci.include_nested_ids, ci.include_parent_ids, c.name as community_name,
+                       ci.invited_by_username
+                FROM community_invitations ci
+                JOIN communities c ON c.id = ci.community_id
+                WHERE ci.id = ?
+                """,
+                (invite_id,),
+            )
+            invite = c.fetchone()
+            if not invite:
+                return jsonify({'success': False, 'error': 'Invite not found'}), 404
+
+            invited_username = invite['invited_username'] if hasattr(invite, 'keys') else invite[2]
+            used = invite['used'] if hasattr(invite, 'keys') else invite[3]
+            status = invite['status'] if hasattr(invite, 'keys') else invite[4]
+            if not invited_username or invited_username.lower() != username.lower():
+                return jsonify({'success': False, 'error': 'Invite not found'}), 404
+            if used or (status and status != 'pending'):
+                return jsonify({'success': False, 'error': 'Invite is no longer pending'}), 400
+
+            community_id = invite['community_id'] if hasattr(invite, 'keys') else invite[1]
+            raw_nested = invite['include_nested_ids'] if hasattr(invite, 'keys') else invite[5]
+            raw_parent = invite['include_parent_ids'] if hasattr(invite, 'keys') else invite[6]
+            community_name = invite['community_name'] if hasattr(invite, 'keys') else invite[7]
+
+            for comm_id in _community_invite_join_ids(c, int(community_id), raw_nested, raw_parent):
+                c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (user_id, comm_id))
+                if not c.fetchone():
+                    try:
+                        add_user_to_community(c, user_id, int(comm_id), role='member', username=username)
+                    except CommunityMembershipLimitError as limit_err:
+                        conn.rollback()
+                        from backend.services.community import render_member_cap_error
+                        payload, status_code = render_member_cap_error(limit_err, session_username=username)
+                        return jsonify(payload), status_code
+
+            now_value = datetime.now().isoformat()
+            c.execute(
+                "UPDATE community_invitations SET used = 1, used_at = ?, status = 'accepted', responded_at = ? WHERE id = ?",
+                (now_value, now_value, invite_id),
+            )
+            c.execute(
+                """
+                UPDATE notifications
+                SET is_read = 1
+                WHERE user_id = ? AND type = 'community_invite' AND community_id = ? AND is_read = 0
+                """,
+                (username, community_id),
+            )
+            notify_community_new_member(community_id, username, conn)
+            conn.commit()
+            invalidate_user_cache(username)
+
+        return jsonify({
+            'success': True,
+            'community_id': community_id,
+            'community_name': community_name,
+            'message': f'Joined {community_name}',
+        })
+    except Exception as e:
+        logger.error(f"Error accepting username invite {invite_id}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/community/invites/<int:invite_id>/decline', methods=['POST'])
+@login_required
+def decline_username_invite(invite_id):
+    """Decline a pending username invite."""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_community_invitations_table(c)
+            c.execute(
+                """
+                SELECT id, community_id, invited_username, used, status
+                FROM community_invitations
+                WHERE id = ?
+                """,
+                (invite_id,),
+            )
+            invite = c.fetchone()
+            if not invite:
+                return jsonify({'success': False, 'error': 'Invite not found'}), 404
+            invited_username = invite['invited_username'] if hasattr(invite, 'keys') else invite[2]
+            used = invite['used'] if hasattr(invite, 'keys') else invite[3]
+            status = invite['status'] if hasattr(invite, 'keys') else invite[4]
+            community_id = invite['community_id'] if hasattr(invite, 'keys') else invite[1]
+            if not invited_username or invited_username.lower() != username.lower():
+                return jsonify({'success': False, 'error': 'Invite not found'}), 404
+            if used or (status and status != 'pending'):
+                return jsonify({'success': False, 'error': 'Invite is no longer pending'}), 400
+
+            now_value = datetime.now().isoformat()
+            c.execute(
+                "UPDATE community_invitations SET status = 'declined', responded_at = ? WHERE id = ?",
+                (now_value, invite_id),
+            )
+            c.execute(
+                """
+                UPDATE notifications
+                SET is_read = 1
+                WHERE user_id = ? AND type = 'community_invite' AND community_id = ? AND is_read = 0
+                """,
+                (username, community_id),
+            )
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error declining username invite {invite_id}: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 def notify_community_new_member(community_id, new_username, conn):
@@ -29836,7 +30245,7 @@ def invite_to_community():
             user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
             
             c.execute("""
-                SELECT c.name, c.creator_username, uc.role
+                SELECT c.name, c.creator_username, uc.role, c.parent_community_id
                 FROM communities c
                 LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.user_id = ?
                 WHERE c.id = ?
@@ -29847,6 +30256,9 @@ def invite_to_community():
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
             
             community_name = community['name'] if hasattr(community, 'keys') else community[0]
+            parent_community_id = community['parent_community_id'] if hasattr(community, 'keys') else community[3]
+            if parent_community_id:
+                return jsonify({'success': False, 'error': 'Invites can only be created from root communities'}), 400
             
             try:
                 cid = int(community_id)
@@ -29855,10 +30267,7 @@ def invite_to_community():
             if not has_community_management_permission(username, cid):
                 return jsonify({'success': False, 'error': 'Only community admins can send invitations'}), 403
             
-            # Extract nested/parent selections from payload
-            include_nested_ids = normalize_id_list(data.get('include_nested_ids', []))
-            raw_parent_payload = data.get('include_parent_ids', None)
-            include_parent_ids = None if raw_parent_payload is None else normalize_id_list(raw_parent_payload)
+            include_nested_ids: List[int] = []
 
             # Check if user already exists
             c.execute("SELECT id, username FROM users WHERE email = ?", (invited_email,))
@@ -29875,27 +30284,7 @@ def invite_to_community():
                 if c.fetchone():
                     return jsonify({'success': False, 'error': 'User is already a member of this community'}), 400
                 
-                # Determine parent communities to include
-                parent_ids_to_join = include_parent_ids if include_parent_ids is not None else get_parent_chain_ids(c, community_id)
-
-                # Build complete membership list (primary, selected parents, nested + their ancestors)
-                communities_to_join: List[int] = []
-                seen: Set[int] = set()
-
-                def add_community(target_id: Optional[int]):
-                    if not target_id:
-                        return
-                    if target_id not in seen:
-                        seen.add(target_id)
-                        communities_to_join.append(target_id)
-
-                add_community(community_id)
-                for pid in parent_ids_to_join:
-                    add_community(pid)
-                for nid in include_nested_ids:
-                    add_community(nid)
-                    for ancestor_id in get_parent_chain_ids(c, nid):
-                        add_community(ancestor_id)
+                communities_to_join: List[int] = [int(community_id)]
 
                 # Get the username for the existing user first (needed for welcome posts and notifications)
                 c.execute("SELECT username FROM users WHERE id = ?", (existing_user_id,))
@@ -30036,7 +30425,6 @@ Go to C.Point: https://www.c-point.co/login
                 import secrets
                 token = secrets.token_urlsafe(32)
                 
-                parent_ids_to_join = include_parent_ids if include_parent_ids is not None else get_parent_chain_ids(c, community_id)
                 nested_names = fetch_community_names(c, include_nested_ids)
                 nested_html_section = ""
                 nested_text_section = ""
@@ -30056,7 +30444,7 @@ Go to C.Point: https://www.c-point.co/login
                 c.execute("""
                     INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token, include_nested_ids, include_parent_ids)
                     VALUES (?, ?, ?, ?, ?, ?)
-                """, (community_id, invited_email, username, token, json.dumps(include_nested_ids), json.dumps(parent_ids_to_join)))
+                """, (community_id, invited_email, username, token, json.dumps([]), json.dumps([])))
                 conn.commit()
                 
                 # Send invitation email with smart redirect URL (detects iOS)

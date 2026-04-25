@@ -148,7 +148,7 @@ export default function PushInit(){
             // Listen for push notifications received while app is in foreground
             PushNotifications.addListener('pushNotificationReceived', (notification) => {
               console.log('Push notification received:', notification)
-              // You can show an in-app notification here if desired
+              window.dispatchEvent(new CustomEvent('cpoint:push-notification-received', { detail: notification }))
             })
             
             // Listen for notification taps - NAVIGATE TO RELEVANT PAGE

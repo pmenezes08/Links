@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import { useBadges } from '../contexts/BadgeContext'
@@ -53,7 +53,17 @@ type Task = {
   status?: string
 }
 
-type TabType = 'notifications' | 'calendar' | 'polls' | 'tasks'
+type PendingCommunityInvite = {
+  id: number
+  community_id: number
+  community_name: string
+  invited_by_username: string
+  invited_at?: string
+}
+
+type TabType = 'notifications' | 'invites' | 'calendar' | 'polls' | 'tasks'
+
+const INVITE_NOTIFICATION_TYPES = new Set(['community_invite', 'dm_invite'])
 
 /** Width uncovered when row is swiped left: two action buttons + gap (matches Messages list). */
 const NOTIF_SWIPE_ACTION_WIDTH = 116
@@ -74,6 +84,7 @@ function iconFor(type?: string){
       case 'follow': return 'fa-solid fa-user-plus'
       case 'follow_request': return 'fa-solid fa-user-plus'
       case 'follow_accept': return 'fa-solid fa-user-check'
+      case 'community_invite': return 'fa-solid fa-user-plus'
     case 'poll': return 'fa-solid fa-chart-bar'
     case 'poll_vote': return 'fa-solid fa-square-poll-vertical'
     case 'event_invitation': return 'fa-solid fa-calendar-check'
@@ -101,7 +112,7 @@ function timeAgo(ts?: string){
 
 export default function Notifications(){
   const { setTitle } = useHeader()
-  const { refreshBadges, adjustBadges } = useBadges()
+  const { unreadNotifs, refreshBadges, adjustBadges } = useBadges()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<TabType>('notifications')
   const [items, setItems] = useState<Notif[]|null>(null)
@@ -114,6 +125,10 @@ export default function Notifications(){
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [polls, setPolls] = useState<Poll[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
+  const [pendingInvites, setPendingInvites] = useState<PendingCommunityInvite[]>([])
+  const [unreadInviteCount, setUnreadInviteCount] = useState(0)
+  const [inviteActionLoading, setInviteActionLoading] = useState<number | null>(null)
+  const [inviteActionError, setInviteActionError] = useState('')
   const [eventsLoading, setEventsLoading] = useState(false)
   const [pollsLoading, setPollsLoading] = useState(false)
   const [tasksLoading, setTasksLoading] = useState(false)
@@ -123,12 +138,21 @@ export default function Notifications(){
   const notifGestureRef = useRef<{ startX: number; startY: number; wasOpen: boolean } | null>(null)
   const notifLiveXRef = useRef(0)
   const notifDraggingIdRef = useRef<number | null>(null)
+  const lastUnreadNotifsRef = useRef<number | null>(null)
 
   useEffect(() => { setTitle('Notifications') }, [setTitle])
 
-  async function load(){
+  // ``load`` accepts ``{ silent: true }`` so background refreshes (badge
+  // poll, focus / visibility, foreground push) repopulate ``items``
+  // without flipping the page back to the "Loading…" placeholder.
+  // Without this guard, every ``adjustBadges`` call from a tap or
+  // delete cascades into the badge watcher below and flashes the page
+  // — on Android the focus/visibility events also fire often enough
+  // to make the list feel stuck in a loading loop.
+  const load = useCallback(async function load(opts: { silent?: boolean } = {}){
+    const silent = !!opts.silent
     try{
-      setLoading(true)
+      if (!silent) setLoading(true)
       const r = await fetch('/api/notifications?all=true', { credentials:'include', headers: { 'Accept': 'application/json' } })
       console.log('📋 Notifications API status:', r.status)
       const j = await r.json()
@@ -136,24 +160,87 @@ export default function Notifications(){
       if (j?.success){
         console.log('📋 Total notifications received:', j.notifications?.length || 0)
         console.log('📋 Notification types:', j.notifications?.map((n: Notif) => n?.type))
-        const filtered = (j.notifications as Notif[]).filter(n => n?.type !== 'message' && n?.type !== 'reaction')
+        const notifications = (j.notifications as Notif[]) || []
+        const unreadInvites = notifications.filter(n => {
+          const typeKey = n?.type?.split(':')[0] ?? n?.type
+          return !n?.is_read && INVITE_NOTIFICATION_TYPES.has(typeKey || '')
+        })
+        setUnreadInviteCount(unreadInvites.length)
+
+        const filtered = notifications.filter(n => {
+          const typeKey = n?.type?.split(':')[0] ?? n?.type
+          return n?.type !== 'message' && n?.type !== 'reaction' && !INVITE_NOTIFICATION_TYPES.has(typeKey || '')
+        })
         console.log('📋 After filtering out messages and reactions:', filtered.length)
         setItems(filtered)
       } else {
         console.error('📋 Notifications API error:', j?.error || 'Unknown error')
         // Still set items to empty array so page doesn't get stuck on "Loading..."
         setItems([])
+        setUnreadInviteCount(0)
       }
     } catch (err) {
       console.error('📋 Notifications fetch error:', err)
       setItems([])
-    } finally { setLoading(false) }
-  }
-
-  useEffect(() => { 
-    load()
-    refreshBadges()
+      setUnreadInviteCount(0)
+    } finally {
+      if (!silent) setLoading(false)
+    }
   }, [])
+
+  const loadPendingInvites = useCallback(async function loadPendingInvites(){
+    try {
+      const r = await fetch('/api/community/invites/pending', {
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' },
+      })
+      const j = await r.json().catch(() => null)
+      if (j?.success && Array.isArray(j.invites)) {
+        setPendingInvites(j.invites)
+      }
+    } catch (err) {
+      console.error('Failed to load pending community invites:', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    load()
+    loadPendingInvites()
+    refreshBadges()
+  }, [load, loadPendingInvites, refreshBadges])
+
+  useEffect(() => {
+    const previous = lastUnreadNotifsRef.current
+    lastUnreadNotifsRef.current = unreadNotifs
+
+    if (previous === null) return
+    if (activeTab !== 'notifications' && activeTab !== 'invites') return
+    if (previous === unreadNotifs) return
+
+    // Silent so the page doesn't flash "Loading…" each time a tap /
+    // delete decrements the badge.
+    if (activeTab === 'notifications' || activeTab === 'invites') load({ silent: true })
+    loadPendingInvites()
+  }, [activeTab, load, loadPendingInvites, unreadNotifs])
+
+  useEffect(() => {
+    const refreshVisibleNotifications = () => {
+      if (document.hidden) return
+      if (activeTab === 'notifications' || activeTab === 'invites') load({ silent: true })
+      loadPendingInvites()
+      refreshBadges()
+    }
+
+    document.addEventListener('visibilitychange', refreshVisibleNotifications)
+    window.addEventListener('focus', refreshVisibleNotifications)
+    window.addEventListener('cpoint:push-notification-received', refreshVisibleNotifications)
+
+    return () => {
+      document.removeEventListener('visibilitychange', refreshVisibleNotifications)
+      window.removeEventListener('focus', refreshVisibleNotifications)
+      window.removeEventListener('cpoint:push-notification-received', refreshVisibleNotifications)
+    }
+  }, [activeTab, load, loadPendingInvites, refreshBadges])
   
   // Load events, polls, tasks when switching tabs
   useEffect(() => {
@@ -213,6 +300,10 @@ export default function Notifications(){
 
   async function markAll(){
     setSwipeNotifId(null)
+    // Pre-sync the badge watcher ref so the post-adjustBadges effect
+    // run sees ``previous === unreadNotifs`` and skips an extra silent
+    // load — markAll already does its own explicit ``load()`` below.
+    lastUnreadNotifsRef.current = 0
     adjustBadges({ notifs: -Infinity })
     await fetch('/api/notifications/mark-all-read', { method:'POST', credentials:'include' })
     refreshBadges()
@@ -222,7 +313,12 @@ export default function Notifications(){
   async function markOneRead(n: Notif, e?: React.MouseEvent<HTMLButtonElement>) {
     e?.stopPropagation()
     const wasUnread = !n.is_read
-    if (wasUnread) adjustBadges({ notifs: -1 })
+    if (wasUnread) {
+      // Skip the badge watcher's silent reload; ``setItems`` below
+      // already flips this row to ``is_read=true`` locally.
+      lastUnreadNotifsRef.current = Math.max(0, unreadNotifs - 1)
+      adjustBadges({ notifs: -1 })
+    }
     try {
       const r = await fetch(`/api/notifications/${n.id}/read`, { method: 'POST', credentials: 'include' })
       const j = await r.json()
@@ -244,7 +340,10 @@ export default function Notifications(){
     e?.stopPropagation()
     if (!confirm('Delete this notification?')) return
     const wasUnread = !n.is_read
-    if (wasUnread) adjustBadges({ notifs: -1 })
+    if (wasUnread) {
+      lastUnreadNotifsRef.current = Math.max(0, unreadNotifs - 1)
+      adjustBadges({ notifs: -1 })
+    }
     try {
       const r = await fetch(`/api/notifications/${n.id}`, { method: 'DELETE', credentials: 'include' })
       const j = await r.json()
@@ -268,6 +367,7 @@ export default function Notifications(){
     try{
       setClearing(true)
       setSwipeNotifId(null)
+      lastUnreadNotifsRef.current = 0
       adjustBadges({ notifs: -Infinity })
       await fetch('/api/notifications/mark-all-read', { method:'POST', credentials:'include' })
       await fetch('/api/notifications/delete-read', { method:'POST', credentials:'include' })
@@ -278,9 +378,36 @@ export default function Notifications(){
     }
   }
 
+  async function respondToCommunityInvite(invite: PendingCommunityInvite, action: 'accept' | 'decline') {
+    if (inviteActionLoading) return
+    setInviteActionLoading(invite.id)
+    setInviteActionError('')
+    try {
+      const r = await fetch(`/api/community/invites/${invite.id}/${action}`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      const j = await r.json().catch(() => null)
+      if (r.ok && j?.success) {
+        setPendingInvites(prev => prev.filter(x => x.id !== invite.id))
+        await load({ silent: true })
+        refreshBadges()
+      } else {
+        setInviteActionError(j?.error || `Failed to ${action} invite`)
+      }
+    } catch {
+      setInviteActionError(`Failed to ${action} invite`)
+    } finally {
+      setInviteActionLoading(null)
+    }
+  }
+
   async function onClick(n: Notif){
     setSwipeNotifId(null)
-    if (!n.is_read) adjustBadges({ notifs: -1 })
+    if (!n.is_read) {
+      lastUnreadNotifsRef.current = Math.max(0, unreadNotifs - 1)
+      adjustBadges({ notifs: -1 })
+    }
     try {
       await fetch(`/api/notifications/${n.id}/read`, { method:'POST', credentials:'include' })
       refreshBadges()
@@ -360,23 +487,30 @@ export default function Notifications(){
         <div className="flex gap-1 mb-4 overflow-x-auto scrollbar-hide border-b border-white/10 pb-2">
           {[
             { key: 'notifications' as TabType, label: 'Notifications', icon: 'fa-regular fa-bell' },
+            { key: 'invites' as TabType, label: 'Invites', icon: 'fa-solid fa-user-plus' },
             { key: 'calendar' as TabType, label: 'Calendar', icon: 'fa-regular fa-calendar' },
             { key: 'polls' as TabType, label: 'Polls', icon: 'fa-solid fa-chart-bar' },
             { key: 'tasks' as TabType, label: 'Tasks', icon: 'fa-solid fa-list-check' },
-          ].map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${
-                activeTab === tab.key 
-                  ? 'bg-[#4db6ac] text-black font-semibold' 
-                  : 'text-white/60 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <i className={tab.icon} />
-              {tab.label}
-            </button>
-          ))}
+          ].map(tab => {
+            const showInviteDot = tab.key === 'invites' && unreadInviteCount > 0
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${
+                  activeTab === tab.key
+                    ? 'bg-[#4db6ac] text-black font-semibold'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                {showInviteDot ? (
+                  <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#7fffd4] ring-2 ring-black" />
+                ) : null}
+                <i className={tab.icon} />
+                {tab.label}
+              </button>
+            )
+          })}
         </div>
         
         {/* Notifications Tab */}
@@ -542,6 +676,60 @@ export default function Notifications(){
                     </div>
                   )
                 })}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Invites Tab */}
+        {activeTab === 'invites' && (
+          <>
+            {inviteActionError ? (
+              <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                {inviteActionError}
+              </div>
+            ) : null}
+            {pendingInvites.length === 0 ? (
+              <div className="text-[#9fb0b5] py-10 text-center">
+                <i className="fa-solid fa-user-plus text-2xl" />
+                <div className="mt-2">No invites</div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-white/50">Community invites</div>
+                {pendingInvites.map(invite => (
+                  <div key={`community-${invite.id}`} className="rounded-xl border border-[#4db6ac]/35 bg-[#4db6ac]/10 p-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center text-[#4db6ac]">
+                        <i className="fa-solid fa-user-plus" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-white">
+                          You've been invited to community <span className="font-semibold">{invite.community_name}</span> by username <span className="font-semibold">{invite.invited_by_username}</span>
+                        </div>
+                        {invite.invited_at ? (
+                          <div className="text-[11px] text-[#9fb0b5] mt-0.5">{timeAgo(invite.invited_at)}</div>
+                        ) : null}
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            className="flex-1 rounded-lg bg-[#4db6ac] px-3 py-2 text-sm font-semibold text-black disabled:opacity-50"
+                            disabled={inviteActionLoading === invite.id}
+                            onClick={() => respondToCommunityInvite(invite, 'accept')}
+                          >
+                            {inviteActionLoading === invite.id ? 'Working...' : 'Accept'}
+                          </button>
+                          <button
+                            className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white disabled:opacity-50"
+                            disabled={inviteActionLoading === invite.id}
+                            onClick={() => respondToCommunityInvite(invite, 'decline')}
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </>

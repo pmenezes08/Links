@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import { triggerDashboardServerPull } from '../utils/serverPull'
@@ -11,21 +11,6 @@ type Member = {
   is_creator?: boolean;
 }
 
-type CommunityNode = {
-  id: number
-  name: string
-  type?: string
-  creator_username?: string
-  join_code?: string
-  member_count?: number
-  is_active?: boolean
-  parent_community_id?: number | null
-  children?: CommunityNode[]
-}
-
-type SimpleCommunityOption = { id: number; name: string }
-type NestedCommunityOption = { id: number; name: string; depth: number }
-
 export default function Members(){
   const { community_id } = useParams()
   const navigate = useNavigate()
@@ -34,25 +19,21 @@ export default function Members(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [canManage, setCanManage] = useState(false)
+  const [canInviteCurrentCommunity, setCanInviteCurrentCommunity] = useState(false)
   const [ownerUsername, setOwnerUsername] = useState<string>('')
   const [currentUserRole, setCurrentUserRole] = useState<'member'|'admin'|'owner'|'app_admin'>('member')
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteUsername, setInviteUsername] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
   const [inviteError, setInviteError] = useState('')
   const [inviteSuccess, setInviteSuccess] = useState(false)
+  const [inviteSuccessMessage, setInviteSuccessMessage] = useState('')
   const [showQRCode, setShowQRCode] = useState(false)
   const [qrCodeUrl, setQRCodeUrl] = useState('')
   const [inviteSingleUse, setInviteSingleUse] = useState(false)
   const numericCommunityId = community_id ? Number(community_id) : null
   const [inviteCommunityId, setInviteCommunityId] = useState<number | null>(numericCommunityId)
-  const [inviteScope, setInviteScope] = useState<'parent-only' | 'all-nested' | 'selected-nested'>('parent-only')
-  const [inviteNestedOptions, setInviteNestedOptions] = useState<NestedCommunityOption[]>([])
-  const [inviteParentOptions, setInviteParentOptions] = useState<SimpleCommunityOption[]>([])
-  const [inviteSelectedNestedIds, setInviteSelectedNestedIds] = useState<number[]>([])
-  const [inviteSelectedParentIds, setInviteSelectedParentIds] = useState<number[]>([])
-  const [inviteNestedDropdownOpen, setInviteNestedDropdownOpen] = useState(false)
-  const [communityTree, setCommunityTree] = useState<CommunityNode[]>([])
 
   useEffect(() => {
     let mounted = true
@@ -70,6 +51,7 @@ export default function Members(){
             setCurrentUserRole(role)
             const can = role === 'app_admin' || role === 'owner' || role === 'admin'
             setCanManage(!!can)
+            if (!can) setCanInviteCurrentCommunity(false)
           }
         }catch{}
 
@@ -101,139 +83,39 @@ export default function Members(){
   }, [numericCommunityId])
 
   useEffect(() => {
+    if (!canManage || !numericCommunityId) {
+      setCanInviteCurrentCommunity(false)
+      return
+    }
+
     let mounted = true
-    async function loadHierarchy() {
+    async function loadRootInviteAccess() {
       try {
-        const response = await fetch('/api/user_communities_hierarchical', { credentials: 'include', headers: { 'Accept': 'application/json' } })
-        const data = await response.json()
+        const response = await fetch('/api/community/manageable', { credentials: 'include', headers: { 'Accept': 'application/json' } })
+        const data = await response.json().catch(() => null)
         if (!mounted) return
-        if (data?.success) {
-          setCommunityTree(Array.isArray(data.communities) ? data.communities : [])
-        }
+        const roots = Array.isArray(data?.communities) ? data.communities : []
+        setCanInviteCurrentCommunity(roots.some((community: { id?: number }) => Number(community.id) === numericCommunityId))
       } catch {
-        // ignore
+        if (mounted) setCanInviteCurrentCommunity(false)
       }
     }
-    loadHierarchy()
+
+    loadRootInviteAccess()
     return () => {
       mounted = false
     }
-  }, [])
-
-  const flatCommunities = useMemo(() => {
-    const flat: CommunityNode[] = []
-    const visited = new Set<number>()
-
-    const traverse = (node: CommunityNode, parentId: number | null) => {
-      if (visited.has(node.id)) return
-      visited.add(node.id)
-      const nodeWithParent: CommunityNode = {
-        ...node,
-        parent_community_id: node.parent_community_id ?? parentId
-      }
-      flat.push(nodeWithParent)
-      if (node.children && node.children.length > 0) {
-        for (const child of node.children) {
-          traverse(child, nodeWithParent.id)
-        }
-      }
-    }
-
-    for (const root of communityTree) {
-      traverse(root, null)
-    }
-
-    return flat
-  }, [communityTree])
-
-  const flatCommunityMap = useMemo(() => {
-    const map = new Map<number, CommunityNode>()
-    for (const community of flatCommunities) {
-      map.set(community.id, community)
-    }
-    return map
-  }, [flatCommunities])
-
-  const communityChildrenMap = useMemo(() => {
-    const map = new Map<number, CommunityNode[]>()
-    for (const community of flatCommunities) {
-      const parentId = community.parent_community_id
-      if (parentId === null || parentId === undefined) continue
-      const siblings = map.get(parentId) || []
-      siblings.push(community)
-      map.set(parentId, siblings)
-    }
-    return map
-  }, [flatCommunities])
-
-  const getParentChain = useCallback(
-    (communityId: number) => {
-      const chain: CommunityNode[] = []
-      const visited = new Set<number>()
-      let current = flatCommunityMap.get(communityId)
-
-      while (current) {
-        const parentId = current.parent_community_id
-        if (parentId === null || parentId === undefined) break
-        if (visited.has(parentId)) break
-        visited.add(parentId)
-        const parent = flatCommunityMap.get(parentId)
-        if (!parent) break
-        chain.push(parent)
-        current = parent
-      }
-
-      return chain
-    },
-    [flatCommunityMap]
-  )
-
-  const getNestedOptions = useCallback(
-    (communityId: number) => {
-      const options: NestedCommunityOption[] = []
-      const visited = new Set<number>()
-
-      const traverse = (currentId: number, depth: number) => {
-        const children = communityChildrenMap.get(currentId) || []
-        for (const child of children) {
-          if (visited.has(child.id)) continue
-          visited.add(child.id)
-          options.push({ id: child.id, name: child.name, depth })
-          traverse(child.id, depth + 1)
-        }
-      }
-
-      traverse(communityId, 0)
-      return options
-    },
-    [communityChildrenMap]
-  )
-
-  useEffect(() => {
-    if (inviteNestedOptions.length === 0 && inviteScope === 'selected-nested') {
-      setInviteScope('parent-only')
-    }
-  }, [inviteNestedOptions, inviteScope])
-
-  useEffect(() => {
-    if (inviteScope !== 'selected-nested') {
-      setInviteNestedDropdownOpen(false)
-    }
-  }, [inviteScope])
+  }, [canManage, numericCommunityId])
 
   const resetInviteSelections = () => {
     setInviteCommunityId(numericCommunityId)
     setInviteEmail('')
+    setInviteUsername('')
     setInviteError('')
     setInviteSuccess(false)
-    setInviteScope('parent-only')
-    setInviteNestedOptions([])
-    setInviteSelectedNestedIds([])
-    setInviteParentOptions([])
-    setInviteSelectedParentIds([])
+    setInviteSuccessMessage('')
     setShowQRCode(false)
     setQRCodeUrl('')
-    setInviteNestedDropdownOpen(false)
   }
 
   const handleCloseInviteModal = () => {
@@ -245,22 +127,8 @@ export default function Members(){
     if (!inviteCommunityId) return base
     const payload: Record<string, unknown> = {
       community_id: inviteCommunityId,
-      invite_scope: inviteScope,
       ...base
     }
-
-    if (inviteNestedOptions.length > 0) {
-      if (inviteScope === 'all-nested') {
-        payload.include_nested_ids = inviteNestedOptions.map(option => option.id)
-      } else if (inviteScope === 'selected-nested') {
-        payload.include_nested_ids = inviteSelectedNestedIds
-      }
-    }
-
-    if (inviteParentOptions.length > 0) {
-      payload.include_parent_ids = inviteSelectedParentIds
-    }
-
     return payload
   }
 
@@ -268,23 +136,11 @@ export default function Members(){
     if (!numericCommunityId) return
     setInviteCommunityId(numericCommunityId)
     setInviteEmail('')
+    setInviteUsername('')
     setInviteError('')
     setInviteSuccess(false)
-    setInviteScope('parent-only')
+    setInviteSuccessMessage('')
     setShowQRCode(false)
-
-    const nestedOptions = getNestedOptions(numericCommunityId)
-    setInviteNestedOptions(nestedOptions)
-    setInviteSelectedNestedIds([])
-    setInviteNestedDropdownOpen(false)
-
-    const parentChain = getParentChain(numericCommunityId)
-    const parentOptions = parentChain.map<SimpleCommunityOption>((parent) => ({
-      id: parent.id,
-      name: parent.name
-    }))
-    setInviteParentOptions(parentOptions)
-    setInviteSelectedParentIds(parentOptions.map(option => option.id))
 
     // Load invite settings
     fetch(`/api/community/${numericCommunityId}/invite_settings`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
@@ -356,11 +212,6 @@ export default function Members(){
       setInviteError('No community selected for invitation')
       return
     }
-    if (inviteScope === 'selected-nested' && inviteSelectedNestedIds.length === 0) {
-      setInviteError('Select at least one nested community')
-      return
-    }
-
     setInviteLoading(true)
     setInviteError('')
     setInviteSuccess(false)
@@ -378,6 +229,7 @@ export default function Members(){
 
       if (response.ok && data.success) {
         setInviteSuccess(true)
+        setInviteSuccessMessage('Invitation sent successfully!')
         setInviteEmail('')
         setTimeout(() => {
           handleCloseInviteModal()
@@ -393,16 +245,52 @@ export default function Members(){
     }
   }
 
+  async function handleSendUsernameInvite() {
+    const targetUsername = inviteUsername.trim().replace(/^@+/, '')
+    if (!targetUsername) {
+      setInviteError('Username is required')
+      return
+    }
+    if (!inviteCommunityId) {
+      setInviteError('No community selected for invitation')
+      return
+    }
+    setInviteLoading(true)
+    setInviteError('')
+    setInviteSuccess(false)
+    setInviteSuccessMessage('')
+
+    try {
+      const payload = buildInvitePayload({ username: targetUsername })
+      const response = await fetch('/api/community/invite_username', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        setInviteSuccess(true)
+        setInviteSuccessMessage(data.message || `Invite sent to @${targetUsername}`)
+        setInviteUsername('')
+      } else {
+        setInviteError(data.error || 'Failed to send username invitation')
+      }
+    } catch (error) {
+      console.error('Error sending username invitation:', error)
+      setInviteError('Failed to send username invitation')
+    } finally {
+      setInviteLoading(false)
+    }
+  }
+
   async function handleGenerateQR() {
     if (!inviteCommunityId) {
       setInviteError('No community selected for invitation')
       return
     }
-    if (inviteScope === 'selected-nested' && inviteSelectedNestedIds.length === 0) {
-      setInviteError('Select at least one nested community')
-      return
-    }
-
     setInviteLoading(true)
     setInviteError('')
     
@@ -466,7 +354,7 @@ export default function Members(){
               Leave
             </button>
           )}
-            {canManage && (
+            {canManage && canInviteCurrentCommunity && (
             <button
                 onClick={handleOpenInviteModal}
               className="px-3 py-1.5 bg-[#4db6ac] text-black rounded-lg text-xs font-medium hover:bg-[#45a099]"
@@ -529,7 +417,7 @@ export default function Members(){
 
             {inviteSuccess && (
               <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg text-green-400 text-sm">
-                Invitation sent successfully!
+                {inviteSuccessMessage || 'Invitation sent successfully!'}
               </div>
             )}
 
@@ -538,140 +426,6 @@ export default function Members(){
                 {inviteError}
               </div>
             )}
-
-              {inviteNestedOptions.length > 0 && (
-                <div className="mb-4 space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-white/50">Nested communities</div>
-                  <div className="space-y-2 text-sm text-white/80">
-                    {[
-                      { value: 'parent-only', label: `Invite only to ${communityName || 'this community'}` },
-                      { value: 'all-nested', label: `Invite to ${communityName || 'this community'} and all nested communities` },
-                      { value: 'selected-nested', label: `Invite to ${communityName || 'this community'} and selected nested communities` }
-                    ].map(option => {
-                      const selected = inviteScope === option.value
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          className={`w-full rounded-lg border px-3 py-2 text-left transition ${
-                            selected
-                              ? 'border-[#4db6ac]/60 bg-[#4db6ac]/15 text-white shadow-lg shadow-[#4db6ac]/10'
-                              : 'border-white/10 bg-black/40 text-white/70 hover:border-white/20 hover:bg-black/50'
-                          }`}
-                          onClick={() => setInviteScope(option.value as typeof inviteScope)}
-                        >
-                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-white/20 bg-black/60 text-[10px] text-white/70">
-                            {selected ? (
-                              <span className="h-2 w-2 rounded-full bg-[#4db6ac]" />
-                            ) : (
-                              <span className="h-1 w-1 rounded-full bg-white/25" />
-                            )}
-                          </span>
-                          <span className="ml-2">{option.label}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-
-                  {inviteScope === 'selected-nested' && (
-                    <div className="space-y-2 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => setInviteNestedDropdownOpen(prev => !prev)}
-                        className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80 hover:border-white/20 hover:bg-black/40"
-                      >
-                        <span>
-                          {inviteSelectedNestedIds.length === 0
-                            ? 'No nested communities selected'
-                            : `${inviteSelectedNestedIds.length} nested ${inviteSelectedNestedIds.length === 1 ? 'community' : 'communities'} selected`}
-                        </span>
-                        <i className={`fa-solid fa-chevron-${inviteNestedDropdownOpen ? 'up' : 'down'} text-xs text-white/60`} />
-                      </button>
-                      {inviteNestedDropdownOpen && (
-                        <div className="max-h-56 overflow-y-auto rounded-lg border border-white/10 bg-black/40 p-2 space-y-1">
-                          {inviteNestedOptions.map(option => {
-                            const selected = inviteSelectedNestedIds.includes(option.id)
-                            return (
-                              <button
-                                key={option.id}
-                                type="button"
-                                onClick={() =>
-                                  setInviteSelectedNestedIds(prev =>
-                                    prev.includes(option.id)
-                                      ? prev.filter(id => id !== option.id)
-                                      : [...prev, option.id]
-                                  )
-                                }
-                                className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition ${
-                                  selected
-                                    ? 'border-[#4db6ac]/60 bg-[#4db6ac]/15 text-white shadow-lg shadow-[#4db6ac]/10'
-                                    : 'border-white/10 bg-black/30 text-white/70 hover:border-white/20 hover:bg-black/40'
-                                }`}
-                                style={{ paddingLeft: `${(option.depth + 1) * 16}px` }}
-                              >
-                                <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-white/20 bg-black/40 text-[10px] text-white/70">
-                                  {selected ? (
-                                    <i className="fa-solid fa-check text-[#4db6ac]" />
-                                  ) : (
-                                    <span className="h-1 w-1 rounded-full bg-white/30" />
-                                  )}
-                                </span>
-                                <span className="ml-2">{option.name}</span>
-                              </button>
-                            )
-                          })}
-                        </div>
-                      )}
-                      {inviteSelectedNestedIds.length === 0 && (
-                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                          Select at least one nested community or change the invite scope.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {inviteParentOptions.length > 0 && (
-                <div className="mb-4 space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-white/50">Parent communities</div>
-                  <p className="text-xs text-white/40">
-                    Decide if the invitee should also join parent communities.
-                  </p>
-                  <div className="space-y-2">
-                    {inviteParentOptions.map(option => {
-                      const selected = inviteSelectedParentIds.includes(option.id)
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() =>
-                            setInviteSelectedParentIds(prev =>
-                              prev.includes(option.id)
-                                ? prev.filter(id => id !== option.id)
-                                : [...prev, option.id]
-                            )
-                          }
-                          className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition ${
-                            selected
-                              ? 'border-[#4db6ac]/60 bg-[#4db6ac]/15 text-white shadow-lg shadow-[#4db6ac]/10'
-                              : 'border-white/10 bg-black/30 text-white/70 hover:border-white/20 hover:bg-black/40'
-                          }`}
-                        >
-                          <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-white/20 bg-black/40 text-[10px] text-white/70">
-                            {selected ? (
-                              <i className="fa-solid fa-check text-[#4db6ac]" />
-                            ) : (
-                              <span className="h-1 w-1 rounded-full bg-white/30" />
-                            )}
-                          </span>
-                          <span className="ml-2">{option.name}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
 
               <div className="space-y-3">
               {/* Email Invitation */}
@@ -688,15 +442,53 @@ export default function Members(){
                 <button
                   onClick={handleSendInvite}
                     className="w-full mt-2 px-4 py-2 bg-[#4db6ac] text-black rounded-lg text-sm font-medium hover:bg-[#45a099] disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={
-                      inviteLoading ||
-                      inviteSuccess ||
-                      !inviteEmail.trim() ||
-                      (inviteScope === 'selected-nested' && inviteSelectedNestedIds.length === 0)
-                    }
+                    disabled={inviteLoading || inviteSuccess || !inviteEmail.trim()}
                 >
                   {inviteLoading ? 'Sending...' : 'Send Email Invite'}
                 </button>
+              </div>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-white/10"></div>
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="px-2 bg-[#1a1a1a] text-white/40">OR</span>
+                </div>
+              </div>
+
+              {/* Username Invitation */}
+              <div>
+                <label className="block text-xs text-white/60 mb-2">Invite existing C.Point user</label>
+                <input
+                  type="text"
+                  value={inviteUsername}
+                  onChange={(e) => {
+                    setInviteUsername(e.target.value)
+                    setInviteError('')
+                    setInviteSuccess(false)
+                    setInviteSuccessMessage('')
+                  }}
+                  placeholder="@username"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none"
+                  disabled={inviteLoading}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleSendUsernameInvite()
+                    }
+                  }}
+                />
+                <button
+                  onClick={handleSendUsernameInvite}
+                  className="w-full mt-2 px-4 py-2 bg-[#4db6ac]/15 border border-[#4db6ac]/35 text-[#4db6ac] rounded-lg text-sm font-medium hover:bg-[#4db6ac]/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={inviteLoading || !inviteUsername.trim()}
+                >
+                  {inviteLoading ? 'Sending...' : 'Send Username Invite'}
+                </button>
+                <p className="mt-1 text-[11px] text-white/40">
+                  The user will get an in-app and push notification, then can accept or decline.
+                </p>
               </div>
 
               <div className="relative">
@@ -741,7 +533,7 @@ export default function Members(){
                 <button
                   onClick={handleGenerateQR}
                     className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-sm font-medium hover:bg-white/10 disabled:opacity-50"
-                    disabled={inviteLoading || (inviteScope === 'selected-nested' && inviteSelectedNestedIds.length === 0)}
+                    disabled={inviteLoading}
                 >
                   <i className="fa-solid fa-qrcode mr-2" />
                   Generate QR Code
