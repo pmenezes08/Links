@@ -21,6 +21,7 @@ import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/vide
 import { normalizeMediaPath, formatMessageTime, parseMessageTime } from './utils'
 import AudioMessage from './AudioMessage'
 import LongPressActionable from './LongPressActionable'
+import { renderTextWithSourceLinks } from '../utils/linkUtils'
 
 export interface MessageBubbleProps {
   message: ChatMessage & {
@@ -80,8 +81,8 @@ export interface MessageBubbleProps {
   onStoryReplyClick?: (storyId: string, username: string) => void
   /** Username of the other person in the chat (for story navigation) */
   otherUsername?: string
-  /** Function to render linkified text */
-  linkifyText: (text: string) => React.ReactNode[]
+  /** Handler for username mentions in rich text */
+  onMentionClick?: (username: string) => void
 }
 
 function MessageBubbleInner({
@@ -107,7 +108,7 @@ function MessageBubbleInner({
   translatingId,
   onStoryReplyClick,
   otherUsername,
-  linkifyText,
+  onMentionClick,
   onRetry,
 }: MessageBubbleProps) {
   const textBase = m.text || ''
@@ -285,7 +286,7 @@ function MessageBubbleInner({
                 m.isOptimistic
                   ? 'bg-[#4db6ac]/40 border border-[#4db6ac]/30'
                   : `liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent' : 'liquid-glass-bubble--received'}`
-              } text-white px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words overflow-hidden max-w-full min-w-0 ${
+              } text-white px-2.5 py-1.5 rounded-2xl text-[14px] leading-relaxed whitespace-pre-wrap break-words overflow-hidden max-w-full min-w-0 ${
                 m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
               }`}
             >
@@ -493,7 +494,7 @@ function MessageBubbleInner({
                 onEdit()
               }}
             >
-              {showLinkifiedBody ? linkifyText(textWithoutPreviewUrls) : null}
+              {showLinkifiedBody ? renderTextWithSourceLinks(textWithoutPreviewUrls, false, onMentionClick) : null}
               {videoEmbed ? (
                 <div className="block w-full min-w-0 mt-2 max-w-[280px]">
                   {videoEmbed.type === 'youtube' ? (

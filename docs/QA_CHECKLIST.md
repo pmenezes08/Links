@@ -277,3 +277,16 @@ Run after any change to Steve context, profiling, or KB access.
 - [ ] Confirm no monolith bloat — all new logic in blueprints/services.
 
 Mark corresponding Tests-page rows successful only after full pass.
+
+## §12 — Steve DM Polish
+
+Run after any change to Steve DM rendering, Steve typing indicators, or chat mention rendering.
+
+- [ ] In a direct DM with Steve, send a message that takes more than a second to answer. Confirm "Steve is typing..." appears within a poll tick and disappears when the reply arrives.
+- [ ] Ask Steve to reply with `**bold**` emphasis. Confirm the chat bubble renders bold text rather than literal asterisks.
+- [ ] Ask Steve for a multi-paragraph answer. Confirm double-newline paragraph breaks have clear spacing and are not crammed together.
+- [ ] Ask Steve to mention a known user as `@someuser`. Confirm the mention is teal, tappable, and opens `/profile/someuser`.
+- [ ] In a 1:1 DM between two real users, mention `@steve`. Confirm both sides of that DM see the typing indicator while Steve is working.
+- [ ] In a group chat, mention `@steve` and confirm the existing typing indicator still works through the Redis-backed path.
+- [ ] In a group chat, post a message containing `@someuser`. Confirm the mention is tappable and opens `/profile/someuser`.
+- [ ] Force a Steve error path or entitlement block. Confirm the typing indicator clears immediately when possible, or expires within 30 seconds.

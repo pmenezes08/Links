@@ -322,6 +322,13 @@ def messages_view_cache_key(viewer, peer):
     """Viewer-specific cache key to avoid mixing 'sent' perspective across users"""
     return f"messages_view:{viewer}:{peer}"
 
+def steve_dm_typing_key(viewer, peer):
+    """Viewer-specific Steve typing indicator key for 1:1 DM threads."""
+    return f"steve_dm_typing:{viewer}:{peer}"
+
+def steve_group_typing_key(group_id):
+    return f"steve_group_typing:{group_id}"
+
 def community_feed_cache_key(community_id, page=1):
     return f"community_feed:{community_id}:page:{page}"
 

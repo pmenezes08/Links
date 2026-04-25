@@ -18,6 +18,7 @@ from backend.services.media import save_uploaded_file
 from backend.services import ai_usage
 from backend.services.entitlements_gate import gate_or_reason
 from backend.services.feature_flags import entitlements_enforcement_enabled
+from backend.services.steve_dm_typing import clear_group_typing, is_group_typing, mark_group_typing
 
 # Allowed extensions for chat uploads
 # Include HEIC/HEIF for iOS devices
@@ -30,10 +31,6 @@ logger = logging.getLogger(__name__)
 MAX_GROUP_MEMBERS = 5
 AI_USERNAME = 'steve'
 XAI_API_KEY = os.getenv('XAI_API_KEY', '')
-
-# Track when Steve is typing (in-memory, per group_id)
-# Format: {group_id: timestamp_when_started}
-_steve_typing_status: dict[int, float] = {}
 
 
 def _public_profile_picture_url(picture_rel):
@@ -949,14 +946,8 @@ def get_group_messages(group_id: int):
                 except Exception as rr_err:
                     logger.warning(f"Failed to update read receipt on Firestore path: {rr_err}")
             
-            # Steve typing status (stored in-memory, not Firestore)
-            import time as _time
-            _steve_typing = False
-            if group_id in _steve_typing_status:
-                if _time.time() - _steve_typing_status[group_id] < 30:
-                    _steve_typing = True
-                else:
-                    del _steve_typing_status[group_id]
+            # Steve typing status is stored in Redis/in-memory cache, not Firestore.
+            _steve_typing = is_group_typing(group_id)
             return jsonify({"success": True, "messages": messages, "has_more": len(messages) == limit, "steve_is_typing": _steve_typing})
     except Exception as fs_err:
         logger.warning(f"Firestore group chat read failed, falling back to MySQL: {fs_err}")
@@ -1096,16 +1087,8 @@ def get_group_messages(group_id: int):
             messages.reverse()
             messages = _enrich_group_message_profile_pictures(messages)
             
-            # Check if Steve is typing (with 30 second timeout)
-            import time
-            steve_is_typing = False
-            if group_id in _steve_typing_status:
-                elapsed = time.time() - _steve_typing_status[group_id]
-                if elapsed < 30:  # Typing indicator expires after 30 seconds
-                    steve_is_typing = True
-                else:
-                    # Clean up stale typing status
-                    del _steve_typing_status[group_id]
+            # Check if Steve is typing (short-lived cache flag with TTL)
+            steve_is_typing = is_group_typing(group_id)
             
             return jsonify({
                 "success": True, 
@@ -1637,9 +1620,7 @@ def send_group_message(group_id: int):
             # Check if @Steve is mentioned - trigger AI response in background
             if message_text and re.search(r'@steve\b', message_text, re.IGNORECASE) and username != AI_USERNAME:
                 try:
-                    # Set Steve typing indicator
-                    import time
-                    _steve_typing_status[group_id] = time.time()
+                    mark_group_typing(group_id)
                     
                     # Run Steve's response in a background thread to not block the request
                     thread = threading.Thread(
@@ -2800,8 +2781,7 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
                     write_group_chat_message(group_id=group_id, message_id=steve_msg_id, sender=AI_USERNAME, text=confirm_text)
                 except Exception:
                     pass
-            if group_id in _steve_typing_status:
-                del _steve_typing_status[group_id]
+            clear_group_typing(group_id)
             logger.info(f"Steve suppressed topic '{topic}' in group {group_id} by {sender_username}")
             return
         except Exception as forget_err:
@@ -2842,8 +2822,7 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
                     write_group_chat_message(group_id=group_id, message_id=steve_msg_id, sender=AI_USERNAME, text=confirm_text)
                 except Exception:
                     pass
-            if group_id in _steve_typing_status:
-                del _steve_typing_status[group_id]
+            clear_group_typing(group_id)
             logger.info(f"Steve unsuppressed topic '{topic}' in group {group_id} by {sender_username}")
             return
         except Exception as remember_err:
@@ -2888,8 +2867,7 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
                     write_group_chat_message(group_id=group_id, message_id=steve_msg_id, sender=AI_USERNAME, text=blocked_text)
                 except Exception:
                     pass
-            if group_id in _steve_typing_status:
-                del _steve_typing_status[group_id]
+            clear_group_typing(group_id)
         except Exception as block_err:
             logger.warning("Could not post entitlements-blocked Steve notice: %s", block_err)
         return
@@ -3320,8 +3298,7 @@ RESPONSE FORMAT:
                 pass
 
             # Clear typing indicator now that Steve has posted
-            if group_id in _steve_typing_status:
-                del _steve_typing_status[group_id]
+            clear_group_typing(group_id)
             
             logger.info(f"Steve replied to group {group_id} with message ID {steve_message_id}")
             
@@ -3341,6 +3318,5 @@ RESPONSE FORMAT:
 
     except Exception as e:
         # Clear typing indicator on error too
-        if group_id in _steve_typing_status:
-            del _steve_typing_status[group_id]
+        clear_group_typing(group_id)
         logger.error(f"Error in Steve group reply: {e}", exc_info=True)

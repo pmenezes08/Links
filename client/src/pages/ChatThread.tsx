@@ -33,8 +33,6 @@ import {
 } from '../utils/chatThreadsCache'
 import { sendImageMessage, sendVideoMessage, sendMultiMediaMessage, SENDING_MEDIA_LABEL, type UploadProgress } from '../chat/mediaSenders'
 import type { ChatMessage } from '../types/chat'
-import { isInternalLink, isLandingPageLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from '../utils/internalLinkHandler'
-import { openExternalNativeLink } from '../utils/openExternalInApp'
 
 // Import utilities and components from chat module
 import {
@@ -71,6 +69,10 @@ export default function ChatThread(){
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const profilePath = username ? `/profile/${encodeURIComponent(username)}` : null
+  const isSteveDm = (username || '').toLowerCase() === 'steve'
+  const mentionToProfile = useCallback((u: string) => {
+    navigate(`/profile/${encodeURIComponent(u)}`)
+  }, [navigate])
   
   
   
@@ -95,6 +97,7 @@ export default function ChatThread(){
 
   const [otherUserId, setOtherUserId] = useState<number|''>('')
   const [messages, setMessages] = useState<Message[]>([])
+  const [steveIsTyping, setSteveIsTyping] = useState(false)
   const [editingId, setEditingId] = useState<number|string| null>(null)
   const [editText, setEditText] = useState('')
   const [editingSaving, setEditingSaving] = useState(false)
@@ -223,6 +226,7 @@ export default function ChatThread(){
     setOtherUserId('')
     setOtherProfile(null)
     setMessages([])
+    setSteveIsTyping(false)
   }, [username])
 
   const scrollToBottom = useCallback(() => {
@@ -545,103 +549,6 @@ export default function ChatThread(){
     } finally { setEditingSaving(false) }
   }
 
-  // State for join community success modal
-  const [joinedCommunity, setJoinedCommunity] = useState<{ name: string; id: number } | null>(null)
-
-  // Handle clicking on an internal link (c-point.co)
-  const handleInternalLinkClick = useCallback(async (href: string) => {
-    // Check for invite token
-    const inviteToken = extractInviteToken(href)
-    if (inviteToken) {
-      try {
-        const result = await joinCommunityWithInvite(inviteToken)
-        
-        if (result.success && result.communityId) {
-          // Successfully joined - show success modal and navigate
-          if (result.communityName) {
-            setJoinedCommunity({ name: result.communityName, id: result.communityId })
-            // Auto-dismiss and navigate after 2 seconds
-            setTimeout(() => {
-              setJoinedCommunity(null)
-              navigate(`/community_feed_react/${result.communityId}`)
-            }, 2000)
-          } else {
-            navigate(`/community_feed_react/${result.communityId}`)
-          }
-        } else if (result.alreadyMember && result.communityId) {
-          // Already a member - just navigate
-          navigate(`/community_feed_react/${result.communityId}`)
-        } else {
-          // Show error
-          alert(result.error || 'Failed to join community')
-        }
-      } catch (err) {
-        console.error('Error handling invite link:', err)
-        alert('Failed to process invite link')
-      }
-      return
-    }
-
-    // Other internal link - navigate within the app
-    const internalPath = extractInternalPath(href)
-    if (internalPath) {
-      navigate(internalPath)
-    }
-  }, [navigate])
-
-  // Convert URLs in plain text into clickable links (handles internal c-point.co links)
-  function linkifyText(text: string) {
-    const nodes: React.ReactNode[] = []
-    const regex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(\/[^\s]*)?)/gi
-    let lastIndex = 0
-    let match: RegExpExecArray | null
-    while ((match = regex.exec(text)) !== null) {
-      const start = match.index
-      const end = start + match[0].length
-      if (start > lastIndex) nodes.push(text.slice(lastIndex, start))
-      const raw = match[0]
-      const href = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
-      
-      // Check if this is an internal app.c-point.co link
-      const isInternal = isInternalLink(href)
-      // Landing page links (www.c-point.co) should open externally
-      const isLanding = isLandingPageLink(href)
-      
-      nodes.push(
-        <a 
-          key={`${start}-${end}`} 
-          href={href} 
-          target={(isInternal && !isLanding) ? undefined : "_blank"} 
-          rel={(isInternal && !isLanding) ? undefined : "noopener noreferrer"} 
-          className="underline text-[#4db6ac] hover:text-[#45a99c] inline py-0.5 break-all"
-          style={{ lineHeight: '1.6' }}
-          onClick={(e) => {
-            if (isInternal && !isLanding) {
-              e.preventDefault()
-              e.stopPropagation()
-              handleInternalLinkClick(href)
-              return
-            }
-            if (Capacitor.isNativePlatform()) {
-              e.preventDefault()
-              e.stopPropagation()
-              if (isLanding) {
-                window.open(href, '_blank', 'noopener,noreferrer')
-              } else {
-                void openExternalNativeLink(href)
-              }
-            }
-          }}
-        >
-          {raw}
-        </a>
-      )
-      lastIndex = end
-    }
-    if (lastIndex < text.length) nodes.push(text.slice(lastIndex))
-    return nodes
-  }
-
   // Encryption is initialized globally in App.tsx - no need for per-chat init
 
   // Helper to process raw messages (decrypt, parse replies, add metadata)
@@ -845,6 +752,7 @@ export default function ChatThread(){
       })
       .then(r=>r.json())
       .then(async (msgResponse) => {
+        setSteveIsTyping(Boolean(msgResponse?.steve_is_typing))
         if (msgResponse?.success && Array.isArray(msgResponse.messages)) {
           const processedMessages = await processRawMessages(msgResponse.messages)
           setMessages(prev => {
@@ -971,6 +879,7 @@ export default function ChatThread(){
       fetch('/get_messages', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
         .then(r => r.json())
         .then(j => {
+          setSteveIsTyping(Boolean(j?.steve_is_typing))
           if (j?.success && Array.isArray(j.messages)) {
             processRawMessages(j.messages).then(processed => {
               setMessages(prev => {
@@ -1046,6 +955,7 @@ export default function ChatThread(){
       const fd = new URLSearchParams({ other_user_id: String(otherUserId), before_id: String(oldestId) })
       const r = await fetch('/get_messages', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
       const j = await r.json()
+      setSteveIsTyping(Boolean(j?.steve_is_typing))
       if (j?.success && Array.isArray(j.messages) && j.messages.length > 0) {
         const el = listRef.current
         const prevHeight = el?.scrollHeight || 0
@@ -1162,6 +1072,7 @@ export default function ChatThread(){
             body: fd 
           })
           const j = await r.json()
+          setSteveIsTyping(Boolean(j?.steve_is_typing))
           
           if (j?.success && Array.isArray(j.messages)){
             // Track highest message ID for delta fetching
@@ -1580,6 +1491,9 @@ export default function ChatThread(){
     
     const optimisticWithKey = { ...optimisticMessage, clientKey: tempId }
     setMessages(prev => [...prev, optimisticWithKey])
+    if (isSteveDm || /@steve\b/i.test(messageText)) {
+      setSteveIsTyping(true)
+    }
     
     recentOptimisticRef.current.set(tempId, {
       message: optimisticWithKey,
@@ -2970,7 +2884,7 @@ export default function ChatThread(){
                     }
                   }}
                   otherUsername={username}
-                  linkifyText={linkifyText}
+                  onMentionClick={mentionToProfile}
                   onRetry={m.clientKey ? () => retryFailedMessage(String(m.clientKey)) : undefined}
                 />
                 </div>
@@ -2978,6 +2892,24 @@ export default function ChatThread(){
             </div>
           )
         })}
+
+        {steveIsTyping && (
+          <div className="flex items-center gap-3 px-3 py-2 mb-2">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#4db6ac] to-[#26a69a] flex items-center justify-center flex-shrink-0">
+              <span className="text-white text-xs font-bold">S</span>
+            </div>
+            <div className="bg-white/10 rounded-2xl rounded-bl-lg px-4 py-2">
+              <div className="flex items-center gap-1">
+                <span className="text-white/70 text-sm">Steve is typing...</span>
+                <span className="flex gap-0.5">
+                  <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* iOS FIX: Scroll anchor/spacer at the very end to ensure last message can scroll fully into view */}
         <div 
@@ -3908,24 +3840,6 @@ export default function ChatThread(){
           await handleGifSelection(gif)
         }}
       />
-
-      {/* Community Join Success Modal */}
-      {joinedCommunity && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="mx-4 w-full max-w-sm rounded-2xl border border-[#4db6ac]/30 bg-[#0a0a0a] p-6 shadow-2xl">
-            <div className="flex flex-col items-center text-center">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#4db6ac]/20">
-                <i className="fa-solid fa-check text-3xl text-[#4db6ac]" />
-              </div>
-              <h3 className="mb-2 text-xl font-semibold text-white">Welcome!</h3>
-              <p className="mb-4 text-sm text-white/70">
-                You've been added to <span className="font-medium text-[#4db6ac]">{joinedCommunity.name}</span>
-              </p>
-              <p className="text-xs text-white/50">Redirecting to community...</p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Block User Modal */}
       {showBlockModal && (

@@ -13910,6 +13910,13 @@ def get_messages():
     
     if not other_user_id:
         return jsonify({'success': False, 'error': 'Other user ID required'})
+
+    def _steve_dm_typing_for(peer_username):
+        try:
+            from backend.services.steve_dm_typing import is_dm_typing
+            return is_dm_typing(username, peer_username)
+        except Exception:
+            return False
     
     # Short-lived cache to reduce DB latency (viewer-specific; invalidated on write)
     # PERFORMANCE: Skip cache for delta fetches - they need fresh data
@@ -13947,7 +13954,12 @@ def get_messages():
                                 cached_messages = [m for m in cached_messages if m.get('time') and _dt.strptime(str(m['time'])[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S') > _del_dt]
                 except Exception:
                     pass
-                return jsonify({'success': True, 'messages': cached_messages, 'has_more': False})
+                return jsonify({
+                    'success': True,
+                    'messages': cached_messages,
+                    'has_more': False,
+                    'steve_is_typing': _steve_dm_typing_for(other_username_for_key),
+                })
     
     # --- Firestore dual-read (feature flag) ---
     try:
@@ -14001,7 +14013,13 @@ def get_messages():
                         pass
                     if not messages:
                         has_more = False
-                    return jsonify({'success': True, 'messages': messages, 'is_delta': is_delta, 'has_more': has_more})
+                    return jsonify({
+                        'success': True,
+                        'messages': messages,
+                        'is_delta': is_delta,
+                        'has_more': has_more,
+                        'steve_is_typing': _steve_dm_typing_for(peer_username),
+                    })
     except Exception as fs_err:
         logger.warning(f"Firestore DM read failed, falling back to MySQL: {fs_err}")
 
@@ -14241,7 +14259,13 @@ def get_messages():
                 pass
             
             # Include delta indicator and pagination hint (MySQL path loads full thread; older pages use Firestore)
-            return jsonify({'success': True, 'messages': messages, 'is_delta': bool(since_id_int), 'has_more': False})
+            return jsonify({
+                'success': True,
+                'messages': messages,
+                'is_delta': bool(since_id_int),
+                'has_more': False,
+                'steve_is_typing': _steve_dm_typing_for(other_username),
+            })
             
     except Exception as e:
         logger.error(f"Error fetching messages: {str(e)}")
@@ -14464,6 +14488,11 @@ def send_message():
                     # but we also insert into the current thread so both users see it
                     steve_reply_to = username
                     steve_also_notify = recipient_username if not is_steve_dm else None
+                    try:
+                        from backend.services.steve_dm_typing import mark_dm_typing
+                        mark_dm_typing(username, recipient_username if not is_steve_dm else 'steve')
+                    except Exception as typing_err:
+                        logger.warning(f"Failed to mark Steve DM typing: {typing_err}")
                     thread = threading.Thread(
                         target=_trigger_steve_dm_reply,
                         args=(username, message, recipient_username if not is_steve_dm else None)
@@ -14501,11 +14530,21 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
     """
     import time
     from datetime import datetime
+
+    typing_peer = other_username if other_username else 'steve'
+
+    def _clear_steve_typing():
+        try:
+            from backend.services.steve_dm_typing import clear_dm_typing
+            clear_dm_typing(sender_username, typing_peer)
+        except Exception as typing_err:
+            logger.warning("Failed to clear Steve DM typing: %s", typing_err)
     
     time.sleep(1.5)
     
     if not XAI_API_KEY:
         logger.warning("XAI_API_KEY not configured, Steve cannot reply in DM")
+        _clear_steve_typing()
         return
     
     # ── Entitlements gate ──
@@ -14532,6 +14571,7 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
                 _send_dm(receiver_username=sender_username, content=blocked)
             except Exception:
                 pass
+            _clear_steve_typing()
             return
     except Exception as gate_err:
         logger.warning("DM Steve gate check failed (non-fatal): %s", gate_err)
@@ -14759,12 +14799,14 @@ Only share this information if asked. Be factual — do not embellish or invent 
 
         if not ai_response:
             logger.warning("Steve DM reply: empty response from API")
+            _clear_steve_typing()
             return
 
         ai_response = format_steve_response_links(ai_response)
         
         if not ai_response or not ai_response.strip():
             logger.warning("Steve DM reply: empty response after formatting")
+            _clear_steve_typing()
             return
         
         # Insert Steve's reply into the correct DM thread
@@ -14821,6 +14863,8 @@ Only share this information if asked. Be factual — do not embellish or invent 
 
     except Exception as e:
         logger.error(f"Error in Steve DM reply: {e}", exc_info=True)
+    finally:
+        _clear_steve_typing()
 
 
 @app.route('/api/steve/reset_dm_context', methods=['POST'])

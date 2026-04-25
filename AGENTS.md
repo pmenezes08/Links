@@ -22,10 +22,15 @@ flows.
 
 ## Structural rules
 
-- **Monolith vs blueprints.** New API routes go in
-  `backend/blueprints/*.py`, not `bodybuilding_app.py`. Register them
-  in `backend/blueprints/__init__.py`. Only touch the monolith when
-  migrating or patching an existing route in place.
+- **Monolith vs blueprints / services.** New API routes go in
+  `backend/blueprints/*.py`; new helpers, background workers, and
+  module-level state go in `backend/services/*.py`. Register new
+  blueprints in `backend/blueprints/__init__.py`. Do not add new
+  symbols to `bodybuilding_app.py`. When patching an existing monolith
+  route, push any new logic into a service module the route calls into
+  so a later move to a blueprint is mechanical. Module-level state
+  (dicts, sets) belongs in Redis or a service, never in the monolith
+  global namespace.
 - **KB is the source of truth** for pricing, caps, policies, roadmap,
   and special-user lists. Edit `backend/services/knowledge_base.py`
   seeds, redeploy, and (if content changed) hit the admin-web

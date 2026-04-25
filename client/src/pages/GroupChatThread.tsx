@@ -94,6 +94,9 @@ function isConfirmedGroupMessage(
 export default function GroupChatThread() {
   const { group_id } = useParams()
   const navigate = useNavigate()
+  const mentionToProfile = useCallback((username: string) => {
+    navigate(`/profile/${encodeURIComponent(username)}`)
+  }, [navigate])
   const openExternalArticle = useCallback((url: string) => {
     void openExternalNativeLink(url)
   }, [])
@@ -1625,7 +1628,7 @@ export default function GroupChatThread() {
   // Render text with @mentions highlighted and links clickable
   const renderTextWithMentions = (text: string) => {
     if (!text) return null
-    return renderTextWithSourceLinks(text, false, undefined, openExternalArticle)
+    return renderTextWithSourceLinks(text, false, mentionToProfile, openExternalArticle)
   }
 
   // Message action handlers
