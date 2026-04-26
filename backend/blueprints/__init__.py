@@ -22,6 +22,7 @@ def register_blueprints(app: Flask) -> None:
     from .enterprise import enterprise_bp
     from .subscription_webhooks import subscription_webhooks_bp
     from .subscriptions import subscriptions_bp
+    from .admin_subscriptions import admin_subscriptions_bp
     from .dm_chats import dm_chats_bp
     from .steve_feedback import steve_feedback_bp
 
@@ -40,6 +41,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(enterprise_bp)
     app.register_blueprint(subscription_webhooks_bp)
     app.register_blueprint(subscriptions_bp)
+    app.register_blueprint(admin_subscriptions_bp)
     app.register_blueprint(dm_chats_bp)
     app.register_blueprint(steve_feedback_bp)
 
@@ -50,11 +52,13 @@ def register_blueprints(app: Flask) -> None:
     try:
         from backend.services import community_billing as _cb
         _cb.ensure_tables()
+        from backend.services import user_billing as _ub
+        _ub.ensure_tables()
     except Exception:
         # Never let schema-bootstrap crash app startup — log and move on.
         import logging
         logging.getLogger(__name__).exception(
-            "community_billing.ensure_tables failed during blueprint registration"
+            "billing ensure_tables failed during blueprint registration"
         )
 
     try:

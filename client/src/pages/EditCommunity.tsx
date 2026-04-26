@@ -19,6 +19,11 @@ interface CommunityBilling {
   member_cap: number | null
   subscription_status: string | null
   current_period_end: string | null
+  cancel_at_period_end: boolean
+  canceled_at: string | null
+  is_canceling: boolean
+  days_remaining: number | null
+  benefits_end_at: string | null
   has_stripe_customer: boolean
   stripe_mode: 'test' | 'live'
 }
@@ -156,6 +161,13 @@ export default function EditCommunity(){
               : Number(j.member_cap),
             subscription_status: j.subscription_status || null,
             current_period_end: j.current_period_end || null,
+            cancel_at_period_end: !!j.cancel_at_period_end,
+            canceled_at: j.canceled_at || null,
+            is_canceling: !!j.is_canceling,
+            days_remaining: j.days_remaining === null || j.days_remaining === undefined
+              ? null
+              : Number(j.days_remaining),
+            benefits_end_at: j.benefits_end_at || null,
             has_stripe_customer: !!j.has_stripe_customer,
             stripe_mode: j.stripe_mode === 'live' ? 'live' : 'test',
           })
@@ -259,6 +271,116 @@ export default function EditCommunity(){
     }
   }
 
+  const renderBillingCard = () => {
+    if (!isOwner || !billing) return null
+
+    if (billing.is_inherited) {
+      return (
+        <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+          <div className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
+            Billing
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1 text-[11px] font-medium text-cpoint-turquoise">
+              {billing.tier_label || TIER_LABEL[billing.tier] || billing.tier}
+            </span>
+            <span className="text-xs text-white/60">
+              {billing.inherited_from_root_name
+                ? <>inherited from <span className="text-white/80">{billing.inherited_from_root_name}</span></>
+                : 'inherited from parent community'}
+            </span>
+          </div>
+        </div>
+      )
+    }
+
+    const hasPaidTier = billing.tier !== 'free' && billing.tier !== ''
+    const actionLabel = billing.has_stripe_customer
+      ? billing.is_canceling
+        ? 'Renew subscription'
+        : 'Change tier in Stripe'
+      : 'Choose paid tier'
+    const action = billing.has_stripe_customer
+      ? handleOpenPortal
+      : () => navigate(`/subscription_plans?community_id=${community_id}#community-tier`)
+
+    return (
+      <div className="rounded-xl border border-white/10 bg-white/5 p-5 space-y-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
+              Billing
+            </div>
+            <div className="mt-2 text-sm font-medium text-white">
+              Community plan
+            </div>
+            {billing.is_canceling && billing.days_remaining !== null && (
+              <div className="mt-1 text-xs font-medium text-amber-200">
+                Cancels in {billing.days_remaining} {billing.days_remaining === 1 ? 'day' : 'days'}
+              </div>
+            )}
+            {billing.current_period_end && (
+              <div className="mt-1 text-xs text-white/40">
+                {billing.is_canceling ? 'Benefits active until' : 'Next renewal'}: {billing.current_period_end}
+              </div>
+            )}
+            {billing.subscription_status && billing.subscription_status !== 'active' && (
+              <div className="mt-1 text-xs text-amber-300/80">
+                Status: {billing.subscription_status}
+              </div>
+            )}
+          </div>
+          <span className="inline-flex items-center rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1 text-[11px] font-medium text-cpoint-turquoise">
+            {billing.tier_label || TIER_LABEL[billing.tier] || billing.tier}
+          </span>
+        </div>
+
+        {billing.member_cap !== null && billing.member_cap > 0 && (
+          <div className="space-y-1.5">
+            <div className="flex items-baseline justify-between text-xs text-white/60">
+              <span>Members</span>
+              <span>
+                {billing.member_count} / {billing.member_cap}
+              </span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full bg-cpoint-turquoise"
+                style={{
+                  width: `${Math.min(
+                    100,
+                    (billing.member_count / billing.member_cap) * 100,
+                  )}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {portalError && (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
+            {portalError}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={action}
+          disabled={billing.has_stripe_customer && portalLoading}
+          className="inline-flex w-full items-center justify-center rounded-full bg-cpoint-turquoise px-5 py-2.5 text-xs font-semibold text-black hover:bg-cpoint-turquoise/90 transition disabled:opacity-50"
+        >
+          {billing.has_stripe_customer && portalLoading ? 'Opening portal…' : actionLabel}
+        </button>
+
+        {hasPaidTier && !billing.has_stripe_customer && (
+          <div className="text-xs text-white/40">
+            This tier has no Stripe customer attached yet. Use checkout to reconnect billing.
+          </div>
+        )}
+      </div>
+    )
+  }
+
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error) return <div className="p-4 text-red-400">{error}</div>
   if (!allowed) return <div className="p-4 text-[#9fb0b5]">No access.</div>
@@ -284,6 +406,7 @@ export default function EditCommunity(){
             <label className="block text-sm text-[#9fb0b5] mb-1">Community name</label>
             <input className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none" value={name} onChange={e=> setName(e.target.value)} required />
           </div>
+          {renderBillingCard()}
           <div>
             <label className="block text-sm text-[#9fb0b5] mb-1">Network Type <span className="text-[#4db6ac] text-xs">(Parent owners &amp; @Admin only)</span></label>
             <select 
@@ -366,106 +489,6 @@ export default function EditCommunity(){
               </div>
             )}
           </div>
-
-          {/* Billing — visible to any community owner. The full panel
-              (status, renewal, portal CTA) only renders for the root
-              community's owner; sub-community owners see a small
-              read-only "inherited from <root>" badge so they know what
-              plan their group benefits from without being able to
-              mutate Stripe state from here. */}
-          {isOwner && billing && billing.is_inherited && (
-            <div className="rounded-xl border border-white/10 bg-white/5 p-5">
-              <div className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
-                Billing
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1 text-[11px] font-medium text-cpoint-turquoise">
-                  {billing.tier_label || TIER_LABEL[billing.tier] || billing.tier}
-                </span>
-                <span className="text-xs text-white/60">
-                  {billing.inherited_from_root_name
-                    ? <>inherited from <span className="text-white/80">{billing.inherited_from_root_name}</span></>
-                    : 'inherited from parent community'}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {isOwner && billing && !billing.is_inherited && (
-            <div className="rounded-xl border border-white/10 bg-white/5 p-5 space-y-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
-                    Billing
-                  </div>
-                  <div className="mt-2 text-sm font-medium text-white">
-                    Community plan
-                  </div>
-                  {billing.current_period_end && (
-                    <div className="mt-1 text-xs text-white/40">
-                      Next renewal: {billing.current_period_end}
-                    </div>
-                  )}
-                  {billing.subscription_status && billing.subscription_status !== 'active' && (
-                    <div className="mt-1 text-xs text-amber-300/80">
-                      Status: {billing.subscription_status}
-                    </div>
-                  )}
-                </div>
-                <span className="inline-flex items-center rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1 text-[11px] font-medium text-cpoint-turquoise">
-                  {billing.tier_label || TIER_LABEL[billing.tier] || billing.tier}
-                </span>
-              </div>
-
-              {billing.member_cap !== null && billing.member_cap > 0 && (
-                <div className="space-y-1.5">
-                  <div className="flex items-baseline justify-between text-xs text-white/60">
-                    <span>Members</span>
-                    <span>
-                      {billing.member_count} / {billing.member_cap}
-                    </span>
-                  </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                    <div
-                      className="h-full bg-cpoint-turquoise"
-                      style={{
-                        width: `${Math.min(
-                          100,
-                          (billing.member_count / billing.member_cap) * 100,
-                        )}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {portalError && (
-                <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
-                  {portalError}
-                </div>
-              )}
-
-              <div className="flex flex-col gap-2">
-                <button
-                  type="button"
-                  onClick={() => navigate(`/subscription_plans?community_id=${community_id}#community-tier`)}
-                  className="inline-flex w-full items-center justify-center rounded-full bg-cpoint-turquoise px-5 py-2.5 text-xs font-semibold text-black hover:bg-cpoint-turquoise/90 transition"
-                >
-                  Upgrade / change tier
-                </button>
-                {billing.has_stripe_customer && (
-                  <button
-                    type="button"
-                    onClick={handleOpenPortal}
-                    disabled={portalLoading}
-                    className="inline-flex w-full items-center justify-center rounded-full border border-white/20 px-5 py-2.5 text-xs font-semibold text-white hover:bg-white/5 transition disabled:opacity-50"
-                  >
-                    {portalLoading ? 'Opening portal…' : 'Open billing portal'}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
 
           <div>
             <label className="block text-sm text-[#9fb0b5] mb-1">Community image</label>

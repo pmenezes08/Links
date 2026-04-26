@@ -196,6 +196,24 @@ export default function SubscriptionPlans() {
         })
         const data = await res.json()
         if (!res.ok || !data?.success) {
+          const communityId = Number(data?.community_id || body.community_id || 0)
+          if (data?.reason === 'already_subscribed' && communityId > 0) {
+            const portalRes = await fetch(`/api/me/billing/portal?community_id=${communityId}`, {
+              method: 'POST',
+              credentials: 'include',
+              headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+              },
+              body: JSON.stringify({ return_path: `/community/${communityId}/edit` }),
+            })
+            const portalData = await portalRes.json()
+            if (portalRes.ok && portalData?.success && portalData?.url) {
+              window.location.assign(portalData.url)
+              return
+            }
+            throw new Error(portalData?.error || 'Unable to open billing portal')
+          }
           throw new Error(data?.error || 'Unable to start checkout')
         }
         if (data.url) {

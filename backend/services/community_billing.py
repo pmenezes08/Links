@@ -20,7 +20,7 @@ has a single owner.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from backend.services.community import _normalize_tier
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 def ensure_tables() -> None:
-    """Add the four billing columns to ``communities`` if missing.
+    """Add community billing columns to ``communities`` if missing.
 
     Each ALTER is wrapped in try/except so repeat runs are no-ops on
     MySQL (which lacks ``ADD COLUMN IF NOT EXISTS`` on 5.7) and silently
@@ -47,6 +47,8 @@ def ensure_tables() -> None:
             ("stripe_customer_id", "VARCHAR(64) NULL"),
             ("subscription_status", "VARCHAR(32) NULL"),
             ("current_period_end", "DATETIME NULL"),
+            ("cancel_at_period_end", "TINYINT(1) NOT NULL DEFAULT 0"),
+            ("canceled_at", "DATETIME NULL"),
         ):
             try:
                 c.execute(f"ALTER TABLE communities ADD COLUMN {column} {col_def}")
@@ -77,7 +79,8 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
             c.execute(
                 f"""
                 SELECT tier, stripe_subscription_id, stripe_customer_id,
-                       subscription_status, current_period_end
+                       subscription_status, current_period_end,
+                       cancel_at_period_end, canceled_at
                 FROM communities WHERE id = {ph}
                 """,
                 (community_id,),
@@ -98,6 +101,11 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
                 "stripe_customer_id": None,
                 "subscription_status": None,
                 "current_period_end": None,
+                "cancel_at_period_end": False,
+                "canceled_at": None,
+                "is_canceling": False,
+                "days_remaining": None,
+                "benefits_end_at": None,
             }
         row = c.fetchone()
     if not row:
@@ -108,13 +116,22 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
             return row[key]
         return row[idx]
 
+    current_period_end = _g("current_period_end", 4)
+    current_period_end_str = str(current_period_end) if current_period_end else None
+    cancel_at_period_end = bool(_g("cancel_at_period_end", 5))
+    canceled_at = _g("canceled_at", 6)
+    days_remaining = _days_until(current_period_end)
     return {
         "tier": _normalize_tier(_g("tier", 0)),
         "stripe_subscription_id": _g("stripe_subscription_id", 1),
         "stripe_customer_id": _g("stripe_customer_id", 2),
         "subscription_status": _g("subscription_status", 3),
-        "current_period_end": str(_g("current_period_end", 4))
-        if _g("current_period_end", 4) else None,
+        "current_period_end": current_period_end_str,
+        "cancel_at_period_end": cancel_at_period_end,
+        "canceled_at": str(canceled_at) if canceled_at else None,
+        "is_canceling": cancel_at_period_end,
+        "days_remaining": days_remaining,
+        "benefits_end_at": current_period_end_str if cancel_at_period_end else None,
     }
 
 
@@ -145,6 +162,40 @@ def _coerce_period_end(value: Any) -> Optional[str]:
         return None
 
 
+def _days_until(value: Any) -> Optional[int]:
+    when = _parse_datetime(value)
+    if not when:
+        return None
+    delta = when - datetime.now(timezone.utc).replace(tzinfo=None)
+    if delta.total_seconds() <= 0:
+        return 0
+    return max(1, int((delta.total_seconds() + 86399) // 86400))
+
+
+def _parse_datetime(value: Any) -> Optional[datetime]:
+    if value in (None, "", 0):
+        return None
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None)
+    try:
+        return datetime.utcfromtimestamp(int(value))
+    except Exception:
+        pass
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+    except Exception:
+        pass
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt)
+        except Exception:
+            continue
+    return None
+
+
 def mark_subscription(
     community_id: int,
     *,
@@ -153,6 +204,8 @@ def mark_subscription(
     customer_id: Optional[str] = None,
     status: Optional[str] = None,
     current_period_end: Any = None,
+    cancel_at_period_end: Optional[bool] = None,
+    canceled_at: Any = None,
 ) -> bool:
     """Write a community's Stripe state.
 
@@ -186,6 +239,12 @@ def mark_subscription(
     if current_period_end is not None:
         sets.append(f"current_period_end = {ph}")
         params.append(_coerce_period_end(current_period_end))
+    if cancel_at_period_end is not None:
+        sets.append(f"cancel_at_period_end = {ph}")
+        params.append(1 if cancel_at_period_end else 0)
+    if canceled_at is not None:
+        sets.append(f"canceled_at = {ph}")
+        params.append(_coerce_period_end(canceled_at))
 
     if not sets:
         return True  # nothing to change — treat as success

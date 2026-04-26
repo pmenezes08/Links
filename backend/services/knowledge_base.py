@@ -547,12 +547,12 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 # ``STRIPE_API_KEY`` mode (test vs live); the opposite mode's ID
                 # is never exposed through the public pricing endpoint.
                 {"name": "premium_stripe_price_id_test", "label": "Stripe price ID — monthly (test)", "type": "string", "value": "", "tbd": True,
-                 "help": "Paste the ``price_...`` ID from Stripe test mode here. "
-                         "Used for staging checkouts only.",
+                 "help": "Use the Stripe Price ID (``price_...``), not Product ID (``prod_...``). "
+                         "Paste the test-mode monthly Price ID here. Used for staging checkouts only.",
                  "group": "premium"},
                 {"name": "premium_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
-                 "help": "Paste the ``price_...`` ID from Stripe live mode here. "
-                         "Used for production checkouts only.",
+                 "help": "Use the Stripe Price ID (``price_...``), not Product ID (``prod_...``). "
+                         "Paste the live-mode monthly Price ID here. Used for production checkouts only.",
                  "group": "premium"},
 
                 # Enterprise-derived (Pro / effective tier)

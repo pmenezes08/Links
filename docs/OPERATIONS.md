@@ -234,6 +234,95 @@ separate trial-extension admin UI yet.
 
 ---
 
+## 4.1 Stripe subscriptions
+
+Stripe checkout uses the Knowledge Base as the source of truth for Price
+IDs. Add the Stripe **Price ID** (`price_...`), never the Product ID
+(`prod_...`), to these fields:
+
+- `user-tiers`: `premium_stripe_price_id_test` / `premium_stripe_price_id_live`.
+- `community-tiers`: `paid_l1_stripe_price_id_*`, `paid_l2_stripe_price_id_*`, `paid_l3_stripe_price_id_*`.
+- Future add-ons: `paid_steve_package_stripe_price_id_*` and `networking_page_stripe_price_id_*`.
+
+The app chooses `*_test` or `*_live` from the current `STRIPE_API_KEY`
+prefix. Admin-web → Subscriptions shows a diagnostics banner when any
+expected Price ID is missing.
+
+Webhook-owned billing state:
+
+- Personal Premium state is stored on `users` via
+  `backend/services/user_billing.py`.
+- Community tier state is stored on root `communities` via
+  `backend/services/community_billing.py`.
+- `cancel_at_period_end = 1` means benefits are still active until
+  `current_period_end`; do not downgrade entitlement until
+  `customer.subscription.deleted`.
+
+Upgrade and renewal policy:
+
+- New purchases use Stripe Checkout.
+- Existing active or cancelling community subscriptions use Stripe
+  Billing Portal. Do not start a second Checkout session for L1 → L2,
+  L2 → L3, or renewal after `cancel_at_period_end`.
+- Configure Stripe Customer Portal in the Stripe Dashboard so Community
+  L1/L2/L3 products and prices are available for plan changes.
+
+## 4.2 Paulo community ownership cleanup
+
+Paulo should not be the platform owner (`communities.creator_username`)
+for existing operational communities because it skews founder KB/test
+data. The owner should be `admin`, while Paulo remains a community
+admin/member where needed.
+
+Always run a Cloud SQL backup first because staging and prod share the
+same database:
+
+```powershell
+gcloud sql backups create `
+  --instance=cpoint-db `
+  --description="pre-paulo-ownership-transfer-$(Get-Date -Format yyyyMMdd-HHmm)"
+```
+
+Survey first:
+
+```powershell
+python scripts/survey_paulo_community_ownership.py
+```
+
+Dry-run execute:
+
+```powershell
+python scripts/execute_paulo_ownership_transfer.py --dry-run
+```
+
+Execute only after reviewing the survey and backup ID:
+
+```powershell
+python scripts/execute_paulo_ownership_transfer.py --yes-i-have-backup
+```
+
+Verification SQL:
+
+```sql
+SELECT COUNT(*) AS paulo_owned
+  FROM communities
+ WHERE LOWER(creator_username) = 'paulo';
+
+SELECT c.id, c.name, u.username, uc.role
+  FROM communities c
+  JOIN user_communities uc ON uc.community_id = c.id
+  JOIN users u ON u.id = uc.user_id
+ WHERE LOWER(c.creator_username) = 'admin'
+   AND LOWER(u.username) IN ('paulo', 'admin')
+ ORDER BY c.id, u.username;
+```
+
+The scripts leave Stripe customer/subscription IDs unchanged. That is
+intentional: platform ownership and paying Stripe customer are separate
+fields.
+
+---
+
 ## 5. Running manual QA + the automated harness
 
 See `docs/QA_CHECKLIST.md` for the 10-section manual run. In addition,

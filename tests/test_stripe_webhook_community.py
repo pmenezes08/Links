@@ -24,7 +24,7 @@ import pytest
 from flask import Flask
 
 from backend.blueprints.subscription_webhooks import subscription_webhooks_bp
-from backend.services import community_billing, subscription_audit
+from backend.services import community_billing, subscription_audit, user_billing
 from backend.services.database import get_db_connection, get_sql_placeholder
 
 from tests.fixtures import make_community, make_user
@@ -46,6 +46,7 @@ def client(mysql_dsn, monkeypatch):
     """
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test_dummy")
     community_billing.ensure_tables()
+    user_billing.ensure_tables()
     subscription_audit.ensure_tables()
 
     app = Flask(__name__)
@@ -238,6 +239,39 @@ class TestCommunityPaymentFailed:
         assert state["subscription_status"] == "past_due"
 
         assert _audit_count_for("community_tier_past_due", community_id=cid) == 1
+
+
+class TestCommunitySubscriptionUpdated:
+    def test_cancel_at_period_end_keeps_active_with_days_remaining(self, client, monkeypatch):
+        make_user("cancel_later_owner", subscription="free")
+        cid = make_community("c-cancel-later", tier="paid_l1", creator_username="cancel_later_owner")
+        community_billing.mark_subscription(
+            cid,
+            tier_code="paid_l1",
+            subscription_id="sub_cancel_later",
+            customer_id="cus_cancel_later",
+            status="active",
+        )
+        event = {
+            "type": "customer.subscription.updated",
+            "data": {"object": {
+                "id": "sub_cancel_later",
+                "customer": "cus_cancel_later",
+                "status": "active",
+                "cancel_at_period_end": True,
+                "current_period_end": 1893456000,
+                "metadata": {"sku": "community_tier"},
+            }},
+        }
+        _install_event(monkeypatch, event)
+
+        _post_event(client)
+        state = community_billing.get_billing_state(cid) or {}
+        assert state["subscription_status"] == "active"
+        assert state["cancel_at_period_end"] is True
+        assert state["is_canceling"] is True
+        assert state["benefits_end_at"] is not None
+        assert state["days_remaining"] is not None
 
 
 # ── 2. Personal Premium path is unchanged ───────────────────────────────

@@ -31,7 +31,12 @@ from typing import Any, Dict, Optional
 
 from flask import Blueprint, jsonify, request
 
-from backend.services import community_billing, enterprise_iap_nag, subscription_audit
+from backend.services import (
+    community_billing,
+    enterprise_iap_nag,
+    subscription_audit,
+    user_billing,
+)
 from backend.services.database import get_db_connection, get_sql_placeholder
 
 
@@ -88,18 +93,41 @@ def stripe_webhook():
 
 def _handle_premium_event(event_type: str, obj: Dict[str, Any], username: Optional[str]) -> None:
     """Personal Premium flow — the pre-existing Step D behavior."""
+    subscription_id = obj.get("subscription") if event_type == "checkout.session.completed" else obj.get("id")
+    customer_id = obj.get("customer")
+    if not username and subscription_id:
+        username = user_billing.find_by_subscription_id(str(subscription_id))
     if event_type == "checkout.session.completed":
-        _mark_subscription(username, "premium", provider="stripe")
+        if username:
+            user_billing.mark_subscription(
+                username,
+                subscription="premium",
+                subscription_id=str(subscription_id or ""),
+                customer_id=str(customer_id or ""),
+                status="active",
+                provider="stripe",
+            )
         subscription_audit.log(
             username=username or "",
             action="personal_premium_purchased",
             source="stripe",
             metadata={"event_type": event_type,
-                      "subscription_id": obj.get("subscription"),
-                      "customer": obj.get("customer")},
+                      "subscription_id": subscription_id,
+                      "customer": customer_id},
         )
     elif event_type == "customer.subscription.deleted":
-        _mark_subscription(username, "free", provider="stripe")
+        if username:
+            user_billing.mark_subscription(
+                username,
+                subscription="free",
+                subscription_id=str(subscription_id or ""),
+                customer_id=str(customer_id or ""),
+                status="cancelled",
+                current_period_end=obj.get("current_period_end"),
+                cancel_at_period_end=False,
+                canceled_at=obj.get("canceled_at") or obj.get("ended_at"),
+                provider="stripe",
+            )
         subscription_audit.log(
             username=username or "",
             action="personal_premium_cancelled",
@@ -116,6 +144,18 @@ def _handle_premium_event(event_type: str, obj: Dict[str, Any], username: Option
     elif event_type == "customer.subscription.updated":
         cancel_at_period_end = bool(obj.get("cancel_at_period_end"))
         status = obj.get("status")
+        if username:
+            user_billing.mark_subscription(
+                username,
+                subscription="premium",
+                subscription_id=str(subscription_id or ""),
+                customer_id=str(customer_id or ""),
+                status=status,
+                current_period_end=obj.get("current_period_end"),
+                cancel_at_period_end=cancel_at_period_end,
+                canceled_at=obj.get("canceled_at"),
+                provider="stripe",
+            )
         action = "personal_premium_renewed"
         if cancel_at_period_end:
             action = "personal_premium_paused_for_enterprise"
@@ -131,6 +171,12 @@ def _handle_premium_event(event_type: str, obj: Dict[str, Any], username: Option
                       "cancel_at_period_end": cancel_at_period_end},
         )
     elif event_type == "invoice.payment_failed":
+        if username:
+            user_billing.mark_subscription(
+                username,
+                status="past_due",
+                provider="stripe",
+            )
         subscription_audit.log(
             username=username or "",
             action="personal_premium_cancelled",
@@ -182,6 +228,7 @@ def _handle_community_tier_event(
             subscription_id=subscription_id,
             customer_id=customer_id,
             status="active",
+            cancel_at_period_end=False,
         )
         subscription_audit.log(
             username=username or "",
@@ -197,6 +244,9 @@ def _handle_community_tier_event(
         community_billing.mark_subscription(
             community_id,
             status="cancelled",
+            current_period_end=obj.get("current_period_end"),
+            cancel_at_period_end=False,
+            canceled_at=obj.get("canceled_at") or obj.get("ended_at"),
         )
         subscription_audit.log(
             username=username or "",
@@ -213,7 +263,11 @@ def _handle_community_tier_event(
         community_billing.mark_subscription(
             community_id,
             status=status,
+            subscription_id=subscription_id,
+            customer_id=customer_id,
             current_period_end=obj.get("current_period_end"),
+            cancel_at_period_end=cancel_at_period_end,
+            canceled_at=obj.get("canceled_at"),
         )
         subscription_audit.log(
             username=username or "",

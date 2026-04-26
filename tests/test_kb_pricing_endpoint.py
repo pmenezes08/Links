@@ -242,6 +242,7 @@ class TestGracefulFallback:
 
     def test_unseeded_kb_returns_coming_soon_cards(self, client, monkeypatch):
         _set_stripe_mode(monkeypatch, "test")
+        monkeypatch.setenv("STRIPE_PRICE_PREMIUM_MONTHLY", "price_legacy_env_should_not_leak")
         make_user("empty_kb_user", subscription="free")
         # No seed call — KB is empty.
         _login(client, "empty_kb_user")

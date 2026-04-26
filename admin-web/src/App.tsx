@@ -18,6 +18,7 @@ import UserProfiles from './pages/UserProfiles'
 import KnowledgeBase from './pages/KnowledgeBase'
 import Calculator from './pages/Calculator'
 import Enterprise from './pages/Enterprise'
+import Subscriptions from './pages/Subscriptions'
 
 export default function App() {
   return (
@@ -40,6 +41,7 @@ export default function App() {
         <Route path="kb" element={<KnowledgeBase />} />
         <Route path="calculator" element={<Calculator />} />
         <Route path="enterprise" element={<Enterprise />} />
+        <Route path="subscriptions" element={<Subscriptions />} />
       </Route>
     </Routes>
   )

@@ -101,7 +101,9 @@ def communities_list():
 
 
 def _row_value(row: Any, key: str, index: int) -> Any:
-    if hasattr(row, "keys"):
+    if hasattr(row, "keys") and key in row.keys():
+        return row[key]
+    if isinstance(row, dict):
         return row.get(key)
     if isinstance(row, (list, tuple)) and len(row) > index:
         return row[index]
@@ -256,6 +258,177 @@ def admin_delete_community():
         enforce_descendant_ownership=False,
     )
     return jsonify(payload), status
+
+
+@communities_bp.route("/api/user_communities_hierarchical", methods=["GET"])
+@_login_required
+def user_communities_hierarchical():
+    """Return the signed-in user's communities as a parent/child tree."""
+    username = session.get("username", "")
+    try:
+        payload = _load_user_communities_hierarchy(str(username))
+        return jsonify(payload)
+    except Exception as exc:
+        logger.exception("user_communities_hierarchical failed for %s", username)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+def _load_user_communities_hierarchy(username: str) -> Dict[str, Any]:
+    ph = get_sql_placeholder()
+    is_app_admin_user = community_svc.is_app_admin(username)
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        if is_app_admin_user:
+            c.execute(
+                """
+                SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id,
+                       c.creator_username, pc.name AS parent_name, NULL AS role
+                FROM communities c
+                LEFT JOIN communities pc ON c.parent_community_id = pc.id
+                ORDER BY CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
+                         COALESCE(pc.name, c.name), c.name
+                """
+            )
+            communities = c.fetchall() or []
+        else:
+            c.execute(
+                f"""
+                SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id,
+                       c.creator_username, pc.name AS parent_name, uc.role
+                FROM communities c
+                LEFT JOIN users u ON LOWER(u.username) = LOWER({ph})
+                LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.user_id = u.id
+                LEFT JOIN communities pc ON c.parent_community_id = pc.id
+                WHERE uc.user_id IS NOT NULL
+                   OR LOWER(c.creator_username) = LOWER({ph})
+                ORDER BY CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
+                         COALESCE(pc.name, c.name), c.name
+                """,
+                (username, username),
+            )
+            direct_rows = c.fetchall() or []
+            accessible_ids = {_row_value(row, "id", 0) for row in direct_rows}
+            admin_ids = [
+                _row_value(row, "id", 0)
+                for row in direct_rows
+                if _can_see_descendants(username, row)
+            ]
+            if admin_ids:
+                c.execute("SELECT id, parent_community_id FROM communities")
+                all_rows = c.fetchall() or []
+                children_by_parent: Dict[int, List[int]] = {}
+                for row in all_rows:
+                    cid = _row_value(row, "id", 0)
+                    parent_id = _row_value(row, "parent_community_id", 1)
+                    if cid is not None and parent_id is not None:
+                        children_by_parent.setdefault(int(parent_id), []).append(int(cid))
+                for root_id in admin_ids:
+                    _collect_descendants(int(root_id), children_by_parent, accessible_ids)
+
+            if not accessible_ids:
+                return {
+                    "success": True,
+                    "username": username,
+                    "is_app_admin": is_app_admin_user,
+                    "communities": [],
+                }
+
+            ids = sorted(int(x) for x in accessible_ids if x is not None)
+            placeholders = ",".join([ph] * len(ids))
+            c.execute(
+                f"""
+                SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id,
+                       c.creator_username, pc.name AS parent_name, uc.role
+                FROM communities c
+                LEFT JOIN communities pc ON c.parent_community_id = pc.id
+                LEFT JOIN users current_u ON LOWER(current_u.username) = LOWER({ph})
+                LEFT JOIN user_communities uc
+                  ON uc.community_id = c.id AND uc.user_id = current_u.id
+                WHERE c.id IN ({placeholders})
+                ORDER BY CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
+                         COALESCE(pc.name, c.name), c.name
+                """,
+                tuple([username] + ids),
+            )
+            communities = c.fetchall() or []
+
+        result = _build_community_tree(c, communities)
+
+    return {
+        "success": True,
+        "username": username,
+        "is_app_admin": is_app_admin_user,
+        "communities": result,
+    }
+
+
+def _can_see_descendants(username: str, row: Any) -> bool:
+    creator = str(_row_value(row, "creator_username", 4) or "").strip().lower()
+    role = str(_row_value(row, "role", 6) or "").strip().lower()
+    return username.strip().lower() == creator or role in {"admin", "owner"}
+
+
+def _collect_descendants(root_id: int, children_by_parent: Dict[int, List[int]], out: set) -> None:
+    for child_id in children_by_parent.get(root_id, []):
+        if child_id in out:
+            continue
+        out.add(child_id)
+        _collect_descendants(child_id, children_by_parent, out)
+
+
+def _build_community_tree(cursor: Any, rows: List[Any]) -> List[Dict[str, Any]]:
+    all_by_id: Dict[int, Dict[str, Any]] = {}
+    for row in rows:
+        cid = int(_row_value(row, "id", 0))
+        all_by_id[cid] = {
+            "id": cid,
+            "name": _row_value(row, "name", 1),
+            "type": _row_value(row, "type", 2),
+            "parent_community_id": _row_value(row, "parent_community_id", 3),
+            "creator_username": _row_value(row, "creator_username", 4),
+            "role": _row_value(row, "role", 6),
+            "children": [],
+        }
+
+    already_child = set()
+    roots: Dict[int, Dict[str, Any]] = {}
+    for cid, data in list(all_by_id.items()):
+        parent_id = data.get("parent_community_id")
+        if parent_id and int(parent_id) in all_by_id:
+            parent = all_by_id[int(parent_id)]
+            if cid not in already_child:
+                parent["children"].append(data)
+                already_child.add(cid)
+        elif parent_id:
+            parent = _placeholder_parent(cursor, int(parent_id))
+            if parent:
+                parent["children"].append(data)
+                roots[parent["id"]] = parent
+                already_child.add(cid)
+        else:
+            roots[cid] = data
+
+    return list(roots.values())
+
+
+def _placeholder_parent(cursor: Any, parent_id: int) -> Optional[Dict[str, Any]]:
+    ph = get_sql_placeholder()
+    cursor.execute(
+        f"SELECT id, name, type, creator_username FROM communities WHERE id = {ph}",
+        (parent_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    return {
+        "id": int(_row_value(row, "id", 0)),
+        "name": _row_value(row, "name", 1),
+        "type": _row_value(row, "type", 2),
+        "creator_username": _row_value(row, "creator_username", 3),
+        "parent_community_id": None,
+        "children": [],
+        "is_parent_only": True,
+    }
 
 
 @communities_bp.route("/get_community_members", methods=["POST"])

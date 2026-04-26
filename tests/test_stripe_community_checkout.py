@@ -210,7 +210,10 @@ class TestAlreadySubscribed:
                                  "community_id": cid,
                                  "tier_code": "paid_l2"})
         assert resp.status_code == 409
-        assert resp.get_json()["reason"] == "already_subscribed"
+        body = resp.get_json()
+        assert body["reason"] == "already_subscribed"
+        assert body["portal_required"] is True
+        assert body["community_id"] == cid
 
     def test_cancelled_sub_does_not_block(self, client):
         """Cancelled/past-due owners re-enter Checkout to restore service."""

@@ -22,7 +22,7 @@ from urllib.parse import urljoin
 
 from flask import Blueprint, jsonify, request, session
 
-from backend.services import ai_usage
+from backend.services import ai_usage, user_billing
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.entitlements import resolve_entitlements
 from backend.services.feature_flags import entitlements_enforcement_enabled
@@ -395,15 +395,20 @@ def me_billing_portal():
                 "reason": "no_customer",
             }), 404
     else:
-        user = _load_user_row(username) or {}
-        email = user.get("email") or ""
-        if not email:
-            return jsonify({"success": False, "error": "No email on file"}), 400
+        billing_state = user_billing.get_billing_state(username) or {}
+        customer_id = billing_state.get("stripe_customer_id") or None
+        if customer_id:
+            pass
+        else:
+            user = _load_user_row(username) or {}
+            email = user.get("email") or ""
+            if not email:
+                return jsonify({"success": False, "error": "No email on file"}), 400
 
-        subscription = _find_stripe_subscription(stripe_mod, email)
-        customer_id = (subscription or {}).get("customer_id")
-        if not customer_id:
-            return jsonify({"success": False, "error": "No Stripe customer found"}), 404
+            subscription = _find_stripe_subscription(stripe_mod, email)
+            customer_id = (subscription or {}).get("customer_id")
+            if not customer_id:
+                return jsonify({"success": False, "error": "No Stripe customer found"}), 404
 
     return_path = str(body.get("return_path") or "/account_settings").strip() or "/account_settings"
     # Scope to our own host to prevent open-redirect via return_url.

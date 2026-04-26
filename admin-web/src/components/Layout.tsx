@@ -16,6 +16,7 @@ const navItems = [
   { to: '/kb', icon: 'fa-book', label: 'Knowledge Base' },
   { to: '/calculator', icon: 'fa-calculator', label: 'Calculator' },
   { to: '/enterprise', icon: 'fa-building-columns', label: 'Enterprise' },
+  { to: '/subscriptions', icon: 'fa-credit-card', label: 'Subscriptions' },
   { to: '/settings', icon: 'fa-gear', label: 'Settings' },
   { to: '/tenants', icon: 'fa-building', label: 'Tenants' },
 ]
