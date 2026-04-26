@@ -50,6 +50,10 @@ ACTIONS = {
     "community_admin_tier_upgraded",
     "community_admin_tier_downgraded",
     "community_admin_stripe_cancelled",
+    # System auto-actions (webhook + lifecycle hooks)
+    "community_auto_frozen_subscription_expired",
+    "community_auto_unfrozen_member_removed",
+    "community_auto_unfrozen_subscription_active",
     # Enterprise seats
     "enterprise_seat_joined",
     "enterprise_seat_left",

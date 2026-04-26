@@ -9,6 +9,7 @@ import { SortableContext, horizontalListSortingStrategy, useSortable, arrayMove 
 import { CSS } from '@dnd-kit/utilities'
 import Avatar from '../components/Avatar'
 import ContentGenerationModal from '../components/ContentGenerationModal'
+import FrozenCommunityModal from '../components/FrozenCommunityModal'
 import MentionTextarea from '../components/MentionTextarea'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import ImageLoader from '../components/ImageLoader'
@@ -322,6 +323,27 @@ export default function CommunityFeed() {
   const [unreadMsgs, setUnreadMsgs] = useState(0)
   const [unreadNotifs, setUnreadNotifs] = useState(0)
 
+  // Auto-freeze owner modal state. The community feed payload exposes
+  // ``community.is_frozen`` + ``community.frozen_reason``, but the modal
+  // additionally needs the member count and the Free-tier cap so the
+  // owner can see how many members they need to remove. Those live on
+  // the billing endpoint, fetched on demand below.
+  const [frozenBilling, setFrozenBilling] = useState<{
+    member_count: number
+    free_member_cap: number
+    frozen_at: string | null
+  } | null>(null)
+  const isFrozenForSubscription = Boolean(
+    data?.community?.is_frozen &&
+    String(data?.community?.frozen_reason || '').toLowerCase() === 'subscription_expired',
+  )
+  const isCommunityOwner = Boolean(
+    data?.community?.creator_username &&
+    currentUsername &&
+    String(data.community.creator_username).toLowerCase() === String(currentUsername).toLowerCase(),
+  )
+  const showFrozenOwnerModal = isFrozenForSubscription && isCommunityOwner
+
   useEffect(() => {
     if (!community_id) return
     fetch(`/api/community/mute_status?community_id=${community_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
@@ -329,6 +351,35 @@ export default function CommunityFeed() {
       .then(d => { if (d?.success) setCommunityMuted(d.muted) })
       .catch(() => {})
   }, [community_id])
+
+  // Fetch billing snapshot when the community is frozen for the owner.
+  // The billing endpoint enforces ownership, so non-owners (which can't
+  // see the modal anyway) just won't trigger this network call.
+  useEffect(() => {
+    if (!community_id) return
+    if (!showFrozenOwnerModal) {
+      setFrozenBilling(null)
+      return
+    }
+    let cancelled = false
+    fetch(`/api/communities/${community_id}/billing`, {
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+      .then(r => r.json().catch(() => null))
+      .then(json => {
+        if (cancelled || !json?.success) return
+        setFrozenBilling({
+          member_count: Number(json.member_count || 0),
+          free_member_cap: Number(json.free_member_cap || 25),
+          frozen_at: json.frozen_at || null,
+        })
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [community_id, showFrozenOwnerModal])
 
   useEffect(() => {
     if (!community_id) return
@@ -2309,6 +2360,18 @@ export default function CommunityFeed() {
 
   return (
     <div className="min-h-screen bg-black text-white pb-safe">
+      {/* Subscription-expired auto-freeze owner modal. Non-owners are
+          blocked at the API layer by ``frozen_access_payload`` so they
+          never see this surface. */}
+      <FrozenCommunityModal
+        open={showFrozenOwnerModal}
+        communityId={Number(community_id) || 0}
+        communityName={String(data?.community?.name || '')}
+        memberCount={Number(frozenBilling?.member_count || 0)}
+        freeMemberCap={Number(frozenBilling?.free_member_cap || 25)}
+        frozenAt={frozenBilling?.frozen_at || data?.community?.frozen_at || null}
+        onManageMembers={() => navigate(`/edit_community/${community_id}#members`)}
+      />
       {/* Fixed Header */}
       <div
         className="fixed left-0 right-0 top-0 z-[1000] border-b border-white/10"

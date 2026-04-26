@@ -64,6 +64,24 @@ _NOTIF_FROM_USER = "system-lifecycle"
 _ACTIVE_DELETE_STATUSES = {"active", "trialing", "past_due"}
 
 
+# ── Auto-freeze on subscription expiration ─────────────────────────────
+# When a paid community subscription ends (Stripe ``customer.subscription.deleted``),
+# we freeze the community if it has more members than the Free-tier cap.
+# The owner gets a notification and a modal on entry; non-owners are blocked
+# via ``frozen_access_payload``. The grace period is owned by Stripe's dunning
+# settings — see ``docs/OPERATIONS.md`` for the KB ↔ Stripe Dashboard contract.
+FROZEN_REASON_SUBSCRIPTION_EXPIRED = "subscription_expired"
+
+_SYSTEM_ACTOR = "system"
+_SUBSCRIPTION_FROZEN_NOTIF_TYPE = "community_subscription_frozen"
+_SUBSCRIPTION_FROZEN_FROM_USER = "system-billing"
+
+# Defaults if the KB is unreachable. Match the in-code defaults on the
+# ``community-tiers`` KB page so behavior is consistent in cold-start.
+_FREEZE_DEFAULT_FREE_MEMBER_CAP = 25
+_FREEZE_DEFAULT_GRACE_DAYS = 7
+
+
 class CommunityLifecycleActionError(Exception):
     """Expected community lifecycle action failure with API metadata."""
 
@@ -330,6 +348,285 @@ def frozen_access_payload(username: str, community: Dict[str, Any]) -> Optional[
         "error": "This community has been frozen, please contact the owner for more information.",
         "community_id": community_id,
     }
+
+
+# ── Auto-freeze helpers ────────────────────────────────────────────────
+
+
+def load_freeze_config_from_kb() -> Dict[str, Any]:
+    """Read the auto-freeze knobs from the ``community-tiers`` KB page.
+
+    Returns defaults on any KB error so a webhook never crashes on a
+    transient KB read failure. The kill switch
+    ``community_lifecycle_notifications_enabled`` defaults to True so
+    behavior continues if the field is absent.
+    """
+    defaults: Dict[str, Any] = {
+        "enabled": True,
+        "grace_days": _FREEZE_DEFAULT_GRACE_DAYS,
+        "free_member_cap": _FREEZE_DEFAULT_FREE_MEMBER_CAP,
+    }
+    try:
+        from backend.services.knowledge_base import get_page
+
+        page = get_page("community-tiers") or {}
+    except Exception:
+        logger.exception("load_freeze_config_from_kb: KB unavailable, using defaults")
+        return defaults
+
+    fields = {f.get("name"): f.get("value") for f in (page.get("fields") or [])}
+
+    def _as_int(name: str, fallback: int) -> int:
+        try:
+            value = int(fields.get(name))
+            return value if value >= 0 else fallback
+        except (TypeError, ValueError):
+            return fallback
+
+    enabled_raw = fields.get("community_lifecycle_notifications_enabled")
+    return {
+        "enabled": True if enabled_raw is None else bool(enabled_raw),
+        "grace_days": _as_int("nonpay_grace_days", defaults["grace_days"]),
+        "free_member_cap": _as_int(
+            "free_community_max_members", defaults["free_member_cap"]
+        ),
+    }
+
+
+def count_members(community_id: int) -> int:
+    """Return the number of users joined to this community.
+
+    Mirrors the helper in ``backend/blueprints/subscriptions.py`` so the
+    auto-freeze code path does not depend on an HTTP blueprint.
+    """
+    if not community_id:
+        return 0
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute(
+                f"SELECT COUNT(*) FROM user_communities WHERE community_id = {ph}",
+                (community_id,),
+            )
+            row = c.fetchone()
+        except Exception:
+            return 0
+    if not row:
+        return 0
+    if hasattr(row, "keys"):
+        return int(list(row.values())[0] or 0)
+    return int(row[0] or 0)
+
+
+def set_freeze_state_system(
+    community_id: int,
+    *,
+    frozen: bool,
+    reason: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Freeze or unfreeze a community without a permission check.
+
+    Used by webhooks and lifecycle hooks. Stamps ``frozen_by = 'system'``
+    so audit trails distinguish operator action from automated state.
+    """
+    if not community_id:
+        raise CommunityLifecycleActionError(
+            "community_id required", reason="missing_community_id"
+        )
+
+    ensure_tables()
+    ph = get_sql_placeholder()
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        if frozen:
+            c.execute(
+                f"""
+                UPDATE communities
+                SET is_frozen = 1, frozen_at = {ph}, frozen_by = {ph}, frozen_reason = {ph}
+                WHERE id = {ph}
+                """,
+                (now, _SYSTEM_ACTOR, reason or None, community_id),
+            )
+        else:
+            c.execute(
+                f"""
+                UPDATE communities
+                SET is_frozen = 0, frozen_at = NULL, frozen_by = NULL, frozen_reason = NULL
+                WHERE id = {ph}
+                """,
+                (community_id,),
+            )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+    return get_freeze_state(community_id)
+
+
+def freeze_for_subscription_expired(
+    *,
+    community_id: int,
+    member_count: int,
+    cap: int,
+) -> bool:
+    """Freeze a community whose paid subscription ended with too many members.
+
+    Idempotent: if the community is already frozen for the same reason we
+    skip the duplicate notification but return True so callers can log
+    that a freeze condition was met.
+    """
+    if not community_id:
+        return False
+
+    existing = get_freeze_state(community_id)
+    already_frozen_for_subscription = (
+        existing.get("is_frozen")
+        and existing.get("frozen_reason") == FROZEN_REASON_SUBSCRIPTION_EXPIRED
+    )
+    if already_frozen_for_subscription:
+        return True
+
+    set_freeze_state_system(
+        community_id,
+        frozen=True,
+        reason=FROZEN_REASON_SUBSCRIPTION_EXPIRED,
+    )
+    _notify_owner_subscription_freeze(
+        community_id=community_id,
+        member_count=member_count,
+        cap=cap,
+    )
+    return True
+
+
+def maybe_auto_unfreeze(community_id: int) -> bool:
+    """Unfreeze a subscription-frozen community when conditions improve.
+
+    Conditions:
+      * ``frozen_reason`` is ``subscription_expired``.
+      * Member count is now within the Free-tier cap from the KB.
+
+    Returns ``True`` if the community was unfrozen as a result of the call,
+    ``False`` otherwise. Safe to call from any path that reduces membership
+    or settles the subscription.
+    """
+    if not community_id:
+        return False
+
+    state = get_freeze_state(community_id)
+    if not state.get("is_frozen"):
+        return False
+    if state.get("frozen_reason") != FROZEN_REASON_SUBSCRIPTION_EXPIRED:
+        return False
+
+    config = load_freeze_config_from_kb()
+    if count_members(community_id) > int(config["free_member_cap"]):
+        return False
+
+    set_freeze_state_system(community_id, frozen=False)
+    return True
+
+
+def maybe_auto_unfreeze_on_subscription_active(community_id: int) -> bool:
+    """Unfreeze a subscription-frozen community when billing returns to active.
+
+    Used by ``customer.subscription.created`` and
+    ``customer.subscription.updated`` hooks. Only acts when the freeze was
+    caused by subscription expiration, so admin-initiated freezes survive.
+    """
+    if not community_id:
+        return False
+    state = get_freeze_state(community_id)
+    if not state.get("is_frozen"):
+        return False
+    if state.get("frozen_reason") != FROZEN_REASON_SUBSCRIPTION_EXPIRED:
+        return False
+    set_freeze_state_system(community_id, frozen=False)
+    return True
+
+
+def _notify_owner_subscription_freeze(
+    *,
+    community_id: int,
+    member_count: int,
+    cap: int,
+) -> None:
+    """In-app notification fanout for an auto-freeze."""
+    owner = _fetch_owner_username(community_id)
+    if not owner:
+        return
+    name = _fetch_community_name(community_id) or "your community"
+    message = (
+        f"\"{name}\" was suspended because the paid subscription ended and the "
+        f"community has {member_count} members, which exceeds the {cap}-member "
+        f"Free tier limit. Open the community to renew the subscription or "
+        f"remove members to restore access."
+    )
+    try:
+        from backend.services.notifications import (
+            create_notification,
+            truncate_notification_preview,
+        )
+
+        create_notification(
+            owner,
+            _SUBSCRIPTION_FROZEN_FROM_USER,
+            _SUBSCRIPTION_FROZEN_NOTIF_TYPE,
+            community_id=community_id,
+            message=message,
+            preview_text=truncate_notification_preview(message, 160),
+        )
+    except Exception:
+        logger.exception(
+            "_notify_owner_subscription_freeze: create_notification failed "
+            "(community=%s owner=%s)",
+            community_id,
+            owner,
+        )
+
+
+def _fetch_owner_username(community_id: int) -> Optional[str]:
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute(
+                f"SELECT creator_username FROM communities WHERE id = {ph}",
+                (community_id,),
+            )
+            row = c.fetchone()
+        except Exception:
+            return None
+    if not row:
+        return None
+    if hasattr(row, "keys"):
+        owner = row.get("creator_username")
+    else:
+        owner = row[0] if isinstance(row, (list, tuple)) and row else None
+    return str(owner) if owner else None
+
+
+def _fetch_community_name(community_id: int) -> Optional[str]:
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute(
+                f"SELECT name FROM communities WHERE id = {ph}",
+                (community_id,),
+            )
+            row = c.fetchone()
+        except Exception:
+            return None
+    if not row:
+        return None
+    if hasattr(row, "keys"):
+        name = row.get("name")
+    else:
+        name = row[0] if isinstance(row, (list, tuple)) and row else None
+    return str(name) if name else None
 
 
 def _row_value(row: Any, key: str, index: int) -> Any:

@@ -294,6 +294,68 @@ Stripe subscription identification:
   python scripts/backfill_stripe_subscription_descriptions.py --apply
   ```
 
+### 4.1.1 Community auto-freeze on subscription expiration
+
+When a paid community Stripe subscription terminates (the
+`customer.subscription.deleted` webhook fires *after* Stripe finishes
+its dunning retries), the C-Point app evaluates whether the community
+should auto-freeze:
+
+- If the community has `> free_community_max_members` members at the
+  moment of cancellation, the community is frozen with
+  `frozen_reason = 'subscription_expired'` and `frozen_by = 'system'`.
+- The owner gets an in-app notification
+  (`type = community_subscription_frozen`) and a non-dismissable
+  modal on the community feed offering two actions:
+  1. **Renew subscription** — links to `/subscription_plans` for the
+     community.
+  2. **Remove members** — links to the Manage Community members tab.
+- Non-owners are blocked from the community feed via
+  `frozen_access_payload` until the freeze is lifted.
+- Auto-unfreeze fires automatically when:
+  - A `customer.subscription.created` or `customer.subscription.updated`
+    webhook reports `status = active` and `cancel_at_period_end = false`.
+  - Members are removed (via `/leave_community`,
+    `/remove_community_member`, `delete_account`, or admin
+    `delete_user`) until the count fits the Free cap.
+- Admin-initiated freezes (`frozen_reason != 'subscription_expired'`)
+  are not affected by auto-unfreeze.
+
+KB knobs (page `community-tiers`):
+
+| Field name                                    | Purpose                                                                  | Default |
+|-----------------------------------------------|--------------------------------------------------------------------------|---------|
+| `free_community_max_members`                  | Free-tier member cap. Auto-freeze fires above this number.               | `25`    |
+| `community_lifecycle_notifications_enabled`   | Kill switch. `False` disables auto-freeze and the inactivity dispatcher. | `True`  |
+| `nonpay_grace_days`                           | **Contract** for the Stripe Dashboard dunning window — see below.        | `7`     |
+
+**Stripe Dashboard contract for `nonpay_grace_days`.** This field does
+not run a grace timer in the C-Point app. The auto-freeze is triggered
+by Stripe's `customer.subscription.deleted` event, which only fires
+after Stripe has exhausted its retry schedule. To make the value
+meaningful, configure Stripe Dashboard → Settings → Billing →
+Subscriptions and emails → "Manage failed payments" so the
+**total retry window** matches `nonpay_grace_days`. Update both test
+and live mode. If you change `nonpay_grace_days` in the KB, update the
+Stripe Dashboard at the same time so the contract holds.
+
+Operator playbook:
+
+- **Verify auto-freeze fires** in test mode by cancelling a Stripe
+  subscription on a community with > `free_community_max_members`
+  members. Watch the webhook logs for the `community_auto_frozen_*`
+  audit row.
+- **Disable temporarily** during incident triage by toggling
+  `community_lifecycle_notifications_enabled` to `False` on the KB
+  page. Existing freezes stay; new ones are skipped.
+- **Manual unfreeze** can be performed via the `/api/communities/<id>/freeze`
+  owner endpoint or the admin-web Communities page.
+- **Audit log**: every freeze/unfreeze writes a row to
+  `subscription_audit_log` with one of:
+  `community_auto_frozen_subscription_expired`,
+  `community_auto_unfrozen_member_removed`, or
+  `community_auto_unfrozen_subscription_active`.
+
 ## 4.2 Paulo community ownership cleanup
 
 Paulo should not be the platform owner (`communities.creator_username`)

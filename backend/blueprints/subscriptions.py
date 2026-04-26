@@ -38,6 +38,7 @@ from backend.services import community as community_svc
 from backend.services import (
     community_admin_notifications,
     community_billing,
+    community_lifecycle,
     community_subscription_changes,
     enterprise_membership,
     knowledge_base,
@@ -747,6 +748,24 @@ def api_community_billing(community_id: int):
     inherited = not is_root
     inherited_root_name = _fetch_community_name(root_id) if inherited else None
 
+    # Surface auto-freeze state so the EditCommunity panel and the
+    # owner's frozen-community modal can render without a second round
+    # trip. We expose these on the requested community (not just the
+    # root) so a sub-community owner sees the inherited freeze state.
+    freeze_state = community_lifecycle.get_freeze_state(community_id) or {}
+    is_frozen = bool(freeze_state.get("is_frozen"))
+    frozen_reason = freeze_state.get("frozen_reason")
+    frozen_at = freeze_state.get("frozen_at")
+    free_member_cap: Optional[int] = None
+    members_over_cap = False
+    try:
+        cfg = community_lifecycle.load_freeze_config_from_kb()
+        free_member_cap = int(cfg.get("free_member_cap") or 0) or None
+    except Exception:
+        free_member_cap = None
+    if free_member_cap is not None:
+        members_over_cap = int(member_count or 0) > int(free_member_cap)
+
     return jsonify({
         "success": True,
         "community_id": community_id,
@@ -769,6 +788,13 @@ def api_community_billing(community_id: int):
         "benefits_end_at": None if inherited else state.get("benefits_end_at"),
         "has_stripe_customer": False if inherited else bool(state.get("stripe_customer_id")),
         "stripe_mode": _stripe_mode(),
+        # Freeze state — non-null even when not frozen so clients can
+        # render an "active" indicator without a separate request.
+        "is_frozen": is_frozen,
+        "frozen_reason": frozen_reason if is_frozen else None,
+        "frozen_at": frozen_at if is_frozen else None,
+        "free_member_cap": free_member_cap,
+        "members_over_cap": members_over_cap,
     })
 
 

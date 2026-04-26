@@ -34,6 +34,7 @@ from flask import Blueprint, jsonify, request
 from backend.services import (
     community_admin_notifications,
     community_billing,
+    community_lifecycle,
     enterprise_iap_nag,
     subscription_billing_ledger,
     subscription_audit,
@@ -275,7 +276,8 @@ def _handle_community_tier_event(
                       "subscription_id": subscription_id,
                       "customer": customer_id},
         )
-    elif event_type == "customer.subscription.updated":
+        _maybe_freeze_after_subscription_ended(community_id)
+    elif event_type in ("customer.subscription.updated", "customer.subscription.created"):
         status = (obj.get("status") or "").lower() or None
         cancel_at_period_end = bool(obj.get("cancel_at_period_end"))
         state = community_billing.get_billing_state(community_id) or {}
@@ -313,6 +315,16 @@ def _handle_community_tier_event(
                 action=_tier_change_action(previous_tier, updated_tier),
                 actor_username="@admin",
             )
+        # If a subscription has come back to ``active``, lift any
+        # auto-freeze that was applied when the previous one expired.
+        if status == "active" and not cancel_at_period_end:
+            try:
+                community_lifecycle.maybe_auto_unfreeze_on_subscription_active(community_id)
+            except Exception:
+                logger.exception(
+                    "stripe_webhook: maybe_auto_unfreeze_on_subscription_active failed (community=%s)",
+                    community_id,
+                )
     elif event_type == "invoice.payment_failed":
         community_billing.mark_subscription(
             community_id,
@@ -335,6 +347,56 @@ def _handle_invoice_paid(obj: Dict[str, Any]) -> None:
     inserted = subscription_billing_ledger.record_invoice_payment(obj)
     logger.info("stripe_webhook: invoice payment ledger insert=%s invoice=%s",
                 inserted, obj.get("id"))
+
+
+def _maybe_freeze_after_subscription_ended(community_id: int) -> None:
+    """Auto-freeze a community whose paid subscription just ended.
+
+    Triggered from the ``customer.subscription.deleted`` branch *after*
+    Stripe has finished its dunning retries (KB ↔ Stripe Dashboard
+    contract). We freeze only when the membership exceeds the Free-tier
+    cap so a small community degrades silently to Free instead of being
+    locked out.
+    """
+    try:
+        config = community_lifecycle.load_freeze_config_from_kb()
+        if not config.get("enabled", True):
+            logger.info(
+                "_maybe_freeze_after_subscription_ended: kill switch off (community=%s)",
+                community_id,
+            )
+            return
+        cap = int(config.get("free_member_cap") or 0)
+        member_count = community_lifecycle.count_members(community_id)
+        if member_count <= cap:
+            logger.info(
+                "_maybe_freeze_after_subscription_ended: within free cap, "
+                "no freeze (community=%s members=%s cap=%s)",
+                community_id,
+                member_count,
+                cap,
+            )
+            return
+        community_lifecycle.freeze_for_subscription_expired(
+            community_id=community_id,
+            member_count=member_count,
+            cap=cap,
+        )
+        subscription_audit.log(
+            username="",
+            action="community_auto_frozen_subscription_expired",
+            source="stripe",
+            metadata={
+                "community_id": community_id,
+                "member_count": member_count,
+                "free_member_cap": cap,
+            },
+        )
+    except Exception:
+        logger.exception(
+            "_maybe_freeze_after_subscription_ended failed (community=%s)",
+            community_id,
+        )
 
 
 def _retrieve_subscription_snapshot(subscription_id: Any) -> Dict[str, Any]:

@@ -7170,8 +7170,22 @@ def delete_account():
                     c.execute(f"DELETE FROM event_attendees WHERE user_id={ph}", (user_id,))
                 except Exception: pass
             
-            # User communities by user_id
+            # User communities by user_id — snapshot before delete so we
+            # can run auto-unfreeze on each community after commit.
+            former_community_ids: list = []
             if user_id is not None:
+                try:
+                    c.execute(
+                        f"SELECT community_id FROM user_communities WHERE user_id={ph}",
+                        (user_id,),
+                    )
+                    former_community_ids = [
+                        int(r["community_id"] if hasattr(r, "keys") else r[0])
+                        for r in (c.fetchall() or [])
+                        if (r["community_id"] if hasattr(r, "keys") else r[0])
+                    ]
+                except Exception:
+                    former_community_ids = []
                 try: 
                     c.execute(f"DELETE FROM user_communities WHERE user_id={ph}", (user_id,))
                     logger.debug(f"Deleted user_communities for user_id {user_id}")
@@ -7209,7 +7223,26 @@ def delete_account():
             invalidate_user_cache(username)
         except Exception:
             pass
-        
+
+        # Auto-unfreeze any communities that may have dropped to ≤ Free
+        # cap as a result of removing this user. Best-effort.
+        try:
+            from backend.services import community_lifecycle as _lifecycle
+            from backend.services import subscription_audit as _audit
+            for cid in former_community_ids:
+                try:
+                    if _lifecycle.maybe_auto_unfreeze(cid):
+                        _audit.log(
+                            username=username or "",
+                            action="community_auto_unfrozen_member_removed",
+                            source="delete_account",
+                            metadata={"community_id": cid},
+                        )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         # Return success with instruction to clear localStorage
         resp = jsonify({'success': True, 'clear_storage': True})
         resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
@@ -11004,6 +11037,21 @@ def admin_delete_user():
                 pass
             c.execute(f"DELETE FROM messages WHERE sender={ph} OR receiver={ph}", (target_username, target_username))
             c.execute(f"DELETE FROM notifications WHERE user_id={ph} OR from_user={ph}", (target_username, target_username))
+            # Snapshot the target user's community memberships so the
+            # auto-unfreeze hook can run on each community after commit.
+            former_community_ids: list = []
+            try:
+                c.execute(
+                    f"SELECT community_id FROM user_communities WHERE user_id={ph}",
+                    (user_id,),
+                )
+                former_community_ids = [
+                    int(r["community_id"] if hasattr(r, "keys") else r[0])
+                    for r in (c.fetchall() or [])
+                    if (r["community_id"] if hasattr(r, "keys") else r[0])
+                ]
+            except Exception:
+                former_community_ids = []
             c.execute(f"DELETE FROM user_communities WHERE user_id={ph}", (user_id,))
             try:
                 c.execute(f"DELETE FROM community_admins WHERE username={ph}", (target_username,))
@@ -11063,7 +11111,28 @@ def admin_delete_user():
             c.execute(f"DELETE FROM users WHERE username={ph}", (target_username,))
             
             conn.commit()
-            return jsonify({'success': True})
+
+        # Auto-unfreeze any communities that may have dropped to ≤ Free
+        # cap as a result of removing this user. Best-effort.
+        try:
+            from backend.services import community_lifecycle as _lifecycle
+            from backend.services import subscription_audit as _audit
+            for cid in former_community_ids:
+                try:
+                    if _lifecycle.maybe_auto_unfreeze(cid):
+                        _audit.log(
+                            username=target_username or "",
+                            action="community_auto_unfrozen_member_removed",
+                            source="admin_delete_user",
+                            actor_username=username,
+                            metadata={"community_id": cid},
+                        )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        return jsonify({'success': True})
             
     except Exception as e:
         logger.error(f"Error deleting user: {e}")
@@ -30800,6 +30869,21 @@ def leave_community():
                     logger.warning("[SEAT] winback offer failed (non-fatal)", exc_info=True)
         except Exception:
             logger.warning("[SEAT] end_seat hook failed (non-fatal)", exc_info=True)
+
+        # Auto-unfreeze if the community was frozen due to subscription
+        # expiration and now fits within the Free-tier cap. Best-effort.
+        try:
+            from backend.services import community_lifecycle as _lifecycle
+            from backend.services import subscription_audit as _audit
+            if _lifecycle.maybe_auto_unfreeze(int(community_id)):
+                _audit.log(
+                    username=username or "",
+                    action="community_auto_unfrozen_member_removed",
+                    source="leave_community",
+                    metadata={"community_id": int(community_id)},
+                )
+        except Exception:
+            logger.warning("[FREEZE] auto-unfreeze hook failed (non-fatal)", exc_info=True)
 
         return jsonify({'success': True, 'message': 'Successfully left the community', 'winback_offer': winback_offer})
         

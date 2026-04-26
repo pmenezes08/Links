@@ -941,6 +941,26 @@ def remove_community_member():
                 (community_id, member["id"]),
             )
             conn.commit()
+
+        # Auto-unfreeze if the community was frozen due to subscription
+        # expiration and removing this member brought it within the
+        # Free-tier cap. Best-effort — never block the removal.
+        try:
+            from backend.services import community_lifecycle as _lifecycle
+            from backend.services import subscription_audit as _audit
+            if _lifecycle.maybe_auto_unfreeze(int(community_id)):
+                _audit.log(
+                    username=username or "",
+                    action="community_auto_unfrozen_member_removed",
+                    source="remove_community_member",
+                    metadata={
+                        "community_id": int(community_id),
+                        "removed_member": member_username,
+                    },
+                )
+        except Exception:
+            logger.warning("[FREEZE] auto-unfreeze hook failed (non-fatal)", exc_info=True)
+
         return jsonify({"success": True})
     except Exception as exc:
         logger.error("Error removing community member for %s: %s", username, exc)
