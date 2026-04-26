@@ -32,9 +32,6 @@ type Community = { id: number; name: string; type?: string }
 export default function WorkoutTracking(){
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Your Workouts') }, [setTitle])
-  const parentId = useMemo(()=> {
-    try{ return new URLSearchParams(window.location.search).get('parent_id') }catch{ return null }
-  }, [])
 
   const [activeTab, setActiveTab] = useState<'performance' | 'exercise' | 'workouts' | 'leaderboard'>('performance')
   const [showAddModal, setShowAddModal] = useState(false)
@@ -245,10 +242,7 @@ export default function WorkoutTracking(){
           <button
             type="button"
             className="mr-2 p-2 rounded-full hover:bg-white/5"
-            onClick={()=> {
-              if (parentId) window.location.href = `/communities?parent_id=${parentId}`
-              else window.history.back()
-            }}
+            onClick={()=> { window.location.href = '/premium_dashboard' }}
             aria-label="Back"
           >
             <i className="fa-solid fa-arrow-left" />

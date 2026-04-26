@@ -2329,11 +2329,7 @@ export default function CommunityFeed() {
           {/* Back button */}
           <button 
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
-            onClick={() => {
-              const rootParentId = data?.root_parent_id
-              const targetId = rootParentId || data?.community?.parent_community_id || community_id
-              navigate(`/communities?parent_id=${targetId}`)
-            }} 
+            onClick={() => navigate('/premium_dashboard')} 
             aria-label="Back"
           >
             <i className="fa-solid fa-arrow-left text-white" />

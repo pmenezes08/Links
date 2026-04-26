@@ -79,7 +79,7 @@ export default function EditGroup(){
       const r = await fetch('/api/groups/delete', { method: 'POST', credentials: 'include', body: fd })
       const j = await r.json()
       if (j?.success) {
-        navigate('/communities')
+        navigate('/premium_dashboard')
       } else {
         alert(j?.error || 'Failed to delete group')
       }
