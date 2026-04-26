@@ -34440,9 +34440,9 @@ def get_user_communities_hierarchical():
                             uc.role
                         FROM communities c
                         LEFT JOIN communities pc ON c.parent_community_id = pc.id
-                        LEFT JOIN users current_user ON LOWER(current_user.username) = LOWER({placeholder})
+                        LEFT JOIN users current_u ON LOWER(current_u.username) = LOWER({placeholder})
                         LEFT JOIN user_communities uc
-                          ON uc.community_id = c.id AND uc.user_id = current_user.id
+                          ON uc.community_id = c.id AND uc.user_id = current_u.id
                         WHERE c.id IN ({id_list})
                         ORDER BY 
                             CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
