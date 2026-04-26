@@ -73,8 +73,8 @@ export default function EditCommunity(){
         const r = await fetch('/get_community_members', { method:'POST', credentials:'include', body: fd })
         const j = await r.json()
         if (!mounted) return
-        const role = j?.current_user_role
-        const can = role === 'owner' || role === 'app_admin'
+        const role = (j?.current_user_role || '').toLowerCase()
+        const can = role === 'owner' || role === 'app_admin' || role === 'admin'
         const owner = role === 'owner'
         setAllowed(!!can)
         setIsOwner(!!owner)

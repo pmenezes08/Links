@@ -5301,7 +5301,7 @@ function EditCommunityButton({ communityId, onClose }:{ communityId: string, onC
         const j = await r.json()
         if (!mounted) return
         const role = (j?.current_user_role || '').toLowerCase()
-        const can = role === 'app_admin' || role === 'owner'
+        const can = role === 'app_admin' || role === 'owner' || role === 'admin'
         setAllowed(!!can)
       }catch{ setAllowed(false) }
     }
