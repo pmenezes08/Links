@@ -169,6 +169,35 @@ def api_stripe_config():
     return jsonify({"success": True, "publishableKey": pub})
 
 
+@subscriptions_bp.route("/api/me/subscriptions", methods=["GET"])
+def api_me_subscriptions():
+    """Return subscription state scoped to the signed-in user."""
+    username = _session_username()
+    if not username:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    personal_state = user_billing.get_billing_state(username) or {}
+    user_row = _fetch_user_subscription_row(username)
+    subscription_value = str(user_row.get("subscription") or personal_state.get("subscription") or "free").lower()
+    is_special = bool(user_row.get("is_special"))
+    personal_active = (
+        subscription_value in {"premium", "special", "pro", "paid"}
+        or str(personal_state.get("subscription_status") or "").lower() in {"active", "trialing", "past_due"}
+        or is_special
+    )
+    communities = _fetch_user_billed_communities(username)
+    return jsonify({
+        "success": True,
+        "personal": {
+            **personal_state,
+            "subscription": subscription_value,
+            "is_special": is_special,
+            "active": personal_active,
+        },
+        "communities": communities,
+    })
+
+
 # ── /api/kb/pricing ─────────────────────────────────────────────────────
 
 
@@ -421,6 +450,90 @@ def _fetch_community_owner(community_id: int) -> Optional[str]:
     if isinstance(row, (list, tuple)):
         return str(row[0] or "") if row else None
     return str(row or "")
+
+
+def _fetch_user_subscription_row(username: str) -> Dict[str, Any]:
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"""
+                SELECT subscription, COALESCE(is_special, 0) AS is_special
+                FROM users
+                WHERE LOWER(username) = LOWER({ph})
+                """,
+                (username,),
+            )
+            row = c.fetchone()
+    except Exception:
+        logger.exception("_fetch_user_subscription_row failed for %s", username)
+        return {}
+    return {
+        "subscription": _row_value(row, "subscription", 0) if row else None,
+        "is_special": bool(_row_value(row, "is_special", 1)) if row else False,
+    }
+
+
+def _fetch_user_billed_communities(username: str) -> List[Dict[str, Any]]:
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"""
+                SELECT DISTINCT c.id, c.name, c.creator_username, c.tier
+                FROM communities c
+                LEFT JOIN user_communities uc ON uc.community_id = c.id
+                LEFT JOIN users u ON u.id = uc.user_id
+                WHERE c.parent_community_id IS NULL
+                  AND (
+                    LOWER(c.creator_username) = LOWER({ph})
+                    OR (
+                      LOWER(u.username) = LOWER({ph})
+                      AND LOWER(COALESCE(uc.role, '')) = 'owner'
+                    )
+                  )
+                  AND (
+                    LOWER(COALESCE(c.tier, 'free')) <> 'free'
+                    OR COALESCE(c.stripe_subscription_id, '') <> ''
+                    OR COALESCE(c.subscription_status, '') <> ''
+                  )
+                ORDER BY c.name ASC
+                """,
+                (username, username),
+            )
+            rows = c.fetchall() or []
+    except Exception:
+        logger.exception("_fetch_user_billed_communities failed for %s", username)
+        return []
+
+    items: List[Dict[str, Any]] = []
+    for row in rows:
+        community_id = int(_row_value(row, "id", 0) or 0)
+        if not community_id:
+            continue
+        state = community_billing.get_billing_state(community_id) or {}
+        items.append({
+            "id": community_id,
+            "name": _row_value(row, "name", 1) or "",
+            "owner": _row_value(row, "creator_username", 2) or "",
+            "tier": state.get("tier") or _row_value(row, "tier", 3) or "free",
+            **state,
+        })
+    return items
+
+
+def _row_value(row: Any, key: str, idx: int) -> Any:
+    if not row:
+        return None
+    if hasattr(row, "keys") and key in row.keys():
+        return row[key]
+    if isinstance(row, dict):
+        return row.get(key)
+    if isinstance(row, (list, tuple)) and len(row) > idx:
+        return row[idx]
+    return None
 
 
 _TIER_LABELS: Dict[str, str] = {

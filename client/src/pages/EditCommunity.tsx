@@ -298,7 +298,7 @@ export default function EditCommunity(){
     const actionLabel = billing.has_stripe_customer
       ? billing.is_canceling
         ? 'Renew subscription'
-        : 'Change tier in Stripe'
+        : 'Upgrade Community Tier'
       : 'Choose paid tier'
     const action = billing.has_stripe_customer
       ? handleOpenPortal
@@ -371,6 +371,12 @@ export default function EditCommunity(){
         >
           {billing.has_stripe_customer && portalLoading ? 'Opening portal…' : actionLabel}
         </button>
+
+        {billing.has_stripe_customer && !billing.is_canceling && (
+          <div className="text-xs text-white/40">
+            If you do not see upgrade options, Stripe Customer Portal plan changes need to be enabled.
+          </div>
+        )}
 
         {hasPaidTier && !billing.has_stripe_customer && (
           <div className="text-xs text-white/40">

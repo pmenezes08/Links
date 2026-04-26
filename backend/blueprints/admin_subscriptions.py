@@ -13,7 +13,7 @@ from typing import Any, Dict, List
 
 from flask import Blueprint, jsonify, session
 
-from backend.services import ai_usage
+from backend.services import ai_usage, subscription_billing_ledger
 from backend.services.community import is_app_admin
 from backend.services.database import get_db_connection
 from . import subscriptions as pricing_api
@@ -39,9 +39,14 @@ def _admin_required(view_func):
 @_admin_required
 def api_admin_subscription_users():
     rows = _query_users()
+    premium_value_cents = _premium_value_cents()
     data: List[Dict[str, Any]] = []
     for row in rows:
         username = str(_value(row, "username", 0) or "")
+        subscription = _value(row, "subscription", 2) or "free"
+        is_special = bool(_value(row, "is_special", 9))
+        totals = subscription_billing_ledger.totals_for_user(username)
+        billing_kind = _billing_kind(row, is_special)
         try:
             steve_used = ai_usage.monthly_steve_count(username)
             whisper_used = round(float(ai_usage.whisper_minutes_this_month(username) or 0), 2)
@@ -52,13 +57,18 @@ def api_admin_subscription_users():
         data.append({
             "username": username,
             "email": _value(row, "email", 1) or "",
-            "subscription": _value(row, "subscription", 2) or "free",
+            "subscription": subscription,
             "subscription_status": _value(row, "subscription_status", 3),
             "stripe_customer_id": _value(row, "stripe_customer_id", 4),
             "stripe_subscription_id": _value(row, "stripe_subscription_id", 5),
             "current_period_end": _string_or_none(_value(row, "current_period_end", 6)),
             "cancel_at_period_end": bool(_value(row, "cancel_at_period_end", 7)),
             "canceled_at": _string_or_none(_value(row, "canceled_at", 8)),
+            "is_special": is_special,
+            "billing_kind": billing_kind,
+            "current_subscription_value_cents": premium_value_cents if _has_premium_entitlement(subscription, is_special) else 0,
+            "spent_total_cents": totals["spent_total_cents"],
+            "spent_ytd_cents": totals["spent_ytd_cents"],
             "steve_used_month": steve_used,
             "whisper_minutes_month": whisper_used,
         })
@@ -69,19 +79,27 @@ def api_admin_subscription_users():
 @_admin_required
 def api_admin_subscription_communities():
     rows = _query_communities()
-    data = [{
-        "id": _value(row, "id", 0),
-        "name": _value(row, "name", 1) or "",
-        "owner": _value(row, "creator_username", 2) or "",
-        "tier": _value(row, "tier", 3) or "free",
-        "member_count": int(_value(row, "member_count", 4) or 0),
-        "subscription_status": _value(row, "subscription_status", 5),
-        "stripe_customer_id": _value(row, "stripe_customer_id", 6),
-        "stripe_subscription_id": _value(row, "stripe_subscription_id", 7),
-        "current_period_end": _string_or_none(_value(row, "current_period_end", 8)),
-        "cancel_at_period_end": bool(_value(row, "cancel_at_period_end", 9)),
-        "canceled_at": _string_or_none(_value(row, "canceled_at", 10)),
-    } for row in rows]
+    data = []
+    for row in rows:
+        community_id = int(_value(row, "id", 0) or 0)
+        tier = _value(row, "tier", 3) or "free"
+        totals = subscription_billing_ledger.totals_for_community(community_id)
+        data.append({
+            "id": community_id,
+            "name": _value(row, "name", 1) or "",
+            "owner": _value(row, "creator_username", 2) or "",
+            "tier": tier,
+            "member_count": int(_value(row, "member_count", 4) or 0),
+            "subscription_status": _value(row, "subscription_status", 5),
+            "stripe_customer_id": _value(row, "stripe_customer_id", 6),
+            "stripe_subscription_id": _value(row, "stripe_subscription_id", 7),
+            "current_period_end": _string_or_none(_value(row, "current_period_end", 8)),
+            "cancel_at_period_end": bool(_value(row, "cancel_at_period_end", 9)),
+            "canceled_at": _string_or_none(_value(row, "canceled_at", 10)),
+            "current_subscription_value_cents": _community_value_cents(str(tier)),
+            "spent_total_cents": totals["spent_total_cents"],
+            "spent_ytd_cents": totals["spent_ytd_cents"],
+        })
     return jsonify({"success": True, "communities": data})
 
 
@@ -128,9 +146,11 @@ def _query_users():
                 """
                 SELECT username, email, subscription, subscription_status,
                        stripe_customer_id, stripe_subscription_id,
-                       current_period_end, cancel_at_period_end, canceled_at
+                       current_period_end, cancel_at_period_end, canceled_at,
+                       COALESCE(is_special, 0) AS is_special
                 FROM users
                 WHERE LOWER(COALESCE(subscription, '')) IN ('premium', 'special')
+                   OR COALESCE(is_special, 0) = 1
                    OR COALESCE(stripe_subscription_id, '') <> ''
                    OR COALESCE(subscription_status, '') <> ''
                 ORDER BY current_period_end DESC, username ASC
@@ -183,3 +203,38 @@ def _value(row: Any, key: str, idx: int) -> Any:
 
 def _string_or_none(value: Any) -> str | None:
     return str(value) if value else None
+
+
+def _premium_value_cents() -> int:
+    fields = pricing_api._kb_field_map("user-tiers")
+    value = fields.get("premium_price_early_eur")
+    if value in (None, "", 0):
+        value = fields.get("premium_price_standard_eur")
+    return _eur_to_cents(value)
+
+
+def _community_value_cents(tier: str) -> int:
+    fields = pricing_api._kb_field_map("community-tiers")
+    value = fields.get(f"{tier}_price_eur_monthly")
+    return _eur_to_cents(value)
+
+
+def _eur_to_cents(value: Any) -> int:
+    try:
+        return int(round(float(str(value).replace(",", ".")) * 100))
+    except Exception:
+        return 0
+
+
+def _billing_kind(row: Any, is_special: bool) -> str:
+    if _value(row, "stripe_subscription_id", 5) or _value(row, "stripe_customer_id", 4):
+        return "stripe"
+    if is_special:
+        return "special"
+    if _has_premium_entitlement(str(_value(row, "subscription", 2) or ""), False):
+        return "manual"
+    return "free"
+
+
+def _has_premium_entitlement(subscription: str, is_special: bool) -> bool:
+    return is_special or str(subscription or "").lower() in {"premium", "special", "pro", "paid"}

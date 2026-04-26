@@ -63,6 +63,7 @@ import AccountSecurity from './pages/AccountSecurity'
 import AccountDangerZone from './pages/AccountDangerZone'
 import SubscriptionPlans from './pages/SubscriptionPlans'
 import Success from './pages/Success'
+import BillingReturn from './pages/BillingReturn'
 import Signup from './pages/Signup'
 import Notifications from './pages/Notifications'
 import AdminDashboard from './pages/AdminDashboard'
@@ -110,6 +111,7 @@ function AppRoutes(){
         '/signup_react',
         '/verify_required',
         '/share/incoming',
+        '/billing_return',
       ]),
     [],
   )
@@ -343,6 +345,14 @@ function AppRoutes(){
 
     const handleDeepLink = async (url: string, source: string) => {
       console.log(`🔗 Deep link received (${source}):`, url)
+
+      if (url.startsWith('cpoint://billing_return')) {
+        const parsed = new URL(url)
+        const returnPath = parsed.searchParams.get('return_path') || '/premium_dashboard'
+        navigate(returnPath.startsWith('/') && !returnPath.startsWith('//') ? returnPath : '/premium_dashboard')
+        markUrlProcessed(url)
+        return
+      }
 
       if (isShareIncomingUrl(url)) {
         // iOS can deliver the same URL multiple times; ignore repeats so we don't navigate away
@@ -818,6 +828,7 @@ function AppRoutes(){
                 <Route path="/account_settings/danger" element={<AccountDangerZone />} />
                   <Route path="/subscription_plans" element={<SubscriptionPlans />} />
                 <Route path="/success" element={<Success />} />
+                <Route path="/billing_return" element={<BillingReturn />} />
                 <Route path="/notifications" element={<Notifications />} />
                 <Route path="/admin" element={<AdminDashboard />} />
                 <Route path="/admin_dashboard" element={<AdminDashboard />} />

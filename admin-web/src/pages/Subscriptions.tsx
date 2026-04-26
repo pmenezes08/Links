@@ -11,6 +11,11 @@ interface UserSubscription {
   current_period_end?: string | null
   cancel_at_period_end?: boolean
   canceled_at?: string | null
+  is_special?: boolean
+  billing_kind?: 'stripe' | 'special' | 'manual' | 'free' | string
+  current_subscription_value_cents?: number
+  spent_total_cents?: number
+  spent_ytd_cents?: number
   steve_used_month: number
   whisper_minutes_month: number
 }
@@ -25,6 +30,9 @@ interface CommunitySubscription {
   current_period_end?: string | null
   cancel_at_period_end?: boolean
   canceled_at?: string | null
+  current_subscription_value_cents?: number
+  spent_total_cents?: number
+  spent_ytd_cents?: number
 }
 
 interface Diagnostic {
@@ -70,6 +78,10 @@ export default function Subscriptions() {
 
   const userCounts = useMemo(() => counts(users), [users])
   const communityCounts = useMemo(() => counts(communities), [communities])
+  const currentValue = useMemo(() => (
+    sumCents(users, 'current_subscription_value_cents') + sumCents(communities, 'current_subscription_value_cents')
+  ), [users, communities])
+  const paidYtd = useMemo(() => sumCents([...users, ...communities], 'spent_ytd_cents'), [users, communities])
 
   return (
     <div className="space-y-4">
@@ -98,6 +110,10 @@ export default function Subscriptions() {
 
       <div className="grid gap-3 sm:grid-cols-3">
         <SummaryCard label="Active users" value={userCounts.active} />
+        <SummaryCard label="Current value" value={formatMoney(currentValue)} />
+        <SummaryCard label="Paid YTD" value={formatMoney(paidYtd)} />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
         <SummaryCard label="Cancelling users" value={userCounts.cancelling} />
         <SummaryCard label="Paid communities" value={communityCounts.total} />
       </div>
@@ -118,7 +134,7 @@ export default function Subscriptions() {
   )
 }
 
-function SummaryCard({ label, value }: { label: string; value: number }) {
+function SummaryCard({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="rounded-xl border border-white/10 bg-surface-2 p-4">
       <div className="text-xs uppercase tracking-wide text-white/50">{label}</div>
@@ -145,6 +161,10 @@ function UsersTable({ rows }: { rows: UserSubscription[] }) {
         <tr className="border-b border-white/10">
           <th className="px-4 py-3 text-left">User</th>
           <th className="px-4 py-3 text-left">Status</th>
+          <th className="px-4 py-3 text-left">Billing type</th>
+          <th className="px-4 py-3 text-right">Current value</th>
+          <th className="px-4 py-3 text-right">Spent YTD</th>
+          <th className="px-4 py-3 text-right">Spent since signup</th>
           <th className="px-4 py-3 text-left">Renewal / end</th>
           <th className="px-4 py-3 text-left">Cancelled</th>
           <th className="px-4 py-3 text-right">Steve</th>
@@ -158,7 +178,11 @@ function UsersTable({ rows }: { rows: UserSubscription[] }) {
               <div className="font-medium text-accent">@{row.username}</div>
               <div className="text-xs text-white/40">{row.email}</div>
             </td>
-            <td className="px-4 py-3">{statusPill(row.subscription_status || row.subscription)}</td>
+            <td className="px-4 py-3">{statusPill(row.is_special ? 'special' : row.subscription_status || row.subscription)}</td>
+            <td className="px-4 py-3">{billingPill(row.billing_kind || (row.is_special ? 'special' : 'free'))}</td>
+            <td className="px-4 py-3 text-right">{formatMoney(row.current_subscription_value_cents)}</td>
+            <td className="px-4 py-3 text-right">{formatMoney(row.spent_ytd_cents)}</td>
+            <td className="px-4 py-3 text-right">{formatMoney(row.spent_total_cents)}</td>
             <td className="px-4 py-3 text-white/70">{formatDate(row.current_period_end)}</td>
             <td className="px-4 py-3 text-white/70">
               {row.cancel_at_period_end ? `Ends ${formatDate(row.current_period_end)}` : formatDate(row.canceled_at)}
@@ -181,6 +205,9 @@ function CommunitiesTable({ rows }: { rows: CommunitySubscription[] }) {
           <th className="px-4 py-3 text-left">Owner</th>
           <th className="px-4 py-3 text-left">Tier</th>
           <th className="px-4 py-3 text-left">Status</th>
+          <th className="px-4 py-3 text-right">Current value</th>
+          <th className="px-4 py-3 text-right">Spent YTD</th>
+          <th className="px-4 py-3 text-right">Spent total</th>
           <th className="px-4 py-3 text-left">Renewal / end</th>
           <th className="px-4 py-3 text-right">Members</th>
         </tr>
@@ -195,6 +222,9 @@ function CommunitiesTable({ rows }: { rows: CommunitySubscription[] }) {
             <td className="px-4 py-3 text-accent">@{row.owner}</td>
             <td className="px-4 py-3">{row.tier}</td>
             <td className="px-4 py-3">{statusPill(row.subscription_status || row.tier)}</td>
+            <td className="px-4 py-3 text-right">{formatMoney(row.current_subscription_value_cents)}</td>
+            <td className="px-4 py-3 text-right">{formatMoney(row.spent_ytd_cents)}</td>
+            <td className="px-4 py-3 text-right">{formatMoney(row.spent_total_cents)}</td>
             <td className="px-4 py-3 text-white/70">
               {row.cancel_at_period_end ? `Ends ${formatDate(row.current_period_end)}` : formatDate(row.current_period_end)}
             </td>
@@ -210,16 +240,26 @@ function TableShell({ children, empty, emptyText }: { children: ReactNode; empty
   if (empty) return <div className="rounded-xl border border-white/10 bg-surface-2 px-4 py-8 text-center text-white/50">{emptyText}</div>
   return (
     <div className="overflow-x-auto rounded-xl border border-white/10 bg-surface-2">
-      <table className="w-full min-w-[780px] text-sm">{children}</table>
+      <table className="w-full min-w-[1060px] text-sm">{children}</table>
     </div>
   )
 }
 
 function statusPill(status: string) {
   const value = status || 'unknown'
+  const special = value === 'special'
   const warn = ['past_due', 'unpaid', 'cancelled'].includes(value)
   return (
-    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${warn ? 'border-amber-400/30 bg-amber-400/10 text-amber-200' : 'border-accent/30 bg-accent/10 text-accent'}`}>
+    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${special ? 'border-violet-300/40 bg-violet-400/10 text-violet-200' : warn ? 'border-amber-400/30 bg-amber-400/10 text-amber-200' : 'border-accent/30 bg-accent/10 text-accent'}`}>
+      {value}
+    </span>
+  )
+}
+
+function billingPill(kind: string) {
+  const value = kind || 'free'
+  return (
+    <span className="inline-flex rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-xs text-white/70">
       {value}
     </span>
   )
@@ -237,4 +277,13 @@ function formatDate(value?: string | null) {
   if (!value) return '—'
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString()
+}
+
+function formatMoney(cents?: number | null) {
+  const amount = Number(cents || 0) / 100
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(amount)
+}
+
+function sumCents<T extends Record<string, any>>(rows: T[], key: keyof T) {
+  return rows.reduce((sum, row) => sum + Number(row[key] || 0), 0)
 }

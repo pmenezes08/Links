@@ -34,6 +34,7 @@ from flask import Blueprint, jsonify, request
 from backend.services import (
     community_billing,
     enterprise_iap_nag,
+    subscription_billing_ledger,
     subscription_audit,
     user_billing,
 )
@@ -79,7 +80,9 @@ def stripe_webhook():
     username = _extract_username_from_stripe(obj)
 
     try:
-        if sku == "community_tier":
+        if event_type in {"invoice.paid", "invoice.payment_succeeded"}:
+            _handle_invoice_paid(obj)
+        elif sku == "community_tier":
             _handle_community_tier_event(event_type, obj, username)
         else:
             _handle_premium_event(event_type, obj, username)
@@ -98,6 +101,7 @@ def _handle_premium_event(event_type: str, obj: Dict[str, Any], username: Option
     if not username and subscription_id:
         username = user_billing.find_by_subscription_id(str(subscription_id))
     if event_type == "checkout.session.completed":
+        subscription_snapshot = _retrieve_subscription_snapshot(subscription_id)
         if username:
             user_billing.mark_subscription(
                 username,
@@ -105,6 +109,8 @@ def _handle_premium_event(event_type: str, obj: Dict[str, Any], username: Option
                 subscription_id=str(subscription_id or ""),
                 customer_id=str(customer_id or ""),
                 status="active",
+                current_period_end=subscription_snapshot.get("current_period_end"),
+                cancel_at_period_end=bool(subscription_snapshot.get("cancel_at_period_end", False)),
                 provider="stripe",
             )
         subscription_audit.log(
@@ -222,12 +228,14 @@ def _handle_community_tier_event(
         return
 
     if event_type == "checkout.session.completed":
+        subscription_snapshot = _retrieve_subscription_snapshot(subscription_id)
         community_billing.mark_subscription(
             community_id,
             tier_code=tier_code,
             subscription_id=subscription_id,
             customer_id=customer_id,
             status="active",
+            current_period_end=subscription_snapshot.get("current_period_end"),
             cancel_at_period_end=False,
         )
         subscription_audit.log(
@@ -296,6 +304,25 @@ def _handle_community_tier_event(
         )
     else:
         logger.info("stripe_webhook: unhandled community_tier event %s", event_type)
+
+
+def _handle_invoice_paid(obj: Dict[str, Any]) -> None:
+    inserted = subscription_billing_ledger.record_invoice_payment(obj)
+    logger.info("stripe_webhook: invoice payment ledger insert=%s invoice=%s",
+                inserted, obj.get("id"))
+
+
+def _retrieve_subscription_snapshot(subscription_id: Any) -> Dict[str, Any]:
+    if not subscription_id:
+        return {}
+    try:
+        import stripe  # type: ignore
+        stripe.api_key = os.environ.get("STRIPE_API_KEY") or ""
+        sub = stripe.Subscription.retrieve(str(subscription_id))
+        return dict(sub or {})
+    except Exception:
+        logger.exception("stripe_webhook: could not retrieve subscription %s", subscription_id)
+        return {}
 
 
 def _extract_username_from_stripe(obj: Dict[str, Any]) -> Optional[str]:

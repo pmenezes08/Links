@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any, Dict, Optional
-from urllib.parse import urljoin
+from urllib.parse import urlencode, urljoin
 
 from flask import Blueprint, jsonify, request, session
 
@@ -411,11 +411,15 @@ def me_billing_portal():
                 return jsonify({"success": False, "error": "No Stripe customer found"}), 404
 
     return_path = str(body.get("return_path") or "/account_settings").strip() or "/account_settings"
-    # Scope to our own host to prevent open-redirect via return_url.
-    try:
-        return_url = urljoin(request.host_url, return_path.lstrip("/"))
-    except Exception:
-        return_url = urljoin(request.host_url, "account_settings")
+    if not return_path.startswith("/"):
+        return_path = "/account_settings"
+    target = "community" if community_id else "personal"
+    query = urlencode({
+        "target": target,
+        "id": str(community_id or ""),
+        "return_path": return_path,
+    })
+    return_url = urljoin(request.host_url, f"billing_return?{query}")
 
     try:
         portal = stripe_mod.billing_portal.Session.create(

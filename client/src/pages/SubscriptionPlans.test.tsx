@@ -126,6 +126,29 @@ function makePricingPayload() {
   }
 }
 
+function makeActivePayload() {
+  return {
+    success: true,
+    personal: {
+      active: true,
+      subscription: 'premium',
+      subscription_status: 'active',
+      current_period_end: '2026-05-24 12:00:00',
+      cancel_at_period_end: false,
+    },
+    communities: [
+      {
+        id: 7,
+        name: 'Jola de Domingo',
+        tier: 'paid_l1',
+        subscription_status: 'active',
+        current_period_end: '2026-05-24 12:00:00',
+        cancel_at_period_end: false,
+      },
+    ],
+  }
+}
+
 /**
  * Multi-route fetch mock. Maps URL prefixes to JSON payloads and lets
  * any test that calls multiple endpoints (pricing fetch + community
@@ -134,6 +157,13 @@ function makePricingPayload() {
 function installFetch(routes: Record<string, unknown>) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input.toString()
+    if (url.startsWith('/api/me/subscriptions') && !routes['/api/me/subscriptions']) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => makeActivePayload(),
+      } as Response
+    }
     for (const prefix of Object.keys(routes)) {
       if (url.startsWith(prefix)) {
         return {
@@ -150,12 +180,21 @@ function installFetch(routes: Record<string, unknown>) {
 }
 
 function mockFetchOnce(payload: unknown, init: { ok?: boolean; status?: number } = {}) {
-  const response = {
-    ok: init.ok ?? true,
-    status: init.status ?? 200,
-    json: async () => payload,
-  }
-  const fetchMock = vi.fn().mockResolvedValue(response)
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input.toString()
+    if (url.startsWith('/api/me/subscriptions')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => makeActivePayload(),
+      } as Response
+    }
+    return {
+      ok: init.ok ?? true,
+      status: init.status ?? 200,
+      json: async () => payload,
+    } as Response
+  })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
@@ -185,9 +224,12 @@ describe('SubscriptionPlans (Personal + Community redesign)', () => {
     renderPage()
 
     await waitFor(() =>
-      expect(screen.getByText('User Premium Membership')).toBeInTheDocument(),
+      expect(screen.getAllByText('User Premium Membership').length).toBeGreaterThan(0),
     )
     expect(screen.getByText('Community Paid Tier')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Subscriptions' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Active Subscriptions' })).toBeInTheDocument()
+    expect(screen.getByText('Jola de Domingo')).toBeInTheDocument()
 
     // Tier rows live inside the (closed) Community modal — they
     // should NOT be on the landing.
@@ -268,6 +310,51 @@ describe('SubscriptionPlans (Personal + Community redesign)', () => {
       expect(screen.getByText(/Upgrade to Paid L1/)).toBeInTheDocument(),
     )
     expect(screen.getByText('Pick a community')).toBeInTheDocument()
+  })
+
+  it('keeps checkout errors inside the picker and keeps radio sizing stable', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      if (url.startsWith('/api/kb/pricing')) {
+        return { ok: true, status: 200, json: async () => makePricingPayload() } as Response
+      }
+      if (url.startsWith('/api/me/subscriptions')) {
+        return { ok: true, status: 200, json: async () => makeActivePayload() } as Response
+      }
+      if (url.startsWith('/api/user_communities_hierarchical')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            username: 'paulo',
+            communities: [{ id: 1, name: 'A very long community name that should wrap correctly', creator_username: 'paulo' }],
+          }),
+        } as Response
+      }
+      if (url.startsWith('/api/stripe/create_checkout_session') && init?.method === 'POST') {
+        return {
+          ok: false,
+          status: 403,
+          json: async () => ({ success: false, error: 'Only the community owner can subscribe.' }),
+        } as Response
+      }
+      throw new Error(`No fetch mock for ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderPage()
+
+    await screen.findByText('Community Paid Tier')
+    fireEvent.click(screen.getByRole('button', { name: /see community plans/i }))
+    const upgradeButtons = await screen.findAllByRole('button', { name: /upgrade a community/i })
+    fireEvent.click(upgradeButtons[0])
+    const radio = await screen.findByRole('radio', { name: /A very long community name/ })
+    fireEvent.click(radio)
+    fireEvent.click(screen.getByRole('button', { name: /continue to checkout/i }))
+
+    expect(await screen.findByText('Only the community owner can subscribe.')).toBeInTheDocument()
+    expect(screen.getByText('Pick a community')).toBeInTheDocument()
+    expect(radio).toHaveClass('h-4', 'w-4', 'shrink-0')
   })
 
   it('Community Add-ons sub-modal shows Steve + Networking with "Coming soon" + Notify me', async () => {
