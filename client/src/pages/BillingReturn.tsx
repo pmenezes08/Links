@@ -16,7 +16,7 @@ export default function BillingReturn() {
   }
 
   const continueWeb = () => {
-    navigate(returnPath)
+    navigate(returnPath, { replace: true })
   }
 
   return (

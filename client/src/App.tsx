@@ -347,10 +347,14 @@ function AppRoutes(){
       console.log(`🔗 Deep link received (${source}):`, url)
 
       if (url.startsWith('cpoint://billing_return')) {
+        if (isUrlProcessed(url)) {
+          console.log('🔗 Billing return deep link already handled, skipping duplicate:', url)
+          return
+        }
+        markUrlProcessed(url)
         const parsed = new URL(url)
         const returnPath = parsed.searchParams.get('return_path') || '/premium_dashboard'
-        navigate(returnPath.startsWith('/') && !returnPath.startsWith('//') ? returnPath : '/premium_dashboard')
-        markUrlProcessed(url)
+        navigate(returnPath.startsWith('/') && !returnPath.startsWith('//') ? returnPath : '/premium_dashboard', { replace: true })
         return
       }
 
@@ -413,7 +417,7 @@ function AppRoutes(){
     return () => {
       listenerHandle?.remove()
     }
-  }, [authLoaded, applyInviteTokenFromDeepLink, navigate, markUrlProcessed])
+  }, [authLoaded, applyInviteTokenFromDeepLink, navigate, markUrlProcessed, isUrlProcessed])
 
   // Deferred invite: clipboard payload from invite landing page (install-then-open flow)
   useEffect(() => {

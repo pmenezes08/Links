@@ -210,6 +210,16 @@ function renderPage() {
   )
 }
 
+async function choosePlanView() {
+  expect(await screen.findByText(/What would you like to manage/i)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /choose your plan/i }))
+}
+
+async function chooseActiveView() {
+  expect(await screen.findByText(/What would you like to manage/i)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /active subscriptions/i }))
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -222,14 +232,14 @@ describe('SubscriptionPlans (Personal + Community redesign)', () => {
   it('renders the two top cards (Personal + Community) and hides tier details until opened', async () => {
     mockFetchOnce(makePricingPayload())
     renderPage()
+    await choosePlanView()
 
     await waitFor(() =>
       expect(screen.getAllByText('User Premium Membership').length).toBeGreaterThan(0),
     )
     expect(screen.getByText('Community Paid Tier')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Subscriptions' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Active Subscriptions' })).toBeInTheDocument()
-    expect(screen.getByText('Jola de Domingo')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Choose your plan' })).toBeInTheDocument()
+    expect(screen.queryByText('Jola de Domingo')).toBeNull()
 
     // Tier rows live inside the (closed) Community modal — they
     // should NOT be on the landing.
@@ -241,9 +251,20 @@ describe('SubscriptionPlans (Personal + Community redesign)', () => {
     expect(screen.queryByText('Networking Package')).toBeNull()
   })
 
+  it('opens Active subscriptions as a separate view', async () => {
+    mockFetchOnce(makePricingPayload())
+    renderPage()
+    await chooseActiveView()
+
+    expect(await screen.findByText('Jola de Domingo')).toBeInTheDocument()
+    expect(screen.getAllByText(/Next renewal:/).length).toBeGreaterThan(0)
+    expect(screen.queryByText('Community Paid Tier')).toBeNull()
+  })
+
   it('opens the Community modal with L1/L2/L3 + Enterprise + Add-ons row', async () => {
     mockFetchOnce(makePricingPayload())
     renderPage()
+    await choosePlanView()
 
     await waitFor(() =>
       expect(screen.getByText('Community Paid Tier')).toBeInTheDocument(),
@@ -268,6 +289,7 @@ describe('SubscriptionPlans (Personal + Community redesign)', () => {
   it('Enterprise row exposes a mailto link to sales@c-point.co', async () => {
     mockFetchOnce(makePricingPayload())
     renderPage()
+    await choosePlanView()
 
     await waitFor(() =>
       expect(screen.getByText('Community Paid Tier')).toBeInTheDocument(),
@@ -293,6 +315,7 @@ describe('SubscriptionPlans (Personal + Community redesign)', () => {
       },
     })
     renderPage()
+    await choosePlanView()
 
     await waitFor(() =>
       expect(screen.getByText('Community Paid Tier')).toBeInTheDocument(),
@@ -310,6 +333,31 @@ describe('SubscriptionPlans (Personal + Community redesign)', () => {
       expect(screen.getByText(/Upgrade to Paid L1/)).toBeInTheDocument(),
     )
     expect(screen.getByText('Pick a community')).toBeInTheDocument()
+  })
+
+  it('hides communities already on the selected tier from the picker', async () => {
+    installFetch({
+      '/api/kb/pricing': makePricingPayload(),
+      '/api/me/subscriptions': {
+        success: true,
+        personal: { active: false, subscription: 'free' },
+        communities: [{ id: 1, name: 'Already L1', tier: 'paid_l1', subscription_status: 'active' }],
+      },
+      '/api/user_communities_hierarchical': {
+        success: true,
+        username: 'paulo',
+        communities: [{ id: 1, name: 'Already L1', creator_username: 'paulo' }],
+      },
+    })
+    renderPage()
+    await choosePlanView()
+
+    fireEvent.click(await screen.findByRole('button', { name: /see community plans/i }))
+    const upgradeButtons = await screen.findAllByRole('button', { name: /upgrade a community/i })
+    fireEvent.click(upgradeButtons[0])
+
+    expect(await screen.findByText(/No eligible owned communities for Paid L1/)).toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: /Already L1/ })).toBeNull()
   })
 
   it('keeps checkout errors inside the picker and keeps radio sizing stable', async () => {
@@ -343,6 +391,7 @@ describe('SubscriptionPlans (Personal + Community redesign)', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
     renderPage()
+    await choosePlanView()
 
     await screen.findByText('Community Paid Tier')
     fireEvent.click(screen.getByRole('button', { name: /see community plans/i }))
@@ -360,6 +409,7 @@ describe('SubscriptionPlans (Personal + Community redesign)', () => {
   it('Community Add-ons sub-modal shows Steve + Networking with "Coming soon" + Notify me', async () => {
     mockFetchOnce(makePricingPayload())
     renderPage()
+    await choosePlanView()
 
     await waitFor(() =>
       expect(screen.getByText('Community Paid Tier')).toBeInTheDocument(),

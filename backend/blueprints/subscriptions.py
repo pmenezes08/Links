@@ -35,7 +35,13 @@ from urllib.parse import urljoin
 from flask import Blueprint, jsonify, request, session
 
 from backend.services import community as community_svc
-from backend.services import community_billing, enterprise_membership, knowledge_base, user_billing
+from backend.services import (
+    community_billing,
+    community_subscription_changes,
+    enterprise_membership,
+    knowledge_base,
+    user_billing,
+)
 from backend.services.database import get_db_connection, get_sql_placeholder
 
 
@@ -762,6 +768,102 @@ def api_community_billing(community_id: int):
         "benefits_end_at": None if inherited else state.get("benefits_end_at"),
         "has_stripe_customer": False if inherited else bool(state.get("stripe_customer_id")),
         "stripe_mode": _stripe_mode(),
+    })
+
+
+@subscriptions_bp.route("/api/communities/<int:community_id>/billing/change-tier", methods=["POST"])
+def api_community_billing_change_tier(community_id: int):
+    """Change an existing root community Stripe subscription tier."""
+    username = _session_username()
+    if not username:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    stripe_mod = _stripe_client()
+    if stripe_mod is None:
+        return jsonify({"success": False, "error": "Stripe is not configured"}), 400
+
+    payload = request.get_json(silent=True) or {}
+    tier_code = community_svc._normalize_tier(payload.get("tier_code")) or ""
+    if tier_code not in _COMMUNITY_TIER_PRICE_FIELDS:
+        return jsonify({
+            "success": False,
+            "error": "Unsupported community tier",
+            "reason": "invalid_tier",
+        }), 400
+
+    if not community_svc.is_community_owner(username, community_id):
+        return jsonify({
+            "success": False,
+            "error": "Only the community owner can change billing.",
+            "reason": "not_owner",
+        }), 403
+
+    root_id, is_root = _resolve_root_community_id(community_id)
+    if not is_root:
+        return jsonify({
+            "success": False,
+            "error": "Tiers are managed on the root community. Open the parent community to change billing.",
+            "reason": "not_root_community",
+            "root_community_id": root_id,
+        }), 409
+
+    state = community_billing.get_billing_state(community_id) or {}
+    current_tier = str(state.get("tier") or "").strip().lower()
+    if current_tier == tier_code:
+        return jsonify({
+            "success": False,
+            "error": "This community is already on that tier.",
+            "reason": "same_tier",
+            "community_id": community_id,
+            "tier_code": tier_code,
+        }), 409
+    if not state.get("stripe_subscription_id"):
+        return jsonify({
+            "success": False,
+            "error": "This community has no active Stripe subscription yet.",
+            "reason": "no_subscription",
+        }), 409
+
+    cap = _tier_member_cap(tier_code)
+    current_members = _count_members(community_id)
+    if cap is not None and current_members > cap:
+        return jsonify({
+            "success": False,
+            "error": (
+                f"This community has {current_members} members, which exceeds the "
+                f"{cap}-member cap for this tier. Pick a higher tier."
+            ),
+            "reason": "tier_too_small",
+            "current_members": current_members,
+            "tier_cap": cap,
+        }), 409
+
+    price_id = _resolve_community_tier_price(tier_code)
+    if not price_id:
+        return jsonify({
+            "success": False,
+            "error": "Pricing is not configured for this tier yet",
+            "reason": "price_missing",
+            "tier_code": tier_code,
+        }), 400
+
+    try:
+        result = community_subscription_changes.change_community_tier(
+            stripe_mod=stripe_mod,
+            community_id=community_id,
+            target_tier=tier_code,
+            target_price_id=price_id,
+        )
+    except community_subscription_changes.TierChangeError as exc:
+        return jsonify({
+            "success": False,
+            "error": str(exc),
+            "reason": exc.reason,
+        }), exc.status_code
+
+    return jsonify({
+        "success": True,
+        **result,
     })
 
 

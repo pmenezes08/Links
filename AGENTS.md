@@ -31,6 +31,10 @@ flows.
   so a later move to a blueprint is mechanical. Module-level state
   (dicts, sets) belongs in Redis or a service, never in the monolith
   global namespace.
+- **Keep backend changes clean and small.** Prefer focused services with
+  explicit inputs/outputs over inline route logic. Do not stack temporary
+  guards or one-off SQL fixes when a shared helper or service invariant
+  would solve the problem more clearly.
 - **KB is the source of truth** for pricing, caps, policies, roadmap,
   and special-user lists. Edit `backend/services/knowledge_base.py`
   seeds, redeploy, and (if content changed) hit the admin-web
@@ -45,6 +49,13 @@ flows.
   `surface`. Blocked calls write a `success=0` row via
   `ai_usage.log_block(...)`. No raw SQL inserts into that table from
   anywhere else.
+
+## Branding
+
+- The product name is **C-Point** in UI copy, docs, prompts, emails, and
+  user-facing text. Do not write `C.Point`, `CPoint`, or `C Point` unless
+  quoting a legacy identifier, bundle/package name, or external value that
+  cannot be changed.
 
 ## Frontend conventions
 

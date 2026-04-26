@@ -145,11 +145,69 @@ function formatDate(value: string): string {
 
 const SALES_EMAIL = 'sales@c-point.co'
 
+function storePendingCheckout(body: Record<string, string | number>) {
+  try {
+    sessionStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify({
+      plan_id: body.plan_id,
+      community_id: body.community_id,
+      tier_code: body.tier_code,
+      created_at: Date.now(),
+    }))
+  } catch {
+    // sessionStorage can be unavailable in private contexts.
+  }
+}
+
+function maybeConfirmPendingCheckout(active: ActiveSubscriptionsPayload) {
+  try {
+    const raw = sessionStorage.getItem(PENDING_CHECKOUT_KEY)
+    if (!raw) return
+    const pending = JSON.parse(raw) as {
+      plan_id?: string
+      community_id?: number
+      tier_code?: string
+      created_at?: number
+    }
+    if (pending.created_at && Date.now() - pending.created_at > 1000 * 60 * 30) {
+      sessionStorage.removeItem(PENDING_CHECKOUT_KEY)
+      return
+    }
+    if (pending.plan_id === 'premium' && active.personal?.active) {
+      sessionStorage.removeItem(PENDING_CHECKOUT_KEY)
+      return 'Premium is active.'
+    }
+    const communityId = Number(pending.community_id || 0)
+    const match = active.communities?.find((c) => (
+      c.id === communityId
+      && (!pending.tier_code || String(c.tier || '').toLowerCase() === String(pending.tier_code).toLowerCase())
+    ))
+    if (match) {
+      sessionStorage.removeItem(PENDING_CHECKOUT_KEY)
+      return `${match.name} is active on ${tierLabel(match.tier)}.`
+    }
+  } catch {
+    try { sessionStorage.removeItem(PENDING_CHECKOUT_KEY) } catch {}
+  }
+  return null
+}
+
+function tierLabel(tier?: string | null) {
+  const value = String(tier || '').toLowerCase()
+  if (value === 'paid_l1') return 'Paid L1'
+  if (value === 'paid_l2') return 'Paid L2'
+  if (value === 'paid_l3') return 'Paid L3'
+  if (value === 'free') return 'Free'
+  return tier || 'active'
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 type ModalView = 'community' | 'addons' | 'picker' | null
+type PageMode = 'choose' | 'active' | null
+
+const PENDING_CHECKOUT_KEY = 'cpoint_pending_subscription_checkout'
 
 export default function SubscriptionPlans() {
   const { setTitle } = useHeader()
@@ -162,6 +220,7 @@ export default function SubscriptionPlans() {
   const [modalError, setModalError] = useState<string | null>(null)
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null)
   const [view, setView] = useState<ModalView>(null)
+  const [pageMode, setPageMode] = useState<PageMode>(null)
   const [pendingTier, setPendingTier] = useState<CommunityTierLevel | null>(null)
   const [activeSubscriptions, setActiveSubscriptions] = useState<ActiveSubscriptionsPayload | null>(null)
 
@@ -179,6 +238,25 @@ export default function SubscriptionPlans() {
     }
   }, [queryParams])
 
+  const loadActiveSubscriptions = useCallback(async () => {
+    const res = await fetch('/api/me/subscriptions', {
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    const data: ActiveSubscriptionsPayload = await res.json()
+    if (res.ok && data?.success) {
+      setActiveSubscriptions(data)
+      const successMessage = maybeConfirmPendingCheckout(data)
+      if (successMessage) {
+        setStatus(successMessage)
+        setView(null)
+        setPendingTier(null)
+        setModalError(null)
+      }
+    }
+    return data
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     async function load() {
@@ -190,22 +268,18 @@ export default function SubscriptionPlans() {
             credentials: 'include',
             headers: { Accept: 'application/json' },
           }),
-          fetch('/api/me/subscriptions', {
-            credentials: 'include',
-            headers: { Accept: 'application/json' },
-          }),
+          loadActiveSubscriptions().catch(() => null),
         ])
         if (!pricingRes.ok) {
           throw new Error(`HTTP ${pricingRes.status}`)
         }
         const data: PricingPayload = await pricingRes.json()
-        const activeData: ActiveSubscriptionsPayload | null = activeRes.ok ? await activeRes.json() : null
         if (!cancelled) {
           if (!data.success) {
             throw new Error('Pricing load failed')
           }
           setPricing(data)
-          if (activeData?.success) setActiveSubscriptions(activeData)
+          if (activeRes?.success) setActiveSubscriptions(activeRes)
         }
       } catch (err) {
         if (!cancelled) {
@@ -219,13 +293,29 @@ export default function SubscriptionPlans() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [loadActiveSubscriptions])
+
+  useEffect(() => {
+    const resetCheckoutState = () => {
+      setCheckoutLoading(null)
+      void loadActiveSubscriptions().catch(() => {})
+    }
+    window.addEventListener('pageshow', resetCheckoutState)
+    document.addEventListener('visibilitychange', resetCheckoutState)
+    return () => {
+      window.removeEventListener('pageshow', resetCheckoutState)
+      document.removeEventListener('visibilitychange', resetCheckoutState)
+    }
+  }, [loadActiveSubscriptions])
 
   const startCheckout = useCallback(
     async (
       body: Record<string, string | number>,
       key: string,
-      options?: { onError?: (message: string) => void },
+      options?: {
+        onError?: (message: string) => void
+        onBeforeRedirect?: () => void
+      },
     ) => {
       setCheckoutLoading(key)
       setError(null)
@@ -255,6 +345,7 @@ export default function SubscriptionPlans() {
             })
             const portalData = await portalRes.json()
             if (portalRes.ok && portalData?.success && portalData?.url) {
+              options?.onBeforeRedirect?.()
               window.location.assign(portalData.url)
               return
             }
@@ -263,6 +354,8 @@ export default function SubscriptionPlans() {
           throw new Error(data?.error || 'Unable to start checkout')
         }
         if (data.url) {
+          storePendingCheckout(body)
+          options?.onBeforeRedirect?.()
           window.location.assign(data.url)
           return
         }
@@ -300,11 +393,48 @@ export default function SubscriptionPlans() {
           tier_code: pendingTier.tier_code,
         },
         `community_tier:${pendingTier.tier_code}:${communityId}`,
-        { onError: setModalError },
+        {
+          onError: setModalError,
+          onBeforeRedirect: () => {
+            setView(null)
+            setPendingTier(null)
+          },
+        },
       )
     },
     [pendingTier, startCheckout],
   )
+
+  const changeCommunityTier = useCallback(async (
+    community: ActiveCommunitySubscription,
+    tier: CommunityTierLevel,
+  ) => {
+    const key = `change-tier:${community.id}:${tier.tier_code}`
+    setCheckoutLoading(key)
+    setError(null)
+    setStatus(null)
+    try {
+      const res = await fetch(`/api/communities/${community.id}/billing/change-tier`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ tier_code: tier.tier_code }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Unable to change tier')
+      }
+      setStatus(`${community.name} changed to ${tierLabel(tier.tier_code)}.`)
+      await loadActiveSubscriptions()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to change tier')
+    } finally {
+      setCheckoutLoading(null)
+    }
+  }, [loadActiveSubscriptions])
 
   return (
     <div className="min-h-screen bg-black text-white pt-16 pb-24">
@@ -342,27 +472,37 @@ export default function SubscriptionPlans() {
 
         {!loading && pricing && (
           <div className="space-y-10">
-            <section aria-labelledby="subscriptions-heading">
-              <div className="mb-4">
-                <h2 id="subscriptions-heading" className="text-xl font-semibold">Subscriptions</h2>
-                <p className="mt-1 text-sm text-white/55">Choose a personal plan or upgrade a parent community.</p>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <PersonalCard
-                  payload={pricing.sku.premium}
-                  onSubscribe={onSubscribePremium}
-                  loading={checkoutLoading === 'premium'}
-                />
-                <CommunityCard
-                  payload={pricing.sku.community_tier}
-                  onOpen={() => {
-                    setModalError(null)
-                    setView('community')
-                  }}
-                />
-              </div>
-            </section>
-            <ActiveSubscriptionsSection active={activeSubscriptions} onManageCommunity={(id) => navigate(`/community/${id}/edit`)} />
+            <ModeHeader mode={pageMode} onChange={() => setPageMode(null)} />
+            {pageMode === 'choose' && (
+              <section aria-labelledby="subscriptions-heading">
+                <div className="mb-4">
+                  <h2 id="subscriptions-heading" className="text-xl font-semibold">Choose your plan</h2>
+                  <p className="mt-1 text-sm text-white/55">Choose a personal plan or upgrade a parent community.</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <PersonalCard
+                    payload={pricing.sku.premium}
+                    onSubscribe={onSubscribePremium}
+                    loading={checkoutLoading === 'premium'}
+                  />
+                  <CommunityCard
+                    payload={pricing.sku.community_tier}
+                    onOpen={() => {
+                      setModalError(null)
+                      setView('community')
+                    }}
+                  />
+                </div>
+              </section>
+            )}
+            {pageMode === 'active' && (
+              <ActiveSubscriptionsSection
+                active={activeSubscriptions}
+                tiers={pricing.sku.community_tier.tiers}
+                onManageCommunity={(id) => navigate(`/community/${id}/edit`)}
+                onChangeTier={(community, tier) => changeCommunityTier(community, tier)}
+              />
+            )}
           </div>
         )}
 
@@ -376,6 +516,13 @@ export default function SubscriptionPlans() {
           </a>
         </p>
       </div>
+
+      {!loading && pricing && pageMode === null && (
+        <EntryChoiceModal
+          onChoosePlans={() => setPageMode('choose')}
+          onChooseActive={() => setPageMode('active')}
+        />
+      )}
 
       {view === 'community' && pricing && (
         <CommunityModal
@@ -407,6 +554,7 @@ export default function SubscriptionPlans() {
             setModalError(null)
           }}
           onChoose={onCommunityChosen}
+          activeSubscriptions={activeSubscriptions}
           error={modalError}
           loading={!!checkoutLoading}
           onCreate={() => {
@@ -434,6 +582,78 @@ function PricingSkeleton() {
           style={{ minHeight: 260 }}
         />
       ))}
+    </div>
+  )
+}
+
+function EntryChoiceModal({
+  onChoosePlans,
+  onChooseActive,
+}: {
+  onChoosePlans: () => void
+  onChooseActive: () => void
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Choose subscription view"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 backdrop-blur sm:items-center p-0 sm:p-4"
+    >
+      <div className="w-full sm:max-w-xl rounded-t-[28px] sm:rounded-[28px] border border-white/10 bg-[#070707] p-6 shadow-2xl shadow-black">
+        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cpoint-turquoise">
+          Subscriptions
+        </p>
+        <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white">
+          What would you like to manage?
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-white/55">
+          Choose a new plan or review what is already active. You can switch views at any time.
+        </p>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={onChoosePlans}
+            className="rounded-2xl border border-cpoint-turquoise/35 bg-cpoint-turquoise/10 p-5 text-left transition hover:bg-cpoint-turquoise/15"
+          >
+            <span className="text-sm font-semibold text-white">Choose your plan</span>
+            <span className="mt-2 block text-xs leading-5 text-white/55">
+              Personal Premium or Community L1/L2/L3.
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={onChooseActive}
+            className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-left transition hover:border-cpoint-turquoise/35 hover:bg-white/[0.06]"
+          >
+            <span className="text-sm font-semibold text-white">Active subscriptions</span>
+            <span className="mt-2 block text-xs leading-5 text-white/55">
+              See current plans, renewals, and tier changes.
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ModeHeader({ mode, onChange }: { mode: PageMode; onChange: () => void }) {
+  if (!mode) return null
+  return (
+    <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+      <div>
+        <p className="text-xs uppercase tracking-[0.22em] text-white/35">Current view</p>
+        <p className="mt-0.5 text-sm font-medium text-white">
+          {mode === 'choose' ? 'Choose your plan' : 'Active subscriptions'}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onChange}
+        className="rounded-full border border-white/15 px-4 py-2 text-xs font-semibold text-white hover:bg-white/5"
+      >
+        Switch
+      </button>
     </div>
   )
 }
@@ -553,10 +773,14 @@ function CommunityCard({
 
 function ActiveSubscriptionsSection({
   active,
+  tiers,
   onManageCommunity,
+  onChangeTier,
 }: {
   active: ActiveSubscriptionsPayload | null
+  tiers: CommunityTierLevel[]
   onManageCommunity: (communityId: number) => void
+  onChangeTier: (community: ActiveCommunitySubscription, tier: CommunityTierLevel) => void
 }) {
   const personal = active?.personal
   const communities = active?.communities || []
@@ -590,10 +814,16 @@ function ActiveSubscriptionsSection({
               key={community.id}
               title={community.name}
               subtitle={community.cancel_at_period_end ? benefitsCopy(community.benefits_end_at || community.current_period_end) : renewalCopy(community.current_period_end)}
-              status={community.tier || community.subscription_status || 'active'}
+              status={tierLabel(community.tier || community.subscription_status)}
               actionLabel="Manage"
               onAction={() => onManageCommunity(community.id)}
-            />
+            >
+              <TierChangeButtons
+                community={community}
+                tiers={tiers}
+                onChangeTier={onChangeTier}
+              />
+            </ActiveRow>
           ))}
         </div>
       )}
@@ -607,15 +837,18 @@ function ActiveRow({
   status,
   actionLabel,
   onAction,
+  children,
 }: {
   title: string
   subtitle: string
   status: string
   actionLabel?: string
   onAction?: () => void
+  children?: React.ReactNode
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="font-medium text-white">{title}</h3>
@@ -634,6 +867,41 @@ function ActiveRow({
           {actionLabel}
         </button>
       )}
+      </div>
+      {children && <div className="mt-4 border-t border-white/10 pt-4">{children}</div>}
+    </div>
+  )
+}
+
+function TierChangeButtons({
+  community,
+  tiers,
+  onChangeTier,
+}: {
+  community: ActiveCommunitySubscription
+  tiers: CommunityTierLevel[]
+  onChangeTier: (community: ActiveCommunitySubscription, tier: CommunityTierLevel) => void
+}) {
+  const currentTier = String(community.tier || '').toLowerCase()
+  const options = tiers.filter((tier) => tier.tier_code !== currentTier && tier.purchasable)
+  if (options.length === 0) return null
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-[0.18em] text-white/35">
+        Change tier
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {options.map((tier) => (
+          <button
+            key={tier.tier_code}
+            type="button"
+            onClick={() => onChangeTier(community, tier)}
+            className="rounded-full border border-cpoint-turquoise/35 px-3 py-1.5 text-xs font-semibold text-cpoint-turquoise hover:bg-cpoint-turquoise/10"
+          >
+            {tierLabel(tier.tier_code)} · {formatEur(tier.price_eur)}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
@@ -644,6 +912,13 @@ function renewalCopy(value?: string | null) {
 
 function benefitsCopy(value?: string | null) {
   return value ? `Benefits active until: ${formatDate(value)}` : 'Cancellation pending'
+}
+
+function currentTierLabel(community: Community, active: ActiveSubscriptionsPayload | null) {
+  const activeItem = active?.communities?.find((item) => item.id === community.id)
+  const tier = activeItem?.tier || community.tier
+  if (!tier || tier === 'free') return null
+  return `Current: ${tierLabel(tier)}`
 }
 
 // ---------------------------------------------------------------------------
@@ -935,6 +1210,7 @@ function CommunityPickerModal({
   onCancel,
   onChoose,
   onCreate,
+  activeSubscriptions,
   error,
   loading,
 }: {
@@ -943,6 +1219,7 @@ function CommunityPickerModal({
   onCancel: () => void
   onChoose: (communityId: number) => void
   onCreate: () => void
+  activeSubscriptions: ActiveSubscriptionsPayload | null
   error?: string | null
   loading?: boolean
 }) {
@@ -984,12 +1261,18 @@ function CommunityPickerModal({
         const me = typeof data.username === 'string'
           ? data.username.trim().toLowerCase()
           : null
+        const activeByCommunity = new Map(
+          (activeSubscriptions?.communities || []).map((item) => [item.id, item]),
+        )
         const owned = flat.filter((c) => {
           const withParent = c as Community & { parent_community_id?: number | null }
           if (withParent.parent_community_id) return false
           if (me && c.creator_username && c.creator_username.trim().toLowerCase() === me) return true
           if (c.role && c.role.toLowerCase() === 'owner') return true
           return false
+        }).filter((c) => {
+          const active = activeByCommunity.get(c.id)
+          return String(active?.tier || c.tier || '').toLowerCase() !== tier.tier_code
         })
         setCommunities(owned)
       } catch (err) {
@@ -1000,7 +1283,7 @@ function CommunityPickerModal({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [activeSubscriptions, tier.tier_code])
 
   return (
     <ModalShell onClose={onCancel} ariaLabel={`Pick a community for Paid ${tier.level_label}`}>
@@ -1042,7 +1325,7 @@ function CommunityPickerModal({
         )}
         {communities !== null && communities.length === 0 && (
           <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm text-white/60">
-            You don't own any communities yet. Create one first.
+            No eligible owned communities for {tierLabel(tier.tier_code)}. Communities already on this tier are hidden.
           </div>
         )}
         {communities?.map((c) => (
@@ -1062,7 +1345,14 @@ function CommunityPickerModal({
               checked={selectedId === c.id}
               onChange={() => setSelectedId(c.id)}
             />
-            <span className="min-w-0 flex-1 break-words leading-5">{c.name}</span>
+            <span className="min-w-0 flex-1 break-words leading-5">
+              {c.name}
+              {currentTierLabel(c, activeSubscriptions) && (
+                <span className="ml-2 text-xs text-white/40">
+                  {currentTierLabel(c, activeSubscriptions)}
+                </span>
+              )}
+            </span>
           </label>
         ))}
       </div>

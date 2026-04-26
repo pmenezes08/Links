@@ -321,7 +321,7 @@ export default function EditCommunity(){
             )}
             {billing.current_period_end && (
               <div className="mt-1 text-xs text-white/40">
-                {billing.is_canceling ? 'Benefits active until' : 'Next renewal'}: {billing.current_period_end}
+                {billing.is_canceling ? 'Benefits active until' : 'Next renewal'}: {formatBillingDate(billing.current_period_end)}
               </div>
             )}
             {billing.subscription_status && billing.subscription_status !== 'active' && (
@@ -696,4 +696,10 @@ export default function EditCommunity(){
       />
     </div>
   )
+}
+
+function formatBillingDate(value: string) {
+  const normalized = value.includes(' ') ? value.replace(' ', 'T') : value
+  const date = new Date(normalized)
+  return Number.isNaN(date.getTime()) ? value.split(' ')[0] : date.toLocaleDateString()
 }

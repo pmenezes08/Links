@@ -1,4 +1,4 @@
-# CPoint — Operations Playbook
+# C-Point — Operations Playbook
 
 > Living reference for the handful of hot operational flows the founder
 > runs personally (deploys, backups, data resets, single-user promotions,
@@ -43,7 +43,7 @@ Console billing report):
 | Cloud SQL (cpoint-db)     | 7.81 | `db-f1-micro` — already lean, no action                       |
 | Other (Cloud Storage, SM) | 1.91 | Noise                                                         |
 
-Services actually in use for CPoint: `cpoint-app`, `cpoint-app-staging`,
+Services actually in use for C-Point: `cpoint-app`, `cpoint-app-staging`,
 `cpoint-admin`, `cpoint-admin-staging`, `cpoint-landing`. Services
 `evalio` and `links` belong to other projects and are out of scope for
 this project's cost optimisation.
@@ -258,14 +258,28 @@ Webhook-owned billing state:
   `current_period_end`; do not downgrade entitlement until
   `customer.subscription.deleted`.
 
-Upgrade and renewal policy:
+Upgrade, downgrade, and renewal policy:
 
 - New purchases use Stripe Checkout.
-- Existing active or cancelling community subscriptions use Stripe
-  Billing Portal. Do not start a second Checkout session for L1 → L2,
-  L2 → L3, or renewal after `cancel_at_period_end`.
+- Existing active community subscriptions use the app-owned
+  `/api/communities/<id>/billing/change-tier` endpoint for L1/L2/L3
+  upgrades and downgrades. This endpoint reads target Price IDs from KB
+  and updates the existing Stripe subscription item.
+- Existing cancelling subscriptions use Stripe Billing Portal to renew
+  or manage cancellation/payment methods. Do not start a second Checkout
+  session for L1 → L2, L2 → L3, or renewal after
+  `cancel_at_period_end`.
 - Configure Stripe Customer Portal in the Stripe Dashboard so Community
-  L1/L2/L3 products and prices are available for plan changes.
+  L1/L2/L3 products and prices are available as a fallback for plan
+  changes and customer self-service.
+- Stripe-side setup for portal fallback:
+  1. Open Stripe Dashboard → Settings → Billing → Customer portal.
+  2. Enable subscription updates.
+  3. Add the Community L1, L2, and L3 recurring monthly prices to the
+     allowed products/prices.
+  4. Save test-mode and live-mode portal configurations separately.
+  5. Verify with an L2 test subscription that L1 downgrade and L3
+     upgrade options appear.
 
 ## 4.2 Paulo community ownership cleanup
 
