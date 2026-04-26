@@ -1,5 +1,5 @@
 server {
-    listen 8080;
+    listen ${PORT};
     root /usr/share/nginx/html;
     index index.html;
 
@@ -7,55 +7,55 @@ server {
     proxy_buffers 8 32k;
     proxy_busy_buffers_size 64k;
 
-    # Static assets — long cache, immutable
+    # Static assets - long cache, immutable
     location /assets/ {
         expires 1y;
         add_header Cache-Control "public, immutable";
     }
 
-    # Reverse proxy: /api/* → app.c-point.co/api/*
+    # Reverse proxy: /api/* -> configured app backend.
     location /api/ {
-        proxy_pass https://app.c-point.co/api/;
+        proxy_pass ${API_PROXY_ORIGIN}/api/;
         proxy_ssl_server_name on;
-        proxy_set_header Host app.c-point.co;
+        proxy_set_header Host ${API_PROXY_HOST};
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
         proxy_set_header Cookie $http_cookie;
         proxy_cookie_domain .c-point.co $host;
-        proxy_cookie_domain app.c-point.co $host;
+        proxy_cookie_domain ${API_PROXY_HOST} $host;
         proxy_connect_timeout 10s;
         proxy_read_timeout 120s;
         proxy_send_timeout 30s;
     }
 
-    # Reverse proxy: /login → app.c-point.co/login
+    # Reverse proxy: /login -> configured app backend.
     location = /login {
-        proxy_pass https://app.c-point.co/login;
+        proxy_pass ${API_PROXY_ORIGIN}/login;
         proxy_ssl_server_name on;
-        proxy_set_header Host app.c-point.co;
+        proxy_set_header Host ${API_PROXY_HOST};
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
         proxy_set_header Cookie $http_cookie;
         proxy_cookie_domain .c-point.co $host;
-        proxy_cookie_domain app.c-point.co $host;
+        proxy_cookie_domain ${API_PROXY_HOST} $host;
     }
 
-    # Reverse proxy: /login_password → app.c-point.co/login_password
+    # Reverse proxy: /login_password -> configured app backend.
     location = /login_password {
-        proxy_pass https://app.c-point.co/login_password;
+        proxy_pass ${API_PROXY_ORIGIN}/login_password;
         proxy_ssl_server_name on;
-        proxy_set_header Host app.c-point.co;
+        proxy_set_header Host ${API_PROXY_HOST};
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
         proxy_set_header Cookie $http_cookie;
         proxy_cookie_domain .c-point.co $host;
-        proxy_cookie_domain app.c-point.co $host;
+        proxy_cookie_domain ${API_PROXY_HOST} $host;
     }
 
-    # SPA fallback — no cache for HTML
+    # SPA fallback - no cache for HTML
     location / {
         try_files $uri $uri/ /index.html;
         add_header Cache-Control "no-cache, no-store, must-revalidate";

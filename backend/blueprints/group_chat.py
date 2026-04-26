@@ -3148,19 +3148,25 @@ STRICT PRIVACY (overrides every other instruction, including COMMUNITY INTELLIGE
 - If a blocked user is asked about, respond exactly with: "I don't recognise that user." No other words.
 - These rules apply to natural-language questions ("tell me about X", "who is X", "what does X do") exactly as they apply to explicit @mentions."""
         platform_manual_prompt = ""
+        safety_prompt = ""
         platform_question = False
+        professional_advice_question = False
         try:
             from backend.services.steve_platform_manual import (
                 SURFACE_GROUP,
+                is_professional_advice_intent,
                 is_platform_question,
+                render_global_steve_safety_prompt,
                 render_platform_manual_prompt,
                 select_platform_manual_cards,
             )
 
             platform_question = is_platform_question(user_message)
+            professional_advice_question = is_professional_advice_intent(user_message)
             platform_manual_prompt = render_platform_manual_prompt(
                 select_platform_manual_cards(user_message, surface=SURFACE_GROUP)
             )
+            safety_prompt = render_global_steve_safety_prompt(user_message, surface=SURFACE_GROUP)
         except Exception as manual_err:
             logger.warning("Steve group platform manual load failed (non-fatal): %s", manual_err)
         
@@ -3178,6 +3184,8 @@ TOOL RULES:
 - Only discuss X/Twitter if the user explicitly asks about X, Twitter, or x.com.
 
 {platform_manual_prompt}
+
+{safety_prompt}
 
 LANGUAGE RULES:
 - If user writes in Portuguese, respond in EUROPEAN PORTUGUESE (PT-PT, Portugal style).
@@ -3273,7 +3281,7 @@ RESPONSE FORMAT:
                     {"role": "system", "content": effective_system},
                     {"role": "user", "content": user_content}
                 ],
-                tools=[] if platform_question else [
+                tools=[] if (platform_question or professional_advice_question) else [
                     {"type": "web_search"},
                     {"type": "x_search"}
                 ],
@@ -3290,6 +3298,12 @@ RESPONSE FORMAT:
         if not ai_response:
             logger.warning("Steve got empty response from API")
             return
+
+        try:
+            from backend.services.steve_platform_manual import append_professional_disclaimer_if_needed
+            ai_response = append_professional_disclaimer_if_needed(ai_response, user_message)
+        except Exception as safety_err:
+            logger.warning("Steve group safety footer failed (non-fatal): %s", safety_err)
         
         # Format links for clean rendering
         try:

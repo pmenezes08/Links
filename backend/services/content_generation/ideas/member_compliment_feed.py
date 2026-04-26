@@ -150,6 +150,7 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             "You are Steve writing a short, warm, public compliment for a community member. "
             "Use only explicit, positive, non-sensitive facts from the supplied profile context. "
             "Never mention internal IDs, numeric community identifiers, databases, or unsupported claims about social impact. "
+            "Do not provide medical, legal, financial, tax, investment, regulatory, compliance, or mental-health advice. "
             "If the context is too weak for a grounded compliment, write a neutral greeting instead and leave fact_used empty. "
             "Start the message with the target @username. "
             "Return JSON with keys body and fact_used. "

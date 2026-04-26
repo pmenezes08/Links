@@ -52,6 +52,11 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
     if not XAI_API_KEY:
         quote = random.choice(FALLBACK_QUOTES)
         content = f"{quote}\n\nSteve here, @{target_username}. Keep going - today's effort still counts."
+        try:
+            from backend.services.steve_platform_manual import append_professional_disclaimer_if_needed
+            content = append_professional_disclaimer_if_needed(content, theme)
+        except Exception:
+            pass
         return IdeaExecutionResult(
             delivery_channel="dm",
             content=content,
@@ -59,10 +64,18 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             meta={"theme": theme},
         )
 
+    safety_prompt = ""
+    try:
+        from backend.services.steve_platform_manual import SURFACE_CONTENT, render_global_steve_safety_prompt
+        safety_prompt = render_global_steve_safety_prompt(theme, surface=SURFACE_CONTENT)
+    except Exception:
+        safety_prompt = ""
+
     response = generate_json(
         system_prompt=(
             "You are Steve sending a short motivational direct message. "
-            "Be warm, concise, and encouraging. Avoid sounding robotic or overly intense."
+            "Be warm, concise, and encouraging. Avoid sounding robotic or overly intense. "
+            f"{safety_prompt}"
         ),
         user_prompt=(
             f"Target member: @{target_username}\n"
@@ -75,6 +88,11 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
     body = str(response.get("body") or "").strip()
     if not body:
         body = f'{random.choice(FALLBACK_QUOTES)}\n\nSteve here, @{target_username}. Keep going - today still matters.'
+    try:
+        from backend.services.steve_platform_manual import append_professional_disclaimer_if_needed
+        body = append_professional_disclaimer_if_needed(body, theme)
+    except Exception:
+        pass
     return IdeaExecutionResult(
         delivery_channel="dm",
         content=body,

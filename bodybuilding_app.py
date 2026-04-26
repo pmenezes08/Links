@@ -14771,19 +14771,25 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
 
         is_admin = is_app_admin(sender_username)
         platform_manual_prompt = ""
+        safety_prompt = ""
         platform_question = False
+        professional_advice_question = False
         try:
             from backend.services.steve_platform_manual import (
                 SURFACE_DM,
+                is_professional_advice_intent,
                 is_platform_question,
+                render_global_steve_safety_prompt,
                 render_platform_manual_prompt,
                 select_platform_manual_cards,
             )
 
             platform_question = is_platform_question(user_message)
+            professional_advice_question = is_professional_advice_intent(user_message)
             platform_manual_prompt = render_platform_manual_prompt(
                 select_platform_manual_cards(user_message, surface=SURFACE_DM)
             )
+            safety_prompt = render_global_steve_safety_prompt(user_message, surface=SURFACE_DM)
         except Exception as manual_err:
             logger.warning("Steve DM platform manual load failed (non-fatal): %s", manual_err)
 
@@ -14806,6 +14812,8 @@ TOOL RULES:
 - Only discuss X/Twitter if the user explicitly asks about X, Twitter, or x.com.
 
 {platform_manual_prompt}
+
+{safety_prompt}
 
 CONVERSATION INTELLIGENCE:
 - You have two context sections: OLDER CONTEXT (background) and CURRENT CONVERSATION (active).
@@ -14853,7 +14861,7 @@ Only share this information if asked. Be factual — do not embellish or invent 
         response = client.responses.create(
             model=GROK_MODEL_FAST,
             input=messages,
-            tools=[] if platform_question else [{"type": "web_search"}, {"type": "x_search"}],
+            tools=[] if (platform_question or professional_advice_question) else [{"type": "web_search"}, {"type": "x_search"}],
             max_output_tokens=600,
             temperature=0.7
         )
@@ -14864,6 +14872,12 @@ Only share this information if asked. Be factual — do not embellish or invent 
             logger.warning("Steve DM reply: empty response from API")
             _clear_steve_typing()
             return
+
+        try:
+            from backend.services.steve_platform_manual import append_professional_disclaimer_if_needed
+            ai_response = append_professional_disclaimer_if_needed(ai_response, user_message)
+        except Exception as safety_err:
+            logger.warning("Steve DM safety footer failed (non-fatal): %s", safety_err)
 
         ai_response = format_steve_response_links(ai_response)
         
@@ -16750,6 +16764,23 @@ def api_networking_steve_match():
             if requester_profile_ctx:
                 enriched_user_profile += f"\nAI insight: {requester_profile_ctx}"
 
+            networking_safety_prompt = ""
+            professional_advice_question = False
+            try:
+                from backend.services.steve_platform_manual import (
+                    SURFACE_NETWORKING,
+                    is_professional_advice_intent,
+                    render_global_steve_safety_prompt,
+                )
+
+                professional_advice_question = is_professional_advice_intent(message)
+                networking_safety_prompt = render_global_steve_safety_prompt(
+                    message,
+                    surface=SURFACE_NETWORKING,
+                )
+            except Exception as safety_err:
+                logger.warning("Steve networking safety prompt failed (non-fatal): %s", safety_err)
+
         grok_input = [
             {"role": "system", "content": f"""You are Steve, a friendly and helpful networking assistant inside a private professional network. You speak like a knowledgeable friend — warm, concise, and natural. Never sound like a database or a computer.
 
@@ -16804,7 +16835,9 @@ RULES:
 - NEVER say "I won't recommend" or explain what you're choosing not to do. Focus on what you CAN offer.
 - Never quote or closely paraphrase private member-post wording. Use only safe, high-level evidence from the roster and AI insight.
 - This is a multi-turn conversation. Pay close attention to what was discussed previously. If the user asks a follow-up (e.g., "suggest a message to send him", "tell me more about her"), refer back to the person or topic from the prior exchange. Do NOT start a new unrelated recommendation unless the user explicitly asks for something different.
-- The requester's profile is provided as background context ONLY — so you know who they are and can craft better introductions. When the user makes a specific request, match ONLY based on what they asked for. Do NOT bring the requester's own interests, industry, or background into the recommendation rationale unless they explicitly ask for connections related to their own profile (e.g., "people in my industry", "people with similar interests"). If the user asks about race cars, recommend people connected to race cars — not people who share the requester's AI interests."""}
+- The requester's profile is provided as background context ONLY — so you know who they are and can craft better introductions. When the user makes a specific request, match ONLY based on what they asked for. Do NOT bring the requester's own interests, industry, or background into the recommendation rationale unless they explicitly ask for connections related to their own profile (e.g., "people in my industry", "people with similar interests"). If the user asks about race cars, recommend people connected to race cars — not people who share the requester's AI interests.
+
+{networking_safety_prompt}"""}
         ]
         if query_plan:
             planner_hint = json.dumps(
@@ -16842,6 +16875,11 @@ RULES:
         if not ai_response:
             ai_response = "I couldn't find matching members. Try refining your request."
         _record_recommendations_background(recommended, username, community_id, context=message)
+        try:
+            from backend.services.steve_platform_manual import append_professional_disclaimer_if_needed
+            ai_response = append_professional_disclaimer_if_needed(ai_response, message)
+        except Exception as safety_err:
+            logger.warning("Steve networking safety footer failed (non-fatal): %s", safety_err)
         ai_response = inject_member_mentions(ai_response, member_names)
         ai_response = _sanitize_networking_response_mentions(ai_response, member_names)
         return jsonify({'success': True, 'response': format_steve_response_links(ai_response)})
@@ -26688,6 +26726,31 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             )
             if author_profile_ctx:
                 system_prompt += f"\n\nWHAT YOU KNOW ABOUT @{author_username}:\n{author_profile_ctx}\nUse this knowledge naturally — don't announce it, but let it guide your tone and relevance."
+
+            platform_question = False
+            professional_advice_question = False
+            try:
+                from backend.services.steve_platform_manual import (
+                    SURFACE_FEED,
+                    is_professional_advice_intent,
+                    is_platform_question,
+                    render_global_steve_safety_prompt,
+                    render_platform_manual_prompt,
+                    select_platform_manual_cards,
+                )
+
+                platform_question = is_platform_question(post_content)
+                professional_advice_question = is_professional_advice_intent(post_content)
+                manual_prompt = render_platform_manual_prompt(
+                    select_platform_manual_cards(post_content, surface=SURFACE_FEED)
+                )
+                safety_prompt = render_global_steve_safety_prompt(post_content, surface=SURFACE_FEED)
+                if manual_prompt:
+                    system_prompt += f"\n\n{manual_prompt}"
+                if safety_prompt:
+                    system_prompt += f"\n\n{safety_prompt}"
+            except Exception as manual_err:
+                logger.warning("Steve feed platform manual load failed (non-fatal): %s", manual_err)
             
             ai_response = None
             try:
@@ -26713,7 +26776,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                         {"role": "system", "content": effective_system},
                         {"role": "user", "content": user_content}
                     ],
-                    tools=[
+                    tools=[] if (platform_question or professional_advice_question) else [
                         {"type": "web_search"},
                         {"type": "x_search"}
                     ],
@@ -26731,6 +26794,12 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             if not ai_response:
                 logger.warning("No AI response for Steve post reply")
                 return
+
+            try:
+                from backend.services.steve_platform_manual import append_professional_disclaimer_if_needed
+                ai_response = append_professional_disclaimer_if_needed(ai_response, post_content)
+            except Exception as safety_err:
+                logger.warning("Steve feed safety footer failed (non-fatal): %s", safety_err)
             
             # Format URLs in response as clickable links with readable text
             ai_response = format_steve_response_links(ai_response)

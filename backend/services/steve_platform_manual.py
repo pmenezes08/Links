@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 PLATFORM_MANUAL_SLUG = "steve-platform-manual"
 SURFACE_DM = "steve_dm"
 SURFACE_GROUP = "steve_group"
+SURFACE_FEED = "steve_feed"
+SURFACE_NETWORKING = "steve_networking"
+SURFACE_CONTENT = "steve_content"
+ALL_STEVE_SURFACES = (SURFACE_DM, SURFACE_GROUP, SURFACE_FEED, SURFACE_NETWORKING, SURFACE_CONTENT)
 
 
 @dataclass(frozen=True)
@@ -31,7 +35,7 @@ DEFAULT_CARDS: tuple[PlatformManualCard, ...] = (
         title="Platform Identity",
         priority="always",
         intents=("c-point", "this platform", "the app", "here"),
-        surfaces=(SURFACE_DM, SURFACE_GROUP),
+        surfaces=ALL_STEVE_SURFACES,
         answer=(
             "Steve is inside C-Point. C-Point, \"this platform\", \"the platform\", "
             "\"this app\", \"the app\", and \"here\" always mean C-Point unless the "
@@ -50,26 +54,117 @@ DEFAULT_CARDS: tuple[PlatformManualCard, ...] = (
         title="What C-Point Is",
         priority="retrieved",
         intents=("what is c-point", "what is this platform", "tell me about this platform", "this app"),
-        surfaces=(SURFACE_DM, SURFACE_GROUP),
+        surfaces=ALL_STEVE_SURFACES,
         answer=(
-            "C-Point is a global platform built from private micro-networks: trusted "
-            "spaces where people can connect, talk, build, share ideas, and stay close "
-            "to the communities that matter. Those micro-networks can be entrepreneurship "
-            "networks, founder circles, university cohorts, alumni groups, sports and "
-            "athletic clubs, wellness and lifestyle communities, dating or social discovery "
-            "networks, or small friend groups planning trips, discussing new ventures, "
-            "testing ideas about the future, or just keeping the banter alive. C-Point is "
-            "not one giant public feed. It is a network of smaller, trusted worlds where "
-            "context, privacy, and meaningful connection come first."
+            "C-Point is a global platform for private micro-networks: trusted spaces where "
+            "people have context, privacy, continuity, and fast ways to coordinate. A "
+            "micro-network might be a founder circle, a university cohort, a club, or a "
+            "private group built around a shared purpose. Steve can give more examples if "
+            "the user wants."
         ),
-        rules=("Keep the answer exciting but plain.", "Emphasise privacy, exclusivity, meaningful connection, and micro-networks."),
+        rules=(
+            "Mention only 1-2 examples by default.",
+            "Offer more examples instead of listing many upfront.",
+            "Emphasise privacy, exclusivity, meaningful connection, and micro-networks.",
+        ),
+    ),
+    PlatformManualCard(
+        id="platform.comparisons",
+        title="Platform Comparisons",
+        priority="retrieved",
+        intents=(
+            "difference between", "compare", "comparison", "versus", " vs ", "like linkedin",
+            "like discord", "like reddit", "like whatsapp", "like x", "like twitter",
+            "how is c-point different", "what makes c-point different", "different between",
+            "linkedin", "discord", "reddit", "whatsapp",
+        ),
+        surfaces=ALL_STEVE_SURFACES,
+        answer=(
+            "C-Point is complementary to public platforms. Public platforms are built for "
+            "reach, discovery, and consumption. C-Point is built for private micro-networks: "
+            "trusted spaces where people have context, privacy, continuity, and fast ways "
+            "to coordinate. DMs and group chats handle immediate conversation; the feed gives "
+            "the network memory, so ideas, links, docs, media, and decisions stay threaded "
+            "and findable."
+        ),
+        rules=(
+            "Do not name competitors proactively.",
+            "If the user names another platform, compare respectfully and plainly.",
+            "Do not frame C-Point as replacing group chats, because C-Point includes DMs and group chats.",
+        ),
+    ),
+    PlatformManualCard(
+        id="feed.private_social_layer",
+        title="Feed as Private Social Layer",
+        priority="retrieved",
+        intents=("feed", "private social layer", "network memory", "threaded", "posts", "why does the feed exist"),
+        surfaces=ALL_STEVE_SURFACES,
+        answer=(
+            "Every meaningful micro-network deserves its own private social layer. The feed "
+            "exists because each micro-network needs more than a message stream. It needs a "
+            "private social layer: posts, replies, links, docs, media, ideas, and decisions "
+            "attached to context, so important things stay visible and findable."
+        ),
+        rules=(
+            "Do not mention competitor chat apps by name unless the user asks.",
+            "Explain that C-Point has DMs/group chats for fast coordination and feed threads for durable network memory.",
+        ),
+    ),
+    PlatformManualCard(
+        id="dm_and_group_chats.basics",
+        title="DMs and Group Chats",
+        priority="retrieved",
+        intents=("dm", "direct message", "group chat", "group chats", "fast coordination", "chat"),
+        surfaces=ALL_STEVE_SURFACES,
+        answer=(
+            "C-Point has DMs and group chats for fast private coordination. They are for "
+            "direct back-and-forth. The feed adds shared memory for the micro-network: "
+            "context, posts, links, docs, media, and decisions that people may need to revisit."
+        ),
+    ),
+    PlatformManualCard(
+        id="pricing_and_limits.safe_answer",
+        title="Pricing and Limits Safe Answer",
+        priority="retrieved",
+        intents=("pricing", "billing", "membership", "subscription", "limits", "caps", "plans", "price", "cost"),
+        surfaces=ALL_STEVE_SURFACES,
+        answer=(
+            "The safest place to check pricing, billing, and limits is the pricing or "
+            "membership page in C-Point. That is where the current plans, caps, and billing "
+            "details live."
+        ),
+        rules=(
+            "Steve must not quote prices, caps, discounts, billing rules, or plan limits from memory.",
+            "If the user insists, Steve should say he does not want to give stale pricing and point them to the pricing/membership page.",
+        ),
+    ),
+    PlatformManualCard(
+        id="safety.professional_advice",
+        title="Professional Advice Safety",
+        priority="retrieved",
+        intents=(
+            "medical", "doctor", "health", "symptom", "treatment", "medication", "legal",
+            "lawyer", "lawsuit", "contract", "financial", "investment", "invest", "tax",
+            "regulatory", "compliance", "mental health", "therapy", "diagnosis",
+        ),
+        surfaces=ALL_STEVE_SURFACES,
+        answer=(
+            "Steve does not provide medical, legal, financial, tax, investment, regulatory, "
+            "compliance, or mental-health advice. Steve may provide general, non-professional "
+            "information and help users organise questions, but must clearly state that the user "
+            "should seek advice from a qualified professional."
+        ),
+        rules=(
+            "Steve must not imply expertise, certification, or a duty of care.",
+            "Tone is calm, professional, and serious. No jokes.",
+        ),
     ),
     PlatformManualCard(
         id="steve.what_can_i_do",
         title="What Steve Can Do",
         priority="retrieved",
         intents=("what can you do", "what can steve do", "help me", "capabilities"),
-        surfaces=(SURFACE_DM, SURFACE_GROUP),
+        surfaces=ALL_STEVE_SURFACES,
         answer=(
             "Steve can explain how C-Point works, answer platform questions, help users "
             "understand communities and DMs, brainstorm, summarise when the app exposes a "
@@ -85,7 +180,7 @@ DEFAULT_CARDS: tuple[PlatformManualCard, ...] = (
         title="Privacy Core Rules",
         priority="retrieved",
         intents=("privacy", "visibility", "recognise", "recognize", "who can see", "share information"),
-        surfaces=(SURFACE_DM, SURFACE_GROUP),
+        surfaces=ALL_STEVE_SURFACES,
         answer=(
             "C-Point is built around controlled visibility. The platform is designed for "
             "private groups and networks where context matters. Steve only shares member "
@@ -100,7 +195,7 @@ DEFAULT_CARDS: tuple[PlatformManualCard, ...] = (
         title="Communities Basics",
         priority="retrieved",
         intents=("community", "communities", "feed", "post", "comments", "links", "docs", "media", "starred"),
-        surfaces=(SURFACE_DM, SURFACE_GROUP),
+        surfaces=ALL_STEVE_SURFACES,
         answer=(
             "Communities are the core spaces inside C-Point. A community can stand alone "
             "or sit under a parent/root network. Sub-communities can focus a large network "
@@ -116,7 +211,7 @@ DEFAULT_CARDS: tuple[PlatformManualCard, ...] = (
         title="Feedback, Bugs, and Features",
         priority="retrieved",
         intents=("bug", "broken", "not working", "feature request", "product idea", "complaint", "confusing", "feedback"),
-        surfaces=(SURFACE_DM, SURFACE_GROUP),
+        surfaces=ALL_STEVE_SURFACES,
         answer=(
             "Users can report bugs, confusing flows, complaints, and product ideas to Steve. "
             "Steve should collect enough detail to make the report useful, classify it, and "
@@ -150,12 +245,48 @@ _CARD_BY_ID = {card.id: card for card in DEFAULT_CARDS}
 PLATFORM_TERMS = (
     "c-point", "cpoint", "this platform", "the platform", "this app", "the app",
     "here", "steve", "community", "communities", "privacy", "dm", "direct message",
-    "post", "feed", "onboarding", "discovery", "bug", "broken", "not working",
+    "group chat", "post", "feed", "private social layer", "network memory", "compare",
+    "different from", "difference between", "pricing", "billing", "membership", "limit",
+    "onboarding", "discovery", "bug", "broken", "not working",
     "feature request", "product idea", "complaint", "feedback", "paulo", "founder",
-    "vision", "mission", "pricing", "membership",
+    "vision", "mission",
 )
 
 EXPLICIT_X_TERMS = ("x/twitter", "twitter", "x.com", "on x", "tweet", "tweets")
+
+LEGAL_TERMS = (
+    "legal", "lawyer", "solicitor", "attorney", "lawsuit", "contract", "jurisdiction",
+    "court", "regulation", "regulatory", "compliance", "gdpr", "terms of service",
+)
+MEDICAL_TERMS = (
+    "medical", "doctor", "health", "symptom", "symptoms", "treatment", "medication",
+    "diagnosis", "diagnose", "clinical", "hospital", "therapy", "therapist",
+    "mental health", "anxiety", "depression",
+)
+FINANCIAL_TERMS = (
+    "financial", "investment", "invest", "investing", "tax", "taxes", "accountant",
+    "portfolio", "stock", "stocks", "crypto", "loan", "mortgage", "insurance",
+)
+PROFESSIONAL_ADVICE_TERMS = LEGAL_TERMS + MEDICAL_TERMS + FINANCIAL_TERMS
+
+GENERAL_PROFESSIONAL_DISCLAIMER = (
+    "I can give general context, but this should not be treated as medical, legal, "
+    "financial, tax, investment, regulatory, mental-health, or other professional "
+    "advice. I'm not qualified to assess your specific situation, and you should "
+    "speak with an appropriate qualified professional before making decisions."
+)
+LEGAL_DISCLAIMER = (
+    "I can explain general concepts, but this is not legal advice. You should speak "
+    "with a qualified lawyer in the relevant jurisdiction."
+)
+MEDICAL_DISCLAIMER = (
+    "I can offer general information, but this is not medical advice. If this concerns "
+    "symptoms, treatment, medication, or risk, please speak with a qualified healthcare professional."
+)
+FINANCIAL_DISCLAIMER = (
+    "I can help with general considerations, but this is not financial, investment, or tax advice. "
+    "You should speak with a qualified adviser before making decisions."
+)
 
 
 def _norm(text: str | None) -> str:
@@ -193,6 +324,57 @@ def is_feedback_intent(message: str | None) -> bool:
         "i wish", "should add", "can you add", "improvement", "suggestion",
     )
     return any(term in msg for term in terms)
+
+
+def is_pricing_intent(message: str | None) -> bool:
+    msg = _norm(message)
+    return any(term in msg for term in _CARD_BY_ID["pricing_and_limits.safe_answer"].intents)
+
+
+def is_professional_advice_intent(message: str | None) -> bool:
+    msg = _norm(message)
+    if not msg:
+        return False
+    return any(term in msg for term in PROFESSIONAL_ADVICE_TERMS)
+
+
+def select_safety_disclaimer(message: str | None) -> str:
+    msg = _norm(message)
+    if any(term in msg for term in LEGAL_TERMS):
+        return LEGAL_DISCLAIMER
+    if any(term in msg for term in MEDICAL_TERMS):
+        return MEDICAL_DISCLAIMER
+    if any(term in msg for term in FINANCIAL_TERMS):
+        return FINANCIAL_DISCLAIMER
+    if is_professional_advice_intent(message):
+        return GENERAL_PROFESSIONAL_DISCLAIMER
+    return ""
+
+
+def render_global_steve_safety_prompt(message: str | None, surface: str = SURFACE_DM) -> str:
+    if not is_professional_advice_intent(message):
+        return ""
+    disclaimer = select_safety_disclaimer(message) or GENERAL_PROFESSIONAL_DISCLAIMER
+    return (
+        "STEVE PROFESSIONAL-ADVICE SAFETY:\n"
+        "- Do not provide medical, legal, financial, tax, investment, regulatory, compliance, "
+        "mental-health, or other professional advice.\n"
+        "- You may provide general context and help the user organise questions.\n"
+        "- Do not imply professional expertise, certification, or a duty of care.\n"
+        "- Keep the tone calm, professional, and serious.\n"
+        f"- Include this disclaimer in the user-visible response when relevant: {disclaimer}\n"
+        f"- Surface: {surface}."
+    )
+
+
+def append_professional_disclaimer_if_needed(response: str | None, message: str | None) -> str:
+    text = (response or "").strip()
+    if not text or not is_professional_advice_intent(message):
+        return text
+    disclaimer = select_safety_disclaimer(message) or GENERAL_PROFESSIONAL_DISCLAIMER
+    if disclaimer.lower() in text.lower():
+        return text
+    return f"{text}\n\n{disclaimer}"
 
 
 def _parse_cards_from_markdown(body: str | None) -> list[PlatformManualCard]:
