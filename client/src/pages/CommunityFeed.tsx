@@ -588,6 +588,10 @@ export default function CommunityFeed() {
         if (deviceFeedCacheKey) {
           writeDeviceCache(deviceFeedCacheKey, json, COMMUNITY_FEED_CACHE_TTL_MS, COMMUNITY_FEED_CACHE_VERSION)
         }
+      } else if (json?.reason === 'community_frozen') {
+        if (deviceFeedCacheKey) clearDeviceCache(deviceFeedCacheKey)
+        alert(json.error || 'This community has been frozen, please contact the owner for more information.')
+        navigate('/premium_dashboard')
       }
       
       // Also refresh stories
@@ -597,7 +601,7 @@ export default function CommunityFeed() {
     } finally {
       setIsRefreshing(false)
     }
-  }, [community_id, deviceFeedCacheKey, isRefreshing])
+  }, [community_id, deviceFeedCacheKey, isRefreshing, navigate])
 
   useEffect(() => {
     // Pull-to-refresh behavior on overscroll at top with a small elastic offset
@@ -740,6 +744,13 @@ export default function CommunityFeed() {
             writeDeviceCache(deviceFeedCacheKey, json, COMMUNITY_FEED_CACHE_TTL_MS, COMMUNITY_FEED_CACHE_VERSION)
           }
         }
+        else if (json?.reason === 'community_frozen') {
+          if (deviceFeedCacheKey) clearDeviceCache(deviceFeedCacheKey)
+          setData(null)
+          setError(json.error || 'This community has been frozen, please contact the owner for more information.')
+          alert(json.error || 'This community has been frozen, please contact the owner for more information.')
+          navigate('/premium_dashboard')
+        }
         else {
           setData((prev: any) => {
             if (prev) return prev
@@ -758,7 +769,7 @@ export default function CommunityFeed() {
       })
       .finally(() => isMounted && setLoading(false))
     return () => { isMounted = false }
-  }, [community_id, refreshKey, deviceFeedCacheKey])
+  }, [community_id, refreshKey, deviceFeedCacheKey, navigate])
 
   useEffect(() => {
     if (!deviceFeedCacheKey) return

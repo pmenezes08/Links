@@ -48,6 +48,7 @@ from backend import init_app
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.dm_chats_tables import ensure_archived_chats_table
 from backend.services import ai_usage as _ai_usage
+from backend.services import community_lifecycle as _community_lifecycle
 from backend.services.community import (
     can_manage_community,
     fetch_community_names,
@@ -30978,6 +30979,9 @@ def api_community_feed(community_id):
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
             community = dict(community_row)
             community['allow_nsfw_imagine'] = bool(community.get('allow_nsfw_imagine')) if community.get('allow_nsfw_imagine') is not None else False
+            frozen_payload = _community_lifecycle.frozen_access_payload(username or '', community)
+            if frozen_payload:
+                return jsonify(frozen_payload), 423
 
             # Parent community (optional) and root parent ID
             parent_community = None

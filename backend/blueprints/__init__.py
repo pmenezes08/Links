@@ -58,6 +58,8 @@ def register_blueprints(app: Flask) -> None:
         _ub.ensure_tables()
         from backend.services import subscription_billing_ledger as _ledger
         _ledger.ensure_tables()
+        from backend.services import community_lifecycle as _community_lifecycle
+        _community_lifecycle.ensure_tables()
     except Exception:
         # Never let schema-bootstrap crash app startup — log and move on.
         import logging

@@ -145,6 +145,15 @@ function formatDate(value: string): string {
 
 const SALES_EMAIL = 'sales@c-point.co'
 
+function resetSubscriptionPageScroll() {
+  const reset = () => {
+    const region = document.querySelector<HTMLElement>('[data-scroll-region="true"]')
+    if (region) region.scrollTop = 0
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+  requestAnimationFrame(reset)
+}
+
 function storePendingCheckout(body: Record<string, string | number>) {
   try {
     sessionStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify({
@@ -235,6 +244,20 @@ export default function SubscriptionPlans() {
     const qsStatus = queryParams.get('status')
     if (qsStatus === 'cancelled') {
       setStatus('Checkout cancelled — no charge was made.')
+      resetSubscriptionPageScroll()
+    }
+  }, [queryParams])
+
+  useEffect(() => {
+    const requestedMode = queryParams.get('mode')
+    const requestedOpen = queryParams.get('open')
+    if (requestedMode === 'choose' || requestedOpen === 'community_plans') {
+      setPageMode('choose')
+    }
+    if (requestedOpen === 'community_plans') {
+      setModalError(null)
+      setView('community')
+      resetSubscriptionPageScroll()
     }
   }, [queryParams])
 
@@ -250,8 +273,10 @@ export default function SubscriptionPlans() {
       if (successMessage) {
         setStatus(successMessage)
         setView(null)
+        setPageMode('active')
         setPendingTier(null)
         setModalError(null)
+        resetSubscriptionPageScroll()
       }
     }
     return data
@@ -384,8 +409,39 @@ export default function SubscriptionPlans() {
   )
 
   const onCommunityChosen = useCallback(
-    (communityId: number) => {
+    async (communityId: number) => {
       if (!pendingTier) return
+      const activeCommunity = activeSubscriptions?.communities?.find((item) => item.id === communityId)
+      if (activeCommunity) {
+        const key = `change-tier:${communityId}:${pendingTier.tier_code}`
+        setCheckoutLoading(key)
+        setModalError(null)
+        try {
+          const res = await fetch(`/api/communities/${communityId}/billing/change-tier`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            body: JSON.stringify({ tier_code: pendingTier.tier_code }),
+          })
+          const data = await res.json()
+          if (!res.ok || !data?.success) {
+            throw new Error(data?.error || 'Unable to change tier')
+          }
+          setStatus(`${activeCommunity.name} changed to ${tierLabel(pendingTier.tier_code)}.`)
+          setView(null)
+          setPendingTier(null)
+          resetSubscriptionPageScroll()
+          await loadActiveSubscriptions()
+        } catch (err) {
+          setModalError(err instanceof Error ? err.message : 'Unable to change tier')
+        } finally {
+          setCheckoutLoading(null)
+        }
+        return
+      }
       startCheckout(
         {
           plan_id: 'community_tier',
@@ -402,39 +458,8 @@ export default function SubscriptionPlans() {
         },
       )
     },
-    [pendingTier, startCheckout],
+    [activeSubscriptions, loadActiveSubscriptions, pendingTier, startCheckout],
   )
-
-  const changeCommunityTier = useCallback(async (
-    community: ActiveCommunitySubscription,
-    tier: CommunityTierLevel,
-  ) => {
-    const key = `change-tier:${community.id}:${tier.tier_code}`
-    setCheckoutLoading(key)
-    setError(null)
-    setStatus(null)
-    try {
-      const res = await fetch(`/api/communities/${community.id}/billing/change-tier`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({ tier_code: tier.tier_code }),
-      })
-      const data = await res.json()
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.error || 'Unable to change tier')
-      }
-      setStatus(`${community.name} changed to ${tierLabel(tier.tier_code)}.`)
-      await loadActiveSubscriptions()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to change tier')
-    } finally {
-      setCheckoutLoading(null)
-    }
-  }, [loadActiveSubscriptions])
 
   return (
     <div className="min-h-screen bg-black text-white pt-16 pb-24">
@@ -458,7 +483,7 @@ export default function SubscriptionPlans() {
         </header>
 
         {status && (
-          <div className="mb-6 rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">
+          <div className="mb-6 rounded-xl border border-cpoint-turquoise/60 bg-cpoint-turquoise/10 p-4 text-sm text-white/90 shadow-[0_0_0_1px_rgba(0,206,200,0.12)]">
             {status}
           </div>
         )}
@@ -498,9 +523,7 @@ export default function SubscriptionPlans() {
             {pageMode === 'active' && (
               <ActiveSubscriptionsSection
                 active={activeSubscriptions}
-                tiers={pricing.sku.community_tier.tiers}
                 onManageCommunity={(id) => navigate(`/community/${id}/edit`)}
-                onChangeTier={(community, tier) => changeCommunityTier(community, tier)}
               />
             )}
           </div>
@@ -640,7 +663,7 @@ function EntryChoiceModal({
 function ModeHeader({ mode, onChange }: { mode: PageMode; onChange: () => void }) {
   if (!mode) return null
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+    <div className="flex items-center justify-between rounded-2xl border border-cpoint-turquoise/45 bg-cpoint-turquoise/[0.04] px-4 py-3">
       <div>
         <p className="text-xs uppercase tracking-[0.22em] text-white/35">Current view</p>
         <p className="mt-0.5 text-sm font-medium text-white">
@@ -773,14 +796,10 @@ function CommunityCard({
 
 function ActiveSubscriptionsSection({
   active,
-  tiers,
   onManageCommunity,
-  onChangeTier,
 }: {
   active: ActiveSubscriptionsPayload | null
-  tiers: CommunityTierLevel[]
   onManageCommunity: (communityId: number) => void
-  onChangeTier: (community: ActiveCommunitySubscription, tier: CommunityTierLevel) => void
 }) {
   const personal = active?.personal
   const communities = active?.communities || []
@@ -801,30 +820,47 @@ function ActiveSubscriptionsSection({
           No active subscriptions yet.
         </div>
       ) : (
-        <div className="space-y-3">
-          {hasPersonal && (
-            <ActiveRow
-              title={personal?.is_special ? 'Special Premium entitlement' : 'User Premium Membership'}
-              subtitle={personal?.cancel_at_period_end ? benefitsCopy(personal.benefits_end_at || personal.current_period_end) : renewalCopy(personal?.current_period_end)}
-              status={personal?.is_special ? 'special' : personal?.subscription_status || personal?.subscription || 'active'}
-            />
-          )}
-          {communities.map((community) => (
-            <ActiveRow
-              key={community.id}
-              title={community.name}
-              subtitle={community.cancel_at_period_end ? benefitsCopy(community.benefits_end_at || community.current_period_end) : renewalCopy(community.current_period_end)}
-              status={tierLabel(community.tier || community.subscription_status)}
-              actionLabel="Manage"
-              onAction={() => onManageCommunity(community.id)}
-            >
-              <TierChangeButtons
-                community={community}
-                tiers={tiers}
-                onChangeTier={onChangeTier}
+        <div className="space-y-8">
+          <div>
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-cpoint-turquoise">
+              User
+            </h3>
+            {hasPersonal ? (
+              <ActiveRow
+                title={personal?.is_special ? 'Special Premium entitlement' : 'User Premium Membership'}
+                subtitle={personal?.cancel_at_period_end ? benefitsCopy(personal.benefits_end_at || personal.current_period_end) : renewalCopy(personal?.current_period_end)}
+                status={personal?.is_special ? 'special' : personal?.subscription_status || personal?.subscription || 'active'}
               />
-            </ActiveRow>
-          ))}
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/50">
+                No active user subscription.
+              </div>
+            )}
+          </div>
+
+          <div>
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-cpoint-turquoise">
+              Community
+            </h3>
+            {hasCommunities ? (
+              <div className="space-y-3">
+                {communities.map((community) => (
+                  <ActiveRow
+                    key={community.id}
+                    title={community.name}
+                    subtitle={community.cancel_at_period_end ? benefitsCopy(community.benefits_end_at || community.current_period_end) : renewalCopy(community.current_period_end)}
+                    status={tierLabel(community.tier || community.subscription_status)}
+                    actionLabel="Manage"
+                    onAction={() => onManageCommunity(community.id)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/50">
+                No active community subscriptions.
+              </div>
+            )}
+          </div>
         </div>
       )}
     </section>
@@ -869,39 +905,6 @@ function ActiveRow({
       )}
       </div>
       {children && <div className="mt-4 border-t border-white/10 pt-4">{children}</div>}
-    </div>
-  )
-}
-
-function TierChangeButtons({
-  community,
-  tiers,
-  onChangeTier,
-}: {
-  community: ActiveCommunitySubscription
-  tiers: CommunityTierLevel[]
-  onChangeTier: (community: ActiveCommunitySubscription, tier: CommunityTierLevel) => void
-}) {
-  const currentTier = String(community.tier || '').toLowerCase()
-  const options = tiers.filter((tier) => tier.tier_code !== currentTier && tier.purchasable)
-  if (options.length === 0) return null
-  return (
-    <div>
-      <p className="text-xs font-medium uppercase tracking-[0.18em] text-white/35">
-        Change tier
-      </p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {options.map((tier) => (
-          <button
-            key={tier.tier_code}
-            type="button"
-            onClick={() => onChangeTier(community, tier)}
-            className="rounded-full border border-cpoint-turquoise/35 px-3 py-1.5 text-xs font-semibold text-cpoint-turquoise hover:bg-cpoint-turquoise/10"
-          >
-            {tierLabel(tier.tier_code)} · {formatEur(tier.price_eur)}
-          </button>
-        ))}
-      </div>
     </div>
   )
 }

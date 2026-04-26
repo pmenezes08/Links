@@ -22,12 +22,25 @@ from flask import (
 
 from backend.services.content_generation.permissions import can_manage_community_jobs
 from backend.services import community as community_svc
+from backend.services import community_lifecycle
 from backend.services.database import get_db_connection, get_sql_placeholder
 from redis_cache import invalidate_community_cache, invalidate_user_cache
 
 
 communities_bp = Blueprint("communities", __name__)
 logger = logging.getLogger(__name__)
+
+
+def _stripe_client():
+    try:
+        import stripe  # type: ignore
+    except Exception:
+        return None
+    api_key = os.environ.get("STRIPE_API_KEY") or ""
+    if not api_key or api_key == "sk_test_your_stripe_key":
+        return None
+    stripe.api_key = api_key
+    return stripe
 
 
 @lru_cache(maxsize=1)
@@ -150,11 +163,26 @@ def _collect_delete_affected_usernames(cursor, community_ids: List[int], actor: 
     return sorted(u for u in affected if u)
 
 
+def _invalidate_community_membership_caches(community_id: int, actor: str) -> None:
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            affected = _collect_delete_affected_usernames(c, [community_id], actor)
+    except Exception:
+        affected = [actor]
+
+    invalidate_community_cache(community_id)
+    for username in affected:
+        invalidate_user_cache(username)
+
+
 def _delete_community_tree(
     *,
     community_id: int,
     actor_username: str,
     enforce_descendant_ownership: bool,
+    confirm_active_subscription: bool = False,
+    stripe_mod: Any = None,
 ) -> Tuple[Dict[str, Any], int]:
     """Delete a community tree in a single transaction."""
     if not community_id:
@@ -184,7 +212,30 @@ def _delete_community_tree(
                 actor_username,
             )
 
+            active_billing = [
+                payload
+                for cid in descendant_ids
+                if (payload := community_lifecycle.active_subscription_delete_payload(cid))
+            ]
+            if active_billing and not confirm_active_subscription:
+                return {
+                    "success": False,
+                    "error": (
+                        "This community has an active subscription. Confirm deletion "
+                        "to schedule cancellation at the end of the current billing period."
+                    ),
+                    "reason": "active_subscription_requires_confirmation",
+                    "subscriptions": active_billing,
+                }, 409
+
             try:
+                if active_billing:
+                    for billing_payload in active_billing:
+                        community_lifecycle.cancel_subscription_at_period_end(
+                            stripe_mod,
+                            int(billing_payload["community_id"]),
+                        )
+
                 for cid in descendant_ids:
                     if (
                         enforce_descendant_ownership
@@ -207,6 +258,13 @@ def _delete_community_tree(
                     deleted_ids.append(cid)
 
                 conn.commit()
+            except community_lifecycle.CommunityLifecycleActionError as exc:
+                conn.rollback()
+                return {
+                    "success": False,
+                    "error": str(exc),
+                    "reason": exc.reason,
+                }, exc.status_code
             except Exception as exc:
                 conn.rollback()
                 logger.exception("delete_community failed")
@@ -231,10 +289,15 @@ def _delete_community_tree(
 @_login_required
 def delete_community():
     community_id = request.form.get("community_id", type=int)
+    confirm_active_subscription = str(
+        request.form.get("confirm_active_subscription") or ""
+    ).strip().lower() in {"1", "true", "yes"}
     payload, status = _delete_community_tree(
         community_id=community_id or 0,
         actor_username=session.get("username", ""),
         enforce_descendant_ownership=True,
+        confirm_active_subscription=confirm_active_subscription,
+        stripe_mod=_stripe_client() if confirm_active_subscription else None,
     )
     return jsonify(payload), status
 
@@ -256,8 +319,44 @@ def admin_delete_community():
         community_id=community_id,
         actor_username=username,
         enforce_descendant_ownership=False,
+        confirm_active_subscription=bool(data.get("confirm_active_subscription")),
+        stripe_mod=_stripe_client() if data.get("confirm_active_subscription") else None,
     )
     return jsonify(payload), status
+
+
+@communities_bp.route("/api/communities/<int:community_id>/freeze", methods=["POST"])
+@_login_required
+def freeze_community(community_id: int):
+    username = session.get("username", "")
+    data = request.get_json(silent=True) or {}
+    try:
+        state = community_lifecycle.set_freeze_state(
+            community_id,
+            frozen=True,
+            actor_username=username,
+            reason=str(data.get("reason") or "").strip() or None,
+        )
+    except community_lifecycle.CommunityLifecycleActionError as exc:
+        return jsonify({"success": False, "error": str(exc), "reason": exc.reason}), exc.status_code
+    _invalidate_community_membership_caches(community_id, username)
+    return jsonify({"success": True, "community_id": community_id, **state})
+
+
+@communities_bp.route("/api/communities/<int:community_id>/unfreeze", methods=["POST"])
+@_login_required
+def unfreeze_community(community_id: int):
+    username = session.get("username", "")
+    try:
+        state = community_lifecycle.set_freeze_state(
+            community_id,
+            frozen=False,
+            actor_username=username,
+        )
+    except community_lifecycle.CommunityLifecycleActionError as exc:
+        return jsonify({"success": False, "error": str(exc), "reason": exc.reason}), exc.status_code
+    _invalidate_community_membership_caches(community_id, username)
+    return jsonify({"success": True, "community_id": community_id, **state})
 
 
 @communities_bp.route("/api/user_communities_hierarchical", methods=["GET"])
@@ -282,7 +381,8 @@ def _load_user_communities_hierarchy(username: str) -> Dict[str, Any]:
             c.execute(
                 """
                 SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id,
-                       c.creator_username, pc.name AS parent_name, NULL AS role
+                       c.creator_username, pc.name AS parent_name, NULL AS role,
+                       COALESCE(c.is_frozen, 0) AS is_frozen
                 FROM communities c
                 LEFT JOIN communities pc ON c.parent_community_id = pc.id
                 ORDER BY CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
@@ -294,7 +394,8 @@ def _load_user_communities_hierarchy(username: str) -> Dict[str, Any]:
             c.execute(
                 f"""
                 SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id,
-                       c.creator_username, pc.name AS parent_name, uc.role
+                       c.creator_username, pc.name AS parent_name, uc.role,
+                       COALESCE(c.is_frozen, 0) AS is_frozen
                 FROM communities c
                 LEFT JOIN users u ON LOWER(u.username) = LOWER({ph})
                 LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.user_id = u.id
@@ -338,7 +439,8 @@ def _load_user_communities_hierarchy(username: str) -> Dict[str, Any]:
             c.execute(
                 f"""
                 SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id,
-                       c.creator_username, pc.name AS parent_name, uc.role
+                       c.creator_username, pc.name AS parent_name, uc.role,
+                       COALESCE(c.is_frozen, 0) AS is_frozen
                 FROM communities c
                 LEFT JOIN communities pc ON c.parent_community_id = pc.id
                 LEFT JOIN users current_u ON LOWER(current_u.username) = LOWER({ph})
@@ -387,6 +489,7 @@ def _build_community_tree(cursor: Any, rows: List[Any]) -> List[Dict[str, Any]]:
             "parent_community_id": _row_value(row, "parent_community_id", 3),
             "creator_username": _row_value(row, "creator_username", 4),
             "role": _row_value(row, "role", 6),
+            "is_frozen": bool(_row_value(row, "is_frozen", 7)),
             "children": [],
         }
 
@@ -414,7 +517,11 @@ def _build_community_tree(cursor: Any, rows: List[Any]) -> List[Dict[str, Any]]:
 def _placeholder_parent(cursor: Any, parent_id: int) -> Optional[Dict[str, Any]]:
     ph = get_sql_placeholder()
     cursor.execute(
-        f"SELECT id, name, type, creator_username FROM communities WHERE id = {ph}",
+        f"""
+        SELECT id, name, type, creator_username, COALESCE(is_frozen, 0) AS is_frozen
+        FROM communities
+        WHERE id = {ph}
+        """,
         (parent_id,),
     )
     row = cursor.fetchone()
@@ -425,6 +532,7 @@ def _placeholder_parent(cursor: Any, parent_id: int) -> Optional[Dict[str, Any]]
         "name": _row_value(row, "name", 1),
         "type": _row_value(row, "type", 2),
         "creator_username": _row_value(row, "creator_username", 3),
+        "is_frozen": bool(_row_value(row, "is_frozen", 4)),
         "parent_community_id": None,
         "children": [],
         "is_parent_only": True,

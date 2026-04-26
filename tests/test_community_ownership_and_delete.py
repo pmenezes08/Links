@@ -5,6 +5,7 @@ from flask import Flask
 
 from backend.blueprints.communities import communities_bp
 from backend.services import community as community_svc
+from backend.services import community_billing, community_lifecycle
 from backend.services.database import get_db_connection, get_sql_placeholder
 from tests.fixtures import make_community, make_user
 
@@ -39,6 +40,24 @@ def _community_exists(community_id: int) -> bool:
         c = conn.cursor()
         c.execute(f"SELECT 1 FROM communities WHERE id = {ph}", (community_id,))
         return c.fetchone() is not None
+
+
+class _FakeStripeSubscription:
+    calls: list[tuple[str, dict]] = []
+
+    @classmethod
+    def modify(cls, subscription_id: str, **kwargs):
+        cls.calls.append((subscription_id, kwargs))
+        return {
+            "id": subscription_id,
+            "status": "active",
+            "current_period_end": 1_800_000_000,
+            "cancel_at_period_end": True,
+        }
+
+
+class _FakeStripe:
+    Subscription = _FakeStripeSubscription
 
 
 def test_can_manage_community_handles_mixed_case_owner_and_admin():
@@ -125,3 +144,95 @@ def test_delete_rolls_back_when_cascade_fails(client, monkeypatch):
     assert resp.status_code == 500
     assert resp.get_json()["success"] is False
     assert _community_exists(cid) is True
+
+
+def test_delete_active_subscription_requires_confirmation(client):
+    make_user("paid_owner", subscription="free")
+    cid = make_community("paid-delete-warning", creator_username="paid_owner", tier="paid_l1")
+    community_billing.mark_subscription(
+        cid,
+        tier_code="paid_l1",
+        subscription_id="sub_live_delete",
+        customer_id="cus_delete",
+        status="active",
+        current_period_end=1_800_000_000,
+    )
+    _login(client, "paid_owner")
+
+    resp = client.post("/delete_community", data={"community_id": str(cid)})
+
+    body = resp.get_json()
+    assert resp.status_code == 409
+    assert body["reason"] == "active_subscription_requires_confirmation"
+    assert body["subscriptions"][0]["stripe_subscription_id"] == "sub_live_delete"
+    assert _community_exists(cid) is True
+
+
+def test_confirmed_delete_schedules_subscription_cancellation(client, monkeypatch):
+    import backend.blueprints.communities as communities_mod
+
+    _FakeStripeSubscription.calls = []
+    monkeypatch.setattr(communities_mod, "_stripe_client", lambda: _FakeStripe)
+    make_user("confirmed_owner", subscription="free")
+    cid = make_community("confirmed-paid-delete", creator_username="confirmed_owner", tier="paid_l2")
+    community_billing.mark_subscription(
+        cid,
+        tier_code="paid_l2",
+        subscription_id="sub_confirm_delete",
+        customer_id="cus_confirm",
+        status="active",
+        current_period_end=1_800_000_000,
+    )
+    _login(client, "confirmed_owner")
+
+    resp = client.post(
+        "/delete_community",
+        data={"community_id": str(cid), "confirm_active_subscription": "true"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.get_json()["success"] is True
+    assert _FakeStripeSubscription.calls == [
+        ("sub_confirm_delete", {"cancel_at_period_end": True})
+    ]
+    assert _community_exists(cid) is False
+
+
+def test_freeze_and_unfreeze_community_requires_owner(client):
+    make_user("freeze_owner", subscription="free")
+    make_user("freeze_outsider", subscription="free")
+    cid = make_community("freeze-me", creator_username="freeze_owner")
+
+    _login(client, "freeze_outsider")
+    denied = client.post(f"/api/communities/{cid}/freeze", json={})
+    assert denied.status_code == 403
+
+    _login(client, "freeze_owner")
+    frozen = client.post(f"/api/communities/{cid}/freeze", json={"reason": "test"})
+    assert frozen.status_code == 200
+    assert frozen.get_json()["is_frozen"] is True
+
+    unfrozen = client.post(f"/api/communities/{cid}/unfreeze", json={})
+    assert unfrozen.status_code == 200
+    assert unfrozen.get_json()["is_frozen"] is False
+
+
+def test_frozen_access_payload_blocks_members_but_not_owner():
+    make_user("frozen_owner", subscription="free")
+    make_user("frozen_member", subscription="free")
+    cid = make_community("frozen-access", creator_username="frozen_owner")
+    state = community_lifecycle.set_freeze_state(
+        cid,
+        frozen=True,
+        actor_username="frozen_owner",
+    )
+    community = {
+        "id": cid,
+        "creator_username": "frozen_owner",
+        "is_frozen": state["is_frozen"],
+    }
+
+    blocked = community_lifecycle.frozen_access_payload("frozen_member", community)
+    assert blocked is not None
+    assert blocked["reason"] == "community_frozen"
+    assert community_lifecycle.frozen_access_payload("frozen_owner", community) is None

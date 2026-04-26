@@ -374,6 +374,11 @@ export default function GroupChatThread() {
   
   const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
 
+  useEffect(() => {
+    lastVisibleMsgKeyRef.current = null
+    userHasScrolledRef.current = false
+  }, [group_id])
+
   // Pre-paint scroll — fires before browser paints to avoid visible jump
   useLayoutEffect(() => {
     if (messages.length === 0) return
@@ -384,7 +389,28 @@ export default function GroupChatThread() {
     if (lastMsgKey === lastVisibleMsgKeyRef.current) return
     lastVisibleMsgKeyRef.current = lastMsgKey
     el.scrollTop = el.scrollHeight
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight
+    })
   }, [messages])
+
+  useEffect(() => {
+    const el = listRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    let frame = 0
+    const observer = new ResizeObserver(() => {
+      if (userHasScrolledRef.current) return
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight
+      })
+    })
+    observer.observe(el)
+    return () => {
+      cancelAnimationFrame(frame)
+      observer.disconnect()
+    }
+  }, [group_id])
 
   // Simple scroll-to-bottom for new messages only (no aggressive initial load behavior)
   // This prevents the unwanted scrolling/jumping when opening a chat
@@ -2142,6 +2168,7 @@ export default function GroupChatThread() {
           {/* Messages List */}
           <div
             ref={listRef}
+            data-preserve-scroll="true"
             className="flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3"
             style={{
               WebkitOverflowScrolling: 'touch',

@@ -240,10 +240,12 @@ def _bootstrap_schema() -> None:
     from backend.services import ai_usage, knowledge_base, special_access
     try:
         from backend.services import enterprise_membership, subscription_audit, \
-            enterprise_iap_nag, winback_promo, subscription_billing_ledger
+            enterprise_iap_nag, winback_promo, subscription_billing_ledger, \
+            community_lifecycle, community_billing, user_billing
     except ImportError:
         enterprise_membership = subscription_audit = None
         enterprise_iap_nag = winback_promo = subscription_billing_ledger = None
+        community_lifecycle = community_billing = user_billing = None
 
     with get_db_connection() as conn:
         c = conn.cursor()
@@ -272,6 +274,12 @@ def _bootstrap_schema() -> None:
         winback_promo.ensure_tables()
     if subscription_billing_ledger is not None:
         subscription_billing_ledger.ensure_tables()
+    if community_lifecycle is not None:
+        community_lifecycle.ensure_tables()
+    if community_billing is not None:
+        community_billing.ensure_tables()
+    if user_billing is not None:
+        user_billing.ensure_tables()
 
 
 # ── Per-test cleanup ────────────────────────────────────────────────────

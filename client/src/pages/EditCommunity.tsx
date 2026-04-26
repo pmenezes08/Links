@@ -65,8 +65,8 @@ export default function EditCommunity(){
   const [savingAiPersonality, setSavingAiPersonality] = useState(false)
   const [showContentGeneration, setShowContentGeneration] = useState(false)
   const [billing, setBilling] = useState<CommunityBilling | null>(null)
-  const [portalLoading, setPortalLoading] = useState(false)
-  const [portalError, setPortalError] = useState<string|null>(null)
+  const [isFrozen, setIsFrozen] = useState(false)
+  const [freezeLoading, setFreezeLoading] = useState(false)
   const formRef = useRef<HTMLFormElement|null>(null)
 
   useEffect(() => {
@@ -95,6 +95,7 @@ export default function EditCommunity(){
           setNotifyOnNewMember(!!jc.community.notify_on_new_member)
           if (jc.community.max_members){ setMaxMembers(String(jc.community.max_members)) }
           if (jc.community.background_path){ setCurrentBackgroundPath(jc.community.background_path) }
+          setIsFrozen(!!jc.community.is_frozen)
         }
         // Load available parents for dropdown
         try{
@@ -180,27 +181,6 @@ export default function EditCommunity(){
     return () => { mounted = false }
   }, [isOwner, community_id])
 
-  async function handleOpenPortal(){
-    setPortalLoading(true)
-    setPortalError(null)
-    try {
-      const r = await fetch(`/api/me/billing/portal?community_id=${community_id}`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ return_path: `/community/${community_id}/edit` }),
-      })
-      const j = await r.json()
-      if (!r.ok || !j?.success || !j?.url) {
-        throw new Error(j?.error || 'Unable to open billing portal')
-      }
-      window.location.assign(j.url)
-    } catch (err) {
-      setPortalError(err instanceof Error ? err.message : 'Unable to open billing portal')
-      setPortalLoading(false)
-    }
-  }
-
   async function onSubmit(e: React.FormEvent){
     e.preventDefault()
     if (!allowed) return
@@ -230,9 +210,14 @@ export default function EditCommunity(){
   async function onDelete(){
     if (!isOwner) return
     if (!window.confirm(`Are you sure you want to delete this community? This action cannot be undone.`)) return
-    
+
+    await submitDelete(false)
+  }
+
+  async function submitDelete(confirmActiveSubscription: boolean){
     try {
       const fd = new URLSearchParams({ community_id: String(community_id) })
+      if (confirmActiveSubscription) fd.set('confirm_active_subscription', 'true')
       const r = await fetch('/delete_community', { method:'POST', credentials:'include', body: fd })
       const j = await r.json().catch(()=>null)
       if (j?.success){
@@ -241,11 +226,55 @@ export default function EditCommunity(){
         invalidateDashboardCache()
         alert('Community deleted successfully')
         window.location.href = '/premium_dashboard'
+      } else if (r.status === 409 && j?.reason === 'active_subscription_requires_confirmation') {
+        const warning = [
+          'This community has an active subscription.',
+          'If you delete it, the subscription will be cancelled automatically and remain active until the end of the current billing period.',
+          'No further action is needed from your side.',
+          '',
+          'Delete this community and schedule the subscription cancellation?',
+        ].join('\n')
+        if (window.confirm(warning)) {
+          await submitDelete(true)
+        }
       } else {
         alert(j?.error || 'Failed to delete community')
       }
     } catch {
       alert('Failed to delete community')
+    }
+  }
+
+  async function onToggleFreeze(){
+    if (!isOwner || !community_id || freezeLoading) return
+    const freezing = !isFrozen
+    const warning = freezing
+      ? [
+          'Freeze this community?',
+          'Members will still see it on their dashboard, but only the owner and admins will be able to access it.',
+          billing?.has_stripe_customer
+            ? 'The community subscription will remain active while the community is frozen.'
+            : '',
+        ].filter(Boolean).join('\n\n')
+      : 'Unfreeze this community and restore member access?'
+    if (!window.confirm(warning)) return
+    setFreezeLoading(true)
+    try {
+      const r = await fetch(`/api/communities/${community_id}/${freezing ? 'freeze' : 'unfreeze'}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: freezing ? JSON.stringify({ reason: 'owner_requested' }) : '{}',
+      })
+      const j = await r.json().catch(()=>null)
+      if (!r.ok || !j?.success) throw new Error(j?.error || 'Unable to update community')
+      setIsFrozen(!!j.is_frozen)
+      invalidateDashboardCache()
+      alert(freezing ? 'Community frozen.' : 'Community unfrozen.')
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Unable to update community')
+    } finally {
+      setFreezeLoading(false)
     }
   }
 
@@ -300,9 +329,7 @@ export default function EditCommunity(){
         ? 'Renew subscription'
         : 'Upgrade Community Tier'
       : 'Choose paid tier'
-    const action = billing.has_stripe_customer
-      ? handleOpenPortal
-      : () => navigate(`/subscription_plans?community_id=${community_id}#community-tier`)
+    const action = () => navigate(`/subscription_plans?mode=choose&open=community_plans&community_id=${community_id}`)
 
     return (
       <div className="rounded-xl border border-white/10 bg-white/5 p-5 space-y-4">
@@ -357,26 +384,13 @@ export default function EditCommunity(){
           </div>
         )}
 
-        {portalError && (
-          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
-            {portalError}
-          </div>
-        )}
-
         <button
           type="button"
           onClick={action}
-          disabled={billing.has_stripe_customer && portalLoading}
           className="inline-flex w-full items-center justify-center rounded-full bg-cpoint-turquoise px-5 py-2.5 text-xs font-semibold text-black hover:bg-cpoint-turquoise/90 transition disabled:opacity-50"
         >
-          {billing.has_stripe_customer && portalLoading ? 'Opening portal…' : actionLabel}
+          {actionLabel}
         </button>
-
-        {billing.has_stripe_customer && !billing.is_canceling && (
-          <div className="text-xs text-white/40">
-            If you do not see upgrade options, Stripe Customer Portal plan changes need to be enabled.
-          </div>
-        )}
 
         {hasPaidTier && !billing.has_stripe_customer && (
           <div className="text-xs text-white/40">
@@ -679,12 +693,26 @@ export default function EditCommunity(){
               <p className="text-sm text-[#9fb0b5] mb-4">
                 Deleting this community will permanently remove all posts, messages, and member data. This action cannot be undone.
               </p>
-              <button 
-                onClick={onDelete}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md font-medium transition-colors"
-              >
-                Delete Community
-              </button>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button
+                  onClick={onToggleFreeze}
+                  disabled={freezeLoading}
+                  className="px-4 py-2 border border-amber-400/40 bg-amber-400/10 hover:bg-amber-400/15 text-amber-100 rounded-md font-medium transition-colors disabled:opacity-50"
+                >
+                  {freezeLoading ? 'Updating…' : isFrozen ? 'Unfreeze Community' : 'Freeze Community'}
+                </button>
+                <button 
+                  onClick={onDelete}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md font-medium transition-colors"
+                >
+                  Delete Community
+                </button>
+              </div>
+              <p className="mt-3 text-xs text-[#9fb0b5]">
+                {isFrozen
+                  ? 'This community is frozen. Members can still see it on their dashboard but cannot open it.'
+                  : 'Freezing keeps the community visible on dashboards but blocks member access until you unfreeze it.'}
+              </p>
             </div>
           </div>
         )}

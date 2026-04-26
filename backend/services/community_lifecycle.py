@@ -37,6 +37,8 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from backend.services import community as community_svc
+from backend.services import community_billing
 from backend.services.database import get_db_connection, get_sql_placeholder
 
 
@@ -58,6 +60,17 @@ _NOTIF_TYPE = "community_lifecycle_warning"
 # ``from_user`` stamp on the in-app notification. Using a sentinel rather
 # than a real account keeps dispatches attributable and out of DM surfaces.
 _NOTIF_FROM_USER = "system-lifecycle"
+
+_ACTIVE_DELETE_STATUSES = {"active", "trialing", "past_due"}
+
+
+class CommunityLifecycleActionError(Exception):
+    """Expected community lifecycle action failure with API metadata."""
+
+    def __init__(self, message: str, *, reason: str, status_code: int = 400):
+        super().__init__(message)
+        self.reason = reason
+        self.status_code = status_code
 
 
 # ── Schema guards ──────────────────────────────────────────────────────
@@ -130,10 +143,204 @@ def ensure_tables() -> None:
         except Exception as exc:
             logger.warning("ensure_archived_at_column: %s", exc)
 
+        for column, col_def in (
+            ("is_frozen", "TINYINT(1) NOT NULL DEFAULT 0" if use_mysql else "INTEGER NOT NULL DEFAULT 0"),
+            ("frozen_at", "DATETIME NULL" if use_mysql else "TEXT"),
+            ("frozen_by", "VARCHAR(191) NULL" if use_mysql else "TEXT"),
+            ("frozen_reason", "TEXT NULL" if use_mysql else "TEXT"),
+        ):
+            try:
+                if use_mysql:
+                    c.execute(f"SHOW COLUMNS FROM communities LIKE '{column}'")
+                    has_col = c.fetchone() is not None
+                else:
+                    c.execute("PRAGMA table_info(communities)")
+                    rows = c.fetchall() or []
+                    has_col = any(
+                        (r["name"] if hasattr(r, "keys") else r[1]) == column
+                        for r in rows
+                    )
+                if not has_col:
+                    c.execute(f"ALTER TABLE communities ADD COLUMN {column} {col_def}")
+            except Exception as exc:
+                logger.warning("ensure_freeze_column %s: %s", column, exc)
+
         try:
             conn.commit()
         except Exception:
             pass
+
+
+# ── Owner actions / access state ────────────────────────────────────────
+
+
+def get_freeze_state(community_id: int) -> Dict[str, Any]:
+    """Return freeze state for a community; missing columns behave as unfrozen."""
+    if not community_id:
+        return {"is_frozen": False, "frozen_at": None, "frozen_by": None, "frozen_reason": None}
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute(
+                f"""
+                SELECT is_frozen, frozen_at, frozen_by, frozen_reason
+                FROM communities
+                WHERE id = {ph}
+                """,
+                (community_id,),
+            )
+            row = c.fetchone()
+        except Exception:
+            return {"is_frozen": False, "frozen_at": None, "frozen_by": None, "frozen_reason": None}
+    if not row:
+        return {"is_frozen": False, "frozen_at": None, "frozen_by": None, "frozen_reason": None}
+    return {
+        "is_frozen": bool(_row_value(row, "is_frozen", 0)),
+        "frozen_at": str(_row_value(row, "frozen_at", 1)) if _row_value(row, "frozen_at", 1) else None,
+        "frozen_by": _row_value(row, "frozen_by", 2),
+        "frozen_reason": _row_value(row, "frozen_reason", 3),
+    }
+
+
+def set_freeze_state(
+    community_id: int,
+    *,
+    frozen: bool,
+    actor_username: str,
+    reason: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Freeze or unfreeze a community without touching membership or billing."""
+    if not community_id:
+        raise CommunityLifecycleActionError("community_id required", reason="missing_community_id")
+    if not community_svc.can_manage_community(actor_username, community_id):
+        raise CommunityLifecycleActionError(
+            "Only the community owner can change this setting",
+            reason="not_owner",
+            status_code=403,
+        )
+
+    ensure_tables()
+    ph = get_sql_placeholder()
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT id FROM communities WHERE id = {ph}", (community_id,))
+        if not c.fetchone():
+            raise CommunityLifecycleActionError("Community not found", reason="not_found", status_code=404)
+        if frozen:
+            c.execute(
+                f"""
+                UPDATE communities
+                SET is_frozen = 1, frozen_at = {ph}, frozen_by = {ph}, frozen_reason = {ph}
+                WHERE id = {ph}
+                """,
+                (now, actor_username, reason or None, community_id),
+            )
+        else:
+            c.execute(
+                f"""
+                UPDATE communities
+                SET is_frozen = 0, frozen_at = NULL, frozen_by = NULL, frozen_reason = NULL
+                WHERE id = {ph}
+                """,
+                (community_id,),
+            )
+        conn.commit()
+
+    return get_freeze_state(community_id)
+
+
+def active_subscription_delete_payload(community_id: int) -> Optional[Dict[str, Any]]:
+    """Return confirmation payload when deletion would affect live billing."""
+    state = community_billing.get_billing_state(community_id) or {}
+    subscription_id = state.get("stripe_subscription_id")
+    status = str(state.get("subscription_status") or "").strip().lower()
+    if not subscription_id or status not in _ACTIVE_DELETE_STATUSES:
+        return None
+    return {
+        "community_id": community_id,
+        "tier": state.get("tier"),
+        "subscription_status": status,
+        "stripe_subscription_id": subscription_id,
+        "current_period_end": state.get("current_period_end"),
+        "cancel_at_period_end": bool(state.get("cancel_at_period_end")),
+        "benefits_end_at": state.get("benefits_end_at") or state.get("current_period_end"),
+    }
+
+
+def cancel_subscription_at_period_end(stripe_mod: Any, community_id: int) -> Dict[str, Any]:
+    """Set a community Stripe subscription to cancel at period end."""
+    payload = active_subscription_delete_payload(community_id)
+    if not payload:
+        return {"changed": False}
+    subscription_id = str(payload["stripe_subscription_id"])
+    if payload.get("cancel_at_period_end"):
+        return {"changed": False, **payload}
+    if stripe_mod is None:
+        raise CommunityLifecycleActionError(
+            "Stripe is not configured, so the subscription could not be scheduled for cancellation.",
+            reason="stripe_not_configured",
+            status_code=400,
+        )
+    try:
+        updated = stripe_mod.Subscription.modify(subscription_id, cancel_at_period_end=True)
+    except Exception as exc:
+        logger.exception("Failed to schedule Stripe cancellation for community %s", community_id)
+        raise CommunityLifecycleActionError(
+            "Unable to cancel the Stripe subscription. The community was not deleted.",
+            reason="stripe_cancel_failed",
+            status_code=502,
+        ) from exc
+
+    community_billing.mark_subscription(
+        community_id,
+        subscription_id=subscription_id,
+        status=str(_value(updated, "status") or payload.get("subscription_status") or "active").lower(),
+        current_period_end=_value(updated, "current_period_end") or payload.get("current_period_end"),
+        cancel_at_period_end=True,
+        canceled_at=_value(updated, "canceled_at"),
+    )
+    refreshed = community_billing.get_billing_state(community_id) or {}
+    return {"changed": True, **payload, "current_period_end": refreshed.get("current_period_end")}
+
+
+def frozen_access_payload(username: str, community: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Return API payload when a frozen community should block this user."""
+    if not bool(community.get("is_frozen")):
+        return None
+    community_id = int(community.get("id") or 0)
+    owner = str(community.get("creator_username") or "").strip().lower()
+    viewer = (username or "").strip().lower()
+    if viewer == owner or community_svc.is_app_admin(username) or community_svc.can_manage_community(username, community_id):
+        return None
+    return {
+        "success": False,
+        "reason": "community_frozen",
+        "error": "This community has been frozen, please contact the owner for more information.",
+        "community_id": community_id,
+    }
+
+
+def _row_value(row: Any, key: str, index: int) -> Any:
+    if hasattr(row, "keys") and key in row.keys():
+        return row[key]
+    if isinstance(row, dict):
+        return row.get(key)
+    if isinstance(row, (list, tuple)) and len(row) > index:
+        return row[index]
+    return None
+
+
+def _value(obj: Any, key: str) -> Any:
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return obj.get(key)
+    try:
+        return obj.get(key)
+    except Exception:
+        return getattr(obj, key, None)
 
 
 # ── KB config loader ───────────────────────────────────────────────────

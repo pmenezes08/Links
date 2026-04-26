@@ -199,10 +199,10 @@ function mockFetchOnce(payload: unknown, init: { ok?: boolean; status?: number }
   return fetchMock
 }
 
-function renderPage() {
+function renderPage(initialEntry = '/subscription_plans') {
   const header = { setTitle: vi.fn(), setHeaderHidden: vi.fn() }
   return render(
-    <MemoryRouter initialEntries={['/subscription_plans']}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <HeaderContext.Provider value={header}>
         <SubscriptionPlans />
       </HeaderContext.Provider>
@@ -227,6 +227,7 @@ async function chooseActiveView() {
 describe('SubscriptionPlans (Personal + Community redesign)', () => {
   beforeEach(() => {
     vi.unstubAllGlobals()
+    window.scrollTo = vi.fn()
   })
 
   it('renders the two top cards (Personal + Community) and hides tier details until opened', async () => {
@@ -257,8 +258,19 @@ describe('SubscriptionPlans (Personal + Community redesign)', () => {
     await chooseActiveView()
 
     expect(await screen.findByText('Jola de Domingo')).toBeInTheDocument()
+    expect(screen.getByText('User')).toBeInTheDocument()
+    expect(screen.getByText('Community')).toBeInTheDocument()
     expect(screen.getAllByText(/Next renewal:/).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/Change tier/i)).toBeNull()
     expect(screen.queryByText('Community Paid Tier')).toBeNull()
+  })
+
+  it('opens community plans directly from query parameters', async () => {
+    mockFetchOnce(makePricingPayload())
+    renderPage('/subscription_plans?mode=choose&open=community_plans&community_id=7')
+
+    expect(await screen.findByText('Pick your tier')).toBeInTheDocument()
+    expect(screen.getByText('Paid L1')).toBeInTheDocument()
   })
 
   it('opens the Community modal with L1/L2/L3 + Enterprise + Add-ons row', async () => {
