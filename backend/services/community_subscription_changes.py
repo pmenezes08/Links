@@ -83,6 +83,7 @@ def change_community_tier(
         "sku": "community_tier",
         "community_id": str(community_id),
         "tier_code": target_tier,
+        "tier_change_initiator": "app",
     }
 
     try:

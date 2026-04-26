@@ -30,6 +30,7 @@ interface CommunitySubscription {
   current_period_end?: string | null
   cancel_at_period_end?: boolean
   canceled_at?: string | null
+  stripe_subscription_id?: string | null
   current_subscription_value_cents?: number
   spent_total_cents?: number
   spent_ytd_cents?: number
@@ -50,6 +51,7 @@ export default function Subscriptions() {
   const [mode, setMode] = useState('test')
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
+  const [tierChangingId, setTierChangingId] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -75,6 +77,27 @@ export default function Subscriptions() {
   }, [])
 
   useEffect(() => { void load() }, [load])
+
+  const changeCommunityTier = useCallback(async (community: CommunitySubscription, tierCode: string) => {
+    if (!tierCode || tierCode === community.tier) return
+    const ok = window.confirm(`Change ${community.name} from ${community.tier} to ${tierCode}?`)
+    if (!ok) return
+    setTierChangingId(community.id)
+    setErr(null)
+    try {
+      const data: any = await apiJson(`/api/admin/communities/${community.id}/billing/change-tier`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier_code: tierCode }),
+      })
+      if (!data?.success) throw new Error(data?.error || 'Failed to change community tier')
+      await load()
+    } catch (e: any) {
+      setErr(e?.message || String(e))
+    } finally {
+      setTierChangingId(null)
+    }
+  }, [load])
 
   const userCounts = useMemo(() => counts(users), [users])
   const communityCounts = useMemo(() => counts(communities), [communities])
@@ -128,7 +151,7 @@ export default function Subscriptions() {
       ) : tab === 'users' ? (
         <UsersTable rows={users} />
       ) : (
-        <CommunitiesTable rows={communities} />
+        <CommunitiesTable rows={communities} changingId={tierChangingId} onChangeTier={changeCommunityTier} />
       )}
     </div>
   )
@@ -196,7 +219,15 @@ function UsersTable({ rows }: { rows: UserSubscription[] }) {
   )
 }
 
-function CommunitiesTable({ rows }: { rows: CommunitySubscription[] }) {
+function CommunitiesTable({
+  rows,
+  changingId,
+  onChangeTier,
+}: {
+  rows: CommunitySubscription[]
+  changingId: number | null
+  onChangeTier: (community: CommunitySubscription, tierCode: string) => void
+}) {
   return (
     <TableShell empty={rows.length === 0} emptyText="No paid communities found.">
       <thead className="text-xs uppercase tracking-wide text-white/50">
@@ -210,6 +241,7 @@ function CommunitiesTable({ rows }: { rows: CommunitySubscription[] }) {
           <th className="px-4 py-3 text-right">Spent total</th>
           <th className="px-4 py-3 text-left">Renewal / end</th>
           <th className="px-4 py-3 text-right">Members</th>
+          <th className="px-4 py-3 text-right">Admin action</th>
         </tr>
       </thead>
       <tbody>
@@ -229,10 +261,50 @@ function CommunitiesTable({ rows }: { rows: CommunitySubscription[] }) {
               {row.cancel_at_period_end ? `Ends ${formatDate(row.current_period_end)}` : formatDate(row.current_period_end)}
             </td>
             <td className="px-4 py-3 text-right">{row.member_count}</td>
+            <td className="px-4 py-3 text-right">
+              <TierChangeControl
+                row={row}
+                disabled={changingId === row.id}
+                onChangeTier={onChangeTier}
+              />
+            </td>
           </tr>
         ))}
       </tbody>
     </TableShell>
+  )
+}
+
+function TierChangeControl({
+  row,
+  disabled,
+  onChangeTier,
+}: {
+  row: CommunitySubscription
+  disabled: boolean
+  onChangeTier: (community: CommunitySubscription, tierCode: string) => void
+}) {
+  const options = ['paid_l1', 'paid_l2', 'paid_l3'].filter(tier => tier !== row.tier)
+  if (!row.stripe_subscription_id) {
+    return <span className="text-xs text-white/35">No Stripe sub</span>
+  }
+  return (
+    <select
+      aria-label={`Change tier for ${row.name}`}
+      disabled={disabled}
+      value=""
+      onChange={(event) => {
+        const next = event.target.value
+        event.target.value = ''
+        if (next) onChangeTier(row, next)
+      }}
+      className="rounded-lg border border-accent/30 bg-black px-2 py-1 text-xs text-accent outline-none disabled:opacity-50"
+    >
+      <option value="">{disabled ? 'Changing...' : 'Change tier'}</option>
+      {options.map(option => (
+        <option key={option} value={option}>{option}</option>
+      ))}
+    </select>
   )
 }
 

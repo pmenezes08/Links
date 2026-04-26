@@ -22,6 +22,7 @@ from flask import (
 
 from backend.services.content_generation.permissions import can_manage_community_jobs
 from backend.services import community as community_svc
+from backend.services import community_admin_notifications
 from backend.services import community_lifecycle
 from backend.services.database import get_db_connection, get_sql_placeholder
 from redis_cache import invalidate_community_cache, invalidate_user_cache
@@ -196,6 +197,7 @@ def _delete_community_tree(
 
     deleted_ids: List[int] = []
     affected_usernames: List[str] = [actor_username]
+    deleted_contexts: List[Dict[str, Any]] = []
 
     try:
         with get_db_connection() as conn:
@@ -227,6 +229,13 @@ def _delete_community_tree(
                     "reason": "active_subscription_requires_confirmation",
                     "subscriptions": active_billing,
                 }, 409
+
+            if community_svc.is_app_admin(actor_username):
+                deleted_contexts = [
+                    context
+                    for cid in descendant_ids
+                    if (context := community_admin_notifications.get_community_context(cid))
+                ]
 
             try:
                 if active_billing:
@@ -277,6 +286,13 @@ def _delete_community_tree(
         invalidate_community_cache(cid)
     for username in affected_usernames:
         invalidate_user_cache(username)
+    for context in deleted_contexts:
+        community_admin_notifications.notify_owner_of_admin_action(
+            community_id=int(context["community_id"]),
+            action="deleted",
+            actor_username=actor_username,
+            extra=context,
+        )
 
     return {
         "success": True,
@@ -340,6 +356,12 @@ def freeze_community(community_id: int):
     except community_lifecycle.CommunityLifecycleActionError as exc:
         return jsonify({"success": False, "error": str(exc), "reason": exc.reason}), exc.status_code
     _invalidate_community_membership_caches(community_id, username)
+    if community_svc.is_app_admin(username):
+        community_admin_notifications.notify_owner_of_admin_action(
+            community_id=community_id,
+            action="frozen",
+            actor_username=username,
+        )
     return jsonify({"success": True, "community_id": community_id, **state})
 
 
@@ -356,6 +378,12 @@ def unfreeze_community(community_id: int):
     except community_lifecycle.CommunityLifecycleActionError as exc:
         return jsonify({"success": False, "error": str(exc), "reason": exc.reason}), exc.status_code
     _invalidate_community_membership_caches(community_id, username)
+    if community_svc.is_app_admin(username):
+        community_admin_notifications.notify_owner_of_admin_action(
+            community_id=community_id,
+            action="unfrozen",
+            actor_username=username,
+        )
     return jsonify({"success": True, "community_id": community_id, **state})
 
 

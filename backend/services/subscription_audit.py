@@ -43,6 +43,13 @@ ACTIONS = {
     "community_tier_updated",
     "community_tier_cancelled",
     "community_tier_past_due",
+    # Platform-admin community actions
+    "community_admin_deleted",
+    "community_admin_frozen",
+    "community_admin_unfrozen",
+    "community_admin_tier_upgraded",
+    "community_admin_tier_downgraded",
+    "community_admin_stripe_cancelled",
     # Enterprise seats
     "enterprise_seat_joined",
     "enterprise_seat_left",

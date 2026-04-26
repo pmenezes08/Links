@@ -32,6 +32,7 @@ from typing import Any, Dict, Optional
 from flask import Blueprint, jsonify, request
 
 from backend.services import (
+    community_admin_notifications,
     community_billing,
     enterprise_iap_nag,
     subscription_billing_ledger,
@@ -249,6 +250,15 @@ def _handle_community_tier_event(
                       "customer": customer_id},
         )
     elif event_type == "customer.subscription.deleted":
+        if _metadata_value(obj, "cancellation_initiator") != "app":
+            community_admin_notifications.notify_owner_of_admin_action(
+                community_id=community_id,
+                action="stripe_cancelled",
+                actor_username="@admin",
+            )
+            community_admin_notifications.notify_platform_admins_of_stripe_cancellation(
+                community_id=community_id,
+            )
         community_billing.mark_subscription(
             community_id,
             status="cancelled",
@@ -268,8 +278,12 @@ def _handle_community_tier_event(
     elif event_type == "customer.subscription.updated":
         status = (obj.get("status") or "").lower() or None
         cancel_at_period_end = bool(obj.get("cancel_at_period_end"))
+        state = community_billing.get_billing_state(community_id) or {}
+        previous_tier = str(state.get("tier") or "").strip().lower()
+        updated_tier = _tier_from_subscription_price(obj) or _extract_tier_code(obj)
         community_billing.mark_subscription(
             community_id,
+            tier_code=updated_tier,
             status=status,
             subscription_id=subscription_id,
             customer_id=customer_id,
@@ -288,6 +302,17 @@ def _handle_community_tier_event(
                       "status": status,
                       "cancel_at_period_end": cancel_at_period_end},
         )
+        if (
+            updated_tier
+            and previous_tier
+            and previous_tier != updated_tier
+            and _metadata_value(obj, "tier_change_initiator") != "app"
+        ):
+            community_admin_notifications.notify_owner_of_admin_action(
+                community_id=community_id,
+                action=_tier_change_action(previous_tier, updated_tier),
+                actor_username="@admin",
+            )
     elif event_type == "invoice.payment_failed":
         community_billing.mark_subscription(
             community_id,
@@ -379,6 +404,46 @@ def _extract_tier_code(obj: Dict[str, Any]) -> Optional[str]:
     if value in ("paid_l1", "paid_l2", "paid_l3"):
         return value
     return None
+
+
+def _metadata_value(obj: Dict[str, Any], key: str) -> str:
+    metadata = obj.get("metadata") or {}
+    return str(metadata.get(key) or "").strip().lower()
+
+
+def _tier_from_subscription_price(obj: Dict[str, Any]) -> Optional[str]:
+    price_id = _subscription_price_id(obj)
+    if not price_id:
+        return None
+    try:
+        from . import subscriptions as pricing_api
+
+        for tier in ("paid_l1", "paid_l2", "paid_l3"):
+            if pricing_api._resolve_community_tier_price(tier) == price_id:
+                return tier
+    except Exception:
+        logger.exception("stripe_webhook: could not resolve tier from price %s", price_id)
+    return None
+
+
+def _subscription_price_id(obj: Dict[str, Any]) -> Optional[str]:
+    items = obj.get("items") or {}
+    data = items.get("data") if isinstance(items, dict) else None
+    if not data:
+        return None
+    first = data[0] or {}
+    price = first.get("price") if isinstance(first, dict) else None
+    if isinstance(price, dict):
+        value = price.get("id")
+        return str(value) if value else None
+    return None
+
+
+def _tier_change_action(previous_tier: str, updated_tier: str) -> str:
+    rank = {"paid_l1": 1, "paid_l2": 2, "paid_l3": 3}
+    if rank.get(updated_tier, 0) > rank.get(previous_tier, 0):
+        return "tier_upgraded"
+    return "tier_downgraded"
 
 
 def _lookup_username_by_email(email: str) -> Optional[str]:

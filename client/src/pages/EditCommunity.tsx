@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ContentGenerationModal from '../components/ContentGenerationModal'
+import DeleteCommunityModal, { type DeleteCommunityResult } from '../components/DeleteCommunityModal'
 import { clearDeviceCache } from '../utils/deviceCache'
 import { invalidateDashboardCache } from '../utils/dashboardCache'
 
@@ -67,6 +68,7 @@ export default function EditCommunity(){
   const [billing, setBilling] = useState<CommunityBilling | null>(null)
   const [isFrozen, setIsFrozen] = useState(false)
   const [freezeLoading, setFreezeLoading] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
   const formRef = useRef<HTMLFormElement|null>(null)
 
   useEffect(() => {
@@ -209,12 +211,10 @@ export default function EditCommunity(){
 
   async function onDelete(){
     if (!isOwner) return
-    if (!window.confirm(`Are you sure you want to delete this community? This action cannot be undone.`)) return
-
-    await submitDelete(false)
+    setShowDeleteModal(true)
   }
 
-  async function submitDelete(confirmActiveSubscription: boolean){
+  async function submitDelete(confirmActiveSubscription: boolean): Promise<DeleteCommunityResult>{
     try {
       const fd = new URLSearchParams({ community_id: String(community_id) })
       if (confirmActiveSubscription) fd.set('confirm_active_subscription', 'true')
@@ -226,22 +226,19 @@ export default function EditCommunity(){
         invalidateDashboardCache()
         alert('Community deleted successfully')
         window.location.href = '/premium_dashboard'
+        return { success: true }
       } else if (r.status === 409 && j?.reason === 'active_subscription_requires_confirmation') {
-        const warning = [
-          'This community has an active subscription.',
-          'If you delete it, the subscription will be cancelled automatically and remain active until the end of the current billing period.',
-          'No further action is needed from your side.',
-          '',
-          'Delete this community and schedule the subscription cancellation?',
-        ].join('\n')
-        if (window.confirm(warning)) {
-          await submitDelete(true)
+        return {
+          success: false,
+          activeSubscription: true,
+          error: j?.error || 'This community has an active subscription.',
+          subscriptions: Array.isArray(j?.subscriptions) ? j.subscriptions : [],
         }
       } else {
-        alert(j?.error || 'Failed to delete community')
+        return { success: false, error: j?.error || 'Failed to delete community' }
       }
     } catch {
-      alert('Failed to delete community')
+      return { success: false, error: 'Failed to delete community' }
     }
   }
 
@@ -695,6 +692,7 @@ export default function EditCommunity(){
               </p>
               <div className="flex flex-col gap-3 sm:flex-row">
                 <button
+                  type="button"
                   onClick={onToggleFreeze}
                   disabled={freezeLoading}
                   className="px-4 py-2 border border-amber-400/40 bg-amber-400/10 hover:bg-amber-400/15 text-amber-100 rounded-md font-medium transition-colors disabled:opacity-50"
@@ -702,6 +700,7 @@ export default function EditCommunity(){
                   {freezeLoading ? 'Updating…' : isFrozen ? 'Unfreeze Community' : 'Freeze Community'}
                 </button>
                 <button 
+                  type="button"
                   onClick={onDelete}
                   className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md font-medium transition-colors"
                 >
@@ -721,6 +720,12 @@ export default function EditCommunity(){
         communityId={String(community_id || '')}
         open={showContentGeneration}
         onClose={() => setShowContentGeneration(false)}
+      />
+      <DeleteCommunityModal
+        open={showDeleteModal}
+        communityName={name}
+        onClose={() => setShowDeleteModal(false)}
+        onSubmit={submitDelete}
       />
     </div>
   )

@@ -36,6 +36,7 @@ from flask import Blueprint, jsonify, request, session
 
 from backend.services import community as community_svc
 from backend.services import (
+    community_admin_notifications,
     community_billing,
     community_subscription_changes,
     enterprise_membership,
@@ -867,6 +868,105 @@ def api_community_billing_change_tier(community_id: int):
     })
 
 
+@subscriptions_bp.route("/api/admin/communities/<int:community_id>/billing/change-tier", methods=["POST"])
+def api_admin_community_billing_change_tier(community_id: int):
+    """Platform-admin tier change for an existing community subscription."""
+    username = _session_username()
+    if not username:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+    if not community_svc.is_app_admin(username):
+        return jsonify({"success": False, "error": "Admin access required"}), 403
+
+    stripe_mod = _stripe_client()
+    if stripe_mod is None:
+        return jsonify({"success": False, "error": "Stripe is not configured"}), 400
+
+    payload = request.get_json(silent=True) or {}
+    tier_code = community_svc._normalize_tier(payload.get("tier_code")) or ""
+    if tier_code not in _COMMUNITY_TIER_PRICE_FIELDS:
+        return jsonify({
+            "success": False,
+            "error": "Unsupported community tier",
+            "reason": "invalid_tier",
+        }), 400
+
+    root_id, is_root = _resolve_root_community_id(community_id)
+    if not is_root:
+        return jsonify({
+            "success": False,
+            "error": "Tiers are managed on the root community.",
+            "reason": "not_root_community",
+            "root_community_id": root_id,
+        }), 409
+
+    state = community_billing.get_billing_state(community_id) or {}
+    current_tier = str(state.get("tier") or "").strip().lower()
+    if current_tier == tier_code:
+        return jsonify({
+            "success": False,
+            "error": "This community is already on that tier.",
+            "reason": "same_tier",
+            "community_id": community_id,
+            "tier_code": tier_code,
+        }), 409
+    if not state.get("stripe_subscription_id"):
+        return jsonify({
+            "success": False,
+            "error": "This community has no active Stripe subscription yet.",
+            "reason": "no_subscription",
+        }), 409
+
+    cap = _tier_member_cap(tier_code)
+    current_members = _count_members(community_id)
+    if cap is not None and current_members > cap:
+        return jsonify({
+            "success": False,
+            "error": (
+                f"This community has {current_members} members, which exceeds the "
+                f"{cap}-member cap for this tier. Pick a higher tier."
+            ),
+            "reason": "tier_too_small",
+            "current_members": current_members,
+            "tier_cap": cap,
+        }), 409
+
+    price_id = _resolve_community_tier_price(tier_code)
+    if not price_id:
+        return jsonify({
+            "success": False,
+            "error": "Pricing is not configured for this tier yet",
+            "reason": "price_missing",
+            "tier_code": tier_code,
+        }), 400
+
+    try:
+        result = community_subscription_changes.change_community_tier(
+            stripe_mod=stripe_mod,
+            community_id=community_id,
+            target_tier=tier_code,
+            target_price_id=price_id,
+        )
+    except community_subscription_changes.TierChangeError as exc:
+        return jsonify({
+            "success": False,
+            "error": str(exc),
+            "reason": exc.reason,
+        }), exc.status_code
+
+    direction = result.get("change_direction")
+    if direction in {"upgrade", "downgrade"}:
+        community_admin_notifications.notify_owner_of_admin_action(
+            community_id=community_id,
+            action="tier_upgraded" if direction == "upgrade" else "tier_downgraded",
+            actor_username=username,
+        )
+
+    return jsonify({
+        "success": True,
+        **result,
+    })
+
+
 @subscriptions_bp.route("/api/stripe/checkout_status", methods=["GET"])
 def api_stripe_checkout_status():
     """Return SKU-aware checkout fulfillment state for the success page."""
@@ -974,6 +1074,7 @@ def api_stripe_create_checkout_session():
     }
     client_reference_id: Optional[str] = None
     price_id: str = ""
+    subscription_description: Optional[str] = None
 
     if plan_id == "premium":
         billing_cycle = str(payload.get("billing_cycle") or "monthly").strip().lower()
@@ -1009,8 +1110,14 @@ def api_stripe_create_checkout_session():
                             "error": "Pricing is not configured for this tier yet",
                             "reason": "price_missing",
                             "tier_code": tier_code}), 400
+        community_name = _fetch_community_name(community_id)
         metadata["community_id"] = str(community_id)
         metadata["tier_code"] = tier_code
+        if community_name:
+            metadata["community_name"] = _stripe_metadata_value(community_name)
+            subscription_description = (
+                f'Community "{community_name}" - {_TIER_LABELS.get(tier_code, tier_code)}'
+            )
         client_reference_id = f"community:{community_id}"
 
     email_value = _user_email(username)
@@ -1035,7 +1142,10 @@ def api_stripe_create_checkout_session():
         # ``customer.subscription.updated`` / ``.deleted`` webhook events
         # can route back to the community without re-looking-up the
         # original Checkout Session.
-        "subscription_data": {"metadata": metadata},
+        "subscription_data": {
+            "metadata": metadata,
+            **({"description": subscription_description} if subscription_description else {}),
+        },
     }
     if email_value:
         session_args["customer_email"] = email_value
@@ -1058,3 +1168,8 @@ def api_stripe_create_checkout_session():
         "sessionId": checkout_session.get("id"),
         "url": checkout_session.get("url"),
     })
+
+
+def _stripe_metadata_value(value: Any) -> str:
+    text = str(value or "").strip()
+    return text[:500]

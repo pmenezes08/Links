@@ -284,7 +284,17 @@ def cancel_subscription_at_period_end(stripe_mod: Any, community_id: int) -> Dic
             status_code=400,
         )
     try:
-        updated = stripe_mod.Subscription.modify(subscription_id, cancel_at_period_end=True)
+        existing = {}
+        try:
+            subscription = stripe_mod.Subscription.retrieve(subscription_id)
+            existing = dict(_value(subscription, "metadata") or {})
+        except Exception:
+            existing = {}
+        updated = stripe_mod.Subscription.modify(
+            subscription_id,
+            cancel_at_period_end=True,
+            metadata={**existing, "cancellation_initiator": "app"},
+        )
     except Exception as exc:
         logger.exception("Failed to schedule Stripe cancellation for community %s", community_id)
         raise CommunityLifecycleActionError(

@@ -281,6 +281,19 @@ Upgrade, downgrade, and renewal policy:
   5. Verify with an L2 test subscription that L1 downgrade and L3
      upgrade options appear.
 
+Stripe subscription identification:
+
+- New Community Tier checkouts stamp `community_id`, `community_name`,
+  `tier_code`, and `sku=community_tier` into Stripe subscription metadata.
+- The Stripe subscription description is set to
+  `Community "<name>" - <tier>` so the dashboard list is identifiable
+  without opening the C-Point database.
+- Existing subscriptions can be backfilled after a backup/check:
+  ```powershell
+  python scripts/backfill_stripe_subscription_descriptions.py --dry-run
+  python scripts/backfill_stripe_subscription_descriptions.py --apply
+  ```
+
 ## 4.2 Paulo community ownership cleanup
 
 Paulo should not be the platform owner (`communities.creator_username`)

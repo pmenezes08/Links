@@ -46,6 +46,10 @@ class _FakeStripeSubscription:
     calls: list[tuple[str, dict]] = []
 
     @classmethod
+    def retrieve(cls, subscription_id: str):
+        return {"id": subscription_id, "metadata": {"existing": "kept"}}
+
+    @classmethod
     def modify(cls, subscription_id: str, **kwargs):
         cls.calls.append((subscription_id, kwargs))
         return {
@@ -193,9 +197,45 @@ def test_confirmed_delete_schedules_subscription_cancellation(client, monkeypatc
     assert resp.status_code == 200
     assert resp.get_json()["success"] is True
     assert _FakeStripeSubscription.calls == [
-        ("sub_confirm_delete", {"cancel_at_period_end": True})
+        (
+            "sub_confirm_delete",
+            {
+                "cancel_at_period_end": True,
+                "metadata": {"existing": "kept", "cancellation_initiator": "app"},
+            },
+        )
     ]
     assert _community_exists(cid) is False
+
+
+def test_admin_delete_notifies_owner(client, monkeypatch):
+    import backend.blueprints.communities as communities_mod
+
+    notifications = []
+    monkeypatch.setattr(
+        communities_mod.community_admin_notifications,
+        "notify_owner_of_admin_action",
+        lambda **kwargs: notifications.append(kwargs) or True,
+    )
+    make_user("notified_owner", subscription="free")
+    cid = make_community("admin-delete-notify", creator_username="notified_owner")
+    _login(client, "admin")
+
+    resp = client.post("/api/admin/delete_community", json={"community_id": cid})
+
+    assert resp.status_code == 200
+    assert notifications == [
+        {
+            "community_id": cid,
+            "action": "deleted",
+            "actor_username": "admin",
+            "extra": {
+                "community_id": cid,
+                "community_name": "admin-delete-notify",
+                "owner_username": "notified_owner",
+            },
+        }
+    ]
 
 
 def test_freeze_and_unfreeze_community_requires_owner(client):
