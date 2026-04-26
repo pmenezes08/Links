@@ -12,6 +12,76 @@ from backend.services.database import get_db_connection, get_sql_placeholder
 logger = logging.getLogger(__name__)
 
 
+_COMMUNITY_DEPENDENT_TABLES: List[Tuple[str, str]] = [
+    ("post_views", "post_id IN (SELECT id FROM posts WHERE community_id = {ph})"),
+    ("key_posts", "community_id = {ph}"),
+    ("community_key_posts", "community_id = {ph}"),
+    ("comments", "post_id IN (SELECT id FROM posts WHERE community_id = {ph})"),
+    ("reactions", "post_id IN (SELECT id FROM posts WHERE community_id = {ph})"),
+    ("reply_reactions", "reply_id IN (SELECT id FROM replies WHERE community_id = {ph})"),
+    ("replies", "community_id = {ph}"),
+    (
+        "poll_votes",
+        "poll_id IN (SELECT id FROM polls WHERE post_id IN "
+        "(SELECT id FROM posts WHERE community_id = {ph}))",
+    ),
+    (
+        "poll_options",
+        "poll_id IN (SELECT id FROM polls WHERE post_id IN "
+        "(SELECT id FROM posts WHERE community_id = {ph}))",
+    ),
+    ("polls", "post_id IN (SELECT id FROM posts WHERE community_id = {ph})"),
+    ("posts", "community_id = {ph}"),
+    (
+        "event_rsvps",
+        "event_id IN (SELECT id FROM calendar_events WHERE community_id = {ph})",
+    ),
+    (
+        "event_invitations",
+        "event_id IN (SELECT id FROM calendar_events WHERE community_id = {ph})",
+    ),
+    ("calendar_events", "community_id = {ph}"),
+    (
+        "community_story_reactions",
+        "story_id IN (SELECT id FROM community_stories WHERE community_id = {ph})",
+    ),
+    (
+        "community_story_comments",
+        "story_id IN (SELECT id FROM community_stories WHERE community_id = {ph})",
+    ),
+    (
+        "community_story_views",
+        "story_id IN (SELECT id FROM community_stories WHERE community_id = {ph})",
+    ),
+    ("community_stories", "community_id = {ph}"),
+    (
+        "resource_upvotes",
+        "post_id IN (SELECT id FROM resource_posts WHERE community_id = {ph}) "
+        "OR comment_id IN (SELECT rc.id FROM resource_comments rc "
+        "JOIN resource_posts rp ON rp.id = rc.post_id WHERE rp.community_id = {ph})",
+    ),
+    (
+        "resource_comments",
+        "post_id IN (SELECT id FROM resource_posts WHERE community_id = {ph})",
+    ),
+    ("resource_posts", "community_id = {ph}"),
+    ("user_communities", "community_id = {ph}"),
+    ("community_admins", "community_id = {ph}"),
+    ("community_announcements", "community_id = {ph}"),
+    ("community_files", "community_id = {ph}"),
+    ("community_invites", "community_id = {ph}"),
+    ("community_billing", "community_id = {ph}"),
+    ("user_muted_communities", "community_id = {ph}"),
+]
+
+_COMMUNITY_DIRECT_DEPENDENT_TABLES = {
+    table for table, where in _COMMUNITY_DEPENDENT_TABLES
+    if where == "community_id = {ph}"
+}
+
+_FK_NAME_MAX_LEN = 64
+
+
 # ── Community tier taxonomy ────────────────────────────────────────────
 #
 # These mirror the five groups on the ``community-tiers`` KB page. Stored
@@ -472,6 +542,38 @@ def ensure_community_tier_member_capacity(
     )
 
 
+def is_app_admin(username):
+    """Check if a user is a global app admin.
+
+    Kept in this service so community-management decisions do not need to
+    import the monolith. The legacy ``admin`` username still wins, and the
+    newer ``users.is_admin`` flag is checked case-insensitively.
+    """
+    norm_username = (username or "").strip().lower()
+    if not norm_username:
+        return False
+    if norm_username == "admin":
+        return True
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(
+                f"SELECT is_admin FROM users WHERE LOWER(username) = LOWER({ph})",
+                (username,),
+            )
+            row = c.fetchone()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("is_app_admin failed: %s", exc)
+        return False
+
+    if not row:
+        return False
+    value = row["is_admin"] if hasattr(row, "keys") else row[0]
+    return bool(value)
+
+
 def is_community_owner(username, community_id):
     """Check if a user is the owner of a community."""
     norm_username = (username or "").strip().lower()
@@ -495,6 +597,14 @@ def is_community_owner(username, community_id):
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("is_community_owner failed: %s", exc)
         return False
+
+
+def can_manage_community(username, community_id):
+    """True when ``username`` may edit/delete/manage ``community_id``."""
+    return bool(
+        is_app_admin(username)
+        or is_community_owner(username, community_id)
+    )
 
 
 def is_community_admin(username, community_id):
@@ -656,3 +766,156 @@ def get_descendant_community_ids(cursor, community_id: int) -> List[int]:
 
     results.sort(key=lambda item: item[1], reverse=True)
     return [cid for cid, _ in results]
+
+
+def _table_exists(cursor, table_name: str) -> bool:
+    """Return whether ``table_name`` exists in the active database."""
+    ph = get_sql_placeholder()
+    if ph == "%s":
+        cursor.execute(
+            """
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = DATABASE() AND table_name = %s
+            LIMIT 1
+            """,
+            (table_name,),
+        )
+    else:
+        cursor.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?",
+            (table_name,),
+        )
+    return cursor.fetchone() is not None
+
+
+def _is_missing_optional_schema_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(
+        marker in text
+        for marker in (
+            "unknown column",
+            "no such column",
+            "doesn't exist",
+            "does not exist",
+            "no such table",
+        )
+    )
+
+
+def delete_community_cascade(cursor, community_id: int) -> int:
+    """Delete a community and its dependents using the caller's transaction.
+
+    Missing optional tables are skipped so lean test schemas and older
+    deployments keep working. Real SQL failures are allowed to bubble up,
+    which lets the route roll back and avoid returning a false success.
+    """
+    ph = get_sql_placeholder()
+    for table, where in _COMMUNITY_DEPENDENT_TABLES:
+        if not _table_exists(cursor, table):
+            continue
+        placeholder_count = where.count("{ph}") or 1
+        try:
+            cursor.execute(
+                f"DELETE FROM {table} WHERE {where.format(ph=ph)}",
+                tuple([community_id] * placeholder_count),
+            )
+        except Exception as exc:
+            if _is_missing_optional_schema_error(exc):
+                logger.info(
+                    "Skipping optional community delete table %s due to schema mismatch: %s",
+                    table,
+                    exc,
+                )
+                continue
+            raise
+    cursor.execute(f"DELETE FROM communities WHERE id = {ph}", (community_id,))
+    return int(cursor.rowcount or 0)
+
+
+def _fk_constraint_name(table_name: str) -> str:
+    base = f"fk_{table_name}_community_delete"
+    if len(base) <= _FK_NAME_MAX_LEN:
+        return base
+    return f"fk_{table_name[:42]}_community_delete"
+
+
+def ensure_community_delete_cascade_constraints() -> Dict[str, Any]:
+    """Best-effort migration for direct ``community_id`` foreign keys.
+
+    MySQL can alter existing FKs in place; SQLite cannot, so local SQLite
+    runs only report that the migration was skipped. Startup must never be
+    blocked by a historical orphan row or a type mismatch, so per-table
+    failures are recorded and logged instead of raising.
+    """
+    report: Dict[str, Any] = {"updated": [], "already_ok": [], "skipped": [], "failed": []}
+    ph = get_sql_placeholder()
+    if ph != "%s":
+        report["skipped"].append("sqlite")
+        return report
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            for table in sorted(_COMMUNITY_DIRECT_DEPENDENT_TABLES):
+                try:
+                    if not _table_exists(c, table):
+                        report["skipped"].append(table)
+                        continue
+
+                    c.execute(
+                        """
+                        SELECT rc.CONSTRAINT_NAME, rc.DELETE_RULE
+                        FROM information_schema.REFERENTIAL_CONSTRAINTS rc
+                        JOIN information_schema.KEY_COLUMN_USAGE kcu
+                          ON rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA
+                         AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+                         AND rc.TABLE_NAME = kcu.TABLE_NAME
+                        WHERE rc.CONSTRAINT_SCHEMA = DATABASE()
+                          AND rc.TABLE_NAME = %s
+                          AND kcu.COLUMN_NAME = 'community_id'
+                          AND kcu.REFERENCED_TABLE_NAME = 'communities'
+                        LIMIT 1
+                        """,
+                        (table,),
+                    )
+                    row = c.fetchone()
+                    constraint = None
+                    delete_rule = None
+                    if row:
+                        constraint = row["CONSTRAINT_NAME"] if hasattr(row, "keys") else row[0]
+                        delete_rule = row["DELETE_RULE"] if hasattr(row, "keys") else row[1]
+                    if constraint and str(delete_rule or "").upper() == "CASCADE":
+                        report["already_ok"].append(table)
+                        continue
+
+                    if constraint:
+                        c.execute(f"ALTER TABLE `{table}` DROP FOREIGN KEY `{constraint}`")
+
+                    fk_name = _fk_constraint_name(table)
+                    c.execute(
+                        f"""
+                        ALTER TABLE `{table}`
+                        ADD CONSTRAINT `{fk_name}`
+                        FOREIGN KEY (`community_id`) REFERENCES `communities`(`id`)
+                        ON DELETE CASCADE
+                        """
+                    )
+                    conn.commit()
+                    report["updated"].append(table)
+                except Exception as exc:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    report["failed"].append({"table": table, "error": str(exc)})
+                    logger.warning(
+                        "Could not ensure ON DELETE CASCADE for %s.community_id: %s",
+                        table,
+                        exc,
+                    )
+    except Exception as exc:  # pragma: no cover - defensive startup guard
+        report["failed"].append({"table": "*", "error": str(exc)})
+        logger.warning("Community delete-cascade FK migration failed: %s", exc)
+
+    return report

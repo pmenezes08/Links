@@ -56,3 +56,14 @@ def register_blueprints(app: Flask) -> None:
         logging.getLogger(__name__).exception(
             "community_billing.ensure_tables failed during blueprint registration"
         )
+
+    try:
+        from backend.services import community as _community
+        _community.ensure_community_delete_cascade_constraints()
+    except Exception:
+        # Same startup rule: schema hardening should be visible in logs, not
+        # take the app down.
+        import logging
+        logging.getLogger(__name__).exception(
+            "community delete-cascade FK migration failed during blueprint registration"
+        )

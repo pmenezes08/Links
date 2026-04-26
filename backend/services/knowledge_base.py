@@ -40,6 +40,7 @@ CATEGORIES: List[Dict[str, str]] = [
     {"id": "product", "label": "Product", "icon": "fa-cube"},
     {"id": "pricing", "label": "Pricing", "icon": "fa-euro-sign"},
     {"id": "policy", "label": "Policy", "icon": "fa-shield-halved"},
+    {"id": "steve", "label": "Steve", "icon": "fa-user-astronaut"},
     {"id": "planning", "label": "Planning", "icon": "fa-map"},
     {"id": "reference", "label": "Reference", "icon": "fa-book"},
     {"id": "audit", "label": "Audit", "icon": "fa-clock-rotate-left"},

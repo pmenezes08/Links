@@ -49,6 +49,7 @@ from backend.services.database import USE_MYSQL, get_db_connection, get_sql_plac
 from backend.services.dm_chats_tables import ensure_archived_chats_table
 from backend.services import ai_usage as _ai_usage
 from backend.services.community import (
+    can_manage_community,
     fetch_community_names,
     get_community_ancestors,
     get_community_basic,
@@ -1509,8 +1510,7 @@ def user_has_story_access(c, username: Optional[str], community_id: int, creator
         role_norm = (role or "").strip().lower()
         if role_norm in {"admin", "owner", "manager", "moderator"}:
             return True
-        creator_parent_norm = (creator or "").strip().lower()
-        if creator_parent_norm and creator_parent_norm == norm_username:
+        if is_community_owner(username, parent_id):
             return True
     return False
 
@@ -1735,33 +1735,6 @@ def fetch_user_subscription(cursor, username: Optional[str]) -> str:
 
 def is_free_subscription(subscription_value: str) -> bool:
     return subscription_value not in {'premium'}
-
-
-def delete_community_records(cursor, community_id: int) -> None:
-    """Remove a community and its direct associations."""
-    placeholder = get_sql_placeholder()
-    try:
-        cursor.execute(
-            f"DELETE FROM post_views WHERE post_id IN (SELECT id FROM posts WHERE community_id = {placeholder})",
-            (community_id,),
-        )
-    except Exception as err:
-        logger.warning(f"Failed deleting post_views for community {community_id}: {err}")
-
-    try:
-        cursor.execute(f"DELETE FROM posts WHERE community_id = {placeholder}", (community_id,))
-    except Exception as err:
-        logger.warning(f"Failed deleting posts for community {community_id}: {err}")
-
-    try:
-        cursor.execute(f"DELETE FROM user_communities WHERE community_id = {placeholder}", (community_id,))
-    except Exception as err:
-        logger.warning(f"Failed deleting user_communities for community {community_id}: {err}")
-
-    try:
-        cursor.execute(f"DELETE FROM communities WHERE id = {placeholder}", (community_id,))
-    except Exception as err:
-        logger.warning(f"Failed deleting community {community_id}: {err}")
 
 
 def ensure_followers_table(cursor) -> None:
@@ -11134,69 +11107,6 @@ def admin_add_user_to_community_api():
         logger.error(f"admin_add_user_to_community error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/admin/delete_community', methods=['POST'])
-@login_required
-def admin_delete_community():
-    """Delete a community as admin"""
-    username = session.get('username')
-    if not is_app_admin(username):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    
-    data = request.get_json()
-    community_id_raw = data.get('community_id') if data else None
-    try:
-        community_id = int(community_id_raw)
-    except (TypeError, ValueError):
-        community_id = None
-    
-    if not community_id:
-        return jsonify({'success': False, 'error': 'Community ID required'}), 400
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-
-            placeholder = get_sql_placeholder()
-            c.execute(f"SELECT id FROM communities WHERE id = {placeholder}", (community_id,))
-            existing = c.fetchone()
-            if not existing:
-                return jsonify({'success': False, 'error': 'Community not found'}), 404
-
-            descendant_ids = get_descendant_community_ids(c, community_id)
-            
-            # Get all members of communities being deleted BEFORE deleting
-            affected_usernames: Set[str] = set()
-            for target_id in descendant_ids:
-                ph = get_sql_placeholder()
-                c.execute(f"""
-                    SELECT DISTINCT u.username 
-                    FROM user_communities uc
-                    JOIN users u ON uc.user_id = u.id
-                    WHERE uc.community_id = {ph}
-                """, (target_id,))
-                for row in c.fetchall():
-                    uname = row['username'] if hasattr(row, 'keys') else row[0]
-                    if uname:
-                        affected_usernames.add(uname)
-            
-            deleted_ids: List[int] = []
-            for target_id in descendant_ids:
-                delete_community_records(c, target_id)
-                deleted_ids.append(target_id)
-            
-            conn.commit()
-            
-            # Invalidate dashboard cache for ALL affected users
-            for affected_user in affected_usernames:
-                invalidate_user_cache(affected_user)
-            logger.info(f"Admin delete: Invalidated cache for {len(affected_usernames)} users")
-            
-            return jsonify({'success': True, 'deleted_ids': deleted_ids})
-            
-    except Exception as e:
-        logger.error(f"Error deleting community: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():
@@ -19505,7 +19415,7 @@ def api_all_calendar_events():
                     'community_name': communities.get(community_id, 'Unknown'),
                     'rsvp_counts': rsvp_counts,
                     'user_rsvp': user_rsvp,
-                    'is_creator': event['username'] == username
+                    'is_creator': str(event['username'] or '').strip().lower() == str(username or '').strip().lower()
                 })
             
             return jsonify({'success': True, 'events': events})
@@ -20874,10 +20784,7 @@ def close_poll():
                 community_id = pr['community_id'] if pr else None
                 if community_id:
                     # Check if user is community admin or owner
-                    # Owner = communities.creator_username
-                    c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
-                    cr = c.fetchone()
-                    if cr and cr['creator_username'] == username:
+                    if can_manage_community(username, community_id):
                         allowed = True
                     else:
                         # Community admin check (if you have a roles table, replace this logic)
@@ -21013,9 +20920,7 @@ def edit_poll():
                 community_id = pr['community_id'] if pr else None
                 if community_id:
                     # Check if user is community admin or owner
-                    c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
-                    cr = c.fetchone()
-                    if cr and cr['creator_username'] == username:
+                    if can_manage_community(username, community_id):
                         allowed = True
                     else:
                         c.execute("""
@@ -21492,9 +21397,7 @@ def delete_poll():
             # Permission: admin, poll creator, or community owner
             allowed = username == 'admin' or username == created_by
             if community_id and not allowed:
-                c.execute("SELECT creator_username FROM communities WHERE id=?", (community_id,))
-                cr = c.fetchone()
-                if cr and cr['creator_username'] == username:
+                if can_manage_community(username, community_id):
                     allowed = True
             if not allowed:
                 return jsonify({'success': False, 'error': 'Not authorized'})
@@ -23601,7 +23504,7 @@ def get_calendar_events():
                     'user_rsvp': user_rsvp,
                     'total_rsvps': sum(rsvp_counts.values()),
                     'is_invited': is_invited,
-                    'is_creator': event['username'] == username
+                    'is_creator': str(event['username'] or '').strip().lower() == str(username or '').strip().lower()
                 })
             
             logger.info(f"Returning {len(events)} events to frontend for user {username}")
@@ -24319,9 +24222,12 @@ def get_calendar_event(event_id):
             
             # Check if user can edit
             can_edit = (
-                event['username'] == username or 
-                username == 'admin' or 
-                (event['creator_username'] and username == event['creator_username']) or
+                str(event['username'] or '').strip().lower() == str(username or '').strip().lower() or
+                is_app_admin(username) or
+                (
+                    event['community_id']
+                    and can_manage_community(username, event['community_id'])
+                ) or
                 is_community_admin
             )
             
@@ -28111,7 +28017,7 @@ def test_sub_permissions():
         
         result['can_create'] = (
             result.get('is_app_admin') or
-            (result.get('parent', {}).get('creator') == username) or
+            (parent_id and can_manage_community(username, parent_id)) or
             (result.get('role_in_parent') == 'admin')
         )
         
@@ -28281,7 +28187,7 @@ def create_community():
                             return jsonify({'success': False, 'error': 'Business sub-communities can only be created under Business parent communities'}), 403
                         
                         # Check if user is owner
-                        if username == parent_creator or is_app_admin(username):
+                        if can_manage_community(username, parent_community_id):
                             # Owner or app admin - allowed
                             logger.info(f"Business sub-community creation allowed: {username} is owner/admin of parent {parent_community_id}")
                         else:
@@ -28597,7 +28503,7 @@ def get_user_communities_with_members():
                         'id': community['id'],
                         'name': community['name'],
                         'type': community['type'],
-                        'is_creator': community['creator_username'] == username,
+                        'is_creator': str(community['creator_username'] or '').strip().lower() == str(username or '').strip().lower(),
                         'members': members
                     })
                 except Exception as ce:
@@ -28652,7 +28558,7 @@ def get_user_communities():
                     'name': row['name'],
                     'type': row['type'],
                     'created_at': row['created_at'],
-                    'is_creator': row['creator_username'] == username,
+                    'is_creator': str(row['creator_username'] or '').strip().lower() == str(username or '').strip().lower(),
                     'is_active': row['is_active'] if row['is_active'] is not None else True
                 })
             
@@ -28684,7 +28590,7 @@ def edit_community():
             if not community:
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
             
-            if community['creator_username'] != username:
+            if not can_manage_community(username, community_id):
                 return jsonify({'success': False, 'error': 'Only the community creator can edit the community'}), 403
             
             # Update the community name
@@ -28779,14 +28685,14 @@ def update_community():
                 owner_username = community[0]
                 current_type = (community[1] if len(community) > 1 else '') or ''
             effective_type = community_type if community_type else current_type
-            is_owner = (owner_username == username)
-            is_app_admin = (username == 'admin')
+            is_owner = str(owner_username or '').strip().lower() == str(username or '').strip().lower()
+            is_platform_admin = is_app_admin(username)
             # Allow community admins to edit general fields
             try:
                 admin_ok = is_community_admin_or_owner(username, community_id)
             except Exception:
                 admin_ok = False
-            if not (admin_ok or is_app_admin):
+            if not (admin_ok or is_platform_admin):
                 return jsonify({'success': False, 'error': 'Only community admins or owner can edit the community'}), 403
 
             # Stricter permission for network_type: only Parent Network owner or @Admin
@@ -28795,14 +28701,14 @@ def update_community():
                 c.execute(f"SELECT parent_community_id FROM communities WHERE id = {ph}", (community_id,))
                 parent_row = c.fetchone()
                 is_parent = not parent_row or (parent_row['parent_community_id'] if hasattr(parent_row, 'keys') else parent_row[0]) is None
-                if not (is_parent and (is_owner or is_app_admin)):
+                if not (is_parent and (is_owner or is_platform_admin)):
                     return jsonify({'success': False, 'error': 'Only Parent Network owners or platform admin (@Admin) can set network_type'}), 403
             
             # Handle background file upload or removal (restrict to owner or app admin)
             background_path = None
             remove_background = request.form.get('remove_background', '').lower() in ('true', '1', 'yes')
             
-            if (is_owner or is_app_admin) and ('background_file' in request.files):
+            if (is_owner or is_platform_admin) and ('background_file' in request.files):
                 file = request.files['background_file']
                 if file and file.filename:
                     # Save the uploaded file using R2-enabled media service
@@ -28815,7 +28721,7 @@ def update_community():
                         background_path = stored_path
             
             # Update the community details
-            if remove_background and (is_owner or is_app_admin):
+            if remove_background and (is_owner or is_platform_admin):
                 # Remove the background image
                 c.execute(
                     f"""
@@ -28900,98 +28806,6 @@ def update_community():
     except Exception as e:
         logger.error(f"Error updating community: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to update community'}), 500
-
-@app.route('/delete_community', methods=['POST'])
-@login_required
-def delete_community():
-    """Delete a community and all its posts"""
-    username = session.get('username')
-    community_id = request.form.get('community_id', type=int)
-    
-    if not community_id:
-        return jsonify({'success': False, 'error': 'Community ID is required'}), 400
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Check if user is the creator of this community
-            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
-            community = c.fetchone()
-            
-            if not community:
-                return jsonify({'success': False, 'error': 'Community not found'}), 404
-            
-            if community['creator_username'] != username:
-                return jsonify({'success': False, 'error': 'Only the community creator can delete the community'}), 403
-
-            descendant_ids = get_descendant_community_ids(c, community_id)
-            placeholder = get_sql_placeholder()
-            for target_id in descendant_ids:
-                c.execute(f"SELECT creator_username FROM communities WHERE id = {placeholder}", (target_id,))
-                owner_row = c.fetchone()
-                owner_username = None
-                if owner_row:
-                    if hasattr(owner_row, 'keys'):
-                        owner_username = owner_row.get('creator_username')
-                    elif isinstance(owner_row, (list, tuple)):
-                        owner_username = owner_row[0]
-                if owner_username and owner_username != username:
-                    return jsonify({
-                        'success': False,
-                        'error': 'This community has nested communities you do not own. Please contact an admin to remove them first.'
-                    }), 403
-
-            # Get all members of communities being deleted BEFORE deleting
-            affected_usernames: Set[str] = set()
-            # Always include the current user (who is deleting)
-            affected_usernames.add(username)
-            
-            for target_id in descendant_ids:
-                placeholder = get_sql_placeholder()
-                # Get members from user_communities
-                c.execute(f"""
-                    SELECT DISTINCT u.username 
-                    FROM user_communities uc
-                    JOIN users u ON uc.user_id = u.id
-                    WHERE uc.community_id = {placeholder}
-                """, (target_id,))
-                for row in c.fetchall():
-                    uname = row['username'] if hasattr(row, 'keys') else row[0]
-                    if uname:
-                        affected_usernames.add(uname)
-                
-                # Also get the creator of the community (may not be in user_communities)
-                c.execute(f"SELECT creator_username FROM communities WHERE id = {placeholder}", (target_id,))
-                creator_row = c.fetchone()
-                if creator_row:
-                    creator = creator_row['creator_username'] if hasattr(creator_row, 'keys') else creator_row[0]
-                    if creator:
-                        affected_usernames.add(creator)
-            
-            deleted_ids: List[int] = []
-            for target_id in descendant_ids:
-                delete_community_records(c, target_id)
-                deleted_ids.append(target_id)
-            
-            conn.commit()
-            
-            # Invalidate ALL caches related to deleted communities and affected users
-            # 1. Invalidate community-specific caches
-            for target_id in deleted_ids:
-                invalidate_community_cache(target_id)
-            logger.info(f"Invalidated community cache for {len(deleted_ids)} communities: {deleted_ids}")
-            
-            # 2. Invalidate dashboard cache for ALL affected users (members + creators + current user)
-            for affected_user in affected_usernames:
-                invalidate_user_cache(affected_user)
-            logger.info(f"Invalidated user cache for {len(affected_usernames)} users: {list(affected_usernames)}")
-            
-            return jsonify({'success': True, 'message': 'Community deleted successfully', 'deleted_ids': deleted_ids})
-            
-    except Exception as e:
-        logger.error(f"Error deleting community: {str(e)}")
-        return jsonify({'success': False, 'error': 'Failed to delete community'}), 500
 
 @app.route('/migrate_parent_communities')
 @login_required
@@ -30944,7 +30758,7 @@ def leave_community():
             # Check if user is the creator (creators cannot leave their own community)
             c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
             community = c.fetchone()
-            if community and community['creator_username'] == username:
+            if community and str(community['creator_username'] or '').strip().lower() == str(username or '').strip().lower():
                 return jsonify({'success': False, 'error': 'Community creators cannot leave their own community. Delete the community instead.'})
             
             # Remove user from community
@@ -38824,7 +38638,7 @@ def save_community_info():
         if not community:
             return jsonify({'success': False, 'error': 'Community not found'})
         
-        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+        if not can_manage_community(session.get('username'), community_id):
             return jsonify({'success': False, 'error': 'Unauthorized'})
         
         # Save announcement to announcements table
@@ -38870,7 +38684,7 @@ def upload_community_files():
         if not community:
             return jsonify({'success': False, 'error': 'Community not found'})
         
-        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+        if not can_manage_community(session.get('username'), community_id):
             return jsonify({'success': False, 'error': 'Unauthorized'})
         
         # Create community files directory
@@ -38979,7 +38793,7 @@ def delete_community_file():
         if not community:
             return jsonify({'success': False, 'error': 'Community not found'})
         
-        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+        if not can_manage_community(session.get('username'), community_id):
             return jsonify({'success': False, 'error': 'Unauthorized'})
         
         # Get file info first

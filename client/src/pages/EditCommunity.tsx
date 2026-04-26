@@ -224,35 +224,10 @@ export default function EditCommunity(){
       const r = await fetch('/delete_community', { method:'POST', credentials:'include', body: fd })
       const j = await r.json().catch(()=>null)
       if (j?.success){
-        // Clear ALL community-related caches to prevent stale data
-        // 1. Clear the deleted community's feed cache
-        clearDeviceCache(`community-feed:${community_id}`)
-        
-        // 2. Clear the dashboard cache completely (forces fresh fetch)
+        // Server-side deletion is now transactional and honest; one dashboard
+        // invalidation is enough before leaving the deleted community.
         invalidateDashboardCache()
-        
-        // 3. Clear ALL related caches from localStorage
-        const storage = window.localStorage
-        if (storage) {
-          const keysToRemove: string[] = []
-          for (let i = 0; i < storage.length; i++) {
-            const key = storage.key(i)
-            if (key && (
-              key.startsWith('community-management:') || 
-              key.startsWith('community-feed:') ||
-              key.startsWith('dashboard-device-cache') ||
-              key === 'dashboard-device-cache'
-            )) {
-              keysToRemove.push(key)
-            }
-          }
-          keysToRemove.forEach(key => storage.removeItem(key))
-        }
-        
         alert('Community deleted successfully')
-        
-        // IMPORTANT: Use full page reload to clear ALL React state
-        // React Router navigation preserves component state which causes ghost communities
         window.location.href = '/premium_dashboard'
       } else {
         alert(j?.error || 'Failed to delete community')

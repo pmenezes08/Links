@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from functools import lru_cache, wraps
-from typing import Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import (
     Blueprint,
@@ -21,7 +21,9 @@ from flask import (
 )
 
 from backend.services.content_generation.permissions import can_manage_community_jobs
+from backend.services import community as community_svc
 from backend.services.database import get_db_connection, get_sql_placeholder
+from redis_cache import invalidate_community_cache, invalidate_user_cache
 
 
 communities_bp = Blueprint("communities", __name__)
@@ -96,6 +98,164 @@ def communities_list():
     except Exception as exc:
         logger.error("Error in communities for %s: %s", username, exc)
         abort(500)
+
+
+def _row_value(row: Any, key: str, index: int) -> Any:
+    if hasattr(row, "keys"):
+        return row.get(key)
+    if isinstance(row, (list, tuple)) and len(row) > index:
+        return row[index]
+    return None
+
+
+def _collect_delete_affected_usernames(cursor, community_ids: List[int], actor: str) -> List[str]:
+    """Return users whose community/dashboard caches must be invalidated."""
+    affected = {actor}
+    ids = [int(cid) for cid in community_ids if cid]
+    if not ids:
+        return sorted(u for u in affected if u)
+
+    ph = get_sql_placeholder()
+    placeholders = ",".join([ph] * len(ids))
+
+    cursor.execute(
+        f"""
+        SELECT DISTINCT u.username
+        FROM user_communities uc
+        JOIN users u ON uc.user_id = u.id
+        WHERE uc.community_id IN ({placeholders})
+        """,
+        tuple(ids),
+    )
+    for row in cursor.fetchall() or []:
+        username = _row_value(row, "username", 0)
+        if username:
+            affected.add(str(username))
+
+    cursor.execute(
+        f"""
+        SELECT DISTINCT creator_username
+        FROM communities
+        WHERE id IN ({placeholders})
+        """,
+        tuple(ids),
+    )
+    for row in cursor.fetchall() or []:
+        username = _row_value(row, "creator_username", 0)
+        if username:
+            affected.add(str(username))
+
+    return sorted(u for u in affected if u)
+
+
+def _delete_community_tree(
+    *,
+    community_id: int,
+    actor_username: str,
+    enforce_descendant_ownership: bool,
+) -> Tuple[Dict[str, Any], int]:
+    """Delete a community tree in a single transaction."""
+    if not community_id:
+        return {"success": False, "error": "community_id required"}, 400
+
+    if not community_svc.can_manage_community(actor_username, community_id):
+        return {
+            "success": False,
+            "error": "Only the community owner can delete this community",
+        }, 403
+
+    deleted_ids: List[int] = []
+    affected_usernames: List[str] = [actor_username]
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id FROM communities WHERE id = {ph}", (community_id,))
+            if not c.fetchone():
+                return {"success": False, "error": "Community not found"}, 404
+
+            descendant_ids = community_svc.get_descendant_community_ids(c, community_id)
+            affected_usernames = _collect_delete_affected_usernames(
+                c,
+                descendant_ids,
+                actor_username,
+            )
+
+            try:
+                for cid in descendant_ids:
+                    if (
+                        enforce_descendant_ownership
+                        and not community_svc.can_manage_community(actor_username, cid)
+                    ):
+                        conn.rollback()
+                        return {
+                            "success": False,
+                            "error": "Cannot delete: nested community owned by another user",
+                            "blocking_id": cid,
+                        }, 403
+
+                    deleted = community_svc.delete_community_cascade(c, cid)
+                    if deleted != 1:
+                        conn.rollback()
+                        return {
+                            "success": False,
+                            "error": f"Community {cid} not removed (rowcount={deleted})",
+                        }, 500
+                    deleted_ids.append(cid)
+
+                conn.commit()
+            except Exception as exc:
+                conn.rollback()
+                logger.exception("delete_community failed")
+                return {"success": False, "error": str(exc)}, 500
+    except Exception as exc:
+        logger.exception("delete_community setup failed")
+        return {"success": False, "error": str(exc)}, 500
+
+    for cid in deleted_ids:
+        invalidate_community_cache(cid)
+    for username in affected_usernames:
+        invalidate_user_cache(username)
+
+    return {
+        "success": True,
+        "message": "Community deleted successfully",
+        "deleted_ids": deleted_ids,
+    }, 200
+
+
+@communities_bp.route("/delete_community", methods=["POST"])
+@_login_required
+def delete_community():
+    community_id = request.form.get("community_id", type=int)
+    payload, status = _delete_community_tree(
+        community_id=community_id or 0,
+        actor_username=session.get("username", ""),
+        enforce_descendant_ownership=True,
+    )
+    return jsonify(payload), status
+
+
+@communities_bp.route("/api/admin/delete_community", methods=["POST"])
+@_login_required
+def admin_delete_community():
+    username = session.get("username", "")
+    if not community_svc.is_app_admin(username):
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+
+    data = request.get_json(silent=True) or {}
+    try:
+        community_id = int(data.get("community_id") or 0)
+    except (TypeError, ValueError):
+        community_id = 0
+
+    payload, status = _delete_community_tree(
+        community_id=community_id,
+        actor_username=username,
+        enforce_descendant_ownership=False,
+    )
+    return jsonify(payload), status
 
 
 @communities_bp.route("/get_community_members", methods=["POST"])
