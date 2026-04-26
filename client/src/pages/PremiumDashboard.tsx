@@ -640,8 +640,9 @@ export default function PremiumDashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Show all communities */}
               {communities.map(community => {
+              // Desktop HTML communities page now provides the unified view
               const onCardClick = () => {
-                navigate('/premium_dashboard')
+                navigate(`/communities?parent_id=${community.id}`)
               }
               return (
                 <Card 

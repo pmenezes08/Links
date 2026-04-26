@@ -583,7 +583,7 @@ export default function SubscriptionPlans() {
           onCreate={() => {
             setView(null)
             setModalError(null)
-            navigate('/premium_dashboard')
+            navigate('/communities?create=1')
           }}
         />
       )}

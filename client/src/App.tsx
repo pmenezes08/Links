@@ -42,6 +42,7 @@ import PostDetail from './pages/PostDetail'
 import CreatePost from './pages/CreatePost'
 import Members from './pages/Members'
 import EditCommunity from './pages/EditCommunity'
+import Communities from './pages/Communities'
 import Followers from './pages/Followers'
 import Networking from './pages/Networking'
 import HomeTimeline from './pages/HomeTimeline'
@@ -799,7 +800,7 @@ function AppRoutes(){
                 <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
                 <Route path="/crossfit" element={<CrossfitExact />} />
                 <Route path="/crossfit_react" element={<CrossfitExact />} />
-                <Route path="/communities" element={<Navigate to="/premium_dashboard" replace />} />
+                <Route path="/communities" element={<Communities />} />
                 <Route path="/followers" element={<Followers />} />
                 <Route path="/networking" element={<Networking />} />
                 <Route path="/your_sports" element={<YourSports />} />

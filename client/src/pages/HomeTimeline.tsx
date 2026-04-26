@@ -300,7 +300,7 @@ export default function HomeTimeline(){
             <div className="pt-2">Home timeline</div>
             <div className="h-0.5 bg-[#4db6ac] rounded-full w-16 mx-auto mt-1" />
           </button>
-          <button type="button" className="flex-1 text-center text-sm font-medium text-[#9fb0b5] hover:text-white/90" onClick={()=> navigate('/premium_dashboard')}>
+          <button type="button" className="flex-1 text-center text-sm font-medium text-[#9fb0b5] hover:text-white/90" onClick={()=> navigate('/communities')}>
             <div className="pt-2">Communities</div>
             <div className="h-0.5 bg-transparent rounded-full w-16 mx-auto mt-1" />
           </button>

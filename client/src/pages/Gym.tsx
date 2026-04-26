@@ -12,7 +12,7 @@ export default function Gym() {
       <div className="max-w-4xl mx-auto grid gap-3">
         <button
           className="rounded-lg border border-white/10 p-4 hover:bg-white/5 w-full text-left"
-          onClick={() => navigate('/premium_dashboard')}
+          onClick={() => navigate('/communities')}
         >
           <div className="flex items-center">
             <i className="fas fa-home mr-3" />
