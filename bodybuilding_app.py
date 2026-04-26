@@ -34337,7 +34337,8 @@ def get_user_communities_hierarchical():
             placeholder = '%s' if USE_MYSQL else '?'
             
             # Check if user is admin
-            if is_app_admin(username):
+            is_app_admin_user = is_app_admin(username)
+            if is_app_admin_user:
                 # Admin sees all communities
                 c.execute("""
                     SELECT DISTINCT 
@@ -34346,7 +34347,8 @@ def get_user_communities_hierarchical():
                         c.type,
                         c.parent_community_id,
                         c.creator_username,
-                        pc.name as parent_name
+                        pc.name as parent_name,
+                        NULL as role
                     FROM communities c
                     LEFT JOIN communities pc ON c.parent_community_id = pc.id
                     ORDER BY 
@@ -34366,15 +34368,16 @@ def get_user_communities_hierarchical():
                         pc.name as parent_name,
                         uc.role
                     FROM communities c
-                    JOIN user_communities uc ON c.id = uc.community_id
-                    JOIN users u ON uc.user_id = u.id
+                    LEFT JOIN users u ON LOWER(u.username) = LOWER({placeholder})
+                    LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.user_id = u.id
                     LEFT JOIN communities pc ON c.parent_community_id = pc.id
-                    WHERE u.username = {placeholder}
+                    WHERE uc.user_id IS NOT NULL
+                       OR LOWER(c.creator_username) = LOWER({placeholder})
                     ORDER BY 
                         CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
                         COALESCE(pc.name, c.name),
                         c.name
-                """, (username,))
+                """, (username, username))
                 
                 user_communities = c.fetchall()
                 
@@ -34386,7 +34389,10 @@ def get_user_communities_hierarchical():
                     role = comm['role'] if hasattr(comm, 'keys') else comm[6]
                     
                     # If user is owner or admin of this community, they can see all descendants
-                    if username == creator or role == 'admin' or role == 'owner':
+                    if (
+                        str(username or '').strip().lower() == str(creator or '').strip().lower()
+                        or str(role or '').strip().lower() in ('admin', 'owner')
+                    ):
                         admin_community_ids.append(comm_id)
                 
                 # Start with communities user is a member of
@@ -34430,17 +34436,26 @@ def get_user_communities_hierarchical():
                             c.type,
                             c.parent_community_id,
                             c.creator_username,
-                            pc.name as parent_name
+                            pc.name as parent_name,
+                            uc.role
                         FROM communities c
                         LEFT JOIN communities pc ON c.parent_community_id = pc.id
+                        LEFT JOIN users current_user ON LOWER(current_user.username) = LOWER({placeholder})
+                        LEFT JOIN user_communities uc
+                          ON uc.community_id = c.id AND uc.user_id = current_user.id
                         WHERE c.id IN ({id_list})
                         ORDER BY 
                             CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
                             COALESCE(pc.name, c.name),
                             c.name
-                    """)
+                    """, (username,))
                 else:
-                    return jsonify({'success': True, 'communities': []})
+                    return jsonify({
+                        'success': True,
+                        'username': username,
+                        'is_app_admin': is_app_admin_user,
+                        'communities': []
+                    })
             
             communities = c.fetchall()
             
@@ -34456,6 +34471,10 @@ def get_user_communities_hierarchical():
                     'type': community['type'],
                     'parent_community_id': community['parent_community_id'],
                     'creator_username': community.get('creator_username') if hasattr(community, 'get') else community['creator_username'],
+                    'role': community.get('role') if hasattr(community, 'get') else (
+                        community['role'] if hasattr(community, 'keys') and 'role' in community.keys()
+                        else (community[6] if isinstance(community, (list, tuple)) and len(community) > 6 else None)
+                    ),
                     'children': []
                 }
                 all_communities_dict[community['id']] = community_data
@@ -34523,12 +34542,16 @@ def get_user_communities_hierarchical():
                 # Fallback: just return flat list without hierarchy
                 return jsonify({
                     'success': True,
-                    'communities': [{'id': c['id'], 'name': c['name'], 'type': c['type'], 'children': []} 
+                    'username': username,
+                    'is_app_admin': is_app_admin_user,
+                    'communities': [{'id': c['id'], 'name': c['name'], 'type': c['type'], 'role': c.get('role'), 'children': []}
                                    for c in all_communities_dict.values()]
                 })
             
             return jsonify({
                 'success': True,
+                'username': username,
+                'is_app_admin': is_app_admin_user,
                 'communities': result
             })
                 

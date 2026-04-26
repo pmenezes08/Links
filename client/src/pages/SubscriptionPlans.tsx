@@ -790,11 +790,13 @@ function CommunityPickerModal({
           }
         }
         walk(data.communities || [])
-        const me = typeof data.username === 'string' ? data.username : null
+        const me = typeof data.username === 'string'
+          ? data.username.trim().toLowerCase()
+          : null
         const owned = flat.filter((c) => {
           const withParent = c as Community & { parent_community_id?: number | null }
           if (withParent.parent_community_id) return false
-          if (me && c.creator_username && c.creator_username === me) return true
+          if (me && c.creator_username && c.creator_username.trim().toLowerCase() === me) return true
           if (c.role && c.role.toLowerCase() === 'owner') return true
           return false
         })
