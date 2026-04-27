@@ -365,46 +365,46 @@ export default function CommunityCalendar() {
 
   function EventCard({ event, archived = false }: { event: EventItem; archived?: boolean }) {
     return (
-      <article className="group relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.045] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-[#4db6ac]/45 hover:bg-white/[0.065]">
-        <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-[#4db6ac]/70 to-transparent" />
+      <article className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] p-3 shadow-[0_12px_34px_rgba(0,0,0,0.32)] backdrop-blur-xl transition hover:border-[#4db6ac]/45 hover:bg-white/[0.065]">
+        <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[#4db6ac]/70 to-transparent" />
         <button type="button" className="w-full text-left" onClick={() => navigate(`/event/${event.id}`)}>
-          <div className="flex items-start gap-3">
-            <div className="grid h-16 w-14 shrink-0 place-items-center rounded-2xl border border-[#4db6ac]/35 bg-[#4db6ac]/10 text-center">
+          <div className="flex items-start gap-2.5">
+            <div className="grid h-12 w-11 shrink-0 place-items-center rounded-xl border border-[#4db6ac]/35 bg-[#4db6ac]/10 text-center">
               <div>
-                <div className="text-[10px] font-bold tracking-[0.18em] text-[#4db6ac]">{formatMonth(event.date)}</div>
-                <div className="text-2xl font-semibold text-white">{formatDay(event.date)}</div>
+                <div className="text-[9px] font-bold tracking-[0.16em] text-[#4db6ac]">{formatMonth(event.date)}</div>
+                <div className="text-lg font-semibold leading-tight text-white">{formatDay(event.date)}</div>
               </div>
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-[#8fa3a8]">
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-[#8fa3a8]">
                 <span>{formatTimeRange(event)}</span>
                 {archived ? <span className="rounded-full border border-white/10 px-2 py-0.5 normal-case tracking-normal">Archived</span> : null}
               </div>
-              <h3 className="mt-1 line-clamp-2 text-lg font-semibold text-white">{event.title}</h3>
-              <p className="mt-1 text-sm text-[#b7c7ca]">{formatDateRange(event)}</p>
-              {event.description ? <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#d7e1e3]/85">{event.description}</p> : null}
+              <h3 className="mt-0.5 line-clamp-2 text-base font-semibold text-white">{event.title}</h3>
+              <p className="mt-0.5 text-xs text-[#b7c7ca]">{formatDateRange(event)}</p>
+              {event.description ? <p className="mt-2 line-clamp-2 text-xs leading-5 text-[#d7e1e3]/85">{event.description}</p> : null}
             </div>
           </div>
         </button>
-        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-[#b7c7ca]" onClick={event => event.stopPropagation()}>
-          <button type="button" className={`rounded-full border px-3 py-1.5 transition ${event.user_rsvp === 'going' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => rsvp(event.id, 'going')}>
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-[#b7c7ca]" onClick={event => event.stopPropagation()}>
+          <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'going' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => rsvp(event.id, 'going')}>
             Going {event.rsvp_counts?.going || 0}
           </button>
-          <button type="button" className={`rounded-full border px-3 py-1.5 transition ${event.user_rsvp === 'maybe' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => rsvp(event.id, 'maybe')}>
+          <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'maybe' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => rsvp(event.id, 'maybe')}>
             Maybe {event.rsvp_counts?.maybe || 0}
           </button>
-          <button type="button" className={`rounded-full border px-3 py-1.5 transition ${event.user_rsvp === 'not_going' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => rsvp(event.id, 'not_going')}>
+          <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'not_going' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => rsvp(event.id, 'not_going')}>
             Not going {event.rsvp_counts?.not_going || 0}
           </button>
-          <button type="button" className="ml-auto rounded-full border border-white/10 px-3 py-1.5 hover:border-[#4db6ac]/45 hover:text-white" onClick={() => setRsvpEvent(event)}>
+          <button type="button" className="ml-auto rounded-full border border-white/10 px-2.5 py-1 hover:border-[#4db6ac]/45 hover:text-white" onClick={() => setRsvpEvent(event)}>
             Details
           </button>
           {!archived ? (
             <>
-              <button type="button" className="rounded-full border border-white/10 px-3 py-1.5 hover:border-[#4db6ac]/45 hover:text-white" onClick={() => setEditingEvent(event)} aria-label="Edit event">
+              <button type="button" className="rounded-full border border-white/10 px-2.5 py-1 hover:border-[#4db6ac]/45 hover:text-white" onClick={() => setEditingEvent(event)} aria-label="Edit event">
                 <i className="fa-regular fa-pen-to-square" />
               </button>
-              <button type="button" className="rounded-full border border-red-400/45 px-3 py-1.5 text-red-200 hover:bg-red-500/10" onClick={() => deleteEvent(event)} aria-label="Delete event">
+              <button type="button" className="rounded-full border border-red-400/45 px-2.5 py-1 text-red-200 hover:bg-red-500/10" onClick={() => deleteEvent(event)} aria-label="Delete event">
                 <i className="fa-regular fa-trash-can" />
               </button>
             </>
@@ -462,74 +462,74 @@ export default function CommunityCalendar() {
       <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(77,182,172,0.22),transparent_34%),radial-gradient(circle_at_15%_20%,rgba(77,182,172,0.10),transparent_28%)]" />
       <div
         ref={scrollRef}
-        className="relative mx-auto max-w-3xl px-4 pb-28 pt-4"
+        className="relative mx-auto max-w-3xl px-3 pb-28"
         style={{
           WebkitOverflowScrolling: 'touch' as any,
-          paddingTop: 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + 14px)',
+          paddingTop: 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + 2px)',
         } as CSSProperties}
       >
-        <header className="mb-5 flex items-center gap-3">
-          <button className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-[#cfe7e4] backdrop-blur hover:border-[#4db6ac]/45" onClick={() => navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label="Back">
+        <header className="mb-2 flex items-center gap-2">
+          <button className="rounded-full p-2 text-[#cfe7e4] hover:bg-white/5" onClick={() => navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="min-w-0 flex-1">
-            <p className="text-xs uppercase tracking-[0.24em] text-[#4db6ac]">Community Calendar</p>
-            <h1 className="truncate text-2xl font-semibold">Events</h1>
+            <h1 className="truncate text-lg font-semibold">Calendar</h1>
+            <p className="text-[11px] text-[#8fa3a8]">{events.length} upcoming event{events.length === 1 ? '' : 's'}</p>
           </div>
-          <button className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_24px_rgba(77,182,172,0.35)] hover:brightness-110" onClick={() => setCreateOpen(true)}>
+          <button className="rounded-full bg-[#4db6ac] px-3 py-1.5 text-xs font-semibold text-black shadow-[0_0_18px_rgba(77,182,172,0.28)] hover:brightness-110" onClick={() => setCreateOpen(true)}>
             New event
           </button>
         </header>
 
-        {successMsg ? <div className="mb-4 rounded-2xl border border-[#4db6ac]/25 bg-[#4db6ac]/10 px-4 py-3 text-sm text-[#9ff8ef]">{successMsg}</div> : null}
+        {successMsg ? <div className="mb-2 rounded-xl border border-[#4db6ac]/25 bg-[#4db6ac]/10 px-3 py-2 text-xs text-[#9ff8ef]">{successMsg}</div> : null}
 
-        <section className="mb-5 overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.045] p-5 shadow-[0_22px_80px_rgba(0,0,0,0.42)] backdrop-blur-xl">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-[#8fa3a8]">Next up</p>
-              <h2 className="mt-2 text-2xl font-semibold text-white">{nextEvent?.title || 'No upcoming events yet'}</h2>
-              <p className="mt-2 text-sm text-[#b7c7ca]">{nextEvent ? `${formatDateRange(nextEvent)} • ${formatTimeRange(nextEvent)}` : 'Create the first event and invite members in seconds.'}</p>
+        <section className="mb-3 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] p-3 shadow-[0_14px_46px_rgba(0,0,0,0.36)] backdrop-blur-xl">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-[#8fa3a8]">Next up</p>
+              <h2 className="mt-1 truncate text-lg font-semibold text-white">{nextEvent?.title || 'No upcoming events yet'}</h2>
+              <p className="mt-1 line-clamp-2 text-xs text-[#b7c7ca]">{nextEvent ? `${formatDateRange(nextEvent)} • ${formatTimeRange(nextEvent)}` : 'Create the first event and invite members in seconds.'}</p>
             </div>
-            <div className="rounded-2xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 px-3 py-2 text-right">
-              <div className="text-xs text-[#8ff4e9]">{nextEvent ? getCountdownLabel(nextEvent) : 'Ready'}</div>
-              <div className="text-2xl font-semibold text-white">{events.length}</div>
-              <div className="text-[10px] uppercase tracking-[0.16em] text-[#8fa3a8]">Upcoming</div>
+            <div className="shrink-0 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 px-2.5 py-1.5 text-right">
+              <div className="text-[11px] text-[#8ff4e9]">{nextEvent ? getCountdownLabel(nextEvent) : 'Ready'}</div>
+              <div className="text-lg font-semibold leading-tight text-white">{events.length}</div>
+              <div className="text-[9px] uppercase tracking-[0.14em] text-[#8fa3a8]">Upcoming</div>
             </div>
           </div>
           {nextEvent ? (
-            <div className="mt-5 flex flex-wrap gap-2">
-              <button className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-[#e9fffd]" onClick={() => setRsvpEvent(nextEvent)}>RSVP now</button>
-              <button className="rounded-full border border-white/10 px-4 py-2 text-sm text-[#d7e1e3] hover:border-[#4db6ac]/45" onClick={() => navigate(`/event/${nextEvent.id}`)}>Open details</button>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-black hover:bg-[#e9fffd]" onClick={() => setRsvpEvent(nextEvent)}>RSVP now</button>
+              <button className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-[#d7e1e3] hover:border-[#4db6ac]/45" onClick={() => navigate(`/event/${nextEvent.id}`)}>Open details</button>
             </div>
           ) : null}
         </section>
 
-        <div className="mb-5 flex rounded-full border border-white/10 bg-white/[0.04] p-1">
-          <button className={`flex-1 rounded-full px-4 py-2 text-sm font-medium transition ${activeTab === 'upcoming' ? 'bg-[#4db6ac] text-black' : 'text-[#9fb0b5] hover:text-white'}`} onClick={() => setActiveTab('upcoming')}>Upcoming</button>
-          <button className={`flex-1 rounded-full px-4 py-2 text-sm font-medium transition ${activeTab === 'archive' ? 'bg-[#4db6ac] text-black' : 'text-[#9fb0b5] hover:text-white'}`} onClick={() => setActiveTab('archive')}>Archive</button>
+        <div className="mb-3 flex rounded-full border border-white/10 bg-white/[0.04] p-1">
+          <button className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${activeTab === 'upcoming' ? 'bg-[#4db6ac] text-black' : 'text-[#9fb0b5] hover:text-white'}`} onClick={() => setActiveTab('upcoming')}>Upcoming</button>
+          <button className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${activeTab === 'archive' ? 'bg-[#4db6ac] text-black' : 'text-[#9fb0b5] hover:text-white'}`} onClick={() => setActiveTab('archive')}>Archive</button>
         </div>
 
         {activeTab === 'upcoming' && dateStrip.length > 0 ? (
-          <div className="mb-5 flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+          <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
             {dateStrip.map(event => (
-              <button key={event.date} className={`min-w-[76px] rounded-2xl border px-3 py-3 text-center transition ${selectedDate === event.date ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-white' : 'border-white/10 bg-white/[0.035] text-[#9fb0b5]'}`} onClick={() => setSelectedDate(event.date)}>
-                <div className="text-[10px] font-bold tracking-[0.2em] text-[#4db6ac]">{formatMonth(event.date)}</div>
-                <div className="text-2xl font-semibold">{formatDay(event.date)}</div>
-                <div className="text-[11px]">{events.filter(item => item.date === event.date).length} event{events.filter(item => item.date === event.date).length === 1 ? '' : 's'}</div>
+              <button key={event.date} className={`min-w-[58px] rounded-xl border px-2 py-2 text-center transition ${selectedDate === event.date ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-white' : 'border-white/10 bg-white/[0.035] text-[#9fb0b5]'}`} onClick={() => setSelectedDate(event.date)}>
+                <div className="text-[9px] font-bold tracking-[0.16em] text-[#4db6ac]">{formatMonth(event.date)}</div>
+                <div className="text-lg font-semibold leading-tight">{formatDay(event.date)}</div>
+                <div className="text-[10px]">{events.filter(item => item.date === event.date).length} event{events.filter(item => item.date === event.date).length === 1 ? '' : 's'}</div>
               </button>
             ))}
           </div>
         ) : null}
 
-        <main className="space-y-3">
+        <main className="space-y-2.5">
           {loading ? (
-            <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-6 text-[#9fb0b5]">Loading events...</div>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-[#9fb0b5]">Loading events...</div>
           ) : visibleEvents.length === 0 ? (
-            <div className="rounded-[1.75rem] border border-dashed border-white/15 bg-white/[0.035] p-8 text-center">
-              <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#4db6ac]/10 text-[#4db6ac]"><i className="fa-regular fa-calendar" /></div>
-              <h3 className="mt-4 text-lg font-semibold">{activeTab === 'archive' ? 'No archived events' : 'Nothing scheduled here'}</h3>
-              <p className="mt-2 text-sm text-[#9fb0b5]">{activeTab === 'archive' ? 'Past events will appear here after they end.' : 'Start with a clean event card and invite the right members.'}</p>
-              {activeTab !== 'archive' ? <button className="mt-5 rounded-full bg-[#4db6ac] px-5 py-2 text-sm font-semibold text-black" onClick={() => setCreateOpen(true)}>Create event</button> : null}
+            <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.035] p-5 text-center">
+              <div className="mx-auto grid h-11 w-11 place-items-center rounded-xl bg-[#4db6ac]/10 text-[#4db6ac]"><i className="fa-regular fa-calendar" /></div>
+              <h3 className="mt-3 text-base font-semibold">{activeTab === 'archive' ? 'No archived events' : 'Nothing scheduled here'}</h3>
+              <p className="mt-1.5 text-xs text-[#9fb0b5]">{activeTab === 'archive' ? 'Past events will appear here after they end.' : 'Start with a clean event card and invite the right members.'}</p>
+              {activeTab !== 'archive' ? <button className="mt-4 rounded-full bg-[#4db6ac] px-4 py-1.5 text-xs font-semibold text-black" onClick={() => setCreateOpen(true)}>Create event</button> : null}
             </div>
           ) : (
             visibleEvents.map(event => <EventCard key={event.id} event={event} archived={activeTab === 'archive'} />)
@@ -569,41 +569,41 @@ export default function CommunityCalendar() {
 
       {createOpen ? (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 backdrop-blur" onClick={event => event.currentTarget === event.target && setCreateOpen(false)}>
-          <div className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-[2rem] border border-white/10 bg-[#050606] p-5 shadow-2xl sm:mb-4 sm:rounded-[2rem]">
-            <div className="mb-4 flex items-center justify-between">
+          <div className="max-h-[88dvh] w-full max-w-2xl overflow-y-auto rounded-t-3xl border border-white/10 bg-[#050606] p-4 shadow-2xl sm:mb-4 sm:rounded-3xl">
+            <div className="mb-3 flex items-center justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-[#4db6ac]">Step {createStep === 'details' ? '1' : '2'} of 2</p>
-                <h2 className="text-xl font-semibold">Create event</h2>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-[#4db6ac]">Step {createStep === 'details' ? '1' : '2'} of 2</p>
+                <h2 className="text-lg font-semibold">Create event</h2>
               </div>
-              <button className="grid h-9 w-9 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setCreateOpen(false)} aria-label="Close"><i className="fa-solid fa-xmark" /></button>
+              <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setCreateOpen(false)} aria-label="Close"><i className="fa-solid fa-xmark" /></button>
             </div>
             <form ref={createFormRef} onSubmit={event => { event.preventDefault(); createEvent(new FormData(event.currentTarget)) }}>
               <div className={createStep === 'details' ? 'block' : 'hidden'}>
                 <EventFormFields />
-                <div className="mt-5 flex justify-end">
-                  <button type="button" className="rounded-full bg-[#4db6ac] px-5 py-2.5 text-sm font-semibold text-black hover:brightness-110" onClick={() => setCreateStep('invite')}>Continue</button>
+                <div className="mt-4 flex justify-end">
+                  <button type="button" className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110" onClick={() => setCreateStep('invite')}>Continue</button>
                 </div>
               </div>
               <div className={createStep === 'invite' ? 'block' : 'hidden'}>
-                <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
                   <div className="flex gap-2">
-                    <button type="button" className={`flex-1 rounded-2xl border px-4 py-3 text-sm ${inviteAll ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca]'}`} onClick={() => setInviteAll(true)}>Invite all</button>
-                    <button type="button" className={`flex-1 rounded-2xl border px-4 py-3 text-sm ${!inviteAll ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca]'}`} onClick={() => setInviteAll(false)}>Choose members</button>
+                    <button type="button" className={`flex-1 rounded-xl border px-3 py-2 text-sm ${inviteAll ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca]'}`} onClick={() => setInviteAll(true)}>Invite all</button>
+                    <button type="button" className={`flex-1 rounded-xl border px-3 py-2 text-sm ${!inviteAll ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca]'}`} onClick={() => setInviteAll(false)}>Choose members</button>
                   </div>
                   {!inviteAll ? (
-                    <div className="mt-4 max-h-64 space-y-1 overflow-y-auto pr-1">
+                    <div className="mt-3 max-h-56 space-y-1 overflow-y-auto pr-1">
                       {members.length === 0 ? <div className="text-sm text-[#9fb0b5]">No members found.</div> : members.map(member => (
-                        <label key={member.username} className="flex cursor-pointer items-center justify-between rounded-2xl px-3 py-2 hover:bg-white/5">
+                        <label key={member.username} className="flex cursor-pointer items-center justify-between rounded-xl px-3 py-2 hover:bg-white/5">
                           <span className="text-sm">{member.username}</span>
                           <input type="checkbox" checked={!!selectedMembers[member.username]} onChange={() => setSelectedMembers(current => ({ ...current, [member.username]: !current[member.username] }))} className="h-5 w-5 accent-[#4db6ac]" />
                         </label>
                       ))}
                     </div>
-                  ) : <p className="mt-4 text-sm text-[#9fb0b5]">Every current member will receive the invite.</p>}
+                  ) : <p className="mt-3 text-sm text-[#9fb0b5]">Every current member will receive the invite.</p>}
                 </div>
-                <div className="mt-5 flex items-center justify-between gap-3">
-                  <button type="button" className="rounded-full border border-white/10 px-5 py-2.5 text-sm hover:bg-white/5" onClick={() => setCreateStep('details')}>Back</button>
-                  <button type="submit" className="rounded-full bg-[#4db6ac] px-5 py-2.5 text-sm font-semibold text-black hover:brightness-110">
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm hover:bg-white/5" onClick={() => setCreateStep('details')}>Back</button>
+                  <button type="submit" className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110">
                     Create {inviteAll ? 'for everyone' : selectedCount ? `for ${selectedCount}` : 'event'}
                   </button>
                 </div>
@@ -615,14 +615,14 @@ export default function CommunityCalendar() {
 
       {rsvpEvent ? (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 backdrop-blur" onClick={event => event.currentTarget === event.target && setRsvpEvent(null)}>
-          <div className="w-full max-w-xl rounded-t-[2rem] border border-white/10 bg-[#050606] p-5 sm:mb-4 sm:rounded-[2rem]">
-            <div className="mb-5 flex items-start justify-between gap-4">
+          <div className="w-full max-w-xl rounded-t-3xl border border-white/10 bg-[#050606] p-4 sm:mb-4 sm:rounded-3xl">
+            <div className="mb-3 flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-[#4db6ac]">RSVP</p>
-                <h2 className="text-xl font-semibold">{rsvpEvent.title}</h2>
-                <p className="mt-1 text-sm text-[#9fb0b5]">{formatDateRange(rsvpEvent)} • {formatTimeRange(rsvpEvent)}</p>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-[#4db6ac]">RSVP</p>
+                <h2 className="text-lg font-semibold">{rsvpEvent.title}</h2>
+                <p className="mt-1 text-xs text-[#9fb0b5]">{formatDateRange(rsvpEvent)} • {formatTimeRange(rsvpEvent)}</p>
               </div>
-              <button className="grid h-9 w-9 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setRsvpEvent(null)} aria-label="Close"><i className="fa-solid fa-xmark" /></button>
+              <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setRsvpEvent(null)} aria-label="Close"><i className="fa-solid fa-xmark" /></button>
             </div>
             <div className="grid grid-cols-3 gap-2">
               {([
@@ -630,7 +630,7 @@ export default function CommunityCalendar() {
                 ['maybe', 'Maybe', rsvpEvent.rsvp_counts?.maybe || 0],
                 ['not_going', 'Not going', rsvpEvent.rsvp_counts?.not_going || 0],
               ] as const).map(([value, label, count]) => (
-                <button key={value} className={`rounded-2xl border px-3 py-4 text-sm transition ${rsvpEvent.user_rsvp === value ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca] hover:border-[#4db6ac]/45'}`} onClick={() => rsvp(rsvpEvent.id, value)}>
+                <button key={value} className={`rounded-xl border px-2 py-3 text-xs transition ${rsvpEvent.user_rsvp === value ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca] hover:border-[#4db6ac]/45'}`} onClick={() => rsvp(rsvpEvent.id, value)}>
                   <span className="block font-semibold">{label}</span>
                   <span className="text-xs text-[#8fa3a8]">{count}</span>
                 </button>
@@ -643,16 +643,16 @@ export default function CommunityCalendar() {
 
       {editingEvent ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur" onClick={event => event.currentTarget === event.target && setEditingEvent(null)}>
-          <div className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-[2rem] border border-white/10 bg-[#050606] p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Edit event</h2>
-              <button className="grid h-9 w-9 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setEditingEvent(null)} aria-label="Close"><i className="fa-solid fa-xmark" /></button>
+          <div className="max-h-[88dvh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-white/10 bg-[#050606] p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Edit event</h2>
+              <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setEditingEvent(null)} aria-label="Close"><i className="fa-solid fa-xmark" /></button>
             </div>
             <form onSubmit={event => { event.preventDefault(); saveEditedEvent(new FormData(event.currentTarget)) }}>
               <EventFormFields event={editingEvent} />
-              <div className="mt-5 flex justify-end gap-2">
-                <button type="button" className="rounded-full border border-white/10 px-5 py-2.5 text-sm hover:bg-white/5" onClick={() => setEditingEvent(null)}>Cancel</button>
-                <button type="submit" className="rounded-full bg-[#4db6ac] px-5 py-2.5 text-sm font-semibold text-black hover:brightness-110">Save changes</button>
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm hover:bg-white/5" onClick={() => setEditingEvent(null)}>Cancel</button>
+                <button type="submit" className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110">Save changes</button>
               </div>
             </form>
           </div>
