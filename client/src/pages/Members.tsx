@@ -11,6 +11,8 @@ type Member = {
   is_creator?: boolean;
 }
 
+type InviteStep = 'choose' | 'username' | 'email' | 'link'
+
 export default function Members(){
   const { community_id } = useParams()
   const navigate = useNavigate()
@@ -23,6 +25,7 @@ export default function Members(){
   const [ownerUsername, setOwnerUsername] = useState<string>('')
   const [currentUserRole, setCurrentUserRole] = useState<'member'|'admin'|'owner'|'app_admin'>('member')
   const [showInviteModal, setShowInviteModal] = useState(false)
+  const [inviteStep, setInviteStep] = useState<InviteStep>('choose')
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteUsername, setInviteUsername] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
@@ -118,6 +121,7 @@ export default function Members(){
     setInviteSuccessMessage('')
     setShowQRCode(false)
     setQRCodeUrl('')
+    setInviteStep('choose')
   }
 
   const handleCloseInviteModal = () => {
@@ -144,6 +148,8 @@ export default function Members(){
     setInviteSuccess(false)
     setInviteSuccessMessage('')
     setShowQRCode(false)
+    setQRCodeUrl('')
+    setInviteStep('choose')
 
     // Load invite settings
     fetch(`/api/community/${numericCommunityId}/invite_settings`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
@@ -417,200 +423,264 @@ export default function Members(){
       </div>
 
       {/* Invite Modal */}
-        {showInviteModal && !showQRCode && (
-          <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100dvh', zIndex: 9990, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', boxSizing: 'border-box', background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>
-            <div style={{ width: 'calc(100% - 8px)', maxWidth: 400, maxHeight: 'calc(100dvh - 64px)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.1)', background: '#1a1a1a', boxShadow: '0 20px 60px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', flex: 1, padding: '16px 20px' }}>
-            <h2 className="text-lg font-semibold mb-2">Invite to {communityName || 'Community'}</h2>
-            <p className="text-sm text-white/60 mb-4">Choose how you want to invite members</p>
-
-            {inviteSuccess && (
-              <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg text-green-400 text-sm">
-                {inviteSuccessMessage || 'Invitation sent successfully!'}
-              </div>
-            )}
-
-            {inviteError && (
-              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
-                {inviteError}
-                {inviteUpgradeUrl && (
-                  <button
-                    type="button"
-                    onClick={() => navigate(inviteUpgradeUrl)}
-                    className="mt-3 w-full rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:bg-[#45a099]"
-                  >
-                    Upgrade community tier
-                  </button>
-                )}
-              </div>
-            )}
-
-              <div className="space-y-3">
-              {/* Email Invitation */}
-              <div>
-                <label className="block text-xs text-white/60 mb-2">Send invitation via email</label>
-                <input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="email@example.com"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none"
-                  disabled={inviteLoading || inviteSuccess}
-                />
+      {showInviteModal && (
+        <div
+          className="fixed inset-0 z-[9990] flex items-end justify-center bg-black/85 px-3 pb-3 pt-16 backdrop-blur-md sm:items-center sm:p-4"
+          onClick={(e) => { if (e.target === e.currentTarget && !inviteLoading) handleCloseInviteModal() }}
+        >
+          <div
+            className="flex max-h-[calc(100dvh-32px)] w-full max-w-md flex-col overflow-hidden rounded-t-[28px] border border-white/10 bg-[#080808] shadow-2xl shadow-black/60 sm:max-h-[86dvh] sm:rounded-[28px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
+              {inviteStep !== 'choose' ? (
                 <button
-                  onClick={handleSendInvite}
-                    className="w-full mt-2 px-4 py-2 bg-[#4db6ac] text-black rounded-lg text-sm font-medium hover:bg-[#45a099] disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={inviteLoading || inviteSuccess || !inviteEmail.trim()}
-                >
-                  {inviteLoading ? 'Sending...' : 'Send Email Invite'}
-                </button>
-              </div>
-
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-white/10"></div>
-                </div>
-                <div className="relative flex justify-center text-xs">
-                  <span className="px-2 bg-[#1a1a1a] text-white/40">OR</span>
-                </div>
-              </div>
-
-              {/* Username Invitation */}
-              <div>
-                <label className="block text-xs text-white/60 mb-2">Invite existing C.Point user</label>
-                <input
-                  type="text"
-                  value={inviteUsername}
-                  onChange={(e) => {
-                    setInviteUsername(e.target.value)
+                  type="button"
+                  onClick={() => {
+                    setInviteStep('choose')
                     setInviteError('')
                     setInviteSuccess(false)
                     setInviteSuccessMessage('')
+                    setShowQRCode(false)
                   }}
-                  placeholder="@username"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none"
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/80 hover:border-[#4db6ac]/50 hover:text-[#4db6ac]"
                   disabled={inviteLoading}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      handleSendUsernameInvite()
-                    }
-                  }}
-                />
-                <button
-                  onClick={handleSendUsernameInvite}
-                  className="w-full mt-2 px-4 py-2 bg-[#4db6ac]/15 border border-[#4db6ac]/35 text-[#4db6ac] rounded-lg text-sm font-medium hover:bg-[#4db6ac]/25 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={inviteLoading || !inviteUsername.trim()}
+                  aria-label="Back to invite options"
                 >
-                  {inviteLoading ? 'Sending...' : 'Send Username Invite'}
+                  <i className="fa-solid fa-arrow-left text-sm" />
                 </button>
-                <p className="mt-1 text-[11px] text-white/40">
-                  The user will get an in-app and push notification, then can accept or decline.
+              ) : null}
+              <div className="min-w-0 flex-1">
+                <h2 className="truncate text-base font-semibold text-white">Invite to {communityName || 'Community'}</h2>
+                <p className="text-xs text-white/50">
+                  {inviteStep === 'choose' ? 'Choose how you want to invite members' : 'Complete the selected invite method'}
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={handleCloseInviteModal}
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/80 hover:border-[#4db6ac]/50 hover:text-[#4db6ac]"
+                disabled={inviteLoading}
+                aria-label="Close invite modal"
+              >
+                <i className="fa-solid fa-xmark text-sm" />
+              </button>
+            </div>
 
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-white/10"></div>
+            <div className="flex-1 overflow-y-auto px-4 py-4" style={{ WebkitOverflowScrolling: 'touch' }}>
+              {inviteSuccess && (
+                <div className="mb-4 rounded-2xl border border-green-500/25 bg-green-500/10 p-3 text-sm text-green-300">
+                  {inviteSuccessMessage || 'Invitation sent successfully!'}
                 </div>
-                <div className="relative flex justify-center text-xs">
-                  <span className="px-2 bg-[#1a1a1a] text-white/40">OR</span>
-                </div>
-              </div>
+              )}
 
-              {/* Invite Link Settings */}
-              {(currentUserRole === 'admin' || currentUserRole === 'owner' || currentUserRole === 'app_admin') && (
-                <div className="flex items-center justify-between rounded-lg bg-white/5 border border-white/10 px-3 py-2.5">
-                  <div>
-                    <div className="text-sm font-medium">Single-use invite link</div>
-                    <div className="text-[11px] text-white/40">When enabled, each QR/link can only be used once</div>
+              {inviteError && (
+                <div className="mb-4 rounded-2xl border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-300">
+                  {inviteError}
+                  {inviteUpgradeUrl && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(inviteUpgradeUrl)}
+                      className="mt-3 w-full rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:bg-[#45a099]"
+                    >
+                      Upgrade community tier
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {inviteStep === 'choose' && (
+                <div className="space-y-3">
+                  {([
+                    {
+                      id: 'username',
+                      icon: 'fa-solid fa-at',
+                      title: 'Username',
+                      text: 'Invite an existing C-Point member with an in-app notification.',
+                    },
+                    {
+                      id: 'email',
+                      icon: 'fa-regular fa-envelope',
+                      title: 'E-mail',
+                      text: 'Send a direct invite to someone by e-mail address.',
+                    },
+                    {
+                      id: 'link',
+                      icon: 'fa-solid fa-qrcode',
+                      title: 'QR code / link',
+                      text: 'Generate a shareable QR code and invite link.',
+                    },
+                  ] as Array<{ id: InviteStep; icon: string; title: string; text: string }>).map(option => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => {
+                        setInviteStep(option.id)
+                        setInviteError('')
+                        setInviteSuccess(false)
+                        setInviteSuccessMessage('')
+                      }}
+                      className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-left transition hover:border-[#4db6ac]/45 hover:bg-[#4db6ac]/10"
+                    >
+                      <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-[#4db6ac]/15 text-[#4db6ac]">
+                        <i className={`${option.icon} text-base`} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold text-white">{option.title}</span>
+                        <span className="mt-0.5 block text-xs leading-relaxed text-white/50">{option.text}</span>
+                      </span>
+                      <i className="fa-solid fa-chevron-right text-xs text-white/30" />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {inviteStep === 'username' && (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                    <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-white/40">C-Point username</label>
+                    <input
+                      type="text"
+                      value={inviteUsername}
+                      onChange={(e) => {
+                        setInviteUsername(e.target.value)
+                        setInviteError('')
+                        setInviteSuccess(false)
+                        setInviteSuccessMessage('')
+                      }}
+                      placeholder="@username"
+                      className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder-white/35 outline-none transition focus:border-[#4db6ac]"
+                      disabled={inviteLoading}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          handleSendUsernameInvite()
+                        }
+                      }}
+                    />
+                    <p className="mt-2 text-xs leading-relaxed text-white/45">
+                      The member gets an in-app and push notification, then can accept or decline.
+                    </p>
                   </div>
                   <button
                     type="button"
-                    onClick={async () => {
-                      const newVal = !inviteSingleUse
-                      setInviteSingleUse(newVal)
-                      try {
-                        await fetch(`/api/community/${inviteCommunityId}/invite_settings`, {
-                          method: 'POST', credentials: 'include',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ invite_single_use: newVal })
-                        })
-                      } catch {}
-                    }}
-                    className={`relative w-11 h-6 rounded-full transition-colors ${inviteSingleUse ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
+                    onClick={handleSendUsernameInvite}
+                    className="flex h-11 w-full items-center justify-center rounded-2xl bg-[#4db6ac] px-4 text-sm font-semibold text-black transition hover:bg-[#45a099] disabled:cursor-not-allowed disabled:opacity-45"
+                    disabled={inviteLoading || !inviteUsername.trim()}
                   >
-                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${inviteSingleUse ? 'translate-x-5' : ''}`} />
+                    {inviteLoading ? 'Sending...' : 'Send Username Invite'}
                   </button>
                 </div>
               )}
 
-              {/* QR Code */}
-              <div>
-                <label className="block text-xs text-white/60 mb-2">Share via QR code</label>
-                <button
-                  onClick={handleGenerateQR}
-                    className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-sm font-medium hover:bg-white/10 disabled:opacity-50"
-                    disabled={inviteLoading}
-                >
-                  <i className="fa-solid fa-qrcode mr-2" />
-                  Generate QR Code
-                </button>
-              </div>
-            </div>
+              {inviteStep === 'email' && (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                    <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-white/40">E-mail address</label>
+                    <input
+                      type="email"
+                      value={inviteEmail}
+                      onChange={(e) => {
+                        setInviteEmail(e.target.value)
+                        setInviteError('')
+                        setInviteSuccess(false)
+                      }}
+                      placeholder="email@example.com"
+                      className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder-white/35 outline-none transition focus:border-[#4db6ac]"
+                      disabled={inviteLoading || inviteSuccess}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          handleSendInvite()
+                        }
+                      }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSendInvite}
+                    className="flex h-11 w-full items-center justify-center rounded-2xl bg-[#4db6ac] px-4 text-sm font-semibold text-black transition hover:bg-[#45a099] disabled:cursor-not-allowed disabled:opacity-45"
+                    disabled={inviteLoading || inviteSuccess || !inviteEmail.trim()}
+                  >
+                    {inviteLoading ? 'Sending...' : 'Send E-mail Invite'}
+                  </button>
+                </div>
+              )}
 
-            <div className="mt-4">
-                <button
-                  onClick={handleCloseInviteModal}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-medium hover:bg-white/10"
-                  disabled={inviteLoading}
-                >
-                  Close
-                </button>
-            </div>
-          </div>
-            </div>
-        </div>
-      )}
+              {inviteStep === 'link' && (
+                <div className="space-y-4">
+                  {(currentUserRole === 'admin' || currentUserRole === 'owner' || currentUserRole === 'app_admin') && (
+                    <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3">
+                      <div>
+                        <div className="text-sm font-semibold text-white">Single-use invite link</div>
+                        <div className="text-xs text-white/45">When enabled, each QR/link can only be used once.</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const newVal = !inviteSingleUse
+                          setInviteSingleUse(newVal)
+                          try {
+                            await fetch(`/api/community/${inviteCommunityId}/invite_settings`, {
+                              method: 'POST', credentials: 'include',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ invite_single_use: newVal })
+                            })
+                          } catch {}
+                        }}
+                        className={`relative h-7 w-12 flex-shrink-0 rounded-full transition-colors ${inviteSingleUse ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
+                        aria-pressed={inviteSingleUse}
+                      >
+                        <span className={`absolute left-0.5 top-0.5 h-6 w-6 rounded-full bg-white transition-transform ${inviteSingleUse ? 'translate-x-5' : ''}`} />
+                      </button>
+                    </div>
+                  )}
 
-      {/* QR Code Modal */}
-      {showQRCode && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#1a1a1a] rounded-xl p-6 w-full max-w-md border border-white/10">
-            <h2 className="text-lg font-semibold mb-2">QR Code Invitation</h2>
-            <p className="text-sm text-white/60 mb-4">Scan this QR code to join {communityName || 'the community'}</p>
-
-            <div className="bg-white p-6 rounded-xl mb-4 flex justify-center">
-              <img 
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrCodeUrl)}`}
-                alt="Invitation QR Code"
-                className="w-64 h-64"
-              />
-            </div>
-
-            <div className="text-xs text-white/40 mb-4 text-center break-all">
-              {qrCodeUrl}
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setShowQRCode(false)
-                  setShowInviteModal(true)
-                }}
-                className="flex-1 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-medium hover:bg-white/10"
-              >
-                Back
-              </button>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(qrCodeUrl)
-                  alert('Link copied to clipboard!')
-                }}
-                className="flex-1 px-4 py-2 bg-[#4db6ac] text-black rounded-lg text-sm font-medium hover:bg-[#45a099]"
-              >
-                Copy Link
-              </button>
+                  {!showQRCode ? (
+                    <button
+                      type="button"
+                      onClick={handleGenerateQR}
+                      className="flex h-11 w-full items-center justify-center rounded-2xl border border-[#4db6ac]/35 bg-[#4db6ac]/15 px-4 text-sm font-semibold text-[#4db6ac] transition hover:bg-[#4db6ac]/25 disabled:cursor-not-allowed disabled:opacity-45"
+                      disabled={inviteLoading}
+                    >
+                      <i className="fa-solid fa-qrcode mr-2" />
+                      {inviteLoading ? 'Generating...' : 'Generate QR Code / Link'}
+                    </button>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="rounded-3xl border border-white/10 bg-white p-5">
+                        <img
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrCodeUrl)}`}
+                          alt="Invitation QR Code"
+                          className="mx-auto h-60 w-60 max-w-full"
+                        />
+                      </div>
+                      <div className="break-all rounded-2xl border border-white/10 bg-white/[0.035] p-3 text-center text-xs text-white/50">
+                        {qrCodeUrl}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowQRCode(false)}
+                          className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white/80 hover:bg-white/[0.08]"
+                        >
+                          Regenerate
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(qrCodeUrl)
+                            alert('Link copied to clipboard!')
+                          }}
+                          className="rounded-2xl bg-[#4db6ac] px-4 py-3 text-sm font-semibold text-black hover:bg-[#45a099]"
+                        >
+                          Copy Link
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

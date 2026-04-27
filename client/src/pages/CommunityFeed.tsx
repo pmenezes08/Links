@@ -181,6 +181,12 @@ export default function CommunityFeed() {
     () => (Capacitor.getPlatform() === 'ios' ? 20 : 56),
     []
   )
+  const storyViewerShellClass = useMemo(
+    () => Capacitor.getPlatform() === 'web'
+      ? 'relative h-full w-full overflow-hidden bg-black shadow-2xl lg:h-[calc(100dvh-48px)] lg:max-h-[860px] lg:max-w-[430px] lg:rounded-[32px] lg:border lg:border-white/10'
+      : 'relative h-full w-full overflow-hidden bg-black',
+    []
+  )
   const deviceFeedCacheKey = useMemo(() => (community_id ? `community-feed:${community_id}` : null), [community_id])
   const [data, setData] = useState<any>(() => {
     if (deviceFeedCacheKey) {
@@ -2722,13 +2728,14 @@ export default function CommunityFeed() {
       )}
       {activeStoryPointer && currentStory && (
         <div
-          className="fixed inset-0 z-[120] bg-black flex flex-col"
+          className="fixed inset-0 z-[1100] flex items-center justify-center bg-black lg:bg-black/95 lg:p-6"
           onClick={handleStoryBackdropClick}
         >
+          <div className={storyViewerShellClass}>
           {/* Full-screen media container - fills entire screen, overlays float on top */}
           <div
             ref={storyContentRef}
-            className="group absolute inset-0 flex items-center justify-center transition-all duration-200 z-[121]"
+            className="group absolute inset-0 z-[1] flex items-center justify-center transition-all duration-200"
             style={{
               // When keyboard is open, shrink media area to fit above keyboard + bottom bar
               bottom: keyboardHeight > 0 ? `${keyboardHeight + 120}px` : '0px',
@@ -2844,8 +2851,8 @@ export default function CommunityFeed() {
 
           {/* Top overlay - progress bars, user info, close button - MUST be above media (z-130) */}
           <div 
-            className="absolute top-0 left-0 right-0 z-[130] bg-gradient-to-b from-black/80 via-black/40 to-transparent"
-            style={{ paddingTop: 'max(12px, env(safe-area-inset-top, 12px))' }}
+            className="absolute left-0 right-0 top-0 z-[30] bg-gradient-to-b from-black via-black/75 to-transparent"
+            style={{ paddingTop: 'max(14px, env(safe-area-inset-top, 14px))' }}
             onClick={(e) => {
               e.stopPropagation()
               // Dismiss keyboard when clicking on top overlay
@@ -2854,37 +2861,38 @@ export default function CommunityFeed() {
             onPointerDown={(e) => e.stopPropagation()}
             onPointerUp={(e) => e.stopPropagation()}
           >
-            <div className="px-4 pt-2 pb-8">
+            <div className="px-3.5 pt-2 pb-10 sm:px-4">
               {/* Progress bars */}
-              <div className="flex gap-1 mb-3">
+              <div className="mb-3 flex gap-1">
                 {(currentStoryGroup?.stories || []).map((story, idx) => (
                   <div
                     key={story.id}
-                    className={`flex-1 h-0.5 rounded-full ${idx <= (activeStoryPointer?.storyIndex ?? 0) ? 'bg-white' : 'bg-white/30'}`}
+                    className={`h-0.5 flex-1 rounded-full ${idx <= (activeStoryPointer?.storyIndex ?? 0) ? 'bg-[#4db6ac]' : 'bg-white/25'}`}
                   />
                 ))}
               </div>
               {/* User info and actions */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5">
                 <Avatar
                   username={currentStory.username}
                   url={currentStory.profile_picture || undefined}
-                  size={40}
+                  size={38}
                   linkToProfile
                 />
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold tracking-tight text-base text-white truncate">@{currentStory.username}</div>
-                  <div className="text-xs text-white/70">
+                  <div className="truncate text-sm font-semibold tracking-tight text-white">@{currentStory.username}</div>
+                  <div className="text-[11px] text-white/60">
                     {currentStory.created_at ? formatSmartTime(currentStory.created_at) : null}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-shrink-0 items-center gap-1.5">
                   <button
                     type="button"
-                    className="text-xs text-white/80 flex items-center gap-1 hover:text-white transition-colors px-3 py-2"
+                    className="flex h-10 min-w-10 items-center justify-center gap-1 rounded-full border border-white/10 bg-black/55 px-3 text-xs font-medium text-white/80 backdrop-blur-md transition hover:border-[#4db6ac]/50 hover:text-[#4db6ac]"
                     style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => openStoryViewers(currentStory.id)}
+                    aria-label="View story viewers"
                   >
                     <i className="fa-regular fa-eye" />
                     <span>{currentStory.view_count ?? 0}</span>
@@ -2892,7 +2900,7 @@ export default function CommunityFeed() {
                   {(currentStory.username?.toLowerCase() === data?.username?.toLowerCase()) && (
                     <div className="relative">
                       <button
-                        className="w-8 h-8 rounded-full bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 flex items-center justify-center disabled:opacity-50"
+                        className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white/75 backdrop-blur-md transition hover:border-red-400/40 hover:text-red-300 disabled:opacity-50"
                         onClick={() => {
                           const groupStories = currentStoryGroup?.stories || []
                           if (groupStories.length <= 1) {
@@ -2904,24 +2912,24 @@ export default function CommunityFeed() {
                         disabled={deletingStory}
                         aria-label="Delete story"
                       >
-                        <i className={`fa-solid ${deletingStory ? 'fa-spinner fa-spin' : 'fa-trash'} text-sm`} />
+                        <i className={`fa-solid ${deletingStory ? 'fa-spinner fa-spin' : 'fa-trash-can'} text-sm`} />
                       </button>
                       {storyDeleteMenuOpen && (
-                        <div className="absolute right-0 top-10 w-48 bg-black/95 border border-white/15 rounded-xl overflow-hidden shadow-xl z-[140]">
+                        <div className="absolute right-0 top-12 z-[45] w-52 overflow-hidden rounded-2xl border border-white/10 bg-[#080808]/95 shadow-2xl shadow-black/60 backdrop-blur-xl">
                           <button
-                            className="w-full text-left px-4 py-3 text-sm text-white hover:bg-white/10 transition-colors"
+                            className="w-full px-4 py-3 text-left text-sm text-white transition-colors hover:bg-white/10"
                             onClick={() => { if (confirm('Delete this slide?')) handleDeleteStory(currentStory.id) }}
                           >
                             Delete this slide
                           </button>
                           <button
-                            className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-white/10 transition-colors border-t border-white/10"
+                            className="w-full border-t border-white/10 px-4 py-3 text-left text-sm text-red-300 transition-colors hover:bg-white/10"
                             onClick={() => { if (confirm('Delete the entire story (all slides)?')) handleDeleteStoryGroup(currentStory.story_group_id) }}
                           >
                             Delete entire story
                           </button>
                           <button
-                            className="w-full text-left px-4 py-3 text-xs text-white/50 hover:bg-white/10 transition-colors border-t border-white/10"
+                            className="w-full border-t border-white/10 px-4 py-3 text-left text-xs text-white/50 transition-colors hover:bg-white/10"
                             onClick={() => setStoryDeleteMenuOpen(false)}
                           >
                             Cancel
@@ -2932,11 +2940,11 @@ export default function CommunityFeed() {
                   )}
                   {/* Back to feed button */}
                   <button
-                    className="w-9 h-9 rounded-full bg-black/40 border border-white/20 text-white hover:bg-black/60 flex items-center justify-center ml-1"
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white/80 backdrop-blur-md transition hover:border-[#4db6ac]/50 hover:text-[#4db6ac]"
                     onClick={closeStoryViewer}
-                    aria-label="Back to community feed"
+                    aria-label="Close story viewer"
                   >
-                    <i className="fa-solid fa-arrow-left text-sm" />
+                    <i className="fa-solid fa-xmark text-sm" />
                   </button>
                 </div>
               </div>
@@ -3179,7 +3187,7 @@ export default function CommunityFeed() {
             {/* Sound toggle for videos */}
             {currentStory.media_type === 'video' && (
               <button
-                className="absolute -top-14 right-4 w-10 h-10 rounded-full bg-black/60 border border-white/20 text-white flex items-center justify-center"
+                className="absolute -top-14 right-4 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white backdrop-blur-md transition hover:border-[#4db6ac]/50 hover:text-[#4db6ac]"
                 onClick={(e) => {
                   e.stopPropagation()
                   setStoryMuted(!storyMuted)
@@ -3192,12 +3200,13 @@ export default function CommunityFeed() {
               </button>
             )}
           </div>
+          </div>
         </div>
       )}
 
       {storyViewersState.open && (
         <div
-          className="fixed inset-0 z-[130] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-[1120] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
           onClick={(e) => {
             if (e.target === e.currentTarget) closeStoryViewersModal()
           }}
