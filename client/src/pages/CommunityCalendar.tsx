@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Capacitor } from '@capacitor/core'
+import type { PluginListenerHandle } from '@capacitor/core'
+import { Keyboard } from '@capacitor/keyboard'
+import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useHeader } from '../contexts/HeaderContext'
 
 type EventItem = {
@@ -296,8 +300,81 @@ export default function CommunityCalendar() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const keyboardOffsetRef = useRef(0)
 
   useEffect(() => { setTitle('Calendar') }, [setTitle])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    let baseHeight: number | null = null
+    let rafId: number | null = null
+
+    const update = () => {
+      const current = viewport.height
+      if (baseHeight === null || current > baseHeight - 4) baseHeight = current
+      const offset = Math.max(0, (baseHeight ?? current) - current - viewport.offsetTop)
+      if (Math.abs(keyboardOffsetRef.current - offset) < 1) return
+      keyboardOffsetRef.current = offset
+      setKeyboardOffset(offset)
+    }
+
+    const onChange = () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(update)
+    }
+
+    viewport.addEventListener('resize', onChange)
+    viewport.addEventListener('scroll', onChange)
+    update()
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      viewport.removeEventListener('resize', onChange)
+      viewport.removeEventListener('scroll', onChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (Capacitor.getPlatform() === 'web') return
+    let showSub: PluginListenerHandle | undefined
+    let hideSub: PluginListenerHandle | undefined
+
+    const handleShow = (info: KeyboardInfo) => {
+      const height = info?.keyboardHeight ?? 0
+      if (Math.abs(keyboardOffsetRef.current - height) < 2) return
+      keyboardOffsetRef.current = height
+      setKeyboardOffset(height)
+    }
+
+    const handleHide = () => {
+      if (keyboardOffsetRef.current === 0) return
+      keyboardOffsetRef.current = 0
+      setKeyboardOffset(0)
+    }
+
+    Keyboard.addListener('keyboardWillShow', handleShow).then(handle => { showSub = handle })
+    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => { hideSub = handle })
+
+    return () => {
+      showSub?.remove()
+      hideSub?.remove()
+    }
+  }, [])
+
+  const scrollFocusedIntoView = useCallback((event: FocusEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement | null
+    if (!target) return
+    if (typeof target.scrollIntoView !== 'function') return
+    requestAnimationFrame(() => {
+      try {
+        target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      } catch {}
+    })
+  }, [])
 
   const reloadEvents = useCallback(async () => {
     try {
@@ -589,9 +666,13 @@ export default function CommunityCalendar() {
 
       {createOpen ? (
         <div
-          className="fixed inset-0 z-[100] flex min-h-[100dvh] items-start justify-center overflow-y-auto bg-black/70 px-3 pb-6 backdrop-blur"
-          style={{ paddingTop: 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + 8px)' } as CSSProperties}
+          className="fixed inset-x-0 top-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/70 px-3 pb-6 backdrop-blur"
+          style={{
+            bottom: `${keyboardOffset}px`,
+            paddingTop: 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + 8px)',
+          } as CSSProperties}
           onClick={event => event.currentTarget === event.target && setCreateOpen(false)}
+          onFocusCapture={scrollFocusedIntoView}
         >
           <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#050606] p-3.5 shadow-2xl">
             <div className="mb-2.5 flex items-center justify-between">
@@ -667,9 +748,13 @@ export default function CommunityCalendar() {
 
       {editingEvent ? (
         <div
-          className="fixed inset-0 z-[100] flex min-h-[100dvh] items-start justify-center overflow-y-auto bg-black/70 px-3 pb-6 backdrop-blur"
-          style={{ paddingTop: 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + 8px)' } as CSSProperties}
+          className="fixed inset-x-0 top-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/70 px-3 pb-6 backdrop-blur"
+          style={{
+            bottom: `${keyboardOffset}px`,
+            paddingTop: 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + 8px)',
+          } as CSSProperties}
           onClick={event => event.currentTarget === event.target && setEditingEvent(null)}
+          onFocusCapture={scrollFocusedIntoView}
         >
           <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#050606] p-3.5">
             <div className="mb-2.5 flex items-center justify-between">
