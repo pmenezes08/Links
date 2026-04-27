@@ -29,6 +29,17 @@ from backend.services.notifications import (
 notifications_bp = Blueprint("notifications", __name__)
 
 
+def _cron_authed() -> bool:
+    expected = os.environ.get("CRON_SHARED_SECRET") or ""
+    if not expected:
+        return False
+    return (request.headers.get("X-Cron-Secret") or "") == expected
+
+
+def _bool_arg(name: str) -> bool:
+    return (request.args.get(name) or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _handle_broken_pipe(f):
     """Decorator to gracefully handle broken pipe errors (client disconnected)."""
     @wraps(f)
@@ -1228,11 +1239,15 @@ def api_poll_notification_check():
 def api_event_notification_check():
     """
     Cron job endpoint that checks upcoming events and sends reminders.
-    Public endpoint invoked by cron.
+    Invoked by Cloud Scheduler with X-Cron-Secret.
     """
+    if not _cron_authed():
+        return jsonify({"success": False, "error": "forbidden"}), 403
+
     try:
         logger = current_app.logger
         logger.info("🔍 Event notification check starting - USE_MYSQL=%s", USE_MYSQL)
+        dry_run = _bool_arg("dry_run")
 
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -1257,6 +1272,18 @@ def api_event_notification_check():
 
             all_events = c.fetchall()
             logger.info("🔍 Found %d upcoming events to check", len(all_events))
+            if dry_run:
+                event_ids = [
+                    event_row["id"] if hasattr(event_row, "keys") else event_row[0]
+                    for event_row in all_events
+                ]
+                return jsonify({
+                    "success": True,
+                    "dry_run": True,
+                    "candidate_events": len(event_ids),
+                    "event_ids": event_ids[:100],
+                })
+
             notifications_sent = 0
 
             for event_row in all_events:

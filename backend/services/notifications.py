@@ -1019,6 +1019,7 @@ def check_single_event_notifications(event_id, conn=None):
         created_at_raw = event_row["created_at"] if hasattr(event_row, "keys") else event_row[5]
         community_id = event_row["community_id"] if hasattr(event_row, "keys") else event_row[6]
         notification_prefs = event_row["notification_preferences"] if hasattr(event_row, "keys") else event_row[7]
+        created_by = event_row["created_by"] if hasattr(event_row, "keys") else event_row[8]
 
         try:
             if isinstance(start_time_str, datetime):
@@ -1051,6 +1052,8 @@ def check_single_event_notifications(event_id, conn=None):
             (event_id,),
         )
         participants = [row["invited_username"] if hasattr(row, "keys") else row[0] for row in c.fetchall()]
+        if created_by and created_by not in participants:
+            participants.append(created_by)
 
         if not participants:
             return 0
@@ -1070,94 +1073,69 @@ def check_single_event_notifications(event_id, conn=None):
         days_until = time_until_event / 86400
         notifications_sent = 0
 
-        prefs = notification_prefs or "all"
+        prefs = (notification_prefs or "all").strip().lower()
+        if prefs == "none":
+            logger.info("Event %s reminders disabled by preference", event_id)
+            return 0
         send_1week = prefs in ("1_week", "all")
         send_1day = prefs in ("1_day", "all")
         send_1hour = prefs in ("1_hour", "all")
-        send_80percent = True
+        send_80percent = prefs == "all"
 
         logger.info("⏰ Event %s: %.1fh until event (prefs=%s)", event_id, hours_until, prefs)
 
+        def _already_logged(username_to_notify, notif_type):
+            c.execute(
+                f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type={ph}",
+                (event_id, username_to_notify, notif_type),
+            )
+            return c.fetchone() is not None
+
         def _insert_log(username_to_notify, notif_type):
-            if USE_MYSQL:
-                c.execute(
-                    "INSERT INTO event_notification_log (event_id, username, notification_type) VALUES (%s, %s, %s)",
-                    (event_id, username_to_notify, notif_type),
-                )
-            else:
-                c.execute(
-                    "INSERT INTO event_notification_log (event_id, username, notification_type) VALUES (?, ?, ?)",
-                    (event_id, username_to_notify, notif_type),
-                )
+            try:
+                if USE_MYSQL:
+                    c.execute(
+                        "INSERT IGNORE INTO event_notification_log (event_id, username, notification_type) VALUES (%s, %s, %s)",
+                        (event_id, username_to_notify, notif_type),
+                    )
+                else:
+                    c.execute(
+                        "INSERT OR IGNORE INTO event_notification_log (event_id, username, notification_type) VALUES (?, ?, ?)",
+                        (event_id, username_to_notify, notif_type),
+                    )
+            except Exception:
+                logger.debug("Event notification log insert skipped for %s/%s/%s", event_id, username_to_notify, notif_type)
 
         def _notify(username_to_notify, message, tag):
-            create_notification(username_to_notify, None, "event_reminder", None, community_id, message)
+            event_link = f"/event/{event_id}"
+            create_notification(username_to_notify, None, "event_reminder", None, community_id, message, link=event_link)
             send_push_to_user(
                 username_to_notify,
                 {
                     "title": f"{community_name} Event Reminder" if community_name else "Event Reminder",
                     "body": message,
-                    "url": f"/community/{community_id}/calendar" if community_id else "/calendar",
+                    "url": event_link,
                     "tag": tag,
                 },
             )
 
-        if send_1week and 167 <= hours_until <= 169:
+        reminder_windows = [
+            ("1_week", 168, 24, send_1week, f"Event in {community_name}: '{title}' in 1 week" if community_name else f"Event '{title}' in 1 week"),
+            ("1_day", 24, 1, send_1day, f"Event in {community_name}: '{title}' tomorrow" if community_name else f"Event '{title}' tomorrow"),
+            ("1_hour", 1, 0, send_1hour, f"Event in {community_name}: '{title}' in 1 hour" if community_name else f"Event '{title}' in 1 hour"),
+        ]
+        for notif_type, threshold_hours, lower_bound_hours, enabled, message in reminder_windows:
+            if not enabled or not (lower_bound_hours < hours_until <= threshold_hours):
+                continue
             for username_to_notify in participants:
-                c.execute(
-                    f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='1_week'",
-                    (event_id, username_to_notify),
-                )
-                if not c.fetchone():
-                    message = (
-                        f"📅 Event in {community_name}: '{title}' in 1 week"
-                        if community_name
-                        else f"📅 Event '{title}' in 1 week"
-                    )
-                    try:
-                        _notify(username_to_notify, message, f"event-1week-{event_id}")
-                    except Exception:
-                        pass
-                    _insert_log(username_to_notify, "1_week")
-                    notifications_sent += 1
-
-        elif send_1day and 23 <= hours_until <= 25:
-            for username_to_notify in participants:
-                c.execute(
-                    f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='1_day'",
-                    (event_id, username_to_notify),
-                )
-                if not c.fetchone():
-                    message = (
-                        f"📅 Event in {community_name}: '{title}' tomorrow"
-                        if community_name
-                        else f"📅 Event '{title}' tomorrow"
-                    )
-                    try:
-                        _notify(username_to_notify, message, f"event-1day-{event_id}")
-                    except Exception:
-                        pass
-                    _insert_log(username_to_notify, "1_day")
-                    notifications_sent += 1
-
-        elif send_1hour and 0.9 <= hours_until <= 1.1:
-            for username_to_notify in participants:
-                c.execute(
-                    f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='1_hour'",
-                    (event_id, username_to_notify),
-                )
-                if not c.fetchone():
-                    message = (
-                        f"⏰ Event in {community_name}: '{title}' in 1 hour!"
-                        if community_name
-                        else f"⏰ Event '{title}' in 1 hour!"
-                    )
-                    try:
-                        _notify(username_to_notify, message, f"event-1hour-{event_id}")
-                    except Exception:
-                        pass
-                    _insert_log(username_to_notify, "1_hour")
-                    notifications_sent += 1
+                if _already_logged(username_to_notify, notif_type):
+                    continue
+                try:
+                    _notify(username_to_notify, message, f"event-{notif_type}-{event_id}")
+                except Exception:
+                    logger.debug("Event reminder delivery failed for %s/%s/%s", event_id, username_to_notify, notif_type)
+                _insert_log(username_to_notify, notif_type)
+                notifications_sent += 1
 
         if send_80percent:
             total_duration = (event_start - created_at).total_seconds()
@@ -1166,35 +1144,32 @@ def check_single_event_notifications(event_id, conn=None):
                 progress = elapsed / total_duration
                 if 0.75 <= progress < 0.90:
                     for username_to_notify in participants:
-                        c.execute(
-                            f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='80_percent'",
-                            (event_id, username_to_notify),
-                        )
-                        if not c.fetchone():
-                            if days_until > 1:
-                                message = (
-                                    f"📆 Event in {community_name}: '{title}' in {int(days_until)} days"
-                                    if community_name
-                                    else f"📆 Event '{title}' in {int(days_until)} days"
-                                )
-                            elif hours_until > 1:
-                                message = (
-                                    f"📆 Event in {community_name}: '{title}' in {int(hours_until)} hours"
-                                    if community_name
-                                    else f"📆 Event '{title}' in {int(hours_until)} hours"
-                                )
-                            else:
-                                message = (
-                                    f"📆 Event in {community_name}: '{title}' starting soon!"
-                                    if community_name
-                                    else f"📆 Event '{title}' starting soon!"
-                                )
-                            try:
-                                _notify(username_to_notify, message, f"event-80-{event_id}")
-                            except Exception:
-                                pass
-                            _insert_log(username_to_notify, "80_percent")
-                            notifications_sent += 1
+                        if _already_logged(username_to_notify, "80_percent"):
+                            continue
+                        if days_until > 1:
+                            message = (
+                                f"Event in {community_name}: '{title}' in {int(days_until)} days"
+                                if community_name
+                                else f"Event '{title}' in {int(days_until)} days"
+                            )
+                        elif hours_until > 1:
+                            message = (
+                                f"Event in {community_name}: '{title}' in {int(hours_until)} hours"
+                                if community_name
+                                else f"Event '{title}' in {int(hours_until)} hours"
+                            )
+                        else:
+                            message = (
+                                f"Event in {community_name}: '{title}' starting soon"
+                                if community_name
+                                else f"Event '{title}' starting soon"
+                            )
+                        try:
+                            _notify(username_to_notify, message, f"event-80-{event_id}")
+                        except Exception:
+                            logger.debug("Event 80-percent reminder delivery failed for %s/%s", event_id, username_to_notify)
+                        _insert_log(username_to_notify, "80_percent")
+                        notifications_sent += 1
 
         if should_close_conn:
             conn.commit()

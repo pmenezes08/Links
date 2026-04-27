@@ -148,6 +148,20 @@ gcloud scheduler jobs create http media-purge-retained-stories \
   --headers="X-Cron-Secret=$SECRET" \
   --attempt-deadline=300s
 
+# Event reminders — checks upcoming calendar events and sends the configured
+# 1-week, 1-day, and 1-hour reminders. The endpoint dedupes per
+# event/user/reminder type and supports dry-run:
+#   curl -X POST "$BASE/api/event_notification_check?dry_run=1" \
+#     -H "X-Cron-Secret: $CRON_SECRET"
+gcloud scheduler jobs create http event-reminder-dispatch \
+  --location=europe-west1 \
+  --schedule="*/15 * * * *" \
+  --time-zone=UTC \
+  --uri="$BASE/api/event_notification_check" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=300s
+
 # Steve member KB — weekly auto-synthesis. Refreshes every active
 # member's Knowledge Base once per calendar week by processing one of
 # seven daily buckets keyed off CRC32(username) % 7 (today's
@@ -217,7 +231,7 @@ migration), run:
 for job in enterprise-grace-sweep enterprise-iap-nag enterprise-winback-expire \
            subscriptions-revoke-expired usage-cycle-notify \
            communities-lifecycle-dispatch media-purge-retained-stories \
-           kb-weekly-synthesis; do
+           event-reminder-dispatch kb-weekly-synthesis; do
   gcloud scheduler jobs pause "$job" --location=europe-west1
 done
 ```

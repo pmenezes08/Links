@@ -1,768 +1,663 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
 type EventItem = {
   id: number
   title: string
   date: string
-  end_date?: string|null
-  start_time?: string|null
-  end_time?: string|null
-  timezone?: string|null
-  description?: string|null
-  user_rsvp?: string|null
-  rsvp_counts?: { going: number; maybe: number; not_going: number; no_response?: number }
+  community_id?: number | string
+  end_date?: string | null
+  start_time?: string | null
+  end_time?: string | null
+  timezone?: string | null
+  description?: string | null
+  user_rsvp?: RSVPResponse | null
+  rsvp_counts?: {
+    going: number
+    maybe: number
+    not_going: number
+    no_response?: number
+  }
 }
 
-type RSVPDetails = {
-  going: { username: string }[]
-  maybe: { username: string }[]
-  not_going: { username: string }[]
-  no_response: { username: string }[]
+type RSVPResponse = 'going' | 'maybe' | 'not_going'
+type CalendarTab = 'upcoming' | 'archive'
+type CreateStep = 'details' | 'invite'
+
+type Member = {
+  username: string
+  profile_picture?: string | null
 }
 
-export default function CommunityCalendar(){
+const TIMEZONE_OPTIONS = [
+  ['EST', 'EST (Eastern Time)'],
+  ['CST', 'CST (Central Time)'],
+  ['MST', 'MST (Mountain Time)'],
+  ['PST', 'PST (Pacific Time)'],
+  ['GMT', 'GMT (Greenwich Mean Time)'],
+  ['CET', 'CET (Central European Time)'],
+  ['IST', 'IST (India Standard Time)'],
+  ['JST', 'JST (Japan Standard Time)'],
+  ['AEST', 'AEST (Australian Eastern Time)'],
+  ['UTC', 'UTC (Coordinated Universal Time)'],
+] as const
+
+function isBlankTime(value?: string | null) {
+  return !value || value === 'None' || value === '00:00' || value === '00:00:00' || value === '0000-00-00 00:00:00'
+}
+
+function isBlankDate(value?: string | null) {
+  return !value || value === 'None' || value === '0000-00-00'
+}
+
+function normalizeTime(value?: string | null) {
+  if (isBlankTime(value)) return ''
+  const raw = String(value)
+  if (raw.includes(' ')) return raw.split(' ')[1]?.slice(0, 5) || ''
+  return raw.slice(0, 5)
+}
+
+function buildEventDateTime(event: EventItem, preferEnd = false) {
+  const date = preferEnd && !isBlankDate(event.end_date) ? event.end_date! : event.date
+  const time = preferEnd ? normalizeTime(event.end_time) || normalizeTime(event.start_time) : normalizeTime(event.start_time)
+  const iso = time ? `${date}T${time}:00` : `${date}T${preferEnd ? '23:59:59' : '00:00:00'}`
+  const parsed = new Date(iso)
+  return Number.isNaN(parsed.getTime()) ? new Date(`${event.date}T23:59:59`) : parsed
+}
+
+function isPastEvent(event: EventItem) {
+  return buildEventDateTime(event, true).getTime() < Date.now()
+}
+
+function formatDateLabel(date: string, variant: 'short' | 'long' = 'long') {
+  const parsed = new Date(`${date}T12:00:00`)
+  if (Number.isNaN(parsed.getTime())) return date
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: variant === 'long' ? 'long' : 'short',
+    month: variant === 'long' ? 'long' : 'short',
+    day: 'numeric',
+  }).format(parsed)
+}
+
+function formatMonth(date: string) {
+  const parsed = new Date(`${date}T12:00:00`)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return new Intl.DateTimeFormat(undefined, { month: 'short' }).format(parsed).toUpperCase()
+}
+
+function formatDay(date: string) {
+  const parsed = new Date(`${date}T12:00:00`)
+  if (Number.isNaN(parsed.getTime())) return '--'
+  return new Intl.DateTimeFormat(undefined, { day: '2-digit' }).format(parsed)
+}
+
+function formatTimeRange(event: EventItem) {
+  const start = normalizeTime(event.start_time)
+  const end = normalizeTime(event.end_time)
+  const range = [start, end].filter(Boolean).join(' - ')
+  return range && event.timezone ? `${range} ${event.timezone}` : range || 'All day'
+}
+
+function formatDateRange(event: EventItem) {
+  if (!isBlankDate(event.end_date) && event.end_date !== event.date) {
+    return `${formatDateLabel(event.date, 'short')} - ${formatDateLabel(event.end_date!, 'short')}`
+  }
+  return formatDateLabel(event.date)
+}
+
+function getCountdownLabel(event?: EventItem | null) {
+  if (!event) return ''
+  const diff = buildEventDateTime(event).getTime() - Date.now()
+  if (diff <= 0) return 'Starting soon'
+  const minutes = Math.ceil(diff / 60000)
+  if (minutes < 60) return `In ${minutes}m`
+  const hours = Math.ceil(minutes / 60)
+  if (hours < 48) return `In ${hours}h`
+  return `In ${Math.ceil(hours / 24)}d`
+}
+
+function toUtcFormFields(formData: FormData) {
+  const params = new URLSearchParams()
+  const append = (name: string, value?: string | null) => {
+    if (value) params.append(name, value)
+  }
+
+  const title = String(formData.get('title') || '').trim()
+  const date = String(formData.get('date') || '')
+  const endDate = String(formData.get('end_date') || '')
+  const startTime = String(formData.get('start_time') || '')
+  const endTime = String(formData.get('end_time') || '')
+
+  append('title', title)
+  append('description', String(formData.get('description') || '').trim())
+  append('timezone', String(formData.get('timezone') || ''))
+  append('notification_preferences', String(formData.get('notification_preferences') || 'all'))
+
+  if (date && startTime) {
+    try {
+      const utc = new Date(`${date}T${startTime}`)
+      append('date', utc.toISOString().slice(0, 10))
+      append('start_time', utc.toISOString().slice(11, 16))
+    } catch {
+      append('date', date)
+      append('start_time', startTime)
+    }
+  } else {
+    append('date', date)
+    append('start_time', startTime)
+  }
+
+  if (endDate && endTime) {
+    try {
+      const utc = new Date(`${endDate}T${endTime}`)
+      append('end_date', utc.toISOString().slice(0, 10))
+      append('end_time', utc.toISOString().slice(11, 16))
+    } catch {
+      append('end_date', endDate)
+      append('end_time', endTime)
+    }
+  } else {
+    append('end_date', endDate)
+    append('end_time', endTime)
+  }
+
+  return params
+}
+
+export default function CommunityCalendar() {
   const { community_id } = useParams()
   const [searchParams] = useSearchParams()
   const groupId = searchParams.get('group_id')
   const navigate = useNavigate()
   const { setTitle } = useHeader()
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const createFormRef = useRef<HTMLFormElement | null>(null)
+
   const [events, setEvents] = useState<EventItem[]>([])
   const [archivedEvents, setArchivedEvents] = useState<EventItem[]>([])
+  const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
-  const [members, setMembers] = useState<Array<{ username:string; profile_picture?:string|null }>>([])
+  const [activeTab, setActiveTab] = useState<CalendarTab>('upcoming')
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createStep, setCreateStep] = useState<CreateStep>('details')
   const [inviteAll, setInviteAll] = useState(false)
-  const [selected, setSelected] = useState<Record<string, boolean>>({})
-  const [activeTab, setActiveTab] = useState<'calendar'|'archive'|'create'>('calendar')
-  const [inviteOpen, setInviteOpen] = useState(false)
-  const [successMsg, setSuccessMsg] = useState<string| null>(null)
-  const [modalEvent, setModalEvent] = useState<EventItem| null>(null)
-  const [modalDetails, setModalDetails] = useState<RSVPDetails| null>(null)
-  const [editingEvent, setEditingEvent] = useState<EventItem| null>(null)
-  const formRef = useRef<HTMLFormElement|null>(null)
-  const scrollRef = useRef<HTMLDivElement|null>(null)
+  const [selectedMembers, setSelectedMembers] = useState<Record<string, boolean>>({})
+  const [rsvpEvent, setRsvpEvent] = useState<EventItem | null>(null)
+  const [editingEvent, setEditingEvent] = useState<EventItem | null>(null)
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
 
   useEffect(() => { setTitle('Calendar') }, [setTitle])
 
-  useEffect(() => {
-    let mounted = true
-    async function check(){
-      try{
-        const r = await fetch(`/get_community_announcements?community_id=${community_id}`, { credentials:'include' })
-        const j = await r.json()
-        if (!mounted) return
-        if (j?.success){
-          const key = `ann_last_seen_${community_id}`
-          const lastSeenStr = localStorage.getItem(key)
-          const lastSeen = lastSeenStr ? Date.parse(lastSeenStr) : 0
-          const hasNew = (j.announcements || []).some((a:any) => Date.parse(a.created_at) > lastSeen)
-          setHasUnseenAnnouncements(hasNew)
-        }
-      }catch{}
-    }
-    check()
-    return () => { mounted = false }
-  }, [community_id])
-
-  async function fetchAnnouncements(){
-    try{
-      const r = await fetch(`/get_community_announcements?community_id=${community_id}`, { credentials:'include' })
-      const j = await r.json()
-      if (j?.success){
-        try{
-          const key = `ann_last_seen_${community_id}`
-          localStorage.setItem(key, new Date().toISOString())
-          setHasUnseenAnnouncements(false)
-        }catch{}
-        alert('No UI here: announcements viewed.')
-      }
-    }catch{}
-  }
-
-  async function reloadEvents(){
-    try{
-      const url = groupId
-        ? `/api/group_calendar/${groupId}`
-        : '/get_calendar_events'
-      const r = await fetch(url, { credentials:'include' })
-      const j = await r.json()
-      if (j?.success && Array.isArray(j.events)){
+  const reloadEvents = useCallback(async () => {
+    try {
+      const url = groupId ? `/api/group_calendar/${groupId}` : '/get_calendar_events'
+      const response = await fetch(url, { credentials: 'include' })
+      const payload = await response.json()
+      if (payload?.success && Array.isArray(payload.events)) {
         const filtered = groupId
-          ? (j.events as any[])
-          : (j.events as any[]).filter(e => `${e.community_id||''}` === `${community_id}`)
-        
-        // Split events into upcoming and archived (past events)
-        const now = new Date()
+          ? payload.events
+          : payload.events.filter((event: EventItem) => `${event.community_id || ''}` === `${community_id}`)
+
         const upcoming: EventItem[] = []
         const archived: EventItem[] = []
-        
-        console.log('🔍 Archive filtering debug:')
-        console.log('Now (local):', now)
-        console.log('Now (UTC):', now.toISOString())
-        
-        filtered.forEach((event: any) => {
-          try {
-            // Determine event end datetime
-            let eventDateTime: Date
-            let timeSource = ''
-            
-            // Log raw event data for debugging
-            console.log(`🔍 RAW event data for "${event.title}":`, {
-              start_time: event.start_time,
-              end_time: event.end_time,
-              date: event.date,
-              end_date: event.end_date
-            })
-            
-            if (event.end_time && event.end_time !== '0000-00-00 00:00:00' && event.end_time !== 'None') {
-              // end_time might be full datetime (YYYY-MM-DD HH:MM:SS) or just time (HH:MM)
-              let timeStr = String(event.end_time)
-              
-              // Check if it's a full datetime or just time
-              if (timeStr.includes(' ')) {
-                // Full datetime like "2025-10-25 10:06:00"
-                timeStr = timeStr.replace(' ', 'T') + 'Z'
-              } else if (timeStr.match(/^\d{2}:\d{2}/)) {
-                // Just time like "10:06" - combine with end_date or date
-                const dateToUse = event.end_date || event.date
-                timeStr = `${dateToUse}T${timeStr}:00Z`
-              }
-              
-              eventDateTime = new Date(timeStr)
-            } else if (event.start_time && event.start_time !== '0000-00-00 00:00:00' && event.start_time !== 'None') {
-              // start_time might be full datetime (YYYY-MM-DD HH:MM:SS) or just time (HH:MM)
-              let timeStr = String(event.start_time)
-              
-              // Check if it's a full datetime or just time
-              if (timeStr.includes(' ')) {
-                // Full datetime like "2025-10-25 10:02:00"
-                timeStr = timeStr.replace(' ', 'T') + 'Z'
-              } else if (timeStr.match(/^\d{2}:\d{2}/)) {
-                // Just time like "10:02" - combine with date
-                timeStr = `${event.date}T${timeStr}:00Z`
-              }
-              
-              eventDateTime = new Date(timeStr)
-              timeSource = `start_time: ${event.start_time} → ${timeStr}`
-            } else if (event.end_date && event.end_date !== '0000-00-00') {
-              // Use end_date at end of day (UTC)
-              eventDateTime = new Date(event.end_date + 'T23:59:59Z')
-              timeSource = `end_date: ${event.end_date}`
-            } else {
-              // Use start date at end of day (UTC)
-              eventDateTime = new Date(event.date + 'T23:59:59Z')
-              timeSource = `date: ${event.date}`
-            }
-            
-            const isPast = eventDateTime < now
-            console.log(`📅 Event "${event.title}":`, {
-              source: timeSource,
-              parsed: eventDateTime.toISOString(),
-              isPast,
-              decision: isPast ? 'ARCHIVE' : 'ACTIVE'
-            })
-            
-            // Event is archived if it's in the past
-            if (isPast) {
-              archived.push(event)
-            } else {
-              upcoming.push(event)
-            }
-          } catch (e) {
-            // If parsing fails, treat as upcoming
-            console.error('Failed to parse event datetime:', e, event)
-            upcoming.push(event)
-          }
+        filtered.forEach((event: EventItem) => {
+          if (isPastEvent(event)) archived.push(event)
+          else upcoming.push(event)
         })
-        
-        console.log(`✅ Split complete: ${upcoming.length} active, ${archived.length} archived`)
-        
-        setEvents(upcoming as any)
-        setArchivedEvents(archived as any)
+        upcoming.sort((a, b) => buildEventDateTime(a).getTime() - buildEventDateTime(b).getTime())
+        archived.sort((a, b) => buildEventDateTime(b).getTime() - buildEventDateTime(a).getTime())
+        setEvents(upcoming)
+        setArchivedEvents(archived)
+        setSelectedDate(current => current && upcoming.some(event => event.date === current) ? current : upcoming[0]?.date || null)
       }
-    }catch{}
-  }
+    } catch {
+      setEvents([])
+      setArchivedEvents([])
+    }
+  }, [community_id, groupId])
 
   useEffect(() => {
     let mounted = true
     setLoading(true)
-    reloadEvents().finally(()=> mounted && setLoading(false))
+    reloadEvents().finally(() => mounted && setLoading(false))
     ;(async () => {
-      try{
-        const membersUrl = groupId
-          ? `/api/group_members/${groupId}`
-          : `/community/${community_id}/members/list`
-        const r = await fetch(membersUrl, { credentials:'include' })
-        const j = await r.json()
-        if (j?.success && Array.isArray(j.members)){
-          setMembers(j.members)
-        }
-      }catch{}
+      try {
+        const membersUrl = groupId ? `/api/group_members/${groupId}` : `/community/${community_id}/members/list`
+        const response = await fetch(membersUrl, { credentials: 'include' })
+        const payload = await response.json()
+        if (mounted && payload?.success && Array.isArray(payload.members)) setMembers(payload.members)
+      } catch {}
+    })()
+    return () => { mounted = false }
+  }, [community_id, groupId, reloadEvents])
+
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const response = await fetch(`/get_community_announcements?community_id=${community_id}`, { credentials: 'include' })
+        const payload = await response.json()
+        if (!mounted || !payload?.success) return
+        const key = `ann_last_seen_${community_id}`
+        const lastSeen = Date.parse(localStorage.getItem(key) || '') || 0
+        setHasUnseenAnnouncements((payload.announcements || []).some((announcement: any) => Date.parse(announcement.created_at) > lastSeen))
+      } catch {}
     })()
     return () => { mounted = false }
   }, [community_id])
 
-  const grouped = useMemo(() => {
-    const map = new Map<string, EventItem[]>()
-    events.forEach(ev => {
-      const key = ev.date
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(ev)
-    })
-    return Array.from(map.entries()).sort(([a],[b]) => a.localeCompare(b))
+  const dateStrip = useMemo(() => {
+    const unique = Array.from(new Map(events.map(event => [event.date, event])).values())
+    return unique.slice(0, 14)
   }, [events])
 
-  const groupedArchived = useMemo(() => {
-    const map = new Map<string, EventItem[]>()
-    archivedEvents.forEach(ev => {
-      const key = ev.date
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(ev)
-    })
-    return Array.from(map.entries()).sort(([a],[b]) => b.localeCompare(a)) // Reverse order for archive
-  }, [archivedEvents])
+  const visibleEvents = useMemo(() => {
+    if (activeTab === 'archive') return archivedEvents
+    if (!selectedDate) return events
+    return events.filter(event => event.date === selectedDate)
+  }, [activeTab, archivedEvents, events, selectedDate])
 
-  async function createEvent(formData: FormData){
-    const params = new URLSearchParams()
-    
-    // Get form values
-    const title = (formData.get('title') as string) || ''
-    const date = (formData.get('date') as string) || ''
-    const end_date = (formData.get('end_date') as string) || ''
-    const start_time = (formData.get('start_time') as string) || ''
-    const end_time = (formData.get('end_time') as string) || ''
-    const timezone = (formData.get('timezone') as string) || ''
-    const description = (formData.get('description') as string) || ''
-    const notification_preferences = (formData.get('notification_preferences') as string) || 'all'
-    
-    // Basic fields
-    if (title) params.append('title', title)
-    if (description) params.append('description', description)
-    if (timezone) params.append('timezone', timezone)
-    params.append('notification_preferences', notification_preferences)
-    
-    // Convert dates/times from local to UTC (like polls do)
-    if (date && start_time) {
-      try {
-        // Combine date + start_time into local datetime, then convert to UTC
-        const localDateTime = new Date(`${date}T${start_time}`)
-        const utcDate = localDateTime.toISOString().slice(0, 10) // YYYY-MM-DD
-        const utcTime = localDateTime.toISOString().slice(11, 16) // HH:MM
-        console.log(`📅 Converting event start: Local=${date} ${start_time} → UTC=${utcDate} ${utcTime}`)
-        params.append('date', utcDate)
-        params.append('start_time', utcTime)
-      } catch (e) {
-        console.error('Failed to convert start time to UTC:', e)
-        params.append('date', date)
-        params.append('start_time', start_time)
-      }
-    } else {
-      if (date) params.append('date', date)
-      if (start_time) params.append('start_time', start_time)
-    }
-    
-    // Convert end date/time
-    if (end_date && end_time) {
-      try {
-        const localEndDateTime = new Date(`${end_date}T${end_time}`)
-        const utcEndDate = localEndDateTime.toISOString().slice(0, 10)
-        const utcEndTime = localEndDateTime.toISOString().slice(11, 16)
-        console.log(`📅 Converting event end: Local=${end_date} ${end_time} → UTC=${utcEndDate} ${utcEndTime}`)
-        params.append('end_date', utcEndDate)
-        params.append('end_time', utcEndTime)
-      } catch (e) {
-        console.error('Failed to convert end time to UTC:', e)
-        if (end_date) params.append('end_date', end_date)
-        if (end_time) params.append('end_time', end_time)
-      }
-    } else {
-      if (end_date) params.append('end_date', end_date)
-      if (end_time) params.append('end_time', end_time)
-    }
-    
+  const nextEvent = events[0] || null
+  const selectedCount = Object.values(selectedMembers).filter(Boolean).length
+
+  async function markAnnouncementsSeen() {
+    try {
+      localStorage.setItem(`ann_last_seen_${community_id}`, new Date().toISOString())
+      setHasUnseenAnnouncements(false)
+    } catch {}
+    navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)
+  }
+
+  async function createEvent(formData: FormData) {
+    const params = toUtcFormFields(formData)
     if (community_id) params.append('community_id', String(community_id))
     if (groupId) params.append('group_id', groupId)
     params.append('invite_all', inviteAll ? 'true' : 'false')
-    if (!inviteAll){
-      Object.keys(selected).filter(u => selected[u]).forEach(u => params.append('invited_members[]', u))
+    if (!inviteAll) {
+      Object.entries(selectedMembers)
+        .filter(([, checked]) => checked)
+        .forEach(([username]) => params.append('invited_members[]', username))
     }
-    const r = await fetch('/add_calendar_event', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: params })
-    const j = await r.json().catch(()=>null)
-    if (j?.success){
+
+    const response = await fetch('/add_calendar_event', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params,
+    })
+    const payload = await response.json().catch(() => null)
+    if (payload?.success) {
       await reloadEvents()
       setSuccessMsg('Event created')
-      setActiveTab('calendar')
-      try { formRef.current?.reset(); setInviteAll(false); setSelected({}); setInviteOpen(false) } catch {}
-      setTimeout(() => setSuccessMsg(null), 2000)
+      setCreateOpen(false)
+      setCreateStep('details')
+      setInviteAll(false)
+      setSelectedMembers({})
+      createFormRef.current?.reset()
+      setTimeout(() => setSuccessMsg(null), 2200)
     } else {
-      alert(j?.message || 'Failed to create event')
+      alert(payload?.message || 'Failed to create event')
     }
   }
 
-  async function rsvp(eventId:number, response:'going'|'maybe'|'not_going'){
-    try{
-      const r = await fetch(`/event/${eventId}/rsvp`, { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ response }) })
-      const j = await r.json().catch(()=>null)
-      if (j?.success){
-        await reloadEvents()
-      }
-    }catch{}
-  }
-
-  // Removed invite details trigger; modal remains for future use if needed
-
-  async function deleteEvent(ev: EventItem){
-    if (!confirm('Delete this event?')) return
-    try{
-      const body = new URLSearchParams({ event_id: String(ev.id) })
-      const r = await fetch('/delete_calendar_event', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body })
-      const j = await r.json().catch(()=>null)
-      if (j?.success){
-        await reloadEvents()
-        setModalEvent(null)
-        setModalDetails(null)
-      } else {
-        alert(j?.message || 'Could not delete')
-      }
-    }catch{}
-  }
-
-  async function saveEditedEvent(formData: FormData){
+  async function saveEditedEvent(formData: FormData) {
     if (!editingEvent) return
-    const params = new URLSearchParams()
-    params.append('event_id', String(editingEvent.id))
-    
-    // Get form values
-    const title = (formData.get('title') as string) || ''
-    const date = (formData.get('date') as string) || ''
-    const end_date = (formData.get('end_date') as string) || ''
-    const start_time = (formData.get('start_time') as string) || ''
-    const end_time = (formData.get('end_time') as string) || ''
-    const timezone = (formData.get('timezone') as string) || ''
-    const description = (formData.get('description') as string) || ''
-    
-    // Basic fields
-    if (title) params.append('title', title)
-    if (description) params.append('description', description)
-    if (timezone) params.append('timezone', timezone)
-    
-    // Convert dates/times from local to UTC
-    if (date && start_time) {
-      try {
-        const localDateTime = new Date(`${date}T${start_time}`)
-        const utcDate = localDateTime.toISOString().slice(0, 10)
-        const utcTime = localDateTime.toISOString().slice(11, 16)
-        console.log(`📅 Converting edited start: Local=${date} ${start_time} → UTC=${utcDate} ${utcTime}`)
-        params.append('date', utcDate)
-        params.append('start_time', utcTime)
-      } catch (e) {
-        console.error('Failed to convert start time to UTC:', e)
-        params.append('date', date)
-        params.append('start_time', start_time)
-      }
-    } else {
-      if (date) params.append('date', date)
-      if (start_time) params.append('start_time', start_time)
-    }
-    
-    if (end_date && end_time) {
-      try {
-        const localEndDateTime = new Date(`${end_date}T${end_time}`)
-        const utcEndDate = localEndDateTime.toISOString().slice(0, 10)
-        const utcEndTime = localEndDateTime.toISOString().slice(11, 16)
-        console.log(`📅 Converting edited end: Local=${end_date} ${end_time} → UTC=${utcEndDate} ${utcEndTime}`)
-        params.append('end_date', utcEndDate)
-        params.append('end_time', utcEndTime)
-      } catch (e) {
-        console.error('Failed to convert end time to UTC:', e)
-        if (end_date) params.append('end_date', end_date)
-        if (end_time) params.append('end_time', end_time)
-      }
-    } else {
-      if (end_date) params.append('end_date', end_date)
-      if (end_time) params.append('end_time', end_time)
-    }
-    
-    const r = await fetch('/edit_calendar_event', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: params })
-    const j = await r.json().catch(()=>null)
-    if (j?.success){
+    const params = toUtcFormFields(formData)
+    params.set('event_id', String(editingEvent.id))
+    const response = await fetch('/edit_calendar_event', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params,
+    })
+    const payload = await response.json().catch(() => null)
+    if (payload?.success) {
       await reloadEvents()
       setEditingEvent(null)
       setSuccessMsg('Event updated')
-      setTimeout(() => setSuccessMsg(null), 2000)
+      setTimeout(() => setSuccessMsg(null), 2200)
     } else {
-      alert(j?.message || 'Failed to update event')
+      alert(payload?.message || 'Failed to update event')
     }
+  }
+
+  async function rsvp(eventId: number, response: RSVPResponse) {
+    try {
+      const result = await fetch(`/event/${eventId}/rsvp`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ response }),
+      })
+      const payload = await result.json().catch(() => null)
+      if (payload?.success) {
+        await reloadEvents()
+        setRsvpEvent(current => current?.id === eventId ? { ...current, user_rsvp: response } : current)
+      }
+    } catch {}
+  }
+
+  async function deleteEvent(event: EventItem) {
+    if (!confirm('Delete this event?')) return
+    try {
+      const response = await fetch('/delete_calendar_event', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ event_id: String(event.id) }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (payload?.success) {
+        await reloadEvents()
+        setRsvpEvent(null)
+      } else {
+        alert(payload?.message || 'Could not delete event')
+      }
+    } catch {}
+  }
+
+  const inputClass = 'mt-1 w-full rounded-2xl border border-white/10 bg-black/70 px-4 py-3 text-[16px] text-white outline-none transition focus:border-[#4db6ac]/80 focus:ring-2 focus:ring-[#4db6ac]/20'
+  const labelClass = 'text-xs font-medium uppercase tracking-[0.18em] text-[#8fa3a8]'
+
+  function EventCard({ event, archived = false }: { event: EventItem; archived?: boolean }) {
+    return (
+      <article className="group relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.045] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-[#4db6ac]/45 hover:bg-white/[0.065]">
+        <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-[#4db6ac]/70 to-transparent" />
+        <button type="button" className="w-full text-left" onClick={() => navigate(`/event/${event.id}`)}>
+          <div className="flex items-start gap-3">
+            <div className="grid h-16 w-14 shrink-0 place-items-center rounded-2xl border border-[#4db6ac]/35 bg-[#4db6ac]/10 text-center">
+              <div>
+                <div className="text-[10px] font-bold tracking-[0.18em] text-[#4db6ac]">{formatMonth(event.date)}</div>
+                <div className="text-2xl font-semibold text-white">{formatDay(event.date)}</div>
+              </div>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-[#8fa3a8]">
+                <span>{formatTimeRange(event)}</span>
+                {archived ? <span className="rounded-full border border-white/10 px-2 py-0.5 normal-case tracking-normal">Archived</span> : null}
+              </div>
+              <h3 className="mt-1 line-clamp-2 text-lg font-semibold text-white">{event.title}</h3>
+              <p className="mt-1 text-sm text-[#b7c7ca]">{formatDateRange(event)}</p>
+              {event.description ? <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#d7e1e3]/85">{event.description}</p> : null}
+            </div>
+          </div>
+        </button>
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-[#b7c7ca]" onClick={event => event.stopPropagation()}>
+          <button type="button" className={`rounded-full border px-3 py-1.5 transition ${event.user_rsvp === 'going' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => rsvp(event.id, 'going')}>
+            Going {event.rsvp_counts?.going || 0}
+          </button>
+          <button type="button" className={`rounded-full border px-3 py-1.5 transition ${event.user_rsvp === 'maybe' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => rsvp(event.id, 'maybe')}>
+            Maybe {event.rsvp_counts?.maybe || 0}
+          </button>
+          <button type="button" className={`rounded-full border px-3 py-1.5 transition ${event.user_rsvp === 'not_going' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => rsvp(event.id, 'not_going')}>
+            Not going {event.rsvp_counts?.not_going || 0}
+          </button>
+          <button type="button" className="ml-auto rounded-full border border-white/10 px-3 py-1.5 hover:border-[#4db6ac]/45 hover:text-white" onClick={() => setRsvpEvent(event)}>
+            Details
+          </button>
+          {!archived ? (
+            <>
+              <button type="button" className="rounded-full border border-white/10 px-3 py-1.5 hover:border-[#4db6ac]/45 hover:text-white" onClick={() => setEditingEvent(event)} aria-label="Edit event">
+                <i className="fa-regular fa-pen-to-square" />
+              </button>
+              <button type="button" className="rounded-full border border-red-400/45 px-3 py-1.5 text-red-200 hover:bg-red-500/10" onClick={() => deleteEvent(event)} aria-label="Delete event">
+                <i className="fa-regular fa-trash-can" />
+              </button>
+            </>
+          ) : null}
+        </div>
+      </article>
+    )
+  }
+
+  function EventFormFields({ event }: { event?: EventItem }) {
+    return (
+      <div className="grid grid-cols-2 gap-3">
+        <label className={`col-span-2 ${labelClass}`}>Title
+          <input name="title" defaultValue={event?.title || ''} className={inputClass} required placeholder="Workout, meetup, webinar..." />
+        </label>
+        <label className={labelClass}>Start date
+          <input name="date" type="date" defaultValue={event?.date || ''} className={inputClass} required />
+        </label>
+        <label className={labelClass}>End date
+          <input name="end_date" type="date" defaultValue={event?.end_date || ''} className={inputClass} />
+        </label>
+        <label className={labelClass}>Start time
+          <input name="start_time" type="time" defaultValue={normalizeTime(event?.start_time)} className={inputClass} />
+        </label>
+        <label className={labelClass}>End time
+          <input name="end_time" type="time" defaultValue={normalizeTime(event?.end_time)} className={inputClass} />
+        </label>
+        <label className={`col-span-2 ${labelClass}`}>Timezone
+          <select name="timezone" defaultValue={event?.timezone || 'UTC'} className={inputClass} required>
+            <option value="">Select timezone</option>
+            {TIMEZONE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+        <label className={`col-span-2 ${labelClass}`}>Description
+          <textarea name="description" defaultValue={event?.description || ''} rows={4} className={inputClass} placeholder="Add context, location details, or agenda." />
+        </label>
+        {!event ? (
+          <label className={`col-span-2 ${labelClass}`}>Reminders
+            <select name="notification_preferences" defaultValue="all" className={inputClass}>
+              <option value="none">No reminders</option>
+              <option value="1_week">1 week before</option>
+              <option value="1_day">1 day before</option>
+              <option value="1_hour">1 hour before</option>
+              <option value="all">All reminders</option>
+            </select>
+            <span className="mt-2 block text-[11px] font-normal normal-case tracking-normal text-[#8fa3a8]">Reminders follow the event start time and each invitee's RSVP.</span>
+          </label>
+        ) : null}
+      </div>
+    )
   }
 
   return (
     <div className="min-h-screen bg-black text-white">
-      <div
-        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
-        style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
-      >
-        <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label="Back">
-            <i className="fa-solid fa-arrow-left" />
-          </button>
-          <div className="flex-1 h-full flex">
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='calendar' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('calendar')}>
-              <div className="pt-2">Calendar</div>
-              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='calendar' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
-            </button>
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='archive' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('archive')}>
-              <div className="pt-2">Archive</div>
-              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='archive' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
-            </button>
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='create' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('create')}>
-              <div className="pt-2">Create Event</div>
-              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='create' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
-            </button>
-          </div>
-        </div>
-      </div>
-
+      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(77,182,172,0.22),transparent_34%),radial-gradient(circle_at_15%_20%,rgba(77,182,172,0.10),transparent_28%)]" />
       <div
         ref={scrollRef}
-        className="app-subnav-offset max-w-2xl mx-auto pb-20 px-3 overflow-y-auto no-scrollbar"
+        className="relative mx-auto max-w-3xl px-4 pb-28 pt-4"
         style={{
           WebkitOverflowScrolling: 'touch' as any,
-          minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))',
-          '--app-subnav-height': '40px',
+          paddingTop: 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + 14px)',
         } as CSSProperties}
       >
-        {successMsg && (
-          <div className="mb-3 text-sm px-3 py-2 rounded-md bg-teal-700/15 text-teal-300 border border-teal-700/30">{successMsg}</div>
-        )}
+        <header className="mb-5 flex items-center gap-3">
+          <button className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-[#cfe7e4] backdrop-blur hover:border-[#4db6ac]/45" onClick={() => navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label="Back">
+            <i className="fa-solid fa-arrow-left" />
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs uppercase tracking-[0.24em] text-[#4db6ac]">Community Calendar</p>
+            <h1 className="truncate text-2xl font-semibold">Events</h1>
+          </div>
+          <button className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_24px_rgba(77,182,172,0.35)] hover:brightness-110" onClick={() => setCreateOpen(true)}>
+            New event
+          </button>
+        </header>
 
-        {activeTab === 'create' ? (
-          <form ref={formRef} className="rounded-2xl border border-white/10 p-3 bg-white/[0.035] space-y-3" onSubmit={(e)=> { e.preventDefault(); createEvent(new FormData(e.currentTarget)) }}>
-            <div className="text-sm font-medium">Create Event</div>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="col-span-2 text-xs text-[#9fb0b5]">Title
-                <input name="title" placeholder="Title" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required />
-              </label>
-              <label className="text-xs text-[#9fb0b5]">Start date
-                <input name="date" type="date" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required />
-              </label>
-              <label className="text-xs text-[#9fb0b5]">End date
-                <input name="end_date" type="date" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
-              </label>
-              <label className="text-xs text-[#9fb0b5]">Start time
-                <input name="start_time" type="time" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
-              </label>
-              <label className="text-xs text-[#9fb0b5]">End time
-                <input name="end_time" type="time" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
-              </label>
-              <label className="col-span-2 text-xs text-[#9fb0b5]">Timezone
-                <select name="timezone" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required>
-                  <option value="">Select timezone</option>
-                  <option value="EST">EST (Eastern Time)</option>
-                  <option value="CST">CST (Central Time)</option>
-                  <option value="MST">MST (Mountain Time)</option>
-                  <option value="PST">PST (Pacific Time)</option>
-                  <option value="GMT">GMT (Greenwich Mean Time)</option>
-                  <option value="CET">CET (Central European Time)</option>
-                  <option value="IST">IST (India Standard Time)</option>
-                  <option value="JST">JST (Japan Standard Time)</option>
-                  <option value="AEST">AEST (Australian Eastern Time)</option>
-                  <option value="UTC">UTC (Coordinated Universal Time)</option>
-                </select>
-              </label>
-              <label className="col-span-2 text-xs text-[#9fb0b5]">Description
-                <input name="description" placeholder="Description" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
-              </label>
-              <label className="col-span-2 text-xs text-[#9fb0b5]">📬 Send reminders
-                <select name="notification_preferences" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none">
-                  <option value="none">No reminders</option>
-                  <option value="1_week">1 week before</option>
-                  <option value="1_day">1 day before</option>
-                  <option value="1_hour">1 hour before</option>
-                  <option value="all" selected>All reminders (1 week + 1 day + 1 hour)</option>
-                </select>
-                <div className="text-[10px] text-[#9fb0b5] mt-1">⚡ Reminders sent automatically based on event start time</div>
-              </label>
+        {successMsg ? <div className="mb-4 rounded-2xl border border-[#4db6ac]/25 bg-[#4db6ac]/10 px-4 py-3 text-sm text-[#9ff8ef]">{successMsg}</div> : null}
+
+        <section className="mb-5 overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.045] p-5 shadow-[0_22px_80px_rgba(0,0,0,0.42)] backdrop-blur-xl">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.22em] text-[#8fa3a8]">Next up</p>
+              <h2 className="mt-2 text-2xl font-semibold text-white">{nextEvent?.title || 'No upcoming events yet'}</h2>
+              <p className="mt-2 text-sm text-[#b7c7ca]">{nextEvent ? `${formatDateRange(nextEvent)} • ${formatTimeRange(nextEvent)}` : 'Create the first event and invite members in seconds.'}</p>
             </div>
-
-            <div className="flex items-center gap-2">
-              <button type="button" className={`px-2 py-1 rounded-md border text-xs hover:bg-white/5 ${inviteAll ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-white/10'}`} onClick={()=> { setInviteAll(v=> { const newVal = !v; if (newVal) setInviteOpen(false); return newVal; }) }}>
-                Invite all members
-              </button>
-              <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs hover:bg-white/5" onClick={()=> { setInviteAll(false); setInviteOpen(true) }}>
-                Select members
-              </button>
+            <div className="rounded-2xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 px-3 py-2 text-right">
+              <div className="text-xs text-[#8ff4e9]">{nextEvent ? getCountdownLabel(nextEvent) : 'Ready'}</div>
+              <div className="text-2xl font-semibold text-white">{events.length}</div>
+              <div className="text-[10px] uppercase tracking-[0.16em] text-[#8fa3a8]">Upcoming</div>
             </div>
+          </div>
+          {nextEvent ? (
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-[#e9fffd]" onClick={() => setRsvpEvent(nextEvent)}>RSVP now</button>
+              <button className="rounded-full border border-white/10 px-4 py-2 text-sm text-[#d7e1e3] hover:border-[#4db6ac]/45" onClick={() => navigate(`/event/${nextEvent.id}`)}>Open details</button>
+            </div>
+          ) : null}
+        </section>
 
-            {inviteOpen && !inviteAll && (
-              <div className="max-h-48 overflow-y-auto border border-white/10 rounded-md p-2 space-y-1">
-                {members.length === 0 ? (
-                  <div className="text-sm text-[#9fb0b5]">No members</div>
-                ) : members.map(m => (
-                  <label key={m.username} className="flex items-center justify-between gap-2 py-1 px-2 rounded hover:bg-white/5 cursor-pointer">
-                    <span className="text-sm">{m.username}</span>
-                    <div 
-                      className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${selected[m.username] ? 'border-[#6c757d] bg-black' : 'border-[#6c757d] bg-black'}`}
-                      onClick={(e)=> { e.preventDefault(); setSelected(s => ({ ...s, [m.username]: !s[m.username] })) }}
-                    >
-                      {selected[m.username] && (
-                        <i className="fa-solid fa-check text-[#4db6ac] text-xs" />
-                      )}
+        <div className="mb-5 flex rounded-full border border-white/10 bg-white/[0.04] p-1">
+          <button className={`flex-1 rounded-full px-4 py-2 text-sm font-medium transition ${activeTab === 'upcoming' ? 'bg-[#4db6ac] text-black' : 'text-[#9fb0b5] hover:text-white'}`} onClick={() => setActiveTab('upcoming')}>Upcoming</button>
+          <button className={`flex-1 rounded-full px-4 py-2 text-sm font-medium transition ${activeTab === 'archive' ? 'bg-[#4db6ac] text-black' : 'text-[#9fb0b5] hover:text-white'}`} onClick={() => setActiveTab('archive')}>Archive</button>
+        </div>
+
+        {activeTab === 'upcoming' && dateStrip.length > 0 ? (
+          <div className="mb-5 flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+            {dateStrip.map(event => (
+              <button key={event.date} className={`min-w-[76px] rounded-2xl border px-3 py-3 text-center transition ${selectedDate === event.date ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-white' : 'border-white/10 bg-white/[0.035] text-[#9fb0b5]'}`} onClick={() => setSelectedDate(event.date)}>
+                <div className="text-[10px] font-bold tracking-[0.2em] text-[#4db6ac]">{formatMonth(event.date)}</div>
+                <div className="text-2xl font-semibold">{formatDay(event.date)}</div>
+                <div className="text-[11px]">{events.filter(item => item.date === event.date).length} event{events.filter(item => item.date === event.date).length === 1 ? '' : 's'}</div>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        <main className="space-y-3">
+          {loading ? (
+            <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-6 text-[#9fb0b5]">Loading events...</div>
+          ) : visibleEvents.length === 0 ? (
+            <div className="rounded-[1.75rem] border border-dashed border-white/15 bg-white/[0.035] p-8 text-center">
+              <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#4db6ac]/10 text-[#4db6ac]"><i className="fa-regular fa-calendar" /></div>
+              <h3 className="mt-4 text-lg font-semibold">{activeTab === 'archive' ? 'No archived events' : 'Nothing scheduled here'}</h3>
+              <p className="mt-2 text-sm text-[#9fb0b5]">{activeTab === 'archive' ? 'Past events will appear here after they end.' : 'Start with a clean event card and invite the right members.'}</p>
+              {activeTab !== 'archive' ? <button className="mt-5 rounded-full bg-[#4db6ac] px-5 py-2 text-sm font-semibold text-black" onClick={() => setCreateOpen(true)}>Create event</button> : null}
+            </div>
+          ) : (
+            visibleEvents.map(event => <EventCard key={event.id} event={event} archived={activeTab === 'archive'} />)
+          )}
+        </main>
+      </div>
+
+      <div className="fixed bottom-4 left-1/2 z-40 w-[94%] max-w-[720px] -translate-x-1/2 rounded-2xl border border-white/10 bg-black/80 shadow-lg backdrop-blur">
+        <div className="flex h-14 items-center justify-between px-6 text-[#cfd8dc]">
+          <button className="rounded-full p-2 hover:bg-white/5" aria-label="Home" onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}><i className="fa-solid fa-house" /></button>
+          <button className="rounded-full p-2 hover:bg-white/5" aria-label="Members" onClick={() => navigate(`/community/${community_id}/members`)}><i className="fa-solid fa-users" /></button>
+          <button className="grid h-10 w-10 place-items-center rounded-xl bg-[#4db6ac] text-black hover:brightness-110" aria-label="Create event" onClick={() => setCreateOpen(true)}><i className="fa-solid fa-plus" /></button>
+          <button className="relative rounded-full p-2 hover:bg-white/5" aria-label="Announcements" onClick={markAnnouncementsSeen}>
+            <i className="fa-solid fa-bullhorn" style={hasUnseenAnnouncements ? { color: '#4db6ac' } : undefined} />
+            {hasUnseenAnnouncements ? <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#4db6ac]" /> : null}
+          </button>
+          <button className="rounded-full p-2 hover:bg-white/5" aria-label="More" onClick={() => setMoreOpen(true)}><i className="fa-solid fa-ellipsis" /></button>
+        </div>
+      </div>
+
+      {moreOpen ? (
+        <div className="fixed inset-0 z-[95] flex items-end justify-end bg-black/40" onClick={event => event.currentTarget === event.target && setMoreOpen(false)}>
+          <div className="mb-2 mr-2 w-[75%] max-w-sm rounded-2xl border border-white/10 bg-black/85 p-2 backdrop-blur">
+            {[
+              ['Polls', `/community/${community_id}/polls_react`],
+              ['Calendar', `/community/${community_id}/calendar_react`],
+              ['Forum', `/community/${community_id}/resources`],
+              ['Useful Links', `/community/${community_id}/resources`],
+              ['Report Issue', '/issues'],
+              ['Anonymous feedback', '/anonymous_feedback'],
+            ].map(([label, href]) => (
+              <button key={label} className="w-full rounded-xl px-4 py-3 text-right hover:bg-white/5" onClick={() => { setMoreOpen(false); window.location.href = href }}>{label}</button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {createOpen ? (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 backdrop-blur" onClick={event => event.currentTarget === event.target && setCreateOpen(false)}>
+          <div className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-[2rem] border border-white/10 bg-[#050606] p-5 shadow-2xl sm:mb-4 sm:rounded-[2rem]">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-[#4db6ac]">Step {createStep === 'details' ? '1' : '2'} of 2</p>
+                <h2 className="text-xl font-semibold">Create event</h2>
+              </div>
+              <button className="grid h-9 w-9 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setCreateOpen(false)} aria-label="Close"><i className="fa-solid fa-xmark" /></button>
+            </div>
+            <form ref={createFormRef} onSubmit={event => { event.preventDefault(); createEvent(new FormData(event.currentTarget)) }}>
+              <div className={createStep === 'details' ? 'block' : 'hidden'}>
+                <EventFormFields />
+                <div className="mt-5 flex justify-end">
+                  <button type="button" className="rounded-full bg-[#4db6ac] px-5 py-2.5 text-sm font-semibold text-black hover:brightness-110" onClick={() => setCreateStep('invite')}>Continue</button>
+                </div>
+              </div>
+              <div className={createStep === 'invite' ? 'block' : 'hidden'}>
+                <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+                  <div className="flex gap-2">
+                    <button type="button" className={`flex-1 rounded-2xl border px-4 py-3 text-sm ${inviteAll ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca]'}`} onClick={() => setInviteAll(true)}>Invite all</button>
+                    <button type="button" className={`flex-1 rounded-2xl border px-4 py-3 text-sm ${!inviteAll ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca]'}`} onClick={() => setInviteAll(false)}>Choose members</button>
+                  </div>
+                  {!inviteAll ? (
+                    <div className="mt-4 max-h-64 space-y-1 overflow-y-auto pr-1">
+                      {members.length === 0 ? <div className="text-sm text-[#9fb0b5]">No members found.</div> : members.map(member => (
+                        <label key={member.username} className="flex cursor-pointer items-center justify-between rounded-2xl px-3 py-2 hover:bg-white/5">
+                          <span className="text-sm">{member.username}</span>
+                          <input type="checkbox" checked={!!selectedMembers[member.username]} onChange={() => setSelectedMembers(current => ({ ...current, [member.username]: !current[member.username] }))} className="h-5 w-5 accent-[#4db6ac]" />
+                        </label>
+                      ))}
                     </div>
-                  </label>
-                ))}
-              </div>
-            )}
-
-            <div className="flex justify-end">
-              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">Add</button>
-            </div>
-          </form>
-        ) : activeTab === 'archive' ? (
-          <div className="space-y-3">
-            {loading ? (
-              <div className="text-[#9fb0b5]">Loading archived events…</div>
-            ) : groupedArchived.length === 0 ? (
-              <div className="text-[#9fb0b5]">No archived events yet.</div>
-            ) : (
-              groupedArchived.map(([date, items]) => (
-                <div key={date} className="rounded-2xl border border-white/10 bg-white/[0.035] overflow-hidden opacity-75">
-                  <div className="px-3 py-2 bg-[#6c757d] text-xs text-black font-medium flex items-center gap-2">
-                    <span>🔒 Past Event</span>
-                    <span>•</span>
-                    <span>
-                      {(() => {
-                        const firstWithEndDate = items.find(ev => ev.end_date && ev.end_date !== date && ev.end_date !== '0000-00-00')
-                        return firstWithEndDate ? `${date} → ${firstWithEndDate.end_date}` : date
-                      })()}
-                    </span>
-                  </div>
-                  <div className="divide-y divide-white/10">
-                    {items.map(ev => (
-                      <div key={ev.id} className="px-3 py-2 cursor-pointer hover:bg-white/5" onClick={()=> navigate(`/event/${ev.id}`)}>
-                        <div className="flex items-center gap-2">
-                          <div className="font-medium flex-1">{ev.title}</div>
-                          <div className="text-xs text-[#9fb0b5]">
-                            {(() => {
-                              const times = [ev.start_time, ev.end_time]
-                                .filter(t => t && t !== '0000-00-00 00:00:00' && t !== '00:00:00' && t !== '00:00')
-                              const timeStr = times.length > 0 ? times.join(' - ') : ''
-                              return timeStr && ev.timezone ? `${timeStr} ${ev.timezone}` : timeStr
-                            })()}
-                          </div>
-                        </div>
-                        {ev.description ? (<div className="text-sm text-[#cfd8dc] mt-1">{ev.description}</div>) : null}
-                        <div className="text-xs text-[#9fb0b5] mt-2 flex items-center gap-2 flex-wrap">
-                          <span className="px-2 py-1 rounded-full border border-white/10">Going {ev.rsvp_counts?.going||0}</span>
-                          <span className="px-2 py-1 rounded-full border border-white/10">Maybe {ev.rsvp_counts?.maybe||0}</span>
-                          <span className="px-2 py-1 rounded-full border border-white/10">Not going {ev.rsvp_counts?.not_going||0}</span>
-                          {typeof ev.rsvp_counts?.no_response === 'number' && ev.rsvp_counts.no_response > 0 && (
-                            <span className="px-2 py-1 rounded-full border border-white/10">No response {ev.rsvp_counts.no_response}</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  ) : <p className="mt-4 text-sm text-[#9fb0b5]">Every current member will receive the invite.</p>}
                 </div>
-              ))
-            )}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {loading ? (
-              <div className="text-[#9fb0b5]">Loading events…</div>
-            ) : grouped.length === 0 ? (
-              <div className="text-[#9fb0b5]">No events yet.</div>
-            ) : (
-              grouped.map(([date, items]) => (
-                <div key={date} className="rounded-2xl border border-white/10 bg-white/[0.035] overflow-hidden">
-                  <div className="px-3 py-2 bg-[#4db6ac] text-xs text-black font-medium">
-                    {(() => {
-                      // Show end date if any event in this group has a different end date
-                      const firstWithEndDate = items.find(ev => ev.end_date && ev.end_date !== date && ev.end_date !== '0000-00-00')
-                      return firstWithEndDate ? `${date} → ${firstWithEndDate.end_date}` : date
-                    })()}
-                  </div>
-                  <div className="divide-y divide-white/10">
-                    {items.map(ev => (
-                      <div key={ev.id} className="px-3 py-2 hover:bg-white/5 cursor-pointer" onClick={()=> navigate(`/event/${ev.id}`)}>
-                        <div className="flex items-center gap-2">
-                          <div className="font-medium flex-1">{ev.title}</div>
-                          <div className="text-xs text-[#9fb0b5]">
-                            {(() => {
-                              const times = [ev.start_time, ev.end_time]
-                                .filter(t => t && t !== '0000-00-00 00:00:00' && t !== '00:00:00' && t !== '00:00')
-                              const timeStr = times.length > 0 ? times.join(' - ') : ''
-                              return timeStr && ev.timezone ? `${timeStr} ${ev.timezone}` : timeStr
-                            })()}
-                          </div>
-                        </div>
-                        {ev.description ? (<div className="text-sm text-[#cfd8dc] mt-1">{ev.description}</div>) : null}
-                        <div className="text-xs text-[#9fb0b5] mt-2 flex items-center gap-2 flex-wrap" onClick={(e)=> e.stopPropagation()}>
-                          <button className={`px-2 py-1 rounded-full border ${ev.user_rsvp==='going'?'border-teal-500 text-teal-300 bg-teal-700/15':'border-white/10'}`} onClick={(e)=> { e.stopPropagation(); rsvp(ev.id, 'going') }}>Going {ev.rsvp_counts?.going||0}</button>
-                          <button className={`px-2 py-1 rounded-full border ${ev.user_rsvp==='maybe'?'border-teal-500 text-teal-300 bg-teal-700/15':'border-white/10'}`} onClick={(e)=> { e.stopPropagation(); rsvp(ev.id, 'maybe') }}>Maybe {ev.rsvp_counts?.maybe||0}</button>
-                          <button className={`px-2 py-1 rounded-full border ${ev.user_rsvp==='not_going'?'border-teal-500 text-teal-300 bg-teal-700/15':'border-white/10'}`} onClick={(e)=> { e.stopPropagation(); rsvp(ev.id, 'not_going') }}>Not going {ev.rsvp_counts?.not_going||0}</button>
-                          {typeof ev.rsvp_counts?.no_response === 'number' && ev.rsvp_counts.no_response > 0 && (
-                            <span className="px-2 py-1 rounded-full border border-white/10">No response {ev.rsvp_counts.no_response}</span>
-                          )}
-                          <button title="Edit event" className="ml-auto px-2 py-1 rounded-md border border-white/10 hover:bg-white/5" onClick={(e)=> { e.stopPropagation(); setEditingEvent(ev) }}>
-                            <i className="fa-regular fa-pen-to-square" />
-                          </button>
-                          <button title="Delete event" className="px-2 py-1 rounded-md border border-red-400 text-red-300 hover:bg-red-500/10" onClick={(e)=> { e.stopPropagation(); deleteEvent(ev) }}>
-                            <i className="fa-regular fa-trash-can" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                <div className="mt-5 flex items-center justify-between gap-3">
+                  <button type="button" className="rounded-full border border-white/10 px-5 py-2.5 text-sm hover:bg-white/5" onClick={() => setCreateStep('details')}>Back</button>
+                  <button type="submit" className="rounded-full bg-[#4db6ac] px-5 py-2.5 text-sm font-semibold text-black hover:brightness-110">
+                    Create {inviteAll ? 'for everyone' : selectedCount ? `for ${selectedCount}` : 'event'}
+                  </button>
                 </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Bottom navigation bar - floating (same as community) */}
-      <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-[94%] max-w-[1200px] rounded-2xl border border-white/10 bg-black/80 backdrop-blur shadow-lg">
-        <div className="h-14 px-6 flex items-center justify-between text-[#cfd8dc]">
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <i className="fa-solid fa-house" />
-          </button>
-          <button className="p-2 rounded-full hover:bg:white/5" aria-label="Members" onClick={()=> navigate(`/community/${community_id}/members`)}>
-            <i className="fa-solid fa-users" />
-          </button>
-          <button className="w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center" aria-label="New Post" onClick={()=> navigate(`/compose?community_id=${community_id}`)}>
-            <i className="fa-solid fa-plus" />
-          </button>
-          <button className="relative p-2 rounded-full hover:bg-white/5" aria-label="Announcements" onClick={()=> { fetchAnnouncements() }}>
-            <span className="relative inline-block">
-              <i className="fa-solid fa-bullhorn" style={hasUnseenAnnouncements ? { color:'#4db6ac' } : undefined} />
-              {hasUnseenAnnouncements ? (<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />) : null}
-            </span>
-          </button>
-          <button className="p-2 rounded-full hover:bg:white/5" aria-label="More" onClick={()=> setMoreOpen(true)}>
-            <i className="fa-solid fa-ellipsis" />
-          </button>
-        </div>
-      </div>
-
-      {moreOpen && (
-        <div className="fixed inset-0 z-[95] bg-black/30 flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
-          <div className="w-[75%] max-w-sm mr-2 mb-2 bg-black/80 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0">
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/polls_react`) }}>Polls</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/calendar_react`) }}>Calendar</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Forum</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Useful Links</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/issues` }}>Report Issue</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/anonymous_feedback` }}>Anonymous feedback</button>
-          </div>
-        </div>
-      )}
-
-      {modalEvent && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur flex items-end justify-center" onClick={(e)=> e.currentTarget===e.target && setModalEvent(null)}>
-          <div className="w-[96%] max-w-[560px] mb-4 rounded-2xl border border-white/10 bg-black p-3">
-            <div className="mb-2">
-              <div className="font-semibold text-white">{modalEvent.title}</div>
-              <div className="text-xs text-[#9fb0b5]">
-                {modalEvent.date}{modalEvent.end_date && modalEvent.end_date !== modalEvent.date && modalEvent.end_date !== '0000-00-00' ? ` → ${modalEvent.end_date}` : ''}
-                {modalEvent.start_time && modalEvent.start_time !== '0000-00-00 00:00:00' && modalEvent.start_time !== '00:00:00' && modalEvent.start_time !== '00:00' ? ` • ${modalEvent.start_time}` : ''}
-                {modalEvent.end_time && modalEvent.end_time !== '0000-00-00 00:00:00' && modalEvent.end_time !== '00:00:00' && modalEvent.end_time !== '00:00' ? ` - ${modalEvent.end_time}` : ''}
-              </div>
-              {modalEvent.description ? (<div className="text-sm text-[#cfd8dc] mt-1">{modalEvent.description}</div>) : null}
-            </div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-sm text-[#9fb0b5]">Invite details</div>
-              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setModalEvent(null)}>✕</button>
-            </div>
-            {!modalDetails ? (
-              <div className="text-[#9fb0b5] text-sm">Loading…</div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <div className="font-medium text-teal-300 mb-1">Going ({modalDetails.going.length})</div>
-                  <ul className="space-y-1">
-                    {modalDetails.going.map((u,idx)=> (<li key={`g-${idx}`}>{u.username}</li>))}
-                  </ul>
-                </div>
-                <div>
-                  <div className="font-medium text-[#cfd8dc] mb-1">Maybe ({modalDetails.maybe.length})</div>
-                  <ul className="space-y-1">
-                    {modalDetails.maybe.map((u,idx)=> (<li key={`m-${idx}`}>{u.username}</li>))}
-                  </ul>
-                </div>
-                <div>
-                  <div className="font-medium text-red-300 mb-1">Not going ({modalDetails.not_going.length})</div>
-                  <ul className="space-y-1">
-                    {modalDetails.not_going.map((u,idx)=> (<li key={`n-${idx}`}>{u.username}</li>))}
-                  </ul>
-                </div>
-                <div>
-                  <div className="font-medium text-[#9fb0b5] mb-1">No response ({modalDetails.no_response.length})</div>
-                  <ul className="space-y-1">
-                    {modalDetails.no_response.map((u,idx)=> (<li key={`r-${idx}`}>{u.username}</li>))}
-                  </ul>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {editingEvent && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setEditingEvent(null)}>
-          <div className="w-[96%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
-            <div className="flex items-center justify-between mb-3">
-              <div className="font-semibold">Edit Event</div>
-              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setEditingEvent(null)}>✕</button>
-            </div>
-            <form className="space-y-3" onSubmit={(e)=> { e.preventDefault(); saveEditedEvent(new FormData(e.currentTarget)) }}>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="col-span-2 text-xs text-[#9fb0b5]">Title
-                  <input name="title" defaultValue={editingEvent.title} placeholder="Title" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required />
-                </label>
-                <label className="text-xs text-[#9fb0b5]">Start date
-                  <input name="date" type="date" defaultValue={editingEvent.date} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required />
-                </label>
-                <label className="text-xs text-[#9fb0b5]">End date
-                  <input name="end_date" type="date" defaultValue={editingEvent.end_date || ''} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
-                </label>
-                <label className="text-xs text-[#9fb0b5]">Start time
-                  <input name="start_time" type="time" defaultValue={editingEvent.start_time || ''} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
-                </label>
-                <label className="text-xs text-[#9fb0b5]">End time
-                  <input name="end_time" type="time" defaultValue={editingEvent.end_time || ''} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
-                </label>
-                <label className="col-span-2 text-xs text-[#9fb0b5]">Timezone
-                  <select name="timezone" defaultValue={editingEvent.timezone || ''} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required>
-                    <option value="">Select timezone</option>
-                    <option value="EST">EST (Eastern Time)</option>
-                    <option value="CST">CST (Central Time)</option>
-                    <option value="MST">MST (Mountain Time)</option>
-                    <option value="PST">PST (Pacific Time)</option>
-                    <option value="GMT">GMT (Greenwich Mean Time)</option>
-                    <option value="CET">CET (Central European Time)</option>
-                    <option value="IST">IST (India Standard Time)</option>
-                    <option value="JST">JST (Japan Standard Time)</option>
-                    <option value="AEST">AEST (Australian Eastern Time)</option>
-                    <option value="UTC">UTC (Coordinated Universal Time)</option>
-                  </select>
-                </label>
-                <label className="col-span-2 text-xs text-[#9fb0b5]">Description
-                  <input name="description" defaultValue={editingEvent.description || ''} placeholder="Description" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
-                </label>
-              </div>
-              <div className="flex justify-end gap-2">
-                <button type="button" className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm" onClick={()=> setEditingEvent(null)}>Cancel</button>
-                <button type="submit" className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">Save Changes</button>
               </div>
             </form>
           </div>
         </div>
-      )}
+      ) : null}
+
+      {rsvpEvent ? (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 backdrop-blur" onClick={event => event.currentTarget === event.target && setRsvpEvent(null)}>
+          <div className="w-full max-w-xl rounded-t-[2rem] border border-white/10 bg-[#050606] p-5 sm:mb-4 sm:rounded-[2rem]">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-[#4db6ac]">RSVP</p>
+                <h2 className="text-xl font-semibold">{rsvpEvent.title}</h2>
+                <p className="mt-1 text-sm text-[#9fb0b5]">{formatDateRange(rsvpEvent)} • {formatTimeRange(rsvpEvent)}</p>
+              </div>
+              <button className="grid h-9 w-9 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setRsvpEvent(null)} aria-label="Close"><i className="fa-solid fa-xmark" /></button>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                ['going', 'Going', rsvpEvent.rsvp_counts?.going || 0],
+                ['maybe', 'Maybe', rsvpEvent.rsvp_counts?.maybe || 0],
+                ['not_going', 'Not going', rsvpEvent.rsvp_counts?.not_going || 0],
+              ] as const).map(([value, label, count]) => (
+                <button key={value} className={`rounded-2xl border px-3 py-4 text-sm transition ${rsvpEvent.user_rsvp === value ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca] hover:border-[#4db6ac]/45'}`} onClick={() => rsvp(rsvpEvent.id, value)}>
+                  <span className="block font-semibold">{label}</span>
+                  <span className="text-xs text-[#8fa3a8]">{count}</span>
+                </button>
+              ))}
+            </div>
+            {typeof rsvpEvent.rsvp_counts?.no_response === 'number' ? <p className="mt-4 text-center text-xs text-[#8fa3a8]">{rsvpEvent.rsvp_counts.no_response} no response yet</p> : null}
+          </div>
+        </div>
+      ) : null}
+
+      {editingEvent ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur" onClick={event => event.currentTarget === event.target && setEditingEvent(null)}>
+          <div className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-[2rem] border border-white/10 bg-[#050606] p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Edit event</h2>
+              <button className="grid h-9 w-9 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setEditingEvent(null)} aria-label="Close"><i className="fa-solid fa-xmark" /></button>
+            </div>
+            <form onSubmit={event => { event.preventDefault(); saveEditedEvent(new FormData(event.currentTarget)) }}>
+              <EventFormFields event={editingEvent} />
+              <div className="mt-5 flex justify-end gap-2">
+                <button type="button" className="rounded-full border border-white/10 px-5 py-2.5 text-sm hover:bg-white/5" onClick={() => setEditingEvent(null)}>Cancel</button>
+                <button type="submit" className="rounded-full bg-[#4db6ac] px-5 py-2.5 text-sm font-semibold text-black hover:brightness-110">Save changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
-
