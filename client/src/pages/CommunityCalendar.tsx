@@ -43,6 +43,9 @@ const TIMEZONE_OPTIONS = [
   ['UTC', 'UTC (Coordinated Universal Time)'],
 ] as const
 
+const INPUT_CLASS = 'mt-1 w-full rounded-xl border border-white/10 bg-black/70 px-3 py-2 text-[16px] text-white outline-none transition focus:border-[#4db6ac]/80 focus:ring-2 focus:ring-[#4db6ac]/20'
+const LABEL_CLASS = 'text-xs font-medium text-[#9fb0b5]'
+
 function isBlankTime(value?: string | null) {
   return !value || value === 'None' || value === '00:00' || value === '00:00:00' || value === '0000-00-00 00:00:00'
 }
@@ -163,6 +166,110 @@ function toUtcFormFields(formData: FormData) {
   }
 
   return params
+}
+
+function EventFormFields({ event }: { event?: EventItem }) {
+  return (
+    <div className="grid grid-cols-2 gap-2.5">
+      <label className={`col-span-2 ${LABEL_CLASS}`}>Title
+        <input name="title" defaultValue={event?.title || ''} className={INPUT_CLASS} required placeholder="Workout, meetup, webinar..." />
+      </label>
+      <label className={LABEL_CLASS}>Start date
+        <input name="date" type="date" defaultValue={event?.date || ''} className={INPUT_CLASS} required />
+      </label>
+      <label className={LABEL_CLASS}>End date
+        <input name="end_date" type="date" defaultValue={event?.end_date || ''} className={INPUT_CLASS} />
+      </label>
+      <label className={LABEL_CLASS}>Start time
+        <input name="start_time" type="time" defaultValue={normalizeTime(event?.start_time)} className={INPUT_CLASS} />
+      </label>
+      <label className={LABEL_CLASS}>End time
+        <input name="end_time" type="time" defaultValue={normalizeTime(event?.end_time)} className={INPUT_CLASS} />
+      </label>
+      <label className={`col-span-2 ${LABEL_CLASS}`}>Timezone
+        <select name="timezone" defaultValue={event?.timezone || 'UTC'} className={INPUT_CLASS} required>
+          <option value="">Select timezone</option>
+          {TIMEZONE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+      </label>
+      <label className={`col-span-2 ${LABEL_CLASS}`}>Description
+        <textarea name="description" defaultValue={event?.description || ''} rows={3} className={INPUT_CLASS} placeholder="Add context, location details, or agenda." />
+      </label>
+      {!event ? (
+        <label className={`col-span-2 ${LABEL_CLASS}`}>Reminders
+          <select name="notification_preferences" defaultValue="all" className={INPUT_CLASS}>
+            <option value="none">No reminders</option>
+            <option value="1_week">1 week before</option>
+            <option value="1_day">1 day before</option>
+            <option value="1_hour">1 hour before</option>
+            <option value="all">All reminders</option>
+          </select>
+          <span className="mt-2 block text-[11px] font-normal normal-case tracking-normal text-[#8fa3a8]">Reminders follow the event start time and each invitee's RSVP.</span>
+        </label>
+      ) : null}
+    </div>
+  )
+}
+
+type EventCardProps = {
+  event: EventItem
+  archived?: boolean
+  onOpen: (event: EventItem) => void
+  onRsvp: (eventId: number, response: RSVPResponse) => void
+  onShowDetails: (event: EventItem) => void
+  onEdit: (event: EventItem) => void
+  onDelete: (event: EventItem) => void
+}
+
+function EventCard({ event, archived = false, onOpen, onRsvp, onShowDetails, onEdit, onDelete }: EventCardProps) {
+  return (
+    <article className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] p-3 shadow-[0_12px_34px_rgba(0,0,0,0.32)] backdrop-blur-xl transition hover:border-[#4db6ac]/45 hover:bg-white/[0.065]">
+      <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[#4db6ac]/70 to-transparent" />
+      <button type="button" className="w-full text-left" onClick={() => onOpen(event)}>
+        <div className="flex items-start gap-2.5">
+          <div className="grid h-12 w-11 shrink-0 place-items-center rounded-xl border border-[#4db6ac]/35 bg-[#4db6ac]/10 text-center">
+            <div>
+              <div className="text-[9px] font-bold tracking-[0.16em] text-[#4db6ac]">{formatMonth(event.date)}</div>
+              <div className="text-lg font-semibold leading-tight text-white">{formatDay(event.date)}</div>
+            </div>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-[#8fa3a8]">
+              <span>{formatTimeRange(event)}</span>
+              {archived ? <span className="rounded-full border border-white/10 px-2 py-0.5 normal-case tracking-normal">Archived</span> : null}
+            </div>
+            <h3 className="mt-0.5 line-clamp-2 text-base font-semibold text-white">{event.title}</h3>
+            <p className="mt-0.5 text-xs text-[#b7c7ca]">{formatDateRange(event)}</p>
+            {event.description ? <p className="mt-2 line-clamp-2 text-xs leading-5 text-[#d7e1e3]/85">{event.description}</p> : null}
+          </div>
+        </div>
+      </button>
+      <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-[#b7c7ca]" onClick={clickEvent => clickEvent.stopPropagation()}>
+        <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'going' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => onRsvp(event.id, 'going')}>
+          Going {event.rsvp_counts?.going || 0}
+        </button>
+        <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'maybe' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => onRsvp(event.id, 'maybe')}>
+          Maybe {event.rsvp_counts?.maybe || 0}
+        </button>
+        <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'not_going' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => onRsvp(event.id, 'not_going')}>
+          Not going {event.rsvp_counts?.not_going || 0}
+        </button>
+        <button type="button" className="ml-auto rounded-full border border-white/10 px-2.5 py-1 hover:border-[#4db6ac]/45 hover:text-white" onClick={() => onShowDetails(event)}>
+          Details
+        </button>
+        {!archived ? (
+          <>
+            <button type="button" className="rounded-full border border-white/10 px-2.5 py-1 hover:border-[#4db6ac]/45 hover:text-white" onClick={() => onEdit(event)} aria-label="Edit event">
+              <i className="fa-regular fa-pen-to-square" />
+            </button>
+            <button type="button" className="rounded-full border border-red-400/45 px-2.5 py-1 text-red-200 hover:bg-red-500/10" onClick={() => onDelete(event)} aria-label="Delete event">
+              <i className="fa-regular fa-trash-can" />
+            </button>
+          </>
+        ) : null}
+      </div>
+    </article>
+  )
 }
 
 export default function CommunityCalendar() {
@@ -360,113 +467,13 @@ export default function CommunityCalendar() {
     } catch {}
   }
 
-  const inputClass = 'mt-1 w-full rounded-xl border border-white/10 bg-black/70 px-3 py-2 text-[16px] text-white outline-none transition focus:border-[#4db6ac]/80 focus:ring-2 focus:ring-[#4db6ac]/20'
-  const labelClass = 'text-xs font-medium text-[#9fb0b5]'
-
-  function EventCard({ event, archived = false }: { event: EventItem; archived?: boolean }) {
-    return (
-      <article className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] p-3 shadow-[0_12px_34px_rgba(0,0,0,0.32)] backdrop-blur-xl transition hover:border-[#4db6ac]/45 hover:bg-white/[0.065]">
-        <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[#4db6ac]/70 to-transparent" />
-        <button type="button" className="w-full text-left" onClick={() => navigate(`/event/${event.id}`)}>
-          <div className="flex items-start gap-2.5">
-            <div className="grid h-12 w-11 shrink-0 place-items-center rounded-xl border border-[#4db6ac]/35 bg-[#4db6ac]/10 text-center">
-              <div>
-                <div className="text-[9px] font-bold tracking-[0.16em] text-[#4db6ac]">{formatMonth(event.date)}</div>
-                <div className="text-lg font-semibold leading-tight text-white">{formatDay(event.date)}</div>
-              </div>
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-[#8fa3a8]">
-                <span>{formatTimeRange(event)}</span>
-                {archived ? <span className="rounded-full border border-white/10 px-2 py-0.5 normal-case tracking-normal">Archived</span> : null}
-              </div>
-              <h3 className="mt-0.5 line-clamp-2 text-base font-semibold text-white">{event.title}</h3>
-              <p className="mt-0.5 text-xs text-[#b7c7ca]">{formatDateRange(event)}</p>
-              {event.description ? <p className="mt-2 line-clamp-2 text-xs leading-5 text-[#d7e1e3]/85">{event.description}</p> : null}
-            </div>
-          </div>
-        </button>
-        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-[#b7c7ca]" onClick={event => event.stopPropagation()}>
-          <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'going' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => rsvp(event.id, 'going')}>
-            Going {event.rsvp_counts?.going || 0}
-          </button>
-          <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'maybe' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => rsvp(event.id, 'maybe')}>
-            Maybe {event.rsvp_counts?.maybe || 0}
-          </button>
-          <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'not_going' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => rsvp(event.id, 'not_going')}>
-            Not going {event.rsvp_counts?.not_going || 0}
-          </button>
-          <button type="button" className="ml-auto rounded-full border border-white/10 px-2.5 py-1 hover:border-[#4db6ac]/45 hover:text-white" onClick={() => setRsvpEvent(event)}>
-            Details
-          </button>
-          {!archived ? (
-            <>
-              <button type="button" className="rounded-full border border-white/10 px-2.5 py-1 hover:border-[#4db6ac]/45 hover:text-white" onClick={() => setEditingEvent(event)} aria-label="Edit event">
-                <i className="fa-regular fa-pen-to-square" />
-              </button>
-              <button type="button" className="rounded-full border border-red-400/45 px-2.5 py-1 text-red-200 hover:bg-red-500/10" onClick={() => deleteEvent(event)} aria-label="Delete event">
-                <i className="fa-regular fa-trash-can" />
-              </button>
-            </>
-          ) : null}
-        </div>
-      </article>
-    )
-  }
-
-  function EventFormFields({ event }: { event?: EventItem }) {
-    return (
-      <div className="grid grid-cols-2 gap-2.5">
-        <label className={`col-span-2 ${labelClass}`}>Title
-          <input name="title" defaultValue={event?.title || ''} className={inputClass} required placeholder="Workout, meetup, webinar..." />
-        </label>
-        <label className={labelClass}>Start date
-          <input name="date" type="date" defaultValue={event?.date || ''} className={inputClass} required />
-        </label>
-        <label className={labelClass}>End date
-          <input name="end_date" type="date" defaultValue={event?.end_date || ''} className={inputClass} />
-        </label>
-        <label className={labelClass}>Start time
-          <input name="start_time" type="time" defaultValue={normalizeTime(event?.start_time)} className={inputClass} />
-        </label>
-        <label className={labelClass}>End time
-          <input name="end_time" type="time" defaultValue={normalizeTime(event?.end_time)} className={inputClass} />
-        </label>
-        <label className={`col-span-2 ${labelClass}`}>Timezone
-          <select name="timezone" defaultValue={event?.timezone || 'UTC'} className={inputClass} required>
-            <option value="">Select timezone</option>
-            {TIMEZONE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-        </label>
-        <label className={`col-span-2 ${labelClass}`}>Description
-          <textarea name="description" defaultValue={event?.description || ''} rows={3} className={inputClass} placeholder="Add context, location details, or agenda." />
-        </label>
-        {!event ? (
-          <label className={`col-span-2 ${labelClass}`}>Reminders
-            <select name="notification_preferences" defaultValue="all" className={inputClass}>
-              <option value="none">No reminders</option>
-              <option value="1_week">1 week before</option>
-              <option value="1_day">1 day before</option>
-              <option value="1_hour">1 hour before</option>
-              <option value="all">All reminders</option>
-            </select>
-            <span className="mt-2 block text-[11px] font-normal normal-case tracking-normal text-[#8fa3a8]">Reminders follow the event start time and each invitee's RSVP.</span>
-          </label>
-        ) : null}
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(77,182,172,0.22),transparent_34%),radial-gradient(circle_at_15%_20%,rgba(77,182,172,0.10),transparent_28%)]" />
       <div
         ref={scrollRef}
-        className="relative mx-auto max-w-3xl px-3 pb-40"
-        style={{
-          WebkitOverflowScrolling: 'touch' as any,
-          paddingTop: 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) - 14px)',
-        } as CSSProperties}
+        className="relative mx-auto max-w-3xl px-3 pt-2 pb-40"
+        style={{ WebkitOverflowScrolling: 'touch' as any } as CSSProperties}
       >
         <header className="mb-0 flex items-center">
           <button className="rounded-full p-2 text-[#cfe7e4] hover:bg-white/5" onClick={() => navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label="Back">
@@ -523,7 +530,18 @@ export default function CommunityCalendar() {
               {activeTab !== 'archive' ? <button className="mt-4 rounded-full bg-[#4db6ac] px-4 py-1.5 text-xs font-semibold text-black" onClick={() => setCreateOpen(true)}>Create event</button> : null}
             </div>
           ) : (
-            visibleEvents.map(event => <EventCard key={event.id} event={event} archived={activeTab === 'archive'} />)
+            visibleEvents.map(event => (
+              <EventCard
+                key={event.id}
+                event={event}
+                archived={activeTab === 'archive'}
+                onOpen={item => navigate(`/event/${item.id}`)}
+                onRsvp={rsvp}
+                onShowDetails={setRsvpEvent}
+                onEdit={setEditingEvent}
+                onDelete={deleteEvent}
+              />
+            ))
           )}
         </main>
       </div>
