@@ -425,11 +425,11 @@ export default function Members(){
       {/* Invite Modal */}
       {showInviteModal && (
         <div
-          className="fixed inset-0 z-[9990] flex items-end justify-center bg-black/85 px-3 pb-3 pt-16 backdrop-blur-md sm:items-center sm:p-4"
+          className="fixed inset-0 z-[9990] flex items-start justify-center bg-black/85 px-3 pb-6 pt-[calc(env(safe-area-inset-top,0px)+12px)] backdrop-blur-md sm:items-start sm:p-4"
           onClick={(e) => { if (e.target === e.currentTarget && !inviteLoading) handleCloseInviteModal() }}
         >
           <div
-            className="flex max-h-[calc(100dvh-32px)] w-full max-w-md flex-col overflow-hidden rounded-t-[28px] border border-white/10 bg-[#080808] shadow-2xl shadow-black/60 sm:max-h-[86dvh] sm:rounded-[28px]"
+            className="flex max-h-[calc(100dvh-32px)] w-full max-w-md flex-col overflow-hidden rounded-b-[28px] border border-white/10 bg-[#080808] shadow-2xl shadow-black/60 sm:max-h-[86dvh] sm:rounded-[28px]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">

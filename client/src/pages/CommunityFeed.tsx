@@ -101,6 +101,8 @@ const COMMUNITY_FEED_CACHE_VERSION = 'community-feed-v3'
 /** Matches PostDetail `post-detail-v1` for feed → post navigation hydrate */
 const POST_DETAIL_CACHE_VERSION = 'post-detail-v1'
 const POST_DETAIL_CACHE_TTL_MS = 3 * 60 * 1000
+const STORY_UPLOAD_MAX_FILES = 10
+const STORY_UPLOAD_MAX_FILE_BYTES = 100 * 1024 * 1024
 
 function normalizeMediaPath(p?: string | null){
   if (!p) return ''
@@ -1158,11 +1160,27 @@ export default function CommunityFeed() {
     
     // Convert FileList to array and create preview data
     const validFiles: StoryEditorFile[] = []
-    Array.from(files).forEach(file => {
+    const rejectedFiles: string[] = []
+    const existingCount = storyEditorOpen ? storyEditorFiles.length : 0
+    const availableSlots = Math.max(0, STORY_UPLOAD_MAX_FILES - existingCount)
+    if (availableSlots <= 0) {
+      alert(`Stories can include up to ${STORY_UPLOAD_MAX_FILES} slides.`)
+      event.target.value = ''
+      return
+    }
+
+    Array.from(files).slice(0, availableSlots).forEach(file => {
       const ext = file.name.split('.').pop()?.toLowerCase() || ''
       const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)
       const isVideo = ['mp4', 'mov', 'webm', 'avi'].includes(ext)
-      if (!isImage && !isVideo) return
+      if (!isImage && !isVideo) {
+        rejectedFiles.push(`${file.name}: unsupported format`)
+        return
+      }
+      if (file.size > STORY_UPLOAD_MAX_FILE_BYTES) {
+        rejectedFiles.push(`${file.name}: over 100MB`)
+        return
+      }
       
       validFiles.push({
         file,
@@ -1173,11 +1191,17 @@ export default function CommunityFeed() {
         locationData: null,
       })
     })
+    if (files.length > availableSlots) {
+      rejectedFiles.push(`Only the first ${availableSlots} selected file${availableSlots === 1 ? '' : 's'} were added.`)
+    }
     
     if (validFiles.length === 0) {
-      alert('No valid media files selected')
+      alert(rejectedFiles.length ? rejectedFiles.join('\n') : 'No valid media files selected')
       event.target.value = ''
       return
+    }
+    if (rejectedFiles.length) {
+      alert(rejectedFiles.join('\n'))
     }
     
     // If editor is already open, append to existing files
@@ -1219,10 +1243,12 @@ export default function CommunityFeed() {
       setKeyboardHeight(0)
     }
 
-    Keyboard.addListener('keyboardWillShow', handleKeyboardShow)
-    Keyboard.addListener('keyboardDidShow', handleKeyboardShow)
-    Keyboard.addListener('keyboardWillHide', handleKeyboardHide)
-    Keyboard.addListener('keyboardDidHide', handleKeyboardHide)
+    const keyboardListeners = [
+      Keyboard.addListener('keyboardWillShow', handleKeyboardShow),
+      Keyboard.addListener('keyboardDidShow', handleKeyboardShow),
+      Keyboard.addListener('keyboardWillHide', handleKeyboardHide),
+      Keyboard.addListener('keyboardDidHide', handleKeyboardHide),
+    ]
 
     // VisualViewport fallback for web/iOS Safari
     const vv = window.visualViewport
@@ -1239,7 +1265,9 @@ export default function CommunityFeed() {
     }
 
     return () => {
-      Keyboard.removeAllListeners()
+      keyboardListeners.forEach(listenerPromise => {
+        listenerPromise.then(listener => listener.remove()).catch(() => {})
+      })
       vpCleanup?.()
     }
   }, [storyEditorOpen, activeStoryPointer])
@@ -2584,17 +2612,18 @@ export default function CommunityFeed() {
             </div>
           ) : null}
           {/* Stories panel - below community header image */}
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2.5 mb-3">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.025] px-3 py-2.5 mb-3 shadow-lg shadow-black/20">
             <div className="flex gap-4 overflow-x-auto no-scrollbar">
               <button
-                className="flex flex-col items-center gap-1 min-w-[60px] text-white/80"
+                className="flex flex-col items-center gap-1 min-w-[60px] text-white/80 transition hover:text-[#4db6ac] disabled:opacity-50"
                 onClick={handleStoryUploadClick}
                 disabled={storyUploading || !community_id}
+                aria-label="Add story"
               >
-                <span className="w-14 h-14 rounded-full border-[3px] border-dashed border-white/25 flex items-center justify-center">
+                <span className="w-14 h-14 rounded-full border-[3px] border-dashed border-[#4db6ac]/50 bg-[#4db6ac]/10 flex items-center justify-center">
                   <i className="fa-solid fa-plus text-base" />
                 </span>
-                <span className="text-[11px] text-[#9fb0b5]">{storyUploading ? '...' : 'Add'}</span>
+                <span className="text-[11px] text-[#9fb0b5]">{storyUploading ? 'Posting...' : 'Your story'}</span>
               </button>
               {storiesLoading && storyGroups.length === 0 ? (
                 <div className="text-[10px] text-[#9fb0b5] flex items-center">Loading...</div>
@@ -3251,7 +3280,7 @@ export default function CommunityFeed() {
       {/* Story Editor Modal */}
       {storyEditorOpen && storyEditorFiles.length > 0 && (
         <div 
-          className="fixed left-0 right-0 z-[1100] bg-black" 
+          className="fixed left-0 right-0 z-[1100] bg-[#050505]" 
           style={{ 
             top: 'var(--app-header-height, 56px)', 
             bottom: 0,
@@ -3262,42 +3291,51 @@ export default function CommunityFeed() {
         >
           {/* Header - compact and black */}
           <div 
-            className="w-full bg-black px-4 py-3 flex items-center justify-between flex-shrink-0 border-b border-white/10"
+            className="w-full bg-black/95 px-4 py-3 flex items-center justify-between flex-shrink-0 border-b border-white/10 backdrop-blur"
           >
             <button
               onClick={handleStoryEditorClose}
-              className="text-white font-medium text-sm"
+              className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-white/85 font-medium text-sm hover:border-[#4db6ac]/50 hover:text-[#4db6ac]"
             >
               Cancel
             </button>
-            {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
+            <div className="min-w-0 px-3 text-center">
+              <div className="text-sm font-semibold text-white">New story</div>
+              <div className="text-[11px] text-white/45">
+                Slide {storyEditorActiveIndex + 1} of {storyEditorFiles.length}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
+                <button
+                  type="button"
+                  onClick={fetchDeviceLocation}
+                  disabled={locationLoading}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.06] border border-white/10 text-white/90 hover:border-[#4db6ac]/50 hover:text-[#4db6ac] text-xs disabled:opacity-50"
+                  aria-label="Add current location"
+                >
+                  {locationLoading ? (
+                    <i className="fa-solid fa-spinner fa-spin text-sm" />
+                  ) : (
+                    <i className="fa-solid fa-location-dot text-sm" />
+                  )}
+                </button>
+              )}
               <button
-                type="button"
-                onClick={fetchDeviceLocation}
-                disabled={locationLoading}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white/90 hover:bg-white/15 text-xs disabled:opacity-50"
+                onClick={handleStoryEditorPublish}
+                disabled={storyUploading}
+                className="px-4 py-2 rounded-full bg-[#4db6ac] text-black font-semibold text-sm hover:brightness-110 disabled:opacity-50"
               >
-                {locationLoading ? (
-                  <i className="fa-solid fa-spinner fa-spin text-sm" />
-                ) : (
-                  <i className="fa-solid fa-location-dot text-sm" />
-                )}
+                {storyUploading ? 'Posting...' : 'Share'}
               </button>
-            )}
-            <button
-              onClick={handleStoryEditorPublish}
-              disabled={storyUploading}
-              className="px-4 py-1.5 rounded-xl bg-[#4db6ac] text-black font-semibold text-sm hover:brightness-110 disabled:opacity-50"
-            >
-              {storyUploading ? 'Posting...' : 'Share'}
-            </button>
+            </div>
           </div>
           
           {/* Media preview with overlays */}
           <div className="flex items-center justify-center overflow-hidden px-6" style={{ flex: '1 1 0%', minHeight: 0, pointerEvents: 'none', paddingTop: '24px', paddingBottom: keyboardHeight ? '20px' : (storyEditorFiles.length > 1 ? '195px' : '120px') }}>
             <div 
               ref={storyEditorMediaRef}
-              className="relative aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
+              className="relative aspect-[9/16] bg-black/50 rounded-[28px] overflow-hidden border border-white/10 shadow-2xl shadow-black/60"
               style={{ 
                 touchAction: storyEditorDragging ? 'none' : 'auto', 
                 pointerEvents: 'auto',
@@ -3390,14 +3428,14 @@ export default function CommunityFeed() {
           )}
           
           {/* Tools panel */}
-          <div className="px-4 border-t border-white/10 space-y-3 absolute left-0 right-0 bg-black" style={{ bottom: keyboardHeight ? `${keyboardHeight}px` : '0', zIndex: 9999, paddingTop: '16px', paddingBottom: keyboardHeight ? '8px' : 'max(16px, env(safe-area-inset-bottom, 0px))', pointerEvents: 'auto' }}>
+          <div className="px-4 border-t border-white/10 space-y-3 absolute left-0 right-0 bg-black/95 backdrop-blur" style={{ bottom: keyboardHeight ? `${keyboardHeight}px` : '0', zIndex: 9999, paddingTop: '16px', paddingBottom: keyboardHeight ? '8px' : 'max(16px, env(safe-area-inset-bottom, 0px))', pointerEvents: 'auto' }}>
             <input
               type="text"
               value={storyEditorDescription}
               onChange={(e) => setStoryEditorDescription(e.target.value)}
               placeholder="Add a description for your story..."
               maxLength={2000}
-              className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50"
+              className="w-full px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50"
             />
             <input
               type="text"
@@ -3405,7 +3443,7 @@ export default function CommunityFeed() {
               onChange={(e) => updateActiveStoryEditorFile({ caption: e.target.value })}
               placeholder={storyEditorFiles.length > 1 ? `Caption for slide ${storyEditorActiveIndex + 1}...` : 'Add a caption...'}
               maxLength={500}
-              className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50"
+              className="w-full px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50"
             />
             {storyEditorFiles[storyEditorActiveIndex]?.locationData && (
               <p className="text-xs text-white/40 text-center">
