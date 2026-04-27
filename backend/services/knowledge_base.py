@@ -28,7 +28,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 
@@ -226,6 +226,56 @@ def _compute_field_diff(old_fields: List[Dict], new_fields: List[Dict]) -> List[
                 "tbd_to": new_tbd,
             })
     return diffs
+
+
+def _merge_missing_seed_fields(
+    existing_fields: List[Dict[str, Any]],
+    seed_fields: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Append seed field definitions that are absent from an edited KB page.
+
+    Admin-authored values are preserved exactly. This is intentionally a
+    definition merge, not a value sync: if a field already exists, its current
+    label/help/value/tbd metadata remains the source of truth.
+    """
+    existing = list(existing_fields or [])
+    existing_names = {
+        str(field.get("name") or "").strip()
+        for field in existing
+        if str(field.get("name") or "").strip()
+    }
+    missing: List[Dict[str, Any]] = []
+    for seed_field in seed_fields or []:
+        name = str(seed_field.get("name") or "").strip()
+        if not name or name in existing_names:
+            continue
+        field_copy = json.loads(json.dumps(seed_field))
+        missing.append(field_copy)
+        existing.append(field_copy)
+        existing_names.add(name)
+    return existing, missing
+
+
+def _merge_missing_seed_field_groups(
+    existing_groups: List[Dict[str, Any]],
+    seed_groups: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    existing = list(existing_groups or [])
+    existing_ids = {
+        str(group.get("id") or "").strip()
+        for group in existing
+        if str(group.get("id") or "").strip()
+    }
+    missing: List[Dict[str, Any]] = []
+    for seed_group in seed_groups or []:
+        group_id = str(seed_group.get("id") or "").strip()
+        if not group_id or group_id in existing_ids:
+            continue
+        group_copy = json.loads(json.dumps(seed_group))
+        missing.append(group_copy)
+        existing.append(group_copy)
+        existing_ids.add(group_id)
+    return existing, missing
 
 
 def save_page(
@@ -2029,7 +2079,9 @@ def seed_default_pages(
         latest seed content, preserving the existing version number
         (counted as auto_upgraded). Admin has not yet edited, so safe to
         replace.
-      * Page exists and has been edited         → SKIP, unless force=True.
+      * Page exists and has been edited         → MERGE missing seed fields
+        only, preserving existing admin-authored values/body; if nothing is
+        missing, skip. Use force=True to overwrite.
       * force=True                              → overwrite regardless.
 
     Targeted re-seed:
@@ -2054,6 +2106,8 @@ def seed_default_pages(
                 "inserted": 0,
                 "auto_upgraded": 0,
                 "force_updated": 0,
+                "merged_fields": 0,
+                "merged_pages": 0,
                 "skipped": 0,
                 "total_seeds": 0,
             }
@@ -2061,13 +2115,15 @@ def seed_default_pages(
     inserted = 0
     auto_upgraded = 0
     force_updated = 0
+    merged_fields = 0
+    merged_pages = 0
     skipped = 0
 
     with get_db_connection() as conn:
         c = conn.cursor()
         for seed in seeds:
             c.execute(
-                f"SELECT version, updated_by FROM kb_pages WHERE slug = {ph}",
+                f"SELECT version, updated_by, fields_json, field_groups_json FROM kb_pages WHERE slug = {ph}",
                 (seed["slug"],),
             )
             row = c.fetchone()
@@ -2099,11 +2155,80 @@ def seed_default_pages(
             # Row exists — decide whether to overwrite.
             existing_version = row["version"] if hasattr(row, "keys") else row[0]
             existing_updated_by = row["updated_by"] if hasattr(row, "keys") else row[1]
+            existing_fields_raw = row["fields_json"] if hasattr(row, "keys") else row[2]
+            existing_groups_raw = row["field_groups_json"] if hasattr(row, "keys") else row[3]
             is_untouched = (int(existing_version or 1) == 1
                             and (existing_updated_by or "").strip().lower() == "system-seed")
 
             if not force and not is_untouched:
-                skipped += 1
+                existing_fields = _parse_json(existing_fields_raw, [])
+                existing_groups = _parse_json(existing_groups_raw, [])
+                merged, missing = _merge_missing_seed_fields(
+                    existing_fields,
+                    seed.get("fields") or [],
+                )
+                merged_groups, missing_groups = _merge_missing_seed_field_groups(
+                    existing_groups,
+                    seed.get("field_groups") or [],
+                )
+                if not missing and not missing_groups:
+                    skipped += 1
+                    continue
+                new_version = int(existing_version or 1) + 1
+                c.execute(
+                    f"""
+                    UPDATE kb_pages SET
+                        fields_json = {ph}, field_groups_json = {ph},
+                        version = {ph},
+                        updated_by = {ph}, updated_at = {ph}
+                    WHERE slug = {ph}
+                    """,
+                    (
+                        json.dumps(merged),
+                        json.dumps(merged_groups),
+                        new_version,
+                        "system-seed",
+                        now,
+                        seed["slug"],
+                    ),
+                )
+                c.execute(
+                    f"""
+                    INSERT INTO kb_changelog
+                        (page_slug, version_from, version_to, changed_fields_json,
+                         reason, actor_username, created_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                    """,
+                    (
+                        seed["slug"],
+                        existing_version,
+                        new_version,
+                        json.dumps({
+                            "fields": [
+                                {
+                                    "name": field.get("name"),
+                                    "label": field.get("label") or field.get("name"),
+                                    "from": None,
+                                    "to": field.get("value"),
+                                    "tbd_from": False,
+                                    "tbd_to": bool(field.get("tbd")),
+                                }
+                                for field in missing
+                            ],
+                            "field_groups_added": [
+                                group.get("id")
+                                for group in missing_groups
+                                if group.get("id")
+                            ],
+                            "body_changed": False,
+                        }),
+                        "Auto-merge missing KB seed fields after deploy",
+                        "system-seed",
+                        now,
+                    ),
+                )
+                merged_fields += len(missing)
+                merged_pages += 1
                 continue
 
             # Auto-upgrades of untouched rows keep the system-seed signature
@@ -2146,6 +2271,8 @@ def seed_default_pages(
         "inserted": inserted,
         "auto_upgraded": auto_upgraded,
         "force_updated": force_updated,
+        "merged_fields": merged_fields,
+        "merged_pages": merged_pages,
         "skipped": skipped,
         "total_seeds": len(seeds),
     }
