@@ -360,8 +360,8 @@ export default function CommunityCalendar() {
     } catch {}
   }
 
-  const inputClass = 'mt-1 w-full rounded-2xl border border-white/10 bg-black/70 px-4 py-3 text-[16px] text-white outline-none transition focus:border-[#4db6ac]/80 focus:ring-2 focus:ring-[#4db6ac]/20'
-  const labelClass = 'text-xs font-medium uppercase tracking-[0.18em] text-[#8fa3a8]'
+  const inputClass = 'mt-1 w-full rounded-xl border border-white/10 bg-black/70 px-3 py-2 text-[16px] text-white outline-none transition focus:border-[#4db6ac]/80 focus:ring-2 focus:ring-[#4db6ac]/20'
+  const labelClass = 'text-xs font-medium text-[#9fb0b5]'
 
   function EventCard({ event, archived = false }: { event: EventItem; archived?: boolean }) {
     return (
@@ -416,7 +416,7 @@ export default function CommunityCalendar() {
 
   function EventFormFields({ event }: { event?: EventItem }) {
     return (
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2.5">
         <label className={`col-span-2 ${labelClass}`}>Title
           <input name="title" defaultValue={event?.title || ''} className={inputClass} required placeholder="Workout, meetup, webinar..." />
         </label>
@@ -439,7 +439,7 @@ export default function CommunityCalendar() {
           </select>
         </label>
         <label className={`col-span-2 ${labelClass}`}>Description
-          <textarea name="description" defaultValue={event?.description || ''} rows={4} className={inputClass} placeholder="Add context, location details, or agenda." />
+          <textarea name="description" defaultValue={event?.description || ''} rows={3} className={inputClass} placeholder="Add context, location details, or agenda." />
         </label>
         {!event ? (
           <label className={`col-span-2 ${labelClass}`}>Reminders
@@ -465,25 +465,23 @@ export default function CommunityCalendar() {
         className="relative mx-auto max-w-3xl px-3 pb-28"
         style={{
           WebkitOverflowScrolling: 'touch' as any,
-          paddingTop: 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + 2px)',
+          paddingTop: 'var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px)))',
         } as CSSProperties}
       >
-        <header className="mb-2 flex items-center gap-2">
+        <header className="mb-1 flex items-center gap-2">
           <button className="rounded-full p-2 text-[#cfe7e4] hover:bg-white/5" onClick={() => navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
           </button>
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-lg font-semibold">Calendar</h1>
-            <p className="text-[11px] text-[#8fa3a8]">{events.length} upcoming event{events.length === 1 ? '' : 's'}</p>
-          </div>
-          <button className="rounded-full bg-[#4db6ac] px-3 py-1.5 text-xs font-semibold text-black shadow-[0_0_18px_rgba(77,182,172,0.28)] hover:brightness-110" onClick={() => setCreateOpen(true)}>
-            New event
+          <div className="flex-1" />
+          <button className="inline-flex items-center gap-2 rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_22px_rgba(77,182,172,0.35)] hover:brightness-110" onClick={() => setCreateOpen(true)}>
+            <i className="fa-solid fa-plus text-xs" />
+            <span>New event</span>
           </button>
         </header>
 
         {successMsg ? <div className="mb-2 rounded-xl border border-[#4db6ac]/25 bg-[#4db6ac]/10 px-3 py-2 text-xs text-[#9ff8ef]">{successMsg}</div> : null}
 
-        <section className="mb-3 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] p-3 shadow-[0_14px_46px_rgba(0,0,0,0.36)] backdrop-blur-xl">
+        <section className="mb-2.5 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] p-3 shadow-[0_14px_46px_rgba(0,0,0,0.36)] backdrop-blur-xl">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-[0.18em] text-[#8fa3a8]">Next up</p>
@@ -492,8 +490,6 @@ export default function CommunityCalendar() {
             </div>
             <div className="shrink-0 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 px-2.5 py-1.5 text-right">
               <div className="text-[11px] text-[#8ff4e9]">{nextEvent ? getCountdownLabel(nextEvent) : 'Ready'}</div>
-              <div className="text-lg font-semibold leading-tight text-white">{events.length}</div>
-              <div className="text-[9px] uppercase tracking-[0.14em] text-[#8fa3a8]">Upcoming</div>
             </div>
           </div>
           {nextEvent ? (
@@ -569,39 +565,39 @@ export default function CommunityCalendar() {
 
       {createOpen ? (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 backdrop-blur" onClick={event => event.currentTarget === event.target && setCreateOpen(false)}>
-          <div className="max-h-[88dvh] w-full max-w-2xl overflow-y-auto rounded-t-3xl border border-white/10 bg-[#050606] p-4 shadow-2xl sm:mb-4 sm:rounded-3xl">
-            <div className="mb-3 flex items-center justify-between">
+          <div className="max-h-[86dvh] w-full max-w-2xl overflow-y-auto rounded-t-2xl border border-white/10 bg-[#050606] p-3.5 shadow-2xl sm:mb-4 sm:rounded-2xl">
+            <div className="mb-2.5 flex items-center justify-between">
               <div>
-                <p className="text-[10px] uppercase tracking-[0.2em] text-[#4db6ac]">Step {createStep === 'details' ? '1' : '2'} of 2</p>
-                <h2 className="text-lg font-semibold">Create event</h2>
+                <h2 className="text-base font-semibold">Create event</h2>
+                <p className="mt-0.5 text-xs text-[#8fa3a8]">Step {createStep === 'details' ? '1' : '2'} of 2</p>
               </div>
               <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setCreateOpen(false)} aria-label="Close"><i className="fa-solid fa-xmark" /></button>
             </div>
             <form ref={createFormRef} onSubmit={event => { event.preventDefault(); createEvent(new FormData(event.currentTarget)) }}>
               <div className={createStep === 'details' ? 'block' : 'hidden'}>
                 <EventFormFields />
-                <div className="mt-4 flex justify-end">
+                <div className="mt-3 flex justify-end">
                   <button type="button" className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110" onClick={() => setCreateStep('invite')}>Continue</button>
                 </div>
               </div>
               <div className={createStep === 'invite' ? 'block' : 'hidden'}>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                  <div className="flex gap-2">
-                    <button type="button" className={`flex-1 rounded-xl border px-3 py-2 text-sm ${inviteAll ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca]'}`} onClick={() => setInviteAll(true)}>Invite all</button>
-                    <button type="button" className={`flex-1 rounded-xl border px-3 py-2 text-sm ${!inviteAll ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca]'}`} onClick={() => setInviteAll(false)}>Choose members</button>
+                <div className="rounded-xl border border-white/10 bg-white/[0.035] p-2.5">
+                  <div className="flex gap-1.5">
+                    <button type="button" className={`flex-1 rounded-lg border px-3 py-2 text-sm ${inviteAll ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca]'}`} onClick={() => setInviteAll(true)}>Invite all</button>
+                    <button type="button" className={`flex-1 rounded-lg border px-3 py-2 text-sm ${!inviteAll ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca]'}`} onClick={() => setInviteAll(false)}>Choose members</button>
                   </div>
                   {!inviteAll ? (
-                    <div className="mt-3 max-h-56 space-y-1 overflow-y-auto pr-1">
+                    <div className="mt-2.5 max-h-52 space-y-1 overflow-y-auto pr-1">
                       {members.length === 0 ? <div className="text-sm text-[#9fb0b5]">No members found.</div> : members.map(member => (
-                        <label key={member.username} className="flex cursor-pointer items-center justify-between rounded-xl px-3 py-2 hover:bg-white/5">
+                        <label key={member.username} className="flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 hover:bg-white/5">
                           <span className="text-sm">{member.username}</span>
                           <input type="checkbox" checked={!!selectedMembers[member.username]} onChange={() => setSelectedMembers(current => ({ ...current, [member.username]: !current[member.username] }))} className="h-5 w-5 accent-[#4db6ac]" />
                         </label>
                       ))}
                     </div>
-                  ) : <p className="mt-3 text-sm text-[#9fb0b5]">Every current member will receive the invite.</p>}
+                  ) : <p className="mt-2.5 text-sm text-[#9fb0b5]">Every current member will receive the invite.</p>}
                 </div>
-                <div className="mt-4 flex items-center justify-between gap-3">
+                <div className="mt-3 flex items-center justify-between gap-3">
                   <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm hover:bg-white/5" onClick={() => setCreateStep('details')}>Back</button>
                   <button type="submit" className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110">
                     Create {inviteAll ? 'for everyone' : selectedCount ? `for ${selectedCount}` : 'event'}
@@ -615,11 +611,11 @@ export default function CommunityCalendar() {
 
       {rsvpEvent ? (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 backdrop-blur" onClick={event => event.currentTarget === event.target && setRsvpEvent(null)}>
-          <div className="w-full max-w-xl rounded-t-3xl border border-white/10 bg-[#050606] p-4 sm:mb-4 sm:rounded-3xl">
+          <div className="w-full max-w-xl rounded-t-2xl border border-white/10 bg-[#050606] p-3.5 sm:mb-4 sm:rounded-2xl">
             <div className="mb-3 flex items-start justify-between gap-4">
               <div>
-                <p className="text-[10px] uppercase tracking-[0.2em] text-[#4db6ac]">RSVP</p>
-                <h2 className="text-lg font-semibold">{rsvpEvent.title}</h2>
+                <p className="text-xs font-medium text-[#4db6ac]">RSVP</p>
+                <h2 className="text-base font-semibold">{rsvpEvent.title}</h2>
                 <p className="mt-1 text-xs text-[#9fb0b5]">{formatDateRange(rsvpEvent)} • {formatTimeRange(rsvpEvent)}</p>
               </div>
               <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setRsvpEvent(null)} aria-label="Close"><i className="fa-solid fa-xmark" /></button>
@@ -643,14 +639,14 @@ export default function CommunityCalendar() {
 
       {editingEvent ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur" onClick={event => event.currentTarget === event.target && setEditingEvent(null)}>
-          <div className="max-h-[88dvh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-white/10 bg-[#050606] p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Edit event</h2>
+          <div className="max-h-[86dvh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/10 bg-[#050606] p-3.5">
+            <div className="mb-2.5 flex items-center justify-between">
+              <h2 className="text-base font-semibold">Edit event</h2>
               <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setEditingEvent(null)} aria-label="Close"><i className="fa-solid fa-xmark" /></button>
             </div>
             <form onSubmit={event => { event.preventDefault(); saveEditedEvent(new FormData(event.currentTarget)) }}>
               <EventFormFields event={editingEvent} />
-              <div className="mt-4 flex justify-end gap-2">
+              <div className="mt-3 flex justify-end gap-2">
                 <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm hover:bg-white/5" onClick={() => setEditingEvent(null)}>Cancel</button>
                 <button type="submit" className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110">Save changes</button>
               </div>
