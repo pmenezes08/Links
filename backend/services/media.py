@@ -156,7 +156,14 @@ def _uploads_root() -> str:
     return upload_folder
 
 
-def save_uploaded_file(file, subfolder: Optional[str] = None, allowed_extensions: Optional[Iterable[str]] = None):
+def save_uploaded_file(
+    file,
+    subfolder: Optional[str] = None,
+    allowed_extensions: Optional[Iterable[str]] = None,
+    optimize_profile: Optional[str] = None,
+    transcode_video: bool = False,
+    return_file_info: bool = False,
+):
     """
     Persist an uploaded file - saves locally, optimizes, then uploads to R2 CDN.
     
@@ -233,12 +240,34 @@ def save_uploaded_file(file, subfolder: Optional[str] = None, allowed_extensions
 
     file.save(filepath)
     
-    # Step 2: Fix EXIF orientation for iOS photos (minimal processing to preserve quality)
+    # Step 2: Optimize media when a caller opts into a profile.
     try:
         file_ext = (os.path.splitext(filename)[1] or "").lower().lstrip(".")
         if file_ext in {"png", "jpg", "jpeg", "webp"}:
-            # Only fix orientation, don't resize or compress - preserves original quality
-            optimize_image(filepath, fix_orientation_only=True)
+            if optimize_profile:
+                from backend.services import media_processing
+
+                media_processing.optimize_image_file(filepath, optimize_profile)
+            else:
+                # Only fix orientation, don't resize or compress - preserves original quality
+                optimize_image(filepath, fix_orientation_only=True)
+        elif transcode_video and file_ext in {"mp4", "mov", "m4v", "webm", "avi"}:
+            from backend.services import media_processing
+
+            optimized_path = media_processing.transcode_video_file(filepath, optimize_profile or "feed")
+            if optimized_path:
+                try:
+                    os.remove(filepath)
+                except Exception:
+                    pass
+                filepath = optimized_path
+                unique_filename = os.path.basename(filepath)
+                if subfolder:
+                    r2_key = f"{subfolder}/{unique_filename}"
+                    return_path = f"uploads/{subfolder}/{unique_filename}"
+                else:
+                    r2_key = unique_filename
+                    return_path = f"uploads/{unique_filename}"
     except Exception:
         pass
 
@@ -256,7 +285,19 @@ def save_uploaded_file(file, subfolder: Optional[str] = None, allowed_extensions
             r2_url = None
 
     # Return R2 URL if available, otherwise local path
-    return r2_url if r2_url else return_path
+    saved_path = r2_url if r2_url else return_path
+    if return_file_info:
+        try:
+            stored_bytes = os.path.getsize(filepath)
+        except Exception:
+            stored_bytes = 0
+        return {
+            "path": saved_path,
+            "object_key": r2_key,
+            "stored_bytes": stored_bytes,
+            "local_path": filepath,
+        }
+    return saved_path
 
 
 def normalize_upload_reference(path: Optional[str]) -> Optional[str]:

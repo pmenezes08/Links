@@ -15205,84 +15205,6 @@ def send_dm_media():
 
 # Message videos served via /uploads/message_videos mapping
 
-@app.route('/api/video_upload_url', methods=['POST'])
-@login_required
-def api_video_upload_url():
-    """Get a presigned URL for direct video upload to R2. Bypasses Cloud Run 32MB limit."""
-    from backend.services.r2_storage import (
-        R2_ENABLED,
-        R2_PUBLIC_URL,
-        generate_presigned_upload_url,
-        get_content_type,
-    )
-    if not R2_ENABLED or not R2_PUBLIC_URL:
-        return jsonify({'success': False, 'error': 'Direct upload not available'}), 503
-    data = request.get_json() or {}
-    recipient_id = data.get('recipient_id')
-    filename = (data.get('filename') or 'video.mp4').strip()
-    content_type = (data.get('content_type') or get_content_type(filename)).strip()
-    if not recipient_id:
-        return jsonify({'success': False, 'error': 'recipient_id required'}), 400
-    # Validate video content type
-    if not content_type.startswith('video/'):
-        return jsonify({'success': False, 'error': 'Invalid video type'}), 400
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT username FROM users WHERE id = ?", (recipient_id,))
-            if not c.fetchone():
-                return jsonify({'success': False, 'error': 'Recipient not found'}), 404
-    except Exception as e:
-        logger.error(f"video_upload_url recipient check: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-    from datetime import datetime
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'mp4'
-    if ext not in ('mp4', 'webm', 'mov', 'm4v', 'avi'):
-        ext = 'mp4'
-    name = (filename.rsplit('.', 1)[0] if '.' in filename else 'video')[:50]
-    key = f"message_videos/{name}_{ts}.{ext}"
-    upload_url = generate_presigned_upload_url(key, content_type)
-    if not upload_url:
-        return jsonify({'success': False, 'error': 'Failed to generate upload URL'}), 500
-    public_url = f"{R2_PUBLIC_URL.rstrip('/')}/{key}"
-    return jsonify({
-        'success': True,
-        'upload_url': upload_url,
-        'key': key,
-        'public_url': public_url,
-    })
-
-
-@app.route('/api/post_video_upload_url', methods=['POST'])
-@login_required
-def api_post_video_upload_url():
-    """Get a presigned URL for direct video upload to R2 for community/group posts."""
-    try:
-        from backend.services.r2_storage import R2_ENABLED, R2_PUBLIC_URL, generate_presigned_upload_url, get_content_type
-    except ImportError:
-        return jsonify({'success': False, 'error': 'Direct upload not available'}), 503
-    if not R2_ENABLED or not R2_PUBLIC_URL:
-        return jsonify({'success': False, 'error': 'Direct upload not available'}), 503
-    data = request.get_json() or {}
-    filename = (data.get('filename') or 'video.mp4').strip()
-    content_type = (data.get('content_type') or get_content_type(filename)).strip()
-    if not content_type.startswith('video/'):
-        return jsonify({'success': False, 'error': 'Invalid video type'}), 400
-    from datetime import datetime as _dt
-    ts = _dt.now().strftime("%Y%m%d_%H%M%S")
-    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'mp4'
-    if ext not in ('mp4', 'webm', 'mov', 'm4v', 'avi'):
-        ext = 'mp4'
-    name = (filename.rsplit('.', 1)[0] if '.' in filename else 'video')[:50]
-    key = f"post_videos/{name}_{ts}.{ext}"
-    upload_url = generate_presigned_upload_url(key, content_type)
-    if not upload_url:
-        return jsonify({'success': False, 'error': 'Failed to generate upload URL'}), 500
-    public_url = f"{R2_PUBLIC_URL.rstrip('/')}/{key}"
-    return jsonify({'success': True, 'upload_url': upload_url, 'key': key, 'public_url': public_url})
-
-
 @app.route('/send_video_message', methods=['POST'])
 @login_required
 def send_video_message():
@@ -19662,6 +19584,7 @@ def post_status():
     audio_path = None
     video_path = None
     media_paths = []  # For multiple media (JSON array)
+    media_asset_candidates = []
     MAX_MEDIA_PER_POST = 5
     
     files = request.files
@@ -19671,18 +19594,30 @@ def post_status():
         image_files = files.getlist('images')
         for img_file in image_files:
             if img_file and img_file.filename:
-                saved_path = save_uploaded_file(img_file)
+                saved_info = save_uploaded_file(img_file, optimize_profile='feed', return_file_info=True)
+                saved_path = saved_info.get('path') if isinstance(saved_info, dict) else saved_info
                 if saved_path:
                     media_paths.append({'type': 'image', 'path': saved_path})
+                    media_asset_candidates.append({
+                        'type': 'image',
+                        'path': saved_path,
+                        'stored_bytes': saved_info.get('stored_bytes', 0) if isinstance(saved_info, dict) else 0,
+                    })
     
     # Handle multiple videos (new format) - form upload for small videos
     if 'videos' in files:
         video_files = files.getlist('videos')
         for vid_file in video_files:
             if vid_file and vid_file.filename:
-                saved_path = save_uploaded_file(vid_file, subfolder='video')
+                saved_info = save_uploaded_file(vid_file, subfolder='video', optimize_profile='feed', transcode_video=True, return_file_info=True)
+                saved_path = saved_info.get('path') if isinstance(saved_info, dict) else saved_info
                 if saved_path:
                     media_paths.append({'type': 'video', 'path': saved_path})
+                    media_asset_candidates.append({
+                        'type': 'video',
+                        'path': saved_path,
+                        'stored_bytes': saved_info.get('stored_bytes', 0) if isinstance(saved_info, dict) else 0,
+                    })
     
     # Handle pre-uploaded video URLs (R2 direct upload for large videos)
     video_urls_raw = request.form.get('video_urls', '')
@@ -19693,6 +19628,7 @@ def post_status():
                 for vurl in video_urls:
                     if isinstance(vurl, str) and vurl.startswith('http'):
                         media_paths.append({'type': 'video', 'path': vurl})
+                        media_asset_candidates.append({'type': 'video', 'path': vurl, 'stored_bytes': 0})
         except (json.JSONDecodeError, TypeError):
             pass
     
@@ -19706,7 +19642,8 @@ def post_status():
     # Handle legacy single image upload
     if not media_paths and 'image' in files and files['image'].filename:
         file = files['image']
-        image_path = save_uploaded_file(file)
+        saved_info = save_uploaded_file(file, optimize_profile='feed', return_file_info=True)
+        image_path = saved_info.get('path') if isinstance(saved_info, dict) else saved_info
         if not image_path:
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                 return jsonify({'success': False, 'error': 'Invalid image type'}), 400
@@ -19716,6 +19653,11 @@ def post_status():
                     return redirect(url_for('community_feed', community_id=community_id) + msg)
                 else:
                     return redirect(url_for('feed') + msg)
+        media_asset_candidates.append({
+            'type': 'image',
+            'path': image_path,
+            'stored_bytes': saved_info.get('stored_bytes', 0) if isinstance(saved_info, dict) else 0,
+        })
     
     # Handle audio upload
     if 'audio' in files and files['audio'].filename:
@@ -19734,7 +19676,8 @@ def post_status():
     # Handle legacy single video upload
     if not media_paths and 'video' in files and files['video'].filename:
         vfile = files['video']
-        video_path = save_uploaded_file(vfile, subfolder='video')
+        saved_info = save_uploaded_file(vfile, subfolder='video', optimize_profile='feed', transcode_video=True, return_file_info=True)
+        video_path = saved_info.get('path') if isinstance(saved_info, dict) else saved_info
         if not video_path:
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                 return jsonify({'success': False, 'error': 'Invalid video type'}), 400
@@ -19744,6 +19687,11 @@ def post_status():
                     return redirect(url_for('community_feed', community_id=community_id) + msg)
                 else:
                     return redirect(url_for('feed') + msg)
+        media_asset_candidates.append({
+            'type': 'video',
+            'path': video_path,
+            'stored_bytes': saved_info.get('stored_bytes', 0) if isinstance(saved_info, dict) else 0,
+        })
     
     # If we have multiple media, set first image/video as primary for backwards compatibility
     if media_paths:
@@ -19865,6 +19813,23 @@ def post_status():
                       (username, content_clean, image_path, video_path, audio_path, audio_summary, timestamp, community_id, media_paths_json, link_urls_json))
             conn.commit()
             post_id = c.lastrowid
+            if community_id:
+                try:
+                    from backend.services import media_assets
+                    for asset in media_asset_candidates[:MAX_MEDIA_PER_POST]:
+                        media_assets.register_asset(
+                            c,
+                            community_id=community_id,
+                            source_type='post',
+                            source_id=post_id,
+                            media_type=asset.get('type'),
+                            path=asset.get('path'),
+                            original_bytes=asset.get('stored_bytes') or 0,
+                            stored_bytes=asset.get('stored_bytes') or 0,
+                        )
+                    conn.commit()
+                except Exception as asset_err:
+                    logger.warning(f"post media asset registration failed: {asset_err}")
             logger.info(f"Post added successfully for {username} with ID: {post_id} in community: {community_id}")
 
             # Dual-write post to Firestore
@@ -28449,19 +28414,24 @@ def update_community():
             
             # Handle background file upload or removal (restrict to owner or app admin)
             background_path = None
+            background_media_bytes = 0
             remove_background = request.form.get('remove_background', '').lower() in ('true', '1', 'yes')
             
             if (is_owner or is_platform_admin) and ('background_file' in request.files):
                 file = request.files['background_file']
                 if file and file.filename:
                     # Save the uploaded file using R2-enabled media service
-                    stored_path = save_uploaded_file(
+                    stored_info = save_uploaded_file(
                         file,
                         subfolder='community_backgrounds',
-                        allowed_extensions={'png', 'jpg', 'jpeg', 'gif', 'webp'}
+                        allowed_extensions={'png', 'jpg', 'jpeg', 'gif', 'webp'},
+                        optimize_profile='background',
+                        return_file_info=True,
                     )
+                    stored_path = stored_info.get('path') if isinstance(stored_info, dict) else stored_info
                     if stored_path:
                         background_path = stored_path
+                        background_media_bytes = stored_info.get('stored_bytes', 0) if isinstance(stored_info, dict) else 0
             
             # Update the community details
             if remove_background and (is_owner or is_platform_admin):
@@ -28527,6 +28497,22 @@ def update_community():
                 )
             
             conn.commit()
+            if background_path:
+                try:
+                    from backend.services import media_assets
+                    media_assets.register_asset(
+                        c,
+                        community_id=community_id,
+                        source_type='background',
+                        source_id=community_id,
+                        media_type='image',
+                        path=background_path,
+                        original_bytes=background_media_bytes,
+                        stored_bytes=background_media_bytes,
+                    )
+                    conn.commit()
+                except Exception as asset_err:
+                    logger.warning(f"community background media asset registration failed: {asset_err}")
             
             # Cascade network_type to all direct sub-communities when parent network_type changes
             if network_type and network_type.strip():

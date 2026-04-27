@@ -27,6 +27,13 @@ interface CommunityBilling {
   benefits_end_at: string | null
   has_stripe_customer: boolean
   stripe_mode: 'test' | 'live'
+  media_limit_gb: number | null
+  media_limit_bytes: number | null
+  media_usage: {
+    active_bytes: number
+    tracked_bytes: number
+    asset_count: number
+  }
 }
 
 const TIER_LABEL: Record<string, string> = {
@@ -175,6 +182,17 @@ export default function EditCommunity(){
             benefits_end_at: j.benefits_end_at || null,
             has_stripe_customer: !!j.has_stripe_customer,
             stripe_mode: j.stripe_mode === 'live' ? 'live' : 'test',
+            media_limit_gb: j.media_limit_gb === null || j.media_limit_gb === undefined
+              ? null
+              : Number(j.media_limit_gb),
+            media_limit_bytes: j.media_limit_bytes === null || j.media_limit_bytes === undefined
+              ? null
+              : Number(j.media_limit_bytes),
+            media_usage: {
+              active_bytes: Number(j.media_usage?.active_bytes || 0),
+              tracked_bytes: Number(j.media_usage?.tracked_bytes || 0),
+              asset_count: Number(j.media_usage?.asset_count || 0),
+            },
           })
         }
       } catch {
@@ -330,6 +348,16 @@ export default function EditCommunity(){
         : 'Upgrade Community Tier'
       : 'Choose paid tier'
     const action = () => navigate(`/subscription_plans?mode=choose&open=community_plans&community_id=${community_id}`)
+    const mediaLimitBytes = billing.media_limit_bytes
+    const activeMediaBytes = billing.media_usage.active_bytes
+    const mediaPercent = mediaLimitBytes && mediaLimitBytes > 0
+      ? Math.min(100, (activeMediaBytes / mediaLimitBytes) * 100)
+      : 0
+    const mediaTone = !mediaLimitBytes || mediaPercent < 75
+      ? 'Healthy'
+      : mediaPercent < 100
+        ? 'Getting full'
+        : 'Over plan limit'
 
     return (
       <div className="rounded-xl border border-white/10 bg-white/5 p-5 space-y-4">
@@ -383,6 +411,29 @@ export default function EditCommunity(){
             </div>
           </div>
         )}
+
+        <div className="space-y-1.5">
+          <div className="flex items-baseline justify-between text-xs text-white/60">
+            <span>Media storage</span>
+            <span>
+              {formatBytes(activeMediaBytes)}
+              {mediaLimitBytes ? ` / ${formatBytes(mediaLimitBytes)}` : ''}
+            </span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+            <div
+              className={`h-full ${mediaPercent >= 100 ? 'bg-amber-300' : 'bg-cpoint-turquoise'}`}
+              style={{ width: `${mediaLimitBytes ? mediaPercent : 0}%` }}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-2 text-[11px] text-white/40">
+            <span>{mediaTone}</span>
+            <span>{billing.media_usage.asset_count} tracked media item{billing.media_usage.asset_count === 1 ? '' : 's'}</span>
+          </div>
+          <div className="text-[11px] leading-relaxed text-white/35">
+            Storage is tracked for visibility first. Uploads are not blocked while we validate usage accounting.
+          </div>
+        </div>
 
         <button
           type="button"
@@ -749,4 +800,17 @@ function formatBillingDate(value: string) {
   const normalized = value.includes(' ') ? value.replace(' ', 'T') : value
   const date = new Date(normalized)
   return Number.isNaN(date.getTime()) ? value.split(' ')[0] : date.toLocaleDateString()
+}
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = bytes
+  let unitIndex = 0
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+  const digits = value >= 10 || unitIndex < 2 ? 0 : 1
+  return `${value.toFixed(digits)} ${units[unitIndex]}`
 }

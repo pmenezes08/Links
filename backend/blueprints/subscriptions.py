@@ -42,6 +42,7 @@ from backend.services import (
     community_subscription_changes,
     enterprise_membership,
     knowledge_base,
+    media_assets,
     user_billing,
 )
 from backend.services.database import get_db_connection, get_sql_placeholder
@@ -411,6 +412,17 @@ def _tier_member_cap(tier_code: str) -> Optional[int]:
         return None
 
 
+def _tier_media_limit_gb(tier_code: str) -> Optional[float]:
+    fields = _kb_field_map("community-tiers")
+    field_name = "free_community_media_gb" if tier_code == "free" else f"{tier_code}_media_gb"
+    value = fields.get(field_name)
+    try:
+        limit = float(value)
+    except (TypeError, ValueError):
+        return None
+    return limit if limit > 0 else None
+
+
 def _fetch_community_name(community_id: int) -> str:
     """Best-effort community name lookup for the inherited-tier badge.
 
@@ -766,6 +778,14 @@ def api_community_billing(community_id: int):
     if free_member_cap is not None:
         members_over_cap = int(member_count or 0) > int(free_member_cap)
 
+    media_limit_gb = _tier_media_limit_gb(tier)
+    try:
+        media_usage = media_assets.usage_summary(root_id)
+    except Exception:
+        logger.exception("api_community_billing: media usage read failed for %s", root_id)
+        media_usage = {"active_bytes": 0, "tracked_bytes": 0, "asset_count": 0}
+    media_limit_bytes = int(media_limit_gb * 1024 * 1024 * 1024) if media_limit_gb else None
+
     return jsonify({
         "success": True,
         "community_id": community_id,
@@ -795,6 +815,9 @@ def api_community_billing(community_id: int):
         "frozen_at": frozen_at if is_frozen else None,
         "free_member_cap": free_member_cap,
         "members_over_cap": members_over_cap,
+        "media_limit_gb": media_limit_gb,
+        "media_limit_bytes": media_limit_bytes,
+        "media_usage": media_usage,
     })
 
 

@@ -134,6 +134,20 @@ gcloud scheduler jobs create http communities-lifecycle-dispatch \
   --headers="X-Cron-Secret=$SECRET" \
   --attempt-deadline=300s
 
+# Retained story media purge — deletes story objects after they have been
+# invisible for 7 days. Daily at 02:40 UTC, after the low-traffic expiry
+# window. Dry-run:
+#   curl -X POST "$BASE/api/cron/media/purge-retained-stories?dry_run=1" \
+#     -H "X-Cron-Secret: $CRON_SECRET"
+gcloud scheduler jobs create http media-purge-retained-stories \
+  --location=europe-west1 \
+  --schedule="40 2 * * *" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/media/purge-retained-stories" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=300s
+
 # Steve member KB — weekly auto-synthesis. Refreshes every active
 # member's Knowledge Base once per calendar week by processing one of
 # seven daily buckets keyed off CRC32(username) % 7 (today's
@@ -202,7 +216,8 @@ migration), run:
 ```bash
 for job in enterprise-grace-sweep enterprise-iap-nag enterprise-winback-expire \
            subscriptions-revoke-expired usage-cycle-notify \
-           communities-lifecycle-dispatch kb-weekly-synthesis; do
+           communities-lifecycle-dispatch media-purge-retained-stories \
+           kb-weekly-synthesis; do
   gcloud scheduler jobs pause "$job" --location=europe-west1
 done
 ```

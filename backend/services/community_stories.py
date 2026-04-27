@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import tempfile
 import uuid
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
@@ -13,6 +14,7 @@ from redis_cache import invalidate_community_cache
 
 from backend.services.community import get_parent_chain_ids, is_community_owner
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
+from backend.services import media_assets
 from backend.services.media import (
     get_public_upload_url,
     normalize_upload_reference,
@@ -417,7 +419,7 @@ def list_community_stories(username: str, community_id: int) -> Tuple[Dict[str, 
                 SELECT cs.id, cs.community_id, cs.username, cs.media_path, cs.media_type,
                        cs.caption, cs.duration_seconds, cs.status, cs.created_at,
                        cs.expires_at, cs.view_count, cs.last_viewed_at, up.profile_picture,
-                       cs.text_overlays, cs.location_data, cs.story_group_id, cs.description
+                       cs.text_overlays, cs.story_group_id, cs.description
                 FROM community_stories cs
                 LEFT JOIN user_profiles up ON up.username = cs.username
                 WHERE cs.community_id = {ph}
@@ -457,17 +459,10 @@ def list_community_stories(username: str, community_id: int) -> Tuple[Dict[str, 
                 story_id = int(story_id_raw)
                 media_path = _row_value(row, "media_path", 3)
                 text_overlays_raw = _row_value(row, "text_overlays", 13)
-                location_data_raw = _row_value(row, "location_data", 14)
                 text_overlays = None
-                location_data = None
                 if text_overlays_raw:
                     try:
                         text_overlays = json.loads(text_overlays_raw) if isinstance(text_overlays_raw, str) else text_overlays_raw
-                    except Exception:
-                        pass
-                if location_data_raw:
-                    try:
-                        location_data = json.loads(location_data_raw) if isinstance(location_data_raw, str) else location_data_raw
                     except Exception:
                         pass
 
@@ -489,9 +484,8 @@ def list_community_stories(username: str, community_id: int) -> Tuple[Dict[str, 
                     "reactions": reaction_counts.get(story_id, {}),
                     "user_reaction": user_reactions.get(story_id),
                     "text_overlays": text_overlays,
-                    "location_data": location_data,
-                    "story_group_id": _row_value(row, "story_group_id", 15),
-                    "description": _row_value(row, "description", 16),
+                    "story_group_id": _row_value(row, "story_group_id", 14),
+                    "description": _row_value(row, "description", 15),
                 }
                 stories_payload.append(story_payload)
                 group = groups_map.setdefault(
@@ -524,20 +518,73 @@ def list_community_stories(username: str, community_id: int) -> Tuple[Dict[str, 
 def _parse_json_field(raw: str, expected_type: type) -> Any:
     if not raw:
         return None if expected_type is dict else []
-
-
-def _probe_video_duration_seconds(path: str) -> Optional[float]:
-    try:
-        from backend.services.whisper_service import _probe_duration_seconds
-
-        return _probe_duration_seconds(path)
-    except Exception:
-        return None
     try:
         parsed = json.loads(raw)
         return parsed if isinstance(parsed, expected_type) else (None if expected_type is dict else [])
     except Exception:
         return None if expected_type is dict else []
+
+
+def _probe_video_duration_seconds(path: str) -> Optional[float]:
+    try:
+        from backend.services.media_processing import probe_duration_seconds
+
+        return probe_duration_seconds(path)
+    except Exception:
+        return None
+
+
+def _probe_uploaded_video_duration_seconds(file_storage: Any) -> Optional[float]:
+    """Probe an uploaded video before R2 upload so duration checks are reliable."""
+    suffix = os.path.splitext(getattr(file_storage, "filename", "") or "")[1] or ".mp4"
+    stream = getattr(file_storage, "stream", None)
+    original_pos = None
+    try:
+        if stream is not None and hasattr(stream, "tell"):
+            original_pos = stream.tell()
+    except Exception:
+        original_pos = None
+
+    temp_path = None
+    try:
+        fd, temp_path = tempfile.mkstemp(suffix=suffix)
+        os.close(fd)
+        file_storage.save(temp_path)
+        return _probe_video_duration_seconds(temp_path)
+    except Exception:
+        return None
+    finally:
+        if stream is not None and hasattr(stream, "seek"):
+            try:
+                stream.seek(original_pos or 0)
+            except Exception:
+                pass
+
+
+def _uploaded_file_size_bytes(file_storage: Any) -> int:
+    size = getattr(file_storage, "content_length", None)
+    if isinstance(size, int) and size > 0:
+        return size
+    stream = getattr(file_storage, "stream", None)
+    if stream is None or not hasattr(stream, "tell") or not hasattr(stream, "seek"):
+        return 0
+    try:
+        pos = stream.tell()
+        stream.seek(0, os.SEEK_END)
+        end = stream.tell()
+        stream.seek(pos)
+        return int(end)
+    except Exception:
+        try:
+            stream.seek(0)
+        except Exception:
+            pass
+        return 0
+        if temp_path:
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
 
 
 def create_community_story(username: str, form: Any, files: Any) -> Tuple[Dict[str, Any], int]:
@@ -554,7 +601,6 @@ def create_community_story(username: str, form: Any, files: Any) -> Tuple[Dict[s
 
     caption = (form.get("caption") or "").strip()[:STORY_MAX_CAPTION_LENGTH]
     text_overlays = _parse_json_field(form.get("text_overlays", ""), list)
-    location_data = _parse_json_field(form.get("location_data", ""), dict)
     per_file_meta = _parse_json_field(form.get("per_file_metadata", ""), list) or []
     duration_seconds = form.get("duration_seconds", type=int)
     if isinstance(duration_seconds, int) and duration_seconds < 0:
@@ -585,10 +631,10 @@ def create_community_story(username: str, form: Any, files: Any) -> Tuple[Dict[s
                         upload_errors.append(f"File {idx+1} ({media_file.filename}): unsupported format '{ext}'")
                         continue
                     media_type = "image" if ext in STORY_IMAGE_EXTENSIONS else "video"
+                    original_bytes = _uploaded_file_size_bytes(media_file)
 
                     file_caption = caption
                     file_text_overlays = text_overlays
-                    file_location_data = location_data
                     file_duration = duration_seconds
                     if idx < len(per_file_meta) and isinstance(per_file_meta[idx], dict):
                         meta = per_file_meta[idx]
@@ -596,32 +642,40 @@ def create_community_story(username: str, form: Any, files: Any) -> Tuple[Dict[s
                             file_caption = str(meta["caption"])[:STORY_MAX_CAPTION_LENGTH]
                         if "text_overlays" in meta and isinstance(meta["text_overlays"], list):
                             file_text_overlays = meta["text_overlays"]
-                        if "location_data" in meta and isinstance(meta["location_data"], dict):
-                            file_location_data = meta["location_data"]
                         if "duration_seconds" in meta:
                             try:
                                 file_duration = int(float(meta["duration_seconds"]))
                             except Exception:
                                 pass
+                    if media_type == "video":
+                        probed_duration = _probe_uploaded_video_duration_seconds(media_file)
+                        if probed_duration is not None:
+                            file_duration = int(round(probed_duration))
                     if media_type == "video" and file_duration and file_duration > STORY_VIDEO_MAX_SECONDS:
                         upload_errors.append(
                             f"File {idx+1} ({media_file.filename}): videos can be up to {STORY_VIDEO_MAX_SECONDS} seconds. Please trim it or upload separate 15-second clips."
                         )
                         continue
 
-                    stored_path = save_uploaded_file(
+                    stored_file = save_uploaded_file(
                         media_file,
                         subfolder="community_stories",
                         allowed_extensions=STORY_ALLOWED_EXTENSIONS,
+                        optimize_profile="story",
+                        transcode_video=media_type == "video",
+                        return_file_info=True,
                     )
+                    stored_path = stored_file.get("path") if isinstance(stored_file, dict) else stored_file
                     if not stored_path:
                         upload_errors.append(f"File {idx+1} ({media_file.filename}): failed to save")
                         continue
+                    stored_bytes = (
+                        int(stored_file.get("stored_bytes") or 0)
+                        if isinstance(stored_file, dict)
+                        else original_bytes
+                    )
 
                     if media_type == "video":
-                        probed_duration = _probe_video_duration_seconds(stored_path)
-                        if probed_duration is not None:
-                            file_duration = int(round(probed_duration))
                         if file_duration and file_duration > STORY_VIDEO_MAX_SECONDS:
                             upload_errors.append(
                                 f"File {idx+1} ({media_file.filename}): videos can be up to {STORY_VIDEO_MAX_SECONDS} seconds. Please trim it or upload separate 15-second clips."
@@ -632,8 +686,8 @@ def create_community_story(username: str, form: Any, files: Any) -> Tuple[Dict[s
                     c.execute(
                         f"""
                         INSERT INTO community_stories
-                        (community_id, username, media_path, media_type, caption, duration_seconds, status, created_at, expires_at, text_overlays, location_data, story_group_id, description)
-                        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                        (community_id, username, media_path, media_type, caption, duration_seconds, status, created_at, expires_at, text_overlays, story_group_id, description)
+                        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
                         """,
                         (
                             community_id,
@@ -646,12 +700,25 @@ def create_community_story(username: str, form: Any, files: Any) -> Tuple[Dict[s
                             created_at.strftime("%Y-%m-%d %H:%M:%S"),
                             expires_at.strftime("%Y-%m-%d %H:%M:%S"),
                             json.dumps(file_text_overlays) if file_text_overlays else None,
-                            json.dumps(file_location_data) if file_location_data else None,
                             story_group_id,
                             description if description else None,
                         ),
                     )
                     story_id = getattr(c, "lastrowid", None)
+                    media_assets.register_asset(
+                        c,
+                        community_id=community_id,
+                        source_type="story",
+                        source_id=story_id,
+                        media_type=media_type,
+                        path=stored_path,
+                        original_bytes=original_bytes,
+                        stored_bytes=stored_bytes,
+                        duration_seconds=file_duration,
+                        created_at=created_at,
+                        expires_at=expires_at,
+                        retain_until=expires_at + timedelta(days=7),
+                    )
                     created_stories.append(
                         {
                             "id": story_id,
@@ -662,7 +729,6 @@ def create_community_story(username: str, form: Any, files: Any) -> Tuple[Dict[s
                             "media_url": _public_url(stored_path),
                             "caption": file_caption,
                             "text_overlays": file_text_overlays,
-                            "location_data": file_location_data,
                             "duration_seconds": file_duration,
                             "story_group_id": story_group_id,
                             "description": description if description else None,

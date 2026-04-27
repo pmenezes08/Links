@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from io import BytesIO
 
+from werkzeug.datastructures import FileStorage
+
 from tests.fixtures import make_community, make_user
 
 
@@ -28,6 +30,34 @@ def test_story_public_url_normalizes_local_paths(monkeypatch):
     assert community_stories._public_url("https://example.test/story.jpg") == "https://example.test/story.jpg"
     assert community_stories._public_url("community_stories/story.jpg") == "https://cdn.test/uploads/community_stories/story.jpg"
     assert community_stories._public_url(None) is None
+
+
+def test_story_json_field_parser_accepts_expected_type():
+    from backend.services import community_stories
+
+    assert community_stories._parse_json_field('[{"caption":"first"}]', list) == [{"caption": "first"}]
+    assert community_stories._parse_json_field('{"name":"old location"}', dict) == {"name": "old location"}
+    assert community_stories._parse_json_field('{"wrong":"type"}', list) == []
+    assert community_stories._parse_json_field("not json", dict) is None
+
+
+def test_uploaded_video_duration_probe_uses_local_temp_and_rewinds(monkeypatch):
+    from backend.services import community_stories
+
+    seen = {}
+
+    def fake_probe(path: str):
+        seen["path"] = path
+        with open(path, "rb") as fh:
+            seen["bytes"] = fh.read()
+        return 11.2
+
+    monkeypatch.setattr(community_stories, "_probe_video_duration_seconds", fake_probe)
+    storage = FileStorage(stream=BytesIO(b"fake-video"), filename="story.mp4", content_type="video/mp4")
+
+    assert community_stories._probe_uploaded_video_duration_seconds(storage) == 11.2
+    assert seen["bytes"] == b"fake-video"
+    assert storage.stream.read() == b"fake-video"
 
 
 def test_story_upload_list_interactions_and_delete(mysql_dsn, monkeypatch):

@@ -2,7 +2,6 @@ import { type ChangeEvent, type PointerEvent as ReactPointerEvent, type MouseEve
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
-import { Geolocation } from '@capacitor/geolocation'
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, horizontalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
@@ -56,11 +55,6 @@ type TextOverlay = {
   fontFamily: string
   rotation: number
 }
-type LocationData = {
-  name: string
-  x: number
-  y: number
-}
 type StoryComment = {
   id: number
   username: string
@@ -85,7 +79,6 @@ type Story = {
   reactions?: Record<string, number>
   user_reaction?: string | null
   text_overlays?: TextOverlay[] | null
-  location_data?: LocationData | null
   story_group_id?: string | null
   description?: string | null
 }
@@ -283,19 +276,14 @@ export default function CommunityFeed() {
     type: 'image' | 'video'
     caption: string
     textOverlays: TextOverlay[]
-    locationData: LocationData | null
     durationSeconds?: number | null
   }
   const [storyEditorOpen, setStoryEditorOpen] = useState(false)
   const [storyEditorFiles, setStoryEditorFiles] = useState<StoryEditorFile[]>([])
   const [storyEditorActiveIndex, setStoryEditorActiveIndex] = useState(0)
-  const [storyEditorDragging, setStoryEditorDragging] = useState<{ type: 'text' | 'location'; id?: string } | null>(null)
   const storyEditorMediaRef = useRef<HTMLDivElement | null>(null)
-  const [showLocationInput, setShowLocationInput] = useState(false)
-  const [locationInputValue, setLocationInputValue] = useState('')
   const [keyboardHeight, setKeyboardHeight] = useState(0)
   const [storyEditorDescription, setStoryEditorDescription] = useState('')
-  const [locationLoading, setLocationLoading] = useState(false)
   const [communityInfoOpen, setCommunityInfoOpen] = useState(false)
   // Story reply / comments state
   const [, setStoryReplyText] = useState('')
@@ -1026,7 +1014,7 @@ export default function CommunityFeed() {
       const profileUrl: string | null = typeof raw.profile_picture === 'string' && raw.profile_picture.length > 0
         ? raw.profile_picture
         : null
-      // Parse text_overlays and location_data from JSON if string
+      // Parse text_overlays from JSON if string
       let textOverlays: TextOverlay[] | null = null
       if (raw.text_overlays) {
         try {
@@ -1035,15 +1023,6 @@ export default function CommunityFeed() {
             : raw.text_overlays
           if (!Array.isArray(textOverlays)) textOverlays = null
         } catch { textOverlays = null }
-      }
-      let locationData: LocationData | null = null
-      if (raw.location_data) {
-        try {
-          locationData = typeof raw.location_data === 'string'
-            ? JSON.parse(raw.location_data)
-            : raw.location_data
-          if (typeof locationData !== 'object' || !locationData?.name) locationData = null
-        } catch { locationData = null }
       }
       return {
         id,
@@ -1064,7 +1043,6 @@ export default function CommunityFeed() {
           ? raw.user_reaction
           : (typeof raw.userReaction === 'string' ? raw.userReaction : null),
         text_overlays: textOverlays,
-        location_data: locationData,
       }
     }
     const groups: StoryGroup[] = []
@@ -1218,7 +1196,6 @@ export default function CommunityFeed() {
         type: isImage ? 'image' : 'video',
         caption: '',
         textOverlays: [],
-        locationData: null,
         durationSeconds,
       })
     }
@@ -1252,9 +1229,6 @@ export default function CommunityFeed() {
     setStoryEditorFiles([])
     setStoryEditorOpen(false)
     setStoryEditorActiveIndex(0)
-    setStoryEditorDragging(null)
-    setShowLocationInput(false)
-    setLocationInputValue('')
     setKeyboardHeight(0)
     setStoryEditorDescription('')
     if (storyEditorHistoryPushedRef.current) {
@@ -1325,7 +1299,6 @@ export default function CommunityFeed() {
       const perFileMeta = storyEditorFiles.map(item => ({
         caption: item.caption,
         text_overlays: item.textOverlays,
-        location_data: item.locationData,
         duration_seconds: item.durationSeconds,
       }))
       fd.append('per_file_metadata', JSON.stringify(perFileMeta))
@@ -1406,141 +1379,6 @@ export default function CommunityFeed() {
       textOverlays: current.textOverlays.filter(t => t.id !== id)
     })
   }, [storyEditorFiles, storyEditorActiveIndex, updateActiveStoryEditorFile]) */
-
-  const setLocationData = useCallback((location: LocationData | null) => {
-    updateActiveStoryEditorFile({ locationData: location })
-  }, [updateActiveStoryEditorFile])
-
-  const fetchDeviceLocation = useCallback(async () => {
-    setLocationLoading(true)
-    try {
-      const permission = await Geolocation.requestPermissions()
-      if (permission.location !== 'granted') {
-        alert('Location permission is required to add location to your story')
-        setLocationLoading(false)
-        return
-      }
-
-      // Check sessionStorage cache first for instant result
-      const cached = sessionStorage.getItem('story_last_location')
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached)
-          if (parsed?.name && Date.now() - (parsed._ts || 0) < 5 * 60 * 1000) {
-            setLocationData({ name: parsed.name, x: 50, y: 85 })
-          }
-        } catch {}
-      }
-
-      // Fast: low-accuracy position first (cell/WiFi, ~instant)
-      let latitude: number, longitude: number
-      try {
-        const fastPos = await Geolocation.getCurrentPosition({
-          enableHighAccuracy: false,
-          timeout: 3000,
-          maximumAge: 60000,
-        })
-        latitude = fastPos.coords.latitude
-        longitude = fastPos.coords.longitude
-
-        const fastName = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
-        setLocationData({ name: fastName, x: 50, y: 85 })
-      } catch {
-        const hiPos = await Geolocation.getCurrentPosition({
-          enableHighAccuracy: true,
-          timeout: 10000,
-        })
-        latitude = hiPos.coords.latitude
-        longitude = hiPos.coords.longitude
-      }
-
-      // Reverse geocode via backend proxy (Google Maps API)
-      try {
-        const response = await fetch(
-          `/api/geocode/reverse?lat=${latitude}&lng=${longitude}`,
-          { credentials: 'include', headers: { 'Accept': 'application/json' } }
-        )
-        const data = await response.json()
-        if (data.success && data.location) {
-          setLocationData({ name: data.location, x: 50, y: 85 })
-          try { sessionStorage.setItem('story_last_location', JSON.stringify({ name: data.location, _ts: Date.now() })) } catch {}
-        }
-      } catch {}
-
-      // Optionally refine with high-accuracy GPS in background
-      try {
-        const hiPos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 8000 })
-        const hiLat = hiPos.coords.latitude, hiLon = hiPos.coords.longitude
-        if (Math.abs(hiLat - latitude) > 0.001 || Math.abs(hiLon - longitude) > 0.001) {
-          const resp2 = await fetch(
-            `/api/geocode/reverse?lat=${hiLat}&lng=${hiLon}`,
-            { credentials: 'include', headers: { 'Accept': 'application/json' } }
-          )
-          const d2 = await resp2.json()
-          if (d2.success && d2.location) {
-            setLocationData({ name: d2.location, x: 50, y: 85 })
-            try { sessionStorage.setItem('story_last_location', JSON.stringify({ name: d2.location, _ts: Date.now() })) } catch {}
-          }
-        }
-      } catch {}
-    } catch (error) {
-      console.error('Error fetching location:', error)
-      alert('Could not get your location. Please try again.')
-    } finally {
-      setLocationLoading(false)
-    }
-  }, [setLocationData])
-
-  const handleOverlayDrag = useCallback((e: React.PointerEvent, type: 'text' | 'location', id?: string) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setStoryEditorDragging({ type, id })
-    const container = storyEditorMediaRef.current
-    if (!container) return
-    
-    const overlay = e.currentTarget as HTMLElement
-    const rect = container.getBoundingClientRect()
-    let lastX = 0
-    let lastY = 0
-    
-    const moveHandler = (moveE: PointerEvent) => {
-      const x = ((moveE.clientX - rect.left) / rect.width) * 100
-      const y = ((moveE.clientY - rect.top) / rect.height) * 100
-      lastX = Math.max(0, Math.min(100, x))
-      lastY = Math.max(0, Math.min(100, y))
-      
-      // Update DOM directly for smooth dragging
-      overlay.style.left = `${lastX}%`
-      overlay.style.top = `${lastY}%`
-    }
-    
-    const upHandler = () => {
-      setStoryEditorDragging(null)
-      
-      // Update React state only when drag ends
-      if (type === 'location') {
-        setStoryEditorFiles(prev => prev.map((f, i) => 
-          i === storyEditorActiveIndex && f.locationData
-            ? { ...f, locationData: { ...f.locationData, x: lastX, y: lastY } }
-            : f
-        ))
-      } else if (type === 'text' && id) {
-        setStoryEditorFiles(prev => prev.map((f, i) => 
-          i === storyEditorActiveIndex
-            ? { ...f, textOverlays: f.textOverlays.map(t => t.id === id ? { ...t, x: lastX, y: lastY } : t) }
-            : f
-        ))
-      }
-      
-      window.removeEventListener('pointermove', moveHandler)
-      window.removeEventListener('pointerup', upHandler)
-      window.removeEventListener('pointercancel', upHandler)
-    }
-    
-    window.addEventListener('pointermove', moveHandler)
-    window.addEventListener('pointerup', upHandler)
-    window.addEventListener('pointercancel', upHandler)
-  }, [storyEditorActiveIndex])
 
   const handleThumbDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event
@@ -2915,22 +2753,6 @@ export default function CommunityFeed() {
                 <span className="whitespace-nowrap">{overlay.text}</span>
               </div>
             ))}
-            {/* Location overlay */}
-            {currentStory.location_data && (
-              <div
-                className="absolute pointer-events-none z-[4] bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/20"
-                style={{
-                  left: `${currentStory.location_data.x}%`,
-                  top: `${currentStory.location_data.y}%`,
-                  transform: 'translate(-50%, -50%)',
-                }}
-              >
-                <span className="text-white text-sm flex items-center gap-1.5">
-                  <i className="fa-solid fa-location-dot text-[#4db6ac]" />
-                  {currentStory.location_data.name}
-                </span>
-              </div>
-            )}
             {/* Subtle tap zone indicators */}
             {hasPrevStory && (
               <div className="absolute left-0 top-0 bottom-0 w-[40%] z-[3] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
@@ -3378,21 +3200,6 @@ export default function CommunityFeed() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
-                <button
-                  type="button"
-                  onClick={fetchDeviceLocation}
-                  disabled={locationLoading}
-                  className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.06] border border-white/10 text-white/90 hover:border-[#4db6ac]/50 hover:text-[#4db6ac] text-xs disabled:opacity-50"
-                  aria-label="Add current location"
-                >
-                  {locationLoading ? (
-                    <i className="fa-solid fa-spinner fa-spin text-sm" />
-                  ) : (
-                    <i className="fa-solid fa-location-dot text-sm" />
-                  )}
-                </button>
-              )}
               <button
                 onClick={handleStoryEditorPublish}
                 disabled={storyUploading}
@@ -3409,7 +3216,7 @@ export default function CommunityFeed() {
               ref={storyEditorMediaRef}
               className="relative aspect-[9/16] bg-black/50 rounded-[28px] overflow-hidden border border-white/10 shadow-2xl shadow-black/60"
               style={{ 
-                touchAction: storyEditorDragging ? 'none' : 'auto', 
+                touchAction: 'auto', 
                 pointerEvents: 'auto',
                 width: 'min(100%, 500px)',
                 maxHeight: '100%'
@@ -3434,40 +3241,6 @@ export default function CommunityFeed() {
               
               {/* Text overlays - feature disabled */}
               {/* {storyEditorFiles[storyEditorActiveIndex]?.textOverlays.map(overlay => (...))} */}
-              
-              {/* Location overlay */}
-              {storyEditorFiles[storyEditorActiveIndex]?.locationData && (
-                <div
-                  className="absolute cursor-move select-none bg-black/70 backdrop-blur-md px-4 py-2 rounded-md shadow-lg"
-                  style={{
-                    left: `${storyEditorFiles[storyEditorActiveIndex].locationData!.x}%`,
-                    top: `${storyEditorFiles[storyEditorActiveIndex].locationData!.y}%`,
-                    transform: 'translate(-50%, -50%)',
-                  }}
-                  onPointerDown={(e) => handleOverlayDrag(e, 'location')}
-                >
-                  <span className="text-white font-medium text-sm flex items-center gap-2">
-                    <i className="fa-solid fa-location-dot text-[#4db6ac] text-base" />
-                    {storyEditorFiles[storyEditorActiveIndex].locationData!.name}
-                  </span>
-                  <button
-                    className="absolute -top-2 -right-8 w-6 h-6 rounded-full bg-black/80 border border-white/30 text-white/90 text-xs flex items-center justify-center hover:bg-black hover:border-white/50 transition-colors"
-                    onClick={(e) => { 
-                      e.stopPropagation()
-                      setLocationInputValue(storyEditorFiles[storyEditorActiveIndex].locationData!.name)
-                      setShowLocationInput(true)
-                    }}
-                  >
-                    <i className="fa-solid fa-pencil" />
-                  </button>
-                  <button
-                    className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-black/80 border border-white/30 text-white/90 text-xs flex items-center justify-center hover:bg-black hover:border-white/50 transition-colors"
-                    onClick={(e) => { e.stopPropagation(); setLocationData(null); }}
-                  >
-                    <i className="fa-solid fa-xmark" />
-                  </button>
-                </div>
-              )}
             </div>
           </div>
           
@@ -3517,64 +3290,7 @@ export default function CommunityFeed() {
               maxLength={500}
               className="w-full px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50"
             />
-            {storyEditorFiles[storyEditorActiveIndex]?.locationData && (
-              <p className="text-xs text-white/40 text-center">
-                Drag location to reposition it on the image
-              </p>
-            )}
           </div>
-
-          {/* Location Input Modal */}
-          {showLocationInput && (
-            <div className="fixed inset-0 z-[1200] bg-black/80 backdrop-blur-sm flex items-center justify-center px-4">
-              <div className="bg-[#1a1a1a] rounded-2xl border border-white/10 p-6 w-full max-w-sm">
-                <h3 className="text-white font-semibold text-lg mb-4">Add Location</h3>
-                <input
-                  type="text"
-                  value={locationInputValue}
-                  onChange={(e) => setLocationInputValue(e.target.value)}
-                  placeholder="Enter location name..."
-                  autoFocus
-                  className="w-full px-4 py-3 rounded-xl bg-black/50 border border-white/20 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50 mb-4"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && locationInputValue.trim()) {
-                      setLocationData({ name: locationInputValue.trim(), x: 50, y: 85 })
-                      setLocationInputValue('')
-                      setShowLocationInput(false)
-                    }
-                    if (e.key === 'Escape') {
-                      setLocationInputValue('')
-                      setShowLocationInput(false)
-                    }
-                  }}
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setLocationInputValue('')
-                      setShowLocationInput(false)
-                    }}
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm font-medium"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (locationInputValue.trim()) {
-                        setLocationData({ name: locationInputValue.trim(), x: 50, y: 85 })
-                        setLocationInputValue('')
-                        setShowLocationInput(false)
-                      }
-                    }}
-                    disabled={!locationInputValue.trim()}
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-[#4db6ac] text-black font-semibold text-sm hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Add
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       )}
 

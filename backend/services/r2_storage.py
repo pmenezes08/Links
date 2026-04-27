@@ -197,6 +197,20 @@ def delete_from_r2(key: str) -> bool:
         return False
 
 
+def head_object(key: str) -> Optional[dict]:
+    """Return object metadata from R2, or None when unavailable."""
+    if not R2_ENABLED:
+        return None
+    client = get_s3_client()
+    if not client:
+        return None
+    try:
+        return client.head_object(Bucket=R2_BUCKET, Key=key)
+    except Exception as e:
+        logger.error(f"Failed to read R2 object metadata: {e}")
+        return None
+
+
 def get_r2_public_url(key: str) -> Optional[str]:
     """Get the public URL for an R2 object."""
     if not R2_PUBLIC_URL or not key:

@@ -25,6 +25,7 @@ ENV PYTHONDONTWRITEBYTECODE=0 \
 # Install system dependencies and clean up in same layer
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching

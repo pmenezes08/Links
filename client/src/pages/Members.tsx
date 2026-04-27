@@ -425,12 +425,15 @@ export default function Members(){
       {/* Invite Modal */}
       {showInviteModal && (
         <div
-          className="fixed inset-0 z-[9990] flex items-start justify-center bg-[radial-gradient(circle_at_top,_rgba(77,182,172,0.18),_rgba(0,0,0,0.92)_42%)] px-3 pb-6 backdrop-blur-md sm:px-4 sm:pb-4"
-          style={{ paddingTop: 'calc(var(--app-header-height, 56px) + env(safe-area-inset-top, 0px) + 14px)' }}
+          className="fixed inset-0 z-[9990] flex items-start justify-center bg-[radial-gradient(circle_at_top,_rgba(77,182,172,0.18),_rgba(0,0,0,0.92)_42%)] px-3 backdrop-blur-md sm:px-4"
+          style={{
+            paddingTop: 'calc(var(--app-header-height, 56px) + env(safe-area-inset-top, 0px) + 14px)',
+            paddingBottom: 'max(18px, env(safe-area-inset-bottom, 0px))',
+          }}
           onClick={(e) => { if (e.target === e.currentTarget && !inviteLoading) handleCloseInviteModal() }}
         >
           <div
-            className="flex max-h-[calc(100dvh-var(--app-header-height,56px)-40px)] w-full max-w-md flex-col overflow-hidden rounded-[30px] border border-[#4db6ac]/20 bg-[#070909]/95 shadow-2xl shadow-black/70 ring-1 ring-white/[0.04] sm:max-h-[82dvh]"
+            className="flex max-h-[calc(100dvh-var(--app-header-height,56px)-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-42px)] w-full max-w-md flex-col overflow-hidden rounded-[30px] border border-[#4db6ac]/20 bg-[#070909]/95 shadow-2xl shadow-black/70 ring-1 ring-white/[0.04] sm:max-h-[82dvh]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="h-1 w-full bg-gradient-to-r from-transparent via-[#4db6ac] to-transparent opacity-80" />
@@ -470,7 +473,7 @@ export default function Members(){
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-4 py-4" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <div className="flex-1 overflow-y-auto px-4 py-4" style={{ WebkitOverflowScrolling: 'touch', paddingBottom: 'max(16px, env(safe-area-inset-bottom, 0px))' }}>
               {inviteSuccess && (
                 <div className="mb-4 rounded-2xl border border-green-500/25 bg-green-500/10 p-3 text-sm text-green-300">
                   {inviteSuccessMessage || 'Invitation sent successfully!'}
@@ -660,7 +663,7 @@ export default function Members(){
                         <img
                           src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrCodeUrl)}`}
                           alt="Invitation QR Code"
-                          className="mx-auto h-60 w-60 max-w-full"
+                          className="mx-auto aspect-square h-auto w-full max-w-[15rem] max-h-[min(15rem,36dvh)]"
                         />
                       </div>
                       <div className="break-all rounded-2xl border border-white/10 bg-white/[0.035] p-3 text-center text-xs text-white/50">
