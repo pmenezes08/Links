@@ -115,10 +115,10 @@ def test_event_notification_cron_requires_secret_and_supports_dry_run(monkeypatc
     app.register_blueprint(notifications_bp_module.notifications_bp)
     client = app.test_client()
 
-    forbidden = client.post("/api/event_notification_check?dry_run=1")
+    forbidden = client.post("/api/cron/events/reminders?dry_run=1")
     assert forbidden.status_code == 403
 
-    allowed = client.post("/api/event_notification_check?dry_run=1", headers={"X-Cron-Secret": "secret"})
+    allowed = client.post("/api/cron/events/reminders?dry_run=1", headers={"X-Cron-Secret": "secret"})
     assert allowed.status_code == 200
     payload = allowed.get_json()
     assert payload["success"] is True

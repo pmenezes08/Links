@@ -1236,6 +1236,7 @@ def api_poll_notification_check():
 
 
 @notifications_bp.route("/api/event_notification_check", methods=["POST"], endpoint="api_event_notification_check")
+@notifications_bp.route("/api/cron/events/reminders", methods=["POST"], endpoint="api_cron_event_reminders")
 def api_event_notification_check():
     """
     Cron job endpoint that checks upcoming events and sends reminders.

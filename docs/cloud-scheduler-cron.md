@@ -151,13 +151,13 @@ gcloud scheduler jobs create http media-purge-retained-stories \
 # Event reminders — checks upcoming calendar events and sends the configured
 # 1-week, 1-day, and 1-hour reminders. The endpoint dedupes per
 # event/user/reminder type and supports dry-run:
-#   curl -X POST "$BASE/api/event_notification_check?dry_run=1" \
+#   curl -X POST "$BASE/api/cron/events/reminders?dry_run=1" \
 #     -H "X-Cron-Secret: $CRON_SECRET"
 gcloud scheduler jobs create http event-reminder-dispatch \
   --location=europe-west1 \
   --schedule="*/15 * * * *" \
   --time-zone=UTC \
-  --uri="$BASE/api/event_notification_check" \
+  --uri="$BASE/api/cron/events/reminders" \
   --http-method=POST \
   --headers="X-Cron-Secret=$SECRET" \
   --attempt-deadline=300s
