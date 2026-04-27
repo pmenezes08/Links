@@ -34,6 +34,7 @@ STORY_DEFAULT_LIFESPAN_HOURS = 24
 STORY_MAX_CAPTION_LENGTH = 2000
 STORY_MAX_DESCRIPTION_LENGTH = 2000
 STORY_MAX_COMMENT_LENGTH = 2000
+STORY_VIDEO_MAX_SECONDS = 15
 STORY_ALLOWED_REACTIONS: Set[str] = {"❤️", "🔥", "👏", "😂", "😮", "👍"}
 
 
@@ -523,6 +524,15 @@ def list_community_stories(username: str, community_id: int) -> Tuple[Dict[str, 
 def _parse_json_field(raw: str, expected_type: type) -> Any:
     if not raw:
         return None if expected_type is dict else []
+
+
+def _probe_video_duration_seconds(path: str) -> Optional[float]:
+    try:
+        from backend.services.whisper_service import _probe_duration_seconds
+
+        return _probe_duration_seconds(path)
+    except Exception:
+        return None
     try:
         parsed = json.loads(raw)
         return parsed if isinstance(parsed, expected_type) else (None if expected_type is dict else [])
@@ -575,14 +585,6 @@ def create_community_story(username: str, form: Any, files: Any) -> Tuple[Dict[s
                         upload_errors.append(f"File {idx+1} ({media_file.filename}): unsupported format '{ext}'")
                         continue
                     media_type = "image" if ext in STORY_IMAGE_EXTENSIONS else "video"
-                    stored_path = save_uploaded_file(
-                        media_file,
-                        subfolder="community_stories",
-                        allowed_extensions=STORY_ALLOWED_EXTENSIONS,
-                    )
-                    if not stored_path:
-                        upload_errors.append(f"File {idx+1} ({media_file.filename}): failed to save")
-                        continue
 
                     file_caption = caption
                     file_text_overlays = text_overlays
@@ -598,9 +600,33 @@ def create_community_story(username: str, form: Any, files: Any) -> Tuple[Dict[s
                             file_location_data = meta["location_data"]
                         if "duration_seconds" in meta:
                             try:
-                                file_duration = int(meta["duration_seconds"])
+                                file_duration = int(float(meta["duration_seconds"]))
                             except Exception:
                                 pass
+                    if media_type == "video" and file_duration and file_duration > STORY_VIDEO_MAX_SECONDS:
+                        upload_errors.append(
+                            f"File {idx+1} ({media_file.filename}): videos can be up to {STORY_VIDEO_MAX_SECONDS} seconds. Please trim it or upload separate 15-second clips."
+                        )
+                        continue
+
+                    stored_path = save_uploaded_file(
+                        media_file,
+                        subfolder="community_stories",
+                        allowed_extensions=STORY_ALLOWED_EXTENSIONS,
+                    )
+                    if not stored_path:
+                        upload_errors.append(f"File {idx+1} ({media_file.filename}): failed to save")
+                        continue
+
+                    if media_type == "video":
+                        probed_duration = _probe_video_duration_seconds(stored_path)
+                        if probed_duration is not None:
+                            file_duration = int(round(probed_duration))
+                        if file_duration and file_duration > STORY_VIDEO_MAX_SECONDS:
+                            upload_errors.append(
+                                f"File {idx+1} ({media_file.filename}): videos can be up to {STORY_VIDEO_MAX_SECONDS} seconds. Please trim it or upload separate 15-second clips."
+                            )
+                            continue
                     created_at = base_created_at + timedelta(milliseconds=idx * 100)
                     expires_at = created_at + timedelta(hours=STORY_DEFAULT_LIFESPAN_HOURS)
                     c.execute(

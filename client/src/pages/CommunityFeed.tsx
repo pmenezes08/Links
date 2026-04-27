@@ -103,12 +103,23 @@ const POST_DETAIL_CACHE_VERSION = 'post-detail-v1'
 const POST_DETAIL_CACHE_TTL_MS = 3 * 60 * 1000
 const STORY_UPLOAD_MAX_FILES = 10
 const STORY_UPLOAD_MAX_FILE_BYTES = 100 * 1024 * 1024
+const STORY_VIDEO_MAX_SECONDS = 15
 
 function normalizeMediaPath(p?: string | null){
   if (!p) return ''
   if (p.startsWith('http')) return p
   if (p.startsWith('/uploads') || p.startsWith('/static')) return p
   return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}`
+}
+
+function getVideoDurationSeconds(src: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video')
+    video.preload = 'metadata'
+    video.onloadedmetadata = () => resolve(video.duration || 0)
+    video.onerror = () => reject(new Error('Could not read video duration'))
+    video.src = src
+  })
 }
 
 const SYSTEM_POST_DELETE_LOCK_DAYS = 7
@@ -273,6 +284,7 @@ export default function CommunityFeed() {
     caption: string
     textOverlays: TextOverlay[]
     locationData: LocationData | null
+    durationSeconds?: number | null
   }
   const [storyEditorOpen, setStoryEditorOpen] = useState(false)
   const [storyEditorFiles, setStoryEditorFiles] = useState<StoryEditorFile[]>([])
@@ -284,6 +296,7 @@ export default function CommunityFeed() {
   const [keyboardHeight, setKeyboardHeight] = useState(0)
   const [storyEditorDescription, setStoryEditorDescription] = useState('')
   const [locationLoading, setLocationLoading] = useState(false)
+  const [communityInfoOpen, setCommunityInfoOpen] = useState(false)
   // Story reply / comments state
   const [, setStoryReplyText] = useState('')
   const storyReplyInputRef = useRef<HTMLTextAreaElement | null>(null)
@@ -1147,7 +1160,7 @@ export default function CommunityFeed() {
     storyFileInputRef.current?.click()
   }, [community_id])
 
-  const handleStoryFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+  const handleStoryFileChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
     if (!files || files.length === 0) {
       return
@@ -1169,28 +1182,46 @@ export default function CommunityFeed() {
       return
     }
 
-    Array.from(files).slice(0, availableSlots).forEach(file => {
+    for (const file of Array.from(files).slice(0, availableSlots)) {
       const ext = file.name.split('.').pop()?.toLowerCase() || ''
       const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)
       const isVideo = ['mp4', 'mov', 'webm', 'avi'].includes(ext)
       if (!isImage && !isVideo) {
         rejectedFiles.push(`${file.name}: unsupported format`)
-        return
+        continue
       }
       if (file.size > STORY_UPLOAD_MAX_FILE_BYTES) {
         rejectedFiles.push(`${file.name}: over 100MB`)
-        return
+        continue
+      }
+
+      const preview = URL.createObjectURL(file)
+      let durationSeconds: number | null = null
+      if (isVideo) {
+        try {
+          durationSeconds = await getVideoDurationSeconds(preview)
+        } catch {
+          URL.revokeObjectURL(preview)
+          rejectedFiles.push(`${file.name}: we could not read the video length. Please try another file.`)
+          continue
+        }
+        if (durationSeconds > STORY_VIDEO_MAX_SECONDS + 0.25) {
+          URL.revokeObjectURL(preview)
+          rejectedFiles.push(`${file.name}: videos can be up to ${STORY_VIDEO_MAX_SECONDS} seconds. Please trim it or upload separate 15-second clips.`)
+          continue
+        }
       }
       
       validFiles.push({
         file,
-        preview: URL.createObjectURL(file),
+        preview,
         type: isImage ? 'image' : 'video',
         caption: '',
         textOverlays: [],
         locationData: null,
+        durationSeconds,
       })
-    })
+    }
     if (files.length > availableSlots) {
       rejectedFiles.push(`Only the first ${availableSlots} selected file${availableSlots === 1 ? '' : 's'} were added.`)
     }
@@ -1295,6 +1326,7 @@ export default function CommunityFeed() {
         caption: item.caption,
         text_overlays: item.textOverlays,
         location_data: item.locationData,
+        duration_seconds: item.durationSeconds,
       }))
       fd.append('per_file_metadata', JSON.stringify(perFileMeta))
 
@@ -2442,12 +2474,20 @@ export default function CommunityFeed() {
           >
             <i className="fa-solid fa-arrow-left text-white" />
           </button>
-          <div className="flex-1 min-w-0">
+          <button
+            type="button"
+            className="flex-1 min-w-0 rounded-xl px-2 py-1 text-left transition hover:bg-white/[0.04] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]/50"
+            onClick={() => setCommunityInfoOpen(open => !open)}
+            aria-expanded={communityInfoOpen}
+            aria-label="Show community description"
+          >
             <div className="font-semibold truncate text-white text-sm">{data?.community?.name || 'Community'}</div>
-            {data?.community?.description && (
+            {data?.community?.description ? (
               <div className="text-xs text-[#9fb0b5] truncate">{data.community.description}</div>
+            ) : (
+              <div className="text-xs text-[#9fb0b5] truncate">Tap for community details</div>
             )}
-          </div>
+          </button>
           <div className="flex items-center gap-1">
             <button 
               className="p-2 rounded-full hover:bg-white/10 transition-colors" 
@@ -2482,6 +2522,38 @@ export default function CommunityFeed() {
             </button>
           </div>
         </div>
+        {communityInfoOpen && (
+          <>
+            <button
+              type="button"
+              className="fixed inset-0 z-[1000] cursor-default bg-transparent"
+              aria-label="Close community description"
+              onClick={() => setCommunityInfoOpen(false)}
+            />
+            <div
+              className="fixed left-3 right-3 z-[1002] rounded-3xl border border-[#4db6ac]/25 bg-[#070909]/95 p-4 text-white shadow-2xl shadow-black/70 ring-1 ring-white/[0.04] backdrop-blur-md sm:left-1/2 sm:right-auto sm:w-[420px] sm:-translate-x-1/2"
+              style={{ top: 'calc(env(safe-area-inset-top, 0px) + 64px)' }}
+            >
+              <div className="mb-2 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]/80">Community</div>
+                  <h2 className="mt-1 text-base font-semibold text-white">{data?.community?.name || 'Community'}</h2>
+                </div>
+                <button
+                  type="button"
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/70 hover:border-[#4db6ac]/50 hover:text-[#4db6ac]"
+                  onClick={() => setCommunityInfoOpen(false)}
+                  aria-label="Close community description"
+                >
+                  <i className="fa-solid fa-xmark text-xs" />
+                </button>
+              </div>
+              <p className="max-h-[40dvh] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-white/75">
+                {data?.community?.description || 'No description has been added yet.'}
+              </p>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Burger Menu Overlay */}
