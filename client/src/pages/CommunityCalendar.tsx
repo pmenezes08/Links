@@ -462,20 +462,15 @@ export default function CommunityCalendar() {
       <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(77,182,172,0.22),transparent_34%),radial-gradient(circle_at_15%_20%,rgba(77,182,172,0.10),transparent_28%)]" />
       <div
         ref={scrollRef}
-        className="relative mx-auto max-w-3xl px-3 pb-28"
+        className="relative mx-auto max-w-3xl px-3 pb-40"
         style={{
           WebkitOverflowScrolling: 'touch' as any,
-          paddingTop: 'var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px)))',
+          paddingTop: 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) - 14px)',
         } as CSSProperties}
       >
-        <header className="mb-1 flex items-center gap-2">
+        <header className="mb-0 flex items-center">
           <button className="rounded-full p-2 text-[#cfe7e4] hover:bg-white/5" onClick={() => navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
-          </button>
-          <div className="flex-1" />
-          <button className="inline-flex items-center gap-2 rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_22px_rgba(77,182,172,0.35)] hover:brightness-110" onClick={() => setCreateOpen(true)}>
-            <i className="fa-solid fa-plus text-xs" />
-            <span>New event</span>
           </button>
         </header>
 
@@ -546,6 +541,17 @@ export default function CommunityCalendar() {
         </div>
       </div>
 
+      {activeTab !== 'archive' ? (
+        <button
+          type="button"
+          className="fixed bottom-[5.25rem] left-1/2 z-40 inline-flex w-[88%] max-w-sm -translate-x-1/2 items-center justify-center gap-2 rounded-full bg-[#4db6ac] px-5 py-3 text-sm font-semibold text-black shadow-[0_0_28px_rgba(77,182,172,0.45)] hover:brightness-110"
+          onClick={() => setCreateOpen(true)}
+        >
+          <i className="fa-solid fa-plus text-xs" />
+          <span>New event</span>
+        </button>
+      ) : null}
+
       {moreOpen ? (
         <div className="fixed inset-0 z-[95] flex items-end justify-end bg-black/40" onClick={event => event.currentTarget === event.target && setMoreOpen(false)}>
           <div className="mb-2 mr-2 w-[75%] max-w-sm rounded-2xl border border-white/10 bg-black/85 p-2 backdrop-blur">
@@ -564,8 +570,12 @@ export default function CommunityCalendar() {
       ) : null}
 
       {createOpen ? (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 backdrop-blur" onClick={event => event.currentTarget === event.target && setCreateOpen(false)}>
-          <div className="max-h-[86dvh] w-full max-w-2xl overflow-y-auto rounded-t-2xl border border-white/10 bg-[#050606] p-3.5 shadow-2xl sm:mb-4 sm:rounded-2xl">
+        <div
+          className="fixed inset-0 z-[100] flex min-h-[100dvh] items-start justify-center overflow-y-auto bg-black/70 px-3 pb-6 backdrop-blur"
+          style={{ paddingTop: 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + 8px)' } as CSSProperties}
+          onClick={event => event.currentTarget === event.target && setCreateOpen(false)}
+        >
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#050606] p-3.5 shadow-2xl">
             <div className="mb-2.5 flex items-center justify-between">
               <div>
                 <h2 className="text-base font-semibold">Create event</h2>
@@ -638,8 +648,12 @@ export default function CommunityCalendar() {
       ) : null}
 
       {editingEvent ? (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur" onClick={event => event.currentTarget === event.target && setEditingEvent(null)}>
-          <div className="max-h-[86dvh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/10 bg-[#050606] p-3.5">
+        <div
+          className="fixed inset-0 z-[100] flex min-h-[100dvh] items-start justify-center overflow-y-auto bg-black/70 px-3 pb-6 backdrop-blur"
+          style={{ paddingTop: 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + 8px)' } as CSSProperties}
+          onClick={event => event.currentTarget === event.target && setEditingEvent(null)}
+        >
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#050606] p-3.5">
             <div className="mb-2.5 flex items-center justify-between">
               <h2 className="text-base font-semibold">Edit event</h2>
               <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setEditingEvent(null)} aria-label="Close"><i className="fa-solid fa-xmark" /></button>
