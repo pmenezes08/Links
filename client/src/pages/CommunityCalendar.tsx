@@ -302,10 +302,20 @@ export default function CommunityCalendar() {
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const keyboardOffsetRef = useRef(0)
+  const focusedFieldRef = useRef<HTMLElement | null>(null)
+  const isNativePlatform = useMemo(() => typeof window !== 'undefined' && Capacitor.getPlatform() !== 'web', [])
 
   useEffect(() => { setTitle('Calendar') }, [setTitle])
 
+  const updateKeyboardOffset = useCallback((next: number) => {
+    const clamped = Math.max(0, Math.round(next))
+    if (Math.abs(keyboardOffsetRef.current - clamped) < 2) return
+    keyboardOffsetRef.current = clamped
+    setKeyboardOffset(clamped)
+  }, [])
+
   useEffect(() => {
+    if (isNativePlatform) return
     if (typeof window === 'undefined') return
     const viewport = window.visualViewport
     if (!viewport) return
@@ -316,10 +326,8 @@ export default function CommunityCalendar() {
     const update = () => {
       const current = viewport.height
       if (baseHeight === null || current > baseHeight - 4) baseHeight = current
-      const offset = Math.max(0, (baseHeight ?? current) - current - viewport.offsetTop)
-      if (Math.abs(keyboardOffsetRef.current - offset) < 1) return
-      keyboardOffsetRef.current = offset
-      setKeyboardOffset(offset)
+      const offset = (baseHeight ?? current) - current - viewport.offsetTop
+      updateKeyboardOffset(offset)
     }
 
     const onChange = () => {
@@ -336,45 +344,50 @@ export default function CommunityCalendar() {
       viewport.removeEventListener('resize', onChange)
       viewport.removeEventListener('scroll', onChange)
     }
-  }, [])
+  }, [isNativePlatform, updateKeyboardOffset])
 
   useEffect(() => {
-    if (Capacitor.getPlatform() === 'web') return
+    if (!isNativePlatform) return
     let showSub: PluginListenerHandle | undefined
+    let changeSub: PluginListenerHandle | undefined
     let hideSub: PluginListenerHandle | undefined
 
-    const handleShow = (info: KeyboardInfo) => {
-      const height = info?.keyboardHeight ?? 0
-      if (Math.abs(keyboardOffsetRef.current - height) < 2) return
-      keyboardOffsetRef.current = height
-      setKeyboardOffset(height)
-    }
-
-    const handleHide = () => {
-      if (keyboardOffsetRef.current === 0) return
-      keyboardOffsetRef.current = 0
-      setKeyboardOffset(0)
-    }
+    const handleShow = (info: KeyboardInfo) => updateKeyboardOffset(info?.keyboardHeight ?? 0)
+    const handleHide = () => updateKeyboardOffset(0)
 
     Keyboard.addListener('keyboardWillShow', handleShow).then(handle => { showSub = handle })
+    Keyboard.addListener('keyboardDidShow', handleShow).then(handle => { changeSub = handle })
     Keyboard.addListener('keyboardWillHide', handleHide).then(handle => { hideSub = handle })
 
     return () => {
       showSub?.remove()
+      changeSub?.remove()
       hideSub?.remove()
+    }
+  }, [isNativePlatform, updateKeyboardOffset])
+
+  const trackFocusedField = useCallback((event: FocusEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement | null
+    if (!target) return
+    const tag = target.tagName
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') return
+    focusedFieldRef.current = target
+    if (typeof target.scrollIntoView === 'function') {
+      requestAnimationFrame(() => {
+        try { target.scrollIntoView({ block: 'center', behavior: 'smooth' }) } catch {}
+      })
     }
   }, [])
 
-  const scrollFocusedIntoView = useCallback((event: FocusEvent<HTMLElement>) => {
-    const target = event.target as HTMLElement | null
-    if (!target) return
-    if (typeof target.scrollIntoView !== 'function') return
-    requestAnimationFrame(() => {
-      try {
-        target.scrollIntoView({ block: 'center', behavior: 'smooth' })
-      } catch {}
-    })
-  }, [])
+  useEffect(() => {
+    if (keyboardOffset <= 0) return
+    const target = focusedFieldRef.current
+    if (!target || typeof target.scrollIntoView !== 'function') return
+    const id = window.setTimeout(() => {
+      try { target.scrollIntoView({ block: 'center', behavior: 'smooth' }) } catch {}
+    }, 80)
+    return () => window.clearTimeout(id)
+  }, [keyboardOffset])
 
   const reloadEvents = useCallback(async () => {
     try {
@@ -666,13 +679,16 @@ export default function CommunityCalendar() {
 
       {createOpen ? (
         <div
-          className="fixed inset-x-0 top-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/70 px-3 pb-6 backdrop-blur"
+          className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/70 px-3 backdrop-blur"
           style={{
-            bottom: `${keyboardOffset}px`,
-            paddingTop: 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + 8px)',
+            paddingTop: keyboardOffset > 0
+              ? '8px'
+              : 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + 8px)',
+            paddingBottom: `${keyboardOffset + 16}px`,
+            transition: 'padding 180ms ease',
           } as CSSProperties}
           onClick={event => event.currentTarget === event.target && setCreateOpen(false)}
-          onFocusCapture={scrollFocusedIntoView}
+          onFocusCapture={trackFocusedField}
         >
           <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#050606] p-3.5 shadow-2xl">
             <div className="mb-2.5 flex items-center justify-between">
@@ -748,13 +764,16 @@ export default function CommunityCalendar() {
 
       {editingEvent ? (
         <div
-          className="fixed inset-x-0 top-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/70 px-3 pb-6 backdrop-blur"
+          className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/70 px-3 backdrop-blur"
           style={{
-            bottom: `${keyboardOffset}px`,
-            paddingTop: 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + 8px)',
+            paddingTop: keyboardOffset > 0
+              ? '8px'
+              : 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + 8px)',
+            paddingBottom: `${keyboardOffset + 16}px`,
+            transition: 'padding 180ms ease',
           } as CSSProperties}
           onClick={event => event.currentTarget === event.target && setEditingEvent(null)}
-          onFocusCapture={scrollFocusedIntoView}
+          onFocusCapture={trackFocusedField}
         >
           <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#050606] p-3.5">
             <div className="mb-2.5 flex items-center justify-between">
