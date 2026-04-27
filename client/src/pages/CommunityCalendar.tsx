@@ -282,7 +282,6 @@ export default function CommunityCalendar() {
   const groupId = searchParams.get('group_id')
   const navigate = useNavigate()
   const { setTitle } = useHeader()
-  const scrollRef = useRef<HTMLDivElement | null>(null)
   const createFormRef = useRef<HTMLFormElement | null>(null)
 
   const [events, setEvents] = useState<EventItem[]>([])
@@ -298,8 +297,6 @@ export default function CommunityCalendar() {
   const [rsvpEvent, setRsvpEvent] = useState<EventItem | null>(null)
   const [editingEvent, setEditingEvent] = useState<EventItem | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
-  const [moreOpen, setMoreOpen] = useState(false)
-  const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const keyboardOffsetRef = useRef(0)
   const focusedFieldRef = useRef<HTMLElement | null>(null)
@@ -432,21 +429,6 @@ export default function CommunityCalendar() {
     return () => { mounted = false }
   }, [community_id, groupId, reloadEvents])
 
-  useEffect(() => {
-    let mounted = true
-    ;(async () => {
-      try {
-        const response = await fetch(`/get_community_announcements?community_id=${community_id}`, { credentials: 'include' })
-        const payload = await response.json()
-        if (!mounted || !payload?.success) return
-        const key = `ann_last_seen_${community_id}`
-        const lastSeen = Date.parse(localStorage.getItem(key) || '') || 0
-        setHasUnseenAnnouncements((payload.announcements || []).some((announcement: any) => Date.parse(announcement.created_at) > lastSeen))
-      } catch {}
-    })()
-    return () => { mounted = false }
-  }, [community_id])
-
   const dateStrip = useMemo(() => {
     const unique = Array.from(new Map(events.map(event => [event.date, event])).values())
     return unique.slice(0, 14)
@@ -460,14 +442,6 @@ export default function CommunityCalendar() {
 
   const nextEvent = events[0] || null
   const selectedCount = Object.values(selectedMembers).filter(Boolean).length
-
-  async function markAnnouncementsSeen() {
-    try {
-      localStorage.setItem(`ann_last_seen_${community_id}`, new Date().toISOString())
-      setHasUnseenAnnouncements(false)
-    } catch {}
-    navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)
-  }
 
   async function createEvent(formData: FormData) {
     const params = toUtcFormFields(formData)
@@ -561,8 +535,7 @@ export default function CommunityCalendar() {
     <div className="min-h-screen bg-black text-white">
       <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(77,182,172,0.22),transparent_34%),radial-gradient(circle_at_15%_20%,rgba(77,182,172,0.10),transparent_28%)]" />
       <div
-        ref={scrollRef}
-        className="relative mx-auto max-w-3xl px-3 pt-2 pb-40"
+        className="relative mx-auto max-w-3xl px-3 pt-2 pb-28"
         style={{ WebkitOverflowScrolling: 'touch' as any } as CSSProperties}
       >
         <header className="mb-0 flex items-center">
@@ -636,19 +609,6 @@ export default function CommunityCalendar() {
         </main>
       </div>
 
-      <div className="fixed bottom-4 left-1/2 z-40 w-[94%] max-w-[720px] -translate-x-1/2 rounded-2xl border border-white/10 bg-black/80 shadow-lg backdrop-blur">
-        <div className="flex h-14 items-center justify-between px-6 text-[#cfd8dc]">
-          <button className="rounded-full p-2 hover:bg-white/5" aria-label="Home" onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}><i className="fa-solid fa-house" /></button>
-          <button className="rounded-full p-2 hover:bg-white/5" aria-label="Members" onClick={() => navigate(`/community/${community_id}/members`)}><i className="fa-solid fa-users" /></button>
-          <button className="grid h-10 w-10 place-items-center rounded-xl bg-[#4db6ac] text-black hover:brightness-110" aria-label="Create event" onClick={() => setCreateOpen(true)}><i className="fa-solid fa-plus" /></button>
-          <button className="relative rounded-full p-2 hover:bg-white/5" aria-label="Announcements" onClick={markAnnouncementsSeen}>
-            <i className="fa-solid fa-bullhorn" style={hasUnseenAnnouncements ? { color: '#4db6ac' } : undefined} />
-            {hasUnseenAnnouncements ? <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#4db6ac]" /> : null}
-          </button>
-          <button className="rounded-full p-2 hover:bg-white/5" aria-label="More" onClick={() => setMoreOpen(true)}><i className="fa-solid fa-ellipsis" /></button>
-        </div>
-      </div>
-
       {activeTab !== 'archive' ? (
         <button
           type="button"
@@ -658,23 +618,6 @@ export default function CommunityCalendar() {
           <i className="fa-solid fa-plus text-xs" />
           <span>New event</span>
         </button>
-      ) : null}
-
-      {moreOpen ? (
-        <div className="fixed inset-0 z-[95] flex items-end justify-end bg-black/40" onClick={event => event.currentTarget === event.target && setMoreOpen(false)}>
-          <div className="mb-2 mr-2 w-[75%] max-w-sm rounded-2xl border border-white/10 bg-black/85 p-2 backdrop-blur">
-            {[
-              ['Polls', `/community/${community_id}/polls_react`],
-              ['Calendar', `/community/${community_id}/calendar_react`],
-              ['Forum', `/community/${community_id}/resources`],
-              ['Useful Links', `/community/${community_id}/resources`],
-              ['Report Issue', '/issues'],
-              ['Anonymous feedback', '/anonymous_feedback'],
-            ].map(([label, href]) => (
-              <button key={label} className="w-full rounded-xl px-4 py-3 text-right hover:bg-white/5" onClick={() => { setMoreOpen(false); window.location.href = href }}>{label}</button>
-            ))}
-          </div>
-        </div>
       ) : null}
 
       {createOpen ? (
