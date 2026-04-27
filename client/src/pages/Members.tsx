@@ -425,14 +425,16 @@ export default function Members(){
       {/* Invite Modal */}
       {showInviteModal && (
         <div
-          className="fixed inset-0 z-[9990] flex items-start justify-center bg-black/85 px-3 pb-6 pt-[calc(env(safe-area-inset-top,0px)+12px)] backdrop-blur-md sm:items-start sm:p-4"
+          className="fixed inset-0 z-[9990] flex items-start justify-center bg-[radial-gradient(circle_at_top,_rgba(77,182,172,0.18),_rgba(0,0,0,0.92)_42%)] px-3 pb-6 backdrop-blur-md sm:px-4 sm:pb-4"
+          style={{ paddingTop: 'calc(var(--app-header-height, 56px) + env(safe-area-inset-top, 0px) + 14px)' }}
           onClick={(e) => { if (e.target === e.currentTarget && !inviteLoading) handleCloseInviteModal() }}
         >
           <div
-            className="flex max-h-[calc(100dvh-32px)] w-full max-w-md flex-col overflow-hidden rounded-b-[28px] border border-white/10 bg-[#080808] shadow-2xl shadow-black/60 sm:max-h-[86dvh] sm:rounded-[28px]"
+            className="flex max-h-[calc(100dvh-var(--app-header-height,56px)-40px)] w-full max-w-md flex-col overflow-hidden rounded-[30px] border border-[#4db6ac]/20 bg-[#070909]/95 shadow-2xl shadow-black/70 ring-1 ring-white/[0.04] sm:max-h-[82dvh]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
+            <div className="h-1 w-full bg-gradient-to-r from-transparent via-[#4db6ac] to-transparent opacity-80" />
+            <div className="flex items-center gap-3 border-b border-white/10 bg-gradient-to-b from-white/[0.06] to-transparent px-4 py-4">
               {inviteStep !== 'choose' ? (
                 <button
                   type="button"
@@ -443,7 +445,7 @@ export default function Members(){
                     setInviteSuccessMessage('')
                     setShowQRCode(false)
                   }}
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/80 hover:border-[#4db6ac]/50 hover:text-[#4db6ac]"
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white/80 transition hover:border-[#4db6ac]/60 hover:bg-[#4db6ac]/10 hover:text-[#4db6ac]"
                   disabled={inviteLoading}
                   aria-label="Back to invite options"
                 >
@@ -451,15 +453,16 @@ export default function Members(){
                 </button>
               ) : null}
               <div className="min-w-0 flex-1">
-                <h2 className="truncate text-base font-semibold text-white">Invite to {communityName || 'Community'}</h2>
-                <p className="text-xs text-white/50">
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]/80">Invite members</div>
+                <h2 className="truncate text-lg font-semibold text-white">Invite to {communityName || 'Community'}</h2>
+                <p className="mt-0.5 text-xs text-white/55">
                   {inviteStep === 'choose' ? 'Choose how you want to invite members' : 'Complete the selected invite method'}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={handleCloseInviteModal}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/80 hover:border-[#4db6ac]/50 hover:text-[#4db6ac]"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white/80 transition hover:border-[#4db6ac]/60 hover:bg-[#4db6ac]/10 hover:text-[#4db6ac]"
                 disabled={inviteLoading}
                 aria-label="Close invite modal"
               >
@@ -491,6 +494,11 @@ export default function Members(){
 
               {inviteStep === 'choose' && (
                 <div className="space-y-3">
+                  <div className="rounded-3xl border border-white/10 bg-black/35 p-4">
+                    <p className="text-sm leading-relaxed text-white/70">
+                      Pick the simplest route for the person you are inviting. You can come back and choose another method anytime.
+                    </p>
+                  </div>
                   {([
                     {
                       id: 'username',
@@ -520,16 +528,16 @@ export default function Members(){
                         setInviteSuccess(false)
                         setInviteSuccessMessage('')
                       }}
-                      className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-left transition hover:border-[#4db6ac]/45 hover:bg-[#4db6ac]/10"
+                      className="group flex w-full items-center gap-3 rounded-3xl border border-white/10 bg-white/[0.035] p-4 text-left shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:border-[#4db6ac]/50 hover:bg-[#4db6ac]/10"
                     >
-                      <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-[#4db6ac]/15 text-[#4db6ac]">
+                      <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl border border-[#4db6ac]/20 bg-[#4db6ac]/15 text-[#4db6ac] transition group-hover:bg-[#4db6ac]/20">
                         <i className={`${option.icon} text-base`} />
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-semibold text-white">{option.title}</span>
-                        <span className="mt-0.5 block text-xs leading-relaxed text-white/50">{option.text}</span>
+                        <span className="mt-1 block text-xs leading-relaxed text-white/55">{option.text}</span>
                       </span>
-                      <i className="fa-solid fa-chevron-right text-xs text-white/30" />
+                      <i className="fa-solid fa-chevron-right text-xs text-white/30 transition group-hover:text-[#4db6ac]" />
                     </button>
                   ))}
                 </div>
@@ -537,7 +545,7 @@ export default function Members(){
 
               {inviteStep === 'username' && (
                 <div className="space-y-4">
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                  <div className="rounded-3xl border border-white/10 bg-black/35 p-4">
                     <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-white/40">C-Point username</label>
                     <input
                       type="text"
@@ -549,7 +557,7 @@ export default function Members(){
                         setInviteSuccessMessage('')
                       }}
                       placeholder="@username"
-                      className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder-white/35 outline-none transition focus:border-[#4db6ac]"
+                      className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-white/35 outline-none transition focus:border-[#4db6ac] focus:bg-black/40"
                       disabled={inviteLoading}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
@@ -565,7 +573,7 @@ export default function Members(){
                   <button
                     type="button"
                     onClick={handleSendUsernameInvite}
-                    className="flex h-11 w-full items-center justify-center rounded-2xl bg-[#4db6ac] px-4 text-sm font-semibold text-black transition hover:bg-[#45a099] disabled:cursor-not-allowed disabled:opacity-45"
+                    className="flex h-12 w-full items-center justify-center rounded-2xl bg-[#4db6ac] px-4 text-sm font-semibold text-black shadow-lg shadow-[#4db6ac]/20 transition hover:bg-[#45a099] disabled:cursor-not-allowed disabled:opacity-45"
                     disabled={inviteLoading || !inviteUsername.trim()}
                   >
                     {inviteLoading ? 'Sending...' : 'Send Username Invite'}
@@ -575,7 +583,7 @@ export default function Members(){
 
               {inviteStep === 'email' && (
                 <div className="space-y-4">
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                  <div className="rounded-3xl border border-white/10 bg-black/35 p-4">
                     <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-white/40">E-mail address</label>
                     <input
                       type="email"
@@ -586,7 +594,7 @@ export default function Members(){
                         setInviteSuccess(false)
                       }}
                       placeholder="email@example.com"
-                      className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder-white/35 outline-none transition focus:border-[#4db6ac]"
+                      className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-white/35 outline-none transition focus:border-[#4db6ac] focus:bg-black/40"
                       disabled={inviteLoading || inviteSuccess}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
@@ -599,7 +607,7 @@ export default function Members(){
                   <button
                     type="button"
                     onClick={handleSendInvite}
-                    className="flex h-11 w-full items-center justify-center rounded-2xl bg-[#4db6ac] px-4 text-sm font-semibold text-black transition hover:bg-[#45a099] disabled:cursor-not-allowed disabled:opacity-45"
+                    className="flex h-12 w-full items-center justify-center rounded-2xl bg-[#4db6ac] px-4 text-sm font-semibold text-black shadow-lg shadow-[#4db6ac]/20 transition hover:bg-[#45a099] disabled:cursor-not-allowed disabled:opacity-45"
                     disabled={inviteLoading || inviteSuccess || !inviteEmail.trim()}
                   >
                     {inviteLoading ? 'Sending...' : 'Send E-mail Invite'}
@@ -610,7 +618,7 @@ export default function Members(){
               {inviteStep === 'link' && (
                 <div className="space-y-4">
                   {(currentUserRole === 'admin' || currentUserRole === 'owner' || currentUserRole === 'app_admin') && (
-                    <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3">
+                    <div className="flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-black/35 px-4 py-3">
                       <div>
                         <div className="text-sm font-semibold text-white">Single-use invite link</div>
                         <div className="text-xs text-white/45">When enabled, each QR/link can only be used once.</div>
@@ -640,7 +648,7 @@ export default function Members(){
                     <button
                       type="button"
                       onClick={handleGenerateQR}
-                      className="flex h-11 w-full items-center justify-center rounded-2xl border border-[#4db6ac]/35 bg-[#4db6ac]/15 px-4 text-sm font-semibold text-[#4db6ac] transition hover:bg-[#4db6ac]/25 disabled:cursor-not-allowed disabled:opacity-45"
+                      className="flex h-12 w-full items-center justify-center rounded-2xl border border-[#4db6ac]/35 bg-[#4db6ac]/15 px-4 text-sm font-semibold text-[#4db6ac] transition hover:bg-[#4db6ac]/25 disabled:cursor-not-allowed disabled:opacity-45"
                       disabled={inviteLoading}
                     >
                       <i className="fa-solid fa-qrcode mr-2" />
