@@ -41,6 +41,7 @@ export default function EditCommunity(){
   const { community_id } = useParams()
   const navigate = useNavigate()
   const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
   // NOTE: public/private/closed type dropdown was removed April 2026.
   // The `type` column on `communities` is overloaded — it stores the
   // functional category (Gym / University / Business / General) set at
@@ -91,6 +92,7 @@ export default function EditCommunity(){
         const jc = await rc.json().catch(()=>null)
         if (jc?.success && jc.community){
           setName(jc.community.name || '')
+          setDescription(jc.community.description || '')
           setNetworkType(jc.community.network_type || 'professional')
           const pid = jc.community.parent_community_id
           if (pid){ setIsChild(true); setSelectedParentId(String(pid)) }
@@ -189,6 +191,7 @@ export default function EditCommunity(){
     const fd = new FormData()
     fd.append('community_id', String(community_id))
     fd.append('name', name.trim())
+    fd.append('description', description.trim())
     // Intentionally no `type` field — see comment next to the state init.
     // The backend preserves the existing category when omitted.
     fd.append('network_type', networkType)
@@ -422,6 +425,17 @@ export default function EditCommunity(){
           <div>
             <label className="block text-sm text-[#9fb0b5] mb-1">Community name</label>
             <input className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none" value={name} onChange={e=> setName(e.target.value)} required />
+          </div>
+          <div>
+            <label className="block text-sm text-[#9fb0b5] mb-1">Description</label>
+            <textarea
+              className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none min-h-[96px]"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="What is this community about?"
+              rows={3}
+            />
+            <div className="text-xs text-[#9fb0b5] mt-1">Shown below the community name on the feed.</div>
           </div>
           {renderBillingCard()}
           <div>

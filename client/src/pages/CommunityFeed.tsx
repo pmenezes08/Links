@@ -612,6 +612,12 @@ export default function CommunityFeed() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const lastRefreshRef = useRef(0)
 
+  const invalidateLocalFeedCache = useCallback(() => {
+    if (deviceFeedCacheKey) {
+      clearDeviceCache(deviceFeedCacheKey)
+    }
+  }, [deviceFeedCacheKey])
+
   const refreshFeed = useCallback(async () => {
     if (!navigator.onLine || isRefreshing) return
     const now = Date.now()
@@ -1629,11 +1635,7 @@ export default function CommunityFeed() {
     setStoryViewersState(prev => ({ ...prev, open: false }))
     setStoryReplyText('')
     setStoryCommentFocused(false)
-    if (storyViewerHistoryPushedRef.current) {
-      storyViewerHistoryPushedRef.current = false
-      // Pop the fake history entry we pushed
-      try { window.history.back() } catch {}
-    }
+    storyViewerHistoryPushedRef.current = false
   }, [])
 
   // Push history state when story viewer opens, pop on back button
@@ -1950,6 +1952,8 @@ export default function CommunityFeed() {
           alert(errorMsg || 'Failed to delete post')
         }
         // If already deleted, silently succeed (post stays removed from UI)
+      } else {
+        invalidateLocalFeedCache()
       }
     } catch {
       // Restore on network error
@@ -2112,6 +2116,8 @@ export default function CommunityFeed() {
           return { ...prev, posts: [...posts, originalPost].sort((a: any, b: any) => b.id - a.id) }
         })
         alert(j?.error || 'Failed to delete poll')
+      } else {
+        invalidateLocalFeedCache()
       }
     } catch {
       // Restore on error
@@ -2257,6 +2263,7 @@ export default function CommunityFeed() {
       const res = await fetch('/vote_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: pollId, option_id: optionId }) })
       const j = await res.json().catch(()=>null)
       if (!j?.success) return
+      invalidateLocalFeedCache()
       if (Array.isArray(j.poll_results)){
         // Reconcile this post's poll counts with server truth without full reload
         setData((prev:any) => {
@@ -2862,11 +2869,11 @@ export default function CommunityFeed() {
                 <Avatar
                   username={currentStory.username}
                   url={currentStory.profile_picture || undefined}
-                  size={36}
+                  size={40}
                   linkToProfile
                 />
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold tracking-tight text-sm text-white truncate">{currentStory.username}</div>
+                  <div className="font-semibold tracking-tight text-base text-white truncate">@{currentStory.username}</div>
                   <div className="text-xs text-white/70">
                     {currentStory.created_at ? formatSmartTime(currentStory.created_at) : null}
                   </div>
@@ -2923,13 +2930,13 @@ export default function CommunityFeed() {
                       )}
                     </div>
                   )}
-                  {/* Close button */}
+                  {/* Back to feed button */}
                   <button
                     className="w-9 h-9 rounded-full bg-black/40 border border-white/20 text-white hover:bg-black/60 flex items-center justify-center ml-1"
                     onClick={closeStoryViewer}
-                    aria-label="Close story"
+                    aria-label="Back to community feed"
                   >
-                    <i className="fa-solid fa-xmark text-lg" />
+                    <i className="fa-solid fa-arrow-left text-sm" />
                   </button>
                 </div>
               </div>

@@ -21151,6 +21151,26 @@ def vote_poll():
                 c.execute("UPDATE poll_options SET votes = (SELECT COUNT(*) FROM poll_votes WHERE option_id = ?) WHERE id = ?", (existing_vote['option_id'], existing_vote['option_id']))
             
             conn.commit()
+
+            # Invalidate the feed cache immediately so poll counts do not
+            # appear to revert when the feed refetches after an optimistic vote.
+            try:
+                c.execute(
+                    """
+                    SELECT p.community_id
+                    FROM polls poll
+                    JOIN posts p ON p.id = poll.post_id
+                    WHERE poll.id = ?
+                    """,
+                    (poll_id,),
+                )
+                poll_community = c.fetchone()
+                if poll_community:
+                    community_id = poll_community['community_id'] if hasattr(poll_community, 'keys') else poll_community[0]
+                    if community_id:
+                        invalidate_community_cache(community_id)
+            except Exception as cache_err:
+                logger.warning(f"Failed to invalidate cache after poll vote: {cache_err}")
             
             # EVENT-DRIVEN NOTIFICATION CHECK
             # Check this poll for notifications immediately after vote
@@ -29655,6 +29675,10 @@ def generate_invite_link():
                 return jsonify({'success': False, 'error': 'Invalid community ID'}), 400
             if not has_community_management_permission(username, cid):
                 return jsonify({'success': False, 'error': 'Only community admins can generate invite links'}), 403
+
+            cap_response = _invite_member_cap_response(c, cid, username)
+            if cap_response:
+                return cap_response
             
             # Generate unique token (use generic email for QR code invites)
             import secrets
@@ -29695,6 +29719,40 @@ def _community_invite_join_ids(cursor, community_id: int, raw_nested_values=None
         return [int(community_id)]
     except (TypeError, ValueError):
         return []
+
+
+def _invite_member_cap_response(cursor, community_id: int, inviter_username: Optional[str], target_username: Optional[str] = None):
+    """Return a structured cap error for invite creation, or None when capacity remains."""
+    try:
+        ensure_free_parent_member_capacity(
+            cursor,
+            community_id,
+            attempted_username=target_username or inviter_username,
+        )
+        ensure_community_tier_member_capacity(
+            cursor,
+            community_id,
+            attempted_username=target_username or inviter_username,
+        )
+        return None
+    except CommunityMembershipLimitError as limit_err:
+        cap = getattr(limit_err, "cap", None)
+        community_name = getattr(limit_err, "community_name", "") or "This community"
+        message = (
+            f"Max member limit achieved. {community_name} has reached its {cap}-member limit. "
+            "Upgrade the community tier to invite more members."
+            if cap
+            else "Max member limit achieved. Upgrade the community tier to invite more members."
+        )
+        return jsonify({
+            'success': False,
+            'error': message,
+            'reason_code': 'community_member_limit',
+            'community_id': community_id,
+            'max_members': cap,
+            'show_upgrade': True,
+            'upgrade_url': f'/subscription_plans?community_id={community_id}',
+        }), 403
 
 
 def _fetch_manageable_communities(cursor, username: str, target_username: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -29824,6 +29882,15 @@ def invite_username_to_community():
             )
             if c.fetchone():
                 return jsonify({'success': False, 'error': 'User is already a member of this community'}), 400
+
+            cap_response = _invite_member_cap_response(
+                c,
+                community_id,
+                inviter_username,
+                resolved_target_username,
+            )
+            if cap_response:
+                return cap_response
 
             c.execute(
                 """
@@ -30368,6 +30435,10 @@ def invite_to_community():
                 return jsonify({'success': False, 'error': 'Invalid community ID'}), 400
             if not has_community_management_permission(username, cid):
                 return jsonify({'success': False, 'error': 'Only community admins can send invitations'}), 403
+
+            cap_response = _invite_member_cap_response(c, cid, username, invited_email)
+            if cap_response:
+                return cap_response
             
             include_nested_ids: List[int] = []
 
@@ -31165,29 +31236,7 @@ def api_community_feed(community_id):
             # Exclude posts with pending videos (talking avatar still generating)
             # Exclude posts hidden by the current user
             # Exclude posts from blocked users
-            
-            # First ensure blocked_users table exists (use appropriate syntax for MySQL vs SQLite)
-            try:
-                if USE_MYSQL:
-                    c.execute('''CREATE TABLE IF NOT EXISTS blocked_users
-                                 (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                                  blocker_username VARCHAR(191) NOT NULL,
-                                  blocked_username VARCHAR(191) NOT NULL,
-                                  reason TEXT,
-                                  blocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                  UNIQUE KEY unique_block (blocker_username, blocked_username))''')
-                else:
-                    c.execute('''CREATE TABLE IF NOT EXISTS blocked_users
-                                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                  blocker_username TEXT NOT NULL,
-                                  blocked_username TEXT NOT NULL,
-                                  reason TEXT,
-                                  blocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                  UNIQUE(blocker_username, blocked_username))''')
-                conn.commit()
-            except Exception as table_err:
-                logger.warning(f"Could not ensure blocked_users table: {table_err}")
-            
+
             # Try query with blocked_users filter, fall back to simpler query if table doesn't exist
             try:
                 c.execute(

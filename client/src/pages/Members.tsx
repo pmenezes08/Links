@@ -27,6 +27,7 @@ export default function Members(){
   const [inviteUsername, setInviteUsername] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
   const [inviteError, setInviteError] = useState('')
+  const [inviteUpgradeUrl, setInviteUpgradeUrl] = useState('')
   const [inviteSuccess, setInviteSuccess] = useState(false)
   const [inviteSuccessMessage, setInviteSuccessMessage] = useState('')
   const [showQRCode, setShowQRCode] = useState(false)
@@ -112,6 +113,7 @@ export default function Members(){
     setInviteEmail('')
     setInviteUsername('')
     setInviteError('')
+    setInviteUpgradeUrl('')
     setInviteSuccess(false)
     setInviteSuccessMessage('')
     setShowQRCode(false)
@@ -138,6 +140,7 @@ export default function Members(){
     setInviteEmail('')
     setInviteUsername('')
     setInviteError('')
+    setInviteUpgradeUrl('')
     setInviteSuccess(false)
     setInviteSuccessMessage('')
     setShowQRCode(false)
@@ -214,6 +217,7 @@ export default function Members(){
     }
     setInviteLoading(true)
     setInviteError('')
+    setInviteUpgradeUrl('')
     setInviteSuccess(false)
 
     try {
@@ -235,6 +239,7 @@ export default function Members(){
           handleCloseInviteModal()
         }, 2000)
       } else {
+        if (data?.show_upgrade && data?.upgrade_url) setInviteUpgradeUrl(data.upgrade_url)
         setInviteError(data.error || 'Failed to send invitation')
       }
     } catch (error) {
@@ -257,6 +262,7 @@ export default function Members(){
     }
     setInviteLoading(true)
     setInviteError('')
+    setInviteUpgradeUrl('')
     setInviteSuccess(false)
     setInviteSuccessMessage('')
 
@@ -276,6 +282,7 @@ export default function Members(){
         setInviteSuccessMessage(data.message || `Invite sent to @${targetUsername}`)
         setInviteUsername('')
       } else {
+        if (data?.show_upgrade && data?.upgrade_url) setInviteUpgradeUrl(data.upgrade_url)
         setInviteError(data.error || 'Failed to send username invitation')
       }
     } catch (error) {
@@ -293,6 +300,7 @@ export default function Members(){
     }
     setInviteLoading(true)
     setInviteError('')
+    setInviteUpgradeUrl('')
     
     try {
       const payload = buildInvitePayload()
@@ -309,6 +317,7 @@ export default function Members(){
         setQRCodeUrl(data.invite_url)
         setShowQRCode(true)
       } else {
+        if (data?.show_upgrade && data?.upgrade_url) setInviteUpgradeUrl(data.upgrade_url)
         setInviteError(data.error || 'Failed to generate QR code')
       }
     } catch (error) {
@@ -424,6 +433,15 @@ export default function Members(){
             {inviteError && (
               <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
                 {inviteError}
+                {inviteUpgradeUrl && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(inviteUpgradeUrl)}
+                    className="mt-3 w-full rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:bg-[#45a099]"
+                  >
+                    Upgrade community tier
+                  </button>
+                )}
               </div>
             )}
 
