@@ -155,6 +155,45 @@ def associate_install_tokens_with_user(install_id: str, username: str) -> int:
     return updated
 
 
+def associate_fcm_tokens_for_install(install_id: str, username: str) -> int:
+    """Attach anonymous fcm_tokens rows to the logged-in user by matching token rows in native_push_tokens."""
+    install_id = (install_id or "").strip()
+    if not install_id or not username:
+        return 0
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        ph = get_sql_placeholder()
+        if USE_MYSQL:
+            c.execute(
+                f"""
+                UPDATE fcm_tokens AS f
+                INNER JOIN native_push_tokens AS n ON n.token = f.token AND n.install_id = {ph}
+                SET f.username = {ph}, f.last_seen = NOW()
+                WHERE f.username IS NULL
+                """,
+                (install_id, username),
+            )
+        else:
+            c.execute(
+                f"""
+                UPDATE fcm_tokens
+                SET username = {ph}, last_seen = datetime('now')
+                WHERE username IS NULL
+                  AND token IN (
+                    SELECT token FROM native_push_tokens WHERE install_id = {ph}
+                  )
+                """,
+                (username, install_id),
+            )
+        conn.commit()
+        rows = c.rowcount or 0
+
+    if rows:
+        logger.info("Associated %d fcm_tokens row(s) with %s (install)", rows, username)
+    return int(rows)
+
+
 def deactivate_for_install(install_id: Optional[str]) -> dict[str, int]:
     """Deactivate all push rows tied to a native install id.
 
@@ -228,5 +267,6 @@ __all__ = [
     "register_native_push_token",
     "unregister_native_push_token",
     "associate_install_tokens_with_user",
+    "associate_fcm_tokens_for_install",
     "deactivate_for_install",
 ]

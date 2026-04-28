@@ -131,3 +131,53 @@ def test_deactivate_for_install_unknown_id_is_noop(mysql_dsn):
 
     assert result == {"native_push_tokens": 0, "fcm_tokens": 0}
     assert _active_counts() == (1, 1)
+
+
+def test_associate_fcm_tokens_for_install_updates_null_username(mysql_dsn):
+    """Orphan fcm_tokens.username NULL + native_push_tokens.install_id match."""
+    _ensure_push_tables()
+    tok = "shared-fcm-token-xyz"
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        if USE_MYSQL:
+            c.execute(
+                f"""
+                INSERT INTO native_push_tokens (token, username, install_id, platform, environment, bundle_id, is_active)
+                VALUES ({ph}, NULL, 'install-fcm', 'ios', 'sandbox', 'co.cpoint.app', 1)
+                """,
+                (tok,),
+            )
+            c.execute(
+                f"""
+                INSERT INTO fcm_tokens (token, username, platform, is_active)
+                VALUES ({ph}, NULL, 'ios', 1)
+                """,
+                (tok,),
+            )
+        else:
+            c.execute(
+                """
+                INSERT INTO native_push_tokens (token, username, install_id, platform, environment, bundle_id, is_active)
+                VALUES (?, ?, 'install-fcm', 'ios', 'sandbox', 'co.cpoint.app', 1)
+                """,
+                (tok, None),
+            )
+            c.execute(
+                """
+                INSERT INTO fcm_tokens (token, username, platform, is_active)
+                VALUES (?, ?, 'ios', 1)
+                """,
+                (tok, None),
+            )
+        conn.commit()
+
+    n = native_push.associate_fcm_tokens_for_install("install-fcm", "bob")
+    assert n >= 1
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT username FROM fcm_tokens WHERE token = {ph}", (tok,))
+        row = c.fetchone()
+    un = row["username"] if hasattr(row, "keys") else row[0]
+    assert un == "bob"

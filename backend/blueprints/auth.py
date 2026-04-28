@@ -27,7 +27,11 @@ from flask import (
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from backend.services.native_push import associate_install_tokens_with_user, deactivate_for_install
+from backend.services.native_push import (
+    associate_fcm_tokens_for_install,
+    associate_install_tokens_with_user,
+    deactivate_for_install,
+)
 from backend.services import auth_session, disposable_email, remember_tokens
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.email_normalization import (
@@ -629,6 +633,10 @@ def login_password():
                         install_cookie = request.cookies.get("native_push_install_id")
                         if install_cookie:
                             associate_install_tokens_with_user(install_cookie, username)
+                            try:
+                                associate_fcm_tokens_for_install(install_cookie, username)
+                            except Exception as fcm_exc:
+                                logger.warning("fcm_tokens install association failed: %s", fcm_exc)
                     except Exception as exc:
                         logger.warning("native push install association failed: %s", exc)
                     try:

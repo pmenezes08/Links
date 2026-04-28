@@ -1,3 +1,7 @@
+/**
+ * @deprecated Prefer PushInit (App.tsx). Kept in sync with its register_fcm payload;
+ * not mounted in the current app shell.
+ */
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
@@ -25,7 +29,7 @@ export default function NativePushInit() {
           credentials: 'include',
           body: JSON.stringify({
             token: token,
-            platform: 'ios'
+            platform: Capacitor.getPlatform(),
           })
         });
         
