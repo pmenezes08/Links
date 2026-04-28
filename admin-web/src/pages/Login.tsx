@@ -20,8 +20,14 @@ export default function Login() {
       const res = await api('/login', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
       if (res.redirected || res.ok) {
         setStep('password')
+      } else if (res.status === 403) {
+        setError(
+          'Sign-in blocked (403). The API rejected this request—often CSRF origin: set CSRF_ALLOWED_ORIGINS on the app to this admin site URL.',
+        )
+      } else if (res.status === 404) {
+        setError('Sign-in endpoint not found (404). Check API base URL (VITE_API_BASE).')
       } else {
-        setError('User not found')
+        setError(`Sign-in failed (${res.status}). Try another username or check the Network tab.`)
       }
     } catch { setError('Connection error') }
     finally { setLoading(false) }

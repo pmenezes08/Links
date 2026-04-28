@@ -686,6 +686,18 @@ or `false`): invalid cross-site `Origin`/`Referer` pairs are **logged** as
 **Rollback:** set `CSRF_ORIGIN_ENFORCE=false` immediately (no code deploy if
 the env var is read per request).
 
+**Split-host admin (Cloud Run):** If C.Point Admin is served from a different
+hostname than the API (for example `https://cpoint-admin-staging-….run.app`
+calling `https://cpoint-app-staging-….run.app`), CSRF enforcement will block
+`POST /login` and other writes unless the admin origin is allowed. Set on the
+**app** Cloud Run service:
+
+`CSRF_ALLOWED_ORIGINS=https://cpoint-admin-staging-<hash>.europe-west1.run.app`
+
+Use the exact admin URL origin from the browser (comma-separated if several).
+`cloudbuild.yaml` for staging sets this alongside deploy when the URL matches
+the project’s admin service.
+
 ---
 
 ## Appendix — File index

@@ -44,6 +44,43 @@ def _allowed_hostnames(request) -> set[str]:
     return {host for host in hosts if host}
 
 
+def _normalize_origin_url(raw: str) -> str | None:
+    """Return ``scheme://netloc`` (lowercase host) for comparison, or None."""
+    part = (raw or "").strip().rstrip("/")
+    if not part:
+        return None
+    if "://" not in part:
+        part = f"https://{part}"
+    parsed = urlparse(part)
+    scheme = (parsed.scheme or "https").lower()
+    if scheme not in {"http", "https"}:
+        return None
+    netloc = (parsed.netloc or "").strip().lower()
+    if not netloc:
+        # urlparse("https://") etc.
+        host = _hostname(parsed.path)
+        if not host:
+            return None
+        netloc = host
+    return f"{scheme}://{netloc}"
+
+
+def _configured_csrf_allowed_origins() -> set[str]:
+    """Extra browser origins permitted for CSRF checks (comma-separated env).
+
+    Used when admin-web is deployed on a different host than the API (e.g. two
+    Cloud Run services). Set ``CSRF_ALLOWED_ORIGINS`` on the **app** service to
+    the admin site's origin(s), e.g. ``https://cpoint-admin-staging-....run.app``.
+    """
+    raw = os.getenv("CSRF_ALLOWED_ORIGINS") or ""
+    out: set[str] = set()
+    for item in raw.split(","):
+        norm = _normalize_origin_url(item)
+        if norm:
+            out.add(norm)
+    return out
+
+
 def _is_allowed_origin(value: str | None, request) -> bool:
     if not value:
         return True
@@ -65,6 +102,10 @@ def _is_allowed_origin(value: str | None, request) -> bool:
         return True
 
     if "c-point.co" in allowed and hostname.endswith(".c-point.co"):
+        return True
+
+    norm = _normalize_origin_url(value)
+    if norm and norm in _configured_csrf_allowed_origins():
         return True
 
     return False
@@ -91,6 +132,10 @@ def verify_origin_or_block(request):
     ``CSRF_ORIGIN_ENFORCE=false`` keeps the service in shadow mode: log the
     violation but allow the request through. The env var is read per request
     so rollout and rollback do not require a redeploy.
+
+    When admin-web is hosted on a different origin than the API (e.g. two Cloud
+    Run URLs), set ``CSRF_ALLOWED_ORIGINS`` on the app to a comma-separated
+    list of admin **origins** (``https://cpoint-admin-staging-....run.app``).
     """
     if _should_skip(request):
         return None

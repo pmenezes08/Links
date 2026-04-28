@@ -67,6 +67,32 @@ def test_admin_web_subdomain_passes(monkeypatch):
     assert _check(headers={"Origin": "https://admin.c-point.co"}) is None
 
 
+def test_csrf_allowed_origins_env_passes(monkeypatch):
+    monkeypatch.setenv("CSRF_ORIGIN_ENFORCE", "true")
+    monkeypatch.setenv(
+        "CSRF_ALLOWED_ORIGINS",
+        "https://cpoint-admin-staging-739552904126.europe-west1.run.app , https://other-admin.example",
+    )
+    assert (
+        _check(
+            headers={"Origin": "https://cpoint-admin-staging-739552904126.europe-west1.run.app"},
+        )
+        is None
+    )
+    assert _check(headers={"Origin": "https://other-admin.example"}) is None
+
+
+def test_csrf_allowed_origins_referer_passes(monkeypatch):
+    monkeypatch.setenv("CSRF_ORIGIN_ENFORCE", "true")
+    monkeypatch.setenv("CSRF_ALLOWED_ORIGINS", "https://cpoint-admin-staging-739552904126.europe-west1.run.app")
+    assert (
+        _check(
+            headers={"Referer": "https://cpoint-admin-staging-739552904126.europe-west1.run.app/login"},
+        )
+        is None
+    )
+
+
 def test_webhook_and_cron_paths_bypass(monkeypatch):
     monkeypatch.setenv("CSRF_ORIGIN_ENFORCE", "true")
     assert _check(path="/api/webhooks/stripe", headers={"Origin": "https://evil.example"}) is None

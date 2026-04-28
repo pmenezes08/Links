@@ -21,6 +21,8 @@ steps:
       - '--allow-unauthenticated'
       - '--timeout=600'
       - '--cpu-boost'
+      # Admin is a separate Cloud Run service; CSRF origin gate must allow its Origin header.
+      - '--update-env-vars=CSRF_ALLOWED_ORIGINS=https://cpoint-admin-staging-739552904126.europe-west1.run.app'
 
 options:
   # More CPU/memory for npm install (default can OOM)
