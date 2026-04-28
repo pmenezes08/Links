@@ -18,6 +18,7 @@ dependencies {
     implementation project(':capacitor-push-notifications')
     implementation project(':capgo-inappbrowser')
     implementation project(':codetrix-studio-capacitor-google-auth')
+    implementation project(':ebarooni-capacitor-calendar')
 
 }
 

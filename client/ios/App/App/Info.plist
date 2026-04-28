@@ -55,6 +55,12 @@
 	<string>This app needs permission to save photos to your library.</string>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>This app needs permission to send you notifications about messages, events, and community updates.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>C-Point adds community events you choose to your calendar.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>C-Point adds community events you choose to your calendar.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>C-Point saves events you add from the app to your calendar.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

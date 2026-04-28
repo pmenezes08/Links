@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
-import { exportEventToDeviceCalendar } from '../utils/calendarExport'
+import { exportEventToDeviceCalendar, removeNativeCalendarMirrorForCpointEvent } from '../utils/calendarExport'
+import type { CalendarExportEventFields } from '../utils/calendarExportTypes'
 
 type EventData = {
   id: number
@@ -106,10 +107,20 @@ export default function EventDetail(){
   }
 
   async function addToDeviceCalendar() {
-    if (!event_id || calExporting) return
+    if (!event_id || calExporting || !event) return
     setCalExporting(true)
     try {
-      await exportEventToDeviceCalendar(event_id)
+      const snap: CalendarExportEventFields = {
+        id: event.id,
+        title: event.title,
+        date: event.date,
+        end_date: event.end_date,
+        start_time: event.start_time,
+        end_time: event.end_time,
+        description: event.description,
+        community_name: event.community_name,
+      }
+      await exportEventToDeviceCalendar(event_id, snap)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Could not export calendar'
       alert(msg)
@@ -127,6 +138,13 @@ export default function EventDetail(){
       const r = await fetch('/delete_calendar_event', { method: 'POST', credentials: 'include', body: formData })
       const j = await r.json().catch(()=>null)
       if (j?.success){
+        if (event?.id) {
+          try {
+            await removeNativeCalendarMirrorForCpointEvent(Number(event.id))
+          } catch {
+            /* best effort */
+          }
+        }
         if (event?.community_id) {
           navigate(`/community/${event.community_id}/calendar_react`)
         } else {

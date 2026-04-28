@@ -5,7 +5,8 @@ import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useHeader } from '../contexts/HeaderContext'
-import { exportEventToDeviceCalendar } from '../utils/calendarExport'
+import { exportEventToDeviceCalendar, removeNativeCalendarMirrorForCpointEvent, syncNativeCalendarAfterServerChange } from '../utils/calendarExport'
+import type { CalendarExportEventFields } from '../utils/calendarExportTypes'
 
 type EventItem = {
   id: number
@@ -29,6 +30,19 @@ type EventItem = {
 type RSVPResponse = 'going' | 'maybe' | 'not_going'
 type CalendarTab = 'upcoming' | 'archive'
 type CreateStep = 'details' | 'invite'
+
+function eventItemToExportFields(event: EventItem): CalendarExportEventFields {
+  return {
+    id: event.id,
+    title: event.title,
+    date: event.date,
+    end_date: event.end_date ?? null,
+    start_time: event.start_time ?? null,
+    end_time: event.end_time ?? null,
+    description: event.description ?? null,
+    community_name: null,
+  }
+}
 
 type Member = {
   username: string
@@ -269,7 +283,7 @@ function EventCard({ event, archived = false, onOpen, onRsvp, onShowDetails, onE
             e.stopPropagation()
             void (async () => {
               try {
-                await exportEventToDeviceCalendar(event.id)
+                await exportEventToDeviceCalendar(event.id, eventItemToExportFields(event))
               } catch (err: unknown) {
                 const msg = err instanceof Error ? err.message : 'Could not export'
                 alert(msg)
@@ -507,10 +521,35 @@ export default function CommunityCalendar() {
     })
     const payload = await response.json().catch(() => null)
     if (payload?.success) {
+      const eid = editingEvent.id
       await reloadEvents()
       setEditingEvent(null)
       setSuccessMsg('Event updated')
       setTimeout(() => setSuccessMsg(null), 2200)
+      void (async () => {
+        try {
+          const r = await fetch(`/api/calendar_events/${eid}`, {
+            credentials: 'include',
+            headers: { Accept: 'application/json' },
+          })
+          const j = await r.json().catch(() => null)
+          if (j?.success && j.event) {
+            const e = j.event
+            await syncNativeCalendarAfterServerChange({
+              id: Number(e.id),
+              title: String(e.title ?? ''),
+              date: String(e.date ?? ''),
+              end_date: e.end_date ?? null,
+              start_time: e.start_time ?? null,
+              end_time: e.end_time ?? null,
+              description: e.description ?? null,
+              community_name: e.community_name ?? null,
+            })
+          }
+        } catch {
+          /* ignore */
+        }
+      })()
     } else {
       alert(payload?.message || 'Failed to update event')
     }
@@ -543,6 +582,11 @@ export default function CommunityCalendar() {
       })
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
+        try {
+          await removeNativeCalendarMirrorForCpointEvent(event.id)
+        } catch {
+          /* best effort */
+        }
         await reloadEvents()
         setRsvpEvent(null)
       } else {
@@ -586,7 +630,7 @@ export default function CommunityCalendar() {
                 onClick={() =>
                   void (async () => {
                     try {
-                      await exportEventToDeviceCalendar(nextEvent.id)
+                      await exportEventToDeviceCalendar(nextEvent.id, eventItemToExportFields(nextEvent))
                     } catch (err: unknown) {
                       const msg = err instanceof Error ? err.message : 'Could not export'
                       alert(msg)

@@ -20,6 +20,7 @@ def capacitor_pods
   pod 'CapacitorPushNotifications', :path => '../../node_modules/@capacitor/push-notifications'
   pod 'CapgoInappbrowser', :path => '../../node_modules/@capgo/inappbrowser'
   pod 'CodetrixStudioCapacitorGoogleAuth', :path => '../../node_modules/@codetrix-studio/capacitor-google-auth'
+  pod 'EbarooniCapacitorCalendar', :path => '../../node_modules/@ebarooni/capacitor-calendar'
   pod 'StayLiquid', :path => '../../node_modules/stay-liquid'
 end
 
