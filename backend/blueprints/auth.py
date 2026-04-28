@@ -6,10 +6,9 @@ import os
 import re
 import secrets
 import traceback
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Optional, Set
 from urllib.parse import urlencode, quote
-from hashlib import sha256
 
 from flask import (
     Blueprint,
@@ -28,8 +27,9 @@ from flask import (
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from backend.services.native_push import associate_install_tokens_with_user
-from backend.services import disposable_email
+from backend.services.native_push import associate_install_tokens_with_user, deactivate_for_install
+from backend.services import auth_session, disposable_email, remember_tokens
+from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.email_normalization import (
     canonicalize_with_policy,
     is_well_formed as _email_is_well_formed,
@@ -41,77 +41,32 @@ auth_bp = Blueprint("auth", __name__)
 MOBILE_UA_KEYWORDS = ("Mobi", "Android", "iPhone", "iPad")
 
 
+def _apply_login_persistence(resp, username: str) -> int:
+    """Revoke any prior remember-me row for this browser, then issue a fresh token + install id."""
+    stale = remember_tokens.revoke_by_cookie(request)
+    remember_tokens.issue(resp, username)
+    auth_session.set_install_cookie(resp, secrets.token_urlsafe(24))
+    return stale
+
+
 def _is_mobile_request() -> bool:
     ua = request.headers.get("User-Agent", "")
     return any(token in ua for token in MOBILE_UA_KEYWORDS)
 
 
-def _get_auth_session_lifetime_days() -> int:
-    try:
-        return max(30, int(current_app.config.get("AUTH_SESSION_LIFETIME_DAYS", 365)))
-    except Exception:
-        return 365
-
-
-def _issue_remember_token(response, username: str) -> None:
-    """Create a persistent remember-me token and attach it to the response."""
-    from bodybuilding_app import get_db_connection
-
-    logger = current_app.logger
-    try:
-        lifetime_days = _get_auth_session_lifetime_days()
-        raw = secrets.token_urlsafe(48)
-        token_hash = sha256(raw.encode()).hexdigest()
-        now = datetime.utcnow()
-        expires = now + timedelta(days=lifetime_days)
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute(
-                "INSERT INTO remember_tokens (username, token_hash, created_at, expires_at) VALUES (?,?,?,?)",
-                (username, token_hash, now.isoformat(), expires.isoformat()),
-            )
-            conn.commit()
-        response.set_cookie(
-            "remember_token",
-            raw,
-            max_age=lifetime_days * 24 * 60 * 60,
-            secure=True,
-            httponly=True,
-            samesite="Lax",
-            domain=current_app.config.get("SESSION_COOKIE_DOMAIN") or None,
-            path="/",
-        )
-    except Exception as exc:
-        logger.warning("Failed to issue remember token: %s", exc)
-
-
 @auth_bp.before_app_request
 def auto_login_from_remember_token():
     """Restore sessions from remember_token cookies when possible."""
-    from bodybuilding_app import get_db_connection
-
     try:
         if "username" in session:
             return
-        raw = request.cookies.get("remember_token")
-        if not raw:
+        if "pending_username" in session:
+            current_app.logger.info("auth.auto_login_skipped reason=pending_username")
             return
-        token_hash = sha256(raw.encode()).hexdigest()
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute(
-                "SELECT username, expires_at FROM remember_tokens WHERE token_hash=? ORDER BY id DESC LIMIT 1",
-                (token_hash,),
-            )
-            row = c.fetchone()
-        if not row:
+        token_hash = remember_tokens.cookie_hash(request)
+        username = remember_tokens.restore_session(request, session)
+        if not username or not token_hash:
             return
-        username = row["username"] if hasattr(row, "keys") else row[0]
-        expires_at = row["expires_at"] if hasattr(row, "keys") else row[1]
-        if datetime.fromisoformat(expires_at) < datetime.utcnow():
-            return
-        session.permanent = True
-        session["username"] = username
         g.remember_token_rotation_username = username
         g.remember_token_rotation_old_hash = token_hash
     except Exception as exc:
@@ -127,28 +82,22 @@ def rotate_remember_token_after_auto_login(response):
         return response
 
     try:
-        _issue_remember_token(response, username)
+        remember_tokens.revoke_by_token_hash(old_hash)
+    except Exception as exc:
+        current_app.logger.warning("Failed deleting old remember token for %s: %s", username, exc)
+
+    try:
+        remember_tokens.issue(response, username)
+        auth_session.set_install_cookie(response, secrets.token_urlsafe(24))
     except Exception as exc:
         current_app.logger.warning("Failed rotating remember token for %s: %s", username, exc)
         return response
-
-    try:
-        from bodybuilding_app import get_db_connection
-
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("DELETE FROM remember_tokens WHERE token_hash=?", (old_hash,))
-            conn.commit()
-    except Exception as exc:
-        current_app.logger.warning("Failed deleting old remember token for %s: %s", username, exc)
     return response
 
 
 @auth_bp.route("/login", methods=["GET", "POST"], endpoint="login")
 def login():
     """Username entry stage of the login flow."""
-    from bodybuilding_app import get_db_connection, get_sql_placeholder
-
     logger = current_app.logger
     try:
         if request.method == "GET":
@@ -237,9 +186,7 @@ def signup():
         _send_email_via_resend,
         ensure_pending_signups_table,
         generate_pending_signup_token,
-        get_db_connection,
         get_parent_chain_ids,
-        get_sql_placeholder,
         normalize_id_list,
         notify_community_new_member,
     )
@@ -546,39 +493,36 @@ def signup():
 def logout():
     """Clear session and remember-me cookies."""
     logger = current_app.logger
-    logger.info("Logout requested - clearing session and cookies")
-    
+    username = session.get("username")
+    install_id = (request.cookies.get(auth_session.INSTALL_COOKIE_NAME) or "").strip()
+    push_counts = deactivate_for_install(install_id) if install_id else {"native_push_tokens": 0, "fcm_tokens": 0}
+    tokens_revoked = remember_tokens.revoke_by_cookie(request)
+
     session.clear()
     session.permanent = False
-    
-    # Redirect to welcome page (root)
+
     resp = make_response(redirect("/"))
-    
-    # Clear remember token cookie
-    resp.set_cookie(
-        "remember_token",
-        "",
-        max_age=0,
-        path="/",
-        domain=current_app.config.get("SESSION_COOKIE_DOMAIN") or None,
+    remember_tokens.clear_cookie(resp)
+    auth_session.clear_session_cookie(resp)
+    auth_session.clear_install_cookie(resp)
+
+    if username:
+        try:
+            from redis_cache import invalidate_user_cache
+
+            invalidate_user_cache(username)
+        except Exception as exc:
+            logger.warning("auth.logout cache invalidation failed: %s", exc)
+
+    current_app.session_interface.save_session(current_app, session, resp)
+    auth_session.no_store(resp)
+    logger.info(
+        "auth.logout pre_username=%s tokens_revoked=%d push_native=%d push_fcm=%d",
+        username or "-",
+        tokens_revoked,
+        push_counts.get("native_push_tokens", 0),
+        push_counts.get("fcm_tokens", 0),
     )
-    
-    # Also try to clear session cookie explicitly
-    session_cookie_name = current_app.config.get("SESSION_COOKIE_NAME", "session")
-    resp.set_cookie(
-        session_cookie_name,
-        "",
-        max_age=0,
-        path="/",
-        domain=current_app.config.get("SESSION_COOKIE_DOMAIN") or None,
-    )
-    
-    # Set cache control headers to prevent caching of logged-out state
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    resp.headers["Pragma"] = "no-cache"
-    resp.headers["Expires"] = "0"
-    
-    logger.info("Logout completed - redirecting to /")
     return resp
 
 
@@ -586,9 +530,7 @@ def logout():
 def login_password():
     """Password entry stage for staged logins."""
     from bodybuilding_app import (
-        get_db_connection,
         get_parent_chain_ids,
-        get_sql_placeholder,
         normalize_id_list,
     )
 
@@ -734,7 +676,9 @@ def login_password():
                                             resp = make_response(
                                                 redirect("/login?error=" + quote("This invitation was sent to a different email address"))
                                             )
-                                            _issue_remember_token(resp, username)
+                                            stale = _apply_login_persistence(resp, username)
+                                            logger.info("login_password invite_email_mismatch remember_stale_revoked=%d", stale)
+                                            auth_session.no_store(resp)
                                             return resp
 
                                         c.execute(
@@ -799,13 +743,17 @@ def login_password():
                                             conn2.commit()
 
                                         resp = make_response(redirect(f"/community_feed_react/{community_id}"))
-                                        _issue_remember_token(resp, username)
+                                        stale = _apply_login_persistence(resp, username)
+                                        logger.info("login_password invite_ok remember_stale_revoked=%d", stale)
+                                        auth_session.no_store(resp)
                                         return resp
                         except Exception as exc:
                             logger.error("Error auto-joining via invite token: %s", exc)
 
                     resp = make_response(redirect("/premium_dashboard"))
-                    _issue_remember_token(resp, username)
+                    stale = _apply_login_persistence(resp, username)
+                    logger.info("login_password ok remember_stale_revoked=%d username=%s", stale, username)
+                    auth_session.no_store(resp)
                     return resp
                 # Incorrect password - redirect back to React with error
                 return redirect("/login?step=password&error=" + quote("Incorrect password. Please try again."))
@@ -828,6 +776,50 @@ def login_back():
     except Exception:
         pass
     return redirect(url_for("auth.login"))
+
+
+@auth_bp.route("/api/check_pending_login", methods=["GET"])
+def api_check_pending_login():
+    """Two-step login: expose pending_username only (no cookie/session debug)."""
+    logger = current_app.logger
+    try:
+        pending_username = session.get("pending_username")
+        if pending_username:
+            return jsonify({"success": True, "pending_username": pending_username})
+        return jsonify({"success": False, "pending_username": None})
+    except Exception as exc:
+        logger.error("api_check_pending_login: %s", exc)
+        return jsonify({"success": False, "pending_username": None}), 500
+
+
+@auth_bp.route("/api/clear_stale_session", methods=["POST"])
+def api_clear_stale_session():
+    """Clear session when stored username no longer exists."""
+    logger = current_app.logger
+    try:
+        username = session.get("username")
+        if not username:
+            return jsonify({"success": True, "cleared": False, "reason": "no_session"})
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(f"SELECT id FROM users WHERE username={ph}", (username,))
+            user_exists = c.fetchone() is not None
+        if not user_exists:
+            session.clear()
+            session.permanent = False
+            try:
+                from redis_cache import invalidate_user_cache
+
+                invalidate_user_cache(username)
+            except Exception:
+                pass
+            logger.info("api_clear_stale_session cleared session for missing user")
+            return jsonify({"success": True, "cleared": True, "reason": "user_deleted"})
+        return jsonify({"success": True, "cleared": False, "reason": "user_exists"})
+    except Exception as exc:
+        logger.error("api_clear_stale_session: %s", exc)
+        return jsonify({"success": False, "error": "server_error"}), 500
 
 
 # --- Google Sign-In ---
@@ -894,7 +886,7 @@ def google_sign_in():
     Google Sign-In endpoint for iOS/Android.
     Body: { id_token, platform: 'ios'|'android', invite_token? }
     """
-    from bodybuilding_app import get_db_connection, get_sql_placeholder, add_user_to_community
+    from bodybuilding_app import add_user_to_community
     logger = current_app.logger
     data = request.get_json() or {}
     id_token_str = (data.get('id_token') or '').strip()
@@ -931,7 +923,11 @@ def google_sign_in():
                 session['username'] = username
                 session.permanent = True
                 logger.info(f"Google sign-in: returning user {username}")
-                return jsonify({'success': True, 'username': username, 'is_new': False})
+                resp = make_response(jsonify({'success': True, 'username': username, 'is_new': False}))
+                stale = _apply_login_persistence(resp, username)
+                logger.info("Google sign-in persistence stale_revoked=%d user=%s", stale, username)
+                auth_session.no_store(resp)
+                return resp
 
             # 2. Look up by email (link existing account)
             c.execute(f"SELECT username FROM users WHERE LOWER(email) = LOWER({ph})", (email,))
@@ -956,7 +952,11 @@ def google_sign_in():
                 except Exception:
                     pass
                 logger.info(f"Google sign-in: linked {username} to Google ID")
-                return jsonify({'success': True, 'username': username, 'is_new': False})
+                resp = make_response(jsonify({'success': True, 'username': username, 'is_new': False}))
+                stale = _apply_login_persistence(resp, username)
+                logger.info("Google sign-in linked persistence stale_revoked=%d user=%s", stale, username)
+                auth_session.no_store(resp)
+                return resp
 
             # 3. Create new user
             base_username = re.sub(r'[^a-z0-9_]', '', email.split('@')[0].lower()) or 'user'
@@ -999,7 +999,11 @@ def google_sign_in():
             session['username'] = username
             session.permanent = True
             logger.info(f"Google sign-in: created new user {username}")
-            return jsonify({'success': True, 'username': username, 'is_new': True})
+            resp = make_response(jsonify({'success': True, 'username': username, 'is_new': True}))
+            stale = _apply_login_persistence(resp, username)
+            logger.info("Google sign-in new user persistence stale_revoked=%d user=%s", stale, username)
+            auth_session.no_store(resp)
+            return resp
 
     except Exception as e:
         logger.error(f"Google sign-in error: {e}")

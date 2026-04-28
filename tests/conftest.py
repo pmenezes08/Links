@@ -306,6 +306,9 @@ _TRUNCATE_TABLES: List[str] = [
     "subscription_audit_log",
     "subscription_invoice_payments",
     "community_lifecycle_notifications",
+    "remember_tokens",
+    "native_push_tokens",
+    "fcm_tokens",
 ]
 
 

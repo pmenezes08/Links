@@ -666,6 +666,28 @@ incident triage harder.
 
 ---
 
+## CSRF / Origin enforcement (`CSRF_ORIGIN_ENFORCE`)
+
+The app uses `backend.services.security.verify_origin_or_block` on state-changing
+requests. **Default in production is shadow mode** (`CSRF_ORIGIN_ENFORCE` unset
+or `false`): invalid cross-site `Origin`/`Referer` pairs are **logged** as
+`csrf_origin_violation` but the request is **not** blocked.
+
+**Rollout:**
+
+1. Deploy with `CSRF_ORIGIN_ENFORCE=false` (default). Watch Cloud Logging for
+   `csrf_origin_violation` on staging for **24h**; extend the allowlist if a
+   legitimate `(path, origin)` pair appears.
+2. Flip staging: set `CSRF_ORIGIN_ENFORCE=true` on the Cloud Run service env,
+   re-run manual QA (admin-web, Stripe test webhook, cron secret, Google
+   Sign-In `/api/auth/google`).
+3. Repeat observe → flip for production.
+
+**Rollback:** set `CSRF_ORIGIN_ENFORCE=false` immediately (no code deploy if
+the env var is read per request).
+
+---
+
 ## Appendix — File index
 
 | Area | File |

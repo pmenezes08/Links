@@ -315,3 +315,19 @@ Run after any change to Steve's platform manual, persona, platform-question rout
 - [ ] In a community feed/comment, tag `@Steve` in a legal/medical/financial advice prompt. Expected: Steve includes the appropriate disclaimer and does not present professional advice.
 - [ ] On the networking Steve surface, ask a professional-advice-adjacent question. Expected: Steve preserves member-discovery privacy rules and includes the professional-advice disclaimer when relevant.
 - [ ] Deploy admin-web staging. Expected: Cloud Run revision becomes ready, binds to `$PORT`, admin-web loads, and `/api/*` proxies to the staging app origin.
+
+## §14 — Logout & account switch
+
+Run after changes to authentication, remember-me cookies, CSRF/origin gates, or client-side logout clearing.
+
+- [ ] **Logout**: While signed in, use in-app logout. Confirm you land on `/` or `/welcome`, cannot access `/premium_dashboard` until you sign in again, and notifications do not continue for the prior account on this device after a refresh.
+- [ ] **Account switch**: Log in as user A, browse a community and open DM threads so local caches populate. Log out fully, then log in as user B on the same browser/device. Confirm B’s profile/name appears everywhere (header, mentions), not A’s; no DM or feed content from A without navigating explicitly.
+- [ ] **Remember-me**: With stay-signed-in behaviour, close the browser, reopen — session restores. After full logout, reopening must require credentials again (no silent re-login as the previous user).
+
+**Cross-surface regressions after auth/security deploys**
+
+- [ ] **Admin-web** (cross-subdomain): create a community, edit a user, delete a non–app-admin user — none should return 403.
+- [ ] **Stripe**: re-deliver a recent test event from the Stripe dashboard to `/api/webhooks/stripe`, expect HTTP 200.
+- [ ] **Cron**: `POST /api/cron/events/reminders` (or another documented cron URL) with `X-Cron-Secret`, expect 200.
+- [ ] **Capacitor iOS/Android**: Google Sign-In via `/api/auth/google` succeeds (POST must not be blocked when shadow CSRF logging is on).
+- [ ] **CSRF rollout**: before flipping `CSRF_ORIGIN_ENFORCE=true`, follow `docs/OPERATIONS.md` § CSRF / Origin enforcement (24h shadow logs on staging, then prod).

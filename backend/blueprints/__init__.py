@@ -70,6 +70,8 @@ def register_blueprints(app: Flask) -> None:
         _community_lifecycle.ensure_tables()
         from backend.services import media_assets as _media_assets
         _media_assets.ensure_tables()
+        from backend.services import remember_tokens as _remember_tokens
+        _remember_tokens.ensure_tables()
     except Exception:
         # Never let schema-bootstrap crash app startup — log and move on.
         import logging

@@ -79,7 +79,7 @@ export async function performLogout(): Promise<void> {
   // 0b. Clear Capacitor native storage first (critical for iOS apps)
   await clearCapacitorStorage()
   
-  // 1. Clear localStorage items related to the session
+  // 1. Clear localStorage items related to the session (keep in sync with App.tsx account-switch purge)
   const keysToRemove = [
     'signal_device_id',
     'current_username',
@@ -92,7 +92,7 @@ export async function performLogout(): Promise<void> {
     'communityManagementShowNested',
     'cached_profile',
   ]
-  
+
   // Also clear any keys that start with these prefixes
   const prefixesToClear = [
     'signal_',
@@ -101,6 +101,9 @@ export async function performLogout(): Promise<void> {
     'cpoint_',
     'onboarding_',
     'signal-store-',
+    'dashboard-',
+    'community-feed:',
+    'group-feed:',
     ...VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES,
   ]
   
@@ -175,9 +178,8 @@ export async function performLogout(): Promise<void> {
       await Promise.all(
         cacheNames
           .filter(cacheName => {
-            // Only clear runtime caches that contain user data
-            // Keep app shell cache (static assets) and don't touch media cache
-            return cacheName.includes('runtime')
+            // User data caches (match App.tsx account-change sweep; keep static shell)
+            return cacheName.includes('runtime') || cacheName.includes('cp-')
           })
           .map(cacheName => {
             console.log(`🗑️ Deleting cache: ${cacheName}`)
@@ -188,6 +190,13 @@ export async function performLogout(): Promise<void> {
     }
   } catch (e) {
     console.warn('Error clearing service worker caches:', e)
+  }
+
+  // Expire native push install id cookie client-side (server also clears on /logout)
+  try {
+    document.cookie = 'native_push_install_id=; Max-Age=0; Path=/; SameSite=Lax'
+  } catch {
+    /* ignore */
   }
 
   // 6. Unregister push tokens while session cookie is still valid (stops post-logout notifications)

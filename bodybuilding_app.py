@@ -49,6 +49,7 @@ from backend.services.database import USE_MYSQL, get_db_connection, get_sql_plac
 from backend.services.dm_chats_tables import ensure_archived_chats_table
 from backend.services import ai_usage as _ai_usage
 from backend.services import community_lifecycle as _community_lifecycle
+from backend.services import remember_tokens as remember_tokens_service
 from backend.services.community import (
     can_manage_community,
     fetch_community_names,
@@ -56,6 +57,7 @@ from backend.services.community import (
     get_community_basic,
     get_descendant_community_ids,
     get_parent_chain_ids,
+    is_app_admin,
     is_community_admin,
     is_community_owner,
 )
@@ -684,33 +686,10 @@ def _get_serializer():
 
 @app.before_request
 def _check_csrf_origin():
-    """Lightweight CSRF check: verify Origin/Referer for state-changing requests."""
-    if request.method in ('GET', 'HEAD', 'OPTIONS'):
-        return None
-    origin = request.headers.get('Origin') or ''
-    referer = request.headers.get('Referer') or ''
-    host = request.host
-    # Allow requests with no origin (same-origin, Capacitor native, server-to-server)
-    if not origin and not referer:
-        return None
-    # Allow if origin matches host
-    if origin:
-        from urllib.parse import urlparse
-        parsed = urlparse(origin)
-        if parsed.hostname and (parsed.hostname == host.split(':')[0] or parsed.hostname in ('localhost', '127.0.0.1')):
-            return None
-        # Allow capacitor origin
-        if 'capacitor' in origin.lower() or 'localhost' in origin.lower():
-            return None
-    if referer:
-        from urllib.parse import urlparse
-        parsed = urlparse(referer)
-        if parsed.hostname and (parsed.hostname == host.split(':')[0] or parsed.hostname in ('localhost', '127.0.0.1')):
-            return None
-    # For API calls from the app, allow if the session cookie is present
-    if 'session' in request.cookies or 'cpoint_session' in request.cookies:
-        return None
-    return None  # Permissive for now; can be tightened later
+    """Origin/Referer gate for state-changing requests (see backend.services.security)."""
+    from backend.services import security as _security
+
+    return _security.verify_origin_or_block(request)
 
 @app.before_request
 def _set_tenant_context():
@@ -1126,7 +1105,7 @@ def upsert_post_view(c, post_id: int, username: Optional[str]) -> Optional[int]:
     if not username:
         return _count_post_views_excluding_admin(c, post_id)
 
-    if username.lower() == 'admin':
+    if username and is_app_admin(username):
         try:
             post_ph = get_sql_placeholder()
             admin_ph = get_sql_placeholder()
@@ -1192,7 +1171,7 @@ def _count_reply_views_excluding_admin(c, reply_id: int) -> int:
 def upsert_reply_view(c, reply_id: int, username: Optional[str]) -> int:
     """Record a unique view for a reply and return the updated count."""
     ensure_reply_views_table(c)
-    if not username or username.lower() == 'admin':
+    if not username or is_app_admin(username):
         return _count_reply_views_excluding_admin(c, reply_id)
     now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
     try:
@@ -2340,14 +2319,6 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure recent_reply_tokens table: {e}")
 
-            # Remember-me tokens for persistent login
-            c.execute('''CREATE TABLE IF NOT EXISTS remember_tokens
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username VARCHAR(191) NOT NULL,
-                          token_hash TEXT NOT NULL,
-                          created_at TEXT NOT NULL,
-                          expires_at TEXT NOT NULL)''')
-            
             # Add missing columns to communities table (MySQL/SQLite safe)
             columns_to_add = [
                 ('description', 'TEXT'),
@@ -5531,18 +5502,6 @@ def schedule_imagine_job(job_id: int):
     except Exception as e:
         logger.error(f"Failed to schedule imagine job {job_id}: {e}")
 
-# --- CSRF helpers ---
-def get_csrf_token():
-    """Temporarily disabled CSRF token generation"""
-    return "disabled"
-
-def validate_csrf():
-    """Temporarily disabled CSRF validation"""
-    return True
-
-
-
-
 # Utility functions
 def check_api_limit(username):
     today = datetime.now().strftime('%Y-%m-%d')
@@ -5577,58 +5536,10 @@ def admin_profile():
     username = session.get('username')
     
     # Check if user is admin
-    if username != 'admin':
+    if not is_app_admin(username):
         abort(403)  # Forbidden - only admin can access this page
     # Redirect to React version to ensure consistent UI and scroll behavior
     return redirect(url_for('admin_profile_react'))
-
-@app.route('/logout')
-def logout():
-    # Get username before clearing session for cache invalidation
-    username = session.get('username')
-    
-    # Explicitly clear and mark session non-permanent
-    session.clear()
-    session.permanent = False
-    
-    # Invalidate user cache in Redis
-    if username:
-        try:
-            from redis_cache import invalidate_user_cache
-            invalidate_user_cache(username)
-        except Exception:
-            pass
-    
-    # Clear all session-related cookies
-    from flask import make_response
-    resp = make_response(redirect(url_for('public.index')))
-    
-    # Get cookie domain
-    cookie_domain = app.config.get('SESSION_COOKIE_DOMAIN') or None
-    
-    # Clear remember token
-    resp.set_cookie('remember_token', '', max_age=0, path='/', domain=cookie_domain)
-    
-    # Clear session cookie explicitly
-    session_cookie_name = app.config.get('SESSION_COOKIE_NAME', 'session')
-    resp.set_cookie(session_cookie_name, '', max_age=0, path='/', domain=cookie_domain)
-    
-    # Add cache control headers
-    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-    resp.headers['Pragma'] = 'no-cache'
-    resp.headers['Expires'] = '0'
-    
-    return resp
-# Removed duplicate /login_password route - using auth blueprint version in backend/blueprints/auth.py instead
-
-@app.route('/login_back', methods=['GET'])
-def login_back():
-    """Clear any staged login state and return to username entry page."""
-    try:
-        session.pop('pending_username', None)
-    except Exception:
-        pass
-    return redirect(url_for('auth.login'))
 
 @app.route('/dashboard')
 @login_required
@@ -5700,89 +5611,6 @@ def api_client_log():
         logger.error(f"Error in api_client_log: {e}")
         return jsonify({'success': False}), 500
 
-@app.route('/api/check_pending_login', methods=['GET'])
-def api_check_pending_login():
-    """Check if there's a pending username in session (for two-step login). No auth required."""
-    try:
-        pending_username = session.get('pending_username')
-        cookie_names = list(request.cookies.keys())
-        session_cookie = request.cookies.get('cpoint_session', 'NONE')
-        # Debug logging - log everything!
-        logger.info(f"check_pending_login: pending_username={pending_username}, session_keys={list(session.keys())}, cookie_names={cookie_names}, session_cookie_present={session_cookie != 'NONE'}")
-        if pending_username:
-            return jsonify({'success': True, 'pending_username': pending_username})
-        return jsonify({
-            'success': False, 
-            'pending_username': None, 
-            'debug': {
-                'session_keys': list(session.keys()),
-                'has_session_cookie': session_cookie != 'NONE',
-                'cookie_names': cookie_names
-            }
-        })
-    except Exception as e:
-        logger.error(f"Error in api_check_pending_login: {e}")
-        return jsonify({'success': False, 'pending_username': None, 'error': str(e)})
-
-@app.route('/api/clear_stale_session', methods=['POST'])
-def api_clear_stale_session():
-    """
-    Clear session if user no longer exists in database.
-    Called by login page to prevent ghost sessions after account deletion.
-    """
-    try:
-        username = session.get('username')
-        if not username:
-            return jsonify({'success': True, 'cleared': False, 'reason': 'no_session'})
-        
-        # Check if user exists
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT id FROM users WHERE username=?", (username,))
-            user_exists = c.fetchone() is not None
-        
-        if not user_exists:
-            logger.info(f"Clearing stale session for deleted user: {username}")
-            # User doesn't exist anymore - clear the session
-            session.clear()
-            session.permanent = False
-            # Invalidate cache
-            try:
-                invalidate_user_cache(username)
-            except Exception:
-                pass
-            return jsonify({'success': True, 'cleared': True, 'reason': 'user_deleted'})
-        
-        return jsonify({'success': True, 'cleared': False, 'reason': 'user_exists'})
-    except Exception as e:
-        logger.error(f"Error in api_clear_stale_session: {e}")
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/api/debug/kb_log', methods=['POST'])
-def api_debug_kb_log():
-    data = request.get_json(silent=True) or {}
-    entries = data.get('entries', [])
-    app.logger.info('KB_DEBUG_LOG: %s', json.dumps(entries))
-    return jsonify({'success': True})
-
-@app.route('/api/debug/login_test', methods=['POST'])
-@login_required
-def api_debug_login_test():
-    """Restricted debug endpoint - admin only, no password details exposed."""
-    if not is_app_admin(session.get('username')):
-        return jsonify({'success': False, 'error': 'Forbidden'}), 403
-    data = request.get_json() or {}
-    username = data.get('username', '').strip()
-    if not username:
-        return jsonify({'success': False, 'error': 'Username required'})
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT username FROM users WHERE username=?", (username,))
-            row = c.fetchone()
-            return jsonify({'success': True, 'user_exists': row is not None})
-    except Exception as e:
-        return jsonify({'success': False, 'error': 'Server error'}), 500
 # React hashed assets are served by web server static mapping (/assets -> client/dist/assets)
 @app.route('/api/community_group_feed/<int:parent_id>')
 @login_required
@@ -6089,7 +5917,7 @@ def api_community_photos():
             c = conn.cursor()
 
             # Check if user is a member of the community
-            if username != 'admin':
+            if not is_app_admin(username):
                 c.execute("""
                     SELECT 1 FROM user_communities
                     JOIN users u ON user_communities.user_id = u.id
@@ -6241,7 +6069,7 @@ def api_community_posts_search():
         with get_db_connection() as conn:
             c = conn.cursor()
             try:
-                if username != 'admin':
+                if not is_app_admin(username):
                     c.execute("""
                         SELECT 1 FROM user_communities uc
                         JOIN users u ON uc.user_id = u.id
@@ -6434,29 +6262,7 @@ def admin_profile_react():
         logger.error(f"Error serving React admin profile: {str(e)}")
         abort(500)
 
-# Admin helper functions
-def is_app_admin(username):
-    """Check if a user is an app admin (by role column or legacy username check)."""
-    try:
-        if not username:
-            return False
-        # Legacy: treat 'admin' username as admin
-        if username.lower() == 'admin':
-            return True
-        # Check role column if it exists
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            try:
-                c.execute("SELECT is_admin FROM users WHERE username = ?", (username,))
-                row = c.fetchone()
-                if row:
-                    val = row['is_admin'] if hasattr(row, 'keys') else row[0]
-                    return bool(val)
-            except Exception:
-                pass
-        return False
-    except Exception:
-        return False
+# Admin helper: is_app_admin imported from backend.services.community
 
 
 def user_is_member_of_community(username: str, community_id: int) -> bool:
@@ -6771,10 +6577,11 @@ def delete_account():
                 c.execute(f"DELETE FROM fcm_tokens WHERE username={ph}", (username,))
             except Exception: pass
             
-            # Remember tokens (FK to users.username)
-            try: 
-                c.execute(f"DELETE FROM remember_tokens WHERE username={ph}", (username,))
-            except Exception: pass
+            # Remember tokens (persistent login)
+            try:
+                remember_tokens_service.revoke_for_user(username)
+            except Exception:
+                pass
             
             # User profiles
             try: 
@@ -9436,55 +9243,6 @@ def keep_warm():
         'timestamp': datetime.now().isoformat()
     })
 
-@app.route('/api/test', methods=['GET'])
-def test_endpoint():
-    """Test endpoint to verify server is running"""
-    try:
-        # Test database connection
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT COUNT(*) as count FROM users")
-            result = c.fetchone()
-            user_count = result['count'] if hasattr(result, 'keys') else result[0]
-            
-        return jsonify({
-            'status': 'ok',
-            'database': 'MySQL' if USE_MYSQL else 'SQLite',
-            'user_count': user_count,
-            'timestamp': datetime.now().isoformat()
-        })
-    except Exception as e:
-        import traceback
-        logger.error(f"Health check error: {e}\n{traceback.format_exc()}")
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
-
-@app.route('/clear_sessions')
-def clear_sessions():
-    """Clear all old session cookies"""
-    if os.environ.get('FLASK_ENV') != 'development' and not os.environ.get('DEBUG'):
-        abort(404)
-    from flask import make_response
-    resp = make_response("""
-    <html>
-    <body style="background: black; color: white; padding: 50px; font-family: Arial;">
-        <h1>Session Cookies Cleared</h1>
-        <p>All old session cookies have been removed.</p>
-        <p><a href="/" style="color: #4db6ac;">Go to login page</a></p>
-    </body>
-    </html>
-    """)
-    # Clear the old 'session' cookies
-    resp.set_cookie('session', '', expires=0, path='/')
-    # Clear any potential domain-specific cookies
-    resp.set_cookie('session', '', expires=0, path='/', domain='.c-point.co')
-    resp.set_cookie('session', '', expires=0, path='/', domain='www.c-point.co')
-    # Also clear the new cookie name just in case
-    resp.set_cookie('cpoint_session', '', expires=0, path='/')
-    return resp
-
 @app.route('/api/debug_communities', methods=['GET'])
 @login_required
 def debug_communities():
@@ -10668,7 +10426,7 @@ def admin_delete_user():
     if not target_username:
         return jsonify({'success': False, 'error': 'Username required'}), 400
     
-    if target_username == 'admin':
+    if is_app_admin(target_username):
         return jsonify({'success': False, 'error': 'Cannot delete admin user'}), 400
     
     try:
@@ -10731,7 +10489,7 @@ def admin_delete_user():
             except Exception:
                 pass
             try:
-                c.execute(f"DELETE FROM remember_tokens WHERE username={ph}", (target_username,))
+                remember_tokens_service.revoke_for_user(target_username)
             except Exception:
                 pass
             # Reassign communities owned by this user to 'admin' to satisfy FK fk_comm_owner
@@ -10833,7 +10591,7 @@ def admin_add_user_to_community_api():
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():
-    if session['username'] != 'admin':
+    if not is_app_admin(session['username']):
         return redirect(url_for('public.index'))
     
     # Serve React for all devices (mobile and desktop)
@@ -12390,7 +12148,7 @@ def upload_logo():
     username = session.get('username')
     
     # Check if user is admin
-    if username != 'admin':
+    if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
     try:
@@ -12490,7 +12248,7 @@ def upload_logo():
 def upload_signup_image():
     """Upload the left-side signup image (admin only)"""
     username = session.get('username')
-    if username != 'admin':
+    if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     try:
         if 'image' not in request.files:
@@ -12513,7 +12271,7 @@ def upload_signup_image():
 def regenerate_app_icons():
     """Regenerate PWA icons from current logo - ADMIN ONLY"""
     username = session.get('username')
-    if username != 'admin':
+    if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     try:
         logo_path = os.path.join('static', 'logo.png')
@@ -17143,7 +16901,7 @@ def user_chat():
                 is_verified = bool(row['email_verified'] if hasattr(row, 'keys') else (row[0] if row else 0))
             except Exception:
                 is_verified = False
-            if username != 'admin' and not is_verified:
+            if not is_app_admin(username) and not is_verified:
                 return redirect(url_for('verify_required'))
 
         # Serve React SPA from client/dist with cache-busting headers
@@ -17409,7 +17167,7 @@ def api_archived_chats():
 @login_required
 def update_user_password():
     username = session['username']
-    if username != 'admin':
+    if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Admin access required'})
     
     target_username = request.form.get('username')
@@ -17439,967 +17197,6 @@ def update_user_password():
     except Exception as e:
         logger.error(f"Error updating password for {target_username}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/debug_password/<username>')
-def debug_password(username):
-    """Temporary debug route to check password status - REMOVE IN PRODUCTION"""
-    # Only allow admin to access this
-    if session.get('username') != 'admin':
-        return "Unauthorized", 403
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT password FROM users WHERE username=?", (username,))
-            user = c.fetchone()
-            
-            if not user:
-                return f"User '{username}' not found"
-            
-            password = user[0] if user else None
-            
-            info = {
-                'username': username,
-                'password_exists': password is not None,
-                'password_length': len(password) if password else 0,
-                'is_hashed': False,
-                'hash_type': 'plain text'
-            }
-            
-            if password:
-                if password.startswith('$2b$') or password.startswith('$2a$') or password.startswith('$2y$'):
-                    info['is_hashed'] = True
-                    info['hash_type'] = 'bcrypt'
-                elif password.startswith('scrypt:'):
-                    info['is_hashed'] = True
-                    info['hash_type'] = 'scrypt'
-                elif password.startswith('pbkdf2:'):
-                    info['is_hashed'] = True
-                    info['hash_type'] = 'pbkdf2'
-                    
-                # Show first 20 chars for debugging (safe for hashed passwords)
-                info['password_preview'] = password[:20] + '...' if len(password) > 20 else password
-            
-            return f"""
-            <h2>Password Debug Info for {username}</h2>
-            <pre>{json.dumps(info, indent=2)}</pre>
-            <br>
-            <h3>Reset Password for {username}:</h3>
-            <form action="/reset_password_debug/{username}" method="POST">
-                <input type="password" name="new_password" placeholder="New password" required>
-                <button type="submit">Reset Password (Plain Text)</button>
-            </form>
-            <form action="/reset_password_debug_hashed/{username}" method="POST">
-                <input type="password" name="new_password" placeholder="New password" required>
-                <button type="submit">Reset Password (Hashed)</button>
-            </form>
-            """
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-@app.route('/reset_password_debug/<username>', methods=['POST'])
-def reset_password_debug(username):
-    """Reset password as plain text - TEMPORARY DEBUG"""
-    if session.get('username') != 'admin':
-        return "Unauthorized", 403
-    
-    new_password = request.form.get('new_password')
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            # Set as plain text
-            c.execute("UPDATE users SET password=? WHERE username=?", (new_password, username))
-            conn.commit()
-        return f"Password for {username} reset to plain text: '{new_password}'. <a href='/'>Go to login</a>"
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-@app.route('/reset_password_debug_hashed/<username>', methods=['POST'])
-def reset_password_debug_hashed(username):
-    """Reset password as hashed - TEMPORARY DEBUG"""
-    if session.get('username') != 'admin':
-        return "Unauthorized", 403
-    
-    new_password = request.form.get('new_password')
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            # Hash the password
-            hashed = generate_password_hash(new_password)
-            c.execute("UPDATE users SET password=? WHERE username=?", (hashed, username))
-            conn.commit()
-        return f"Password for {username} reset to hashed version of: '{new_password}'. <a href='/'>Go to login</a>"
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-@app.route('/request_password_reset', methods=['POST'])
-def request_password_reset():
-    """Handle password reset requests"""
-    try:
-        data = request.get_json(silent=True) or {}
-        username = None  # Deprecated: we now reset by email only
-        email = (data.get('email') if isinstance(data, dict) else None) or request.form.get('email') or request.args.get('email')
-        try:
-            logger.info(f"PW reset incoming: ct={request.content_type} user={username} has_email={bool(email)}")
-        except Exception:
-            pass
-        
-        if not email:
-            return jsonify({'success': True, 'message': 'If an account exists with the provided information, a reset link has been sent.'})
-        
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ensure_password_reset_table(c)
-            
-            # Find user by email
-            ph = get_sql_placeholder()
-            c.execute(f"SELECT username FROM users WHERE email = {ph}", (email,))
-            result = c.fetchone()
-            
-            # For security, always return success even if user doesn't exist
-            if result:
-                matched_username = result['username'] if hasattr(result, 'keys') else result[0]
-                # Generate secure token
-                token = secrets.token_urlsafe(32)
-                created_at = datetime.now().isoformat()
-                
-                # Rate limiting: only one active token within 10 minutes
-                try:
-                    c.execute(f"SELECT created_at FROM password_reset_tokens WHERE username={ph} AND used=0 ORDER BY id DESC LIMIT 1", (matched_username,))
-                    last = c.fetchone()
-                    if last:
-                        last_time = datetime.fromisoformat(last['created_at'] if hasattr(last, 'keys') else last[0])
-                        if datetime.now() - last_time < timedelta(minutes=10):
-                            # Still respond success without sending a new email
-                            return jsonify({'success': True, 'message': 'If an account exists, a reset link has been sent.'})
-                except Exception:
-                    pass
-                # Delete any existing unused tokens for this user (cleanup)
-                c.execute(f"DELETE FROM password_reset_tokens WHERE username = {ph} AND used = 0", (matched_username,))
-                
-                # Insert new token
-                ins_ph = ', '.join([ph, ph, ph, ph])
-                c.execute(f"""
-                    INSERT INTO password_reset_tokens (username, email, token, created_at)
-                    VALUES ({ins_ph})
-                """, (matched_username, email, token, created_at))
-                conn.commit()
-                
-                # Build reset link using canonical host
-                base = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}" if CANONICAL_HOST else request.host_url.rstrip('/')
-                reset_link = f"{base}/reset_password/{token}"
-                logger.info(f"Password reset link generated for {matched_username}")
-
-                # Send email via Resend
-                subject = "Reset your C-Point password"
-                html = f"""
-                    <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
-                      <p>We received a request to reset the password for your C-Point account.</p>
-                      <p><a href='{reset_link}' style='display:inline-block;background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none'>Reset Password</a></p>
-                      <p>Or open this link: <a href='{reset_link}'>{reset_link}</a></p>
-                      <p>This link expires in 24 hours. If you did not request this, you can ignore this email.</p>
-                    </div>
-                """
-                sent_ok = _send_email_via_resend(email, subject, html)
-                logger.info(f"PW reset email send status for {username}: {sent_ok}")
-        
-        # Always return success for security
-        return jsonify({'success': True, 'message': 'If an account exists with the provided information, a reset link has been sent.'})
-        
-    except Exception as e:
-        logger.error(f"Error in password reset request: {e}")
-        # Still return success for security
-        return jsonify({'success': True, 'message': 'If an account exists with the provided information, a reset link has been sent.'})
-
-@app.route('/reset_password/<token>', methods=['GET', 'POST'])
-def reset_password(token):
-    """Handle password reset with token"""
-    if request.method == 'GET':
-        # Verify token is valid and not expired (24 hours)
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            c.execute(f"""
-                SELECT username, created_at, used 
-                FROM password_reset_tokens 
-                WHERE token = {ph}
-            """, (token,))
-            result = c.fetchone()
-            
-            if not result:
-                flash('Invalid or expired reset link.', 'error')
-                return redirect(url_for('public.index'))
-            
-            if result['used']:
-                flash('This reset link has already been used.', 'error')
-                return redirect(url_for('public.index'))
-            
-            # Check if token is expired (24 hours)
-            created_at = datetime.fromisoformat(result['created_at'])
-            if datetime.now() - created_at > timedelta(hours=24):
-                flash('This reset link has expired.', 'error')
-                return redirect(url_for('public.index'))
-            
-            return render_template('reset_password.html', token=token, username=result['username'])
-    
-    elif request.method == 'POST':
-        new_password = request.form.get('password')
-        confirm_password = request.form.get('confirm_password')
-        
-        if not new_password or not confirm_password:
-            flash('Please fill in all fields.', 'error')
-            return redirect(url_for('reset_password', token=token))
-        
-        if new_password != confirm_password:
-            flash('Passwords do not match.', 'error')
-            return redirect(url_for('reset_password', token=token))
-        
-        if len(new_password) < 6:
-            flash('Password must be at least 6 characters long.', 'error')
-            return redirect(url_for('reset_password', token=token))
-        
-        try:
-            with get_db_connection() as conn:
-                c = conn.cursor()
-                
-                # Verify token again
-                ph = get_sql_placeholder()
-                c.execute(f"""
-                    SELECT username, created_at, used 
-                    FROM password_reset_tokens 
-                    WHERE token = {ph}
-                """, (token,))
-                result = c.fetchone()
-                
-                if not result or result['used']:
-                    flash('Invalid or expired reset link.', 'error')
-                    return redirect(url_for('public.index'))
-                
-                # Check expiration again
-                created_at = datetime.fromisoformat(result['created_at'])
-                if datetime.now() - created_at > timedelta(hours=24):
-                    flash('This reset link has expired.', 'error')
-                    return redirect(url_for('public.index'))
-                
-                # Update password
-                hashed_password = generate_password_hash(new_password)
-                c.execute(f"UPDATE users SET password = {ph} WHERE username = {ph}", 
-                         (hashed_password, result['username']))
-                
-                # Mark token as used
-                c.execute(f"UPDATE password_reset_tokens SET used = 1 WHERE token = {ph}", (token,))
-                conn.commit()
-                
-                return render_template('verification_result.html', success=True, message='Your password has been reset successfully.')
-                
-        except Exception as e:
-            logger.error(f"Error resetting password: {e}")
-            flash('An error occurred. Please try again.', 'error')
-            return redirect(url_for('reset_password', token=token))
-
-@app.route('/test_password_hash')
-def test_password_hash():
-    """Test password hashing and verification"""
-    if session.get('username') != 'admin':
-        return "Unauthorized", 403
-    
-    test_password = "test123"
-    
-    # Test different hash methods
-    from werkzeug.security import generate_password_hash, check_password_hash
-    
-    results = []
-    
-    # Test default hash
-    try:
-        hash1 = generate_password_hash(test_password)
-        verify1 = check_password_hash(hash1, test_password)
-        results.append({
-            'method': 'default',
-            'hash': hash1[:50] + '...',
-            'verify_same': verify1,
-            'verify_wrong': check_password_hash(hash1, "wrong")
-        })
-    except Exception as e:
-        results.append({'method': 'default', 'error': str(e)})
-    
-    # Test with specific method
-    try:
-        hash2 = generate_password_hash(test_password, method='pbkdf2:sha256')
-        verify2 = check_password_hash(hash2, test_password)
-        results.append({
-            'method': 'pbkdf2:sha256',
-            'hash': hash2[:50] + '...',
-            'verify_same': verify2,
-            'verify_wrong': check_password_hash(hash2, "wrong")
-        })
-    except Exception as e:
-        results.append({'method': 'pbkdf2:sha256', 'error': str(e)})
-    
-    # Test with scrypt
-    try:
-        hash3 = generate_password_hash(test_password, method='scrypt')
-        verify3 = check_password_hash(hash3, test_password)
-        results.append({
-            'method': 'scrypt',
-            'hash': hash3[:50] + '...',
-            'verify_same': verify3,
-            'verify_wrong': check_password_hash(hash3, "wrong")
-        })
-    except Exception as e:
-        results.append({'method': 'scrypt', 'error': str(e)})
-    
-    return f"""
-    <h2>Password Hash Testing</h2>
-    <p>Test password: "{test_password}"</p>
-    <pre>{json.dumps(results, indent=2)}</pre>
-    <br>
-    <h3>Test Specific Password:</h3>
-    <form method="POST" action="/test_specific_password">
-        <input type="text" name="username" placeholder="Username" required><br>
-        <input type="password" name="password" placeholder="Password to test" required><br>
-        <button type="submit">Test Login</button>
-    </form>
-    """
-@app.route('/test_specific_password', methods=['POST'])
-def test_specific_password():
-    """Test a specific username/password combination"""
-    if session.get('username') != 'admin':
-        return "Unauthorized", 403
-    
-    test_username = request.form.get('username')
-    test_password = request.form.get('password')
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT password FROM users WHERE username=?", (test_username,))
-            user = c.fetchone()
-            
-            if not user:
-                return f"User '{test_username}' not found"
-            
-            stored_password = user[0]
-            
-            result = {
-                'username': test_username,
-                'input_password': test_password,
-                'stored_password_preview': stored_password[:30] + '...' if len(stored_password) > 30 else stored_password,
-                'stored_password_length': len(stored_password),
-                'starts_with_dollar': stored_password.startswith('$'),
-                'starts_with_scrypt': stored_password.startswith('scrypt:'),
-                'starts_with_pbkdf2': stored_password.startswith('pbkdf2:'),
-            }
-            
-            # Test our login logic
-            if stored_password and (stored_password.startswith('$') or stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:')):
-                result['detected_as'] = 'hashed'
-                try:
-                    from werkzeug.security import check_password_hash
-                    password_correct = check_password_hash(stored_password, test_password)
-                    result['check_password_hash_result'] = password_correct
-                    
-                    # Try to manually verify for debugging
-                    import hashlib
-                    result['debug_info'] = {
-                        'werkzeug_version': 'checking...',
-                        'hash_method_detected': stored_password.split(':')[0] if ':' in stored_password else 'unknown'
-                    }
-                except Exception as e:
-                    result['check_password_hash_error'] = str(e)
-                    password_correct = False
-            else:
-                result['detected_as'] = 'plain text'
-                password_correct = (stored_password == test_password)
-                result['plain_text_match'] = password_correct
-            
-            result['would_login_work'] = password_correct
-            
-            return f"""
-            <h2>Password Test Results for {test_username}</h2>
-            <pre>{json.dumps(result, indent=2)}</pre>
-            <br>
-            <a href="/debug_password/{test_username}">Go to password debug/reset page</a>
-            """
-            
-    except Exception as e:
-        return f"Error: {str(e)}"
-@app.route('/migrate_passwords')
-def migrate_passwords():
-    """Migrate all plain text passwords to hashed passwords - ADMIN ONLY"""
-    if session.get('username') != 'admin':
-        return "Unauthorized", 403
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Get all users
-            c.execute("SELECT username, password FROM users")
-            users = c.fetchall()
-            
-            results = {
-                'total_users': len(users),
-                'already_hashed': 0,
-                'migrated': 0,
-                'failed': 0,
-                'details': []
-            }
-            
-            for user in users:
-                username = user[0]
-                password = user[1]
-                
-                if not password:
-                    results['failed'] += 1
-                    results['details'].append(f"{username}: No password set")
-                    continue
-                
-                # Check if already hashed
-                if password.startswith('$') or password.startswith('scrypt:') or password.startswith('pbkdf2:'):
-                    results['already_hashed'] += 1
-                    results['details'].append(f"{username}: Already hashed")
-                else:
-                    # It's plain text, hash it
-                    try:
-                        hashed_password = generate_password_hash(password)
-                        c.execute("UPDATE users SET password = ? WHERE username = ?", 
-                                (hashed_password, username))
-                        results['migrated'] += 1
-                        results['details'].append(f"{username}: Migrated successfully")
-                    except Exception as e:
-                        results['failed'] += 1
-                        results['details'].append(f"{username}: Failed - {str(e)}")
-            
-            # Commit all changes
-            conn.commit()
-            
-            # Format results for display
-            return f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Password Migration Results</title>
-                <style>
-                    body {{
-                        background: #000;
-                        color: #fff;
-                        font-family: Arial, sans-serif;
-                        padding: 20px;
-                        max-width: 800px;
-                        margin: 0 auto;
-                    }}
-                    .success {{ color: #4db6ac; }}
-                    .warning {{ color: #ffa726; }}
-                    .error {{ color: #ef5350; }}
-                    .stats {{
-                        background: #1a1a1a;
-                        padding: 20px;
-                        border-radius: 8px;
-                        margin: 20px 0;
-                    }}
-                    .details {{
-                        background: #0a0a0a;
-                        padding: 15px;
-                        border-radius: 8px;
-                        margin: 20px 0;
-                        max-height: 400px;
-                        overflow-y: auto;
-                    }}
-                    .detail-item {{
-                        padding: 5px 0;
-                        border-bottom: 1px solid #333;
-                    }}
-                    button {{
-                        background: #4db6ac;
-                        color: white;
-                        border: none;
-                        padding: 10px 20px;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        margin-top: 20px;
-                    }}
-                    button:hover {{
-                        background: #5bc7bd;
-                    }}
-                </style>
-            </head>
-            <body>
-                <h1>Password Migration Results</h1>
-                <div class="stats">
-                    <h2>Summary</h2>
-                    <p>Total Users: <strong>{results['total_users']}</strong></p>
-                    <p class="success">✓ Successfully Migrated: <strong>{results['migrated']}</strong></p>
-                    <p class="warning">⚠ Already Hashed: <strong>{results['already_hashed']}</strong></p>
-                    <p class="error">✗ Failed: <strong>{results['failed']}</strong></p>
-                </div>
-                <div class="details">
-                    <h3>Details</h3>
-                    {''.join([f'<div class="detail-item">{detail}</div>' for detail in results['details']])}
-                </div>
-                <button onclick="window.location.href='/admin'">Back to Admin Dashboard</button>
-                <button onclick="window.location.href='/test_password_hash'">Test Password Hashing</button>
-            </body>
-            </html>
-            """
-            
-    except Exception as e:
-        logger.error(f"Error during password migration: {str(e)}")
-        return f"Migration failed: {str(e)}", 500
-
-@app.route('/check_password_status')
-def check_password_status():
-    """Check the status of passwords in the database - ADMIN ONLY"""
-    if session.get('username') != 'admin':
-        return "Unauthorized", 403
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Get all users and their password status
-            c.execute("SELECT username, password FROM users")
-            users = c.fetchall()
-            
-            plain_text = []
-            hashed = []
-            no_password = []
-            
-            for user in users:
-                username = user[0]
-                password = user[1]
-                
-                if not password:
-                    no_password.append(username)
-                elif password.startswith('$') or password.startswith('scrypt:') or password.startswith('pbkdf2:'):
-                    hashed.append(username)
-                else:
-                    plain_text.append(username)
-            
-            return f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Password Status Check</title>
-                <style>
-                    body {{
-                        background: #000;
-                        color: #fff;
-                        font-family: Arial, sans-serif;
-                        padding: 20px;
-                        max-width: 800px;
-                        margin: 0 auto;
-                    }}
-                    .section {{
-                        background: #1a1a1a;
-                        padding: 20px;
-                        border-radius: 8px;
-                        margin: 20px 0;
-                    }}
-                    .plain-text {{ border-left: 4px solid #ef5350; }}
-                    .hashed {{ border-left: 4px solid #4db6ac; }}
-                    .no-password {{ border-left: 4px solid #ffa726; }}
-                    .user-list {{
-                        display: flex;
-                        flex-wrap: wrap;
-                        gap: 10px;
-                        margin-top: 10px;
-                    }}
-                    .user-item {{
-                        background: #0a0a0a;
-                        padding: 5px 10px;
-                        border-radius: 4px;
-                    }}
-                    .migrate-btn {{
-                        background: #ef5350;
-                        color: white;
-                        border: none;
-                        padding: 15px 30px;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        font-size: 16px;
-                        margin: 20px 0;
-                    }}
-                    .migrate-btn:hover {{
-                        background: #f44336;
-                    }}
-                    button {{
-                        background: #4db6ac;
-                        color: white;
-                        border: none;
-                        padding: 10px 20px;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        margin-right: 10px;
-                    }}
-                    button:hover {{
-                        background: #5bc7bd;
-                    }}
-                </style>
-            </head>
-            <body>
-                <h1>Password Security Status</h1>
-                
-                <div class="section plain-text">
-                    <h2>⚠️ Plain Text Passwords ({len(plain_text)} users)</h2>
-                    <p>These passwords are stored in plain text and need to be migrated:</p>
-                    <div class="user-list">
-                        {''.join([f'<span class="user-item">{u}</span>' for u in plain_text]) if plain_text else '<em>None</em>'}
-                    </div>
-                </div>
-                
-                <div class="section hashed">
-                    <h2>✅ Hashed Passwords ({len(hashed)} users)</h2>
-                    <p>These passwords are properly hashed and secure:</p>
-                    <div class="user-list">
-                        {''.join([f'<span class="user-item">{u}</span>' for u in hashed]) if hashed else '<em>None</em>'}
-                    </div>
-                </div>
-                
-                <div class="section no-password">
-                    <h2>❓ No Password Set ({len(no_password)} users)</h2>
-                    <p>These users have no password set:</p>
-                    <div class="user-list">
-                        {''.join([f'<span class="user-item">{u}</span>' for u in no_password]) if no_password else '<em>None</em>'}
-                    </div>
-                </div>
-                
-                {f'''
-                <button class="migrate-btn" onclick="if(confirm(&quot;This will hash all {len(plain_text)} plain text passwords. Continue?&quot;)) window.location.href=&quot;/migrate_passwords&quot;">
-                    🔒 Migrate {len(plain_text)} Plain Text Passwords to Hashed
-                </button>
-                ''' if plain_text else '<p style="color: #4db6ac; font-size: 18px;">✅ All passwords are already hashed!</p>'}
-                
-                <div style="margin-top: 30px;">
-                    <button onclick="window.location.href='/admin'">Back to Admin Dashboard</button>
-                    <button onclick="window.location.reload()">Refresh Status</button>
-                </div>
-            </body>
-            </html>
-            """
-            
-    except Exception as e:
-        logger.error(f"Error checking password status: {str(e)}")
-        return f"Error: {str(e)}", 500
-def check_duplicate_users():
-    """Check for duplicate usernames in the database - ADMIN ONLY"""
-    if session.get('username') != 'admin':
-        return "Unauthorized", 403
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Check for duplicate usernames
-            c.execute("""
-                SELECT username, COUNT(*) as count, GROUP_CONCAT(rowid) as ids, 
-                       GROUP_CONCAT(password, '|||') as passwords,
-                       GROUP_CONCAT(email, '|||') as emails,
-                       GROUP_CONCAT(subscription, '|||') as subscriptions
-                FROM users 
-                GROUP BY LOWER(username) 
-                HAVING count > 1
-            """)
-            duplicates = c.fetchall()
-            
-            # Get all admin records specifically
-            c.execute("""
-                SELECT rowid, username, email, password, subscription, created_at
-                FROM users 
-                WHERE LOWER(username) = 'admin'
-                ORDER BY rowid
-            """)
-            admin_records = c.fetchall()
-            
-            # Build the duplicates table HTML
-            duplicates_html = ""
-            if duplicates:
-                duplicates_rows = []
-                for dup in duplicates:
-                    username = str(dup[0])
-                    count = str(dup[1])
-                    row_ids = str(dup[2])
-                    password_preview = str(dup[3])[:50] if dup[3] else ""
-                    emails = str(dup[4])
-                    subscriptions = str(dup[5])
-                    
-                    row_html = f'''
-                        <tr>
-                            <td>{username}</td>
-                            <td>{count}</td>
-                            <td>{row_ids}</td>
-                            <td class="password-cell">{password_preview}...</td>
-                            <td>{emails}</td>
-                            <td>{subscriptions}</td>
-                            <td>
-                                <button class="fix-btn" onclick="if(confirm('Keep only the first record and delete duplicates for {username}?')) window.location.href='/fix_duplicate_user/{username}'">
-                                    Fix Duplicates
-                                </button>
-                            </td>
-                        </tr>'''
-                    duplicates_rows.append(row_html)
-                
-                duplicates_html = f'''
-                <div class="section duplicate">
-                    <h2>⚠️ Duplicate Usernames Found ({len(duplicates)} usernames)</h2>
-                    <table>
-                        <tr>
-                            <th>Username</th>
-                            <th>Count</th>
-                            <th>Row IDs</th>
-                            <th>Passwords</th>
-                            <th>Emails</th>
-                            <th>Subscriptions</th>
-                            <th>Action</th>
-                        </tr>
-                        {"".join(duplicates_rows)}
-                    </table>
-                </div>'''
-            else:
-                duplicates_html = '''
-                <div class="section" style="border-left: 4px solid #4db6ac;">
-                    <h2>✅ No Duplicate Usernames Found</h2>
-                    <p>All usernames in the database are unique.</p>
-                </div>'''
-            
-            # Build admin records HTML
-            admin_rows = []
-            for record in admin_records:
-                row_id = str(record[0])
-                username = str(record[1])
-                email = str(record[2]) if record[2] else 'N/A'
-                password_preview = str(record[3])[:30] if record[3] else 'N/A'
-                subscription = str(record[4]) if record[4] else 'N/A'
-                created_at = str(record[5]) if record[5] else 'N/A'
-                
-                admin_row = f'''
-                        <tr>
-                            <td>{row_id}</td>
-                            <td>{username}</td>
-                            <td>{email}</td>
-                            <td class="password-cell">{password_preview}...</td>
-                            <td>{subscription}</td>
-                            <td>{created_at}</td>
-                        </tr>'''
-                admin_rows.append(admin_row)
-            
-            admin_warning = ''
-            admin_fix_button = ''
-            if len(admin_records) > 1:
-                admin_warning = '''
-                    <div class="warning">
-                        ⚠️ Found multiple records for admin account. There should only be 1.
-                    </div>'''
-                admin_fix_button = '''
-                    <button class="fix-btn" onclick="if(confirm('This will keep the first admin record and delete the rest. Continue?')) window.location.href='/fix_duplicate_user/admin'">
-                        Fix Admin Duplicates
-                    </button>'''
-            
-            return f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Duplicate Users Check</title>
-                <style>
-                    body {{
-                        background: #000;
-                        color: #fff;
-                        font-family: Arial, sans-serif;
-                        padding: 20px;
-                        max-width: 1200px;
-                        margin: 0 auto;
-                    }}
-                    .section {{
-                        background: #1a1a1a;
-                        padding: 20px;
-                        border-radius: 8px;
-                        margin: 20px 0;
-                    }}
-                    .duplicate {{
-                        border-left: 4px solid #ef5350;
-                    }}
-                    .admin-records {{
-                        border-left: 4px solid #ffa726;
-                    }}
-                    table {{
-                        width: 100%;
-                        border-collapse: collapse;
-                        margin-top: 15px;
-                    }}
-                    th, td {{
-                        padding: 10px;
-                        text-align: left;
-                        border-bottom: 1px solid #333;
-                    }}
-                    th {{
-                        background: #0a0a0a;
-                        color: #4db6ac;
-                    }}
-                    .password-cell {{
-                        font-family: monospace;
-                        font-size: 12px;
-                        word-break: break-all;
-                    }}
-                    .fix-btn {{
-                        background: #ef5350;
-                        color: white;
-                        border: none;
-                        padding: 8px 15px;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        margin: 5px;
-                    }}
-                    .fix-btn:hover {{
-                        background: #f44336;
-                    }}
-                    button {{
-                        background: #4db6ac;
-                        color: white;
-                        border: none;
-                        padding: 10px 20px;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        margin-right: 10px;
-                    }}
-                    button:hover {{
-                        background: #5bc7bd;
-                    }}
-                    .warning {{
-                        background: rgba(255, 152, 0, 0.1);
-                        border: 1px solid #ff9800;
-                        padding: 15px;
-                        border-radius: 4px;
-                        margin: 15px 0;
-                    }}
-                </style>
-            </head>
-            <body>
-                <h1>Duplicate Users Check</h1>
-                
-                {duplicates_html}
-    
-                <div class="section admin-records">
-                    <h2>Admin Account Records ({len(admin_records)} records)</h2>
-                    {admin_warning}
-                    <table>
-                        <tr>
-                            <th>Row ID</th>
-                            <th>Username</th>
-                            <th>Email</th>
-                            <th>Password (first 30 chars)</th>
-                            <th>Subscription</th>
-                            <th>Created At</th>
-                        </tr>
-                        {"".join(admin_rows)}
-                    </table>
-                    {admin_fix_button}
-                </div>
-                
-                <div style="margin-top: 30px;">
-                    <button onclick="window.location.href='/admin'">Back to Admin Dashboard</button>
-                    <button onclick="window.location.reload()">Refresh</button>
-                    <button onclick="window.location.href='/check_password_status'">Check Password Status</button>
-                </div>
-            </body>
-            </html>
-            """
-            
-    except Exception as e:
-        logger.error(f"Error checking duplicate users: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return f"Error: {str(e)}", 500
-
-@app.route('/fix_duplicate_user/<username>')
-def fix_duplicate_user(username):
-    """Fix duplicate user records by keeping only the first one - ADMIN ONLY"""
-    if session.get('username') != 'admin':
-        return "Unauthorized", 403
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Get all records for this username
-            c.execute("""
-                SELECT rowid, username, password, email, subscription
-                FROM users 
-                WHERE LOWER(username) = LOWER(?)
-                ORDER BY rowid
-            """, (username,))
-            records = c.fetchall()
-            
-            if len(records) <= 1:
-                return f"No duplicates found for {username}. <a href='/check_duplicate_users'>Go back</a>"
-            
-            # Keep the first record, delete the rest
-            keep_record = records[0]
-            delete_ids = [str(r[0]) for r in records[1:]]
-            
-            # Delete duplicate records
-            c.execute(f"""
-                DELETE FROM users 
-                WHERE rowid IN ({','.join(['?' for _ in delete_ids])})
-            """, delete_ids)
-            
-            conn.commit()
-            
-            return f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Duplicate Fixed</title>
-                <style>
-                    body {{
-                        background: #000;
-                        color: #fff;
-                        font-family: Arial, sans-serif;
-                        padding: 20px;
-                        max-width: 800px;
-                        margin: 0 auto;
-                    }}
-                    .success {{
-                        background: rgba(77, 182, 172, 0.1);
-                        border: 1px solid #4db6ac;
-                        padding: 20px;
-                        border-radius: 8px;
-                        margin: 20px 0;
-                    }}
-                    button {{
-                        background: #4db6ac;
-                        color: white;
-                        border: none;
-                        padding: 10px 20px;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        margin-right: 10px;
-                        margin-top: 20px;
-                    }}
-                    button:hover {{
-                        background: #5bc7bd;
-                    }}
-                </style>
-            </head>
-            <body>
-                <h1>Duplicate Fixed</h1>
-                <div class="success">
-                    <h2>✅ Successfully Fixed Duplicates for {username}</h2>
-                    <p>Kept record ID: {keep_record[0]}</p>
-                    <p>Deleted {len(delete_ids)} duplicate records (IDs: {', '.join(delete_ids)})</p>
-                    <p>Email: {keep_record[3] or 'N/A'}</p>
-                    <p>Subscription: {keep_record[4] or 'N/A'}</p>
-                </div>
-                <button onclick="window.location.href='/check_duplicate_users'">Check for More Duplicates</button>
-                <button onclick="window.location.href='/admin'">Back to Admin Dashboard</button>
-            </body>
-            </html>
-            """
-            
-    except Exception as e:
-        logger.error(f"Error fixing duplicate user {username}: {str(e)}")
-        return f"Error: {str(e)}", 500
 
 @app.route('/feed')
 @login_required
@@ -19326,7 +18123,7 @@ def admin_grant_admin():
                 owner_username = rr['creator_username'] if hasattr(rr, 'keys') else rr[0]
 
             # Permission: app admin or owner
-            if actor != 'admin' and actor != owner_username:
+            if not is_app_admin(actor) and actor != owner_username:
                 return jsonify({'success': False, 'error': 'Not authorized'}), 403
 
             # Ensure target user exists
@@ -19418,7 +18215,7 @@ def get_logo():
 @login_required
 def remove_logo():
     """Remove the logo - admin only"""
-    if session['username'] != 'admin':
+    if not is_app_admin(session['username']):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
     try:
@@ -19638,7 +18435,7 @@ def post_status():
                     logger.warning(f"post dedupe check failed: {de}")
             
             # If community_id is provided, verify user is member (admin bypass)
-            if community_id and username != 'admin':
+            if community_id and not is_app_admin(username):
                 c.execute("""
                     SELECT 1 FROM user_communities uc
                     JOIN users u ON uc.user_id = u.id
@@ -20194,7 +18991,7 @@ def create_poll():
             c = conn.cursor()
             
             # If community_id is provided, verify user is member (admin bypass)
-            if community_id and username != 'admin':
+            if community_id and not is_app_admin(username):
                 c.execute("""
                     SELECT 1 FROM user_communities uc
                     JOIN users u ON uc.user_id = u.id
@@ -20359,7 +19156,7 @@ def close_poll():
             
             # Only poll creator, community admin/owner, or global admin can close
             allowed = False
-            if poll_data['created_by'] == username or username == 'admin':
+            if poll_data['created_by'] == username or is_app_admin(username):
                 allowed = True
             else:
                 # Determine community of the poll via post
@@ -20495,7 +19292,7 @@ def edit_poll():
             
             # Only poll creator, community admin/owner, or global admin can edit
             allowed = False
-            if poll_data['created_by'] == username or username == 'admin':
+            if poll_data['created_by'] == username or is_app_admin(username):
                 allowed = True
             else:
                 # Determine community of the poll via post
@@ -20999,7 +19796,7 @@ def delete_poll():
             sr = c.fetchone()
             community_id = sr['community_id'] if sr else None
             # Permission: admin, poll creator, or community owner
-            allowed = username == 'admin' or username == created_by
+            allowed = is_app_admin(username) or username == created_by
             if community_id and not allowed:
                 if can_manage_community(username, community_id):
                     allowed = True
@@ -21047,7 +19844,7 @@ def remove_poll_option():
             if not poll_data:
                 return jsonify({'success': False, 'error': 'Option not found'})
             
-            if poll_data['created_by'] != username and username != 'admin':
+            if poll_data['created_by'] != username and not is_app_admin(username):
                 return jsonify({'success': False, 'error': 'Only poll creator can remove options'})
             
             # Check if this is the last option
@@ -21301,7 +20098,7 @@ def resolve_issue():
             if not community:
                 return jsonify({'success': False, 'error': 'Issue not found'})
             
-            if username != 'admin' and username != community['creator_username']:
+            if not is_app_admin(username) and username != community['creator_username']:
                 return jsonify({'success': False, 'error': 'Unauthorized'})
             
             # Mark issue as resolved
@@ -21436,7 +20233,7 @@ def manage_ads(community_id):
                 flash('Community not found', 'error')
                 return redirect(url_for('communities'))
             
-            if username != 'admin' and username != community['creator_username']:
+            if not is_app_admin(username) and username != community['creator_username']:
                 flash('You do not have permission to manage ads for this community', 'error')
                 return redirect(url_for('community_feed', community_id=community_id))
             
@@ -21489,7 +20286,7 @@ def add_ad(community_id):
             c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
             community = c.fetchone()
             
-            if not community or (username != 'admin' and username != community['creator_username']):
+            if not community or (not is_app_admin(username) and username != community['creator_username']):
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
             
             # Get form data
@@ -21537,7 +20334,7 @@ def toggle_ad(ad_id):
             """, (ad_id,))
             ad = c.fetchone()
             
-            if not ad or (username != 'admin' and username != ad['creator_username']):
+            if not ad or (not is_app_admin(username) and username != ad['creator_username']):
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
             
             # Toggle status
@@ -21580,7 +20377,7 @@ def update_ad(ad_id):
             """, (ad_id,))
             ad = c.fetchone()
             
-            if not ad or (username != 'admin' and username != ad['creator_username']):
+            if not ad or (not is_app_admin(username) and username != ad['creator_username']):
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
             
             # Update ad
@@ -21616,7 +20413,7 @@ def delete_ad(ad_id):
             """, (ad_id,))
             ad = c.fetchone()
             
-            if not ad or (username != 'admin' and username != ad['creator_username']):
+            if not ad or (not is_app_admin(username) and username != ad['creator_username']):
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
             
             # Delete ad
@@ -21799,7 +20596,7 @@ def delete_resource_post(post_id):
                 return jsonify({'success': False, 'message': 'Post not found'}), 404
             
             # Check permissions (post creator, admin, or community creator)
-            if username != post['username'] and username != 'admin' and username != post['creator_username']:
+            if username != post['username'] and not is_app_admin(username) and username != post['creator_username']:
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
             
             # Delete the post (cascade will handle comments and upvotes)
@@ -21892,30 +20689,6 @@ def appoint_community_admin(community_id):
     except Exception as e:
         logger.error(f"Error appointing admin: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
-
-@app.route('/migrate_user_communities_role', methods=['POST'])
-def migrate_user_communities_role():
-    """Migrate user_communities table to add role column - no login required for setup"""
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-
-            # Check if role column exists
-            c.execute("SHOW COLUMNS FROM user_communities LIKE 'role'")
-            if not c.fetchone():
-                logger.info("Adding role column to user_communities table...")
-                # TEXT columns can't have default values in MySQL
-                c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT")
-                # Set default value for existing rows
-                c.execute("UPDATE user_communities SET role = 'member' WHERE role IS NULL")
-                conn.commit()
-                logger.info("Added role column to user_communities table")
-                return jsonify({'success': True, 'message': 'Role column added successfully'})
-            else:
-                return jsonify({'success': True, 'message': 'Role column already exists'})
-    except Exception as e:
-        logger.error(f"Error adding role column: {e}")
-        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/community/<int:community_id>/remove_admin', methods=['POST'])
 @login_required
@@ -22264,7 +21037,7 @@ def get_community_members_list(community_id):
                     is_creator_val = row[4]
 
                 # Hide the global app admin from visible lists
-                if str(username_val).lower() == 'admin':
+                if is_app_admin(str(username_val)):
                     continue
                 members.append({
                     'username': username_val,
@@ -22375,7 +21148,7 @@ def view_feedback(community_id):
             c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
             community = c.fetchone()
             
-            if not community or (username != 'admin' and username != community['creator_username']):
+            if not community or (not is_app_admin(username) and username != community['creator_username']):
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
             
             # Get feedback
@@ -22404,7 +21177,7 @@ def deactivate_user(username):
     if not is_app_admin(current_user):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 403
     
-    if username == 'admin':
+    if is_app_admin(username):
         return jsonify({'success': False, 'message': 'Cannot deactivate app admin'}), 400
     
     try:
@@ -22475,7 +21248,7 @@ def admin_user_statistics():
     username = session.get('username')
     
     # Check if user is admin
-    if username != 'admin':
+    if not is_app_admin(username):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 403
     
     try:
@@ -22608,7 +21381,7 @@ def admin_ads_overview():
     username = session.get('username')
     
     # Check if user is admin
-    if username != 'admin':
+    if not is_app_admin(username):
         flash('Access denied. Admin only.', 'error')
         return redirect(url_for('public.index'))
     
@@ -22785,7 +21558,7 @@ def get_links():
                     'url': link['url'],
                     'description': link['description'],
                     'created_at': link['created_at'],
-                    'can_delete': link['username'] == username or username == 'admin'
+                    'can_delete': link['username'] == username or is_app_admin(username)
                 })
             
             # Also return docs (PDFs)
@@ -23021,7 +21794,7 @@ def delete_doc():
                 return jsonify({'success': False, 'error': 'Document not found'})
             owner = row['username'] if hasattr(row, 'keys') else row[0]
             path = row['file_path'] if hasattr(row, 'keys') else row[1]
-            if username != owner and username != 'admin':
+            if username != owner and not is_app_admin(username):
                 return jsonify({'success': False, 'error': 'Forbidden'})
             # Delete DB row
             c.execute("DELETE FROM useful_docs WHERE id = ?", (doc_id,))
@@ -23063,7 +21836,7 @@ def rename_doc():
             if not row:
                 return jsonify({'success': False, 'error': 'Document not found'})
             owner = row['username'] if hasattr(row, 'keys') else row[0]
-            if username != owner and username != 'admin':
+            if username != owner and not is_app_admin(username):
                 return jsonify({'success': False, 'error': 'Only the uploader can rename this document'})
             
             # Update description
@@ -23098,7 +21871,7 @@ def delete_link():
             if not link:
                 return jsonify({'success': False, 'message': 'Link not found'})
             
-            if link['username'] != username and username != 'admin':
+            if link['username'] != username and not is_app_admin(username):
                 return jsonify({'success': False, 'message': 'You can only delete your own links'})
             
             # Delete the link
@@ -23112,83 +21885,6 @@ def delete_link():
         return jsonify({'success': False, 'error': str(e)})
 
 # Calendar event edit/detail API routes now reside in backend.blueprints.community_calendar.
-@app.route('/test_color_detection')
-def test_color_detection():
-    """Test page for color detection"""
-    return '''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Color Detection Test</title>
-        <style>
-            body { font-family: Arial; padding: 20px; background: #f0f0f0; }
-            .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
-            input { width: 100%; padding: 10px; margin: 10px 0; }
-            button { padding: 10px 20px; background: #4CAF50; color: white; border: none; cursor: pointer; }
-            #result { margin-top: 20px; padding: 20px; background: #f9f9f9; border-radius: 4px; }
-            #preview { max-width: 300px; margin: 20px 0; }
-            #colorBox { width: 100px; height: 100px; border: 2px solid #333; margin: 10px 0; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>Image Color Detection Test</h1>
-            <input type="text" id="imageUrl" placeholder="Enter image URL" value="">
-            <button onclick="testColor()">Test Color Detection</button>
-            <div id="result"></div>
-            <img id="preview" style="display:none;">
-            <div id="colorBox" style="display:none;"></div>
-        </div>
-        <script>
-            function testColor() {
-                const url = document.getElementById('imageUrl').value;
-                if (!url) {
-                    alert('Please enter an image URL');
-                    return;
-                }
-                
-                // Show preview
-                const preview = document.getElementById('preview');
-                preview.src = url;
-                preview.style.display = 'block';
-                
-                // Fetch color
-                fetch(`/get_image_color?url=${encodeURIComponent(url)}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        console.log('Full response:', data);
-                        
-                        let html = '<h3>Detection Results:</h3>';
-                        if (data.success) {
-                            const color = data.color;
-                            const rgbStr = `rgb(${color.r}, ${color.g}, ${color.b})`;
-                            
-                            html += `<p><strong>Detected Background Color:</strong> ${rgbStr}</p>`;
-                            
-                            // Show color box
-                            const colorBox = document.getElementById('colorBox');
-                            colorBox.style.backgroundColor = rgbStr;
-                            colorBox.style.display = 'block';
-                            
-                            if (data.debug) {
-                                html += '<h4>Debug Info:</h4>';
-                                html += `<p><strong>Corner Colors:</strong><br>${data.debug.corner_colors.join('<br>')}</p>`;
-                                html += `<p><strong>Top Colors Overall:</strong><br>${data.debug.top_colors.join('<br>')}</p>`;
-                            }
-                        } else {
-                            html += '<p>Color detection failed</p>';
-                        }
-                        
-                        document.getElementById('result').innerHTML = html;
-                    })
-                    .catch(error => {
-                        document.getElementById('result').innerHTML = `<p>Error: ${error}</p>`;
-                    });
-            }
-        </script>
-    </body>
-    </html>
-    '''
 @app.route('/get_image_color')
 def get_image_color():
     """Extract background color from an image URL using simple border detection"""
@@ -24090,7 +22786,7 @@ def edit_post():
             old_image_path = row['image_path'] if hasattr(row, 'keys') else row[2]
             old_video_path = row['video_path'] if hasattr(row, 'keys') else row[3]
             
-            if owner != username and username != 'admin':
+            if owner != username and not is_app_admin(username):
                 return jsonify({'success': False, 'error': 'Unauthorized!'}), 403
             
             # Handle new media upload
@@ -24199,7 +22895,7 @@ def update_audio_summary():
             if not row:
                 return jsonify({'success': False, 'error': 'Reply not found'}), 404
             author = row['username'] if hasattr(row, 'keys') else row[0]
-            if author != username and username != 'admin':
+            if author != username and not is_app_admin(username):
                 return jsonify({'success': False, 'error': 'Not authorized to edit this summary'}), 403
             try:
                 c.execute(f"ALTER TABLE replies ADD COLUMN audio_summary TEXT")
@@ -24219,7 +22915,7 @@ def update_audio_summary():
 
         post_owner = row[0] if isinstance(row, tuple) else row['username']
 
-        if post_owner != username and username != 'admin':
+        if post_owner != username and not is_app_admin(username):
             return jsonify({'success': False, 'error': 'Not authorized to edit this summary'}), 403
 
         c.execute(f"UPDATE posts SET audio_summary = {ph} WHERE id = {ph}", (new_summary, post_id))
@@ -24605,7 +23301,7 @@ def delete_reply():
             can_delete = False
             if reply_owner == username:
                 can_delete = True
-            elif username == 'admin':
+            elif is_app_admin(username):
                 can_delete = True
             elif reply_community_id:
                 # Check if user is admin of this community
@@ -25407,7 +24103,7 @@ def community_ai_personality(community_id: int):
             placeholder = get_sql_placeholder()
             
             # Platform admin (username: admin) can manage any community
-            is_platform_admin = username == 'admin'
+            is_platform_admin = is_app_admin(username)
             
             if not is_platform_admin:
                 # Check if user is admin of this community
@@ -27478,7 +26174,7 @@ def update_community():
 def migrate_parent_communities():
     """Migrate KW28 parent community relationship"""
     username = session.get('username')
-    if username != 'admin':
+    if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Admin access required'}), 403
     
     try:
@@ -27538,7 +26234,7 @@ def migrate_parent_communities():
 def fix_database_issues():
     """Fix database issues: missing tables, parent community memberships, and timestamps"""
     username = session.get('username')
-    if username != 'admin':
+    if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Admin access required'}), 403
     
     try:
@@ -27666,205 +26362,6 @@ def fix_database_issues():
     except Exception as e:
         logger.error(f"Error fixing database issues: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/migrate_database')
-def migrate_database():
-    """Manual database migration endpoint"""
-    try:
-        add_missing_tables()
-        return jsonify({'success': True, 'message': 'Database migration completed successfully'})
-    except Exception as e:
-        logger.error(f"Database migration failed: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/migrate_key_posts', methods=['POST'])
-def migrate_key_posts():
-    """Create key_posts table if it doesn't exist - no login required for setup"""
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-
-            # Check if table exists
-            if USE_MYSQL:
-                c.execute("SHOW TABLES LIKE 'key_posts'")
-                table_exists = c.fetchone() is not None
-            else:
-                c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='key_posts'")
-                table_exists = c.fetchone() is not None
-
-            if not table_exists:
-                logger.info("Creating key_posts table...")
-                c.execute('''CREATE TABLE IF NOT EXISTS key_posts
-                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                              username VARCHAR(191) NOT NULL,
-                              post_id INTEGER NOT NULL,
-                              community_id INTEGER NOT NULL,
-                              created_at TEXT NOT NULL,
-                              FOREIGN KEY (post_id) REFERENCES posts(id),
-                              FOREIGN KEY (username) REFERENCES users(username),
-                              FOREIGN KEY (community_id) REFERENCES communities(id),
-                              UNIQUE(username, post_id))''')
-                conn.commit()
-                logger.info("Created key_posts table successfully")
-                return jsonify({'success': True, 'message': 'Key Posts table created successfully'})
-            else:
-                return jsonify({'success': True, 'message': 'Key Posts table already exists'})
-    except Exception as e:
-        logger.error(f"Error creating key_posts table: {e}")
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/migrate_username_types', methods=['POST'])
-def migrate_username_types():
-    """Migrate username columns from TEXT to VARCHAR(191) for MySQL compatibility - no login required"""
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-
-            # Check current username column types
-            try:
-                if USE_MYSQL:
-                    # Check users table username type
-                    c.execute("SHOW COLUMNS FROM users WHERE Field='username'")
-                    users_col = c.fetchone()
-                    users_username_type = users_col['Type'] if users_col else None
-
-                    # Check messages table sender type
-                    c.execute("SHOW COLUMNS FROM messages WHERE Field='sender'")
-                    messages_col = c.fetchone()
-                    messages_sender_type = messages_col['Type'] if messages_col else None
-
-                    # Check if key_posts table exists
-                    c.execute("SHOW TABLES LIKE 'key_posts'")
-                    key_posts_exists = c.fetchone() is not None
-
-                    logger.info(f"Current username types - Users: {users_username_type}, Messages sender: {messages_sender_type}, Key Posts exists: {key_posts_exists}")
-
-                    needs_migration = False
-                    if users_username_type and 'text' in users_username_type.lower():
-                        needs_migration = True
-                        logger.info("Found TEXT username in users table, migration needed")
-
-                    if messages_sender_type and 'text' in messages_sender_type.lower():
-                        needs_migration = True
-                        logger.info("Found TEXT username in messages table, migration needed")
-
-                    if needs_migration:
-                        logger.info("Starting username column migration...")
-
-                        # Step 1: Drop key_posts table if it exists (we'll recreate it)
-                        if key_posts_exists:
-                            logger.info("Dropping existing key_posts table...")
-                            c.execute("DROP TABLE key_posts")
-                            logger.info("key_posts table dropped")
-
-                        # Step 2: Drop foreign key constraints temporarily
-                        logger.info("Dropping foreign key constraints...")
-                        try:
-                            c.execute("ALTER TABLE messages DROP FOREIGN KEY messages_ibfk_1")
-                        except:
-                            logger.info("messages_ibfk_1 constraint not found or already dropped")
-
-                        try:
-                            c.execute("ALTER TABLE messages DROP FOREIGN KEY messages_ibfk_2")
-                        except:
-                            logger.info("messages_ibfk_2 constraint not found or already dropped")
-
-                        try:
-                            c.execute("ALTER TABLE password_reset_tokens DROP FOREIGN KEY password_reset_tokens_ibfk_1")
-                        except:
-                            logger.info("password_reset_tokens_ibfk_1 constraint not found or already dropped")
-
-                        # Step 3: Alter username columns to VARCHAR(191)
-                        logger.info("Altering username columns to VARCHAR(191)...")
-
-                        # Alter users table
-                        if users_username_type and 'text' in users_username_type.lower():
-                            c.execute("ALTER TABLE users MODIFY COLUMN username VARCHAR(191) NOT NULL")
-
-                        # Alter messages table
-                        if messages_sender_type and 'text' in messages_sender_type.lower():
-                            c.execute("ALTER TABLE messages MODIFY COLUMN sender VARCHAR(191) NOT NULL")
-                            c.execute("ALTER TABLE messages MODIFY COLUMN receiver VARCHAR(191) NOT NULL")
-
-                        # Alter other tables
-                        c.execute("ALTER TABLE api_usage MODIFY COLUMN username VARCHAR(191)")
-                        c.execute("ALTER TABLE saved_data MODIFY COLUMN username VARCHAR(191)")
-                        c.execute("ALTER TABLE push_subscriptions MODIFY COLUMN username VARCHAR(191) NOT NULL")
-                        c.execute("ALTER TABLE remember_tokens MODIFY COLUMN username VARCHAR(191) NOT NULL")
-                        c.execute("ALTER TABLE password_reset_tokens MODIFY COLUMN username VARCHAR(191) NOT NULL")
-
-                        # Step 4: Recreate foreign key constraints
-                        logger.info("Recreating foreign key constraints...")
-                        c.execute("ALTER TABLE messages ADD CONSTRAINT messages_ibfk_1 FOREIGN KEY (sender) REFERENCES users(username)")
-                        c.execute("ALTER TABLE messages ADD CONSTRAINT messages_ibfk_2 FOREIGN KEY (receiver) REFERENCES users(username)")
-                        c.execute("ALTER TABLE password_reset_tokens ADD CONSTRAINT password_reset_tokens_ibfk_1 FOREIGN KEY (username) REFERENCES users(username)")
-
-                        # Step 5: Recreate key_posts table
-                        logger.info("Recreating key_posts table...")
-                        c.execute('''CREATE TABLE key_posts
-                                     (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                                      username VARCHAR(191) NOT NULL,
-                                      post_id INTEGER NOT NULL,
-                                      community_id INTEGER NOT NULL,
-                                      created_at TEXT NOT NULL,
-                                      FOREIGN KEY (post_id) REFERENCES posts(id),
-                                      FOREIGN KEY (username) REFERENCES users(username),
-                                      FOREIGN KEY (community_id) REFERENCES communities(id),
-                                      UNIQUE(username, post_id))''')
-
-                        conn.commit()
-                        logger.info("Username column migration completed successfully")
-                        return jsonify({'success': True, 'message': 'Username columns migrated and key_posts table recreated successfully'})
-
-                    else:
-                        # Check if we need to create key_posts table
-                        if not key_posts_exists:
-                            logger.info("Creating key_posts table...")
-                            c.execute('''CREATE TABLE key_posts
-                                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                                          username VARCHAR(191) NOT NULL,
-                                          post_id INTEGER NOT NULL,
-                                          community_id INTEGER NOT NULL,
-                                          created_at TEXT NOT NULL,
-                                          FOREIGN KEY (post_id) REFERENCES posts(id),
-                                          FOREIGN KEY (username) REFERENCES users(username),
-                                          FOREIGN KEY (community_id) REFERENCES communities(id),
-                                          UNIQUE(username, post_id))''')
-                            conn.commit()
-                            logger.info("key_posts table created successfully")
-                            return jsonify({'success': True, 'message': 'Key Posts table created successfully'})
-
-                        return jsonify({'success': True, 'message': 'All username columns are already VARCHAR(191) and tables are properly configured'})
-
-                else:
-                    logger.info("Using SQLite - no migration needed for username types")
-                    # For SQLite, just create key_posts table if it doesn't exist
-                    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='key_posts'")
-                    if not c.fetchone():
-                        logger.info("Creating key_posts table for SQLite...")
-                        c.execute('''CREATE TABLE key_posts
-                                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                      username VARCHAR(191) NOT NULL,
-                                      post_id INTEGER NOT NULL,
-                                      community_id INTEGER NOT NULL,
-                                      created_at TEXT NOT NULL,
-                                      FOREIGN KEY (post_id) REFERENCES posts(id),
-                                      FOREIGN KEY (username) REFERENCES users(username),
-                                      FOREIGN KEY (community_id) REFERENCES communities(id),
-                                      UNIQUE(username, post_id))''')
-                        conn.commit()
-                        logger.info("key_posts table created successfully")
-                        return jsonify({'success': True, 'message': 'Key Posts table created for SQLite'})
-
-                    return jsonify({'success': True, 'message': 'Key Posts table already exists in SQLite'})
-
-            except Exception as inner_e:
-                logger.error(f"Error during username migration: {inner_e}")
-                return jsonify({'success': False, 'error': str(inner_e)})
-
-    except Exception as e:
-        logger.error(f"Error in username migration: {e}")
-        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/debug_community/<int:community_id>')
 @login_required
@@ -28548,7 +27045,7 @@ def api_community_feed(community_id):
             # Enforce membership to view this community
             # Allow: app admin, community creator, direct members, or admins of parent/ancestor communities
             try:
-                if username != 'admin' and username != community.get('creator_username'):
+                if not is_app_admin(username) and username != community.get('creator_username'):
                     # Check if direct member
                     c.execute("""
                         SELECT 1 FROM user_communities uc
@@ -29609,7 +28106,7 @@ def edit_reply():
             if not row:
                 return jsonify({'success': False, 'error': 'Reply not found'}), 404
             owner = row['username'] if hasattr(row, 'keys') else row[0]
-            if username != owner and username != 'admin':
+            if username != owner and not is_app_admin(username):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
 
             # Update content
@@ -30728,7 +29225,7 @@ def api_groups_create():
             top_creator = top_info.get('creator_username') if top_info else None
             if community_parent_id:
                 subscription_value = fetch_user_subscription(c, top_creator) if top_creator else ''
-                if top_creator and top_creator.lower() != 'admin' and is_free_subscription(subscription_value):
+                if top_creator and not is_app_admin(top_creator) and is_free_subscription(subscription_value):
                     return jsonify({'success': False, 'error': 'Groups for free plan communities are only available at the parent community level.'}), 403
             # Insert group
             if USE_MYSQL:
@@ -35115,31 +33612,11 @@ def download_announcement_file(file_id):
         logger.error(f"Error downloading community file: {e}")
         return "Error downloading file", 500
 
-@app.route('/debug_table_structure')
-def debug_table_structure():
-    """Debug route to check table structure"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Check community_files table structure
-        cursor.execute("SHOW COLUMNS FROM community_files")
-        columns = cursor.fetchall()
-        
-        conn.close()
-        
-        return jsonify({
-            'success': True,
-            'community_files_columns': [{'name': col[1], 'type': col[2], 'notnull': col[3]} for col in columns]
-        })
-        
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
 @app.route('/cleanup_missing_images')
 @login_required
 def cleanup_missing_images():
     """Clean up database references to missing image files"""
-    if session.get('username') != 'admin':
+    if not is_app_admin(session.get('username')):
         return "Access denied", 403
     
     try:
@@ -35179,7 +33656,7 @@ def seed_dummy_data():
     try:
         # Only allow admin to seed
         username = session.get('username')
-        if username != 'admin':
+        if not is_app_admin(username):
             return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
         import random
