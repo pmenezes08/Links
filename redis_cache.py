@@ -346,6 +346,16 @@ def user_parent_dashboard_cache_key(username):
 def user_community_tree_cache_key(username):
     return f"user_community_tree:{username}"
 
+def invalidate_user_parent_dashboard(username):
+    """Invalidate cached dashboard payloads that include unread post counts."""
+    if not username:
+        return
+    try:
+        cache.delete(user_parent_dashboard_cache_key(username))
+        cache.delete(user_community_tree_cache_key(username))
+    except Exception as e:
+        logger.warning("invalidate_user_parent_dashboard failed for %s: %s", username, e)
+
 # Caching decorators
 def cache_result(key_func, ttl=DEFAULT_CACHE_TTL):
     """Decorator to cache function results"""
@@ -387,8 +397,7 @@ def invalidate_user_cache(username):
         cache.delete(f"public_profile:{username}:_anon")
     cache.delete(chat_threads_cache_key(username))
     cache.delete(user_communities_cache_key(username))
-    cache.delete(user_parent_dashboard_cache_key(username))
-    cache.delete(user_community_tree_cache_key(username))
+    invalidate_user_parent_dashboard(username)
     logger.debug(f"🗑️ Invalidated user cache: {username}")
 
 def invalidate_community_cache(community_id):

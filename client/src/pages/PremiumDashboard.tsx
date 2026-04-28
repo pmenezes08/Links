@@ -20,6 +20,14 @@ const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
 const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
 
+function isPremiumDashboardPath(path: string): boolean {
+  return (
+    path === '/premium_dashboard' ||
+    path === '/premium' ||
+    path === '/premium_dashboard_react'
+  )
+}
+
 type Community = {
   id: number
   name: string
@@ -103,6 +111,7 @@ export default function PremiumDashboard() {
   const onboardingTriggeredRef = useRef(false)  // Track if onboarding was already triggered
   const refreshInFlightRef = useRef(false)
   const lastScrollRefreshRef = useRef(0)
+  const prevPathnameForDashboardRef = useRef<string | null>(null)
   const [pullHint, setPullHint] = useState<'idle' | 'ready' | 'refreshing'>('idle')
   const [pullPx, setPullPx] = useState(0)
   const [joinedCommunityName, setJoinedCommunityName] = useState<string | null>(null)
@@ -120,10 +129,7 @@ export default function PremiumDashboard() {
   const navigate = useNavigate()
   const location = useLocation()
   const isWeb = Capacitor.getPlatform() === 'web'
-  const isDashboardRoute =
-    location.pathname === '/premium_dashboard'||
-    location.pathname === '/premium'||
-    location.pathname === '/premium_dashboard_react'
+  const isDashboardRoute = isPremiumDashboardPath(location.pathname)
 
   useEffect(() => {
     if (searchOpen) searchInputRef.current?.focus()
@@ -377,6 +383,18 @@ export default function PremiumDashboard() {
   useEffect(() => {
     loadUserData()
   }, [loadUserData])
+
+  // Refetch when returning to the dashboard from another route (fresh unread counts / server cache bypass).
+  useEffect(() => {
+    const prev = prevPathnameForDashboardRef.current
+    const path = location.pathname
+    const onDashboard = isPremiumDashboardPath(path)
+    const wasOnDashboard = prev !== null && isPremiumDashboardPath(prev)
+    prevPathnameForDashboardRef.current = path
+    if (onDashboard && prev !== null && !wasOnDashboard) {
+      void loadUserData(true)
+    }
+  }, [location.pathname, loadUserData])
 
   // Touch-based pull-to-refresh for iOS Capacitor
   useEffect(() => {
@@ -851,7 +869,7 @@ export default function PremiumDashboard() {
             className="fixed bottom-0 left-0 right-0 z-[100] px-3 sm:px-6"
             style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', touchAction: 'manipulation' }}
           >
-            <div className="liquid-glass-surface border border-white/10 rounded-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.45)] max-w-2xl mx-auto mb-2">
+            <div className="bg-black border border-white/10 rounded-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.45)] max-w-2xl mx-auto mb-2">
               <div className="h-14 px-1 sm:px-4 flex items-center justify-between gap-1 text-[#cfd8dc]">
                 <button
                   type="button"
@@ -864,21 +882,22 @@ export default function PremiumDashboard() {
                 </button>
                 <button
                   type="button"
-                  className="shrink-0 px-2.5 py-2 rounded-md bg-[#4db6ac] text-black text-[10px] sm:text-xs font-semibold hover:brightness-110 transition-all touch-manipulation whitespace-nowrap"
+                  className="shrink-0 px-2 py-2 sm:px-2.5 rounded-md bg-[#4db6ac] text-black text-[9px] sm:text-xs font-semibold hover:brightness-110 transition-all touch-manipulation whitespace-nowrap max-[380px]:px-1.5"
                   onClick={() => {
                     setNewCommType('General')
                     setShowCreateModal(true)
                   }}
                 >
-                  + New
+                  +Community
                 </button>
                 <button
                   type="button"
-                  className="p-2 sm:p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors touch-manipulation"
+                  className="py-1 px-2 sm:px-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors touch-manipulation flex flex-col items-center justify-center gap-0 leading-none min-w-0"
                   aria-label="Chat with Steve"
                   onClick={() => navigate('/user_chat/chat/Steve')}
                 >
-                  <i className="fa-solid fa-user text-lg" />
+                  <i className="fa-solid fa-user text-[15px] sm:text-base leading-none" />
+                  <span className="text-[8px] sm:text-[9px] text-[#cfd8dc]/90 font-medium tracking-tight">Steve</span>
                 </button>
                 <button
                   type="button"

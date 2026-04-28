@@ -6,7 +6,6 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from backend.services.community import is_app_admin
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 
 logger = logging.getLogger(__name__)
@@ -61,22 +60,21 @@ def count_post_views_excluding_admin(c, post_id: int) -> Optional[int]:
 
 
 def upsert_post_view(c, post_id: int, username: Optional[str]) -> Optional[int]:
-    """Ensure a unique view record for username/post_id, excluding the admin user."""
+    """Record a unique view for (post_id, username) and return display view count (excl. platform admin)."""
     ensure_post_views_table(c)
     if not username:
         return count_post_views_excluding_admin(c, post_id)
 
-    if is_app_admin(username):
-        try:
-            post_ph = get_sql_placeholder()
-            admin_ph = get_sql_placeholder()
-            c.execute(
-                f"DELETE FROM post_views WHERE post_id = {post_ph} AND LOWER(username) = LOWER({admin_ph})",
-                (post_id, "admin"),
-            )
-        except Exception as cleanup_err:
-            logger.warning("Failed cleaning admin views for post %s: %s", post_id, cleanup_err)
-        return count_post_views_excluding_admin(c, post_id)
+    # Remove legacy rows for the platform "admin" login so public counts stay meaningful
+    try:
+        post_ph = get_sql_placeholder()
+        admin_ph = get_sql_placeholder()
+        c.execute(
+            f"DELETE FROM post_views WHERE post_id = {post_ph} AND LOWER(username) = LOWER({admin_ph})",
+            (post_id, "admin"),
+        )
+    except Exception as cleanup_err:
+        logger.warning("Failed cleaning admin views for post %s: %s", post_id, cleanup_err)
 
     now_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     try:
@@ -102,7 +100,7 @@ def upsert_post_view(c, post_id: int, username: Optional[str]) -> Optional[int]:
 
 def record_community_post_view(username: str, post_id: int) -> Dict[str, Any]:
     """Membership check, persist view, clear related notifications, invalidate feed cache."""
-    from redis_cache import invalidate_community_cache
+    from redis_cache import invalidate_community_cache, invalidate_user_parent_dashboard
 
     try:
         post_id = int(post_id)
@@ -158,10 +156,13 @@ def record_community_post_view(username: str, post_id: int) -> Dict[str, Any]:
             try:
                 if community_id:
                     invalidate_community_cache(community_id)
+                if username:
+                    invalidate_user_parent_dashboard(username)
             except Exception as inv_err:
                 logger.warning(
-                    "Failed to invalidate cache for community %s: %s",
+                    "Failed to invalidate cache after post view (community=%s user=%s): %s",
                     community_id,
+                    username,
                     inv_err,
                 )
 

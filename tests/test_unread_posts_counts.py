@@ -155,6 +155,22 @@ def test_unread_rollup_excludes_own_posts_only():
     assert total == 2
 
 
+def test_app_admin_post_view_clears_unread_count():
+    """App admins must INSERT post_views for themselves so unread badges can clear."""
+    from backend.services import post_views as post_views_svc
+
+    make_user("adm_unread_u", subscription="free", is_admin=True)
+    cid = make_community("adm-unread-c", creator_username="adm_unread_u")
+    pid = _insert_post(cid, "bob")
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        assert community_svc.count_unread_posts_in_community_ids(c, [cid], "adm_unread_u") == 1
+        post_views_svc.upsert_post_view(c, pid, "adm_unread_u")
+        conn.commit()
+        assert community_svc.count_unread_posts_in_community_ids(c, [cid], "adm_unread_u") == 0
+
+
 def test_user_parent_community_includes_unread_posts_count(client):
     make_user("dash_u", subscription="free")
     parent_id = make_community("dash-parent", creator_username="dash_u")
