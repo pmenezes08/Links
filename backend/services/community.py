@@ -734,7 +734,7 @@ def count_unread_posts_by_community_ids(
     community_ids: List[int],
     username: str,
 ) -> Dict[int, int]:
-    """Unread = posts with no ``post_views`` row for ``username`` (case-insensitive)."""
+    """Unread = other users' posts with no ``post_views`` row for ``username``."""
     if not username or not community_ids:
         return {}
     try:
@@ -751,13 +751,14 @@ def count_unread_posts_by_community_ids(
             SELECT p.community_id AS cid, COUNT(*) AS cnt
             FROM posts p
             WHERE p.community_id IN ({placeholders})
+              AND LOWER(p.username) <> LOWER({ph})
               AND NOT EXISTS (
                 SELECT 1 FROM post_views pv
                 WHERE pv.post_id = p.id AND LOWER(pv.username) = LOWER({ph})
               )
             GROUP BY p.community_id
             """,
-            tuple(ids) + (username,),
+            tuple(ids) + (username, username),
         )
         rows = cursor.fetchall() or []
     except Exception as exc:
@@ -794,12 +795,13 @@ def count_unread_posts_in_community_ids(
             SELECT COUNT(*) AS cnt
             FROM posts p
             WHERE p.community_id IN ({placeholders})
+              AND LOWER(p.username) <> LOWER({ph})
               AND NOT EXISTS (
                 SELECT 1 FROM post_views pv
                 WHERE pv.post_id = p.id AND LOWER(pv.username) = LOWER({ph})
               )
             """,
-            tuple(ids) + (username,),
+            tuple(ids) + (username, username),
         )
         row = cursor.fetchone()
         return int(_row_get(row, "cnt", 0) or 0)

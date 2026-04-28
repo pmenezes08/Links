@@ -1116,15 +1116,12 @@ function CommunityCard({
       />
 
       <div className="relative flex flex-col gap-3 p-6 sm:p-7">
-        <div className="flex items-start justify-between gap-3">
-          <div className="text-[17px] font-semibold tracking-tight text-white/90 leading-tight">
+        <div className="w-full min-w-0">
+          <div
+            className={`text-[17px] font-semibold tracking-tight text-white/90 leading-tight${badge ? ' pr-16 sm:pr-20' : ''}`}
+          >
             {name}
           </div>
-          {badge && (
-            <span className="flex-shrink-0 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide rounded-full bg-[#4db6ac]/20 text-[#4db6ac] border border-[#4db6ac]/30">
-              {badge}
-            </span>
-          )}
         </div>
 
         {descText.length > 0 ? (
@@ -1152,6 +1149,12 @@ function CommunityCard({
           )}
         </div>
       </div>
+
+      {badge && (
+        <span className="pointer-events-none absolute top-4 right-4 sm:top-5 sm:right-5 z-10 flex-shrink-0 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide rounded-full bg-[#4db6ac]/20 text-[#4db6ac] border border-[#4db6ac]/30">
+          {badge}
+        </span>
+      )}
 
       {unread > 0 && (
         <span className="pointer-events-none absolute bottom-4 right-4 sm:bottom-5 sm:right-5 z-10 flex-shrink-0 px-2 py-0.5 text-[10px] font-medium rounded-full bg-[#4db6ac]/20 text-[#4db6ac] border border-[#4db6ac]/30">

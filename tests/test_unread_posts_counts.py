@@ -117,6 +117,44 @@ def test_post_views_username_is_case_insensitive_for_unread():
     assert n == 0
 
 
+def test_unread_excludes_viewers_own_posts_without_post_view():
+    make_user("self_reader", subscription="free")
+    cid = make_community("self-r", creator_username="self_reader")
+    _insert_post(cid, "self_reader")
+    _insert_post(cid, "bob")
+    _insert_post(cid, "bob")
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        m = community_svc.count_unread_posts_by_community_ids(c, [cid], "self_reader")
+
+    assert m.get(cid) == 2
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        n = community_svc.count_unread_posts_in_community_ids(c, [cid], "self_reader")
+
+    assert n == 2
+
+
+def test_unread_rollup_excludes_own_posts_only():
+    make_user("roll_self", subscription="free")
+    parent_id = make_community("roll-parent", creator_username="roll_self")
+    child_id = make_community(
+        "roll-child", creator_username="roll_self", parent_community_id=parent_id
+    )
+    _insert_post(parent_id, "roll_self")
+    _insert_post(child_id, "other")
+    _insert_post(child_id, "other")
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        tree = community_svc.get_descendant_community_ids(c, parent_id)
+        total = community_svc.count_unread_posts_in_community_ids(c, tree, "roll_self")
+
+    assert total == 2
+
+
 def test_user_parent_community_includes_unread_posts_count(client):
     make_user("dash_u", subscription="free")
     parent_id = make_community("dash-parent", creator_username="dash_u")
