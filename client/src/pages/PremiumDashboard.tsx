@@ -40,11 +40,11 @@ function formatLastActive(timestamp: string | null | undefined): string {
     const diffHours = Math.floor(diffMs / 3600000)
     const diffDays = Math.floor(diffMs / 86400000)
     
-    if (diffMins < 1) return 'Active now'
-    if (diffMins < 60) return `Active ${diffMins}m ago`
-    if (diffHours < 24) return `Active ${diffHours}h ago`
-    if (diffDays < 7) return `Active ${diffDays}d ago`
-    return `Active ${date.toLocaleDateString()}`
+    if (diffMins < 1) return 'Just now'
+    if (diffMins < 60) return `${diffMins}m ago`
+    if (diffHours < 24) return `${diffHours}h ago`
+    if (diffDays < 7) return `${diffDays}d ago`
+    return date.toLocaleDateString()
   } catch {
     return ''
   }
@@ -68,6 +68,7 @@ export default function PremiumDashboard() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [hasGymAccess, setHasGymAccess] = useState(false)
   const [communities, setCommunities] = useState<Community[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [joinCode, setJoinCode] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -714,25 +715,86 @@ export default function PremiumDashboard() {
                 </div>
               </div>
             ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {/* Show all communities sorted by role */}
-              {sortCommunitiesByRole(communities).map(community => {
-              const onCardClick = () => {
-                navigate(`/communities?parent_id=${community.id}`)
-              }
-              return (
-                <CommunityCard 
-                  key={community.id}
-                  name={community.name}
-                  memberCount={community.member_count}
-                  lastActivity={community.last_activity}
-                  isOwner={community.is_owner}
-                  isAdmin={community.is_admin}
-                  onClick={onCardClick} 
-                />
-              )
-              })}
-            </div>
+            <>
+              {/* Search Input */}
+              <div className="mb-4">
+                <div className="relative max-w-xs">
+                  <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[#9fb0b5] text-sm" />
+                  <input
+                    type="text"
+                    placeholder="Search communities..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-[#9fb0b5] focus:outline-none focus:border-[#4db6ac]/40"
+                  />
+                </div>
+              </div>
+
+              {/* Communities Grid */}
+              {(() => {
+                const sorted = sortCommunitiesByRole(communities)
+                const filtered = searchQuery.trim() 
+                  ? sorted.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                  : sorted
+                const ownedOrAdmin = filtered.filter(c => c.is_owner || c.is_admin)
+                const memberOnly = filtered.filter(c => !c.is_owner && !c.is_admin)
+
+                return (
+                  <div className="space-y-4">
+                    {/* Steve Card + Owned/Admin Communities */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {/* Talk to Steve Card - always first */}
+                      <SteveCard onClick={() => navigate('/user_chat/chat/Steve')} />
+                      
+                      {ownedOrAdmin.map(community => (
+                        <CommunityCard 
+                          key={community.id}
+                          name={community.name}
+                          memberCount={community.member_count}
+                          lastActivity={community.last_activity}
+                          isOwner={community.is_owner}
+                          isAdmin={community.is_admin}
+                          onClick={() => navigate(`/communities?parent_id=${community.id}`)} 
+                        />
+                      ))}
+                    </div>
+
+                    {/* Separator - only show if there are member-only communities */}
+                    {memberOnly.length > 0 && ownedOrAdmin.length > 0 && (
+                      <div className="flex items-center gap-3 py-1">
+                        <div className="h-px flex-1 bg-white/10" />
+                        <span className="text-[10px] uppercase tracking-wider text-[#9fb0b5]/60 font-medium">Member of</span>
+                        <div className="h-px flex-1 bg-white/10" />
+                      </div>
+                    )}
+
+                    {/* Member-only Communities */}
+                    {memberOnly.length > 0 && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {memberOnly.map(community => (
+                          <CommunityCard 
+                            key={community.id}
+                            name={community.name}
+                            memberCount={community.member_count}
+                            lastActivity={community.last_activity}
+                            isOwner={community.is_owner}
+                            isAdmin={community.is_admin}
+                            onClick={() => navigate(`/communities?parent_id=${community.id}`)} 
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* No results message */}
+                    {filtered.length === 0 && searchQuery.trim() && (
+                      <div className="text-center py-8 text-[#9fb0b5] text-sm">
+                        No communities found matching "{searchQuery}"
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+            </>
             )}
         </div>
 
@@ -933,6 +995,33 @@ export default function PremiumDashboard() {
   )
 }
 
+function SteveCard({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label="Talk to Steve"
+      className="group relative w-full rounded-2xl overflow-hidden text-white transition-all duration-300 liquid-glass-surface border border-white/15 hover:border-teal-400/40 shadow-[0_20px_50px_rgba(0,0,0,0.45)] hover:shadow-[0_30px_60px_rgba(0,0,0,0.55)] hover:-translate-y-0.5 text-left"
+    >
+      <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+           style={{ background: 'radial-gradient(600px circle at var(--x,50%) var(--y,50%), rgba(77,182,172,0.18), transparent 45%)' }} />
+
+      <div className="relative p-5">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-8 h-8 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
+            <i className="fa-solid fa-robot text-[#4db6ac] text-sm" />
+          </div>
+          <div className="text-[15px] font-semibold tracking-tight text-white/90">Talk to Steve</div>
+        </div>
+        <div className="text-xs text-[#9fb0b5] leading-relaxed">
+          Your AI companion for questions, ideas, and connections.
+        </div>
+      </div>
+
+      <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-teal-300/60 to-transparent opacity-80" />
+    </button>
+  )
+}
+
 function CommunityCard({ 
   name, 
   memberCount, 
@@ -960,9 +1049,9 @@ function CommunityCard({
       <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
            style={{ background: 'radial-gradient(600px circle at var(--x,50%) var(--y,50%), rgba(77,182,172,0.18), transparent 45%)' }} />
 
-      <div className="relative p-4">
+      <div className="relative p-5">
         {/* Header: Name + Badge */}
-        <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="flex items-start justify-between gap-2 mb-3">
           <div className="text-[15px] font-semibold tracking-tight text-white/90 leading-tight">{name}</div>
           {badge && (
             <span className="flex-shrink-0 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide rounded-full bg-[#4db6ac]/20 text-[#4db6ac] border border-[#4db6ac]/30">
@@ -971,16 +1060,19 @@ function CommunityCard({
           )}
         </div>
         
-        {/* Meta: Member count + Last active */}
-        <div className="flex items-center gap-2 text-xs text-[#9fb0b5]">
+        {/* Meta: Member count + Last active with icons */}
+        <div className="flex items-center gap-3 text-xs text-[#9fb0b5]">
           {typeof memberCount === 'number' && (
-            <span>{memberCount} {memberCount === 1 ? 'member' : 'members'}</span>
-          )}
-          {typeof memberCount === 'number' && lastActiveText && (
-            <span className="text-white/20">•</span>
+            <span className="flex items-center gap-1.5">
+              <i className="fa-solid fa-users text-[10px]" />
+              {memberCount}
+            </span>
           )}
           {lastActiveText && (
-            <span>{lastActiveText}</span>
+            <span className="flex items-center gap-1.5">
+              <i className="fa-regular fa-clock text-[10px]" />
+              {lastActiveText}
+            </span>
           )}
         </div>
       </div>

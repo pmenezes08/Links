@@ -30719,16 +30719,23 @@ def get_user_parent_community():
             comm_ids = [comm['id'] for comm in communities_list]
             
             if comm_ids:
-                # Batch query for member counts (including sub-communities)
+                # Batch query for member counts (including sub-communities, excluding admins)
                 member_counts = {}
                 for cid in comm_ids:
                     try:
                         # Count members in this community and all its sub-communities
+                        # Exclude users who are admins of the community
                         c.execute(f"""
                             SELECT COUNT(DISTINCT uc.user_id) as cnt
                             FROM user_communities uc
+                            JOIN users u ON uc.user_id = u.id
                             WHERE uc.community_id IN (
                                 SELECT id FROM communities WHERE id = {ph} OR parent_community_id = {ph}
+                            )
+                            AND NOT EXISTS (
+                                SELECT 1 FROM community_admins ca 
+                                WHERE ca.community_id = uc.community_id 
+                                AND ca.username = u.username
                             )
                         """, (cid, cid))
                         row = c.fetchone()
