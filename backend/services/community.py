@@ -688,11 +688,11 @@ def _row_get(row, key: str, idx: int):
 def _walk_to_top_parent(cursor, comm_id: int, ph: str) -> Optional[Dict[str, Any]]:
     """Walk parent chain to find the top-level parent of ``comm_id``.
 
-    Returns a dict with ``id``, ``name``, ``type``, or ``None`` if the
-    community cannot be resolved.
+    Returns a dict with ``id``, ``name``, ``type``, ``description``, or ``None``
+    if the community cannot be resolved.
     """
     cursor.execute(
-        f"SELECT id, name, type, parent_community_id FROM communities WHERE id = {ph}",
+        f"SELECT id, name, type, description, parent_community_id FROM communities WHERE id = {ph}",
         (comm_id,),
     )
     row = cursor.fetchone()
@@ -702,13 +702,14 @@ def _walk_to_top_parent(cursor, comm_id: int, ph: str) -> Optional[Dict[str, Any
     current_id = _row_get(row, "id", 0)
     name = _row_get(row, "name", 1)
     ctype = _row_get(row, "type", 2)
-    parent_id = _row_get(row, "parent_community_id", 3)
+    description = _row_get(row, "description", 3)
+    parent_id = _row_get(row, "parent_community_id", 4)
 
     visited: Set[int] = set()
     while parent_id is not None and parent_id not in visited:
         visited.add(parent_id)
         cursor.execute(
-            f"SELECT id, name, type, parent_community_id FROM communities WHERE id = {ph}",
+            f"SELECT id, name, type, description, parent_community_id FROM communities WHERE id = {ph}",
             (parent_id,),
         )
         prow = cursor.fetchone()
@@ -717,18 +718,25 @@ def _walk_to_top_parent(cursor, comm_id: int, ph: str) -> Optional[Dict[str, Any
         current_id = _row_get(prow, "id", 0)
         name = _row_get(prow, "name", 1)
         ctype = _row_get(prow, "type", 2)
-        parent_id = _row_get(prow, "parent_community_id", 3)
+        description = _row_get(prow, "description", 3)
+        parent_id = _row_get(prow, "parent_community_id", 4)
 
-    return {"id": current_id, "name": name, "type": ctype}
+    return {
+        "id": current_id,
+        "name": name,
+        "type": ctype,
+        "description": description,
+    }
 
 
 def get_user_dashboard_communities(username: str) -> List[Dict[str, Any]]:
     """Return top-level parent communities for the dashboard, enriched with
-    member_count, last_activity, is_owner, is_admin.
+    ``description``, ``member_count``, ``last_activity``, ``is_owner``,
+    ``is_admin``.
 
-    All username comparisons are case-insensitive. Admins (recorded either via
-    ``community_admins`` or ``user_communities.role``) are excluded from
-    member counts. App admins see every top-level parent community.
+    All username comparisons are case-insensitive. Member counts exclude the
+    global ``admin`` user only (same rule as the community members modal). App
+    admins see every top-level parent community.
     """
     if not username:
         return []
@@ -741,7 +749,7 @@ def get_user_dashboard_communities(username: str) -> List[Dict[str, Any]]:
         if is_app_admin(username):
             c.execute(
                 """
-                SELECT id, name, type
+                SELECT id, name, type, description
                 FROM communities
                 WHERE parent_community_id IS NULL
                 ORDER BY name
@@ -753,6 +761,7 @@ def get_user_dashboard_communities(username: str) -> List[Dict[str, Any]]:
                     "id": _row_get(row, "id", 0),
                     "name": _row_get(row, "name", 1),
                     "type": _row_get(row, "type", 2),
+                    "description": _row_get(row, "description", 3),
                 })
         else:
             c.execute(

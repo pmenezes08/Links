@@ -24,6 +24,7 @@ type Community = {
   id: number
   name: string
   type: string
+  description?: string | null
   member_count?: number
   last_activity?: string | null
   is_owner?: boolean
@@ -738,17 +739,24 @@ export default function PremiumDashboard() {
               {/* Communities Grid */}
               {(() => {
                 const sorted = sortCommunitiesByRole(communities)
-                const filtered = searchQuery.trim() 
-                  ? sorted.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                const filtered = searchQuery.trim()
+                  ? sorted.filter((c) => {
+                      const q = searchQuery.toLowerCase()
+                      if (c.name.toLowerCase().includes(q)) return true
+                      const desc = (c.description ?? '').toLowerCase()
+                      return desc.includes(q)
+                    })
                   : sorted
                 const ownedOrAdmin = filtered.filter(c => c.is_owner || c.is_admin)
                 const memberOnly = filtered.filter(c => !c.is_owner && !c.is_admin)
 
                 return (
                   <div className="space-y-4">
-                    {/* Talk to Steve Card */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      <SteveCard onClick={() => navigate('/user_chat/chat/Steve')} />
+                    {/* Talk to Steve — compact strip; doesn’t stretch full 3-column width */}
+                    <div className="flex justify-start">
+                      <div className="w-full max-w-[min(100%,19rem)] sm:max-w-[20rem]">
+                        <SteveCard onClick={() => navigate('/user_chat/chat/Steve')} />
+                      </div>
                     </div>
 
                     {/* Owner/Admin Section */}
@@ -761,16 +769,19 @@ export default function PremiumDashboard() {
                           <div className="h-px flex-1 bg-white/10" />
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {ownedOrAdmin.map(community => (
-                            <CommunityCard 
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {ownedOrAdmin.map((community) => (
+                            <CommunityCard
                               key={community.id}
                               name={community.name}
+                              description={community.description}
                               memberCount={community.member_count}
                               lastActivity={community.last_activity}
                               isOwner={community.is_owner}
                               isAdmin={community.is_admin}
-                              onClick={() => navigate(`/communities?parent_id=${community.id}`)} 
+                              onClick={() =>
+                                navigate(`/communities?parent_id=${community.id}`)
+                              }
                             />
                           ))}
                         </div>
@@ -787,16 +798,19 @@ export default function PremiumDashboard() {
                           <div className="h-px flex-1 bg-white/10" />
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {memberOnly.map(community => (
-                            <CommunityCard 
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {memberOnly.map((community) => (
+                            <CommunityCard
                               key={community.id}
                               name={community.name}
+                              description={community.description}
                               memberCount={community.member_count}
                               lastActivity={community.last_activity}
                               isOwner={community.is_owner}
                               isAdmin={community.is_admin}
-                              onClick={() => navigate(`/communities?parent_id=${community.id}`)} 
+                              onClick={() =>
+                                navigate(`/communities?parent_id=${community.id}`)
+                              }
                             />
                           ))}
                         </div>
@@ -1018,63 +1032,77 @@ function SteveCard({ onClick }: { onClick: () => void }) {
     <button
       onClick={onClick}
       aria-label="Talk to Steve"
-      className="group relative w-full rounded-2xl overflow-hidden text-white transition-all duration-300 liquid-glass-surface border border-white/15 hover:border-teal-400/40 shadow-[0_20px_50px_rgba(0,0,0,0.45)] hover:shadow-[0_30px_60px_rgba(0,0,0,0.55)] hover:-translate-y-0.5 text-left"
+      className="group relative w-full rounded-xl overflow-hidden text-white transition-all duration-300 liquid-glass-surface border border-white/12 hover:border-teal-400/35 shadow-[0_10px_28px_rgba(0,0,0,0.38)] hover:shadow-[0_16px_40px_rgba(0,0,0,0.48)] hover:-translate-y-0.5 text-left"
     >
       <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-           style={{ background: 'radial-gradient(600px circle at var(--x,50%) var(--y,50%), rgba(77,182,172,0.18), transparent 45%)' }} />
+           style={{ background: 'radial-gradient(480px circle at var(--x,50%) var(--y,50%), rgba(77,182,172,0.14), transparent 45%)' }} />
 
-      <div className="relative p-5">
-        <div className="text-[15px] font-semibold tracking-tight text-white/90 mb-2">Talk to Steve</div>
-        <div className="text-xs text-[#9fb0b5] leading-relaxed">
+      <div className="relative px-3.5 py-2.5 sm:px-4 sm:py-3">
+        <div className="text-sm font-semibold tracking-tight text-white/90 mb-0.5">Talk to Steve</div>
+        <div className="text-[11px] text-[#9fb0b5] leading-snug">
           Discuss ideas, ask for connections and more.
         </div>
       </div>
 
-      <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-teal-300/60 to-transparent opacity-80" />
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-teal-300/50 to-transparent opacity-70" />
     </button>
   )
 }
 
-function CommunityCard({ 
-  name, 
-  memberCount, 
-  lastActivity, 
-  isOwner, 
-  isAdmin, 
-  onClick 
-}: { 
+function CommunityCard({
+  name,
+  description,
+  memberCount,
+  lastActivity,
+  isOwner,
+  isAdmin,
+  onClick,
+}: {
   name: string
+  description?: string | null
   memberCount?: number
   lastActivity?: string | null
   isOwner?: boolean
   isAdmin?: boolean
-  onClick: () => void 
+  onClick: () => void
 }) {
   const lastActiveText = formatLastActive(lastActivity)
   const badge = isOwner ? 'Owner' : isAdmin ? 'Admin' : null
-  
+  const descText = typeof description === 'string' ? description.trim() : ''
+
   return (
     <button
       onClick={onClick}
       aria-label={name}
-      className="group relative w-full rounded-2xl overflow-hidden text-white transition-all duration-300 liquid-glass-surface border border-white/15 hover:border-teal-400/40 shadow-[0_20px_50px_rgba(0,0,0,0.45)] hover:shadow-[0_30px_60px_rgba(0,0,0,0.55)] hover:-translate-y-0.5 text-left"
+      className="group relative flex min-h-[8.5rem] w-full rounded-2xl overflow-hidden text-white transition-all duration-300 liquid-glass-surface border border-white/15 hover:border-teal-400/40 shadow-[0_24px_56px_rgba(0,0,0,0.48)] hover:shadow-[0_32px_64px_rgba(0,0,0,0.58)] hover:-translate-y-0.5 text-left"
     >
-      <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-           style={{ background: 'radial-gradient(600px circle at var(--x,50%) var(--y,50%), rgba(77,182,172,0.18), transparent 45%)' }} />
+      <div
+        className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+        style={{
+          background:
+            'radial-gradient(600px circle at var(--x,50%) var(--y,50%), rgba(77,182,172,0.18), transparent 45%)',
+        }}
+      />
 
-      <div className="relative p-5">
-        {/* Header: Name + Badge */}
-        <div className="flex items-start justify-between gap-2 mb-3">
-          <div className="text-[15px] font-semibold tracking-tight text-white/90 leading-tight">{name}</div>
+      <div className="relative flex flex-col gap-3 p-6 sm:p-7">
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-[17px] font-semibold tracking-tight text-white/90 leading-tight">
+            {name}
+          </div>
           {badge && (
             <span className="flex-shrink-0 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide rounded-full bg-[#4db6ac]/20 text-[#4db6ac] border border-[#4db6ac]/30">
               {badge}
             </span>
           )}
         </div>
-        
-        {/* Meta: Member count + Last active with icons */}
-        <div className="flex items-center gap-3 text-xs text-[#9fb0b5]">
+
+        {descText.length > 0 && (
+          <p className="text-[11.5px] text-[#9fb0b5]/85 leading-relaxed line-clamp-3">
+            {descText}
+          </p>
+        )}
+
+        <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#9fb0b5] pt-1">
           {typeof memberCount === 'number' && (
             <span className="flex items-center gap-1.5">
               <i className="fa-solid fa-users text-[10px]" />
