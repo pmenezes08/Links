@@ -30528,7 +30528,7 @@ def get_user_parent_community():
             if is_admin:
                 # Admin: return ALL top-level parent communities
                 c.execute("""
-                    SELECT id, name, type
+                    SELECT id, name, type, creator_username
                     FROM communities
                     WHERE parent_community_id IS NULL
                     ORDER BY name
@@ -30538,9 +30538,19 @@ def get_user_parent_community():
                 communities_list = []
                 for row in parent_rows:
                     if hasattr(row, 'keys'):
-                        communities_list.append({'id': row['id'], 'name': row['name'], 'type': row['type']})
+                        communities_list.append({
+                            'id': row['id'], 
+                            'name': row['name'], 
+                            'type': row['type'],
+                            'creator_username': row['creator_username']
+                        })
                     else:
-                        communities_list.append({'id': row[0], 'name': row[1], 'type': row[2]})
+                        communities_list.append({
+                            'id': row[0], 
+                            'name': row[1], 
+                            'type': row[2],
+                            'creator_username': row[3]
+                        })
             else:
                 # User: gather communities by membership OR creator OR admin role (run separately for robust cross-DB behavior)
                 # 1) Memberships via user_communities
@@ -30701,6 +30711,66 @@ def get_user_parent_community():
                                 ", ".join([f"{c.get('id')}:{c.get('name')}" for c in communities_list]))
                 except Exception:
                     pass
+            
+            # Enrich communities with member_count, last_activity, is_owner, is_admin
+            ph = get_sql_placeholder()
+            
+            # Get all community IDs for batch queries
+            comm_ids = [comm['id'] for comm in communities_list]
+            
+            if comm_ids:
+                # Batch query for member counts (including sub-communities)
+                member_counts = {}
+                for cid in comm_ids:
+                    try:
+                        # Count members in this community and all its sub-communities
+                        c.execute(f"""
+                            SELECT COUNT(DISTINCT uc.user_id) as cnt
+                            FROM user_communities uc
+                            WHERE uc.community_id IN (
+                                SELECT id FROM communities WHERE id = {ph} OR parent_community_id = {ph}
+                            )
+                        """, (cid, cid))
+                        row = c.fetchone()
+                        member_counts[cid] = row['cnt'] if hasattr(row, 'keys') else (row[0] if row else 0)
+                    except Exception:
+                        member_counts[cid] = 0
+                
+                # Batch query for last activity (most recent post in community or sub-communities)
+                last_activities = {}
+                for cid in comm_ids:
+                    try:
+                        c.execute(f"""
+                            SELECT MAX(timestamp) as last_post
+                            FROM posts
+                            WHERE community_id IN (
+                                SELECT id FROM communities WHERE id = {ph} OR parent_community_id = {ph}
+                            )
+                        """, (cid, cid))
+                        row = c.fetchone()
+                        last_activities[cid] = row['last_post'] if hasattr(row, 'keys') else (row[0] if row else None)
+                    except Exception:
+                        last_activities[cid] = None
+                
+                # Get communities created by user (for is_owner)
+                c.execute(f"SELECT id FROM communities WHERE creator_username = {ph}", (username,))
+                owned_ids = set()
+                for row in c.fetchall():
+                    owned_ids.add(row['id'] if hasattr(row, 'keys') else row[0])
+                
+                # Get communities where user is admin (for is_admin)
+                c.execute(f"SELECT community_id FROM community_admins WHERE username = {ph}", (username,))
+                admin_ids = set()
+                for row in c.fetchall():
+                    admin_ids.add(row['community_id'] if hasattr(row, 'keys') else row[0])
+                
+                # Enrich each community
+                for comm in communities_list:
+                    cid = comm['id']
+                    comm['member_count'] = member_counts.get(cid, 0)
+                    comm['last_activity'] = last_activities.get(cid)
+                    comm['is_owner'] = cid in owned_ids
+                    comm['is_admin'] = cid in admin_ids
             
             logger.info(f"Returning {len(communities_list)} communities for dashboard")
             

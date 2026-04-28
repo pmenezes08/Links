@@ -19,13 +19,55 @@ import OnboardingChat from './OnboardingChat'
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
 const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
-// type Community = { id: number; name: string; type: string }
+
+type Community = {
+  id: number
+  name: string
+  type: string
+  member_count?: number
+  last_activity?: string | null
+  is_owner?: boolean
+  is_admin?: boolean
+}
+
+function formatLastActive(timestamp: string | null | undefined): string {
+  if (!timestamp) return ''
+  try {
+    const date = new Date(timestamp)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+    
+    if (diffMins < 1) return 'Active now'
+    if (diffMins < 60) return `Active ${diffMins}m ago`
+    if (diffHours < 24) return `Active ${diffHours}h ago`
+    if (diffDays < 7) return `Active ${diffDays}d ago`
+    return `Active ${date.toLocaleDateString()}`
+  } catch {
+    return ''
+  }
+}
+
+function sortCommunitiesByRole(communities: Community[]): Community[] {
+  return [...communities].sort((a, b) => {
+    // Owner first
+    if (a.is_owner && !b.is_owner) return -1
+    if (!a.is_owner && b.is_owner) return 1
+    // Then admin
+    if (a.is_admin && !b.is_admin) return -1
+    if (!a.is_admin && b.is_admin) return 1
+    // Then alphabetically
+    return (a.name || '').localeCompare(b.name || '')
+  })
+}
 
 export default function PremiumDashboard() {
   const { profile: contextProfile } = useUserProfile()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [hasGymAccess, setHasGymAccess] = useState(false)
-  const [communities, setCommunities] = useState<Array<{id: number, name: string, type: string}>>([])
+  const [communities, setCommunities] = useState<Community[]>([])
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [joinCode, setJoinCode] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -628,27 +670,64 @@ export default function PremiumDashboard() {
             </span>
           </div>
             {communities.length === 0 ? (
-              <div className="px-3 py-10">
-                <div className="mx-auto max-w-xl liquid-glass-surface border border-white/10 rounded-2xl p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
-                  <div className="text-sm font-bold text-white">Your new world awaits you</div>
-                  <div className="mt-2 text-sm text-[#9fb0b5]">
-                    Enter an invite code to join a community or create your own. Welcome to C-Point, the network where ideas connect people.
+              <div className="px-3 py-6 space-y-4">
+                {/* Welcome Card */}
+                <div className="mx-auto max-w-xl liquid-glass-surface border border-white/10 rounded-2xl p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+                  <div className="text-base font-semibold text-white mb-3">
+                    Welcome to C-Point
+                  </div>
+                  <div className="text-sm text-[#9fb0b5] leading-relaxed space-y-3">
+                    <p>A global platform of private, independent networks - we call them communities.</p>
+                    <p className="font-medium text-white/80">Your dashboard is empty by design.</p>
+                    <p>There are no public feeds, no algorithms, and no endless noise — only the communities you create or are invited to join. This is how we protect real privacy and genuine connection.</p>
+                    <p>Create or ask to be invited to the private spaces that matter to you — whether personal or professional.</p>
+                  </div>
+                  <div className="mt-5 text-center">
+                    <div className="text-sm text-white/70 mb-3">Ready to get started?</div>
+                    <button 
+                      className="px-5 py-2.5 rounded-full bg-[#4db6ac] text-black font-semibold shadow-lg hover:brightness-110 active:scale-95 transition-transform touch-manipulation"
+                      onClick={() => { setNewCommType('General'); setShowCreateModal(true) }}
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                    >
+                      Create Your Community
+                    </button>
+                  </div>
+                </div>
+
+                {/* Meet Steve Card */}
+                <div className="mx-auto max-w-xl liquid-glass-surface border border-white/10 rounded-2xl p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+                  <div className="text-base font-semibold text-white mb-3">
+                    Hi, I'm Steve.
+                  </div>
+                  <div className="text-sm text-[#9fb0b5] leading-relaxed">
+                    <p>Think of me as an ever-present member whose purpose is to bring intelligence to the platform. Why am I here? To help you meet people in your communities you might not yet know. To help you find people you know who aren't in any of your communities yet. To add facts or a different perspective to discussions. And to do the small things that go a long way — like summarising a voice note so you know what it's about before you listen, or condensing a long post so you're up to speed in seconds.</p>
+                  </div>
+                  <div className="mt-4">
+                    <button 
+                      className="px-5 py-2.5 rounded-full border border-[#4db6ac]/40 text-[#4db6ac] font-medium hover:bg-[#4db6ac]/10 active:scale-95 transition-all touch-manipulation"
+                      onClick={() => navigate('/user_chat/chat/Steve')}
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                    >
+                      Talk to Steve
+                    </button>
                   </div>
                 </div>
               </div>
             ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {/* Show all communities */}
-              {communities.map(community => {
-              // Desktop HTML communities page now provides the unified view
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {/* Show all communities sorted by role */}
+              {sortCommunitiesByRole(communities).map(community => {
               const onCardClick = () => {
                 navigate(`/communities?parent_id=${community.id}`)
               }
               return (
-                <Card 
+                <CommunityCard 
                   key={community.id}
-                  iconClass="fa-solid fa-house" 
-                  title={community.name} 
+                  name={community.name}
+                  memberCount={community.member_count}
+                  lastActivity={community.last_activity}
+                  isOwner={community.is_owner}
+                  isAdmin={community.is_admin}
                   onClick={onCardClick} 
                 />
               )
@@ -657,17 +736,19 @@ export default function PremiumDashboard() {
             )}
         </div>
 
-        {/* Create Community Button */}
-        <div className="fixed bottom-0 left-0 right-0 z-50 flex justify-center pb-safe" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 24px)' }}>
-          <button 
-            className="px-6 py-3 rounded-full bg-[#4db6ac] text-black font-semibold shadow-lg hover:brightness-110 active:scale-95 transition-transform touch-manipulation flex items-center gap-2"
-            onClick={()=> { setNewCommType('General'); setShowCreateModal(true) }}
-            style={{ WebkitTapHighlightColor: 'transparent' }}
-          >
-            Create Your Community
-            <i className="fa-solid fa-arrow-right" />
-          </button>
-        </div>
+        {/* Create Community Button - only show when user has communities */}
+        {communities.length > 0 && (
+          <div className="fixed bottom-0 left-0 right-0 z-50 flex justify-center pb-safe" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 24px)' }}>
+            <button 
+              className="px-6 py-3 rounded-full bg-[#4db6ac] text-black font-semibold shadow-lg hover:brightness-110 active:scale-95 transition-transform touch-manipulation flex items-center gap-2"
+              onClick={()=> { setNewCommType('General'); setShowCreateModal(true) }}
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
+              Create Your Community
+              <i className="fa-solid fa-arrow-right" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Conversational Onboarding with Steve */}
@@ -852,19 +933,56 @@ export default function PremiumDashboard() {
   )
 }
 
-function Card({ iconClass, title, onClick }:{ iconClass:string; title:string; onClick:()=>void }){
+function CommunityCard({ 
+  name, 
+  memberCount, 
+  lastActivity, 
+  isOwner, 
+  isAdmin, 
+  onClick 
+}: { 
+  name: string
+  memberCount?: number
+  lastActivity?: string | null
+  isOwner?: boolean
+  isAdmin?: boolean
+  onClick: () => void 
+}) {
+  const lastActiveText = formatLastActive(lastActivity)
+  const badge = isOwner ? 'Owner' : isAdmin ? 'Admin' : null
+  
   return (
     <button
       onClick={onClick}
-      aria-label={title}
-      className="group relative w-full h-40 rounded-2xl overflow-hidden text-white transition-all duration-300 liquid-glass-surface border border-white/15 hover:border-teal-400/40 shadow-[0_20px_50px_rgba(0,0,0,0.45)] hover:shadow-[0_30px_60px_rgba(0,0,0,0.55)] hover:-translate-y-0.5"
+      aria-label={name}
+      className="group relative w-full rounded-2xl overflow-hidden text-white transition-all duration-300 liquid-glass-surface border border-white/15 hover:border-teal-400/40 shadow-[0_20px_50px_rgba(0,0,0,0.45)] hover:shadow-[0_30px_60px_rgba(0,0,0,0.55)] hover:-translate-y-0.5 text-left"
     >
       <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
            style={{ background: 'radial-gradient(600px circle at var(--x,50%) var(--y,50%), rgba(77,182,172,0.18), transparent 45%)' }} />
 
-      <div className="absolute inset-0 flex flex-row items-center justify-start gap-3 px-6">
-        <i className={iconClass} style={{ fontSize: 24, color: '#7fe7df' }} />
-        <div className="text-[15px] font-semibold tracking-tight text-white/90">{title}</div>
+      <div className="relative p-4">
+        {/* Header: Name + Badge */}
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="text-[15px] font-semibold tracking-tight text-white/90 leading-tight">{name}</div>
+          {badge && (
+            <span className="flex-shrink-0 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide rounded-full bg-[#4db6ac]/20 text-[#4db6ac] border border-[#4db6ac]/30">
+              {badge}
+            </span>
+          )}
+        </div>
+        
+        {/* Meta: Member count + Last active */}
+        <div className="flex items-center gap-2 text-xs text-[#9fb0b5]">
+          {typeof memberCount === 'number' && (
+            <span>{memberCount} {memberCount === 1 ? 'member' : 'members'}</span>
+          )}
+          {typeof memberCount === 'number' && lastActiveText && (
+            <span className="text-white/20">•</span>
+          )}
+          {lastActiveText && (
+            <span>{lastActiveText}</span>
+          )}
+        </div>
       </div>
 
       <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-teal-300/60 to-transparent opacity-80" />
