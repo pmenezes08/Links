@@ -670,6 +670,250 @@ def get_parent_chain_ids(cursor, community_id: int) -> List[int]:
     return parents
 
 
+_NON_MEMBER_ROLES = ("admin", "owner", "moderator", "manager")
+
+
+def _row_get(row, key: str, idx: int):
+    """Helper to read a column from either dict-like or tuple rows."""
+    if row is None:
+        return None
+    if hasattr(row, "keys"):
+        try:
+            return row[key]
+        except (KeyError, IndexError):
+            return None
+    try:
+        return row[idx]
+    except (IndexError, TypeError):
+        return None
+
+
+def _walk_to_top_parent(cursor, comm_id: int, ph: str) -> Optional[Dict[str, Any]]:
+    """Walk parent chain to find the top-level parent of ``comm_id``.
+
+    Returns a dict with ``id``, ``name``, ``type``, or ``None`` if the
+    community cannot be resolved.
+    """
+    cursor.execute(
+        f"SELECT id, name, type, parent_community_id FROM communities WHERE id = {ph}",
+        (comm_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+
+    current_id = _row_get(row, "id", 0)
+    name = _row_get(row, "name", 1)
+    ctype = _row_get(row, "type", 2)
+    parent_id = _row_get(row, "parent_community_id", 3)
+
+    visited: Set[int] = set()
+    while parent_id is not None and parent_id not in visited:
+        visited.add(parent_id)
+        cursor.execute(
+            f"SELECT id, name, type, parent_community_id FROM communities WHERE id = {ph}",
+            (parent_id,),
+        )
+        prow = cursor.fetchone()
+        if not prow:
+            break
+        current_id = _row_get(prow, "id", 0)
+        name = _row_get(prow, "name", 1)
+        ctype = _row_get(prow, "type", 2)
+        parent_id = _row_get(prow, "parent_community_id", 3)
+
+    return {"id": current_id, "name": name, "type": ctype}
+
+
+def get_user_dashboard_communities(username: str) -> List[Dict[str, Any]]:
+    """Return top-level parent communities for the dashboard, enriched with
+    member_count, last_activity, is_owner, is_admin.
+
+    All username comparisons are case-insensitive. Admins (recorded either via
+    ``community_admins`` or ``user_communities.role``) are excluded from
+    member counts. App admins see every top-level parent community.
+    """
+    if not username:
+        return []
+
+    ph = get_sql_placeholder()
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+
+        if is_app_admin(username):
+            c.execute(
+                """
+                SELECT id, name, type
+                FROM communities
+                WHERE parent_community_id IS NULL
+                ORDER BY name
+                """
+            )
+            communities_list: List[Dict[str, Any]] = []
+            for row in c.fetchall():
+                communities_list.append({
+                    "id": _row_get(row, "id", 0),
+                    "name": _row_get(row, "name", 1),
+                    "type": _row_get(row, "type", 2),
+                })
+        else:
+            c.execute(
+                f"SELECT id FROM users WHERE LOWER(username) = LOWER({ph})",
+                (username,),
+            )
+            user_row = c.fetchone()
+            user_id = _row_get(user_row, "id", 0) if user_row else None
+
+            community_ids: Set[int] = set()
+
+            if user_id:
+                c.execute(
+                    f"SELECT community_id FROM user_communities WHERE user_id = {ph}",
+                    (user_id,),
+                )
+                for r in c.fetchall():
+                    cid = _row_get(r, "community_id", 0)
+                    if cid:
+                        community_ids.add(cid)
+
+            c.execute(
+                f"SELECT id FROM communities WHERE LOWER(creator_username) = LOWER({ph})",
+                (username,),
+            )
+            for r in c.fetchall():
+                cid = _row_get(r, "id", 0)
+                if cid:
+                    community_ids.add(cid)
+
+            c.execute(
+                f"SELECT community_id FROM community_admins WHERE LOWER(username) = LOWER({ph})",
+                (username,),
+            )
+            for r in c.fetchall():
+                cid = _row_get(r, "community_id", 0)
+                if cid:
+                    community_ids.add(cid)
+
+            top_parents: Dict[int, Dict[str, Any]] = {}
+            for cid in community_ids:
+                top = _walk_to_top_parent(c, cid, ph)
+                if top and top["id"] not in top_parents:
+                    top_parents[top["id"]] = top
+
+            # Surface gym communities for users with gym access.
+            try:
+                has_gym_access = (username or "").lower() == "paulo"
+                if not has_gym_access:
+                    c.execute(
+                        f"""
+                        SELECT 1
+                        FROM communities cm
+                        JOIN user_communities uc ON cm.id = uc.community_id
+                        JOIN users u ON uc.user_id = u.id
+                        WHERE LOWER(u.username) = LOWER({ph}) AND LOWER(cm.type) = 'gym'
+                        LIMIT 1
+                        """,
+                        (username,),
+                    )
+                    has_gym_access = c.fetchone() is not None
+
+                if has_gym_access:
+                    c.execute(
+                        "SELECT id FROM communities WHERE LOWER(type) = 'gym'"
+                    )
+                    for r in c.fetchall():
+                        gid = _row_get(r, "id", 0)
+                        if not gid:
+                            continue
+                        top = _walk_to_top_parent(c, gid, ph)
+                        if top and top["id"] not in top_parents:
+                            top_parents[top["id"]] = top
+            except Exception as exc:
+                logger.warning(
+                    "dashboard gym surface failed for %s: %s", username, exc
+                )
+
+            communities_list = sorted(
+                top_parents.values(),
+                key=lambda x: (x.get("name") or "").lower(),
+            )
+
+        if not communities_list:
+            return []
+
+        owned_ids: Set[int] = set()
+        c.execute(
+            f"SELECT id FROM communities WHERE LOWER(creator_username) = LOWER({ph})",
+            (username,),
+        )
+        for r in c.fetchall():
+            cid = _row_get(r, "id", 0)
+            if cid:
+                owned_ids.add(cid)
+
+        admin_ids: Set[int] = set()
+        c.execute(
+            f"SELECT community_id FROM community_admins WHERE LOWER(username) = LOWER({ph})",
+            (username,),
+        )
+        for r in c.fetchall():
+            cid = _row_get(r, "community_id", 0)
+            if cid:
+                admin_ids.add(cid)
+
+        non_member_roles_sql = ",".join([ph] * len(_NON_MEMBER_ROLES))
+
+        for comm in communities_list:
+            cid = comm["id"]
+
+            try:
+                c.execute(
+                    f"""
+                    SELECT COUNT(DISTINCT uc.user_id) AS cnt
+                    FROM user_communities uc
+                    JOIN users u ON uc.user_id = u.id
+                    WHERE uc.community_id IN (
+                        SELECT id FROM communities
+                        WHERE id = {ph} OR parent_community_id = {ph}
+                    )
+                    AND LOWER(COALESCE(uc.role, '')) NOT IN ({non_member_roles_sql})
+                    AND NOT EXISTS (
+                        SELECT 1 FROM community_admins ca
+                        WHERE ca.community_id = uc.community_id
+                        AND LOWER(ca.username) = LOWER(u.username)
+                    )
+                    """,
+                    (cid, cid, *_NON_MEMBER_ROLES),
+                )
+                row = c.fetchone()
+                comm["member_count"] = _row_get(row, "cnt", 0) or 0
+            except Exception:
+                comm["member_count"] = 0
+
+            try:
+                c.execute(
+                    f"""
+                    SELECT MAX(timestamp) AS last_post
+                    FROM posts
+                    WHERE community_id IN (
+                        SELECT id FROM communities
+                        WHERE id = {ph} OR parent_community_id = {ph}
+                    )
+                    """,
+                    (cid, cid),
+                )
+                row = c.fetchone()
+                comm["last_activity"] = _row_get(row, "last_post", 0)
+            except Exception:
+                comm["last_activity"] = None
+
+            comm["is_owner"] = cid in owned_ids
+            comm["is_admin"] = cid in admin_ids
+
+        return communities_list
+
+
 def fetch_community_names(cursor, community_ids: List[int]) -> List[str]:
     """Fetch community names preserving order of provided IDs."""
     ids = [cid for cid in community_ids if cid is not None]

@@ -25,7 +25,13 @@ from backend.services import community as community_svc
 from backend.services import community_admin_notifications
 from backend.services import community_lifecycle
 from backend.services.database import get_db_connection, get_sql_placeholder
-from redis_cache import invalidate_community_cache, invalidate_user_cache
+from redis_cache import (
+    COMMUNITY_CACHE_TTL,
+    cache,
+    invalidate_community_cache,
+    invalidate_user_cache,
+    user_parent_dashboard_cache_key,
+)
 
 
 communities_bp = Blueprint("communities", __name__)
@@ -398,6 +404,50 @@ def user_communities_hierarchical():
     except Exception as exc:
         logger.exception("user_communities_hierarchical failed for %s", username)
         return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@communities_bp.route("/api/user_parent_community", methods=["GET"])
+@_login_required
+def api_user_parent_community():
+    """Top-level parent communities for the dashboard, enriched.
+
+    Each entry includes ``member_count``, ``last_activity``, ``is_owner`` and
+    ``is_admin``. App admins receive every top-level parent community.
+    """
+    username = session.get("username") or ""
+    bypass_cache = bool(request.args.get("_nocache") or request.args.get("refresh"))
+    cache_key = user_parent_dashboard_cache_key(username) if username else None
+
+    if cache_key and not bypass_cache:
+        cached = cache.get(cache_key)
+        if cached:
+            resp = jsonify(cached)
+            resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            return resp
+
+    try:
+        communities_list = community_svc.get_user_dashboard_communities(username)
+    except Exception as exc:
+        logger.error("api_user_parent_community for %s: %s", username, exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+    response_payload = {
+        "success": True,
+        "communities": communities_list,
+        "parentCommunity": communities_list[0] if communities_list else None,
+    }
+
+    if cache_key and not bypass_cache:
+        try:
+            cache.set(cache_key, response_payload, COMMUNITY_CACHE_TTL)
+        except Exception:
+            pass
+
+    resp = jsonify(response_payload)
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 def _load_user_communities_hierarchy(username: str) -> Dict[str, Any]:
