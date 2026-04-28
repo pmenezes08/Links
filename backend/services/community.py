@@ -670,9 +670,6 @@ def get_parent_chain_ids(cursor, community_id: int) -> List[int]:
     return parents
 
 
-_NON_MEMBER_ROLES = ("admin", "owner", "moderator", "manager")
-
-
 def _row_get(row, key: str, idx: int):
     """Helper to read a column from either dict-like or tuple rows."""
     if row is None:
@@ -862,8 +859,6 @@ def get_user_dashboard_communities(username: str) -> List[Dict[str, Any]]:
             if cid:
                 admin_ids.add(cid)
 
-        non_member_roles_sql = ",".join([ph] * len(_NON_MEMBER_ROLES))
-
         for comm in communities_list:
             cid = comm["id"]
 
@@ -877,14 +872,9 @@ def get_user_dashboard_communities(username: str) -> List[Dict[str, Any]]:
                         SELECT id FROM communities
                         WHERE id = {ph} OR parent_community_id = {ph}
                     )
-                    AND LOWER(COALESCE(uc.role, '')) NOT IN ({non_member_roles_sql})
-                    AND NOT EXISTS (
-                        SELECT 1 FROM community_admins ca
-                        WHERE ca.community_id = uc.community_id
-                        AND LOWER(ca.username) = LOWER(u.username)
-                    )
+                    AND LOWER(u.username) <> 'admin'
                     """,
-                    (cid, cid, *_NON_MEMBER_ROLES),
+                    (cid, cid),
                 )
                 row = c.fetchone()
                 comm["member_count"] = _row_get(row, "cnt", 0) or 0
