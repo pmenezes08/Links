@@ -66,10 +66,16 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
     // Always sync native badge on poll (server computes exact count via get_total_badge_count
     // and sends silent push). This + resume listener makes clearing robust after viewing
     // posts/messages without depending only on total===0 or next launch.
+    //
+    // Android: skip removeAllDeliveredNotifications() — it clears the system tray and fights
+    // launcher/badge state on each interval. iOS keeps the prior removeAll + clear-badge flow.
     if (Capacitor.isNativePlatform()) {
-      try {
-        await PushNotifications.removeAllDeliveredNotifications()
-      } catch {}
+      const isAndroidNative = Capacitor.getPlatform() === 'android'
+      if (!isAndroidNative) {
+        try {
+          await PushNotifications.removeAllDeliveredNotifications()
+        } catch {}
+      }
       try {
         await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' })
       } catch {}
@@ -101,10 +107,12 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
         const listener = await CapacitorApp.addListener('resume', async () => {
           console.log('App resumed - syncing badge')
           poll()
-          // Always trigger server sync + delivered clear on resume for robustness
-          // (clear-badge endpoint computes current count and sends silent push)
+          // Same as poll(): iOS runs removeAllDeliveredNotifications + clear-badge; Android skips
+          // removeAll to avoid wiping tray when resuming.
           try {
-            await PushNotifications.removeAllDeliveredNotifications()
+            if (Capacitor.getPlatform() !== 'android') {
+              await PushNotifications.removeAllDeliveredNotifications()
+            }
             await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' })
           } catch (e) {
             console.warn('Badge sync on resume failed:', e)
