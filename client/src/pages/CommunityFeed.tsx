@@ -448,13 +448,13 @@ export default function CommunityFeed() {
     return date.toLocaleDateString()
   }
   
-  const markPostViewed = useCallback(async (postId: number, alreadyViewed?: boolean) => {
-    if (!postId) return
+  const markPostViewed = useCallback(async (postId: number, alreadyViewed?: boolean): Promise<boolean> => {
+    if (!postId) return false
     if (alreadyViewed) {
       recordedViewsRef.current.add(postId)
-      return
+      return true
     }
-    if (recordedViewsRef.current.has(postId)) return
+    if (recordedViewsRef.current.has(postId)) return false
     recordedViewsRef.current.add(postId)
     try {
       const res = await fetch('/api/post_view', {
@@ -480,11 +480,13 @@ export default function CommunityFeed() {
           return { ...prev, posts: updated }
         })
         refreshBadges()
-      } else {
-        recordedViewsRef.current.delete(postId)
+        return true
       }
+      recordedViewsRef.current.delete(postId)
+      return false
     } catch {
       recordedViewsRef.current.delete(postId)
+      return false
     }
   }, [refreshBadges])
 
@@ -3844,7 +3846,7 @@ export default function CommunityFeed() {
 
 // Ad components removed
 
-function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate, onMarkViewed, onDeletePost, onDeletePoll, onHidePost, onReportPost, onBlockUser }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void, onMarkViewed?: (postId: number, alreadyViewed?: boolean) => void, onDeletePost?: (postId: number) => void, onDeletePoll?: (postId: number, pollId: number) => void, onHidePost?: (post: Post) => void, onReportPost?: (post: Post) => void, onBlockUser?: (data: { username: string; postId?: number }) => void }) {
+function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate, onMarkViewed, onDeletePost, onDeletePoll, onHidePost, onReportPost, onBlockUser }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void, onMarkViewed?: (postId: number, alreadyViewed?: boolean) => void | Promise<boolean>, onDeletePost?: (postId: number) => void, onDeletePoll?: (postId: number, pollId: number) => void, onHidePost?: (post: Post) => void, onReportPost?: (post: Post) => void, onBlockUser?: (data: { username: string; postId?: number }) => void }) {
   const mentionToProfile = useCallback((u: string) => {
     navigate?.(`/profile/${encodeURIComponent(u)}`)
   }, [navigate])
@@ -3997,18 +3999,31 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     if (!el) return
 
     if (typeof IntersectionObserver === 'undefined') {
-      onMarkViewed(post.id, post.has_viewed)
+      void (async () => {
+        try {
+          await onMarkViewed(post.id, post.has_viewed)
+        } catch {
+          /* noop */
+        }
+      })()
       return
     }
 
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          onMarkViewed(post.id, post.has_viewed)
-          observer.disconnect()
-        }
+        if (!entry.isIntersecting) return
+        void (async () => {
+          try {
+            const result = await onMarkViewed(post.id, post.has_viewed)
+            if (result === true) {
+              observer.disconnect()
+            }
+          } catch {
+            /* keep observer for retry */
+          }
+        })()
       })
-    }, { threshold: 0.4 })
+    }, { threshold: [0, 0.1, 0.25], rootMargin: '0px 0px -5% 0px' })
 
     observer.observe(el)
     return () => observer.disconnect()

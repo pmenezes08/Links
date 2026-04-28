@@ -27159,7 +27159,10 @@ def api_community_feed(community_id):
                 user_viewed: Set[int] = set()
                 try:
                     params = list(post_ids) + [username]
-                    c.execute(f"SELECT post_id FROM post_views WHERE post_id IN ({placeholders}) AND username = {get_sql_placeholder()}", tuple(params))
+                    c.execute(
+                        f"SELECT post_id FROM post_views WHERE post_id IN ({placeholders}) AND LOWER(username) = LOWER({get_sql_placeholder()})",
+                        tuple(params),
+                    )
                     for row in c.fetchall() or []:
                         pid = row['post_id'] if hasattr(row, 'keys') else row[0]
                         user_viewed.add(int(pid))
