@@ -1011,6 +1011,123 @@ def get_descendant_community_ids(cursor, community_id: int) -> List[int]:
     return [cid for cid, _ in results]
 
 
+def invalidate_dashboard_caches_for_community_subtree(
+    community_id: int,
+    *,
+    cursor: Optional[Any] = None,
+) -> None:
+    """Invalidate Redis dashboard snapshot keys for everyone tied to this tree.
+
+    Resolves the top-level parent, collects all descendant community IDs, then
+    invalidates ``user_parent_dashboard:<username>`` for every affected member,
+    owner, or ``community_admins`` row — so descriptions and rolled-up member
+    counts refresh without waiting for TTL.
+
+    When ``cursor`` is provided (same DB transaction), membership rows not yet
+    committed to other connections are visible for the queries.
+    """
+
+    try:
+        from redis_cache import invalidate_user_cache
+
+        cid_int = int(community_id)
+    except (TypeError, ValueError):
+        return
+
+    def _run(c):
+
+        ancestors = get_community_ancestors(c, cid_int)
+        if ancestors:
+            top = ancestors[-1]
+            root_raw = (
+                top.get("id")
+                if isinstance(top, dict)
+                else (top[0] if isinstance(top, (list, tuple)) else None)
+            )
+            root_id = int(root_raw or cid_int)
+        else:
+            root_id = cid_int
+
+        tree_ids = get_descendant_community_ids(c, root_id)
+        if not tree_ids:
+            tree_ids = [root_id]
+
+        ph = get_sql_placeholder()
+        placeholders = ",".join([ph] * len(tree_ids))
+
+        affected: Set[str] = set()
+
+        c.execute(
+            f"""
+            SELECT DISTINCT u.username
+            FROM user_communities uc
+            INNER JOIN users u ON uc.user_id = u.id
+            WHERE uc.community_id IN ({placeholders})
+            """,
+            tuple(tree_ids),
+        )
+        for row in c.fetchall() or []:
+            un = row["username"] if hasattr(row, "keys") else row[0]
+            if un:
+                affected.add(str(un))
+
+        c.execute(
+            f"""
+            SELECT DISTINCT creator_username
+            FROM communities
+            WHERE id IN ({placeholders})
+              AND creator_username IS NOT NULL
+              AND TRIM(COALESCE(creator_username,'')) <> ''
+            """,
+            tuple(tree_ids),
+        )
+        for row in c.fetchall() or []:
+            un = row["creator_username"] if hasattr(row, "keys") else row[0]
+            if un:
+                affected.add(str(un))
+
+        c.execute(
+            f"""
+            SELECT DISTINCT username
+            FROM community_admins
+            WHERE community_id IN ({placeholders})
+              AND username IS NOT NULL
+              AND TRIM(COALESCE(username,'')) <> ''
+            """,
+            tuple(tree_ids),
+        )
+        for row in c.fetchall() or []:
+            un = row["username"] if hasattr(row, "keys") else row[0]
+            if un:
+                affected.add(str(un))
+
+        for username in sorted(affected):
+            try:
+                invalidate_user_cache(username)
+            except Exception as inv_err:
+                logger.warning(
+                    "dashboard subtree cache bust failed for %s: %s",
+                    username,
+                    inv_err,
+                )
+
+    try:
+        if cursor is not None:
+            _run(cursor)
+            return
+
+        with get_db_connection() as conn:
+            cc = conn.cursor()
+            _run(cc)
+    except Exception as exc:
+        logger.warning(
+            "invalidate_dashboard_caches_for_community_subtree(%s) failed: %s",
+            community_id,
+            exc,
+            exc_info=True,
+        )
+
+
 def _table_exists(cursor, table_name: str) -> bool:
     """Return whether ``table_name`` exists in the active database."""
     ph = get_sql_placeholder()

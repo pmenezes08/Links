@@ -57,6 +57,7 @@ from backend.services.community import (
     get_community_basic,
     get_descendant_community_ids,
     get_parent_chain_ids,
+    invalidate_dashboard_caches_for_community_subtree,
     is_app_admin,
     is_community_admin,
     is_community_owner,
@@ -1683,8 +1684,37 @@ def add_user_to_community(cursor, user_id: int, community_id: int, role: Optiona
                 (user_id, community_id, role, joined_at_value),
             )
     
-    # Invalidate user's caches so they see the new community immediately
-    _invalidate_user_community_caches(cursor, user_id, username)
+    # Invalidate dashboard caches for everyone on this subtree (members, owners,
+    # admins) so rollups/descriptions refresh; includes the joining user within
+    # the same transaction/cursor snapshot.
+    try:
+        invalidate_dashboard_caches_for_community_subtree(
+            int(community_id), cursor=cursor
+        )
+    except Exception as subtree_exc:
+        logger.warning(
+            "invalidate_dashboard_caches_for_community_subtree after join: %s",
+            subtree_exc,
+        )
+        try:
+            join_un = username
+            if not join_un:
+                ph_fb = get_sql_placeholder()
+                cursor.execute(
+                    f"SELECT username FROM users WHERE id = {ph_fb}",
+                    (user_id,),
+                )
+                _jun = cursor.fetchone()
+                if _jun:
+                    join_un = (
+                        _jun["username"]
+                        if hasattr(_jun, "keys")
+                        else _jun[0]
+                    )
+            if join_un:
+                invalidate_user_cache(join_un)
+        except Exception:
+            pass
 
     # Enterprise seat lifecycle: if the community is tagged ``enterprise``,
     # open a seat for the joining user and (when they're on a mobile-IAP
@@ -1751,24 +1781,6 @@ def add_user_to_community(cursor, user_id: int, community_id: int, role: Optiona
     else:
         logger.info(f"[ADD_USER] Skipping welcome post: skip_welcome_post={skip_welcome_post}, role={role}")
 
-
-def _invalidate_user_community_caches(cursor, user_id: int, username: Optional[str] = None) -> None:
-    """Invalidate a user's community-related caches after membership changes."""
-    try:
-        # If no username provided, look it up
-        if not username:
-            ph = get_sql_placeholder()
-            cursor.execute(f"SELECT username FROM users WHERE id = {ph}", (user_id,))
-            row = cursor.fetchone()
-            if row:
-                username = row['username'] if hasattr(row, 'keys') else row[0]
-        
-        if username:
-            # Invalidate all user community caches
-            invalidate_user_cache(username)
-            logger.info(f"Invalidated community caches for user {username} after membership change")
-    except Exception as cache_err:
-        logger.warning(f"Failed to invalidate user community caches: {cache_err}")
 
 def get_scalar_result(row, column_index=0, column_name=None):
     """Helper to get a scalar value from a database row that could be dict or tuple"""
@@ -26162,7 +26174,13 @@ def update_community():
                 invalidate_community_cache(community_id)
             except Exception as cache_err:
                 logger.warning(f"Failed to invalidate cache after community update for {community_id}: {cache_err}")
-            
+            try:
+                invalidate_dashboard_caches_for_community_subtree(int(community_id))
+            except Exception as dash_err:
+                logger.warning(
+                    "Dashboard subtree invalidate after community update: %s", dash_err
+                )
+
             return jsonify({'success': True, 'message': 'Community updated successfully'})
             
     except Exception as e:
@@ -26782,6 +26800,13 @@ def leave_community():
             # Invalidate dashboard cache so left community disappears immediately
             invalidate_user_cache(username)
             logger.info(f"Invalidated dashboard cache for {username} after leaving community")
+
+        try:
+            invalidate_dashboard_caches_for_community_subtree(int(community_id))
+        except Exception as leave_subtree_err:
+            logger.warning(
+                "Dashboard subtree invalidate after leave_community: %s", leave_subtree_err
+            )
 
         # Enterprise seat lifecycle: close any active seat and offer winback
         # if eligible. Best-effort — a lifecycle-hook error must not prevent

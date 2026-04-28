@@ -222,8 +222,8 @@ export default function EditCommunity(){
     const r = await fetch('/update_community', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
     if (j?.success){
-      // Clear device cache to ensure fresh data is loaded
       clearDeviceCache(`community-feed:${community_id}`)
+      invalidateDashboardCache()
       navigate(`/community_feed_react/${community_id}`)
     } else {
       alert(j?.error || 'Failed to update community')

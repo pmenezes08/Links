@@ -455,7 +455,10 @@ export default function PremiumDashboard() {
           setSubscription((pj.profile.subscription || 'free') as string)
         }
         // Also refresh communities snapshot
-        const parentDataResp = await fetch('/api/user_parent_community', { credentials:'include', headers: { 'Accept': 'application/json' } }).catch(() => null)
+        const parentDataResp = await fetch(
+          '/api/user_parent_community?refresh=1',
+          { credentials: 'include', headers: { Accept: 'application/json' } },
+        ).catch(() => null)
         const parentData = parentDataResp ? await parentDataResp.json().catch(()=>null) : null
         if (cancelled) return
         if (parentData?.success && Array.isArray(parentData.communities)) {
