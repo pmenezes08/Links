@@ -5,6 +5,7 @@ import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useHeader } from '../contexts/HeaderContext'
+import { exportEventToDeviceCalendar } from '../utils/calendarExport'
 
 type EventItem = {
   id: number
@@ -260,6 +261,25 @@ function EventCard({ event, archived = false, onOpen, onRsvp, onShowDetails, onE
         </button>
         <button type="button" className="ml-auto rounded-full border border-white/10 px-2.5 py-1 hover:border-[#4db6ac]/45 hover:text-white" onClick={() => onShowDetails(event)}>
           Details
+        </button>
+        <button
+          type="button"
+          className="rounded-full border border-white/10 px-2.5 py-1 hover:border-[#4db6ac]/45 hover:text-white"
+          onClick={(e) => {
+            e.stopPropagation()
+            void (async () => {
+              try {
+                await exportEventToDeviceCalendar(event.id)
+              } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : 'Could not export'
+                alert(msg)
+              }
+            })()
+          }}
+          aria-label="Add to device calendar"
+          title="Add to device calendar"
+        >
+          <i className="fa-regular fa-calendar-plus" />
         </button>
         {!archived ? (
           <>
@@ -561,6 +581,21 @@ export default function CommunityCalendar() {
             <div className="mt-3 flex flex-wrap gap-2">
               <button className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-black hover:bg-[#e9fffd]" onClick={() => setRsvpEvent(nextEvent)}>RSVP now</button>
               <button className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-[#d7e1e3] hover:border-[#4db6ac]/45" onClick={() => navigate(`/event/${nextEvent.id}`)}>Open details</button>
+              <button
+                className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-[#d7e1e3] hover:border-[#4db6ac]/45"
+                onClick={() =>
+                  void (async () => {
+                    try {
+                      await exportEventToDeviceCalendar(nextEvent.id)
+                    } catch (err: unknown) {
+                      const msg = err instanceof Error ? err.message : 'Could not export'
+                      alert(msg)
+                    }
+                  })()
+                }
+              >
+                Add to calendar
+              </button>
             </div>
           ) : null}
         </section>

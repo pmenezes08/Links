@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
+import { exportEventToDeviceCalendar } from '../utils/calendarExport'
 
 type EventData = {
   id: number
@@ -41,6 +42,7 @@ export default function EventDetail(){
   const [currentUser, setCurrentUser] = useState<string|null>(null)
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [calExporting, setCalExporting] = useState(false)
 
   useEffect(() => { setTitle('Event Details') }, [setTitle])
   
@@ -101,6 +103,19 @@ export default function EventDetail(){
         setRsvpDetails(j.attendees as RSVPDetails)
       }
     }catch{}
+  }
+
+  async function addToDeviceCalendar() {
+    if (!event_id || calExporting) return
+    setCalExporting(true)
+    try {
+      await exportEventToDeviceCalendar(event_id)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Could not export calendar'
+      alert(msg)
+    } finally {
+      setCalExporting(false)
+    }
   }
 
   async function deleteEvent(){
@@ -231,6 +246,24 @@ export default function EventDetail(){
                 <div className="text-xs text-[#9fb0b5] mb-0.5">Organizer</div>
                 <div className="text-white/90 text-sm">{event.username}</div>
               </div>
+            </div>
+
+            <div className="pt-1">
+              <button
+                type="button"
+                className="w-full min-h-[44px] py-2.5 rounded-xl border border-[#4db6ac]/40 bg-[#4db6ac]/10 text-sm font-medium text-[#8ff4e9] hover:bg-[#4db6ac]/20 transition-all disabled:opacity-50"
+                disabled={calExporting}
+                onClick={() => void addToDeviceCalendar()}
+              >
+                {calExporting ? (
+                  'Preparing…'
+                ) : (
+                  <>
+                    <i className="fa-regular fa-calendar-plus mr-2" aria-hidden />
+                    Add to my calendar
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

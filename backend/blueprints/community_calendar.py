@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from functools import wraps
 
 from flask import Blueprint, current_app, jsonify, redirect, request, session, url_for
@@ -92,6 +93,32 @@ def api_get_calendar_event(event_id: int):
 def get_calendar_event(event_id: int):
     try:
         return _json({"success": True, "event": calendar_svc.get_event(event_id, session.get("username"))})
+    except Exception as exc:
+        return _error_response(exc)
+
+
+@community_calendar_bp.route("/api/calendar_events/<int:event_id>/ics", methods=["GET"])
+@_login_required
+def api_calendar_event_ics(event_id: int):
+    username = session.get("username")
+    try:
+        calendar_svc.ensure_user_can_view_event(event_id, username)
+        ev = calendar_svc.get_event(event_id, username)
+        base_url = (
+            (current_app.config.get("PUBLIC_BASE_URL") if current_app else None)
+            or os.environ.get("PUBLIC_BASE_URL")
+            or calendar_svc.public_calendar_base_url()
+        )
+        base_url = str(base_url).strip().rstrip("/") or calendar_svc.public_calendar_base_url()
+        body = calendar_svc.format_event_ics(ev, public_base_url=base_url)
+        filename = f"cpoint-event-{event_id}.ics"
+        resp = current_app.response_class(
+            body,
+            mimetype="text/calendar; charset=utf-8",
+        )
+        resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        resp.headers["Cache-Control"] = "private, no-store"
+        return resp
     except Exception as exc:
         return _error_response(exc)
 

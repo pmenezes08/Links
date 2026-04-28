@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+import os
+import re
 from typing import Any
 
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
@@ -229,6 +231,145 @@ def list_group_events(username: str | None, group_id: int) -> list[dict[str, Any
         event for event in list_visible_events(username)
         if str(event.get("community_id") or "") == str(community_id or "")
     ]
+
+
+def ensure_user_can_view_event(event_id: int, username: str | None) -> None:
+    """Ensure ``username`` may view this event (creator, invitee, or app admin).
+
+    Matches the visibility rules of :func:`list_visible_events`.
+    """
+    if not username:
+        raise CalendarError("Forbidden", 403)
+    un = str(username).strip()
+    if un.lower() == "admin":
+        return
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        ph = get_sql_placeholder()
+        cursor.execute(
+            f"""
+            SELECT 1 FROM calendar_events ce
+            WHERE ce.id = {ph}
+              AND (
+                LOWER(ce.username) = LOWER({ph})
+                OR EXISTS (
+                    SELECT 1 FROM event_invitations ei
+                    WHERE ei.event_id = ce.id
+                      AND LOWER(ei.invited_username) = LOWER({ph})
+                )
+              )
+            """,
+            (event_id, un, un),
+        )
+        if not cursor.fetchone():
+            raise CalendarError("You cannot access this event", 403)
+
+
+def _ics_escape(text: str) -> str:
+    return (
+        text.replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\n", "\\n")
+        .replace("\r", "")
+    )
+
+
+def _ics_dtstamp_utc() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _ics_parse_hm(value: Any) -> tuple[int, int] | None:
+    if not value:
+        return None
+    s = str(value).strip()
+    if s in {"00:00", "00:00:00"}:
+        return None
+    if " " in s:
+        s = s.split(" ", 1)[1][:5]
+    m = re.match(r"^(\d{1,2}):(\d{2})$", s)
+    if not m:
+        return None
+    hh, mm = int(m.group(1)), int(m.group(2))
+    if hh > 23 or mm > 59:
+        return None
+    return hh, mm
+
+
+def format_event_ics(event: dict[str, Any], *, public_base_url: str) -> str:
+    """Build an iCalendar (RFC 5545) document for one event (METHOD:PUBLISH)."""
+    event_id = int(event["id"])
+    title = _ics_escape(str(event.get("title") or "C-Point event"))
+    desc_parts: list[str] = []
+    raw_desc = event.get("description")
+    if raw_desc:
+        desc_parts.append(str(raw_desc).strip())
+    tz_label = str(event.get("timezone") or "").strip()
+    if tz_label:
+        desc_parts.append(f"Timezone: {tz_label}")
+    comm = str(event.get("community_name") or "").strip()
+    if comm:
+        desc_parts.append(f"Community: {comm}")
+    base = (public_base_url or "").strip().rstrip("/") or "https://www.c-point.co"
+    desc_parts.append(f"Open in C-Point: {base}/event/{event_id}")
+    description = _ics_escape("\n".join(desc_parts)) if desc_parts else ""
+
+    start_date = str(event.get("date") or "")[:10]
+    if not start_date or len(start_date) < 10:
+        start_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    end_date_field = event.get("end_date")
+    end_date = str(end_date_field or event.get("date") or start_date)[:10]
+    if "0000-00-00" in {start_date, end_date}:
+        start_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        end_date = start_date
+
+    start_hm = _ics_parse_hm(event.get("start_time"))
+    end_hm = _ics_parse_hm(event.get("end_time"))
+    lines: list[str] = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//C-Point//Calendar//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "BEGIN:VEVENT",
+        f"UID:cpoint-event-{event_id}@c-point.calendar",
+        f"DTSTAMP:{_ics_dtstamp_utc()}",
+        f"SUMMARY:{title}",
+    ]
+    if description:
+        lines.append(f"DESCRIPTION:{description}")
+    if comm:
+        lines.append(f"LOCATION:{_ics_escape(comm)}")
+
+    d0 = datetime.strptime(start_date, "%Y-%m-%d")
+    d1 = datetime.strptime(end_date, "%Y-%m-%d")
+    if start_hm:
+        hh, mm = start_hm
+        ds = start_date.replace("-", "")
+        lines.append(f"DTSTART:{ds}T{hh:02d}{mm:02d}00")
+        if end_hm:
+            hh2, mm2 = end_hm
+            de = end_date.replace("-", "")
+            lines.append(f"DTEND:{de}T{hh2:02d}{mm2:02d}00")
+        else:
+            naive_start = datetime(d0.year, d0.month, d0.day, hh, mm, 0)
+            naive_end = naive_start + timedelta(hours=1)
+            lines.append(
+                f"DTEND:{naive_end.strftime('%Y%m%dT%H%M%S')}"
+            )
+    else:
+        lines.append(f"DTSTART;VALUE=DATE:{d0.strftime('%Y%m%d')}")
+        end_exclusive = d1 + timedelta(days=1)
+        lines.append(f"DTEND;VALUE=DATE:{end_exclusive.strftime('%Y%m%d')}")
+    lines.append(f"URL:{_ics_escape(f'{base}/event/{event_id}')}")
+    lines.append("END:VEVENT")
+    lines.append("END:VCALENDAR")
+    return "\r\n".join(lines) + "\r\n"
+
+
+def public_calendar_base_url() -> str:
+    """Public app origin for deep links inside .ics (env override)."""
+    return (os.environ.get("PUBLIC_BASE_URL") or "").strip().rstrip("/") or "https://www.c-point.co"
 
 
 def get_event(event_id: int, username: str | None, *, mark_viewed: bool = False) -> dict[str, Any]:
