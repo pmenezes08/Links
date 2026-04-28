@@ -716,6 +716,11 @@ export default function PremiumDashboard() {
               </div>
             ) : (
             <>
+              {/* Welcome Header */}
+              <div className="mb-4 text-sm text-[#9fb0b5]">
+                Welcome to C-Point: a global platform made of private micro-networks. We call them communities.
+              </div>
+
               {/* Search Input */}
               <div className="mb-4">
                 <div className="relative max-w-xs">
@@ -741,48 +746,61 @@ export default function PremiumDashboard() {
 
                 return (
                   <div className="space-y-4">
-                    {/* Steve Card + Owned/Admin Communities */}
+                    {/* Talk to Steve Card */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {/* Talk to Steve Card - always first */}
                       <SteveCard onClick={() => navigate('/user_chat/chat/Steve')} />
-                      
-                      {ownedOrAdmin.map(community => (
-                        <CommunityCard 
-                          key={community.id}
-                          name={community.name}
-                          memberCount={community.member_count}
-                          lastActivity={community.last_activity}
-                          isOwner={community.is_owner}
-                          isAdmin={community.is_admin}
-                          onClick={() => navigate(`/communities?parent_id=${community.id}`)} 
-                        />
-                      ))}
                     </div>
 
-                    {/* Separator - only show if there are member-only communities */}
-                    {memberOnly.length > 0 && ownedOrAdmin.length > 0 && (
-                      <div className="flex items-center gap-3 py-1">
-                        <div className="h-px flex-1 bg-white/10" />
-                        <span className="text-[10px] uppercase tracking-wider text-[#9fb0b5]/60 font-medium">Member of</span>
-                        <div className="h-px flex-1 bg-white/10" />
-                      </div>
+                    {/* Owner/Admin Section */}
+                    {ownedOrAdmin.length > 0 && (
+                      <>
+                        {/* Separator - Owner/Admin of */}
+                        <div className="flex items-center gap-3 py-1">
+                          <div className="h-px flex-1 bg-white/10" />
+                          <span className="text-[10px] uppercase tracking-wider text-[#9fb0b5]/60 font-medium">Owner / Admin of</span>
+                          <div className="h-px flex-1 bg-white/10" />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {ownedOrAdmin.map(community => (
+                            <CommunityCard 
+                              key={community.id}
+                              name={community.name}
+                              memberCount={community.member_count}
+                              lastActivity={community.last_activity}
+                              isOwner={community.is_owner}
+                              isAdmin={community.is_admin}
+                              onClick={() => navigate(`/communities?parent_id=${community.id}`)} 
+                            />
+                          ))}
+                        </div>
+                      </>
                     )}
 
-                    {/* Member-only Communities */}
+                    {/* Member Section */}
                     {memberOnly.length > 0 && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {memberOnly.map(community => (
-                          <CommunityCard 
-                            key={community.id}
-                            name={community.name}
-                            memberCount={community.member_count}
-                            lastActivity={community.last_activity}
-                            isOwner={community.is_owner}
-                            isAdmin={community.is_admin}
-                            onClick={() => navigate(`/communities?parent_id=${community.id}`)} 
-                          />
-                        ))}
-                      </div>
+                      <>
+                        {/* Separator - Member of */}
+                        <div className="flex items-center gap-3 py-1">
+                          <div className="h-px flex-1 bg-white/10" />
+                          <span className="text-[10px] uppercase tracking-wider text-[#9fb0b5]/60 font-medium">Member of</span>
+                          <div className="h-px flex-1 bg-white/10" />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {memberOnly.map(community => (
+                            <CommunityCard 
+                              key={community.id}
+                              name={community.name}
+                              memberCount={community.member_count}
+                              lastActivity={community.last_activity}
+                              isOwner={community.is_owner}
+                              isAdmin={community.is_admin}
+                              onClick={() => navigate(`/communities?parent_id=${community.id}`)} 
+                            />
+                          ))}
+                        </div>
+                      </>
                     )}
 
                     {/* No results message */}
@@ -1006,14 +1024,9 @@ function SteveCard({ onClick }: { onClick: () => void }) {
            style={{ background: 'radial-gradient(600px circle at var(--x,50%) var(--y,50%), rgba(77,182,172,0.18), transparent 45%)' }} />
 
       <div className="relative p-5">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-8 h-8 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
-            <i className="fa-solid fa-robot text-[#4db6ac] text-sm" />
-          </div>
-          <div className="text-[15px] font-semibold tracking-tight text-white/90">Talk to Steve</div>
-        </div>
+        <div className="text-[15px] font-semibold tracking-tight text-white/90 mb-2">Talk to Steve</div>
         <div className="text-xs text-[#9fb0b5] leading-relaxed">
-          Your AI companion for questions, ideas, and connections.
+          Discuss ideas, ask for connections and more.
         </div>
       </div>
 
