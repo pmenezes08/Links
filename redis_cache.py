@@ -39,6 +39,8 @@ REDIS_DB = int(os.environ.get('REDIS_DB', 0))
 DEFAULT_CACHE_TTL = int(os.environ.get('CACHE_TTL_DEFAULT', '300'))  # 5 minutes
 USER_CACHE_TTL = int(os.environ.get('CACHE_TTL_PROFILES', '900'))    # 15 minutes
 COMMUNITY_CACHE_TTL = int(os.environ.get('CACHE_TTL_COMMUNITIES', '300')) # 5 minutes
+# Shorter TTL for parent dashboard JSON (includes volatile unread counts).
+CACHE_TTL_USER_PARENT_DASHBOARD = int(os.environ.get('CACHE_TTL_USER_PARENT_DASHBOARD', '120'))
 MESSAGE_CACHE_TTL = int(os.environ.get('CACHE_TTL_MESSAGES', '5'))  # 5 seconds to reduce stale windows
 CHAT_THREADS_TTL = int(os.environ.get('CACHE_TTL_CHAT_THREADS', '120')) # 2 minutes
 IMAGE_CACHE_TTL = int(os.environ.get('CACHE_TTL_IMAGES', '7200'))    # 2 hours

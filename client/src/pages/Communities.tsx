@@ -22,6 +22,7 @@ type Community = {
   parent_community_id?: number;
   children?: Community[];
   creator_username?: string;
+  unread_posts_count?: number;
 }
 
 type CommunityManagementCache = {
@@ -2071,8 +2072,15 @@ function CommunityItem({
             <div className="text-xs text-[#9fb0b5] truncate">{community.type || 'Community'}</div>
           </div>
         </div>
-        <div className="text-[#4db6ac] ml-3">
-          <i className="fa-solid fa-chevron-right" />
+        <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+          {(community.unread_posts_count ?? 0) > 0 && (
+            <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-[#4db6ac]/20 text-[#4db6ac] border border-[#4db6ac]/30 whitespace-nowrap">
+              {community.unread_posts_count} new
+            </span>
+          )}
+          <span className="text-[#4db6ac]">
+            <i className="fa-solid fa-chevron-right" />
+          </span>
         </div>
       </div>
       {/* FAB removed pending proper state wiring */}

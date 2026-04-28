@@ -184,6 +184,17 @@ CREATE TABLE IF NOT EXISTS posts (
 )
 """
 
+_POST_VIEWS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS post_views (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    post_id INT NOT NULL,
+    username VARCHAR(191) NOT NULL,
+    viewed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_post_views_post (post_id),
+    INDEX idx_post_views_user (username)
+)
+"""
+
 # Minimal replies shape — the KB weekly sweep joins on
 # ``replies.username`` and ``replies.timestamp`` to decide who's active.
 # Thin schema for the same reason as posts above.
@@ -251,8 +262,18 @@ def _bootstrap_schema() -> None:
         c = conn.cursor()
         c.execute(_USERS_TABLE_SQL)
         c.execute(_COMMUNITIES_TABLE_SQL)
+        for column, col_def in (
+            ("type", "VARCHAR(32) DEFAULT 'free'"),
+            ("description", "TEXT NULL"),
+            ("is_frozen", "TINYINT(1) DEFAULT 0"),
+        ):
+            try:
+                c.execute(f"ALTER TABLE communities ADD COLUMN {column} {col_def}")
+            except Exception:
+                pass
         c.execute(_USER_COMMUNITIES_TABLE_SQL)
         c.execute(_POSTS_TABLE_SQL)
+        c.execute(_POST_VIEWS_TABLE_SQL)
         c.execute(_REPLIES_TABLE_SQL)
         c.execute(_NOTIFICATIONS_TABLE_SQL)
         try:
@@ -293,6 +314,7 @@ _TRUNCATE_TABLES: List[str] = [
     "users",
     "communities",
     "user_communities",
+    "post_views",
     "posts",
     "replies",
     "notifications",

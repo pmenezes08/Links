@@ -729,6 +729,85 @@ def _walk_to_top_parent(cursor, comm_id: int, ph: str) -> Optional[Dict[str, Any
     }
 
 
+def count_unread_posts_by_community_ids(
+    cursor,
+    community_ids: List[int],
+    username: str,
+) -> Dict[int, int]:
+    """Unread = posts with no ``post_views`` row for ``username`` (case-insensitive)."""
+    if not username or not community_ids:
+        return {}
+    try:
+        ids = sorted({int(cid) for cid in community_ids if cid is not None})
+    except (TypeError, ValueError):
+        return {}
+    if not ids:
+        return {}
+    ph = get_sql_placeholder()
+    placeholders = ",".join([ph] * len(ids))
+    try:
+        cursor.execute(
+            f"""
+            SELECT p.community_id AS cid, COUNT(*) AS cnt
+            FROM posts p
+            WHERE p.community_id IN ({placeholders})
+              AND NOT EXISTS (
+                SELECT 1 FROM post_views pv
+                WHERE pv.post_id = p.id AND LOWER(pv.username) = LOWER({ph})
+              )
+            GROUP BY p.community_id
+            """,
+            tuple(ids) + (username,),
+        )
+        rows = cursor.fetchall() or []
+    except Exception as exc:
+        logger.warning("count_unread_posts_by_community_ids failed: %s", exc)
+        return {}
+    out: Dict[int, int] = {}
+    for row in rows:
+        try:
+            cid = int(_row_get(row, "cid", 0))
+            out[cid] = int(_row_get(row, "cnt", 1) or 0)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def count_unread_posts_in_community_ids(
+    cursor,
+    community_ids: List[int],
+    username: str,
+) -> int:
+    if not username or not community_ids:
+        return 0
+    try:
+        ids = sorted({int(cid) for cid in community_ids if cid is not None})
+    except (TypeError, ValueError):
+        return 0
+    if not ids:
+        return 0
+    ph = get_sql_placeholder()
+    placeholders = ",".join([ph] * len(ids))
+    try:
+        cursor.execute(
+            f"""
+            SELECT COUNT(*) AS cnt
+            FROM posts p
+            WHERE p.community_id IN ({placeholders})
+              AND NOT EXISTS (
+                SELECT 1 FROM post_views pv
+                WHERE pv.post_id = p.id AND LOWER(pv.username) = LOWER({ph})
+              )
+            """,
+            tuple(ids) + (username,),
+        )
+        row = cursor.fetchone()
+        return int(_row_get(row, "cnt", 0) or 0)
+    except Exception as exc:
+        logger.warning("count_unread_posts_in_community_ids failed: %s", exc)
+        return 0
+
+
 def get_user_dashboard_communities(username: str) -> List[Dict[str, Any]]:
     """Return top-level parent communities for the dashboard, enriched with
     ``description``, ``member_count``, ``last_activity``, ``is_owner``,
@@ -906,6 +985,14 @@ def get_user_dashboard_communities(username: str) -> List[Dict[str, Any]]:
                 comm["last_activity"] = _row_get(row, "last_post", 0)
             except Exception:
                 comm["last_activity"] = None
+
+            try:
+                tree_ids = get_descendant_community_ids(c, cid)
+                comm["unread_posts_count"] = count_unread_posts_in_community_ids(
+                    c, tree_ids, username
+                )
+            except Exception:
+                comm["unread_posts_count"] = 0
 
             comm["is_owner"] = cid in owned_ids
             comm["is_admin"] = cid in admin_ids

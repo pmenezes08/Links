@@ -29,6 +29,7 @@ type Community = {
   last_activity?: string | null
   is_owner?: boolean
   is_admin?: boolean
+  unread_posts_count?: number
 }
 
 function formatLastActive(timestamp: string | null | undefined): string {
@@ -783,6 +784,7 @@ export default function PremiumDashboard() {
                               lastActivity={community.last_activity}
                               isOwner={community.is_owner}
                               isAdmin={community.is_admin}
+                              unreadPostsCount={community.unread_posts_count}
                               onClick={() =>
                                 navigate(`/communities?parent_id=${community.id}`)
                               }
@@ -812,6 +814,7 @@ export default function PremiumDashboard() {
                               lastActivity={community.last_activity}
                               isOwner={community.is_owner}
                               isAdmin={community.is_admin}
+                              unreadPostsCount={community.unread_posts_count}
                               onClick={() =>
                                 navigate(`/communities?parent_id=${community.id}`)
                               }
@@ -1060,6 +1063,7 @@ function CommunityCard({
   lastActivity,
   isOwner,
   isAdmin,
+  unreadPostsCount,
   onClick,
 }: {
   name: string
@@ -1068,11 +1072,13 @@ function CommunityCard({
   lastActivity?: string | null
   isOwner?: boolean
   isAdmin?: boolean
+  unreadPostsCount?: number
   onClick: () => void
 }) {
   const lastActiveText = formatLastActive(lastActivity)
   const badge = isOwner ? 'Owner' : isAdmin ? 'Admin' : null
   const descText = typeof description === 'string' ? description.trim() : ''
+  const unread = unreadPostsCount ?? 0
 
   return (
     <button
@@ -1121,6 +1127,12 @@ function CommunityCard({
           )}
         </div>
       </div>
+
+      {unread > 0 && (
+        <span className="pointer-events-none absolute bottom-4 right-4 sm:bottom-5 sm:right-5 z-10 flex-shrink-0 px-2 py-0.5 text-[10px] font-medium rounded-full bg-[#4db6ac]/20 text-[#4db6ac] border border-[#4db6ac]/30">
+          {unread} new post{unread === 1 ? '' : 's'}
+        </span>
+      )}
 
       <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-teal-300/60 to-transparent opacity-80" />
     </button>

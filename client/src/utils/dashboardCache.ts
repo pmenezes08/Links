@@ -2,7 +2,7 @@ import { clearDeviceCache, readDeviceCacheStale, writeDeviceCache } from './devi
 
 export const DASHBOARD_DEVICE_CACHE_KEY = 'dashboard-device-cache'
 export const DASHBOARD_CACHE_TTL_MS = 30 * 60 * 1000
-export const DASHBOARD_CACHE_VERSION = 'dashboard-v3'
+export const DASHBOARD_CACHE_VERSION = 'dashboard-v4'
 
 export type DashboardCommunity = {
   id: number
@@ -13,6 +13,7 @@ export type DashboardCommunity = {
   last_activity?: string | null
   is_owner?: boolean
   is_admin?: boolean
+  unread_posts_count?: number
 }
 
 export type DashboardProfileSnapshot = {

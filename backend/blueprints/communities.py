@@ -26,7 +26,7 @@ from backend.services import community_admin_notifications
 from backend.services import community_lifecycle
 from backend.services.database import get_db_connection, get_sql_placeholder
 from redis_cache import (
-    COMMUNITY_CACHE_TTL,
+    CACHE_TTL_USER_PARENT_DASHBOARD,
     cache,
     invalidate_community_cache,
     invalidate_user_cache,
@@ -411,8 +411,9 @@ def user_communities_hierarchical():
 def api_user_parent_community():
     """Top-level parent communities for the dashboard, enriched.
 
-    Each entry includes ``member_count``, ``last_activity``, ``is_owner`` and
-    ``is_admin``. App admins receive every top-level parent community.
+    Each entry includes ``member_count``, ``last_activity``, ``is_owner``,
+    ``is_admin``, and ``unread_posts_count`` (rollup across descendants).
+    App admins receive every top-level parent community.
     """
     username = session.get("username") or ""
     bypass_cache = bool(request.args.get("_nocache") or request.args.get("refresh"))
@@ -439,7 +440,8 @@ def api_user_parent_community():
 
     if cache_key and not bypass_cache:
         try:
-            cache.set(cache_key, response_payload, COMMUNITY_CACHE_TTL)
+            # Shorter TTL: payload includes volatile unread counts.
+            cache.set(cache_key, response_payload, CACHE_TTL_USER_PARENT_DASHBOARD)
         except Exception:
             pass
 
@@ -448,6 +450,39 @@ def api_user_parent_community():
     resp.headers["Pragma"] = "no-cache"
     resp.headers["Expires"] = "0"
     return resp
+
+
+def _collect_tree_community_ids(nodes: List[Dict[str, Any]]) -> List[int]:
+    out: List[int] = []
+    for n in nodes:
+        out.append(int(n["id"]))
+        children = n.get("children") or []
+        if children:
+            out.extend(_collect_tree_community_ids(children))
+    return out
+
+
+def _annotate_unread_on_community_tree(
+    cursor: Any,
+    nodes: List[Dict[str, Any]],
+    username: str,
+) -> None:
+    if not nodes:
+        return
+    ids = _collect_tree_community_ids(nodes)
+    if not ids:
+        return
+    unread_map = community_svc.count_unread_posts_by_community_ids(cursor, ids, username)
+
+    def walk(items: List[Dict[str, Any]]) -> None:
+        for n in items:
+            cid = int(n["id"])
+            n["unread_posts_count"] = int(unread_map.get(cid, 0))
+            ch = n.get("children") or []
+            if ch:
+                walk(ch)
+
+    walk(nodes)
 
 
 def _load_user_communities_hierarchy(username: str) -> Dict[str, Any]:
@@ -533,6 +568,7 @@ def _load_user_communities_hierarchy(username: str) -> Dict[str, Any]:
             communities = c.fetchall() or []
 
         result = _build_community_tree(c, communities)
+        _annotate_unread_on_community_tree(c, result, username)
 
     return {
         "success": True,
