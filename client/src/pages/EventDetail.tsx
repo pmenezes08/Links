@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import type { CSSProperties } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
@@ -153,40 +152,36 @@ export default function EventDetail(){
 
   return (
     <div className="min-h-screen chat-thread-bg text-white">
-      <div
-        className="fixed left-0 right-0 z-40 liquid-glass-surface border-b border-white/12 backdrop-blur-md"
-        style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' } as CSSProperties}
-      >
-        <div className="max-w-2xl mx-auto h-10 flex items-center justify-between px-2">
-          <div className="flex items-center gap-1">
-            <button
-              className="p-2 rounded-full hover:bg-white/5 text-white/90"
-              onClick={() => navigate(-1)}
-              aria-label="Back"
-            >
-              <i className="fa-solid fa-arrow-left text-sm" />
-            </button>
-            <div className="font-medium text-sm text-white/85">Event Details</div>
-          </div>
-          {canDelete && (
-            <button
-              className="p-2 rounded-full text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
-              onClick={() => setShowDeleteConfirm(true)}
-              title="Delete Event"
-              type="button"
-            >
-              <i className="fa-solid fa-trash text-sm" />
-            </button>
-          )}
-        </div>
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-teal-300/45 to-transparent opacity-80 pointer-events-none" />
-      </div>
+      <div className="max-w-2xl mx-auto px-3 pb-24 pt-2">
+        <header className="mb-2 flex items-center">
+          <button
+            type="button"
+            className="rounded-full p-2 text-[#cfe7e4] hover:bg-white/5"
+            onClick={() => navigate(-1)}
+            aria-label="Back"
+          >
+            <i className="fa-solid fa-arrow-left" />
+          </button>
+        </header>
 
-      <div className="app-subnav-offset max-w-2xl mx-auto px-3 pb-24" style={{ '--app-subnav-height': '40px' } as CSSProperties}>
-        <div className={`${glassPanel} mb-3 mt-1`}>
+        <div className={`${glassPanel} mb-3`}>
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-teal-300/60 to-transparent opacity-80 pointer-events-none" />
-          <div className="relative px-4 py-3 border-b border-[#4db6ac]/30 bg-gradient-to-r from-[#4db6ac]/12 via-[#4db6ac]/6 to-transparent">
-            <h1 className="text-base sm:text-lg font-semibold text-white tracking-tight leading-snug">{event.title}</h1>
+          <div className="relative px-4 py-3 border-b border-[#4db6ac]/30 bg-gradient-to-r from-[#4db6ac]/12 via-[#4db6ac]/6 to-transparent flex items-start justify-between gap-2">
+            <h1 className="text-base sm:text-lg font-semibold text-white tracking-tight leading-snug min-w-0 flex-1">{event.title}</h1>
+            {canDelete ? (
+              <button
+                type="button"
+                className="shrink-0 p-2 rounded-full text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowDeleteConfirm(true)
+                }}
+                title="Delete Event"
+                aria-label="Delete Event"
+              >
+                <i className="fa-solid fa-trash text-sm" />
+              </button>
+            ) : null}
           </div>
 
           <div className="p-4 space-y-3">

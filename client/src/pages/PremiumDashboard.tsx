@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useUserProfile } from '../contexts/UserProfileContext'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { readDeviceCacheStale, writeDeviceCache } from '../utils/deviceCache'
 import { cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
@@ -72,6 +72,8 @@ export default function PremiumDashboard() {
   const [hasGymAccess, setHasGymAccess] = useState(false)
   const [communities, setCommunities] = useState<Community[]>([])
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [joinCode, setJoinCode] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -116,7 +118,16 @@ export default function PremiumDashboard() {
     return () => setHeaderHidden(false)
   }, [showOnboarding, onboardingLaunching, setHeaderHidden])
   const navigate = useNavigate()
+  const location = useLocation()
   const isWeb = Capacitor.getPlatform() === 'web'
+  const isDashboardRoute =
+    location.pathname === '/premium_dashboard'||
+    location.pathname === '/premium'||
+    location.pathname === '/premium_dashboard_react'
+
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus()
+  }, [searchOpen])
   const isPremium = (subscription || 'free').toLowerCase() === 'premium'
   const handleCloseCreateModal = () => {
     setShowCreateModal(false)
@@ -644,7 +655,9 @@ export default function PremiumDashboard() {
         )}
 
       {/* Main content area with proper positioning */}
-      <div className={`min-h-screen pb-20 ${isWeb ? 'lg:ml-64' : 'md:ml-52'}`}>
+      <div
+        className={`min-h-screen ${communities.length > 0 ? 'pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]' : 'pb-20'} ${isWeb ? 'lg:ml-64' : 'md:ml-52'}`}
+      >
         <div className="app-content max-w-5xl mx-auto px-3 py-6">
           <div 
             className="sticky top-0 z-20 mb-3 flex justify-center pointer-events-none transition-transform duration-150"
@@ -727,19 +740,21 @@ export default function PremiumDashboard() {
                 Welcome to C-Point: a global platform made of private micro-networks. We call them communities.
               </div>
 
-              {/* Search Input */}
-              <div className="mb-4">
-                <div className="relative max-w-xs">
-                  <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[#9fb0b5] text-sm" />
-                  <input
-                    type="text"
-                    placeholder="Search communities..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-[#9fb0b5] focus:outline-none focus:border-[#4db6ac]/40"
-                  />
+              {searchOpen && (
+                <div className="mb-4">
+                  <div className="relative w-full max-w-xl">
+                    <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[#9fb0b5] text-sm pointer-events-none" />
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      placeholder="Search communities..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-[#9fb0b5] focus:outline-none focus:border-[#4db6ac]/40"
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Communities Grid */}
               {(() => {
@@ -757,13 +772,6 @@ export default function PremiumDashboard() {
 
                 return (
                   <div className="space-y-4">
-                    {/* Talk to Steve — compact strip; doesn’t stretch full 3-column width */}
-                    <div className="flex justify-start">
-                      <div className="w-full max-w-[min(100%,19rem)] sm:max-w-[20rem]">
-                        <SteveCard onClick={() => navigate('/user_chat/chat/Steve')} />
-                      </div>
-                    </div>
-
                     {/* Owner/Admin Section */}
                     {ownedOrAdmin.length > 0 && (
                       <>
@@ -837,17 +845,52 @@ export default function PremiumDashboard() {
             )}
         </div>
 
-        {/* Create Community Button - only show when user has communities */}
+        {/* Bottom navigation — match CommunityFeed position + chrome (dashboard with communities only) */}
         {communities.length > 0 && (
-          <div className="fixed bottom-0 left-0 right-0 z-50 flex justify-center pb-safe" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 24px)' }}>
-            <button 
-              className="px-6 py-3 rounded-full bg-[#4db6ac] text-black font-semibold shadow-lg hover:brightness-110 active:scale-95 transition-transform touch-manipulation flex items-center gap-2"
-              onClick={()=> { setNewCommType('General'); setShowCreateModal(true) }}
-              style={{ WebkitTapHighlightColor: 'transparent' }}
-            >
-              Create Your Community
-              <i className="fa-solid fa-arrow-right" />
-            </button>
+          <div
+            className="fixed bottom-0 left-0 right-0 z-[100] px-3 sm:px-6"
+            style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', touchAction: 'manipulation' }}
+          >
+            <div className="liquid-glass-surface border border-white/10 rounded-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.45)] max-w-2xl mx-auto mb-2">
+              <div className="h-14 px-1 sm:px-4 flex items-center justify-between gap-1 text-[#cfd8dc]">
+                <button
+                  type="button"
+                  className={`p-2 sm:p-3 rounded-full transition-colors touch-manipulation ${isDashboardRoute ? 'bg-white/10' : 'hover:bg-white/10 active:bg-white/15'}`}
+                  aria-label="Communities"
+                  aria-current={isDashboardRoute ? 'page' : undefined}
+                  onClick={() => navigate('/premium_dashboard')}
+                >
+                  <i className={`fa-solid fa-th text-lg ${isDashboardRoute ? 'text-[#4db6ac]' : ''}`} />
+                </button>
+                <button
+                  type="button"
+                  className="shrink-0 px-2.5 py-2 rounded-md bg-[#4db6ac] text-black text-[10px] sm:text-xs font-semibold hover:brightness-110 transition-all touch-manipulation whitespace-nowrap"
+                  onClick={() => {
+                    setNewCommType('General')
+                    setShowCreateModal(true)
+                  }}
+                >
+                  + New
+                </button>
+                <button
+                  type="button"
+                  className="p-2 sm:p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors touch-manipulation"
+                  aria-label="Chat with Steve"
+                  onClick={() => navigate('/user_chat/chat/Steve')}
+                >
+                  <i className="fa-solid fa-user text-lg" />
+                </button>
+                <button
+                  type="button"
+                  className={`p-2 sm:p-3 rounded-full transition-colors touch-manipulation ${searchOpen ? 'bg-white/10 text-[#4db6ac]' : 'hover:bg-white/10 active:bg-white/15'}`}
+                  aria-label={searchOpen ? 'Close search' : 'Search communities'}
+                  aria-pressed={searchOpen}
+                  onClick={() => setSearchOpen((v) => !v)}
+                >
+                  <i className="fa-solid fa-magnifying-glass text-lg" />
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -1034,28 +1077,6 @@ export default function PremiumDashboard() {
   )
 }
 
-function SteveCard({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      aria-label="Talk to Steve"
-      className="group relative w-full rounded-xl overflow-hidden text-white transition-all duration-300 liquid-glass-surface border border-white/12 hover:border-teal-400/35 shadow-[0_10px_28px_rgba(0,0,0,0.38)] hover:shadow-[0_16px_40px_rgba(0,0,0,0.48)] hover:-translate-y-0.5 text-left"
-    >
-      <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-           style={{ background: 'radial-gradient(480px circle at var(--x,50%) var(--y,50%), rgba(77,182,172,0.14), transparent 45%)' }} />
-
-      <div className="relative px-3.5 py-2.5 sm:px-4 sm:py-3">
-        <div className="text-sm font-semibold tracking-tight text-white/90 mb-0.5">Talk to Steve</div>
-        <div className="text-[11px] text-[#9fb0b5] leading-snug">
-          Discuss ideas, ask for connections and more.
-        </div>
-      </div>
-
-      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-teal-300/50 to-transparent opacity-70" />
-    </button>
-  )
-}
-
 function CommunityCard({
   name,
   description,
@@ -1106,16 +1127,20 @@ function CommunityCard({
           )}
         </div>
 
-        {descText.length > 0 && (
+        {descText.length > 0 ? (
           <p className="text-[11.5px] text-[#9fb0b5]/85 leading-relaxed line-clamp-3">
             {descText}
+          </p>
+        ) : (
+          <p className="text-[11.5px] text-[#9fb0b5]/70 leading-relaxed italic">
+            No description yet — add one in &quot;Manage Community&quot;.
           </p>
         )}
 
         <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#9fb0b5] pt-1">
           {typeof memberCount === 'number' && (
             <span className="flex items-center gap-1.5">
-              <i className="fa-solid fa-users text-[10px]" />
+              <i className="fa-solid fa-users text-[10px] text-[#4db6ac] drop-shadow-[0_0_8px_rgba(77,182,172,0.45)]" aria-hidden />
               {memberCount}
             </span>
           )}
