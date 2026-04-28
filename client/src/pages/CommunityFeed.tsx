@@ -35,7 +35,7 @@ import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/de
 import { cacheFeed, getCachedFeed } from '../utils/offlineDb'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { useBadges } from '../contexts/BadgeContext'
-import { handleLogoutClick } from '../utils/logout'
+import { useLogoutRequest } from '../contexts/LogoutPromptContext'
 import { openExternalInApp } from '../utils/openExternalInApp'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
@@ -175,6 +175,7 @@ function SortableThumb({ id, file, isActive, onSelect, onRemove }: {
 }
 
 export default function CommunityFeed() {
+  const requestLogout = useLogoutRequest()
   let { community_id } = useParams()
   if (!community_id){
     try{ community_id = window.location.pathname.split('/').filter(Boolean).pop() as any }catch{}
@@ -2422,7 +2423,7 @@ export default function CommunityFeed() {
             <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/followers') }}>Followers</button>
             <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/networking') }}>Networking</button>
             <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/subscription_plans') }}>Subscriptions</button>
-            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={handleLogoutClick}>Logout</button>
+            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={requestLogout}>Logout</button>
             <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/account_settings">Account Settings</a>
           </div>
           <div className="flex-1 h-full" onClick={()=> setMenuOpen(false)} />

@@ -26,7 +26,7 @@ const ShareImport = registerPlugin<ShareImportPluginInterface>('ShareImport', {
   }),
 })
 
-/** Human-readable detail for ShareIncoming / debugging (Capacitor uses message or errorMessage). */
+/** Human-readable detail for share import / debugging (Capacitor uses message or errorMessage). */
 export function formatShareLoadError(e: unknown): string {
   if (e instanceof Error) return e.message
   if (typeof e === 'string') return e
@@ -73,7 +73,7 @@ function guessExtension(mime: string, kind: string): string {
   return '.jpg'
 }
 
-/** Classify shared File objects for routing in ShareIncoming. */
+/** Classify shared File objects for routing (Messages / compose). */
 export function fileIsPdf(f: File): boolean {
   return f.type === 'application/pdf' || /\.pdf$/i.test(f.name)
 }

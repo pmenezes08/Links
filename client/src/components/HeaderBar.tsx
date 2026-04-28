@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import Avatar from './Avatar'
-import { handleLogoutClick } from '../utils/logout'
+import { useLogoutRequest } from '../contexts/LogoutPromptContext'
 import { useBadges } from '../contexts/BadgeContext'
 
 type HeaderBarProps = {
@@ -27,6 +27,8 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
   const resolvedAvatar = avatarUrl
     ? ((avatarUrl.startsWith('http') || avatarUrl.startsWith('/static')) ? avatarUrl : `/static/${avatarUrl}`)
     : null
+
+  const requestLogout = useLogoutRequest()
 
   const showBack = location.pathname === '/notifications'
   const goBack = () => {
@@ -135,7 +137,7 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
               </button>
 
               <button
-                onClick={handleLogoutClick}
+                onClick={requestLogout}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
               >
                 <i className="fa-solid fa-right-from-bracket w-5" /> Logout
@@ -177,7 +179,7 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
                 <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg:white/5 text:white" onClick={()=> { setMenuOpen(false); navigate('/followers') }}>Followers</button>
                 <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/networking') }}>Networking</button>
                 <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/subscription_plans') }}>Subscriptions</button>
-            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={handleLogoutClick}>Logout</button>
+            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={requestLogout}>Logout</button>
               <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/account_settings">Account Settings</a>
           </div>
           <div className="flex-1 h-full" onClick={()=> setMenuOpen(false)} />

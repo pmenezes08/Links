@@ -55,10 +55,19 @@ describe('performLogout (Phase G4)', () => {
     seedStore(store)
     vi.stubGlobal('localStorage', ls as Storage)
 
+    const sessionStore: Record<string, string> = {}
     vi.stubGlobal(
       'sessionStorage',
       {
-        clear: vi.fn(),
+        getItem(k: string) {
+          return sessionStore[k] ?? null
+        },
+        setItem(k: string, v: string) {
+          sessionStore[k] = v
+        },
+        clear() {
+          Object.keys(sessionStore).forEach((k) => delete sessionStore[k])
+        },
       } as unknown as Storage,
     )
 

@@ -13,7 +13,7 @@ import {
 } from '../utils/dashboardCache'
 import type { DashboardCachePayload } from '../utils/dashboardCache'
 import { triggerDashboardServerPull } from '../utils/serverPull'
-import { handleLogoutClick } from '../utils/logout'
+import { useLogoutRequest } from '../contexts/LogoutPromptContext'
 import OnboardingChat from './OnboardingChat'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
@@ -65,6 +65,7 @@ function sortCommunitiesByRole(communities: Community[]): Community[] {
 }
 
 export default function PremiumDashboard() {
+  const requestLogout = useLogoutRequest()
   const { profile: contextProfile } = useUserProfile()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [hasGymAccess, setHasGymAccess] = useState(false)
@@ -593,7 +594,7 @@ export default function PremiumDashboard() {
           <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/user_chat">Messages</a>
           <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/followers">Followers</a>
           {hasGymAccess && <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/your_sports">Your Sports</a>}
-          <button className="block w-full text-left px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" onClick={handleLogoutClick}>Logout</button>
+          <button className="block w-full text-left px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" onClick={requestLogout}>Logout</button>
           <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/account_settings">
             <i className="fa-solid fa-cog mr-2" />Settings
           </a>
@@ -623,7 +624,7 @@ export default function PremiumDashboard() {
                 <a className="px-5 py-3 border-b border-white/10" href="/user_chat" onClick={() => setMobileMenuOpen(false)}>Messages</a>
                 <a className="px-5 py-3 border-b border-white/10" href="/followers" onClick={() => setMobileMenuOpen(false)}>Followers</a>
               {hasGymAccess && <a className="px-5 py-3 border-b border-white/10" href="/your_sports" onClick={() => setMobileMenuOpen(false)}>Your Sports</a>}
-              <button className="w-full text-left px-5 py-3 border-b border-white/10" onClick={(e) => { setMobileMenuOpen(false); handleLogoutClick(e) }}>Logout</button>
+              <button className="w-full text-left px-5 py-3 border-b border-white/10" onClick={(e) => { setMobileMenuOpen(false); requestLogout(e) }}>Logout</button>
               <a className="px-5 py-3" href="/account_settings" onClick={() => setMobileMenuOpen(false)}><i className="fa-solid fa-cog mr-2" />Settings</a>
             </nav>
             <div className="px-4 py-4">

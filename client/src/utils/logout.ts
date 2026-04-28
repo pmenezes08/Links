@@ -125,9 +125,27 @@ export async function performLogout(): Promise<void> {
     console.warn('Error clearing localStorage:', e)
   }
 
-  // 3. Clear sessionStorage
+  // 3. Clear sessionStorage (preserve deep-link dedupe so iOS does not replay
+  // share URLs after logout — see App.tsx cpoint_processed_deep_links)
   try {
+    const SESSION_PRESERVE_ON_LOGOUT = ['cpoint_processed_deep_links']
+    const preserved: Record<string, string> = {}
+    for (const key of SESSION_PRESERVE_ON_LOGOUT) {
+      try {
+        const v = sessionStorage.getItem(key)
+        if (v != null) preserved[key] = v
+      } catch {
+        /* ignore */
+      }
+    }
     sessionStorage.clear()
+    for (const [key, val] of Object.entries(preserved)) {
+      try {
+        sessionStorage.setItem(key, val)
+      } catch {
+        /* ignore */
+      }
+    }
     console.log('✅ sessionStorage cleared')
   } catch (e) {
     console.warn('Error clearing sessionStorage:', e)
@@ -207,18 +225,4 @@ export async function performLogout(): Promise<void> {
 
   // Navigate to logout endpoint - use replace to prevent back button issues
   window.location.replace('/logout')
-}
-
-/**
- * Logout button component props
- */
-export function handleLogoutClick(e: React.MouseEvent): void {
-  e.preventDefault()
-
-  // For web, ensure we wait for cleanup before redirecting
-  if (typeof window !== 'undefined') {
-    performLogout().catch(console.error)
-  } else {
-    performLogout()
-  }
 }

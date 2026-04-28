@@ -501,7 +501,7 @@ def logout():
     session.clear()
     session.permanent = False
 
-    resp = make_response(redirect("/"))
+    resp = make_response(redirect("/login"))
     remember_tokens.clear_cookie(resp)
     auth_session.clear_session_cookie(resp)
     auth_session.clear_install_cookie(resp)

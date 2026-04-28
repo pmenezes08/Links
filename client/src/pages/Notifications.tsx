@@ -139,6 +139,7 @@ export default function Notifications(){
   const notifLiveXRef = useRef(0)
   const notifDraggingIdRef = useRef<number | null>(null)
   const lastUnreadNotifsRef = useRef<number | null>(null)
+  const unreadBadgeReloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => { setTitle('Notifications') }, [setTitle])
 
@@ -151,15 +152,18 @@ export default function Notifications(){
   // to make the list feel stuck in a loading loop.
   const load = useCallback(async function load(opts: { silent?: boolean } = {}){
     const silent = !!opts.silent
+    const devLog = (...args: unknown[]) => {
+      if (import.meta.env.DEV) console.log(...args)
+    }
     try{
       if (!silent) setLoading(true)
       const r = await fetch('/api/notifications?all=true', { credentials:'include', headers: { 'Accept': 'application/json' } })
-      console.log('📋 Notifications API status:', r.status)
+      devLog('📋 Notifications API status:', r.status)
       const j = await r.json()
-      console.log('📋 Raw notifications response:', j)
+      devLog('📋 Raw notifications response:', j)
       if (j?.success){
-        console.log('📋 Total notifications received:', j.notifications?.length || 0)
-        console.log('📋 Notification types:', j.notifications?.map((n: Notif) => n?.type))
+        devLog('📋 Total notifications received:', j.notifications?.length || 0)
+        devLog('📋 Notification types:', j.notifications?.map((n: Notif) => n?.type))
         const notifications = (j.notifications as Notif[]) || []
         const unreadInvites = notifications.filter(n => {
           const typeKey = n?.type?.split(':')[0] ?? n?.type
@@ -171,7 +175,7 @@ export default function Notifications(){
           const typeKey = n?.type?.split(':')[0] ?? n?.type
           return n?.type !== 'message' && n?.type !== 'reaction' && !INVITE_NOTIFICATION_TYPES.has(typeKey || '')
         })
-        console.log('📋 After filtering out messages and reactions:', filtered.length)
+        devLog('📋 After filtering out messages and reactions:', filtered.length)
         setItems(filtered)
       } else {
         console.error('📋 Notifications API error:', j?.error || 'Unknown error')
@@ -217,10 +221,22 @@ export default function Notifications(){
     if (activeTab !== 'notifications' && activeTab !== 'invites') return
     if (previous === unreadNotifs) return
 
-    // Silent so the page doesn't flash "Loading…" each time a tap /
-    // delete decrements the badge.
-    if (activeTab === 'notifications' || activeTab === 'invites') load({ silent: true })
-    loadPendingInvites()
+    if (unreadBadgeReloadTimerRef.current) {
+      clearTimeout(unreadBadgeReloadTimerRef.current)
+      unreadBadgeReloadTimerRef.current = null
+    }
+    unreadBadgeReloadTimerRef.current = setTimeout(() => {
+      unreadBadgeReloadTimerRef.current = null
+      if (activeTab === 'notifications' || activeTab === 'invites') load({ silent: true })
+      loadPendingInvites()
+    }, 250)
+
+    return () => {
+      if (unreadBadgeReloadTimerRef.current) {
+        clearTimeout(unreadBadgeReloadTimerRef.current)
+        unreadBadgeReloadTimerRef.current = null
+      }
+    }
   }, [activeTab, load, loadPendingInvites, unreadNotifs])
 
   useEffect(() => {
@@ -431,13 +447,15 @@ export default function Notifications(){
       url = n.post_id ? `/post/${n.post_id}` : (n.community_id ? `/community_feed_react/${n.community_id}` : '/notifications')
     }
 
-    console.log('Notification clicked:', { id: n.id, type: n.type, link: n.link, url, isReplyNotification, isStoryNotification })
+    if (import.meta.env.DEV) {
+      console.log('Notification clicked:', { id: n.id, type: n.type, link: n.link, url, isReplyNotification, isStoryNotification })
+    }
 
     // Enhanced navigation with state for better back button behavior
     if (url.startsWith('http') || url.startsWith('/')){
       // Use SPA navigation for known in-app routes
       if (url.startsWith('/post/') || url.startsWith('/reply/') || url.startsWith('/community_feed_react/') || url.startsWith('/community/') || url.startsWith('/event/') || url.includes('/tasks_react') || url.includes('/polls_react') || url.includes('/useful_links_react') || url.startsWith('/admin_dashboard')){
-        console.log('Using SPA navigation to:', url)
+        if (import.meta.env.DEV) console.log('Using SPA navigation to:', url)
 
         const navigationState = {
           from: 'notification',
@@ -455,11 +473,11 @@ export default function Notifications(){
 
         navigate(url, { state: navigationState })
       } else {
-        console.log('Using window.location.href to:', url)
+        if (import.meta.env.DEV) console.log('Using window.location.href to:', url)
         window.location.href = url
       }
     } else {
-      console.log('Using window.location.href (no prefix) to:', url)
+      if (import.meta.env.DEV) console.log('Using window.location.href (no prefix) to:', url)
       window.location.href = url
     }
   }

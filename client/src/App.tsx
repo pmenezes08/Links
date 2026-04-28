@@ -76,7 +76,8 @@ import GroupFeed from './pages/GroupFeed'
 import EditGroup from './pages/EditGroup'
 // EncryptionSettings removed — not in use
 import CommentReply from './pages/CommentReply'
-import ShareIncoming from './pages/ShareIncoming'
+import ShareIncomingRouteRedirect from './pages/ShareIncomingRouteRedirect'
+import { LogoutPromptProvider } from './contexts/LogoutPromptContext'
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './constants/googleOAuth'
 
 const queryClient = new QueryClient()
@@ -336,9 +337,17 @@ function AppRoutes(){
     }
 
     const applyShareIncoming = (url: string, source: string) => {
-      console.log(`🔗 Opening share inbox (${source}):`, url)
-      navigate('/share/incoming')
-      markUrlProcessed(url)
+      console.log(`🔗 Opening share picker (${source}):`, url)
+      void (async () => {
+        try {
+          const { loadShareIntoStore } = await import('./services/shareImport')
+          await loadShareIntoStore()
+        } catch (e) {
+          console.warn('🔗 loadShareIntoStore:', e)
+        }
+        markUrlProcessed(url)
+        navigate('/user_chat?share_pick=1', { replace: true })
+      })()
     }
 
     let listenerHandle: PluginListenerHandle | undefined
@@ -853,7 +862,7 @@ function AppRoutes(){
                 <Route path="/event/:event_id" element={<EventDetail />} />
                 <Route path="/post/:post_id" element={<PostDetail />} />
                 <Route path="/reply/:reply_id" element={<CommentReply />} />
-                <Route path="/share/incoming" element={<ShareIncoming />} />
+                <Route path="/share/incoming" element={<ShareIncomingRouteRedirect />} />
                 <Route path="/compose" element={<CreatePost />} />
                 <Route path="/group_feed_react/:group_id" element={<GroupFeed />} />
                 <Route path="/group/:group_id/edit" element={<EditGroup />} />
@@ -938,12 +947,14 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <NetworkProvider>
         <BrowserRouter>
-          <OfflineBanner />
-          <OutboxDrainer />
-          <BrandAssetsInit />
-          <PushInit />
-          <NotificationPrompt />
-          <AppRoutes />
+          <LogoutPromptProvider>
+            <OfflineBanner />
+            <OutboxDrainer />
+            <BrandAssetsInit />
+            <PushInit />
+            <NotificationPrompt />
+            <AppRoutes />
+          </LogoutPromptProvider>
         </BrowserRouter>
       </NetworkProvider>
     </QueryClientProvider>
