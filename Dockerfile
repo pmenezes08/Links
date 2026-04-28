@@ -48,7 +48,8 @@ COPY --from=client-builder /client/dist ./client/dist/
 RUN python -m compileall -q /app/bodybuilding_app.py /app/redis_cache.py /app/backend/ 2>/dev/null || true
 
 # Cloud Run sets PORT; default 8080
-ENV PORT=8080
+ENV PORT=8080 \
+    CSRF_ORIGIN_ENFORCE=true
 EXPOSE 8080
 
 # --preload: Load app once before forking workers (faster startup)

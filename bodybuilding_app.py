@@ -6210,6 +6210,15 @@ def admin_profile_react():
 # Admin helper: is_app_admin imported from backend.services.community
 
 
+def is_app_admin_or_paulo(username: Optional[str]) -> bool:
+    """Product/polls/group gates: global app admin or founding user Paulo."""
+    if not username:
+        return False
+    if is_app_admin(username):
+        return True
+    return (username or "").strip().lower() == "paulo"
+
+
 def user_is_member_of_community(username: str, community_id: int) -> bool:
     """Check if a user is a member of a specific community (including sub-communities)."""
     if not username or not community_id:
@@ -23802,7 +23811,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
 
             # Legacy daily-limit check — only runs when the entitlements flag
             # is off. With the flag on, the gate above already did this.
-            if not _enforcement_on and author_username.lower() not in AI_UNLIMITED_USERS:
+            if not _enforcement_on and author_username.lower() not in AI_UNLIMITED_USERS and not is_app_admin(author_username):
                 today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
                 c.execute(f"""
                     SELECT COUNT(*) as cnt FROM ai_usage_log 
@@ -24149,7 +24158,7 @@ def ai_steve_reply():
 
             # Legacy daily-limit fallback when entitlements enforcement is off.
             usage_count = 0
-            is_unlimited = username.lower() in AI_UNLIMITED_USERS
+            is_unlimited = username.lower() in AI_UNLIMITED_USERS or is_app_admin(username)
 
             if not _enforcement_on and not is_unlimited:
                 try:
@@ -25678,29 +25687,45 @@ def get_available_parent_communities():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            
+            ph = get_sql_placeholder()
+
             # Get all communities that the user has access to or created
             # Exclude the current community and its children to prevent circular references
-            if current_community_id:
-                c.execute("""
+            if is_app_admin(username):
+                if current_community_id:
+                    c.execute(f"""
+                        SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id
+                        FROM communities c
+                        WHERE c.id != {ph}
+                        AND (c.parent_community_id IS NULL OR c.parent_community_id != {ph})
+                        ORDER BY c.name
+                    """, (current_community_id, current_community_id))
+                else:
+                    c.execute("""
+                        SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id
+                        FROM communities c
+                        ORDER BY c.name
+                    """)
+            elif current_community_id:
+                c.execute(f"""
                     SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id
                     FROM communities c
                     LEFT JOIN user_communities uc ON c.id = uc.community_id
                     LEFT JOIN users u ON uc.user_id = u.id
-                    WHERE (u.username = ? OR c.creator_username = ? OR ? = 'admin')
-                    AND c.id != ?
-                    AND (c.parent_community_id IS NULL OR c.parent_community_id != ?)
+                    WHERE (u.username = {ph} OR c.creator_username = {ph})
+                    AND c.id != {ph}
+                    AND (c.parent_community_id IS NULL OR c.parent_community_id != {ph})
                     ORDER BY c.name
-                """, (username, username, username, current_community_id, current_community_id))
+                """, (username, username, current_community_id, current_community_id))
             else:
-                c.execute("""
+                c.execute(f"""
                     SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id
                     FROM communities c
                     LEFT JOIN user_communities uc ON c.id = uc.community_id
                     LEFT JOIN users u ON uc.user_id = u.id
-                    WHERE u.username = ? OR c.creator_username = ? OR ? = 'admin'
+                    WHERE u.username = {ph} OR c.creator_username = {ph}
                     ORDER BY c.name
-                """, (username, username, username))
+                """, (username, username))
             
             communities = []
             for row in c.fetchall():
@@ -27674,7 +27699,7 @@ def api_create_product_post():
     if not content:
         return jsonify({'success': False, 'error': 'content required'}), 400
     # Only Admin/Paulo can post to updates
-    if section == 'updates' and username not in ('admin','Paulo','paulo'):
+    if section == 'updates' and not is_app_admin_or_paulo(username):
         return jsonify({'success': False, 'error': 'Forbidden'}), 403
     try:
         with get_db_connection() as conn:
@@ -27728,7 +27753,7 @@ def api_edit_product_post():
                 return jsonify({'success': False, 'error': 'Post not found'}), 404
             owner = row['username'] if hasattr(row,'keys') else row[0]
             # Restrict edits to Admin/Paulo only (owners cannot edit unless they are admin/Paulo)
-            if (username or '').lower() not in ('admin','paulo'):
+            if not is_app_admin_or_paulo(username):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
             c.execute(f"UPDATE product_posts SET content={ph} WHERE id={ph}", (content, post_id))
             conn.commit()
@@ -27754,7 +27779,7 @@ def api_delete_product_post():
                 return jsonify({'success': False, 'error': 'Post not found'}), 404
             owner = row['username'] if hasattr(row,'keys') else row[0]
             # Restrict deletes to Admin/Paulo only (owners cannot delete unless they are admin/Paulo)
-            if (username or '').lower() not in ('admin','paulo'):
+            if not is_app_admin_or_paulo(username):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
             # Delete post (replies should cascade if FK set; otherwise explicit delete)
             try:
@@ -27787,7 +27812,7 @@ def api_edit_product_reply():
                 return jsonify({'success': False, 'error': 'Reply not found'}), 404
             owner = row['username'] if hasattr(row,'keys') else row[0]
             # Restrict edits to Admin/Paulo only
-            if (username or '').lower() not in ('admin','paulo'):
+            if not is_app_admin_or_paulo(username):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
             c.execute(f"UPDATE product_replies SET content={ph} WHERE id={ph}", (content, reply_id))
             conn.commit()
@@ -27813,7 +27838,7 @@ def api_delete_product_reply():
                 return jsonify({'success': False, 'error': 'Reply not found'}), 404
             owner = row['username'] if hasattr(row,'keys') else row[0]
             # Restrict deletes to Admin/Paulo only
-            if (username or '').lower() not in ('admin','paulo'):
+            if not is_app_admin_or_paulo(username):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
             c.execute(f"DELETE FROM product_replies WHERE id={ph}", (reply_id,))
             conn.commit()
@@ -27859,7 +27884,7 @@ def api_product_polls():
 @login_required
 def api_create_product_poll():
     username = session.get('username')
-    if (username or '').lower() not in ('admin','paulo'):
+    if not is_app_admin_or_paulo(username):
         return jsonify({'success': False, 'error': 'Forbidden'}), 403
     question = (request.form.get('question') or '').strip()
     raw_options = request.form.getlist('options') or []
@@ -27947,8 +27972,8 @@ def api_product_poll_vote():
 @app.route('/api/product_poll_close', methods=['POST'])
 @login_required
 def api_product_poll_close():
-    username = (session.get('username') or '').lower()
-    if username not in ('admin','paulo'):
+    username = session.get('username')
+    if not is_app_admin_or_paulo(username):
         return jsonify({'success': False, 'error': 'Forbidden'}), 403
     poll_id = request.form.get('poll_id', type=int)
     if not poll_id:
@@ -27966,8 +27991,8 @@ def api_product_poll_close():
 @app.route('/api/product_poll_delete', methods=['POST'])
 @login_required
 def api_product_poll_delete():
-    username = (session.get('username') or '').lower()
-    if username not in ('admin','paulo'):
+    username = session.get('username')
+    if not is_app_admin_or_paulo(username):
         return jsonify({'success': False, 'error': 'Forbidden'}), 403
     poll_id = request.form.get('poll_id', type=int)
     if not poll_id:
@@ -29107,8 +29132,7 @@ def api_groups_create():
     approval_required = approval_required_raw in ('1', 'true', 'True', 'yes', 'on')
     try:
         # Restrict creators to app admin or Paulo only
-        allowed_creators = { 'admin', 'paulo' }
-        if not (username and username.lower() in allowed_creators):
+        if not is_app_admin_or_paulo(username):
             return jsonify({'success': False, 'error': 'Only admin or Paulo can create groups'}), 403
         with get_db_connection() as conn:
             c = conn.cursor()
