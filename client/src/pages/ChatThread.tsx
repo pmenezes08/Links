@@ -191,6 +191,7 @@ export default function ChatThread(){
   const [editingVaultId, setEditingVaultId] = useState<number | null>(null)
   const [editVaultText, setEditVaultText] = useState('')
   const [editVaultIso, setEditVaultIso] = useState('')
+  const [vaultDeletingId, setVaultDeletingId] = useState<number | null>(null)
   const lastFetchTime = useRef<number>(0)
   const [pastedImage, setPastedImage] = useState<File | null>(null)
   const [videoUploadProgress, setVideoUploadProgress] = useState<UploadProgress | null>(null)
@@ -3837,7 +3838,39 @@ export default function ChatThread(){
                       </div>
                     ) : (
                       <div>
-                        <div className="text-white/90 whitespace-pre-wrap">{row.reminder_text}</div>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="text-white/90 whitespace-pre-wrap flex-1 min-w-0">{row.reminder_text}</div>
+                          <button
+                            type="button"
+                            className="flex-shrink-0 p-2 rounded-lg text-white/40 hover:text-rose-300 hover:bg-white/10 disabled:opacity-40"
+                            title="Remove reminder"
+                            aria-label={`Delete reminder ${row.id}`}
+                            disabled={vaultDeletingId === row.id}
+                            onClick={async () => {
+                              if (!window.confirm('Remove this reminder?')) return
+                              setVaultDeletingId(row.id)
+                              try {
+                                const res = await fetch(`/api/me/steve/reminders/${row.id}`, {
+                                  method: 'DELETE',
+                                  credentials: 'include',
+                                  headers: { Accept: 'application/json' },
+                                })
+                                const data = await res.json().catch(() => ({}))
+                                if (!res.ok || !data.success) {
+                                  alert(typeof data.message === 'string' ? data.message : 'Could not remove')
+                                  return
+                                }
+                                void loadReminderVault()
+                              } catch {
+                                alert('Could not remove')
+                              } finally {
+                                setVaultDeletingId(null)
+                              }
+                            }}
+                          >
+                            <i className="fa-solid fa-trash" aria-hidden />
+                          </button>
+                        </div>
                         <div className="text-xs text-white/45 mt-1">
                           #{row.id} · {row.fire_at_utc} UTC · tz {row.tz_label}
                         </div>

@@ -10,7 +10,11 @@ from flask import Blueprint, jsonify, request, session
 from backend.services import ai_usage
 from backend.services.entitlements_gate import gate_or_reason
 from backend.services.feature_flags import entitlements_enforcement_enabled
-from backend.services.steve_reminder_vault import list_reminders_for_user, update_reminder_for_user
+from backend.services.steve_reminder_vault import (
+    delete_reminder_for_user,
+    list_reminders_for_user,
+    update_reminder_for_user,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +44,30 @@ def api_list_reminders():
     except Exception as e:
         logger.exception("list reminders: %s", e)
         return jsonify({"success": False, "error": "server_error"}), 500
+
+
+@steve_reminders_bp.route("/api/me/steve/reminders/<int:rid>", methods=["DELETE"])
+@_login_required
+def api_delete_reminder(rid: int):
+    username = session.get("username")
+    allowed, reason, _ent = gate_or_reason(username, ai_usage.SURFACE_DM)
+    if not allowed and entitlements_enforcement_enabled():
+        return jsonify({"success": False, "error": reason or "forbidden"}), 403
+
+    ok, detail = delete_reminder_for_user(username=username, reminder_id=rid)
+    try:
+        if ok:
+            ai_usage.log_usage(
+                username,
+                surface=ai_usage.SURFACE_DM,
+                request_type="steve_reminder_vault_edit",
+                model="n/a",
+            )
+    except Exception:
+        pass
+
+    status = 200 if ok else 400
+    return jsonify({"success": ok, "message": detail}), status
 
 
 @steve_reminders_bp.route("/api/me/steve/reminders/<int:rid>", methods=["PATCH"])

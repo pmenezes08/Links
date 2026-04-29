@@ -38,6 +38,30 @@ RE_REMINDER_CANCEL = re.compile(
     re.I,
 )
 
+
+def parse_cancel_reminder_ids(line: str) -> Optional[List[int]]:
+    """Parse one or more vault reminder ids from a cancel/delete/remove message.
+
+    Handles **cancel reminder #1 and #2**, **cancel reminders #1, #2**, and the legacy
+    single-line form **cancel reminder 5** (no hash).
+    """
+    s = (line or "").strip()
+    if not s:
+        return None
+    # Must look like a cancel instruction (not just the word "cancel" elsewhere).
+    if not (
+        re.match(r"^\s*(cancel|delete|remove)\b", s, re.I)
+        or re.search(r"\b(cancel|delete|remove)\s+reminders?\b", s, re.I)
+    ):
+        return None
+    hash_ids = [int(x) for x in re.findall(r"#(\d+)", s)]
+    if hash_ids:
+        return sorted(set(hash_ids))
+    m_one = RE_REMINDER_CANCEL.match(s)
+    if m_one:
+        return [int(m_one.group(2))]
+    return None
+
 _RE_STEVE_PREFIX = re.compile(r"^\s*steve\b", re.I)
 _RE_AT_STEVE = re.compile(r"@\s*steve\b", re.I)
 

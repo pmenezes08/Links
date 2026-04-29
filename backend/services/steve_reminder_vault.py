@@ -21,13 +21,13 @@ _USR_TIMEZONE_ENSURED = False
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 
 from backend.services.steve_reminder_parse import (
-    RE_REMINDER_CANCEL as _RE_CANCEL,
     RE_REMINDER_LIST as _RE_LIST,
     draft_followup_composite_texts,
     extract_subject,
     looks_like_time_only_followup,
     match_create_opener,
     normalize_time_phrases_for_parse,
+    parse_cancel_reminder_ids,
     reminder_intent_llm_plausible,
     try_parse_fire_datetime,
     try_parse_fire_datetime_first_candidate,
@@ -377,9 +377,9 @@ def try_handle_direct_steve_dm_reminder(*, sender_username: str, user_message: s
     if _RE_LIST.match(stripped):
         return _format_list(username)
 
-    m_can = _RE_CANCEL.match(stripped)
-    if m_can:
-        return _cancel_by_id(username, int(m_can.group(2)))
+    cancel_ids = parse_cancel_reminder_ids(stripped)
+    if cancel_ids is not None:
+        return _cancel_by_ids_message(username, cancel_ids)
 
     draft = _fetch_draft(username)
     if draft:
@@ -604,11 +604,12 @@ def _format_list(username: str) -> str:
         except Exception:
             fa_line = fa_dt.strftime("%Y-%m-%d %H:%M") + " UTC"
         lines.append(f"- **#{rid}** — {fa_line} — {txt}")
-    lines.append("\nCancel with **cancel reminder #123**.")
+    lines.append("\nCancel in chat with **cancel reminder #1**, **cancel reminder #1 and #2**, or tap the trash icon in **⋯ → Reminder Vault**.")
     return "\n".join(lines)
 
 
-def _cancel_by_id(username: str, rid: int) -> str:
+def _try_cancel_one(username: str, rid: int) -> bool:
+    """Return True if a scheduled row was cancelled."""
     ph = get_sql_placeholder()
     affected = 0
     try:
@@ -636,11 +637,44 @@ def _cancel_by_id(username: str, rid: int) -> str:
             conn.commit()
     except Exception as exc:
         logger.warning("Cancel reminder failed: %s", exc)
-        return "Couldn’t cancel that reminder right now. Try again in a minute."
+        return False
+    return affected >= 1
 
-    if affected:
-        return f"Cleared reminder **#{rid}**."
-    return f"No active reminder **#{rid}**. Use **list my reminders**."
+
+def _cancel_by_ids_message(username: str, ids: list[int]) -> str:
+    uniq = sorted({int(i) for i in ids if int(i) > 0})
+    if not uniq:
+        return "Say which reminders to cancel, e.g. **cancel reminder #3** (numbers from **list my reminders**)."
+
+    cleared: list[int] = []
+    missing: list[int] = []
+    for rid in uniq:
+        if _try_cancel_one(username, rid):
+            cleared.append(rid)
+        else:
+            missing.append(rid)
+
+    parts: list[str] = []
+    if cleared:
+        if len(cleared) == 1:
+            parts.append(f"Cleared reminder **#{cleared[0]}**.")
+        else:
+            nums = ", ".join(f"**#{i}**" for i in cleared)
+            parts.append(f"Cleared reminders {nums}.")
+    if missing:
+        if len(missing) == 1:
+            parts.append(f"No active reminder **#{missing[0]}** — use **list my reminders** for current ids.")
+        else:
+            nums = ", ".join(f"**#{i}**" for i in missing)
+            parts.append(f"No active reminders {nums} — use **list my reminders** for current ids.")
+    if not parts:
+        return "Couldn’t cancel those reminders right now. Try again in a minute."
+    return " ".join(parts)
+
+
+def _cancel_by_id(username: str, rid: int) -> str:
+    """Legacy single-id message (uses same path as multi-cancel)."""
+    return _cancel_by_ids_message(username, [rid])
 
 
 def list_reminders_for_user(username: str) -> Dict[str, Any]:
@@ -741,6 +775,41 @@ def update_reminder_for_user(
     return False, "Reminder not found or already fired."
 
 
+def delete_reminder_for_user(*, username: str, reminder_id: int) -> Tuple[bool, str]:
+    """Cancel a vault row from UI (Reminder Vault trash)."""
+    ensure_reminder_tables()
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if USE_MYSQL:
+                c.execute(
+                    f"""
+                    UPDATE steve_reminder_vault SET status = 'cancelled', cancel_reason = 'user_vault_trash',
+                        updated_at = NOW()
+                    WHERE id = {ph} AND username = {ph} AND status = 'scheduled'
+                    """,
+                    (reminder_id, username),
+                )
+            else:
+                c.execute(
+                    f"""
+                    UPDATE steve_reminder_vault SET status = 'cancelled', cancel_reason = 'user_vault_trash',
+                        updated_at = {ph}
+                    WHERE id = {ph} AND username = {ph} AND status = 'scheduled'
+                    """,
+                    (_sql_now(), reminder_id, username),
+                )
+            affected = c.rowcount or 0
+            conn.commit()
+    except Exception as exc:
+        logger.warning("delete reminder failed: %s", exc)
+        return False, "Delete failed."
+    if affected:
+        return True, "Removed."
+    return False, "Reminder not found or already fired."
+
+
 def dispatch_due_reminders(*, lookahead_minutes: int = 12, stale_catch_hours: int = 48) -> Dict[str, Any]:
     """Cron: fire pending reminders that are due (``fire_at_utc`` <= now, within stale catch-up window).
 
@@ -749,7 +818,7 @@ def dispatch_due_reminders(*, lookahead_minutes: int = 12, stale_catch_hours: in
     """
     del lookahead_minutes  # upper bound is always "now"; do not fire future rows
     ensure_reminder_tables()
-    from backend.services.content_generation.delivery import send_steve_dm
+    from backend.services.content_generation.delivery import format_reminder_push_preview, send_steve_dm
 
     now = _now_utc_naive()
     now_s = now.strftime("%Y-%m-%d %H:%M:%S")
@@ -837,7 +906,11 @@ def dispatch_due_reminders(*, lookahead_minutes: int = 12, stale_catch_hours: in
             f"(Reminder #{row_id}. Say **list my reminders** if you want to tweak what’s queued.)"
         )
         try:
-            send_steve_dm(receiver_username=uname, content=msg)
+            send_steve_dm(
+                receiver_username=uname,
+                content=msg,
+                push_preview_text=format_reminder_push_preview(body_txt),
+            )
             sent += 1
         except Exception as exc:
             logger.error("send_steve_dm failed reminder %s: %s", row_id, exc)

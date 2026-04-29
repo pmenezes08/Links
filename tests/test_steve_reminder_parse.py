@@ -11,10 +11,19 @@ from backend.services.steve_reminder_parse import (
     looks_like_time_only_followup,
     match_create_opener,
     normalize_time_phrases_for_parse,
+    parse_cancel_reminder_ids,
     reminder_intent_llm_plausible,
     try_parse_fire_datetime,
     try_parse_fire_datetime_first_candidate,
 )
+
+
+def test_parse_cancel_reminder_ids_multi_hash():
+    assert parse_cancel_reminder_ids("cancel reminder #1 and #2") == [1, 2]
+    assert parse_cancel_reminder_ids("Cancel reminders #12, #34") == [12, 34]
+    assert parse_cancel_reminder_ids("delete reminder #7") == [7]
+    assert parse_cancel_reminder_ids("cancel reminder 9") == [9]
+    assert parse_cancel_reminder_ids("maybe cancel reminder") is None
 
 
 @pytest.mark.parametrize(
