@@ -238,9 +238,10 @@ type EventCardProps = {
   onShowDetails: (event: EventItem) => void
   onEdit: (event: EventItem) => void
   onDelete: (event: EventItem) => void
+  onNativeCalendarSaved?: () => void
 }
 
-function EventCard({ event, archived = false, onOpen, onRsvp, onShowDetails, onEdit, onDelete }: EventCardProps) {
+function EventCard({ event, archived = false, onOpen, onRsvp, onShowDetails, onEdit, onDelete, onNativeCalendarSaved }: EventCardProps) {
   return (
     <article className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] p-3 shadow-[0_12px_34px_rgba(0,0,0,0.32)] backdrop-blur-xl transition hover:border-[#4db6ac]/45 hover:bg-white/[0.065]">
       <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[#4db6ac]/70 to-transparent" />
@@ -283,7 +284,8 @@ function EventCard({ event, archived = false, onOpen, onRsvp, onShowDetails, onE
             e.stopPropagation()
             void (async () => {
               try {
-                await exportEventToDeviceCalendar(event.id, eventItemToExportFields(event))
+                const outcome = await exportEventToDeviceCalendar(event.id, eventItemToExportFields(event))
+                if (outcome.via === 'native') onNativeCalendarSaved?.()
               } catch (err: unknown) {
                 const msg = err instanceof Error ? err.message : 'Could not export'
                 alert(msg)
@@ -477,6 +479,11 @@ export default function CommunityCalendar() {
   const nextEvent = events[0] || null
   const selectedCount = Object.values(selectedMembers).filter(Boolean).length
 
+  const notifyNativeCalendarSaved = useCallback(() => {
+    setSuccessMsg('Event added to your calendar.')
+    setTimeout(() => setSuccessMsg(null), 2200)
+  }, [])
+
   async function createEvent(formData: FormData) {
     const params = toUtcFormFields(formData)
     if (community_id) params.append('community_id', String(community_id))
@@ -630,7 +637,8 @@ export default function CommunityCalendar() {
                 onClick={() =>
                   void (async () => {
                     try {
-                      await exportEventToDeviceCalendar(nextEvent.id, eventItemToExportFields(nextEvent))
+                      const outcome = await exportEventToDeviceCalendar(nextEvent.id, eventItemToExportFields(nextEvent))
+                      if (outcome.via === 'native') notifyNativeCalendarSaved()
                     } catch (err: unknown) {
                       const msg = err instanceof Error ? err.message : 'Could not export'
                       alert(msg)
@@ -682,6 +690,7 @@ export default function CommunityCalendar() {
                 onShowDetails={setRsvpEvent}
                 onEdit={setEditingEvent}
                 onDelete={deleteEvent}
+                onNativeCalendarSaved={notifyNativeCalendarSaved}
               />
             ))
           )}

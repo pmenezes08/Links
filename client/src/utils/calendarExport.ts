@@ -14,6 +14,9 @@ import {
 
 export type { CalendarExportEventFields } from './calendarExportTypes'
 
+/** How the event was added: native EventKit write vs .ics share/download. */
+export type CalendarExportResult = { via: 'native' } | { via: 'ics' }
+
 const NATIVE_ICS_FAILED_MSG =
   'Could not share the calendar file. Try again or open this event in your browser.'
 
@@ -135,7 +138,7 @@ function snapshotMatchesId(snap: CalendarExportEventFields, eventId: number): bo
 export async function exportEventToDeviceCalendar(
   eventId: number | string,
   snapshot?: CalendarExportEventFields | null,
-): Promise<void> {
+): Promise<CalendarExportResult> {
   const idNum = typeof eventId === 'string' ? parseInt(eventId, 10) : eventId
   if (Number.isNaN(idNum)) throw new Error('Invalid event id')
 
@@ -147,11 +150,12 @@ export async function exportEventToDeviceCalendar(
     }
     if (snap) {
       const ok = await tryWriteNativeDeviceCalendar(snap)
-      if (ok) return
+      if (ok) return { via: 'native' }
     }
   }
 
   await downloadIcsFile(eventId)
+  return { via: 'ics' }
 }
 
 /** After editing an event on the server, refresh the native mirror only if one was created earlier from the app. */

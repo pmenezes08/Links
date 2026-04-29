@@ -17,19 +17,23 @@ function isNativeCapacitor(): boolean {
   return typeof window !== 'undefined' && Capacitor.isNativePlatform()
 }
 
-/** Capacitor / plugin bridge may return a string or `{ result: string }`. */
+/** Capacitor / plugin bridge may return a string or nested `{ result: ... }`. */
 function normalizePermissionState(raw: unknown): string {
   if (raw == null) return ''
   if (typeof raw === 'string') return raw.trim().toLowerCase()
   if (typeof raw === 'object' && raw !== null && 'result' in raw) {
-    const inner = (raw as { result: unknown }).result
-    if (typeof inner === 'string') return inner.trim().toLowerCase()
+    return normalizePermissionState((raw as { result: unknown }).result)
   }
   return ''
 }
 
 function permGranted(normalized: string): boolean {
-  return normalized === 'granted' || normalized === 'limited'
+  return (
+    normalized === 'granted' ||
+    normalized === 'limited' ||
+    normalized === 'authorized' ||
+    normalized === 'full'
+  )
 }
 
 async function loadIdMap(): Promise<Record<string, string>> {
@@ -216,13 +220,16 @@ export async function tryWriteNativeDeviceCalendar(snapshot: CalendarExportEvent
     await persistNativeCalendarEventId(snapshot.id, null)
   }
 
-  const calendarId = await resolveWritableCalendarId(CapacitorCalendar)
+  const isIos = Capacitor.getPlatform() === 'ios'
+  /** iOS: omit calendarId so EventKit uses defaultCalendarForNewEvents; a listed id can be read-only/subscribed and break saves. */
+  const calendarId = isIos ? undefined : await resolveWritableCalendarId(CapacitorCalendar)
   const payloadWithCal = buildCreateEventPayload(snapshot, calendarId)
   const payloadSansCal = buildCreateEventPayload(snapshot)
 
   let nativeId = ''
   try {
-    nativeId = String((await CapacitorCalendar.createEvent(payloadWithCal)).result ?? '').trim()
+    const firstPayload = isIos ? payloadSansCal : payloadWithCal
+    nativeId = String((await CapacitorCalendar.createEvent(firstPayload)).result ?? '').trim()
   } catch (e) {
     throw new Error(pluginErrorMessage(e))
   }

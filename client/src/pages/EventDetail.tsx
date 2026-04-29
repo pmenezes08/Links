@@ -120,7 +120,10 @@ export default function EventDetail(){
         description: event.description,
         community_name: event.community_name,
       }
-      await exportEventToDeviceCalendar(event_id, snap)
+      const outcome = await exportEventToDeviceCalendar(event_id, snap)
+      if (outcome.via === 'native') {
+        alert('Event added to your calendar.')
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Could not export calendar'
       alert(msg)
