@@ -674,7 +674,7 @@ export default function PremiumDashboard() {
 
       {/* Main content area with proper positioning */}
       <div
-        className={`min-h-screen ${communities.length > 0 ? 'pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]' : 'pb-20'} ${isWeb ? 'lg:ml-64' : 'md:ml-52'}`}
+        className={`min-h-screen ${communities.length > 0 ? 'pb-[calc(3.5rem+env(safe-area-inset-bottom,0px)+12px)]' : 'pb-20'} ${isWeb ? 'lg:ml-64' : 'md:ml-52'}`}
       >
         <div className="app-content max-w-5xl mx-auto px-3 py-6">
           <div 
@@ -863,19 +863,20 @@ export default function PremiumDashboard() {
             )}
         </div>
 
-        {/* Bottom navigation — full-width, above home indicator; black liquid glass (dashboard only) */}
+        {/* Bottom navigation — full-width rectangle; black fills safe area (group chat pattern) */}
         {communities.length > 0 && (
           <div
-            className="fixed bottom-0 left-0 right-0 z-[100]"
-            style={{
-              paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-              paddingLeft: 'env(safe-area-inset-left, 0px)',
-              paddingRight: 'env(safe-area-inset-right, 0px)',
-              touchAction: 'manipulation',
-            }}
+            className="fixed bottom-0 left-0 right-0 z-[100] flex flex-col"
+            style={{ touchAction: 'manipulation' }}
           >
-            <div className="liquid-glass-surface !rounded-t-[1.75rem] !rounded-b-none !border-x-0 !border-b-0 !border-t !border-white/12 !bg-black/55 backdrop-blur-[36px] backdrop-saturate-[175%] shadow-[0_-20px_56px_rgba(0,0,0,0.6)] [box-shadow:inset_0_1px_0_rgba(255,255,255,0.06)]">
-              <div className="relative z-[1] h-14 px-2 sm:px-4 flex items-center justify-between gap-1 text-[#cfd8dc]">
+            <div
+              className="liquid-glass-surface !rounded-none !border-x-0 !border-b-0 !border-t !border-white/12 !bg-black/92 backdrop-blur-[36px] backdrop-saturate-[175%] shadow-[0_-12px_40px_rgba(0,0,0,0.55)] [box-shadow:inset_0_1px_0_rgba(255,255,255,0.06)] w-full"
+              style={{
+                paddingLeft: 'env(safe-area-inset-left, 0px)',
+                paddingRight: 'env(safe-area-inset-right, 0px)',
+              }}
+            >
+              <div className="relative z-[1] h-14 flex items-center justify-between gap-1 text-[#cfd8dc] px-2 sm:px-4">
                 <button
                   type="button"
                   className={`p-2 sm:p-3 rounded-full transition-colors touch-manipulation ${isDashboardRoute ? 'bg-white/10' : 'hover:bg-white/10 active:bg-white/15'}`}
@@ -915,6 +916,12 @@ export default function PremiumDashboard() {
                 </button>
               </div>
             </div>
+            {/* Home indicator zone — opaque black so list content never shows through */}
+            <div
+              className="w-full flex-shrink-0 bg-black"
+              style={{ height: 'env(safe-area-inset-bottom, 0px)' }}
+              aria-hidden
+            />
           </div>
         )}
       </div>
