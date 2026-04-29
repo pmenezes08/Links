@@ -350,7 +350,7 @@ backend endpoint.
 | **URI** | `{BASE}/api/cron/steve/reminder-vault-dispatch` |
 | **Method** | `POST` |
 | **Header** | `X-Cron-Secret` = same `CRON_SHARED_SECRET` as other crons |
-| **Suggested schedule** | Every 5 minutes (`*/5 * * * *`, UTC) |
+| **Suggested schedule** | **Every minute** (`*/1 * * * *`, UTC) — short “in N minutes” nudges stay within about a minute after the due time (a 5‑minute cadence can delay by up to ~5 minutes). |
 
 Example (staging `BASE`):
 
@@ -360,10 +360,20 @@ SECRET=$(gcloud secrets versions access latest --secret=cron-shared-secret-stagi
 
 gcloud scheduler jobs create http steve-reminder-vault-dispatch \
   --location=europe-west1 \
-  --schedule="*/5 * * * *" \
+  --schedule="*/1 * * * *" \
   --time-zone=UTC \
   --uri="$BASE/api/cron/steve/reminder-vault-dispatch" \
   --http-method=POST \
   --headers="X-Cron-Secret=$SECRET" \
   --attempt-deadline=120s
+```
+
+Update an existing prod/staging job to every minute:
+
+```bash
+gcloud scheduler jobs update http steve-reminder-vault-dispatch \
+  --location=europe-west1 --schedule="*/1 * * * *" --time-zone=UTC
+
+gcloud scheduler jobs update http staging-steve-reminder-vault-dispatch \
+  --location=europe-west1 --schedule="*/1 * * * *" --time-zone=UTC
 ```
