@@ -18,6 +18,13 @@
 		"scrollEnabled": true
 	},
 	"plugins": {
+		"PushNotifications": {
+			"presentationOptions": [
+				"badge",
+				"sound",
+				"alert"
+			]
+		},
 		"Keyboard": {
 			"resize": "none",
 			"style": "dark"
@@ -37,11 +44,13 @@
 	"packageClassList": [
 		"AppPlugin",
 		"DevicePlugin",
+		"FilesystemPlugin",
 		"GeolocationPlugin",
 		"KeyboardPlugin",
 		"CAPNetworkPlugin",
 		"PreferencesPlugin",
 		"PushNotificationsPlugin",
+		"SharePlugin",
 		"InAppBrowserPlugin",
 		"GoogleAuth",
 		"CapacitorCalendarPlugin",

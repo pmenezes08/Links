@@ -110,6 +110,45 @@ function loadCalendarPlugin(): Promise<typeof import('@ebarooni/capacitor-calend
   return calendarModulePromise
 }
 
+type CapCal = Awaited<ReturnType<typeof loadCalendarPlugin>>['CapacitorCalendar']
+
+function buildCreateEventPayload(
+  snapshot: CalendarExportEventFields,
+  calendarId?: string,
+): Parameters<CapCal['createEvent']>[0] {
+  const { startMs, endMs, isAllDay } = eventToNativeRange(snapshot)
+  const payload: Parameters<CapCal['createEvent']>[0] = {
+    title: snapshot.title || 'C-Point event',
+    startDate: startMs,
+    endDate: endMs,
+    isAllDay,
+  }
+  const loc = snapshot.community_name?.trim()
+  if (loc) payload.location = loc
+  const notes = snapshot.description?.trim()
+  if (notes) payload.notes = notes
+  payload.url = eventDeepLink(snapshot.id)
+  if (calendarId) payload.calendarId = calendarId
+  return payload
+}
+
+/** Prefer default calendar if writable; else first writable calendar from listCalendars. */
+async function resolveWritableCalendarId(CapacitorCalendar: CapCal): Promise<string | undefined> {
+  try {
+    const { result: defaultCal } = await CapacitorCalendar.getDefaultCalendar()
+    if (defaultCal?.id && defaultCal.allowsContentModifications !== false) {
+      return String(defaultCal.id)
+    }
+    const { result: list } = await CapacitorCalendar.listCalendars()
+    const writable = list?.find((c) => c.allowsContentModifications !== false && c.id)
+    if (writable?.id) return String(writable.id)
+    if (defaultCal?.id) return String(defaultCal.id)
+  } catch {
+    /* ignore */
+  }
+  return undefined
+}
+
 /**
  * Create or replace the native calendar row for this C-Point event. Returns true if written natively.
  */
@@ -131,28 +170,32 @@ export async function tryWriteNativeDeviceCalendar(snapshot: CalendarExportEvent
       await persistNativeCalendarEventId(snapshot.id, null)
     }
 
-    const { result: defaultCal } = await CapacitorCalendar.getDefaultCalendar()
-    const rawCalId = defaultCal?.id
-    const calendarId = rawCalId != null && rawCalId !== '' ? String(rawCalId) : undefined
+    const calendarId = await resolveWritableCalendarId(CapacitorCalendar)
+    const payloadWithCal = buildCreateEventPayload(snapshot, calendarId)
+    const payloadSansCal = buildCreateEventPayload(snapshot)
 
-    const { startMs, endMs, isAllDay } = eventToNativeRange(snapshot)
+    let nativeId = (await CapacitorCalendar.createEvent(payloadWithCal)).result?.trim() ?? ''
+    if (!nativeId && calendarId) {
+      nativeId = (await CapacitorCalendar.createEvent(payloadSansCal)).result?.trim() ?? ''
+    }
 
-    const { result: nativeId } = await CapacitorCalendar.createEvent({
-      title: snapshot.title || 'C-Point event',
-      calendarId,
-      location: snapshot.community_name?.trim() || undefined,
-      notes: snapshot.description?.trim() || undefined,
-      url: eventDeepLink(snapshot.id),
-      startDate: startMs,
-      endDate: endMs,
-      isAllDay,
-    })
+    if (!nativeId) {
+      try {
+        const { result: promptIds } = await CapacitorCalendar.createEventWithPrompt(payloadSansCal)
+        nativeId = promptIds?.[0]?.trim() ?? ''
+      } catch {
+        /* user cancelled or sheet failed */
+      }
+    }
+
     if (nativeId) {
       await persistNativeCalendarEventId(snapshot.id, nativeId)
       return true
     }
     if (import.meta.env.DEV) {
-      console.warn('[native calendar] createEvent returned no id; falling back to .ics if used from exportEventToDeviceCalendar')
+      console.warn(
+        '[native calendar] createEvent returned no id; falling back to .ics if used from exportEventToDeviceCalendar',
+      )
     }
     return false
   } catch (e) {

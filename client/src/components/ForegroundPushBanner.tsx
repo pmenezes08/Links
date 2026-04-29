@@ -10,8 +10,8 @@ import {
 const AUTO_DISMISS_MS = 5000
 const DEDupe_MS = 3500
 const SWIPE_UP_DISMISS_PX = 48
-const LOGO_PRIMARY = '/static/logo.png'
-const LOGO_FALLBACK = '/static/icons/icon-192.png'
+
+const LOGO_SOURCES = ['/api/public/logo', '/static/logo.png', '/static/icons/icon-192.png'] as const
 
 type BannerState =
   | { visible: false }
@@ -25,12 +25,14 @@ type BannerState =
 
 /**
  * Native-only toast when a push arrives in the foreground (see PushInit).
- * Bottom-anchored light card with logo; tap opens deep link; swipe up dismisses.
+ * Full-width compact bar at the top (above in-app chrome such as z-[1000] headers);
+ * tap opens deep link; swipe up dismisses; auto-dismiss after ~5s.
  */
 export default function ForegroundPushBanner() {
   const navigate = useNavigate()
   const location = useLocation()
   const [banner, setBanner] = useState<BannerState>({ visible: false })
+  const [logoSrcIndex, setLogoSrcIndex] = useState(0)
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastPayloadKeyRef = useRef<{ key: string; at: number } | null>(null)
   const touchStartY = useRef<number | null>(null)
@@ -61,6 +63,7 @@ export default function ForegroundPushBanner() {
       lastPayloadKeyRef.current = { key: payloadKey, at: now }
 
       clearTimer()
+      setLogoSrcIndex(0)
       setBanner({ visible: true, headline, subline, url, entered: false })
       requestAnimationFrame(() => {
         setBanner((b) => (b.visible ? { ...b, entered: true } : b))
@@ -107,15 +110,14 @@ export default function ForegroundPushBanner() {
 
   if (!banner.visible) return null
 
-  const transform = banner.entered ? 'translateY(0)' : 'translateY(110%)'
+  const transform = banner.entered ? 'translateY(0)' : 'translateY(-100%)'
   const opacity = banner.entered ? 1 : 0
 
   return (
     <div
-      className="pointer-events-none fixed left-0 right-0 z-[1200] flex justify-center px-3"
+      className="pointer-events-none fixed left-0 right-0 top-0 z-[1200]"
       style={{
-        bottom: 0,
-        paddingBottom: 'max(0.75rem, calc(env(safe-area-inset-bottom, 0px) + 5.25rem))',
+        paddingTop: 'max(0px, env(safe-area-inset-top, 0px))',
       }}
       role="status"
       aria-live="polite"
@@ -125,26 +127,28 @@ export default function ForegroundPushBanner() {
         onClick={onBannerClick}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
-        className="pointer-events-auto flex max-w-lg gap-3 rounded-2xl border border-black/10 bg-white px-3.5 py-3 text-left shadow-xl transition-[transform,opacity] duration-200 ease-out"
+        className="pointer-events-auto flex w-full items-center gap-2.5 border-b border-black/10 bg-white px-3 py-2 text-left shadow-md transition-[transform,opacity] duration-200 ease-out"
         style={{ transform, opacity }}
         aria-label={`${banner.headline}. Tap to open.`}
       >
         <img
-          src={LOGO_PRIMARY}
+          src={LOGO_SOURCES[logoSrcIndex]}
           alt=""
-          width={40}
-          height={40}
-          className="mt-0.5 h-10 w-10 shrink-0 rounded-lg object-contain"
-          onError={(e) => {
-            const el = e.currentTarget
-            if (el.src.endsWith(LOGO_FALLBACK)) return
-            el.src = LOGO_FALLBACK
-          }}
+          width={32}
+          height={32}
+          className="h-8 w-8 shrink-0 rounded-md object-contain"
+          onError={() =>
+            setLogoSrcIndex((i) => (i + 1 < LOGO_SOURCES.length ? i + 1 : i))
+          }
         />
-        <div className="min-w-0 flex-1 flex flex-col gap-0.5 pt-0.5">
-          <span className="text-sm font-semibold leading-snug text-neutral-900 line-clamp-2">{banner.headline}</span>
+        <div className="min-w-0 flex-1 py-0.5">
+          <span className="block text-sm font-semibold leading-tight text-neutral-900 line-clamp-1">
+            {banner.headline}
+          </span>
           {banner.subline ? (
-            <span className="text-xs leading-snug text-neutral-600 line-clamp-2">{banner.subline}</span>
+            <span className="mt-0.5 block text-xs leading-tight text-neutral-600 line-clamp-1">
+              {banner.subline}
+            </span>
           ) : null}
         </div>
       </button>

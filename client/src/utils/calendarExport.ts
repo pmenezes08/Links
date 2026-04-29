@@ -34,6 +34,35 @@ async function fetchEventSnapshot(eventId: number): Promise<CalendarExportEventF
   }
 }
 
+/** WKWebView often blocks programmatic downloads; write .ics to cache + system share sheet. */
+async function shareIcsBlobOnNative(blob: Blob, filename: string): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return false
+  try {
+    const [{ Filesystem, Directory, Encoding }, { Share }] = await Promise.all([
+      import('@capacitor/filesystem'),
+      import('@capacitor/share'),
+    ])
+    const safeName = filename.replace(/[^\w.-]+/g, '_').slice(0, 120) || 'event.ics'
+    const text = await blob.text()
+    const { uri } = await Filesystem.writeFile({
+      path: safeName,
+      data: text,
+      directory: Directory.Cache,
+      encoding: Encoding.UTF8,
+    })
+    if (!uri) return false
+    await Share.share({
+      title: 'Add to calendar',
+      text: 'Open with Calendar',
+      files: [uri],
+      dialogTitle: 'Add to calendar',
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function downloadIcsFile(eventId: number | string): Promise<void> {
   const id = String(eventId)
   const res = await fetch(`/api/calendar_events/${id}/ics`, {
@@ -53,6 +82,9 @@ async function downloadIcsFile(eventId: number | string): Promise<void> {
   }
   const blob = await res.blob()
   const filename = `cpoint-event-${id}.ics`
+  if (await shareIcsBlobOnNative(blob, filename)) {
+    return
+  }
   const file = new File([blob], filename, { type: 'text/calendar' })
   try {
     if (typeof navigator !== 'undefined' && navigator.canShare?.({ files: [file] })) {
