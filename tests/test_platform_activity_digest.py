@@ -83,6 +83,7 @@ def test_fallback_digest_contains_path_links():
         "communities": [
             {
                 "name": "Test Comm",
+                "post_count_others": 3,
                 "last_activity_label": "Jan 01, 2026",
                 "feed_path": "/community_feed_react/7",
                 "recent_posts": [{"author_label": "Alex", "content": "Hello world"}],
@@ -91,6 +92,7 @@ def test_fallback_digest_contains_path_links():
         "group_chats": [
             {
                 "name": "Squad",
+                "message_count_others": 2,
                 "last_activity_label": "2 hours ago",
                 "chat_path": "/group_chat/99",
                 "transcript": [{"sender_username": "bob", "text": "Hi team"}],
@@ -102,6 +104,14 @@ def test_fallback_digest_contains_path_links():
     assert "[Open chat](/group_chat/99)" in md
     assert "**Test Comm**" in md
     assert "**Squad**" in md
+    assert "Activity:" in md
+    assert "Posts from others in this window: 3" in md
+    assert "Messages from others in this window: 2" in md
+    assert "Summary:" in md
+    assert "Last activity: Jan 01, 2026" in md
+    assert "Last activity: 2 hours ago" in md
+    assert "• **" not in md
+    assert "@bob" not in md
     assert _digest_markdown_preserves_required_paths(md, payload)
     bad = md.replace("/community_feed_react/7", "")
     assert not _digest_markdown_preserves_required_paths(bad, payload)

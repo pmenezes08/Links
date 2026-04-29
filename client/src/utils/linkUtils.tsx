@@ -97,13 +97,39 @@ export function SmartLink({
     e.preventDefault()
     e.stopPropagation()
 
-    let resolvedHref = href
-    if (href.startsWith('/') && !href.startsWith('//')) {
-      resolvedHref =
+    const raw = href.trim()
+
+    // Path-only links: always React Router (parity with @mention → profile). Never window.open.
+    if (raw.startsWith('/') && !raw.startsWith('//')) {
+      const absForInvite =
         typeof window !== 'undefined'
-          ? `${window.location.origin}${href}`
-          : `https://app.c-point.co${href}`
+          ? new URL(raw, window.location.origin).href
+          : `https://app.c-point.co${raw}`
+      const pathInvite = extractInviteToken(absForInvite)
+      if (pathInvite) {
+        setProcessing(true)
+        try {
+          const result = await joinCommunityWithInvite(pathInvite)
+          if (result.success && result.communityId) {
+            if (onJoinCommunity && result.communityName) {
+              onJoinCommunity(result.communityName, result.communityId)
+            }
+            navigate(`/community_feed_react/${result.communityId}`)
+          } else if (result.alreadyMember && result.communityId) {
+            navigate(`/community_feed_react/${result.communityId}`)
+          } else {
+            alert(result.error || 'Failed to join community')
+          }
+        } finally {
+          setProcessing(false)
+        }
+        return
+      }
+      navigate(raw)
+      return
     }
+
+    let resolvedHref = raw
 
     // Landing page links (www.c-point.co) should open in browser
     if (isLandingPageLink(resolvedHref)) {
@@ -111,36 +137,29 @@ export function SmartLink({
       return
     }
 
-    // Check if this is an internal app.c-point.co link
     if (!isInternalLink(resolvedHref)) {
-      // External link - prefer in-platform article reader for roundups/news if provided
       if (onExternalClick) {
         onExternalClick(resolvedHref)
         return
       }
-      // Fallback to new tab
       window.open(resolvedHref, '_blank', 'noopener,noreferrer')
       return
     }
 
-    // Check for invite token
     const inviteToken = extractInviteToken(resolvedHref)
     if (inviteToken) {
       setProcessing(true)
       try {
         const result = await joinCommunityWithInvite(inviteToken)
-        
+
         if (result.success && result.communityId) {
-          // Successfully joined - show success and navigate
           if (onJoinCommunity && result.communityName) {
             onJoinCommunity(result.communityName, result.communityId)
           }
           navigate(`/community_feed_react/${result.communityId}`)
         } else if (result.alreadyMember && result.communityId) {
-          // Already a member - just navigate
           navigate(`/community_feed_react/${result.communityId}`)
         } else {
-          // Show error as alert for now
           alert(result.error || 'Failed to join community')
         }
       } finally {
@@ -149,7 +168,6 @@ export function SmartLink({
       return
     }
 
-    // Other internal link - navigate within the app
     const internalPath = extractInternalPath(resolvedHref)
     if (internalPath) {
       navigate(internalPath)

@@ -2,12 +2,16 @@ import { triggerDashboardServerPull } from './serverPull'
 import { refreshDashboardCommunities } from './dashboardCache'
 
 /**
- * Internal Link Handler
- * Intercepts links to app.c-point.co and handles them within the app
- * instead of opening in Safari/browser.
- * 
- * www.c-point.co links open in browser (landing page)
- * app.c-point.co links are handled internally
+ * Internal link policy (SPA vs browser)
+ *
+ * - **Path-only** URLs (`/community_feed_react/…`, `/group_chat/…`): handled by
+ *   SmartLink via `navigate(path)` — same in-app behavior as `@mention` → profile
+ *   (never `window.open` for these).
+ * - **Absolute** app URLs: `app.c-point.co`, same `window.location.hostname`,
+ *   and `*.run.app` (staging) are in-app; everything else falls through to
+ *   external handling unless `onExternalClick` is provided.
+ * - **Landing** (`www.c-point.co`, bare `c-point.co`): open in system browser
+ *   (marketing site), not the React app.
  */
 
 // Domains that should be handled internally (app subdomain only)

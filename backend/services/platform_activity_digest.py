@@ -544,6 +544,34 @@ def _grok_digest_intent_confirm(
         return True, suggested_window_hours, None, None
 
 
+def _community_fallback_summary_stub(comm: Dict[str, Any]) -> str:
+    """One short line from post snippets; no bullet list."""
+    posts = comm.get("recent_posts") or []
+    bits: List[str] = []
+    for p in posts[:2]:
+        cx = (p.get("content") or "").strip()
+        if cx:
+            bits.append(_snippet(cx, limit=140))
+    if bits:
+        return "Themes from recent posts include: " + " · ".join(bits)
+    return "There’s been activity in this community — open the feed below for the full thread."
+
+
+def _group_fallback_summary_stub(gc: Dict[str, Any]) -> str:
+    """One short line from a couple of transcript lines; no per-message bullets."""
+    tr = gc.get("transcript") or []
+    if not tr:
+        return "Open the chat below to catch up on what people discussed."
+    bits: List[str] = []
+    for row in tr[:3]:
+        tx = (row.get("text") or "").strip()
+        if tx:
+            bits.append(_snippet(tx, limit=100))
+    if bits:
+        return "The conversation touches on: " + " · ".join(bits[:3])
+    return "There’s recent group activity — tap below to read the full thread."
+
+
 def _grok_compose_digest_from_facts(
     *,
     viewer_username: str,
@@ -558,22 +586,29 @@ def _grok_compose_digest_from_facts(
 
     client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
     system = (
-        "You are Steve on C-Point. You receive **only** JSON facts about the member’s communities and group chats "
-        "(posts and messages from **other members** in the time window — the viewer’s own posts/messages are excluded). "
-        "Write a warm, sectioned digest in markdown.\n"
-        "**Rules (strict):**\n"
-        "- Summarize **only** what appears in the JSON. **Never** invent users, posts, URLs, titles, or events.\n"
-        "- Use **author_label** / **author_username** from `recent_posts` and **sender_username** from group `transcript`. "
-        "Do not say “others” when a name exists.\n"
-        "- For posts with `has_image` true, describe the **caption/text** and note that a photo/image was shared if `content` is thin; "
-        "do **not** claim you saw the image pixels unless vision was used (you only have text paths in JSON).\n"
-        "- For each group, summarize **what was discussed** from the transcript lines, not message counts.\n"
-        "- Include **exactly one** line per community: `[Open feed](FEED_PATH)` where FEED_PATH is the `feed_path` string from JSON for that community.\n"
-        "- Include **exactly one** line per group: `[Open chat](CHAT_PATH)` where CHAT_PATH is the `chat_path` string from JSON.\n"
-        "  Those paths MUST be copied **verbatim** (they start with `/`).\n"
-        "- Include a **Last activity:** line per section using `last_activity_label` when present (human-friendly).\n"
-        "- No `#` headings. Separate sections with a blank line.\n"
-        "- Match the user’s language if clearly not English."
+        "You are Steve on C-Point. You receive **only** JSON facts (`FACTS_JSON`): communities and group chats "
+        "with activity from **other members** (the viewer’s own posts/messages are excluded).\n"
+        "Output **markdown only** using **this exact section layout** for **each** community and **each** group, "
+        "in separate blocks separated by a blank line:\n"
+        "1) Line: `**CommunityNameOrGroupName**` (from JSON `name`).\n"
+        "2) Blank line.\n"
+        "3) Line starting with `Activity:` — **only** counts from JSON, on their own lines:\n"
+        "   - For each **community**: `Posts from others in this window: {post_count_others}` using the exact integer from JSON.\n"
+        "   - For each **group**: `Messages from others in this window: {message_count_others}` using the exact integer from JSON.\n"
+        "4) Blank line.\n"
+        "5) Line: `Last activity: {last_activity_label}` using the exact `last_activity_label` from JSON when present; "
+        "if empty, omit this line entirely.\n"
+        "6) Blank line.\n"
+        "7) Line: `Summary:` followed by **exactly one short paragraph** (no bullets, no `•`, no numbering, "
+        "**no pasted quotes** of full messages/posts). Themes only — draw only from "
+        "`recent_posts`, `content`, captions, image flags, and for groups from `transcript[].text`. "
+        "For groups describe what was discussed in normal human prose (e.g. sports, trips, logistics).\n"
+        "8) Blank line.\n"
+        "9) Exactly one link line: `[Open feed](FEED_PATH)` or `[Open chat](CHAT_PATH)` using the **verbatim** "
+        "`feed_path` / `chat_path` from JSON (they start with `/`).\n"
+        "**Strict rules:** Never invent names, counts, URLs, or events not in JSON. "
+        "Do **not** put Activity counts on the same line as the Summary paragraph. "
+        "No `#` headings. Match the user’s language if clearly not English."
     )
     blob = json.dumps(facts, ensure_ascii=False, indent=2)
     user_blob = (
@@ -603,34 +638,32 @@ def _grok_compose_digest_from_facts(
 
 
 def _fallback_deterministic_digest_body(payload: Dict[str, Any]) -> str:
-    """Minimal grounded body if LLM unavailable; uses names from JSON."""
+    """Deterministic layout: Activity counts separate from Summary; path links."""
     parts: List[str] = []
     for comm in payload.get("communities") or []:
         name = (comm.get("name") or "").strip() or "Community"
-        lines = [f"**{name}**", ""]
+        pc = int(comm.get("post_count_others") or 0)
         la = (comm.get("last_activity_label") or "").strip()
+        lines = [f"**{name}**", "", "Activity:", f"Posts from others in this window: {pc}", ""]
         if la:
-            lines.append(f"Last activity: {la}.")
-        for p in comm.get("recent_posts") or []:
-            who = (p.get("author_label") or p.get("author_username") or "Member") or "Member"
-            cx = (p.get("content") or "").strip()
-            if cx:
-                lines.append(f"• **{who}:** {_snippet(cx, limit=280)}")
+            lines.append(f"Last activity: {la}")
+            lines.append("")
+        lines.append("Summary:")
+        lines.append(_community_fallback_summary_stub(comm))
         lines.append("")
         lines.append(f"[Open feed]({(comm.get('feed_path') or '').strip()})")
         parts.append("\n".join(lines))
 
     for gc in payload.get("group_chats") or []:
         name = (gc.get("name") or "").strip() or "Group chat"
-        lines = [f"**{name}**", ""]
+        mc = int(gc.get("message_count_others") or 0)
         la = (gc.get("last_activity_label") or "").strip()
+        lines = [f"**{name}**", "", "Activity:", f"Messages from others in this window: {mc}", ""]
         if la:
-            lines.append(f"Last activity: {la}.")
-        for t in gc.get("transcript") or []:
-            who = (t.get("sender_username") or "someone").strip()
-            tx = (t.get("text") or "").strip()
-            if tx:
-                lines.append(f"• **@{who}:** {_snippet(tx, limit=240)}")
+            lines.append(f"Last activity: {la}")
+            lines.append("")
+        lines.append("Summary:")
+        lines.append(_group_fallback_summary_stub(gc))
         lines.append("")
         lines.append(f"[Open chat]({(gc.get('chat_path') or '').strip()})")
         parts.append("\n".join(lines))
