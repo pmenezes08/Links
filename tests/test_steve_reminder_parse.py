@@ -6,6 +6,8 @@ import pytest
 
 from backend.services.steve_reminder_parse import (
     draft_followup_composite_texts,
+    expand_colloquial_datetime_phrases,
+    extract_subject,
     looks_like_time_only_followup,
     match_create_opener,
     normalize_time_phrases_for_parse,
@@ -77,10 +79,26 @@ def test_draft_followup_composite_texts_shape():
     assert any("11am" in p for p in parts)
 
 
+def test_opener_remind_me_call():
+    m = match_create_opener("Steve, remind me call my mom at 11:30am")
+    assert m is not None
+    assert (m.group("tail") or "").strip() == "my mom at 11:30am"
+
+
+def test_expand_in_hours_short():
+    low = expand_colloquial_datetime_phrases("Call mom in 2h tonight").lower()
+    assert "in 2 hours" in low
+
+
+def test_extract_subject_splits_at_before_time():
+    assert extract_subject("call my mom at 11:30am") == "call my mom"
+
+
 @pytest.mark.parametrize(
     "line,expected",
     [
         ("11am", True),
+        ("11:25", True),
         ("3:30 pm", True),
         ("14h30", True),
         ("in 2 hours", True),

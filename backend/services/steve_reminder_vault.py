@@ -279,8 +279,13 @@ def _apply_slots_schedule(
 
     if not dt_utc:
         if len(subject.strip()) >= 4:
-            _save_draft(username, subject)
-            return f"Sure — what time should I nudge you about: {subject}?"
+            if draft_fallback_subject is None:
+                _save_draft(username, subject)
+                return f"Sure — what time should I nudge you about: {subject}?"
+            return (
+                "I couldn’t read that as a time — try **11:25am**, **3pm**, **in 30 minutes**, "
+                "or **tomorrow 9:00**."
+            )
         return None
 
     return _insert_if_parsed(username, subject, dt_utc, when_face or "", tz_label)

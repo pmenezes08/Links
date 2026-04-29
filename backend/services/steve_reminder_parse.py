@@ -19,6 +19,7 @@ _RE_CREATE: Pattern[str] = re.compile(
     r"(?P<opener>"
     r"remind\s+me\s+to\s+|"
     r"remind\s+me\s+that\s+|"
+    r"remind\s+me\s+call\s+|"
     r"don'?t\s+forget\s+(?:to\s+)?|"
     r"remember\s+that\s+|"
     r"remind\s+me\s+"
@@ -53,10 +54,11 @@ _REMINDER_PLAUSIBLE = re.compile(
     re.I | re.X,
 )
 
-# Short follow-up lines that usually mean “the time only” during a vault draft (11am, 14h30…).
+# Short follow-up lines that usually mean “the time only” during a vault draft (11am, 11:25, 14h30…).
 _TIME_ONLY_LIKE = re.compile(
     r"^\s*("
     r"\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.)\b|"
+    r"\d{1,2}:\d{2}(?::\d{2})?\s*$|"
     r"\d{1,2}\s*h\s*\d{2}(?:\s*(am|pm|a\.m\.|p\.m\.))?\b|"
     r"(noon|midnight)\b|"
     r"in\s+\d+\s*(min|minute|minutes|hour|hours|hr|h)\b"
@@ -100,15 +102,27 @@ def normalize_time_phrases_for_parse(text: str) -> str:
     return _RE_H_CLOCK.sub(repl, raw)
 
 
+def expand_colloquial_datetime_phrases(text: str) -> str:
+    """Expand compact English relative/time shorthands so dateparser finds a fire time."""
+    s = (text or "").strip()
+    if not s:
+        return s
+    # "in 2h", "in 1h30" → hours language dateparser prefers
+    s = re.sub(r"\bin\s+(\d+)\s*h\b", r"in \1 hours", s, flags=re.I)
+    s = re.sub(r"\bin\s+(\d+)\s*m\b", r"in \1 minutes", s, flags=re.I)
+    s = re.sub(r"\bin\s+(\d+)\s*min\b", r"in \1 minutes", s, flags=re.I)
+    return s
+
+
 def extract_subject(reminder_strip: str) -> str:
-    """Heuristic subject before trailing time/date (English-oriented `` at `` / `` on ``)."""
+    """Heuristic subject before trailing time/date (`` at `` / `` on `` / `` in `` delta)."""
     t = reminder_strip.strip()
     low = t.lower()
-    for marker in (" on ", " at "):
+    for marker in (" on ", " at ", " in "):
         idx = low.rfind(marker)
-        if idx > 12:
+        if idx > 8:
             maybe = t[:idx].strip()
-            if len(maybe) >= 8:
+            if len(maybe) >= 4:
                 return maybe
     return t
 
@@ -118,15 +132,17 @@ def try_parse_fire_datetime(text_after_trigger: str, tz_name: str) -> Tuple[Opti
 
     Approximate weekday/tomorrow semantics use naive UTC noon math for the fallback lane only;
     dateparser is preferred when it finds explicit dates/times relative to user's timezone."""
-    normalized = normalize_time_phrases_for_parse(text_after_trigger)
+    normalized = expand_colloquial_datetime_phrases(
+        normalize_time_phrases_for_parse(text_after_trigger)
+    )
     raw = normalized.strip()
     if not raw:
         return None, None
     try:
-        import dateparser  # type: ignore
+        from dateparser.search import search_dates
 
         tz = tz_name or "UTC"
-        dp_out = dateparser.search.search_dates(
+        dp_out = search_dates(
             raw,
             settings={
                 "TIMEZONE": tz,
