@@ -863,14 +863,19 @@ export default function PremiumDashboard() {
             )}
         </div>
 
-        {/* Bottom navigation — match CommunityFeed position + chrome (dashboard with communities only) */}
+        {/* Bottom navigation — full-width, above home indicator; black liquid glass (dashboard only) */}
         {communities.length > 0 && (
           <div
-            className="fixed bottom-0 left-0 right-0 z-[100] px-3 sm:px-6"
-            style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', touchAction: 'manipulation' }}
+            className="fixed bottom-0 left-0 right-0 z-[100]"
+            style={{
+              paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+              paddingLeft: 'env(safe-area-inset-left, 0px)',
+              paddingRight: 'env(safe-area-inset-right, 0px)',
+              touchAction: 'manipulation',
+            }}
           >
-            <div className="bg-black border border-white/10 rounded-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.45)] max-w-2xl mx-auto mb-2">
-              <div className="h-14 px-1 sm:px-4 flex items-center justify-between gap-1 text-[#cfd8dc]">
+            <div className="liquid-glass-surface !rounded-t-[1.75rem] !rounded-b-none !border-x-0 !border-b-0 !border-t !border-white/12 !bg-black/55 backdrop-blur-[36px] backdrop-saturate-[175%] shadow-[0_-20px_56px_rgba(0,0,0,0.6)] [box-shadow:inset_0_1px_0_rgba(255,255,255,0.06)]">
+              <div className="relative z-[1] h-14 px-2 sm:px-4 flex items-center justify-between gap-1 text-[#cfd8dc]">
                 <button
                   type="button"
                   className={`p-2 sm:p-3 rounded-full transition-colors touch-manipulation ${isDashboardRoute ? 'bg-white/10' : 'hover:bg-white/10 active:bg-white/15'}`}
