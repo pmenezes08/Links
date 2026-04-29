@@ -113,3 +113,19 @@ def test_try_parse_first_candidate_finds_time_in_composite():
     texts = draft_followup_composite_texts("call my mom", "tomorrow at 3pm")
     dt, face = try_parse_fire_datetime_first_candidate(texts, "UTC")
     assert dt is not None and face
+
+
+def test_try_parse_when_face_uses_city_style_label():
+    dt, face = try_parse_fire_datetime("in 5 minutes", "Europe/Dublin")
+    assert dt is not None and face
+    assert "(" in face and "time)" in face
+    assert "Europe/Dublin" not in (face or "")
+
+
+def test_format_reminder_wall_dublin_suffix():
+    from datetime import datetime
+
+    from backend.services.steve_reminder_vault import format_reminder_wall_time_naive_utc
+
+    s = format_reminder_wall_time_naive_utc(datetime(2026, 6, 15, 14, 30, 0), "Europe/Dublin")
+    assert "Dublin" in s and "time)" in s

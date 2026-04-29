@@ -3868,6 +3868,13 @@ def init_db():
                     logger.info("Added notification_show_previews column to users table")
             except Exception as ue:
                 logger.warning(f"Could not add notification_show_previews to users: {ue}")
+            try:
+                c.execute("SHOW COLUMNS FROM users LIKE 'timezone'")
+                if not c.fetchone():
+                    c.execute("ALTER TABLE users ADD COLUMN timezone VARCHAR(64) NULL")
+                    logger.info("Added timezone column to users table (IANA TZ for reminders)")
+            except Exception as ue:
+                logger.warning(f"Could not add timezone to users: {ue}")
             
             # Ensure notifications table has required columns
             try:
@@ -11985,7 +11992,17 @@ def api_profile_me():
                     else bool(int(get_val('notification_show_previews')))
                 ),
             }
-            
+            try:
+                c.execute("SELECT timezone FROM users WHERE username = ?", (username,))
+                tz_row = c.fetchone()
+                if tz_row:
+                    tz_raw = tz_row["timezone"] if hasattr(tz_row, "keys") else tz_row[0]
+                    profile["timezone"] = (str(tz_raw).strip() if tz_raw is not None else "") or None
+                else:
+                    profile["timezone"] = None
+            except Exception:
+                profile["timezone"] = None
+
             # Cache profile for faster future requests
             from redis_cache import USER_CACHE_TTL
             cache.set(cache_key, profile, USER_CACHE_TTL)  # Optimized TTL
@@ -12003,6 +12020,40 @@ def api_profile_me():
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
+
+
+@app.route('/api/account/timezone', methods=['POST'])
+@login_required
+def api_account_timezone():
+    """Persist the client device IANA timezone (e.g. Europe/Dublin) for Steve reminders and display."""
+    try:
+        from zoneinfo import ZoneInfo
+
+        data = request.get_json(silent=True) or {}
+        tz = str(data.get("timezone") or "").strip()
+        if not tz:
+            return jsonify({"success": False, "error": "timezone required"}), 400
+        try:
+            ZoneInfo(tz)
+        except Exception:
+            return jsonify({"success": False, "error": "invalid timezone"}), 400
+        username = session["username"]
+        from backend.services.steve_reminder_vault import ensure_users_timezone_column
+
+        ensure_users_timezone_column()
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(f"UPDATE users SET timezone = {ph} WHERE username = {ph}", (tz[:64], username))
+            conn.commit()
+        try:
+            cache.delete(f"profile:{username}")
+        except Exception:
+            pass
+        return jsonify({"success": True, "timezone": tz})
+    except Exception as e:
+        logger.error(f"api_account_timezone: {e}")
+        return jsonify({"success": False, "error": "server error"}), 500
 
 
 @app.route('/api/account/notification_preferences', methods=['POST'])

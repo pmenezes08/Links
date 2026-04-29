@@ -14,6 +14,9 @@ import random
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
+from zoneinfo import ZoneInfo
+
+_USR_TIMEZONE_ENSURED = False
 
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 
@@ -119,7 +122,73 @@ def _sql_now() -> str:
     return _now_utc_naive().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def ensure_users_timezone_column() -> None:
+    """Idempotent migration: ``users.timezone`` for IANA TZ (device-reported)."""
+    global _USR_TIMEZONE_ENSURED
+    if _USR_TIMEZONE_ENSURED:
+        return
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if USE_MYSQL:
+                c.execute("SHOW COLUMNS FROM users LIKE 'timezone'")
+                if not c.fetchone():
+                    c.execute("ALTER TABLE users ADD COLUMN timezone VARCHAR(64) NULL")
+                    logger.info("Added users.timezone column")
+                    conn.commit()
+            else:
+                c.execute("PRAGMA table_info(users)")
+                rows = c.fetchall() or []
+                names = []
+                for r in rows:
+                    if hasattr(r, "keys"):
+                        names.append(str(r["name"]))
+                    else:
+                        names.append(str(r[1]))
+                if "timezone" not in names:
+                    c.execute("ALTER TABLE users ADD COLUMN timezone TEXT")
+                    logger.info("Added users.timezone column (SQLite)")
+                    conn.commit()
+        _USR_TIMEZONE_ENSURED = True
+    except Exception as exc:
+        logger.warning("ensure_users_timezone_column: %s", exc)
+
+
+def _iana_city_label(tz_iana: str) -> str:
+    s = (tz_iana or "UTC").strip() or "UTC"
+    if "/" in s:
+        return s.split("/")[-1].replace("_", " ")
+    return s
+
+
+def format_reminder_wall_time_naive_utc(dt_utc_naive: datetime, tz_iana: str) -> str:
+    """User-facing reminder time label, e.g. ``Thu 01 Jan 2026, 14:30 (Dublin time)``."""
+    tzname = (tz_iana or "UTC").strip() or "UTC"
+    utc_aware = dt_utc_naive.replace(tzinfo=timezone.utc)
+    try:
+        local = utc_aware.astimezone(ZoneInfo(tzname))
+        label_tz = tzname
+    except Exception:
+        local = utc_aware.astimezone(timezone.utc)
+        label_tz = "UTC"
+    city = _iana_city_label(label_tz)
+    return f"{local.strftime('%a %d %b %Y, %H:%M')} ({city} time)"
+
+
+def _confirmation_when_line(
+    dt_utc_naive: datetime,
+    *,
+    tz_label: str,
+    when_face_fallback: str,
+) -> str:
+    try:
+        return format_reminder_wall_time_naive_utc(dt_utc_naive, tz_label)
+    except Exception:
+        return when_face_fallback or dt_utc_naive.strftime("%Y-%m-%d %H:%M:%S")
+
+
 def _fetch_user_timezone(username: str) -> str:
+    ensure_users_timezone_column()
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -469,7 +538,9 @@ def _insert_reminder_and_reply(
         conn.commit()
 
     rid_txt = str(rid) if rid else "?"
-    when_txt = when_face or dt_str
+    when_txt = _confirmation_when_line(
+        dt_utc, tz_label=tz_label, when_face_fallback=(when_face or "")
+    )
     tail = _vault_onboarding_tail(username, is_first_saved_reminder=is_first)
     return (
         f"Got it — I’ll nudge you around **{when_txt}**:\n\n{subject}\n\n"
@@ -486,13 +557,26 @@ def _vault_onboarding_tail(username: str, *, is_first_saved_reminder: bool) -> s
     )
 
 
+def _parse_fire_datetime_value(fa: Any) -> datetime:
+    if isinstance(fa, datetime):
+        return fa.replace(tzinfo=None) if fa.tzinfo else fa
+    s = str(fa).strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(s[: len(fmt)].replace("T", " "), fmt)
+        except Exception:
+            continue
+    return datetime.utcnow()
+
+
 def _format_list(username: str) -> str:
     ph = get_sql_placeholder()
+    default_tz = _fetch_user_timezone(username)
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(
             f"""
-            SELECT id, reminder_text, fire_at_utc, status FROM steve_reminder_vault
+            SELECT id, reminder_text, fire_at_utc, tz_label, status FROM steve_reminder_vault
             WHERE username = {ph} AND status = 'scheduled'
             ORDER BY fire_at_utc ASC
             LIMIT 30
@@ -510,10 +594,16 @@ def _format_list(username: str) -> str:
             rid = row["id"]
             txt = row["reminder_text"]
             fa = row["fire_at_utc"]
+            tz_lab = row["tz_label"]
         else:
-            rid, txt, fa, *_ = tuple(row[:3])
-        fa_s = fa.strftime("%Y-%m-%d %H:%M") if hasattr(fa, "strftime") else str(fa)
-        lines.append(f"- **#{rid}** — {fa_s} UTC — {txt}")
+            rid, txt, fa, tz_lab = tuple(row[:4])
+        tz_use = ((tz_lab or "").strip() or default_tz) or "UTC"
+        fa_dt = _parse_fire_datetime_value(fa)
+        try:
+            fa_line = format_reminder_wall_time_naive_utc(fa_dt, tz_use)
+        except Exception:
+            fa_line = fa_dt.strftime("%Y-%m-%d %H:%M") + " UTC"
+        lines.append(f"- **#{rid}** — {fa_line} — {txt}")
     lines.append("\nCancel with **cancel reminder #123**.")
     return "\n".join(lines)
 
@@ -652,18 +742,22 @@ def update_reminder_for_user(
 
 
 def dispatch_due_reminders(*, lookahead_minutes: int = 12, stale_catch_hours: int = 48) -> Dict[str, Any]:
-    """Cron: fire pending reminders."""
+    """Cron: fire pending reminders that are due (``fire_at_utc`` <= now, within stale catch-up window).
+
+    lookahead_minutes is kept for API compatibility; selection uses **now** as the upper bound so we
+    never nudge before the scheduled fire time.
+    """
+    del lookahead_minutes  # upper bound is always "now"; do not fire future rows
     ensure_reminder_tables()
     from backend.services.content_generation.delivery import send_steve_dm
 
     now = _now_utc_naive()
-    horizon = now + timedelta(minutes=max(1, lookahead_minutes))
+    now_s = now.strftime("%Y-%m-%d %H:%M:%S")
     stale_floor = now - timedelta(hours=max(1, stale_catch_hours))
 
     sent = 0
     errors = 0
     ph = get_sql_placeholder()
-    horizon_s = horizon.strftime("%Y-%m-%d %H:%M:%S")
     stale_s = stale_floor.strftime("%Y-%m-%d %H:%M:%S")
 
     cand_rows: list[Any] = []
@@ -675,11 +769,12 @@ def dispatch_due_reminders(*, lookahead_minutes: int = 12, stale_catch_hours: in
                     f"""
                     SELECT id, username, reminder_text, fire_at_utc FROM steve_reminder_vault
                     WHERE status = 'scheduled'
-                      AND fire_at_utc BETWEEN {ph} AND {ph}
+                      AND fire_at_utc >= {ph}
+                      AND fire_at_utc <= {ph}
                     ORDER BY fire_at_utc ASC
                     LIMIT 250
                     """,
-                    (stale_s, horizon_s),
+                    (stale_s, now_s),
                 )
             else:
                 c.execute(
@@ -691,7 +786,7 @@ def dispatch_due_reminders(*, lookahead_minutes: int = 12, stale_catch_hours: in
                     ORDER BY fire_at_utc ASC
                     LIMIT 250
                     """,
-                    (stale_s, horizon_s),
+                    (stale_s, now_s),
                 )
             cand_rows = list(c.fetchall() or [])
     except Exception as exc:

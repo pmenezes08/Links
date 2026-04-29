@@ -157,7 +157,8 @@ def try_parse_fire_datetime(text_after_trigger: str, tz_name: str) -> Tuple[Opti
                 parsed_local = parsed_local.replace(tzinfo=timezone.utc)
             fire_utc = parsed_local.astimezone(timezone.utc).replace(tzinfo=None)
             fmt = parsed_local.strftime("%a %d %b %Y, %H:%M")
-            when_face = f"{fmt} ({tz})"
+            city = tz.split("/")[-1].replace("_", " ") if "/" in tz else tz
+            when_face = f"{fmt} ({city} time)"
             return fire_utc, when_face
     except Exception as exc:
         logger.warning("Reminder dateparser failed (%s): %s", tz_name, exc)

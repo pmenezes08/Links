@@ -80,6 +80,7 @@ import CommentReply from './pages/CommentReply'
 import ShareIncomingRouteRedirect from './pages/ShareIncomingRouteRedirect'
 import { LogoutPromptProvider } from './contexts/LogoutPromptContext'
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './constants/googleOAuth'
+import { syncDeviceTimezoneReporting } from './utils/deviceTimezone'
 
 const queryClient = new QueryClient()
 
@@ -649,6 +650,8 @@ function AppRoutes(){
         if (username) {
           localStorage.setItem('current_username', username)
         }
+
+        syncDeviceTimezoneReporting()
 
         // Prefetch countries list so Edit Profile loads instantly
         if (!sessionStorage.getItem('geo_countries')) {

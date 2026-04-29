@@ -231,7 +231,7 @@ migration), run:
 for job in enterprise-grace-sweep enterprise-iap-nag enterprise-winback-expire \
            subscriptions-revoke-expired usage-cycle-notify \
            communities-lifecycle-dispatch media-purge-retained-stories \
-           event-reminder-dispatch kb-weekly-synthesis; do
+           event-reminder-dispatch kb-weekly-synthesis steve-reminder-vault-dispatch; do
   gcloud scheduler jobs pause "$job" --location=europe-west1
 done
 ```
