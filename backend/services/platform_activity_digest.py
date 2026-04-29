@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -77,6 +78,46 @@ def message_looks_like_platform_digest_intent(message: str) -> bool:
     return bool(m) and len(m) >= 12 and bool(_PLATFORM_DIGEST_INTENT.search(m))
 
 
+def _digest_app_base_url() -> str:
+    """Public app origin for https links (matches community invite conventions)."""
+    return (os.environ.get("PUBLIC_BASE_URL") or "").strip().rstrip("/") or "https://app.c-point.co"
+
+
+def _https_feed_url(community_id: int) -> str:
+    return f"{_digest_app_base_url()}/community_feed_react/{community_id}"
+
+
+def _https_group_chat_url(group_id: int) -> str:
+    return f"{_digest_app_base_url()}/group_chat/{group_id}"
+
+
+def _digest_opener_line(window_hours: int) -> str:
+    uh = coerce_window_hours(window_hours) or 24
+    if uh == 24:
+        span = "the past **24 hours**"
+    elif uh == 72:
+        span = "the past **3 days**"
+    elif uh == 120:
+        span = "the past **5 days**"
+    else:
+        span = "the past **7 days**"
+    return (
+        f"Here’s your **activity snapshot** over {span} — from communities and group chats "
+        "you’re in (**other people’s** posts and messages only; **no private DMs** counted).\n\n"
+    )
+
+
+def _ts_face(val: Any) -> str:
+    if val is None:
+        return ""
+    if hasattr(val, "isoformat"):
+        try:
+            return val.isoformat()
+        except Exception:
+            pass
+    return str(val)
+
+
 def build_platform_activity_digest(username: str, window_hours: int) -> Dict[str, Any]:
     """Return structured activity for Grok narration (never calls an LLM)."""
     uh = coerce_window_hours(window_hours) or 24
@@ -105,32 +146,38 @@ def build_platform_activity_digest(username: str, window_hours: int) -> Dict[str
             if USE_MYSQL:
                 c.execute(
                     f"""
-                    SELECT c.id AS community_id, c.name AS community_name, COUNT(p.id) AS post_count
+                    SELECT c.id AS community_id, c.name AS community_name,
+                           COUNT(p.id) AS post_count_others,
+                           MAX(p.timestamp) AS last_from_others_at
                     FROM posts p
                     INNER JOIN communities c ON c.id = p.community_id
                     INNER JOIN user_communities uc ON uc.community_id = c.id AND uc.user_id = {ph}
                     WHERE p.timestamp >= (UTC_TIMESTAMP() - INTERVAL {ph} HOUR)
+                      AND LOWER(p.username) <> LOWER({ph})
                     GROUP BY c.id, c.name
-                    HAVING post_count > 0
-                    ORDER BY post_count DESC, c.name ASC
+                    HAVING post_count_others > 0
+                    ORDER BY last_from_others_at DESC, post_count_others DESC, c.name ASC
                     LIMIT 40
                     """,
-                    (uid, uh),
+                    (uid, uh, username),
                 )
             else:
                 c.execute(
                     f"""
-                    SELECT c.id AS community_id, c.name AS community_name, COUNT(p.id) AS post_count
+                    SELECT c.id AS community_id, c.name AS community_name,
+                           COUNT(p.id) AS post_count_others,
+                           MAX(p.timestamp) AS last_from_others_at
                     FROM posts p
                     INNER JOIN communities c ON c.id = p.community_id
                     INNER JOIN user_communities uc ON uc.community_id = c.id AND uc.user_id = {ph}
                     WHERE datetime(p.timestamp) >= datetime('now', '-' || {ph} || ' hours')
+                      AND LOWER(p.username) <> LOWER({ph})
                     GROUP BY c.id, c.name
-                    HAVING post_count > 0
-                    ORDER BY post_count DESC, c.name ASC
+                    HAVING COUNT(p.id) > 0
+                    ORDER BY MAX(p.timestamp) DESC, COUNT(p.id) DESC, c.name ASC
                     LIMIT 40
                     """,
-                    (uid, uh_s),
+                    (uid, uh_s, username),
                 )
 
             comm_rows = c.fetchall() or []
@@ -139,13 +186,16 @@ def build_platform_activity_digest(username: str, window_hours: int) -> Dict[str
                 cid = int(row["community_id"] if hasattr(row, "keys") else row[0])
                 comm_ids.append(cid)
                 name = row["community_name"] if hasattr(row, "keys") else row[1]
-                pc = int(row["post_count"] if hasattr(row, "keys") else row[2])
+                pc = int(row["post_count_others"] if hasattr(row, "keys") else row[2])
+                last_o = row["last_from_others_at"] if hasattr(row, "keys") else row[3]
                 communities.append(
                     {
                         "community_id": cid,
                         "name": (name or "") or f"Community {cid}",
-                        "post_count": pc,
+                        "post_count_others": pc,
+                        "last_from_others_at": _ts_face(last_o),
                         "feed_path": f"/community_feed_react/{cid}",
+                        "feed_url_https": _https_feed_url(cid),
                         "recent_snippets": [],
                     }
                 )
@@ -159,10 +209,11 @@ def build_platform_activity_digest(username: str, window_hours: int) -> Dict[str
                         FROM posts p
                         WHERE p.community_id IN ({placeholders})
                           AND p.timestamp >= (UTC_TIMESTAMP() - INTERVAL {ph} HOUR)
+                          AND LOWER(p.username) <> LOWER({ph})
                         ORDER BY p.timestamp DESC
                         LIMIT 120
                         """,
-                        (*comm_ids, uh),
+                        (*comm_ids, uh, username),
                     )
                 else:
                     c.execute(
@@ -171,10 +222,11 @@ def build_platform_activity_digest(username: str, window_hours: int) -> Dict[str
                         FROM posts p
                         WHERE p.community_id IN ({placeholders})
                           AND datetime(p.timestamp) >= datetime('now', '-' || {ph} || ' hours')
+                          AND LOWER(p.username) <> LOWER({ph})
                         ORDER BY p.timestamp DESC
                         LIMIT 120
                         """,
-                        (*comm_ids, uh_s),
+                        (*comm_ids, uh_s, username),
                     )
                 per_comm: Dict[int, int] = {}
                 for row in c.fetchall() or []:
@@ -200,13 +252,14 @@ def build_platform_activity_digest(username: str, window_hours: int) -> Dict[str
                         SELECT m.group_id, COUNT(*) AS msg_count, MAX(m.id) AS max_id_window
                         FROM group_chat_messages m
                         WHERE m.created_at >= (UTC_TIMESTAMP() - INTERVAL {ph} HOUR)
+                          AND LOWER(m.sender_username) <> LOWER({ph})
                         GROUP BY m.group_id
                     ) mc ON mc.group_id = g.id
                     INNER JOIN group_chat_messages lm ON lm.id = mc.max_id_window
                     ORDER BY lm.created_at DESC
                     LIMIT 40
                     """,
-                    (username, uh),
+                    (username, uh, username),
                 )
             else:
                 c.execute(
@@ -219,13 +272,14 @@ def build_platform_activity_digest(username: str, window_hours: int) -> Dict[str
                         SELECT m.group_id, COUNT(*) AS msg_count, MAX(m.id) AS max_id_window
                         FROM group_chat_messages m
                         WHERE datetime(m.created_at) >= datetime('now', '-' || {ph} || ' hours')
+                          AND LOWER(m.sender_username) <> LOWER({ph})
                         GROUP BY m.group_id
                     ) mc ON mc.group_id = g.id
                     INNER JOIN group_chat_messages lm ON lm.id = mc.max_id_window
                     ORDER BY lm.created_at DESC
                     LIMIT 40
                     """,
-                    (username, uh_s),
+                    (username, uh_s, username),
                 )
 
             for row in c.fetchall() or []:
@@ -238,10 +292,11 @@ def build_platform_activity_digest(username: str, window_hours: int) -> Dict[str
                     {
                         "group_id": gid,
                         "name": (gnm or "") or f"Group chat {gid}",
-                        "message_count": mc,
+                        "message_count_others": mc,
                         "last_activity": str(last_ts) if last_ts is not None else "",
                         "last_snippet": _snippet(lsnip),
                         "chat_path": f"/group_chat/{gid}",
+                        "chat_url_https": _https_group_chat_url(gid),
                     }
                 )
 
@@ -272,14 +327,19 @@ def _grok_narrate_digest(payload: Dict[str, Any], *, username: str) -> Tuple[Opt
 
     client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
     system = (
-        "You are Steve, a real person on C-Point — warm, direct, never stiff. "
-        "The user asked for a quick sense of what’s been going on in their communities and group chats. "
-        "You will get JSON facts only; turn them into a short, natural reply (a few short paragraphs or loose bullets). "
-        "No dashboard tone, no labels like 'Post count:' or 'Summary:'. "
-        "Mention community and group names in passing; weave in the given path links as plain paths (they open in the app). "
-        "If a snippet is empty or thin, don’t invent drama — stay grounded in the data. "
-        "If there’s almost nothing, say it in a friendly, human way (quiet spell, not a report). "
-        "Do not use markdown headings. Match the user’s language if it’s clearly not English."
+        "You are Steve on C-Point — warm, human, not corporate. "
+        "You receive JSON listing communities and group chats **with activity from other people** in the window. "
+        "Write a **sectioned** reply only — **no** single wall of text spanning everything. "
+        "For **each** community in `communities` (in the **same order** as the JSON), output one block: "
+        "a line `**{that community's name}**` (bold), then 1–3 short sentences using `post_count_others`, "
+        "`recent_snippets`, and `last_from_others_at` where helpful. "
+        "Then a line with **one** markdown link using **exactly** the `feed_url_https` value, e.g. "
+        "[Open feed](FULL_URL_HERE) — do **not** paste bare `/paths` or URLs without https. "
+        "After communities, do the **same pattern** for each item in `group_chats`: bold title line, brief lines from "
+        "`message_count_others` and `last_snippet`, then `[Open chat](chat_url_https)` using the precise https URL from JSON. "
+        "Separate every community block and every group block with **one blank line**. "
+        "Do **not** use `#` headings. Speak from the facts; don't invent gossip. "
+        "If snippets are thin, acknowledge lightly without drama. Match the user's language if clearly not English."
     )
     user_blob = json.dumps(payload, ensure_ascii=False, indent=2)
     try:
@@ -328,7 +388,7 @@ def try_handle_platform_activity_digest_dm(
             )
         except Exception:
             pass
-        return body
+        return _digest_opener_line(wh) + body
     n_comm = len(payload.get("communities") or [])
     n_grp = len(payload.get("group_chats") or [])
     if n_comm == 0 and n_grp == 0:

@@ -122,7 +122,13 @@ set is what counts against `steve_uses_per_month` and `ai_daily_limit`.
 group-chat activity from a DM, use `surface=SURFACE_DM` with
 `request_type='platform_activity_digest'` for that Grok call. The
 read-only helper `GET /api/me/platform-activity-digest` returns JSON only
-and does **not** increment AI usage rows.
+and does **not** increment AI usage rows. Counts and snippets are **from
+other members only** (viewer’s own posts and group messages are excluded).
+Communities are ranked by **most recent activity from others** in the
+window. The DM reply prepends a fixed “snapshot” line, then a **sectioned**
+body with **https** markdown links using `feed_url_https` / `chat_url_https`
+(built from `PUBLIC_BASE_URL`, defaulting to `https://app.c-point.co`) so
+chat linkification works.
 
 ---
 

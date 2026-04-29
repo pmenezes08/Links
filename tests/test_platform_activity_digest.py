@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import os
+from unittest.mock import patch
+
 import pytest
 
 from backend.services.platform_activity_digest import (
+    _digest_app_base_url,
+    _digest_opener_line,
+    _https_feed_url,
+    _https_group_chat_url,
     coerce_window_hours,
     message_looks_like_platform_digest_intent,
     parse_digest_window_hours_from_message,
@@ -44,3 +51,22 @@ def test_digest_intent_detector(line, expect):
 def test_coerce_window_hours():
     assert coerce_window_hours(72) == 72
     assert coerce_window_hours(9999) is None
+
+
+def test_digest_app_base_url_env():
+    with patch.dict(os.environ, {"PUBLIC_BASE_URL": "https://custom.example.com"}, clear=False):
+        assert _digest_app_base_url() == "https://custom.example.com"
+    with patch.dict(os.environ, {"PUBLIC_BASE_URL": ""}, clear=False):
+        assert _digest_app_base_url() == "https://app.c-point.co"
+
+
+def test_https_urls_for_feed_and_group():
+    with patch.dict(os.environ, {"PUBLIC_BASE_URL": "https://app.example.com"}, clear=False):
+        assert _https_feed_url(12) == "https://app.example.com/community_feed_react/12"
+        assert _https_group_chat_url(44) == "https://app.example.com/group_chat/44"
+
+
+def test_digest_opener_has_snapshot_sentence():
+    s = _digest_opener_line(72)
+    assert "activity snapshot" in s.lower()
+    assert "3 days" in s or "**3 days**" in s
