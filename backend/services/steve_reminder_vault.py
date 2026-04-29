@@ -1,6 +1,9 @@
 """
 Steve Reminder Vault — user-scheduled reminders in private DM with Steve only.
 
+Hybrid: deterministic opener regex + optional Grok slot extraction; all fire times pass
+:func:`try_parse_fire_datetime` before persistence.
+
 Isolated from profiling KB / steve_user_profiles synthesis.
 """
 
@@ -14,26 +17,26 @@ from typing import Any, Dict, Optional, Tuple
 
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 
+from backend.services.steve_reminder_parse import (
+    RE_REMINDER_CANCEL as _RE_CANCEL,
+    RE_REMINDER_LIST as _RE_LIST,
+    extract_subject,
+    match_create_opener,
+    normalize_time_phrases_for_parse,
+    reminder_intent_llm_plausible,
+    try_parse_fire_datetime,
+)
+from backend.services.steve_reminder_slots import (
+    ReminderSlots,
+    extract_reminder_slots_llm,
+    merged_text_for_datetime_parse,
+)
+
 logger = logging.getLogger(__name__)
 
 MAX_ACTIVE_SCHEDULED = 40
 BODY_MAX_LEN = 500
 DRAFT_TTL_HOURS = 36
-
-_RE_LIST = re.compile(
-    r"^\s*(what are my reminders\b|show (my )?reminders\b|list (my )?reminders\b|my reminders\b)\s*[.!?]?\s*$",
-    re.I,
-)
-_RE_CANCEL = re.compile(
-    r"^\s*(cancel|delete|remove)\s+(?:reminder\s*)?(?:#?\s*)?(\d+)\s*$",
-    re.I,
-)
-_RE_CREATE = re.compile(
-    r"^\s*(?:@\s*)?steve,?\s*"
-    r"(remind\s+me\s+(?:that\s+)?|remind\s+me\s+to\s+|don'?t\s+forget\s+(?:to\s+)?|remember\s+that\s+)"
-    r"(.*)$",
-    re.I | re.S,
-)
 
 
 def ensure_reminder_tables() -> None:
@@ -220,84 +223,63 @@ def _clear_draft(username: str) -> None:
         conn.commit()
 
 
-def try_parse_fire_datetime(text_after_trigger: str, tz_name: str) -> Tuple[Optional[datetime], Optional[str]]:
-    raw = (text_after_trigger or "").strip()
-    if not raw:
-        return None, None
-    try:
-        import dateparser  # type: ignore
+def _current_utc_hint() -> str:
+    return datetime.now(timezone.utc).strftime("%A, %B %d, %Y %H:%M UTC")
 
-        tz = tz_name or "UTC"
-        dp_out = dateparser.search.search_dates(
-            raw,
-            settings={
-                "TIMEZONE": tz,
-                "RETURN_AS_TIMEZONE_AWARE": True,
-                "PREFER_DATES_FROM": "future",
-            },
-            languages=["en", "es", "fr", "pt"],
+
+def _insert_if_parsed(
+    username: str,
+    subject: str,
+    dt_utc: datetime,
+    when_face: str,
+    tz_label: str,
+) -> str:
+    grace = timedelta(minutes=1)
+    if dt_utc < _now_utc_naive() + grace:
+        return "That time reads as already passed — pick something a little ahead."
+
+    subj = _sanitize_body(subject)
+    if len(subj.strip()) < 4:
+        return "Say briefly what you’d like me to remind you about."
+
+    if _count_scheduled(username) >= MAX_ACTIVE_SCHEDULED:
+        return (
+            "You’ve hit the limit of active reminders right now. "
+            "Cancel one with **cancel reminder #_id_** (see **list my reminders**)."
         )
-        if dp_out:
-            parsed_local = dp_out[0][1]
-            if parsed_local.tzinfo is None:
-                parsed_local = parsed_local.replace(tzinfo=timezone.utc)
-            fire_utc = parsed_local.astimezone(timezone.utc).replace(tzinfo=None)
-            fmt = parsed_local.strftime("%a %d %b %Y, %H:%M")
-            when_face = f"{fmt} ({tz})"
-            return fire_utc, when_face
-    except Exception as exc:
-        logger.warning("Reminder dateparser failed (%s): %s", tz_name, exc)
 
-    low = raw.lower()
-    now = _now_utc_naive()
-    candidate: Optional[datetime] = None
-    if "tomorrow" in low:
-        base = datetime(now.year, now.month, now.day) + timedelta(days=1)
-        candidate = base.replace(hour=9, minute=0, second=0)
-
-    weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-    for i, day in enumerate(weekdays):
-        if day in low:
-            target_dow = i
-            days_ahead = (target_dow - now.weekday()) % 7
-            if days_ahead == 0:
-                days_ahead = 7
-            base = datetime(now.year, now.month, now.day) + timedelta(days=days_ahead)
-            candidate = base.replace(hour=9, minute=0, second=0)
-            break
-
-    if candidate:
-        fmt = candidate.strftime("%a %d %b %Y, %H:%M")
-        return candidate, f"{fmt} UTC (approximate — say a specific time if you need precision)"
-
-    return None, None
+    return _insert_reminder_and_reply(username, subj, dt_utc, when_face or "", tz_label)
 
 
-def _extract_subject(reminder_strip: str) -> str:
-    t = reminder_strip.strip()
-    low = t.lower()
-    for marker in (" on ", " at "):
-        idx = low.rfind(marker)
-        if idx > 12:
-            maybe = t[:idx].strip()
-            if len(maybe) >= 8:
-                return maybe
-    return t
+def _apply_slots_schedule(
+    username: str,
+    tz_label: str,
+    slots: ReminderSlots,
+    rest_for_fallback_subject: str,
+) -> Optional[str]:
+    """Insert or ask for time from LLM slots. Returns None if no Steve reply can be produced."""
+    merged = merged_text_for_datetime_parse(slots.subject, slots.time_phrase)
+    if not merged:
+        merged = normalize_time_phrases_for_parse(rest_for_fallback_subject)
 
+    text_for_parse = (merged if merged else rest_for_fallback_subject).strip()
+    dt_utc, when_face = try_parse_fire_datetime(text_for_parse, tz_label)
 
-def _vault_onboarding_tail(username: str, *, is_first_saved_reminder: bool) -> str:
-    show = is_first_saved_reminder or random.random() < 0.22
-    if not show:
-        return ""
-    return (
-        "\n\nTip: open this chat, tap **⋯** (top right) → **Reminder Vault** to see or edit what I’m holding for you."
-    )
+    subject = _sanitize_body(slots.subject or extract_subject(rest_for_fallback_subject))
+
+    if not dt_utc:
+        if len(subject.strip()) >= 4:
+            _save_draft(username, subject)
+            return f"Sure — what time should I nudge you about: {subject}?"
+        return None
+
+    return _insert_if_parsed(username, subject, dt_utc, when_face or "", tz_label)
 
 
 def try_handle_direct_steve_dm_reminder(*, sender_username: str, user_message: str) -> Optional[str]:
     """
     Handle reminder intents when the user is in a private DM with Steve (no third party).
-    Returns Steve reply body if handled, else None.
+    Returns Steve reply body if handled, else None (caller may run Grok).
     """
     ensure_reminder_tables()
     msg = (user_message or "").strip()
@@ -315,7 +297,6 @@ def try_handle_direct_steve_dm_reminder(*, sender_username: str, user_message: s
     if m_can:
         return _cancel_by_id(username, int(m_can.group(2)))
 
-    # Draft follow-up: user sending time-only after "what time?"
     draft = _fetch_draft(username)
     if draft:
         dt_utc, when_face = try_parse_fire_datetime(stripped, tz_label)
@@ -323,44 +304,85 @@ def try_handle_direct_steve_dm_reminder(*, sender_username: str, user_message: s
             subject = _sanitize_body(draft)
             _clear_draft(username)
             return _insert_reminder_and_reply(username, subject, dt_utc, when_face or "", tz_label)
-        if _RE_CREATE.match(stripped):
-            pass
+
+        if match_create_opener(stripped):
+            _clear_draft(username)
+            # Fall through: new explicit create supersedes pending time-only draft.
         else:
+            slots = extract_reminder_slots_llm(
+                username=username,
+                user_message=msg,
+                tz_label=tz_label,
+                current_utc_hint=_current_utc_hint(),
+            )
+            if slots is None:
+                return (
+                    "I still need a clear time for that reminder — or say **list my reminders** to see what’s queued."
+                )
+            if slots.intent != "schedule":
+                return None
+            slots_reply = _apply_slots_schedule(username, tz_label, slots, stripped)
+            if slots_reply:
+                _clear_draft(username)
+                return slots_reply
             return (
                 "I still need a clear time for that reminder — or say **list my reminders** to see what’s queued."
             )
 
-    m_trig = _RE_CREATE.match(stripped)
-    if not m_trig:
-        return None
-
-    rest = (m_trig.group(1) or "").strip()
-    if not rest:
-        return "Tell me what to remind you about — and when — or say **list my reminders**."
-
     if _count_scheduled(username) >= MAX_ACTIVE_SCHEDULED:
-        return (
-            "You’ve hit the limit of active reminders right now. "
-            "Cancel one with **cancel reminder #_id_** (see **list my reminders**)."
-        )
+        m_trig = match_create_opener(stripped)
+        if m_trig or reminder_intent_llm_plausible(stripped, msg):
+            return (
+                "You’ve hit the limit of active reminders right now. "
+                "Cancel one with **cancel reminder #_id_** (see **list my reminders**)."
+            )
 
-    dt_utc, when_face = try_parse_fire_datetime(rest, tz_label)
-    if not dt_utc:
-        subj = _sanitize_body(_extract_subject(rest))
+    m_trig = match_create_opener(stripped)
+    if m_trig:
+        rest = (m_trig.group("tail") or "").strip()
+        if not rest:
+            return "Tell me what to remind you about — and when — or say **list my reminders**."
+
+        dt_utc, when_face = try_parse_fire_datetime(rest, tz_label)
+        if dt_utc:
+            return _insert_if_parsed(
+                username,
+                _sanitize_body(extract_subject(rest)),
+                dt_utc,
+                when_face or "",
+                tz_label,
+            )
+
+        slots = extract_reminder_slots_llm(
+            username=username,
+            user_message=msg,
+            tz_label=tz_label,
+            current_utc_hint=_current_utc_hint(),
+        )
+        if slots and slots.intent == "schedule":
+            llm_reply = _apply_slots_schedule(username, tz_label, slots, rest)
+            if llm_reply:
+                return llm_reply
+
+        subj = _sanitize_body(extract_subject(rest))
         if len(subj) < 4:
             return "Say briefly what you’d like me to remind you about."
         _save_draft(username, subj)
         return f"Sure — what time should I nudge you about: {subj}?"
 
-    grace = timedelta(minutes=1)
-    if dt_utc < _now_utc_naive() + grace:
-        return "That time reads as already passed — pick something a little ahead."
+    if not reminder_intent_llm_plausible(stripped, msg):
+        return None
 
-    subject = _sanitize_body(_extract_subject(rest))
-    if len(subject.strip()) < 4:
-        return "Say briefly what you’d like me to remind you about."
-
-    return _insert_reminder_and_reply(username, subject, dt_utc, when_face or "", tz_label)
+    slots_no_regex = extract_reminder_slots_llm(
+        username=username,
+        user_message=msg,
+        tz_label=tz_label,
+        current_utc_hint=_current_utc_hint(),
+    )
+    if slots_no_regex is None or slots_no_regex.intent != "schedule":
+        return None
+    no_regex_reply = _apply_slots_schedule(username, tz_label, slots_no_regex, stripped)
+    return no_regex_reply
 
 
 def _insert_reminder_and_reply(
@@ -407,6 +429,15 @@ def _insert_reminder_and_reply(
     return (
         f"Got it — I’ll nudge you around **{when_txt}**:\n\n{subject}\n\n"
         f"(Vault #{rid_txt}. Reply **list my reminders** anytime.){tail}"
+    )
+
+
+def _vault_onboarding_tail(username: str, *, is_first_saved_reminder: bool) -> str:
+    show = is_first_saved_reminder or random.random() < 0.22
+    if not show:
+        return ""
+    return (
+        "\n\nTip: open this chat, tap **⋯** (top right) → **Reminder Vault** to see or edit what I’m holding for you."
     )
 
 
@@ -673,4 +704,3 @@ def dispatch_due_reminders(*, lookahead_minutes: int = 12, stale_catch_hours: in
             errors += 1
 
     return {"sent": sent, "errors": errors, "candidates": len(cand_rows)}
-
