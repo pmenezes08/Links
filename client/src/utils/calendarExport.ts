@@ -14,6 +14,9 @@ import {
 
 export type { CalendarExportEventFields } from './calendarExportTypes'
 
+const NATIVE_ICS_FAILED_MSG =
+  'Could not share the calendar file. Try again or open this event in your browser.'
+
 async function fetchEventSnapshot(eventId: number): Promise<CalendarExportEventFields | null> {
   const r = await fetch(`/api/calendar_events/${eventId}`, {
     credentials: 'include',
@@ -58,7 +61,8 @@ async function shareIcsBlobOnNative(blob: Blob, filename: string): Promise<boole
       dialogTitle: 'Add to calendar',
     })
     return true
-  } catch {
+  } catch (e) {
+    console.warn('[calendar export] Capacitor Share/Filesystem failed', e)
     return false
   }
 }
@@ -82,9 +86,22 @@ async function downloadIcsFile(eventId: number | string): Promise<void> {
   }
   const blob = await res.blob()
   const filename = `cpoint-event-${id}.ics`
-  if (await shareIcsBlobOnNative(blob, filename)) {
-    return
+
+  if (Capacitor.isNativePlatform()) {
+    if (await shareIcsBlobOnNative(blob, filename)) return
+    const file = new File([blob], filename, { type: 'text/calendar' })
+    try {
+      if (typeof navigator !== 'undefined' && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Add to calendar' })
+        return
+      }
+    } catch (e) {
+      console.warn('[calendar export] navigator.share failed on native', e)
+      throw new Error(NATIVE_ICS_FAILED_MSG)
+    }
+    throw new Error(NATIVE_ICS_FAILED_MSG)
   }
+
   const file = new File([blob], filename, { type: 'text/calendar' })
   try {
     if (typeof navigator !== 'undefined' && navigator.canShare?.({ files: [file] })) {

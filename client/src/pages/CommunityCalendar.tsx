@@ -546,8 +546,8 @@ export default function CommunityCalendar() {
               community_name: e.community_name ?? null,
             })
           }
-        } catch {
-          /* ignore */
+        } catch (e) {
+          console.warn('[calendar] syncNativeCalendarAfterServerChange failed', e)
         }
       })()
     } else {

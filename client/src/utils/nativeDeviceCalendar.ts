@@ -10,12 +10,26 @@ import type { CalendarExportEventFields } from './calendarExportTypes'
 
 const STORAGE_KEY = 'cpoint_native_calendar_event_ids_v1'
 
+const CALENDAR_ACCESS_DENIED_MSG =
+  'Calendar access was not granted. You can enable it in the Settings app.'
+
 function isNativeCapacitor(): boolean {
   return typeof window !== 'undefined' && Capacitor.isNativePlatform()
 }
 
-function permOk(state: string): boolean {
-  return state === 'granted' || state === 'limited'
+/** Capacitor / plugin bridge may return a string or `{ result: string }`. */
+function normalizePermissionState(raw: unknown): string {
+  if (raw == null) return ''
+  if (typeof raw === 'string') return raw.trim().toLowerCase()
+  if (typeof raw === 'object' && raw !== null && 'result' in raw) {
+    const inner = (raw as { result: unknown }).result
+    if (typeof inner === 'string') return inner.trim().toLowerCase()
+  }
+  return ''
+}
+
+function permGranted(normalized: string): boolean {
+  return normalized === 'granted' || normalized === 'limited'
 }
 
 async function loadIdMap(): Promise<Record<string, string>> {
@@ -132,76 +146,115 @@ function buildCreateEventPayload(
   return payload
 }
 
+function pluginErrorMessage(err: unknown): string {
+  if (typeof err === 'string' && err.trim()) return err.trim()
+  if (err && typeof err === 'object' && 'message' in err && typeof (err as Error).message === 'string') {
+    const m = (err as Error).message.trim()
+    if (m) return m
+  }
+  return 'Could not save the event to your calendar.'
+}
+
+/** iOS: full calendar access via READ only. Android: WRITE then READ (separate runtime permissions). */
+async function ensureCalendarPermissions(
+  CapacitorCalendar: CapCal,
+  PluginPermission: (typeof import('@ebarooni/capacitor-calendar'))['PluginPermission'],
+): Promise<void> {
+  if (Capacitor.getPlatform() === 'ios') {
+    const rd = await CapacitorCalendar.requestPermission({ alias: PluginPermission.READ_CALENDAR })
+    if (!permGranted(normalizePermissionState(rd.result))) {
+      throw new Error(CALENDAR_ACCESS_DENIED_MSG)
+    }
+    return
+  }
+  const wr = await CapacitorCalendar.requestPermission({ alias: PluginPermission.WRITE_CALENDAR })
+  if (!permGranted(normalizePermissionState(wr.result))) {
+    throw new Error(CALENDAR_ACCESS_DENIED_MSG)
+  }
+  const rd = await CapacitorCalendar.requestPermission({ alias: PluginPermission.READ_CALENDAR })
+  if (!permGranted(normalizePermissionState(rd.result))) {
+    throw new Error(CALENDAR_ACCESS_DENIED_MSG)
+  }
+}
+
 /** Prefer default calendar if writable; else first writable calendar from listCalendars. */
 async function resolveWritableCalendarId(CapacitorCalendar: CapCal): Promise<string | undefined> {
-  try {
-    const { result: defaultCal } = await CapacitorCalendar.getDefaultCalendar()
-    if (defaultCal?.id && defaultCal.allowsContentModifications !== false) {
-      return String(defaultCal.id)
+  const { result: defaultCal } = await CapacitorCalendar.getDefaultCalendar()
+  if (defaultCal && typeof defaultCal === 'object' && 'id' in defaultCal) {
+    const cal = defaultCal as { id?: string; allowsContentModifications?: boolean }
+    if (cal.id && cal.allowsContentModifications !== false) {
+      return String(cal.id)
     }
-    const { result: list } = await CapacitorCalendar.listCalendars()
-    const writable = list?.find((c) => c.allowsContentModifications !== false && c.id)
-    if (writable?.id) return String(writable.id)
-    if (defaultCal?.id) return String(defaultCal.id)
-  } catch {
-    /* ignore */
+  }
+  const { result: list } = await CapacitorCalendar.listCalendars()
+  const writable = list?.find((c) => c.allowsContentModifications !== false && c.id)
+  if (writable?.id) return String(writable.id)
+  if (defaultCal && typeof defaultCal === 'object' && 'id' in defaultCal) {
+    const id = (defaultCal as { id?: string }).id
+    if (id) return String(id)
   }
   return undefined
 }
 
 /**
  * Create or replace the native calendar row for this C-Point event. Returns true if written natively.
+ * Throws on permission denial or native plugin errors. Returns false only to allow .ics fallback (no id).
  */
 export async function tryWriteNativeDeviceCalendar(snapshot: CalendarExportEventFields): Promise<boolean> {
   if (!isNativeCapacitor()) return false
-  try {
-    const { CapacitorCalendar, PluginPermission } = await loadCalendarPlugin()
-    const wr = await CapacitorCalendar.requestPermission({ alias: PluginPermission.WRITE_CALENDAR })
-    const rd = await CapacitorCalendar.requestPermission({ alias: PluginPermission.READ_CALENDAR })
-    if (!permOk(wr.result) || !permOk(rd.result)) return false
 
-    const existing = await getStoredNativeCalendarEventId(snapshot.id)
-    if (existing) {
-      try {
-        await CapacitorCalendar.deleteEventsById({ ids: [existing] })
-      } catch {
-        /* stale id */
-      }
-      await persistNativeCalendarEventId(snapshot.id, null)
-    }
+  const { CapacitorCalendar, PluginPermission } = await loadCalendarPlugin()
+  await ensureCalendarPermissions(CapacitorCalendar, PluginPermission)
 
-    const calendarId = await resolveWritableCalendarId(CapacitorCalendar)
-    const payloadWithCal = buildCreateEventPayload(snapshot, calendarId)
-    const payloadSansCal = buildCreateEventPayload(snapshot)
-
-    let nativeId = (await CapacitorCalendar.createEvent(payloadWithCal)).result?.trim() ?? ''
-    if (!nativeId && calendarId) {
-      nativeId = (await CapacitorCalendar.createEvent(payloadSansCal)).result?.trim() ?? ''
+  const existing = await getStoredNativeCalendarEventId(snapshot.id)
+  if (existing) {
+    try {
+      await CapacitorCalendar.deleteEventsById({ ids: [existing] })
+    } catch {
+      /* stale id */
     }
-
-    if (!nativeId) {
-      try {
-        const { result: promptIds } = await CapacitorCalendar.createEventWithPrompt(payloadSansCal)
-        nativeId = promptIds?.[0]?.trim() ?? ''
-      } catch {
-        /* user cancelled or sheet failed */
-      }
-    }
-
-    if (nativeId) {
-      await persistNativeCalendarEventId(snapshot.id, nativeId)
-      return true
-    }
-    if (import.meta.env.DEV) {
-      console.warn(
-        '[native calendar] createEvent returned no id; falling back to .ics if used from exportEventToDeviceCalendar',
-      )
-    }
-    return false
-  } catch (e) {
-    if (import.meta.env.DEV) console.warn('[native calendar]', e)
-    return false
+    await persistNativeCalendarEventId(snapshot.id, null)
   }
+
+  const calendarId = await resolveWritableCalendarId(CapacitorCalendar)
+  const payloadWithCal = buildCreateEventPayload(snapshot, calendarId)
+  const payloadSansCal = buildCreateEventPayload(snapshot)
+
+  let nativeId = ''
+  try {
+    nativeId = String((await CapacitorCalendar.createEvent(payloadWithCal)).result ?? '').trim()
+  } catch (e) {
+    throw new Error(pluginErrorMessage(e))
+  }
+
+  if (!nativeId && calendarId) {
+    try {
+      nativeId = String((await CapacitorCalendar.createEvent(payloadSansCal)).result ?? '').trim()
+    } catch (e) {
+      throw new Error(pluginErrorMessage(e))
+    }
+  }
+
+  if (!nativeId) {
+    try {
+      const { result: promptIds } = await CapacitorCalendar.createEventWithPrompt(payloadSansCal)
+      nativeId = String(promptIds?.[0] ?? '').trim()
+    } catch (e) {
+      throw new Error(pluginErrorMessage(e))
+    }
+  }
+
+  if (nativeId) {
+    await persistNativeCalendarEventId(snapshot.id, nativeId)
+    return true
+  }
+
+  if (import.meta.env.DEV) {
+    console.warn(
+      '[native calendar] no event id from native create; falling back to .ics in exportEventToDeviceCalendar',
+    )
+  }
+  return false
 }
 
 /** Remove native row when the C-Point event was deleted in-app. */
@@ -212,7 +265,7 @@ export async function removeNativeCalendarMirrorForCpointEvent(cpointEventId: nu
     if (!nativeId) return
     const { CapacitorCalendar, PluginPermission } = await loadCalendarPlugin()
     const wr = await CapacitorCalendar.requestPermission({ alias: PluginPermission.WRITE_CALENDAR })
-    if (!permOk(wr.result)) {
+    if (!permGranted(normalizePermissionState(wr.result))) {
       await persistNativeCalendarEventId(cpointEventId, null)
       return
     }
