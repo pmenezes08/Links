@@ -9,7 +9,9 @@ import pytest
 
 from backend.services.platform_activity_digest import (
     _digest_app_base_url,
+    _digest_markdown_preserves_required_https_links,
     _digest_opener_line,
+    _format_digest_markdown_from_payload,
     _https_feed_url,
     _https_group_chat_url,
     coerce_window_hours,
@@ -40,6 +42,8 @@ def test_digest_window_phrases(phrase, expected_hours):
         ("Steve, give me a quick platform activity digest?", True),
         ("catch me up on communities", True),
         ("what happened on the platform today", True),
+        ("give me a quick rundown of the last 5 days here", True),
+        ("what did I miss in the last 7 days here on the platform", True),
         ("remind me to call mom in 5 minutes", False),
         ("how are you?", False),
     ],
@@ -70,3 +74,34 @@ def test_digest_opener_has_snapshot_sentence():
     s = _digest_opener_line(72)
     assert "activity snapshot" in s.lower()
     assert "3 days" in s or "**3 days**" in s
+
+
+def test_deterministic_digest_markdown_contains_full_https_links():
+    payload = {
+        "communities": [
+            {
+                "name": "Test Comm",
+                "post_count_others": 3,
+                "last_from_others_at": "2026-04-01T12:00:00+00:00",
+                "recent_snippets": ["Hello world"],
+                "feed_url_https": "https://app.example.com/community_feed_react/7",
+            }
+        ],
+        "group_chats": [
+            {
+                "name": "Squad",
+                "message_count_others": 2,
+                "last_activity": "2026-04-02",
+                "last_snippet": "Hey",
+                "chat_url_https": "https://app.example.com/group_chat/99",
+            }
+        ],
+    }
+    md = _format_digest_markdown_from_payload(payload)
+    assert "[Open feed](https://app.example.com/community_feed_react/7)" in md
+    assert "[Open chat](https://app.example.com/group_chat/99)" in md
+    assert "**Test Comm**" in md
+    assert "**Squad**" in md
+    assert _digest_markdown_preserves_required_https_links(md, payload)
+    bad = md.replace("https://app.example.com/community_feed_react/7", "")
+    assert not _digest_markdown_preserves_required_https_links(bad, payload)

@@ -118,17 +118,17 @@ wrong surface is how counters desync.
 `STEVE_SURFACES = (DM, GROUP, FEED, POST_SUMMARY, VOICE_SUMMARY)` — this
 set is what counts against `steve_uses_per_month` and `ai_daily_limit`.
 
-**Platform activity digest.** When Steve narrates aggregated community plus
-group-chat activity from a DM, use `surface=SURFACE_DM` with
-`request_type='platform_activity_digest'` for that Grok call. The
-read-only helper `GET /api/me/platform-activity-digest` returns JSON only
+**Platform activity digest.** When Steve replies with aggregated community plus
+group-chat activity from a DM, SQL builds the factual payload; **the DM body is assembled
+deterministically** (bold titles, counts, snippets, **`[Open feed](feed_url_https)` / `[Open chat](chat_url_https)`**
+from `PUBLIC_BASE_URL`, defaulting to `https://app.c-point.co`). An optional Grok polish pass runs only on that
+assembled text — if upstream output removes or truncates any required https URL, the deterministic copy is kept.
+Logged usage: `surface=SURFACE_DM`, `request_type='platform_activity_digest'` when the polish call succeeds.
+The read-only helper `GET /api/me/platform-activity-digest` returns JSON only
 and does **not** increment AI usage rows. Counts and snippets are **from
-other members only** (viewer’s own posts and group messages are excluded).
+other members only** (viewer's own posts and group messages are excluded).
 Communities are ranked by **most recent activity from others** in the
-window. The DM reply prepends a fixed “snapshot” line, then a **sectioned**
-body with **https** markdown links using `feed_url_https` / `chat_url_https`
-(built from `PUBLIC_BASE_URL`, defaulting to `https://app.c-point.co`) so
-chat linkification works.
+window.
 
 ---
 

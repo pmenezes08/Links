@@ -5,7 +5,6 @@ Used by the authenticated API and by Steve DM’s platform digest flow.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
@@ -73,9 +72,44 @@ def parse_digest_window_hours_from_message(message: str) -> int:
     return 24
 
 
+def _digest_message_has_time_window(message: str) -> bool:
+    """True if typical “last / past / N hours / days” phrasing matches."""
+    s = (message or "").lower()
+    if not s.strip():
+        return False
+    return any(p.search(s) for _, p in _WINDOW_PATTERNS)
+
+
 def message_looks_like_platform_digest_intent(message: str) -> bool:
+    """True when user wants the SQL-backed activity snapshot (same pipeline as `/api/me/platform-activity-digest`)."""
     m = (message or "").strip()
-    return bool(m) and len(m) >= 12 and bool(_PLATFORM_DIGEST_INTENT.search(m))
+    if not m or len(m) < 12:
+        return False
+    if _PLATFORM_DIGEST_INTENT.search(m):
+        return True
+    low = m.lower()
+
+    # “Quick rundown of the last N days…” (no verbatim “platform activity” needed)
+    if re.search(r"\b(?:give\s+me\s+a\s+)?(?:quick\s+)?rundown\b", low):
+        if _digest_message_has_time_window(m) or re.search(
+            r"\b(?:platform|communit|groups?|group\s+chats?|activity|c-point|app\.c-point)\b",
+            low,
+        ):
+            return True
+
+    # Time window + anchor word (e.g. “last 5 days here”, “past week on the platform”)
+    if _digest_message_has_time_window(m) and re.search(
+        r"\b(?:here|on\s+(?:the\s+)?platform|on\s+c-point|in\s+my\s+communities|c-point)\b",
+        low,
+    ):
+        # Require some platform-scope cue so unrelated “past 3 days here in Paris” misses
+        if re.search(
+            r"\b(?:what|anything|happening|happened|rundown|catch|missed|summary|recap|activity|communities|groups?)\b",
+            low,
+        ):
+            return True
+
+    return False
 
 
 def _digest_app_base_url() -> str:
@@ -107,6 +141,62 @@ def _digest_opener_line(window_hours: int) -> str:
     )
 
 
+def _format_digest_markdown_from_payload(payload: Dict[str, Any]) -> str:
+    """Deterministic markdown: bold titles, stats, snippets, full-https `[Open feed]` / `[Open chat]` links."""
+    parts: List[str] = []
+
+    for comm in payload.get("communities") or []:
+        name = (comm.get("name") or "").strip() or "Community"
+        url = (comm.get("feed_url_https") or "").strip()
+        lines: List[str] = [f"**{name}**"]
+        lines.append("")
+        pc = comm.get("post_count_others", 0)
+        lines.append(f"{int(pc)} post(s) from others in this window.")
+        la = (comm.get("last_from_others_at") or "").strip()
+        if la:
+            lines.append(f"Latest from others: {la}.")
+        for sn in comm.get("recent_snippets") or []:
+            if sn:
+                lines.append(f"• {sn}")
+        lines.append("")
+        if url:
+            lines.append(f"[Open feed]({url})")
+        parts.append("\n".join(lines))
+
+    for gc in payload.get("group_chats") or []:
+        name = (gc.get("name") or "").strip() or "Group chat"
+        url = (gc.get("chat_url_https") or "").strip()
+        lines = [f"**{name}**"]
+        lines.append("")
+        mc = gc.get("message_count_others", 0)
+        lines.append(f"{int(mc)} message(s) from others in this window.")
+        lt = (gc.get("last_activity") or "").strip()
+        if lt:
+            lines.append(f"Last activity: {lt}.")
+        sn = (gc.get("last_snippet") or "").strip()
+        if sn:
+            lines.append(f"Latest from others: {sn}")
+        lines.append("")
+        if url:
+            lines.append(f"[Open chat]({url})")
+        parts.append("\n".join(lines))
+
+    return "\n\n".join(parts).strip()
+
+
+def _digest_markdown_preserves_required_https_links(text: str, payload: Dict[str, Any]) -> bool:
+    """Every feed/chat URL from aggregation must appear verbatim (no truncated links)."""
+    for comm in payload.get("communities") or []:
+        u = (comm.get("feed_url_https") or "").strip()
+        if u and u not in (text or ""):
+            return False
+    for gc in payload.get("group_chats") or []:
+        u = (gc.get("chat_url_https") or "").strip()
+        if u and u not in (text or ""):
+            return False
+    return True
+
+
 def _ts_face(val: Any) -> str:
     if val is None:
         return ""
@@ -119,7 +209,7 @@ def _ts_face(val: Any) -> str:
 
 
 def build_platform_activity_digest(username: str, window_hours: int) -> Dict[str, Any]:
-    """Return structured activity for Grok narration (never calls an LLM)."""
+    """Return structured activity for digest formatting (never calls an LLM)."""
     uh = coerce_window_hours(window_hours) or 24
     cutoff = datetime.now(timezone.utc) - timedelta(hours=uh)
 
@@ -319,38 +409,42 @@ def build_platform_activity_digest(username: str, window_hours: int) -> Dict[str
     }
 
 
-def _grok_narrate_digest(payload: Dict[str, Any], *, username: str) -> Tuple[Optional[str], Optional[int], Optional[int]]:
-    """Return (body, tokens_in, tokens_out) or (None, None, None) on failure."""
+def _grok_polish_digest_markdown(
+    deterministic_full_markdown: str,
+    *,
+    username: str,
+) -> Tuple[Optional[str], Optional[int], Optional[int]]:
+    """Optional wording polish on a fully assembled digest; facts and links are fixed server-side."""
     if not XAI_API_KEY:
         return None, None, None
     from openai import OpenAI
 
     client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
     system = (
-        "You are Steve on C-Point — warm, human, not corporate. "
-        "You receive JSON listing communities and group chats **with activity from other people** in the window. "
-        "Write a **sectioned** reply only — **no** single wall of text spanning everything. "
-        "For **each** community in `communities` (in the **same order** as the JSON), output one block: "
-        "a line `**{that community's name}**` (bold), then 1–3 short sentences using `post_count_others`, "
-        "`recent_snippets`, and `last_from_others_at` where helpful. "
-        "Then a line with **one** markdown link using **exactly** the `feed_url_https` value, e.g. "
-        "[Open feed](FULL_URL_HERE) — do **not** paste bare `/paths` or URLs without https. "
-        "After communities, do the **same pattern** for each item in `group_chats`: bold title line, brief lines from "
-        "`message_count_others` and `last_snippet`, then `[Open chat](chat_url_https)` using the precise https URL from JSON. "
-        "Separate every community block and every group block with **one blank line**. "
-        "Do **not** use `#` headings. Speak from the facts; don't invent gossip. "
-        "If snippets are thin, acknowledge lightly without drama. Match the user's language if clearly not English."
+        "You are Steve on C-Point — warm and human. The user message is a finished **activity snapshot** "
+        "with fixed facts and markdown sections. "
+        "You may only lightly smooth sentences (warmth, flow). "
+        "**Do not** change bold titles, counts, timestamps, bullets, or the opening paragraph. "
+        "**Every line** that matches a markdown link pattern `[anything](https:// ...)` "
+        "(including `[Open feed](...)`, `[Open chat](...)`) must stay **character-for-character identical**, "
+        "including the **full URL** inside parentheses. "
+        "**Do not** shorten URLs, add `#` headings, invent places or numbers, or add new URLs. "
+        "Output exactly one full message matching the user's language if clearly not English."
     )
-    user_blob = json.dumps(payload, ensure_ascii=False, indent=2)
+    user_content = (
+        f"Recipient username: {username}\n\n"
+        "**Polish this draft.** Keep all https link lines byte-identical:\n\n"
+        f"{deterministic_full_markdown}"
+    )
     try:
         completion = client.chat.completions.create(
             model=GROK_MODEL_FAST,
             messages=[
                 {"role": "system", "content": system},
-                {"role": "user", "content": f"Member username: {username}\n\nFacts JSON:\n{user_blob}"},
+                {"role": "user", "content": user_content},
             ],
-            temperature=0.55,
-            max_tokens=900,
+            temperature=0.22,
+            max_tokens=1800,
         )
         text = (completion.choices[0].message.content or "").strip() if completion.choices else ""
         usage = getattr(completion, "usage", None)
@@ -358,7 +452,7 @@ def _grok_narrate_digest(payload: Dict[str, Any], *, username: str) -> Tuple[Opt
         tout = getattr(usage, "completion_tokens", None) if usage else None
         return (text or None), tin, tout
     except Exception as exc:
-        logger.warning("platform digest Grok failed: %s", exc)
+        logger.warning("platform digest Grok polish failed: %s", exc)
         return None, None, None
 
 
@@ -375,8 +469,27 @@ def try_handle_platform_activity_digest_dm(
 
     wh = parse_digest_window_hours_from_message(user_message)
     payload = build_platform_activity_digest(sender_username, wh)
-    body, tin, tout = _grok_narrate_digest(payload, username=sender_username)
-    if body:
+
+    n_comm = len(payload.get("communities") or [])
+    n_grp = len(payload.get("group_chats") or [])
+    if n_comm == 0 and n_grp == 0:
+        return (
+            "Honestly? It’s been pretty quiet in your communities and group chats over that stretch — "
+            "nothing much jumped out. If you want a longer window, say **last 3 days** or **past week**."
+        )
+
+    deterministic_core = _format_digest_markdown_from_payload(payload)
+    full_deterministic = _digest_opener_line(wh) + deterministic_core
+
+    polished, tin, tout = _grok_polish_digest_markdown(
+        full_deterministic,
+        username=sender_username,
+    )
+    reply = full_deterministic
+    if polished and _digest_markdown_preserves_required_https_links(polished, payload):
+        reply = polished.strip()
+
+    if polished:
         try:
             ai_usage.log_usage(
                 sender_username,
@@ -388,15 +501,5 @@ def try_handle_platform_activity_digest_dm(
             )
         except Exception:
             pass
-        return _digest_opener_line(wh) + body
-    n_comm = len(payload.get("communities") or [])
-    n_grp = len(payload.get("group_chats") or [])
-    if n_comm == 0 and n_grp == 0:
-        return (
-            "Honestly? It’s been pretty quiet in your communities and group chats over that stretch — "
-            "nothing much jumped out. If you want a longer window, say **last 3 days** or **past week**."
-        )
-    return (
-        "I pulled the numbers, but I couldn’t quite put it into words just now. "
-        "Try again in a moment — or ask for a shorter time window."
-    )
+
+    return reply
