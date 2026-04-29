@@ -140,6 +140,7 @@ export default function Notifications(){
   const notifDraggingIdRef = useRef<number | null>(null)
   const lastUnreadNotifsRef = useRef<number | null>(null)
   const unreadBadgeReloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const visibleRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => { setTitle('Notifications') }, [setTitle])
 
@@ -208,10 +209,9 @@ export default function Notifications(){
   }, [])
 
   useEffect(() => {
-    load()
-    loadPendingInvites()
-    refreshBadges()
-  }, [load, loadPendingInvites, refreshBadges])
+    void load()
+    void loadPendingInvites()
+  }, [load, loadPendingInvites])
 
   useEffect(() => {
     const previous = lastUnreadNotifsRef.current
@@ -239,40 +239,10 @@ export default function Notifications(){
     }
   }, [activeTab, load, loadPendingInvites, unreadNotifs])
 
-  useEffect(() => {
-    const refreshVisibleNotifications = () => {
-      if (document.hidden) return
-      if (activeTab === 'notifications' || activeTab === 'invites') load({ silent: true })
-      loadPendingInvites()
-      refreshBadges()
-    }
-
-    document.addEventListener('visibilitychange', refreshVisibleNotifications)
-    window.addEventListener('focus', refreshVisibleNotifications)
-    window.addEventListener('cpoint:push-notification-received', refreshVisibleNotifications)
-
-    return () => {
-      document.removeEventListener('visibilitychange', refreshVisibleNotifications)
-      window.removeEventListener('focus', refreshVisibleNotifications)
-      window.removeEventListener('cpoint:push-notification-received', refreshVisibleNotifications)
-    }
-  }, [activeTab, load, loadPendingInvites, refreshBadges])
-  
-  // Load events, polls, tasks when switching tabs
-  useEffect(() => {
-    if (activeTab === 'calendar' && events.length === 0 && !eventsLoading) {
-      loadEvents()
-    } else if (activeTab === 'polls' && polls.length === 0 && !pollsLoading) {
-      loadPolls()
-    } else if (activeTab === 'tasks' && tasks.length === 0 && !tasksLoading) {
-      loadTasks()
-    }
-  }, [activeTab])
-  
-  async function loadEvents() {
+  const loadEvents = useCallback(async () => {
     try {
       setEventsLoading(true)
-      const r = await fetch('/api/all_calendar_events', { credentials: 'include', headers: { 'Accept': 'application/json' } })
+      const r = await fetch('/api/all_calendar_events', { credentials: 'include', headers: { Accept: 'application/json' } })
       const j = await r.json()
       if (j?.success) {
         setEvents(j.events || [])
@@ -282,12 +252,12 @@ export default function Notifications(){
     } finally {
       setEventsLoading(false)
     }
-  }
-  
-  async function loadPolls() {
+  }, [])
+
+  const loadPolls = useCallback(async () => {
     try {
       setPollsLoading(true)
-      const r = await fetch('/api/all_active_polls', { credentials: 'include', headers: { 'Accept': 'application/json' } })
+      const r = await fetch('/api/all_active_polls', { credentials: 'include', headers: { Accept: 'application/json' } })
       const j = await r.json()
       if (j?.success) {
         setPolls(j.polls || [])
@@ -297,12 +267,12 @@ export default function Notifications(){
     } finally {
       setPollsLoading(false)
     }
-  }
-  
-  async function loadTasks() {
+  }, [])
+
+  const loadTasks = useCallback(async () => {
     try {
       setTasksLoading(true)
-      const r = await fetch('/api/all_my_tasks', { credentials: 'include', headers: { 'Accept': 'application/json' } })
+      const r = await fetch('/api/all_my_tasks', { credentials: 'include', headers: { Accept: 'application/json' } })
       const j = await r.json()
       if (j?.success) {
         setTasks(j.tasks || [])
@@ -312,7 +282,46 @@ export default function Notifications(){
     } finally {
       setTasksLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    const scheduleVisibleRefresh = () => {
+      if (visibleRefreshDebounceRef.current) {
+        clearTimeout(visibleRefreshDebounceRef.current)
+      }
+      visibleRefreshDebounceRef.current = setTimeout(() => {
+        visibleRefreshDebounceRef.current = null
+        if (document.hidden) return
+        if (activeTab === 'notifications' || activeTab === 'invites') void load({ silent: true })
+        void loadPendingInvites()
+      }, 380)
+    }
+
+    const onVisibility = () => scheduleVisibleRefresh()
+    const onFocus = () => scheduleVisibleRefresh()
+    const onPush = () => scheduleVisibleRefresh()
+
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('cpoint:push-notification-received', onPush)
+
+    return () => {
+      if (visibleRefreshDebounceRef.current) {
+        clearTimeout(visibleRefreshDebounceRef.current)
+        visibleRefreshDebounceRef.current = null
+      }
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('cpoint:push-notification-received', onPush)
+    }
+  }, [activeTab, load, loadPendingInvites])
+
+  // Calendar / polls / tasks: refetch whenever that tab is selected (badge poller keeps counts; this keeps lists fresh).
+  useEffect(() => {
+    if (activeTab === 'calendar') void loadEvents()
+    else if (activeTab === 'polls') void loadPolls()
+    else if (activeTab === 'tasks') void loadTasks()
+  }, [activeTab, loadEvents, loadPolls, loadTasks])
 
   async function markAll(){
     setSwipeNotifId(null)

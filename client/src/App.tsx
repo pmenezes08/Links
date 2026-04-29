@@ -19,6 +19,7 @@ import HeaderBar from './components/HeaderBar'
 import { HeaderContext } from './contexts/HeaderContext'
 import { UserProfileContext, type UserProfile } from './contexts/UserProfileContext'
 import PushInit from './components/PushInit'
+import ForegroundPushBanner from './components/ForegroundPushBanner'
 import NotificationPrompt from './components/NotificationPrompt'
 import { NetworkProvider } from './contexts/NetworkContext'
 import { BadgeProvider } from './contexts/BadgeContext'
@@ -952,6 +953,7 @@ export default function App() {
             <OutboxDrainer />
             <BrandAssetsInit />
             <PushInit />
+            <ForegroundPushBanner />
             <NotificationPrompt />
             <AppRoutes />
           </LogoutPromptProvider>

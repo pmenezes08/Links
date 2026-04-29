@@ -584,7 +584,12 @@ def send_push_to_user(target_username: str, payload: dict):
     title = payload.get('title', 'C.Point Notification')
     body = payload.get('body', '')
     tag = payload.get("tag") if isinstance(payload, dict) else None
-    data = {'url': payload.get('url', '/')}
+    # Include title/body in FCM data so iOS/Android foreground delivery can show them (notificaion block is often omitted in-app).
+    data = {
+        "url": payload.get("url", "/") or "/",
+        "title": str(title or ""),
+        "body": str(body or ""),
+    }
     
     # Simple dedupe window (2 seconds) to avoid technical duplicates only
     # Reduced from 30s to allow rapid-fire notifications (multiple messages, stories, etc.)

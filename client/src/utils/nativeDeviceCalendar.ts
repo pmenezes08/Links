@@ -132,7 +132,8 @@ export async function tryWriteNativeDeviceCalendar(snapshot: CalendarExportEvent
     }
 
     const { result: defaultCal } = await CapacitorCalendar.getDefaultCalendar()
-    const calendarId = defaultCal?.id
+    const rawCalId = defaultCal?.id
+    const calendarId = rawCalId != null && rawCalId !== '' ? String(rawCalId) : undefined
 
     const { startMs, endMs, isAllDay } = eventToNativeRange(snapshot)
 
@@ -148,9 +149,14 @@ export async function tryWriteNativeDeviceCalendar(snapshot: CalendarExportEvent
     })
     if (nativeId) {
       await persistNativeCalendarEventId(snapshot.id, nativeId)
+      return true
     }
-    return true
-  } catch {
+    if (import.meta.env.DEV) {
+      console.warn('[native calendar] createEvent returned no id; falling back to .ics if used from exportEventToDeviceCalendar')
+    }
+    return false
+  } catch (e) {
+    if (import.meta.env.DEV) console.warn('[native calendar]', e)
     return false
   }
 }
