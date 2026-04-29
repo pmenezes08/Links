@@ -118,6 +118,12 @@ wrong surface is how counters desync.
 `STEVE_SURFACES = (DM, GROUP, FEED, POST_SUMMARY, VOICE_SUMMARY)` — this
 set is what counts against `steve_uses_per_month` and `ai_daily_limit`.
 
+**Platform activity digest.** When Steve narrates aggregated community plus
+group-chat activity from a DM, use `surface=SURFACE_DM` with
+`request_type='platform_activity_digest'` for that Grok call. The
+read-only helper `GET /api/me/platform-activity-digest` returns JSON only
+and does **not** increment AI usage rows.
+
 ---
 
 ## How to add a new Steve surface (checklist)

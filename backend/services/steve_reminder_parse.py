@@ -9,8 +9,67 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 from typing import List, Match, Optional, Pattern, Tuple
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
+
+# Last ``in N minutes/hours`` clause wins (dateparser often misses long reminder tails).
+_RE_RELATIVE_IN = re.compile(
+    r"\bin\s+(\d+)\s*(minute|minutes|mins|min|hours?|hrs?|hr|h)\b",
+    re.I,
+)
+
+
+def _timedelta_from_in_unit(amount: int, unit_raw: str) -> Optional[timedelta]:
+    u = unit_raw.lower()
+    # ``minute`` prefixes ``minutes``.
+    if u.startswith("minute") or u in ("mins", "min"):
+        return timedelta(minutes=amount)
+    if u.startswith("hour") or u in ("hrs", "hr", "h"):
+        return timedelta(hours=amount)
+    return None
+
+
+def _try_parse_relative_in_delta(raw: str, tz_name: str) -> Tuple[Optional[datetime], Optional[str]]:
+    """Parse ``in N minutes/hours`` using the user's timezone for *now*, last match wins."""
+    txt = (raw or "").strip()
+    if not txt:
+        return None, None
+    ms = list(_RE_RELATIVE_IN.finditer(txt))
+    if not ms:
+        return None, None
+    m = ms[-1]
+    try:
+        n = int(m.group(1))
+    except (TypeError, ValueError):
+        return None, None
+    # Sane bounds — avoid overflows and jokes like "in 999999 minutes".
+    if n <= 0 or n > 8760:
+        return None, None
+    td = _timedelta_from_in_unit(n, (m.group(2) or ""))
+    if td is None or td.total_seconds() <= 0:
+        return None, None
+
+    tz_label_eff = (((tz_name or "") or "UTC").strip() or "UTC")
+    local_tz = timezone.utc
+    try:
+        local_tz = ZoneInfo(tz_label_eff)
+    except Exception:
+        tz_label_eff = "UTC"
+        local_tz = timezone.utc
+
+    try:
+        now_local = datetime.now(local_tz)
+        fire_local = now_local + td
+        fire_utc = fire_local.astimezone(timezone.utc).replace(tzinfo=None)
+        city = (
+            tz_label_eff.split("/")[-1].replace("_", " ") if "/" in tz_label_eff else tz_label_eff
+        )
+        when_face = f"{fire_local.strftime('%a %d %b %Y, %H:%M')} ({city} time)"
+        return fire_utc, when_face
+    except Exception as exc:
+        logger.warning("Reminder relative delta parse failed (%s): %s", tz_name, exc)
+        return None, None
 
 # Openers longest-first — "remind me to" must beat bare "remind me".
 # Optional "Steve," / "@Steve" — callers often strip leading @Steve, leaving "remind me…" only.
@@ -186,6 +245,10 @@ def try_parse_fire_datetime(text_after_trigger: str, tz_name: str) -> Tuple[Opti
             return fire_utc, when_face
     except Exception as exc:
         logger.warning("Reminder dateparser failed (%s): %s", tz_name, exc)
+
+    rel_dt, rel_face = _try_parse_relative_in_delta(raw, (tz_name or "UTC"))
+    if rel_dt is not None:
+        return rel_dt, rel_face
 
     low = raw.lower()
     now = datetime.now(timezone.utc).replace(tzinfo=None)

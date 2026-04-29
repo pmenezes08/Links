@@ -131,6 +131,13 @@ def test_try_parse_when_face_uses_city_style_label():
     assert "Europe/Dublin" not in (face or "")
 
 
+def test_try_parse_relative_in_long_tail():
+    """Dateparser often misses the trailing ``in N min`` on long lines; deterministic path must not."""
+    dt, face = try_parse_fire_datetime("call my boss in 8 minutes", "Europe/Dublin")
+    assert dt is not None and face
+    assert extract_subject("call my boss in 8 minutes") == "call my boss"
+
+
 def test_format_reminder_wall_dublin_suffix():
     from datetime import datetime
 

@@ -153,6 +153,24 @@ def run_steve_dm_reply(
         except Exception as exc:
             logger.warning("Reminder vault handler failed (non-fatal): %s", exc)
 
+    # Platform activity digest (private Steve DM only — runs before general Grok)
+    if not other_username:
+        try:
+            from backend.services.platform_activity_digest import try_handle_platform_activity_digest_dm
+
+            dm_digest = try_handle_platform_activity_digest_dm(
+                sender_username=sender_username,
+                user_message=user_message or "",
+            )
+            if dm_digest:
+                from backend.services.content_generation.delivery import send_steve_dm
+
+                send_steve_dm(receiver_username=sender_username, content=dm_digest)
+                _clear_steve_typing()
+                return
+        except Exception as exc:
+            logger.warning("Platform digest handler failed (non-fatal): %s", exc)
+
     if not XAI_API_KEY:
         logger.warning("XAI_API_KEY not configured, Steve cannot reply in DM")
         _clear_steve_typing()

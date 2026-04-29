@@ -66,3 +66,4 @@ def test_auth_and_webhook_routes_still_exist():
     assert "/api/webhooks/stripe" in rules
     assert "/api/check_pending_login" in rules
     assert "/api/clear_stale_session" in rules
+    assert "/api/me/platform-activity-digest" in rules
