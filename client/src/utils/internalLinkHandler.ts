@@ -30,14 +30,25 @@ export interface InviteResult {
 }
 
 /**
- * Check if a URL should be handled internally (app.c-point.co only)
+ * Check if a URL should be handled internally (SPA navigation, not system browser).
+ * Includes app.c-point.co, same tab origin, and Cloud Run staging *.run.app hosts.
  */
 export function isInternalLink(url: string): boolean {
   try {
     const parsed = new URL(url)
-    return INTERNAL_DOMAINS.some(domain => 
-      parsed.hostname === domain
-    )
+    const host = parsed.hostname.toLowerCase()
+    if (INTERNAL_DOMAINS.some((domain) => parsed.hostname === domain)) {
+      return true
+    }
+    if (host.endsWith('.run.app')) {
+      return true
+    }
+    if (typeof window !== 'undefined' && window.location?.hostname) {
+      if (host === window.location.hostname.toLowerCase()) {
+        return true
+      }
+    }
+    return false
   } catch {
     return false
   }
@@ -101,13 +112,12 @@ export function extractInviteToken(url: string): string | null {
 }
 
 /**
- * Extract the internal path from a c-point.co URL
+ * Extract the internal path from an in-app URL (same-origin, app.c-point.co, or staging run.app).
  */
 export function extractInternalPath(url: string): string | null {
   try {
     const parsed = new URL(url)
     if (!isInternalLink(url)) return null
-    // Return the pathname + search params
     return parsed.pathname + parsed.search
   } catch {
     return null

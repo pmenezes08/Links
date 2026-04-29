@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
 
 from backend.services.platform_activity_digest import (
     _digest_app_base_url,
-    _digest_markdown_preserves_required_https_links,
+    _digest_markdown_preserves_required_paths,
     _digest_opener_line,
-    _format_digest_markdown_from_payload,
+    _fallback_deterministic_digest_body,
     _https_feed_url,
     _https_group_chat_url,
     coerce_window_hours,
+    format_digest_last_activity_label,
     message_looks_like_platform_digest_intent,
     parse_digest_window_hours_from_message,
 )
@@ -76,32 +78,44 @@ def test_digest_opener_has_snapshot_sentence():
     assert "3 days" in s or "**3 days**" in s
 
 
-def test_deterministic_digest_markdown_contains_full_https_links():
+def test_fallback_digest_contains_path_links():
     payload = {
         "communities": [
             {
                 "name": "Test Comm",
-                "post_count_others": 3,
-                "last_from_others_at": "2026-04-01T12:00:00+00:00",
-                "recent_snippets": ["Hello world"],
-                "feed_url_https": "https://app.example.com/community_feed_react/7",
+                "last_activity_label": "Jan 01, 2026",
+                "feed_path": "/community_feed_react/7",
+                "recent_posts": [{"author_label": "Alex", "content": "Hello world"}],
             }
         ],
         "group_chats": [
             {
                 "name": "Squad",
-                "message_count_others": 2,
-                "last_activity": "2026-04-02",
-                "last_snippet": "Hey",
-                "chat_url_https": "https://app.example.com/group_chat/99",
+                "last_activity_label": "2 hours ago",
+                "chat_path": "/group_chat/99",
+                "transcript": [{"sender_username": "bob", "text": "Hi team"}],
             }
         ],
     }
-    md = _format_digest_markdown_from_payload(payload)
-    assert "[Open feed](https://app.example.com/community_feed_react/7)" in md
-    assert "[Open chat](https://app.example.com/group_chat/99)" in md
+    md = _fallback_deterministic_digest_body(payload)
+    assert "[Open feed](/community_feed_react/7)" in md
+    assert "[Open chat](/group_chat/99)" in md
     assert "**Test Comm**" in md
     assert "**Squad**" in md
-    assert _digest_markdown_preserves_required_https_links(md, payload)
-    bad = md.replace("https://app.example.com/community_feed_react/7", "")
-    assert not _digest_markdown_preserves_required_https_links(bad, payload)
+    assert _digest_markdown_preserves_required_paths(md, payload)
+    bad = md.replace("/community_feed_react/7", "")
+    assert not _digest_markdown_preserves_required_paths(bad, payload)
+
+
+def test_format_last_activity_relative_hours():
+    now = datetime(2026, 4, 29, 15, 0, 0, tzinfo=timezone.utc)
+    past = datetime(2026, 4, 29, 13, 0, 0, tzinfo=timezone.utc)
+    s = format_digest_last_activity_label(past, now_utc=now)
+    assert "hour" in s.lower()
+
+
+def test_format_last_activity_calendar_date():
+    now = datetime(2026, 4, 29, 15, 0, 0, tzinfo=timezone.utc)
+    old = datetime(2026, 4, 20, 10, 0, 0, tzinfo=timezone.utc)
+    s = format_digest_last_activity_label(old, now_utc=now)
+    assert "2026" in s or "Apr" in s

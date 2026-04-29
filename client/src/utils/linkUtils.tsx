@@ -97,26 +97,34 @@ export function SmartLink({
     e.preventDefault()
     e.stopPropagation()
 
+    let resolvedHref = href
+    if (href.startsWith('/') && !href.startsWith('//')) {
+      resolvedHref =
+        typeof window !== 'undefined'
+          ? `${window.location.origin}${href}`
+          : `https://app.c-point.co${href}`
+    }
+
     // Landing page links (www.c-point.co) should open in browser
-    if (isLandingPageLink(href)) {
-      window.open(href, '_blank', 'noopener,noreferrer')
+    if (isLandingPageLink(resolvedHref)) {
+      window.open(resolvedHref, '_blank', 'noopener,noreferrer')
       return
     }
 
     // Check if this is an internal app.c-point.co link
-    if (!isInternalLink(href)) {
+    if (!isInternalLink(resolvedHref)) {
       // External link - prefer in-platform article reader for roundups/news if provided
       if (onExternalClick) {
-        onExternalClick(href)
+        onExternalClick(resolvedHref)
         return
       }
       // Fallback to new tab
-      window.open(href, '_blank', 'noopener,noreferrer')
+      window.open(resolvedHref, '_blank', 'noopener,noreferrer')
       return
     }
 
     // Check for invite token
-    const inviteToken = extractInviteToken(href)
+    const inviteToken = extractInviteToken(resolvedHref)
     if (inviteToken) {
       setProcessing(true)
       try {
@@ -142,7 +150,7 @@ export function SmartLink({
     }
 
     // Other internal link - navigate within the app
-    const internalPath = extractInternalPath(href)
+    const internalPath = extractInternalPath(resolvedHref)
     if (internalPath) {
       navigate(internalPath)
     }
@@ -275,26 +283,26 @@ export function renderTextWithSourceLinks(
   let lastIndex = 0
   let sourceCounter = 0
   
-  // Match markdown links, https/http URLs, and www. URLs
-  const combinedRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s]+)|(?:^|\s)(www\.[^\s]+)/g
+  // Match markdown links ([text](url) path or https), https/http URLs, and www. URLs
+  const combinedRegex = /\[([^\]]+)\]\(([^)]+)\)|(https?:\/\/[^\s]+)|(?:^|\s)(www\.[^\s]+)/g
   let match
-  
+
   while ((match = combinedRegex.exec(text)) !== null) {
     // For www. matches the full match may include a leading space; adjust start index
     const wwwUrl = match[4]
     const effectiveStart = wwwUrl ? match.index + (match[0].length - wwwUrl.length) : match.index
-    
+
     if (effectiveStart > lastIndex) {
       const textBefore = text.substring(lastIndex, effectiveStart)
       parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(textBefore, lastIndex))), onMentionClick))
     }
-    
+
     let url: string
     let displayText: string
-    
+
     if (match[1] && match[2]) {
       displayText = match[1]
-      url = match[2]
+      url = match[2].trim()
     } else if (wwwUrl) {
       displayText = wwwUrl
       url = `https://${wwwUrl}`
@@ -367,7 +375,7 @@ export function renderRichText(
   }
 
   const nodes: Array<React.ReactNode> = []
-  const markdownRe = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g
+  const markdownRe = /\[([^\]]+)\]\(([^)]+)\)/g
   let lastIndex = 0
   let match: RegExpExecArray | null
   let sourceCounter = 0
@@ -383,7 +391,7 @@ export function renderRichText(
       )
     }
     const label = match[1]
-    const url = match[2]
+    const url = match[2].trim()
     nodes.push(
       <SmartLink
         key={`md-${match.index}`}
@@ -467,13 +475,18 @@ function renderTextWithLinksInner(
     }
 
     const displayText = match[1]
-    const url = match[2]
-    const fullUrl = url.startsWith('http') ? url : `https://${url}`
+    const urlRaw = match[2]
+    const hrefForLink =
+      urlRaw.startsWith('/') && !urlRaw.startsWith('//')
+        ? urlRaw
+        : urlRaw.startsWith('http')
+          ? urlRaw
+          : `https://${urlRaw}`
 
     parts.push(
       <SmartLink
         key={match.index}
-        href={fullUrl}
+        href={hrefForLink}
         displayText={displayText}
         onJoinCommunity={onJoinCommunity}
         onExternalClick={onExternalClick}

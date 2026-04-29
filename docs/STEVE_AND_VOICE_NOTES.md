@@ -118,17 +118,12 @@ wrong surface is how counters desync.
 `STEVE_SURFACES = (DM, GROUP, FEED, POST_SUMMARY, VOICE_SUMMARY)` — this
 set is what counts against `steve_uses_per_month` and `ai_daily_limit`.
 
-**Platform activity digest.** When Steve replies with aggregated community plus
-group-chat activity from a DM, SQL builds the factual payload; **the DM body is assembled
-deterministically** (bold titles, counts, snippets, **`[Open feed](feed_url_https)` / `[Open chat](chat_url_https)`**
-from `PUBLIC_BASE_URL`, defaulting to `https://app.c-point.co`). An optional Grok polish pass runs only on that
-assembled text — if upstream output removes or truncates any required https URL, the deterministic copy is kept.
-Logged usage: `surface=SURFACE_DM`, `request_type='platform_activity_digest'` when the polish call succeeds.
-The read-only helper `GET /api/me/platform-activity-digest` returns JSON only
-and does **not** increment AI usage rows. Counts and snippets are **from
-other members only** (viewer's own posts and group messages are excluded).
-Communities are ranked by **most recent activity from others** in the
-window.
+**Steve DM pipeline (`run_steve_dm_reply`).** `gate_or_reason(..., SURFACE_DM)` runs **before**
+feedback capture, Reminder Vault, platform digest, or Grok. Without `can_use_steve`,
+the user receives only a markdown **subscription CTA** pointing at **`/account_settings/membership`**
+(via canonical `PUBLIC_BASE_URL` hostname).
+
+**Platform activity digest.** DM flow: `message_looks_like_platform_digest_intent` filters candidates, then an optional Grok classifier confirms intent and adjusts the window hours. **`build_platform_activity_digest`** aggregates **SQL-only facts**: recent posts **with author names** (`users` join), content, optional `image_path`, and **recent group transcript lines** from other members only — viewer excluded. **`_grok_compose_digest_from_facts`** summarizes those facts **without inventing** users or links; markdown uses **path-only** links **`[Open feed](/community_feed_react/{id})`** / **`[Open chat](/group_chat/{id})`** so any app origin resolves in-app (`SmartLink` + `PUBLIC_BASE_URL` for ancillary uses). Validator keeps every `feed_path` / `chat_path` verbatim; fallback body is deterministic. **`log_usage`**: exactly **one row** per delivered digest DM (`surface=SURFACE_DM`, `request_type='platform_activity_digest'`; **`model`** includes Grok digest + intent tokens summed, **`n/a`** only if no upstream LLM). The read-only helper `GET /api/me/platform-activity-digest` returns JSON only — **does not** log usage.
 
 ---
 

@@ -8,6 +8,7 @@ Called from a background thread via :func:`run_steve_dm_reply`.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from datetime import datetime
@@ -29,6 +30,19 @@ logger = logging.getLogger(__name__)
 PEER_DM_CONTEXT_LINES = 10
 
 
+def _canonical_app_origin() -> str:
+    return (os.environ.get("PUBLIC_BASE_URL") or "").strip().rstrip("/") or "https://app.c-point.co"
+
+
+def _premium_subscription_dm_cta() -> str:
+    base = _canonical_app_origin()
+    url = f"{base}/account_settings/membership"
+    return (
+        "Steve is a **Premium** feature — I need an active subscription to chat here.\n\n"
+        f"[Manage membership]({url}) · Settings → Manage Membership · upgrade to unlock me."
+    )
+
+
 def run_steve_dm_reply(
     sender_username: str,
     user_message: str,
@@ -46,6 +60,30 @@ def run_steve_dm_reply(
             logger.warning("Failed to clear Steve DM typing: %s", typing_err)
 
     time.sleep(1.5)
+
+    allowed, gate_reason, _ent = gate_or_reason(sender_username, ai_usage.SURFACE_DM)
+    if not allowed and _enforce():
+        try:
+            from backend.services.content_generation.delivery import send_steve_dm as _send_dm
+
+            if gate_reason == _errs.REASON_PREMIUM_REQUIRED:
+                blocked = _premium_subscription_dm_cta()
+            elif gate_reason == _errs.REASON_DAILY_CAP:
+                blocked = "You've hit today's Steve limit. It resets at midnight UTC."
+            else:
+                blocked = (
+                    "You've used up your Steve calls for this month. "
+                    "See Settings → AI Usage."
+                )
+            _send_dm(receiver_username=sender_username, content=blocked)
+        except Exception:
+            pass
+        try:
+            ai_usage.log_block(sender_username, surface=ai_usage.SURFACE_DM, reason=gate_reason or "unknown")
+        except Exception:
+            pass
+        _clear_steve_typing()
+        return
 
     try:
         from backend.services.steve_platform_manual import is_feedback_intent
@@ -95,34 +133,6 @@ def run_steve_dm_reply(
             return
     except Exception as feedback_err:
         logger.warning("Steve feedback capture failed, falling back: %s", feedback_err)
-
-    # ── Entitlements gate (before reminder + Grok) ──
-    allowed, reason, _ent = gate_or_reason(sender_username, ai_usage.SURFACE_DM)
-    if not allowed and _enforce():
-        try:
-            from backend.services.content_generation.delivery import send_steve_dm as _send_dm
-
-            if reason == _errs.REASON_PREMIUM_REQUIRED:
-                blocked = (
-                    "Steve is a Premium feature. Upgrade in Settings → "
-                    "Manage Membership to keep chatting with me."
-                )
-            elif reason == _errs.REASON_DAILY_CAP:
-                blocked = "You've hit today's Steve limit. It resets at midnight UTC."
-            else:
-                blocked = (
-                    "You've used up your Steve calls for this month. "
-                    "See Settings → AI Usage."
-                )
-            _send_dm(receiver_username=sender_username, content=blocked)
-        except Exception:
-            pass
-        try:
-            ai_usage.log_block(sender_username, surface=ai_usage.SURFACE_DM, reason=reason or "unknown")
-        except Exception:
-            pass
-        _clear_steve_typing()
-        return
 
     # Reminder Vault — only private DM with Steve (no third participant)
     if not other_username:
