@@ -863,20 +863,20 @@ export default function PremiumDashboard() {
             )}
         </div>
 
-        {/* Bottom navigation — full-width rectangle; black fills safe area (group chat pattern) */}
+        {/* Bottom navigation — solid black bar (matches HeaderBar), black safe-area strip */}
         {communities.length > 0 && (
           <div
             className="fixed bottom-0 left-0 right-0 z-[100] flex flex-col"
             style={{ touchAction: 'manipulation' }}
           >
             <div
-              className="liquid-glass-surface !rounded-none !border-x-0 !border-b-0 !border-t !border-white/12 !bg-black/92 backdrop-blur-[36px] backdrop-saturate-[175%] shadow-[0_-12px_40px_rgba(0,0,0,0.55)] [box-shadow:inset_0_1px_0_rgba(255,255,255,0.06)] w-full"
+              className="w-full bg-black border-t border-[#262f30]"
               style={{
                 paddingLeft: 'env(safe-area-inset-left, 0px)',
                 paddingRight: 'env(safe-area-inset-right, 0px)',
               }}
             >
-              <div className="relative z-[1] h-14 flex items-center justify-between gap-1 text-[#cfd8dc] px-2 sm:px-4">
+              <div className="h-14 flex items-center justify-between gap-1 text-[#cfd8dc] px-2 sm:px-4">
                 <button
                   type="button"
                   className={`p-2 sm:p-3 rounded-full transition-colors touch-manipulation ${isDashboardRoute ? 'bg-white/10' : 'hover:bg-white/10 active:bg-white/15'}`}
