@@ -342,3 +342,28 @@ backend endpoint.
 - **Two secrets, one per env.** Never point a staging-prefixed job at
   the prod secret or vice versa — the point of separate secrets is that
   a leak in one env can't be weaponised against the other.
+
+## 8. Steve Reminder Vault dispatch
+
+| Field | Value |
+|-------|--------|
+| **URI** | `{BASE}/api/cron/steve/reminder-vault-dispatch` |
+| **Method** | `POST` |
+| **Header** | `X-Cron-Secret` = same `CRON_SHARED_SECRET` as other crons |
+| **Suggested schedule** | Every 5 minutes (`*/5 * * * *`, UTC) |
+
+Example (staging `BASE`):
+
+```bash
+BASE=https://cpoint-app-staging-739552904126.europe-west1.run.app
+SECRET=$(gcloud secrets versions access latest --secret=cron-shared-secret-staging)
+
+gcloud scheduler jobs create http steve-reminder-vault-dispatch \
+  --location=europe-west1 \
+  --schedule="*/5 * * * *" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/steve/reminder-vault-dispatch" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=120s
+```

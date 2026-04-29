@@ -13399,15 +13399,29 @@ def get_messages():
                 pass
             deleted_at_clause = f" AND timestamp > {ph}" if deleted_at_filter else ""
             deleted_at_params = (deleted_at_filter,) if deleted_at_filter else ()
-            
+            since_clause = f" AND id > {ph}" if since_id_int else ""
+
+            try:
+                from backend.services.dm_human_thread import ensure_human_dm_thread_column, human_pair_thread_key
+
+                ensure_human_dm_thread_column(c)
+            except Exception as _htc_err:
+                logger.debug(f"human_dm_thread column ensure: {_htc_err}")
+            thr_key_peer = human_pair_thread_key(username, other_username)
+
+            where_pair_dm = (
+                f"(((sender = {ph} AND receiver = {ph}) "
+                f" OR (sender = {ph} AND receiver = {ph}))"
+                f" OR (sender = 'steve' AND human_dm_thread = {ph}))"
+            )
+
+            base_params = (username, other_username, other_username, username, thr_key_peer)
+            query_params = base_params + ((since_id_int,) if since_id_int else ()) + deleted_at_params
+
             # Get messages between users (compat: edited_at and encryption fields may not exist yet)
             # PERFORMANCE: Delta fetch support - only get messages newer than since_id
             with_edited = True
             with_encryption = True
-            since_clause = " AND id > ?" if since_id_int else ""
-            base_params = (username, other_username, other_username, username)
-            query_params = base_params + ((since_id_int,) if since_id_int else ()) + deleted_at_params
-            
             has_audio_summary = True
             has_reactions = True
             has_media_paths = True
@@ -13417,8 +13431,7 @@ def get_messages():
                     SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, 
                            is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at, audio_summary, reaction, reaction_by, media_paths
                     FROM messages
-                    WHERE ((sender = ? AND receiver = ?)
-                       OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_clause}
+                    WHERE {where_pair_dm}{since_clause}{deleted_at_clause}
                     ORDER BY timestamp ASC
                     """,
                     query_params,
@@ -13433,8 +13446,7 @@ def get_messages():
                         SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, 
                                is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at, audio_summary
                         FROM messages
-                        WHERE ((sender = ? AND receiver = ?)
-                           OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_clause}
+                        WHERE {where_pair_dm}{since_clause}{deleted_at_clause}
                         ORDER BY timestamp ASC
                         """,
                         query_params,
@@ -13447,8 +13459,7 @@ def get_messages():
                             f"""
                             SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at, audio_summary
                             FROM messages
-                            WHERE ((sender = ? AND receiver = ?)
-                               OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_clause}
+                            WHERE {where_pair_dm}{since_clause}{deleted_at_clause}
                             ORDER BY timestamp ASC
                             """,
                             query_params,
@@ -13461,8 +13472,7 @@ def get_messages():
                                 f"""
                                 SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
                                 FROM messages
-                                WHERE ((sender = ? AND receiver = ?)
-                                   OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_clause}
+                                WHERE {where_pair_dm}{since_clause}{deleted_at_clause}
                                 ORDER BY timestamp ASC
                                 """,
                                 query_params,
@@ -13473,8 +13483,7 @@ def get_messages():
                                 f"""
                                 SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp
                                 FROM messages
-                                WHERE ((sender = ? AND receiver = ?)
-                                   OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_clause}
+                                WHERE {where_pair_dm}{since_clause}{deleted_at_clause}
                                 ORDER BY timestamp ASC
                                 """,
                                 query_params,
@@ -13867,428 +13876,10 @@ def send_message():
         return jsonify({'success': False, 'error': 'Failed to send message'})
 
 def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_username: str = None):
-    """Generate and send Steve's AI reply in a 1:1 DM. Runs in a background thread.
-    
-    If other_username is provided, Steve was @mentioned in a DM between sender and other_username.
-    Steve's reply goes into the same thread (sender <-> other_username) so both users see it.
-    If other_username is None, sender is chatting directly with Steve.
-    """
-    import time
-    from datetime import datetime
+    """Delegates to backend service (thin wrapper)."""
+    from backend.services.steve_dm_reply import run_steve_dm_reply
 
-    typing_peer = other_username if other_username else 'steve'
-
-    def _clear_steve_typing():
-        try:
-            from backend.services.steve_dm_typing import clear_dm_typing
-            clear_dm_typing(sender_username, typing_peer)
-        except Exception as typing_err:
-            logger.warning("Failed to clear Steve DM typing: %s", typing_err)
-    
-    time.sleep(1.5)
-
-    try:
-        from backend.services.steve_platform_manual import is_feedback_intent
-
-        if is_feedback_intent(user_message):
-            from backend.services.content_generation.delivery import send_steve_dm
-            text = (user_message or "").strip()
-            if len(text) < 24:
-                send_steve_dm(
-                    receiver_username=sender_username,
-                    content=(
-                        "Quick one: what happened, and what were you trying to do? "
-                        "Give me that and I'll send it through properly."
-                    ),
-                )
-                _clear_steve_typing()
-                return
-            from backend.services.steve_feedback import create_feedback_item
-
-            item = create_feedback_item(
-                submitted_by=sender_username,
-                raw_user_message=text,
-                steve_summary=text[:500],
-                surface="steve_dm",
-            )
-            send_steve_dm(
-                receiver_username=sender_username,
-                content=(
-                    f"Got it. I've sent this through as {item.get('type', 'feedback').replace('_', ' ')} "
-                    f"#{item.get('id')}. I'll keep it tied to your report."
-                ),
-            )
-            _clear_steve_typing()
-            return
-    except Exception as feedback_err:
-        logger.warning("Steve feedback capture failed, falling back to normal reply: %s", feedback_err)
-    
-    if not XAI_API_KEY:
-        logger.warning("XAI_API_KEY not configured, Steve cannot reply in DM")
-        _clear_steve_typing()
-        return
-    
-    # ── Entitlements gate ──
-    try:
-        from backend.services.entitlements_gate import gate_or_reason as _gate
-        from backend.services.feature_flags import entitlements_enforcement_enabled as _enforce
-        from backend.services import entitlements_errors as _errs
-        _allowed, _reason, _ent = _gate(sender_username, _ai_usage.SURFACE_DM)
-        if not _allowed and _enforce():
-            try:
-                from backend.services.content_generation.delivery import send_steve_dm as _send_dm
-                if _reason == _errs.REASON_PREMIUM_REQUIRED:
-                    blocked = (
-                        "Steve is a Premium feature. Upgrade in Settings → "
-                        "Manage Membership to keep chatting with me."
-                    )
-                elif _reason == _errs.REASON_DAILY_CAP:
-                    blocked = "You've hit today's Steve limit. It resets at midnight UTC."
-                else:
-                    blocked = (
-                        "You've used up your Steve calls for this month. "
-                        "See Settings → AI Usage."
-                    )
-                _send_dm(receiver_username=sender_username, content=blocked)
-            except Exception:
-                pass
-            _clear_steve_typing()
-            return
-    except Exception as gate_err:
-        logger.warning("DM Steve gate check failed (non-fatal): %s", gate_err)
-
-    try:
-        # Determine the chat thread to read context from and reply into
-        if other_username:
-            chat_user_a = sender_username
-            chat_user_b = other_username
-        else:
-            chat_user_a = sender_username
-            chat_user_b = 'steve'
-        
-        def _steve_parse_dt(val):
-            """Parse Firestore Timestamp, datetime, or ISO string to naive UTC datetime."""
-            from datetime import datetime, timezone
-            if val is None:
-                return None
-            try:
-                if hasattr(val, 'timestamp') and callable(getattr(val, 'timestamp')):
-                    return datetime.utcfromtimestamp(val.timestamp())
-                if isinstance(val, datetime):
-                    if val.tzinfo is not None:
-                        return val.astimezone(timezone.utc).replace(tzinfo=None)
-                    return val
-                if isinstance(val, str):
-                    s = val.strip().replace('Z', '+00:00')
-                    dt = datetime.fromisoformat(s)
-                    if dt.tzinfo is not None:
-                        return dt.astimezone(timezone.utc).replace(tzinfo=None)
-                    return dt
-            except Exception:
-                pass
-            return None
-
-        # ── Load full conversation history from Firestore (fall back to MySQL) ──
-        recent_messages = []
-        context_reset_at = None
-        reset_dt = None
-        firestore_context_ok = False
-        try:
-            import os
-            FIRESTORE_DATABASE = os.environ.get('FIRESTORE_DATABASE', 'cpoint')
-            from google.cloud import firestore as _firestore
-            project = os.environ.get('GOOGLE_CLOUD_PROJECT') or os.environ.get('GCP_PROJECT')
-            fs = _firestore.Client(project=project, database=FIRESTORE_DATABASE) if project else _firestore.Client(database=FIRESTORE_DATABASE)
-
-            from backend.services.firestore_reads import _find_dm_conv_id
-            conv_id = _find_dm_conv_id(fs, chat_user_a, chat_user_b)
-            if conv_id:
-                try:
-                    conv_doc = fs.collection('dm_conversations').document(conv_id).get()
-                    if conv_doc.exists:
-                        cd = conv_doc.to_dict() or {}
-                        context_reset_at = cd.get('steve_context_reset_at')
-                        reset_dt = _steve_parse_dt(context_reset_at)
-                        if context_reset_at:
-                            logger.info(f"Steve DM context reset timestamp: {context_reset_at} for {chat_user_a}<->{chat_user_b}")
-                except Exception as reset_err:
-                    logger.warning(f"Failed to load DM conversation reset timestamp: {reset_err}")
-
-                msgs_ref = fs.collection('dm_conversations').document(conv_id).collection('messages')
-                docs = msgs_ref.order_by('created_at').stream()
-                for doc in docs:
-                    d = doc.to_dict() or {}
-                    sender = d.get('sender', '')
-                    text = d.get('text', '')
-                    if not text or not sender:
-                        continue
-                    msg_ts = _steve_parse_dt(d.get('created_at'))
-                    if reset_dt and msg_ts and msg_ts < reset_dt:
-                        continue
-                    # Include messages without created_at (legacy) when we have a reset (cannot prove they're old)
-                    recent_messages.append(f"{sender}: {text}")
-                firestore_context_ok = True
-                logger.info(f"Steve DM context from Firestore: {len(recent_messages)} messages for {chat_user_a}<->{chat_user_b}")
-        except Exception as fs_err:
-            logger.warning(f"Steve DM Firestore context failed, falling back to MySQL: {fs_err}")
-            recent_messages = []
-            reset_dt = None
-
-        # MySQL fallback only if Firestore did not load the thread (avoid duplicating full history after a filtered Firestore load)
-        if not firestore_context_ok:
-            with get_db_connection() as conn:
-                c = conn.cursor()
-                ph = get_sql_placeholder()
-                c.execute(f"""
-                    SELECT sender, message, timestamp FROM messages
-                    WHERE (sender = {ph} AND receiver = {ph})
-                       OR (sender = {ph} AND receiver = {ph})
-                    ORDER BY timestamp ASC
-                """, (chat_user_a, chat_user_b, chat_user_b, chat_user_a))
-                for row in c.fetchall():
-                    s = row['sender'] if hasattr(row, 'keys') else row[0]
-                    m = row['message'] if hasattr(row, 'keys') else row[1]
-                    ts_raw = row['timestamp'] if hasattr(row, 'keys') else row[2]
-                    if not m:
-                        continue
-                    row_ts = _steve_parse_dt(ts_raw) if ts_raw is not None else None
-                    if reset_dt and row_ts and row_ts < reset_dt:
-                        continue
-                    recent_messages.append(f"{s}: {m}")
-        
-        current_date = datetime.now().strftime('%A, %B %d, %Y at %H:%M UTC')
-        
-        # ── Privacy gate BEFORE any KB fetch (per docs/STEVE_PRIVACY_GATE.md) ──
-        from backend.services.steve_profiling_gates import user_can_access_steve_kb
-
-        # ── Inject Grok-analyzed profile context for the sender ──
-        if user_can_access_steve_kb(sender_username, sender_username):
-            user_profile_ctx = get_steve_context_for_user(sender_username)
-        else:
-            user_profile_ctx = ""
-
-        # ── Detect @mentions in the message and load mentioned user profiles ──
-        mentioned_profiles = []
-        mentioned_usernames = set(re.findall(r'@(\w+)', user_message)) if user_message else set()
-        mentioned_usernames.discard('steve')
-        mentioned_usernames.discard('Steve')
-        mentioned_usernames.discard(sender_username)
-        
-        for mentioned_user in mentioned_usernames:
-            if user_can_access_steve_kb(sender_username, mentioned_user):
-                profile_ctx = get_steve_context_for_user(mentioned_user, viewer_username=sender_username)
-                if profile_ctx:
-                    mentioned_profiles.append((mentioned_user, profile_ctx))
-                    continue
-            # Gate failed or no KB — do not fall back to basic profile
-            # (per privacy rules - no information leaked)
-            continue
-
-        # ── Build conversation context with recency weighting ──
-        all_messages = recent_messages[-200:]
-        CURRENT_WINDOW = 30
-        if len(all_messages) > CURRENT_WINDOW:
-            older_messages = all_messages[:-CURRENT_WINDOW]
-            current_messages = all_messages[-CURRENT_WINDOW:]
-        else:
-            older_messages = []
-            current_messages = all_messages
-        
-        context = f"Direct message conversation between {chat_user_a} and {chat_user_b}:\n"
-        if older_messages:
-            context += f"=== OLDER CONTEXT ({len(older_messages)} messages — background reference) ===\n"
-            context += "\n".join(older_messages)
-            context += "\n\n"
-        context += f"=== CURRENT CONVERSATION (last {len(current_messages)} messages — focus here) ===\n"
-        context += "\n".join(current_messages)
-        
-        if other_username:
-            context += f"\n\n{sender_username} mentioned you (@Steve). Respond helpfully."
-        else:
-            context += f"\n\n{sender_username} is chatting with you directly. Respond naturally and helpfully."
-        
-        context += f"\n\n[Current date and time: {current_date}]"
-
-        context_reset_note = ""
-        if context_reset_at:
-            context_reset_note = f"\n\nIMPORTANT: Your conversation context was reset on {context_reset_at}. Treat messages in OLDER CONTEXT that predate this reset as background only. Focus on the CURRENT CONVERSATION."
-        context += context_reset_note
-
-        is_admin = is_app_admin(sender_username)
-        platform_manual_prompt = ""
-        safety_prompt = ""
-        platform_question = False
-        professional_advice_question = False
-        try:
-            from backend.services.steve_platform_manual import (
-                SURFACE_DM,
-                is_professional_advice_intent,
-                is_platform_question,
-                render_global_steve_safety_prompt,
-                render_platform_manual_prompt,
-                select_platform_manual_cards,
-            )
-
-            platform_question = is_platform_question(user_message)
-            professional_advice_question = is_professional_advice_intent(user_message)
-            platform_manual_prompt = render_platform_manual_prompt(
-                select_platform_manual_cards(user_message, surface=SURFACE_DM)
-            )
-            safety_prompt = render_global_steve_safety_prompt(user_message, surface=SURFACE_DM)
-        except Exception as manual_err:
-            logger.warning("Steve DM platform manual load failed (non-fatal): %s", manual_err)
-
-        system_prompt = f"""You are Steve, a member of C-Point with extra reach, in a private 1:1 chat.
-
-CURRENT DATE AND TIME: {current_date}
-
-IDENTITY RULES:
-- You are inside C-Point. "This platform", "the platform", "this app", "the app", and "here" mean C-Point unless the user explicitly names another platform.
-- Never answer as if the user is asking about X/Twitter unless they explicitly say X, Twitter, or x.com.
-- Do not call yourself an assistant, bot, chatbot, AI service, or support widget.
-
-YOUR CAPABILITIES:
-- You have access to the FULL conversation history of this chat
-- You can search the web and X/Twitter for non-C-Point current information when it is relevant
-- {"As an admin, you have full platform access." if is_admin else ""}
-
-TOOL RULES:
-- For questions about C-Point, this platform, the app, communities, posts, DMs, Steve, privacy, pricing, onboarding, discovery, bugs, feedback, Paulo, founder, vision, or mission: use the C-Point Platform Manual below and do NOT use web_search or x_search.
-- Only discuss X/Twitter if the user explicitly asks about X, Twitter, or x.com.
-
-{platform_manual_prompt}
-
-{safety_prompt}
-
-CONVERSATION INTELLIGENCE:
-- You have two context sections: OLDER CONTEXT (background) and CURRENT CONVERSATION (active).
-- Always maintain full awareness of the conversation history and flow.
-- Focus on the CURRENT CONVERSATION messages when responding.
-- Reference older context only when directly relevant to the current question.
-
-COMMUNITY & PRIVACY RULES:
-- You can only share information about users if the person asking shares a community with them.
-- Never reveal information about communities the user is not a member of.
-- Only share profile information that has been provided to you below — do NOT make up details about users.
-- If you don't have information about a mentioned user, say so honestly.
-
-RESPONSE STYLE:
-- Be helpful and concise (2-5 sentences for casual, longer for detailed questions)
-- Use emojis occasionally
-- If you cannot answer, be transparent about it
-- NEVER hallucinate or make up information about users — only use the profile data provided below"""
-
-        if user_profile_ctx:
-            system_prompt += f"""
-
-WHAT YOU KNOW ABOUT @{sender_username} (the person you're chatting with):
-{user_profile_ctx}
-Use this knowledge naturally — don't announce it, but let it guide your tone and relevance."""
-
-        if mentioned_profiles:
-            for m_username, m_ctx in mentioned_profiles:
-                system_prompt += f"""
-
-WHAT YOU KNOW ABOUT @{m_username} (mentioned in the conversation):
-{m_ctx}
-Only share this information if asked. Be factual — do not embellish or invent details beyond what is listed here."""
-
-        context_for_grok = context
-
-        from openai import OpenAI
-        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": context_for_grok}
-        ]
-
-        response = client.responses.create(
-            model=GROK_MODEL_FAST,
-            input=messages,
-            tools=[] if (platform_question or professional_advice_question) else [{"type": "web_search"}, {"type": "x_search"}],
-            max_output_tokens=600,
-            temperature=0.7
-        )
-
-        ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
-
-        if not ai_response:
-            logger.warning("Steve DM reply: empty response from API")
-            _clear_steve_typing()
-            return
-
-        try:
-            from backend.services.steve_platform_manual import append_professional_disclaimer_if_needed
-            ai_response = append_professional_disclaimer_if_needed(ai_response, user_message)
-        except Exception as safety_err:
-            logger.warning("Steve DM safety footer failed (non-fatal): %s", safety_err)
-
-        ai_response = format_steve_response_links(ai_response)
-        
-        if not ai_response or not ai_response.strip():
-            logger.warning("Steve DM reply: empty response after formatting")
-            _clear_steve_typing()
-            return
-        
-        # Insert Steve's reply into the correct DM thread
-        # If @Steve in a DM between two users: Steve sends to the sender,
-        # appearing in the sender's chat thread. The other user sees it on
-        # their next visit to their chat with Steve.
-        # For direct Steve chats: Steve replies to sender as normal.
-        reply_receiver = sender_username
-        
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            if USE_MYSQL:
-                c.execute("""
-                    INSERT INTO messages (sender, receiver, message, timestamp)
-                    VALUES (%s, %s, %s, NOW())
-                """, ('steve', reply_receiver, ai_response))
-            else:
-                _ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                c.execute("""
-                    INSERT INTO messages (sender, receiver, message, timestamp)
-                    VALUES (?, ?, ?, ?)
-                """, ('steve', reply_receiver, ai_response, _ts))
-            conn.commit()
-            steve_msg_id = getattr(c, 'lastrowid', None)
-            
-            # Dual-write Steve reply to Firestore
-            try:
-                from backend.services.firestore_writes import write_dm_message
-                write_dm_message(sender='steve', receiver=reply_receiver, message_id=steve_msg_id, text=ai_response)
-            except Exception:
-                pass
-
-            # Invalidate caches so the reply appears on next poll
-            try:
-                invalidate_message_cache(sender_username, 'steve')
-                cache.delete(f"chat_threads:{sender_username}")
-                if other_username:
-                    invalidate_message_cache(other_username, 'steve')
-                    cache.delete(f"chat_threads:{other_username}")
-            except Exception:
-                pass
-            
-            logger.info(f"Steve replied to DM from {sender_username}" + (f" (mentioned in chat with {other_username})" if other_username else ""))
-
-        try:
-            _ai_usage.log_usage(
-                sender_username,
-                surface=_ai_usage.SURFACE_DM,
-                request_type='steve_dm_reply',
-                model='grok-4-1-fast-reasoning',
-            )
-        except Exception:
-            pass
-
-    except Exception as e:
-        logger.error(f"Error in Steve DM reply: {e}", exc_info=True)
-    finally:
-        _clear_steve_typing()
-
-
+    run_steve_dm_reply(sender_username, user_message, other_username)
 @app.route('/api/steve/reset_dm_context', methods=['POST'])
 @login_required
 def reset_steve_dm_context():

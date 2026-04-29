@@ -1302,5 +1302,23 @@ def api_event_notification_check():
         import traceback
 
         logger = current_app.logger
-        logger.error(traceback.format_exc())
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@notifications_bp.route(
+    "/api/cron/steve/reminder-vault-dispatch",
+    methods=["POST"],
+    endpoint="api_cron_steve_reminder_vault_dispatch",
+)
+def api_cron_steve_reminder_vault_dispatch():
+    """Dispatch due Steve Reminder Vault DMs via Cloud Scheduler (X-Cron-Secret)."""
+    if not _cron_authed():
+        return jsonify({"success": False, "error": "forbidden"}), 403
+    try:
+        from backend.services.steve_reminder_vault import dispatch_due_reminders
+
+        out = dispatch_due_reminders()
+        return jsonify({"success": True, **out})
+    except Exception as exc:
+        current_app.logger.exception("reminder vault dispatch: %s", exc)
         return jsonify({"success": False, "error": str(exc)}), 500

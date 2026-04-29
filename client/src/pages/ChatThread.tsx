@@ -184,6 +184,13 @@ export default function ChatThread(){
   const [showBlockModal, setShowBlockModal] = useState(false)
   const [blockReason, setBlockReason] = useState('')
   const [blockSubmitting, setBlockSubmitting] = useState(false)
+  const [reminderVaultOpen, setReminderVaultOpen] = useState(false)
+  const [reminderRows, setReminderRows] = useState<Array<{ id: number; reminder_text: string; fire_at_utc: string; tz_label: string }>>([])
+  const [reminderVaultLoading, setReminderVaultLoading] = useState(false)
+  const [reminderVaultError, setReminderVaultError] = useState<string | null>(null)
+  const [editingVaultId, setEditingVaultId] = useState<number | null>(null)
+  const [editVaultText, setEditVaultText] = useState('')
+  const [editVaultIso, setEditVaultIso] = useState('')
   const lastFetchTime = useRef<number>(0)
   const [pastedImage, setPastedImage] = useState<File | null>(null)
   const [videoUploadProgress, setVideoUploadProgress] = useState<UploadProgress | null>(null)
@@ -228,6 +235,30 @@ export default function ChatThread(){
     setMessages([])
     setSteveIsTyping(false)
   }, [username])
+
+  const loadReminderVault = useCallback(async () => {
+    setReminderVaultLoading(true)
+    setReminderVaultError(null)
+    try {
+      const r = await fetch('/api/me/steve/reminders', { credentials: 'include' })
+      const d = await r.json()
+      if (!r.ok) {
+        setReminderVaultError(typeof d?.error === 'string' ? d.error : 'Could not load reminders')
+        setReminderRows([])
+        return
+      }
+      setReminderRows(Array.isArray(d.reminders) ? d.reminders : [])
+    } catch {
+      setReminderVaultError('Network error')
+      setReminderRows([])
+    } finally {
+      setReminderVaultLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (reminderVaultOpen) void loadReminderVault()
+  }, [reminderVaultOpen, loadReminderVault])
 
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
@@ -2628,6 +2659,20 @@ export default function ChatThread(){
                   <i className="fa-solid fa-photo-film text-xs text-[#4db6ac]" />
                   <span>View Media</span>
                 </button>
+                {isSteveDm && (
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                    onClick={() => {
+                      setHeaderMenuOpen(false)
+                      setReminderVaultOpen(true)
+                      setEditingVaultId(null)
+                    }}
+                  >
+                    <i className="fa-solid fa-clock text-xs text-[#4db6ac]" aria-hidden />
+                    <span>Reminder Vault</span>
+                  </button>
+                )}
                 {(username || '').toLowerCase() === 'steve' && (
                   <button
                     className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
@@ -3685,6 +3730,144 @@ export default function ChatThread(){
                   <span>{lang.name}</span>
                 </button>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Steve Reminder Vault */}
+      {reminderVaultOpen && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          onClick={() => {
+            setReminderVaultOpen(false)
+            setEditingVaultId(null)
+          }}
+        >
+          <div className="absolute inset-0 bg-black/70" />
+          <div
+            className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-full max-w-lg max-h-[min(560px,80vh)] shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
+              <span className="text-white font-semibold text-sm flex items-center gap-2">
+                <i className="fa-solid fa-clock text-[#4db6ac]" aria-hidden /> Reminder Vault
+              </span>
+              <button
+                type="button"
+                className="p-2 rounded-full hover:bg-white/10 text-white/70"
+                aria-label="Close"
+                onClick={() => {
+                  setReminderVaultOpen(false)
+                  setEditingVaultId(null)
+                }}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 text-sm min-h-0">
+              {reminderVaultLoading && <div className="text-white/60 text-center py-6">Loading…</div>}
+              {reminderVaultError && (
+                <div className="text-amber-300/90 text-center py-3">{reminderVaultError}</div>
+              )}
+              {!reminderVaultLoading && !reminderVaultError && !reminderRows.length && (
+                <div className="text-white/60 text-center py-6">
+                  No scheduled reminders yet. Tell Steve something like: “Steve, remind me to call Alex Tuesday at 3pm”.
+                </div>
+              )}
+              <ul className="space-y-3">
+                {reminderRows.map((row) => (
+                  <li key={row.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    {editingVaultId === row.id ? (
+                      <div className="space-y-2">
+                        <label className="block text-[11px] uppercase tracking-wide text-white/45">Description</label>
+                        <textarea
+                          value={editVaultText}
+                          onChange={(e) => setEditVaultText(e.target.value)}
+                          rows={3}
+                          className="w-full bg-white/10 border border-white/20 rounded-lg px-2 py-2 text-white text-sm resize-none focus:outline-none focus:border-[#4db6ac]"
+                        />
+                        <label className="block text-[11px] uppercase tracking-wide text-white/45 mt-2">When</label>
+                        <input
+                          type="datetime-local"
+                          value={editVaultIso}
+                          onChange={(e) => setEditVaultIso(e.target.value)}
+                          className="w-full bg-white/10 border border-white/20 rounded-lg px-2 py-2 text-white text-sm focus:outline-none focus:border-[#4db6ac]"
+                        />
+                        <div className="flex gap-2 justify-end pt-1">
+                          <button
+                            type="button"
+                            className="px-3 py-1.5 text-xs rounded-lg bg-white/10 text-white/80 hover:bg-white/15"
+                            onClick={() => setEditingVaultId(null)}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            className="px-3 py-1.5 text-xs rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
+                            onClick={async () => {
+                              try {
+                                const fireIso = editVaultIso
+                                  ? new Date(editVaultIso).toISOString()
+                                  : undefined
+                                const res = await fetch(`/api/me/steve/reminders/${row.id}`, {
+                                  method: 'PATCH',
+                                  credentials: 'include',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    reminder_text: editVaultText,
+                                    ...(fireIso ? { fire_at_utc: fireIso } : {}),
+                                  }),
+                                })
+                                const data = await res.json()
+                                if (!res.ok || !data.success) {
+                                  alert(typeof data.message === 'string' ? data.message : 'Could not save')
+                                  return
+                                }
+                                setEditingVaultId(null)
+                                void loadReminderVault()
+                              } catch {
+                                alert('Could not save')
+                              }
+                            }}
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="text-white/90 whitespace-pre-wrap">{row.reminder_text}</div>
+                        <div className="text-xs text-white/45 mt-1">
+                          #{row.id} · {row.fire_at_utc} UTC · tz {row.tz_label}
+                        </div>
+                        <button
+                          type="button"
+                          className="mt-2 text-xs text-[#4db6ac] hover:underline"
+                          onClick={() => {
+                            setEditingVaultId(row.id)
+                            setEditVaultText(row.reminder_text)
+                            const raw = row.fire_at_utc
+                            const norm = raw.includes('T')
+                              ? raw
+                              : raw.replace(' ', 'T')
+                            const iso = norm.endsWith('Z') || norm.includes('+') ? norm : `${norm}Z`
+                            const d = new Date(iso)
+                            const pad = (n: number) => String(n).padStart(2, '0')
+                            const local =
+                              Number.isNaN(d.getTime())
+                                ? ''
+                                : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+                            setEditVaultIso(local)
+                          }}
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         </div>

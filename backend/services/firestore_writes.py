@@ -33,6 +33,69 @@ def _dm_conv_id(user1: str, user2: str) -> str:
     return f"{a}_{b}"
 
 
+def dm_conv_id_for_users(user1: str, user2: str) -> str:
+    """Public alias — same as internal ``_dm_conv_id``."""
+    return _dm_conv_id(user1, user2)
+
+
+def write_steves_message_human_pair_thread(
+    human_peer_a: str,
+    human_peer_b: str,
+    message_id: int,
+    text: str = "",
+    mysql_receiver_username: str = "",
+    timestamp=None,
+) -> None:
+    """
+    Writes Steve's bubble into the Firestore DM document for ``human_peer_a`` and
+    ``human_peer_b`` (not ``steve``↔individual). Matches MySQL row semantics where
+    ``sender=='steve'`` and ``human_dm_thread`` links the bubble to the pair.
+    """
+    if not USE_FIRESTORE_WRITES:
+        return
+    try:
+        fs = _get_client()
+        conv_id = _dm_conv_id(human_peer_a, human_peer_b)
+        ts = timestamp if isinstance(timestamp, datetime) else datetime.utcnow()
+
+        conv_ref = fs.collection("dm_conversations").document(conv_id)
+        conv_ref.set(
+            {
+                # Keep participants as the two humans Steve is mediating — not [steve, user].
+                "participants": sorted([human_peer_a, human_peer_b]),
+                "last_message": (text or "")[:200],
+                "last_sender": "steve",
+                "updated_at": ts,
+            },
+            merge=True,
+        )
+
+        msg_ref = conv_ref.collection("messages").document(str(message_id))
+        recv = mysql_receiver_username or human_peer_b
+        msg_ref.set(
+            {
+                "mysql_id": message_id,
+                "sender": "steve",
+                "receiver": recv,
+                "text": text or "",
+                "image_path": None,
+                "video_path": None,
+                "audio_path": None,
+                "audio_duration_seconds": None,
+                "audio_mime": None,
+                "audio_summary": None,
+                "is_encrypted": False,
+                "created_at": ts,
+                "edited_at": None,
+                "reaction": None,
+                "reaction_by": None,
+            }
+        )
+        logger.debug("Firestore DM write (Steve human pair): msg %s in %s", message_id, conv_id)
+    except Exception as e:
+        logger.warning("Firestore DM write (Steve human pair) failed (non-fatal): %s", e)
+
+
 def write_dm_message(sender: str, receiver: str, message_id: int, text: str = '',
                      image_path: str = None, video_path: str = None,
                      audio_path: str = None, audio_duration_seconds=None,
