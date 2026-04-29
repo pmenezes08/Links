@@ -31,7 +31,7 @@ def register_blueprints(app: Flask) -> None:
     from .community_invites import community_invites_bp
     from .media_assets import media_assets_bp
     from .community_calendar import community_calendar_bp
-from .steve_reminders import steve_reminders_bp
+    from .steve_reminders import steve_reminders_bp
 
     app.register_blueprint(public_bp)
     app.register_blueprint(auth_bp)
