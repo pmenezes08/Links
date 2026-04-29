@@ -1,8 +1,8 @@
 """
 Steve Reminder Vault — user-scheduled reminders in private DM with Steve only.
 
-Hybrid: deterministic opener regex + optional Grok slot extraction; all fire times pass
-:func:`try_parse_fire_datetime` before persistence.
+Opener regex is an optimization for cheap matches; authoritative scheduling uses
+Grok JSON slots plus :func:`try_parse_fire_datetime` before persistence.
 
 Isolated from profiling KB / steve_user_profiles synthesis.
 """
@@ -20,11 +20,14 @@ from backend.services.database import USE_MYSQL, get_db_connection, get_sql_plac
 from backend.services.steve_reminder_parse import (
     RE_REMINDER_CANCEL as _RE_CANCEL,
     RE_REMINDER_LIST as _RE_LIST,
+    draft_followup_composite_texts,
     extract_subject,
+    looks_like_time_only_followup,
     match_create_opener,
     normalize_time_phrases_for_parse,
     reminder_intent_llm_plausible,
     try_parse_fire_datetime,
+    try_parse_fire_datetime_first_candidate,
 )
 from backend.services.steve_reminder_slots import (
     ReminderSlots,
@@ -256,6 +259,8 @@ def _apply_slots_schedule(
     tz_label: str,
     slots: ReminderSlots,
     rest_for_fallback_subject: str,
+    *,
+    draft_fallback_subject: Optional[str] = None,
 ) -> Optional[str]:
     """Insert or ask for time from LLM slots. Returns None if no Steve reply can be produced."""
     merged = merged_text_for_datetime_parse(slots.subject, slots.time_phrase)
@@ -265,7 +270,12 @@ def _apply_slots_schedule(
     text_for_parse = (merged if merged else rest_for_fallback_subject).strip()
     dt_utc, when_face = try_parse_fire_datetime(text_for_parse, tz_label)
 
-    subject = _sanitize_body(slots.subject or extract_subject(rest_for_fallback_subject))
+    base_subj = (
+        slots.subject
+        or ((draft_fallback_subject or "").strip() or None)
+        or extract_subject(rest_for_fallback_subject)
+    )
+    subject = _sanitize_body(base_subj)
 
     if not dt_utc:
         if len(subject.strip()) >= 4:
@@ -299,11 +309,25 @@ def try_handle_direct_steve_dm_reminder(*, sender_username: str, user_message: s
 
     draft = _fetch_draft(username)
     if draft:
+        grace_floor = _now_utc_naive() - timedelta(minutes=1)
+
         dt_utc, when_face = try_parse_fire_datetime(stripped, tz_label)
-        if dt_utc and dt_utc >= _now_utc_naive() - timedelta(minutes=1):
+        if dt_utc and dt_utc >= grace_floor:
             subject = _sanitize_body(draft)
             _clear_draft(username)
             return _insert_reminder_and_reply(username, subject, dt_utc, when_face or "", tz_label)
+
+        composite_texts = draft_followup_composite_texts(draft, stripped)
+        dt_cmp, wf_cmp = try_parse_fire_datetime_first_candidate(composite_texts, tz_label)
+        if dt_cmp and dt_cmp >= grace_floor:
+            _clear_draft(username)
+            return _insert_if_parsed(
+                username,
+                _sanitize_body(draft),
+                dt_cmp,
+                wf_cmp or "",
+                tz_label,
+            )
 
         if match_create_opener(stripped):
             _clear_draft(username)
@@ -314,19 +338,35 @@ def try_handle_direct_steve_dm_reminder(*, sender_username: str, user_message: s
                 user_message=msg,
                 tz_label=tz_label,
                 current_utc_hint=_current_utc_hint(),
+                draft_subject=draft,
             )
             if slots is None:
                 return (
                     "I still need a clear time for that reminder — or say **list my reminders** to see what’s queued."
                 )
-            if slots.intent != "schedule":
-                return None
-            slots_reply = _apply_slots_schedule(username, tz_label, slots, stripped)
+
+            effective = slots
+            if effective.intent != "schedule" and looks_like_time_only_followup(stripped):
+                effective = ReminderSlots(intent="schedule", subject=draft, time_phrase=stripped.strip())
+
+            if effective.intent != "schedule":
+                return (
+                    "I still need a clear time for that reminder — or say **list my reminders** to see what’s queued."
+                )
+
+            slots_reply = _apply_slots_schedule(
+                username,
+                tz_label,
+                effective,
+                stripped,
+                draft_fallback_subject=draft,
+            )
             if slots_reply:
                 _clear_draft(username)
                 return slots_reply
             return (
-                "I still need a clear time for that reminder — or say **list my reminders** to see what’s queued."
+                "I still need a clear time — try something like **3pm** or **tomorrow 9:00**. "
+                "Or say **list my reminders** to see what’s queued."
             )
 
     if _count_scheduled(username) >= MAX_ACTIVE_SCHEDULED:

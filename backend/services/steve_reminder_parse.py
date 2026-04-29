@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Match, Optional, Pattern, Tuple
+from typing import List, Match, Optional, Pattern, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -37,15 +37,33 @@ RE_REMINDER_CANCEL = re.compile(
     re.I,
 )
 
-# Broad hint for hybrid path (avoid LLM on every DM line).
-_REMINDER_PLAUSIBLE = re.compile(
-    r"(^|\b)(remind|reminder|rappel|recordatorio|recuerda|lembr"
-    r"|nudge|ping|schedule|program|fixe|agenda)\w*",
-    re.I,
-)
-
 _RE_STEVE_PREFIX = re.compile(r"^\s*steve\b", re.I)
 _RE_AT_STEVE = re.compile(r"@\s*steve\b", re.I)
+
+# Broad hint for hybrid path (avoid LLM on every DM line).
+_REMINDER_PLAUSIBLE = re.compile(
+    r"(^|\b)("
+    r"remind|reminder|rappel|recordatorio|recuerda|lembr|"
+    r"nudge|ping|schedule|program|programme|progamme|fixe|agenda|"
+    r"don't\s+forget|dont\s+forget|remember\s+that|"
+    r"need\s+(you\s+to\s+)?remind|want\s+(you\s+to\s+)?remind|"
+    r"(can|could)\s+(you\s+)?(please\s+)?(remind|ping|nudge)|"
+    r"would\s+you\s+remind|remind\s+to\b"
+    r")\w*",
+    re.I | re.X,
+)
+
+# Short follow-up lines that usually mean “the time only” during a vault draft (11am, 14h30…).
+_TIME_ONLY_LIKE = re.compile(
+    r"^\s*("
+    r"\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.)\b|"
+    r"\d{1,2}\s*h\s*\d{2}(?:\s*(am|pm|a\.m\.|p\.m\.))?\b|"
+    r"(noon|midnight)\b|"
+    r"in\s+\d+\s*(min|minute|minutes|hour|hours|hr|h)\b"
+    r")\s*[.!?]?$",
+    re.I | re.S,
+)
+
 
 # e.g. 2h14, 2h14am, 14h30, 14h30pm
 _RE_H_CLOCK = re.compile(
@@ -165,3 +183,38 @@ def reminder_intent_llm_plausible(stripped_message: str, original_message: str) 
     if _REMINDER_PLAUSIBLE.search(raw):
         return True
     return False
+
+
+def draft_followup_composite_texts(draft_subject: str, user_line: str) -> List[str]:
+    """Build strings to parse when the user replies with a time or date after saving a vault draft."""
+    d = (draft_subject or "").strip()
+    u = (user_line or "").strip()
+    if not d or not u:
+        return []
+    return [
+        f"{d}\n{u}",
+        f"{d} at {u}",
+        f"{d} {u}",
+    ]
+
+
+def looks_like_time_only_followup(message: str) -> bool:
+    """True when the line is likely **only** a clock / relative delta (during draft completion)."""
+    s = (message or "").strip()
+    if not s or len(s) > 96:
+        return False
+    return bool(_TIME_ONLY_LIKE.match(s))
+
+
+def try_parse_fire_datetime_first_candidate(
+    texts: List[str],
+    tz_name: str,
+) -> Tuple[Optional[datetime], Optional[str]]:
+    """Return the first successful parse among candidate strings (order preserved)."""
+    for text in texts:
+        if not (text or "").strip():
+            continue
+        dt, face = try_parse_fire_datetime(text, tz_name)
+        if dt is not None:
+            return dt, face
+    return None, None

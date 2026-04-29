@@ -5,10 +5,13 @@ from __future__ import annotations
 import pytest
 
 from backend.services.steve_reminder_parse import (
-    normalize_time_phrases_for_parse,
+    draft_followup_composite_texts,
+    looks_like_time_only_followup,
     match_create_opener,
+    normalize_time_phrases_for_parse,
     reminder_intent_llm_plausible,
     try_parse_fire_datetime,
+    try_parse_fire_datetime_first_candidate,
 )
 
 
@@ -60,3 +63,35 @@ def test_reminder_plausible_gates():
     assert reminder_intent_llm_plausible("Steve, dis-moi quelque chose", "@Steve hey") is True
     assert reminder_intent_llm_plausible("rappelle-moi demain", "rappelle-moi demain") is True
     assert reminder_intent_llm_plausible("how was your day?", "how was your day?") is False
+
+
+def test_plausible_colloquial_need_you_to_remind():
+    s = "Hm I need you to remind to call my mom in 1h"
+    assert reminder_intent_llm_plausible(s, s) is True
+
+
+def test_draft_followup_composite_texts_shape():
+    parts = draft_followup_composite_texts("call my mom", "11am")
+    assert len(parts) == 3
+    assert "call my mom at 11am" in parts
+    assert any("11am" in p for p in parts)
+
+
+@pytest.mark.parametrize(
+    "line,expected",
+    [
+        ("11am", True),
+        ("3:30 pm", True),
+        ("14h30", True),
+        ("in 2 hours", True),
+        ("Could we talk about something else entirely?", False),
+    ],
+)
+def test_looks_like_time_only_followup(line, expected):
+    assert looks_like_time_only_followup(line) is expected
+
+
+def test_try_parse_first_candidate_finds_time_in_composite():
+    texts = draft_followup_composite_texts("call my mom", "tomorrow at 3pm")
+    dt, face = try_parse_fire_datetime_first_candidate(texts, "UTC")
+    assert dt is not None and face
