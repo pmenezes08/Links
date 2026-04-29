@@ -1159,9 +1159,13 @@ function CommunityCard({
           <p className="text-[11.5px] text-[#9fb0b5]/85 leading-relaxed line-clamp-3">
             {descText}
           </p>
-        ) : (
+        ) : isOwner || isAdmin ? (
           <p className="text-[11.5px] text-[#9fb0b5]/70 leading-relaxed italic">
             No description yet — add one in &quot;Manage Community&quot;.
+          </p>
+        ) : (
+          <p className="text-[11.5px] text-[#9fb0b5]/70 leading-relaxed">
+            No description yet.
           </p>
         )}
 
