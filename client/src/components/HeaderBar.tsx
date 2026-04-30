@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import Avatar from './Avatar'
@@ -10,9 +10,10 @@ type HeaderBarProps = {
   username?: string
   displayName?: string
   avatarUrl?: string | null
+  titleAccessory?: ReactNode
 }
 
-export default function HeaderBar({ title, username, displayName, avatarUrl }: HeaderBarProps){
+export default function HeaderBar({ title, username, displayName, avatarUrl, titleAccessory }: HeaderBarProps){
   const navigate = useNavigate()
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -47,7 +48,7 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
             <Avatar username={username || ''} url={resolvedAvatar} size={32} />
           </button>
         )}
-        <div className="tracking-[-0.01em] flex-1 min-w-0 text-center">
+        <div className="tracking-[-0.01em] flex-1 min-w-0 flex items-center justify-center gap-2">
           {(() => {
             const t = String(title || '')
             const idx = t.indexOf(' · ')
@@ -55,16 +56,20 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
               const left = t.slice(0, idx)
               const right = t.slice(idx + 3)
               return (
-                <div className="inline-block max-w-[75%] whitespace-nowrap overflow-hidden text-ellipsis align-middle">
-                  <span className="font-semibold truncate align-baseline">{left}</span>
-                  <span className="text-[#9fb0b5] text-[13px] font-normal align-baseline">{` · ${right}`}</span>
+                <div className="inline-flex max-w-[70%] min-w-0 items-center gap-2">
+                  <div className="min-w-0 whitespace-nowrap overflow-hidden text-ellipsis">
+                    <span className="font-semibold align-baseline">{left}</span>
+                    <span className="text-[#9fb0b5] text-[13px] font-normal align-baseline">{` · ${right}`}</span>
+                  </div>
+                  {titleAccessory ? <span className="flex-shrink-0">{titleAccessory}</span> : null}
                 </div>
               )
             }
             return (
-              <span className="font-semibold truncate inline-block align-baseline">
-                {t}
-              </span>
+              <div className="inline-flex max-w-[70%] min-w-0 items-center gap-2 justify-center">
+                <span className="font-semibold truncate align-baseline min-w-0">{t}</span>
+                {titleAccessory ? <span className="flex-shrink-0">{titleAccessory}</span> : null}
+              </div>
             )
           })()}
         </div>

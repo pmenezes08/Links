@@ -15,18 +15,11 @@ import type { DashboardCachePayload } from '../utils/dashboardCache'
 import { triggerDashboardServerPull } from '../utils/serverPull'
 import { useLogoutRequest } from '../contexts/LogoutPromptContext'
 import OnboardingChat from './OnboardingChat'
+import DashboardBottomNav, { isPremiumDashboardPath } from '../components/DashboardBottomNav'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
 const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
-
-function isPremiumDashboardPath(path: string): boolean {
-  return (
-    path === '/premium_dashboard' ||
-    path === '/premium' ||
-    path === '/premium_dashboard_react'
-  )
-}
 
 type Community = {
   id: number
@@ -119,17 +112,56 @@ export default function PremiumDashboard() {
   const [pendingInviteTarget, setPendingInviteTarget] = useState<{ communityId: number; communityName?: string | null } | null>(null)
   const [showSuccessModal, setShowSuccessModal] = useState(false)  // Success modal for join
   const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done'
-  const { setTitle, setHeaderHidden } = useHeader()
+  const { setTitle, setHeaderHidden, setTitleAccessory } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
   useEffect(() => {
     const hideHeaderForOnboarding = showOnboarding || onboardingLaunching
     setHeaderHidden(hideHeaderForOnboarding)
     return () => setHeaderHidden(false)
   }, [showOnboarding, onboardingLaunching, setHeaderHidden])
+
+  useEffect(() => {
+    if (communities.length === 0) {
+      setTitleAccessory(null)
+      return
+    }
+    setTitleAccessory(
+      <button
+        type="button"
+        className="shrink-0 px-2 py-1 rounded-md bg-[#4db6ac] text-black text-[9px] sm:text-[10px] font-semibold hover:brightness-110 transition-all touch-manipulation whitespace-nowrap"
+        onClick={() => {
+          setNewCommType('General')
+          setShowCreateModal(true)
+        }}
+      >
+        +Community
+      </button>,
+    )
+    return () => setTitleAccessory(null)
+  }, [communities.length, setTitleAccessory])
   const navigate = useNavigate()
   const location = useLocation()
   const isWeb = Capacitor.getPlatform() === 'web'
-  const isDashboardRoute = isPremiumDashboardPath(location.pathname)
+
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search)
+    let changed = false
+    if (sp.get('open_create') === '1') {
+      setNewCommType('General')
+      setShowCreateModal(true)
+      sp.delete('open_create')
+      changed = true
+    }
+    if (sp.get('open_search') === '1') {
+      setSearchOpen(true)
+      sp.delete('open_search')
+      changed = true
+    }
+    if (changed) {
+      const next = sp.toString()
+      navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: true })
+    }
+  }, [location.search, location.pathname, navigate])
 
   useEffect(() => {
     if (searchOpen) searchInputRef.current?.focus()
@@ -863,67 +895,9 @@ export default function PremiumDashboard() {
             )}
         </div>
 
-        {/* Bottom navigation — solid black bar (matches HeaderBar), black safe-area strip */}
-        {communities.length > 0 && (
-          <div
-            className="fixed bottom-0 left-0 right-0 z-[100] flex flex-col"
-            style={{ touchAction: 'manipulation' }}
-          >
-            <div
-              className="w-full bg-black border-t border-[#262f30]"
-              style={{
-                paddingLeft: 'env(safe-area-inset-left, 0px)',
-                paddingRight: 'env(safe-area-inset-right, 0px)',
-              }}
-            >
-              <div className="h-14 flex items-center justify-between gap-1 text-[#cfd8dc] px-2 sm:px-4">
-                <button
-                  type="button"
-                  className={`p-2 sm:p-3 rounded-full transition-colors touch-manipulation ${isDashboardRoute ? 'bg-white/10' : 'hover:bg-white/10 active:bg-white/15'}`}
-                  aria-label="Communities"
-                  aria-current={isDashboardRoute ? 'page' : undefined}
-                  onClick={() => navigate('/premium_dashboard')}
-                >
-                  <i className={`fa-solid fa-th text-lg ${isDashboardRoute ? 'text-[#4db6ac]' : ''}`} />
-                </button>
-                <button
-                  type="button"
-                  className="shrink-0 px-2 py-2 sm:px-2.5 rounded-md bg-[#4db6ac] text-black text-[9px] sm:text-xs font-semibold hover:brightness-110 transition-all touch-manipulation whitespace-nowrap max-[380px]:px-1.5"
-                  onClick={() => {
-                    setNewCommType('General')
-                    setShowCreateModal(true)
-                  }}
-                >
-                  +Community
-                </button>
-                <button
-                  type="button"
-                  className="py-1 px-2 sm:px-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors touch-manipulation flex flex-col items-center justify-center gap-0 leading-none min-w-0"
-                  aria-label="Chat with Steve"
-                  onClick={() => navigate('/user_chat/chat/Steve')}
-                >
-                  <i className="fa-solid fa-user text-[15px] sm:text-base leading-none" />
-                  <span className="text-[8px] sm:text-[9px] text-[#cfd8dc]/90 font-medium tracking-tight">Steve</span>
-                </button>
-                <button
-                  type="button"
-                  className={`p-2 sm:p-3 rounded-full transition-colors touch-manipulation ${searchOpen ? 'bg-white/10 text-[#4db6ac]' : 'hover:bg-white/10 active:bg-white/15'}`}
-                  aria-label={searchOpen ? 'Close search' : 'Search communities'}
-                  aria-pressed={searchOpen}
-                  onClick={() => setSearchOpen((v) => !v)}
-                >
-                  <i className="fa-solid fa-magnifying-glass text-lg" />
-                </button>
-              </div>
-            </div>
-            {/* Home indicator zone — opaque black so list content never shows through */}
-            <div
-              className="w-full flex-shrink-0 bg-black"
-              style={{ height: 'env(safe-area-inset-bottom, 0px)' }}
-              aria-hidden
-            />
-          </div>
-        )}
+        {communities.length > 0 ? (
+          <DashboardBottomNav show searchOpen={searchOpen} onToggleSearch={() => setSearchOpen((v) => !v)} />
+        ) : null}
       </div>
 
       {/* Conversational Onboarding with Steve */}

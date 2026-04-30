@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { App as CapacitorApp } from '@capacitor/app'
@@ -86,6 +86,7 @@ const queryClient = new QueryClient()
 
 function AppRoutes(){
   const [title, setTitle] = useState('')
+  const [titleAccessory, setTitleAccessory] = useState<ReactNode>(null)
   const [headerHiddenOverride, setHeaderHiddenOverride] = useState(false)
   const [userMeta, setUserMeta] = useState<{ username?:string; displayName?:string|null; avatarUrl?:string|null }>({})
   const location = useLocation()
@@ -790,9 +791,9 @@ function AppRoutes(){
     <UserProfileContext.Provider value={userProfileValue}>
       <BadgeProvider>
       <EntitlementsProvider>
-      <HeaderContext.Provider value={{ setTitle, setHeaderHidden: setHeaderHiddenOverride }}>
+      <HeaderContext.Provider value={{ setTitle, setHeaderHidden: setHeaderHiddenOverride, setTitleAccessory }}>
         {showHeader && (
-          <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} />
+          <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} titleAccessory={titleAccessory} />
         )}
         <main
           ref={scrollRegionRef}
@@ -852,6 +853,7 @@ function AppRoutes(){
                 <Route path="/admin_dashboard_react" element={<AdminDashboard />} />
                 <Route path="/admin_profile_react" element={<AdminProfile />} />
                 <Route path="/home" element={<HomeTimeline />} />
+                <Route path="/feed" element={<HomeTimeline mode="dashboard_feed" />} />
                 <Route path="/workout_tracking" element={<WorkoutTracking />} />
                 <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
                 <Route path="/community/:community_id/calendar_react" element={<CommunityCalendar />} />

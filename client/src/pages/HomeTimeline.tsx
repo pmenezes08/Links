@@ -10,6 +10,7 @@ import { renderTextWithLinks } from '../utils/linkUtils.tsx'
 import { openExternalInApp } from '../utils/openExternalInApp'
 import EditableAISummary from '../components/EditableAISummary'
 import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
+import DashboardBottomNav from '../components/DashboardBottomNav'
 
 const HOME_TIMELINE_CACHE_KEY = 'home-timeline'
 const HOME_TIMELINE_CACHE_TTL_MS = 2 * 60 * 1000 // 2 minutes
@@ -169,7 +170,15 @@ function PostMediaCarousel({ post }: { post: Post }) {
   )
 }
 
-export default function HomeTimeline(){
+const DASHBOARD_FEED_CACHE_KEY = 'dashboard-unread-feed'
+const DASHBOARD_FEED_CACHE_VERSION = 'dashboard-unread-feed-v1'
+
+type HomeTimelineProps = {
+  /** `dashboard_feed` = unread posts across all networks; same UI as home with bottom nav */
+  mode?: 'home' | 'dashboard_feed'
+}
+
+export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
   const navigate = useNavigate()
   const mentionToProfile = useCallback((u: string) => { navigate(`/profile/${encodeURIComponent(u)}`) }, [navigate])
   const openExternalArticle = useCallback((url: string) => {
@@ -179,6 +188,7 @@ export default function HomeTimeline(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [hasDashboardCommunities, setHasDashboardCommunities] = useState(false)
 
   useEffect(() => {
     let link = document.getElementById('legacy-styles') as HTMLLinkElement | null
@@ -204,39 +214,90 @@ export default function HomeTimeline(){
   }, [])
 
   useEffect(() => {
+    if (mode !== 'home') return
     let mounted = true
-    
-    // CACHE-FIRST: Show cached data immediately, fetch fresh in background
     const cachedData = readDeviceCache<any>(HOME_TIMELINE_CACHE_KEY, HOME_TIMELINE_CACHE_VERSION)
-    if (cachedData?.success) {
+    const hadCache = !!(cachedData?.success)
+    if (hadCache) {
       setData(cachedData)
       setLoading(false)
     } else {
       setLoading(true)
     }
-    
-    async function load(){
-      try{
-        const r = await fetch('/api/home_timeline', { credentials:'include', headers: { 'Accept': 'application/json' } })
+
+    async function load() {
+      try {
+        const r = await fetch('/api/home_timeline', { credentials: 'include', headers: { Accept: 'application/json' } })
         const j = await r.json()
         if (!mounted) return
-        if (j?.success){ 
+        if (j?.success) {
           setData(j)
           writeDeviceCache(HOME_TIMELINE_CACHE_KEY, j, HOME_TIMELINE_CACHE_TTL_MS, HOME_TIMELINE_CACHE_VERSION)
-        } else if (!data) { 
-          setError(j?.error || 'Error') 
+          setError(null)
+        } else if (!hadCache) {
+          setError(j?.error || 'Error')
         }
-      }catch{ if (mounted && !data) setError('Error loading') } finally { if (mounted) setLoading(false) }
+      } catch {
+        if (mounted && !hadCache) setError('Error loading')
+      } finally {
+        if (mounted) setLoading(false)
+      }
     }
     load()
-    return () => { mounted = false }
-  }, [refreshKey])
+    return () => {
+      mounted = false
+    }
+  }, [mode, refreshKey])
+
+  useEffect(() => {
+    if (mode !== 'dashboard_feed') return
+    let mounted = true
+    const cachedData = readDeviceCache<any>(DASHBOARD_FEED_CACHE_KEY, DASHBOARD_FEED_CACHE_VERSION)
+    const hadCache = !!(cachedData?.success)
+    if (hadCache) {
+      setData(cachedData)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
+
+    async function load() {
+      try {
+        const [parentRes, feedRes] = await Promise.all([
+          fetch('/api/user_parent_community', { credentials: 'include', headers: { Accept: 'application/json' } }),
+          fetch('/api/dashboard_unread_feed', { credentials: 'include', headers: { Accept: 'application/json' } }),
+        ])
+        const parentJ = await parentRes.json().catch(() => null)
+        const j = await feedRes.json().catch(() => null)
+        if (!mounted) return
+        const parents = parentJ?.communities
+        setHasDashboardCommunities(Array.isArray(parents) && parents.length > 0)
+        if (j?.success) {
+          setData(j)
+          writeDeviceCache(DASHBOARD_FEED_CACHE_KEY, j, HOME_TIMELINE_CACHE_TTL_MS, DASHBOARD_FEED_CACHE_VERSION)
+          setError(null)
+        } else if (!hadCache) {
+          setError(j?.error || 'Error')
+        }
+      } catch {
+        if (mounted && !hadCache) setError('Error loading')
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    load()
+    return () => {
+      mounted = false
+    }
+  }, [mode, refreshKey])
 
   const posts: Post[] = useMemo(() => data?.posts || [], [data])
   
   const { setTitle } = useHeader()
 
-  useEffect(() => { setTitle('Home') }, [setTitle])
+  useEffect(() => {
+    setTitle(mode === 'dashboard_feed' ? 'Feed' : 'Home')
+  }, [setTitle, mode])
 
   async function handlePollVote(postId: number, pollId: number, optionId: number){
     // Optimistic update for poll vote
@@ -313,7 +374,7 @@ export default function HomeTimeline(){
         ) : error ? (
           <div className="p-3 text-red-400">{error}</div>
         ) : posts.length === 0 ? (
-          <div className="p-3 text-[#9fb0b5]">No recent posts</div>
+          <div className="p-3 text-[#9fb0b5]">{mode === 'dashboard_feed' ? 'No unread posts' : 'No recent posts'}</div>
         ) : (
           <div className="space-y-3">
             {posts.map(p => (
@@ -442,6 +503,7 @@ export default function HomeTimeline(){
           </div>
         )}
       </div>
+      {mode === 'dashboard_feed' && hasDashboardCommunities ? <DashboardBottomNav show /> : null}
     </div>
   )
 }

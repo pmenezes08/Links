@@ -42,7 +42,7 @@ const COMMUNITIES_GUIDE_STEPS = [
   },
   {
     title: 'Home Timeline',
-    description: 'The central feed for your network, capturing the most relevant activity from the past 48 hours across every micro-network you’re part of.',
+    description: 'The central feed for your network: unread posts from every micro-network you’re part of, rolled up from the root of your community down through nested spaces.',
     icon: 'fa-solid fa-house',
     tab: 'timeline' as const,
   },
@@ -1652,9 +1652,9 @@ function ParentTimeline({ parentId }:{ parentId:number }){
           <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-3">
             <i className="fa-regular fa-comment-dots text-2xl text-white/30" />
           </div>
-          <h3 className="text-base font-medium text-white/70 mb-1">No recent posts</h3>
+          <h3 className="text-base font-medium text-white/70 mb-1">No unread posts</h3>
           <p className="text-xs text-white/40 text-center max-w-xs">
-            No posts have been created in the past 48 hours
+            You&apos;re caught up — or nothing new has been posted in communities you belong to yet.
           </p>
         </div>
       ) : (
