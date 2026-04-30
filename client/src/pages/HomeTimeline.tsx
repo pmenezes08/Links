@@ -351,10 +351,17 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
   }
 
   return (
-    <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
+    <div
+      className="fixed inset-x-0 bottom-0 bg-black text-white"
+      style={{ top: 'var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px)))' }}
+    >
       <div
         className={`h-full max-w-2xl mx-auto overflow-y-auto px-3 ${mode === 'dashboard_feed' && hasDashboardCommunities ? 'pb-[calc(3.5rem+env(safe-area-inset-bottom,0px)+12px)]' : 'pb-24'}`}
-        style={{ WebkitOverflowScrolling: 'touch' as any, paddingTop: '12px' }}
+        style={{
+          WebkitOverflowScrolling: 'touch' as any,
+          // Match main dashboard column: app-content (8px) + py-6 top (24px) → header-to-content breathing room
+          paddingTop: 'calc(var(--app-content-gap, 8px) + 1rem)',
+        }}
       >
         {loading ? (
           <div className="p-3 text-[#9fb0b5]">Loading…</div>
