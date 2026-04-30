@@ -540,17 +540,48 @@ def api_community_group_feed(parent_id: int):
 @communities_bp.route("/api/dashboard_unread_feed", methods=["GET"])
 @_login_required
 def api_dashboard_unread_feed():
-    """Unread posts across all dashboard parent networks (each parent's descendant tree)."""
+    """Dashboard feed: unread and/or recent (48h) posts across parent network(s).
+
+    Query:
+      mode=unread (default) | recent48h
+      parent_id=<int> optional root dashboard community; omit for all networks.
+    """
     username = session.get("username")
+    mode_raw = (request.args.get("mode") or "unread").strip().lower()
+    mode = "recent48h" if mode_raw in ("recent48h", "recent", "48h") else "unread"
+    parent_filter = request.args.get("parent_id", type=int)
+
     try:
         parents = community_svc.get_user_dashboard_communities(username or "")
         if not parents:
             return jsonify({"success": True, "posts": [], "username": username})
+
+        allowed_parent_ids: Set[int] = set()
+        for p in parents:
+            try:
+                pid = int(p.get("id") or 0)
+            except (TypeError, ValueError):
+                continue
+            if pid:
+                allowed_parent_ids.add(pid)
+
+        if parent_filter is not None and parent_filter not in allowed_parent_ids:
+            return (
+                jsonify({"success": False, "error": "Invalid community filter"}),
+                403,
+            )
+
+        parents_to_expand = (
+            [p for p in parents if int(p.get("id") or 0) == parent_filter]
+            if parent_filter is not None
+            else parents
+        )
+
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
             all_cids: Set[int] = set()
-            for p in parents:
+            for p in parents_to_expand:
                 try:
                     pid = int(p.get("id") or 0)
                 except (TypeError, ValueError):
@@ -575,18 +606,30 @@ def api_dashboard_unread_feed():
             if not community_ids:
                 return jsonify({"success": True, "posts": [], "username": username})
             ph_in = ",".join([ph for _ in community_ids])
-            c.execute(
-                f"""
+
+            unread_clause = ""
+            time_clause = ""
+            if mode == "unread":
+                unread_clause = f"""
+                  AND NOT EXISTS (
+                    SELECT 1 FROM post_views pv
+                    WHERE pv.post_id = p.id AND LOWER(pv.username) = LOWER({ph})
+                  )
+                """
+            else:
+                time_clause = """
+                  AND p.timestamp >= (UTC_TIMESTAMP() - INTERVAL 48 HOUR)
+                """
+
+            sql = f"""
                 SELECT DISTINCT p.id, p.username, p.content, p.community_id,
                        p.timestamp, p.image_path, p.video_path,
                        p.audio_path, p.audio_summary
                 FROM posts p
                 WHERE p.community_id IN ({ph_in})
                   AND LOWER(p.username) <> LOWER({ph})
-                  AND NOT EXISTS (
-                    SELECT 1 FROM post_views pv
-                    WHERE pv.post_id = p.id AND LOWER(pv.username) = LOWER({ph})
-                  )
+                  {unread_clause}
+                  {time_clause}
                   AND EXISTS (
                     SELECT 1 FROM user_communities uc
                     JOIN users u ON u.id = uc.user_id
@@ -594,16 +637,28 @@ def api_dashboard_unread_feed():
                   )
                 ORDER BY p.timestamp DESC
                 LIMIT 200
-            """,
-                tuple(community_ids) + (username, username, username) + tuple(community_ids),
-            )
+            """
+            if mode == "unread":
+                query_params = tuple(community_ids) + (username, username, username) + tuple(
+                    community_ids
+                )
+            else:
+                query_params = tuple(community_ids) + (username, username) + tuple(community_ids)
+
+            c.execute(sql, query_params)
             rows = c.fetchall()
             if not rows:
                 return jsonify({"success": True, "posts": [], "username": username})
             posts = community_group_feed_svc.build_group_feed_post_dicts(
                 c, rows, username, ph, name_map
             )
-            logger.info("dashboard_unread_feed: returning %s posts for %s", len(posts), username)
+            logger.info(
+                "dashboard_unread_feed mode=%s parent=%s: returning %s posts for %s",
+                mode,
+                parent_filter,
+                len(posts),
+                username,
+            )
             return jsonify({"success": True, "posts": posts, "username": username})
     except Exception as e:
         logger.error("Error in dashboard_unread_feed: %s", e)

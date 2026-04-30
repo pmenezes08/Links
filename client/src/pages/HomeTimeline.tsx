@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment, type ReactNode } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import { formatSmartTime } from '../utils/time'
@@ -11,7 +11,7 @@ import { openExternalInApp } from '../utils/openExternalInApp'
 import EditableAISummary from '../components/EditableAISummary'
 import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 import DashboardBottomNav from '../components/DashboardBottomNav'
-
+import { useBadges } from '../contexts/BadgeContext'
 const HOME_TIMELINE_CACHE_KEY = 'home-timeline'
 const HOME_TIMELINE_CACHE_TTL_MS = 2 * 60 * 1000 // 2 minutes
 const HOME_TIMELINE_CACHE_VERSION = 'home-timeline-v1'
@@ -19,7 +19,7 @@ const HOME_TIMELINE_CACHE_VERSION = 'home-timeline-v1'
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string }
 type MediaItem = { type: 'image' | 'video'; path: string }
-type Post = { id:number; username:string; content:string; image_path?:string|null; video_path?: string | null; audio_path?: string | null; audio_summary?: string | null; timestamp:string; display_timestamp?:string; community_id?:number|null; community_name?:string; reactions:Record<string,number>; user_reaction:string|null; poll?:Poll|null; replies_count?:number; profile_picture?:string|null; media_paths?: MediaItem[] | string | null; link_urls?: unknown }
+type Post = { id:number; username:string; content:string; image_path?:string|null; video_path?: string | null; audio_path?: string | null; audio_summary?: string | null; timestamp:string; display_timestamp?:string; community_id?:number|null; community_name?:string; reactions:Record<string,number>; user_reaction:string|null; poll?:Poll|null; replies_count?:number; profile_picture?:string|null; media_paths?: MediaItem[] | string | null; link_urls?: unknown; has_viewed?: boolean }
 
 function normalizeMediaPath(path?: string | null){
   const raw = (path || '').trim()
@@ -170,8 +170,80 @@ function PostMediaCarousel({ post }: { post: Post }) {
   )
 }
 
-const DASHBOARD_FEED_CACHE_KEY = 'dashboard-unread-feed'
-const DASHBOARD_FEED_CACHE_VERSION = 'dashboard-unread-feed-v1'
+function dashboardFeedScopeSegment(feedMode: 'unread' | 'recent48h', feedParentId: number | null): string {
+  return `${feedMode}:${feedParentId ?? 'all'}`
+}
+
+const DASHBOARD_FEED_CACHE_TTL_MS = 2 * 60 * 1000
+const DASHBOARD_FEED_LAST_NONEMPTY_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const DASHBOARD_FEED_CACHE_VERSION = 'dashboard-feed-v2'
+const DASHBOARD_FEED_LAST_NONEMPTY_VERSION = 'dashboard-feed-last-v1'
+
+function dashboardFeedShortCacheKey(scope: string): string {
+  return `dashboard-feed:${scope}`
+}
+
+function dashboardFeedLastNonemptyKey(scope: string): string {
+  return `dashboard-feed-last:${scope}`
+}
+
+function DashboardFeedCommunityRule({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 py-2 my-2" aria-hidden>
+      <div className="h-px flex-1 bg-white/10" />
+      <span className="text-[10px] uppercase tracking-wider text-[#9fb0b5]/60 font-medium max-w-[min(280px,55vw)] truncate text-center">
+        {label}
+      </span>
+      <div className="h-px flex-1 bg-white/10" />
+    </div>
+  )
+}
+
+type ObservedShellProps = {
+  postId: number
+  markWhenSeen: boolean
+  hasViewed?: boolean
+  onMarkViewed: (postId: number, already?: boolean) => Promise<boolean>
+  children: ReactNode
+}
+
+function DashboardFeedObservedPostShell({
+  postId,
+  markWhenSeen,
+  hasViewed,
+  onMarkViewed,
+  children,
+}: ObservedShellProps) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!markWhenSeen) return
+    if (hasViewed) return
+    const el = ref.current
+    if (!el) return
+
+    if (typeof IntersectionObserver === 'undefined') {
+      void onMarkViewed(postId, hasViewed)
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return
+          void onMarkViewed(postId, hasViewed).then((ok) => {
+            if (ok) observer.disconnect()
+          })
+        })
+      },
+      { threshold: [0, 0.1, 0.25], rootMargin: '0px 0px -5% 0px' },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [markWhenSeen, postId, hasViewed, onMarkViewed])
+
+  return <div ref={ref}>{children}</div>
+}
 
 type HomeTimelineProps = {
   /** `dashboard_feed` = unread posts across all networks; same UI as home with bottom nav */
@@ -180,6 +252,9 @@ type HomeTimelineProps = {
 
 export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { refreshBadges } = useBadges()
+  const recordedViewsRef = useRef<Set<number>>(new Set())
   const mentionToProfile = useCallback((u: string) => { navigate(`/profile/${encodeURIComponent(u)}`) }, [navigate])
   const openExternalArticle = useCallback((url: string) => {
     void openExternalInApp(url)
@@ -189,6 +264,11 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
   const [error, setError] = useState<string|null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [hasDashboardCommunities, setHasDashboardCommunities] = useState(false)
+  const [feedMode, setFeedMode] = useState<'unread' | 'recent48h'>('unread')
+  const [feedParentId, setFeedParentId] = useState<number | null>(null)
+  const [dashboardParents, setDashboardParents] = useState<{ id: number; name: string }[]>([])
+  const [showStaleFeed, setShowStaleFeed] = useState(false)
+  const feedFiltersHydrated = useRef(false)
 
   useEffect(() => {
     let link = document.getElementById('legacy-styles') as HTMLLinkElement | null
@@ -201,6 +281,34 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
     }
     return () => { link?.remove() }
   }, [])
+
+  useEffect(() => {
+    if (mode !== 'dashboard_feed') {
+      feedFiltersHydrated.current = false
+      return
+    }
+    if (feedFiltersHydrated.current) return
+    feedFiltersHydrated.current = true
+    const f = searchParams.get('feed')
+    if (f === 'recent48h' || f === 'recent') setFeedMode('recent48h')
+    const p = searchParams.get('parent')
+    if (p && /^\d+$/.test(p)) setFeedParentId(parseInt(p, 10))
+  }, [mode, searchParams])
+
+  useEffect(() => {
+    if (mode !== 'dashboard_feed') return
+    if (!feedFiltersHydrated.current) return
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.set('feed', feedMode)
+        if (feedParentId != null) next.set('parent', String(feedParentId))
+        else next.delete('parent')
+        return next
+      },
+      { replace: true },
+    )
+  }, [mode, feedMode, feedParentId, setSearchParams])
 
   // Refresh data when page becomes visible
   useEffect(() => {
@@ -251,8 +359,17 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
 
   useEffect(() => {
     if (mode !== 'dashboard_feed') return
+    if (feedParentId == null || dashboardParents.length === 0) return
+    if (!dashboardParents.some((x) => x.id === feedParentId)) setFeedParentId(null)
+  }, [mode, dashboardParents, feedParentId])
+
+  useEffect(() => {
+    if (mode !== 'dashboard_feed') return
     let mounted = true
-    const cachedData = readDeviceCache<any>(DASHBOARD_FEED_CACHE_KEY, DASHBOARD_FEED_CACHE_VERSION)
+    const scope = dashboardFeedScopeSegment(feedMode, feedParentId)
+    const shortKey = dashboardFeedShortCacheKey(scope)
+    const lastKey = dashboardFeedLastNonemptyKey(scope)
+    const cachedData = readDeviceCache<any>(shortKey, DASHBOARD_FEED_CACHE_VERSION)
     const hadCache = !!(cachedData?.success)
     if (hadCache) {
       setData(cachedData)
@@ -261,23 +378,59 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
       setLoading(true)
     }
 
+    const feedParams = new URLSearchParams()
+    feedParams.set('mode', feedMode)
+    if (feedParentId != null) feedParams.set('parent_id', String(feedParentId))
+
     async function load() {
       try {
         const [parentRes, feedRes] = await Promise.all([
           fetch('/api/user_parent_community', { credentials: 'include', headers: { Accept: 'application/json' } }),
-          fetch('/api/dashboard_unread_feed', { credentials: 'include', headers: { Accept: 'application/json' } }),
+          fetch(`/api/dashboard_unread_feed?${feedParams.toString()}`, {
+            credentials: 'include',
+            headers: { Accept: 'application/json' },
+          }),
         ])
         const parentJ = await parentRes.json().catch(() => null)
         const j = await feedRes.json().catch(() => null)
         if (!mounted) return
         const parents = parentJ?.communities
         setHasDashboardCommunities(Array.isArray(parents) && parents.length > 0)
+        if (Array.isArray(parents)) {
+          setDashboardParents(
+            parents
+              .map((c: any) => ({ id: Number(c?.id), name: String(c?.name || '') }))
+              .filter((c: { id: number }) => c.id > 0),
+          )
+        }
         if (j?.success) {
-          setData(j)
-          writeDeviceCache(DASHBOARD_FEED_CACHE_KEY, j, HOME_TIMELINE_CACHE_TTL_MS, DASHBOARD_FEED_CACHE_VERSION)
-          setError(null)
+          const list = Array.isArray(j.posts) ? j.posts : []
+          if (list.length === 0 && feedMode === 'unread') {
+            const fallback = readDeviceCache<any>(lastKey, DASHBOARD_FEED_LAST_NONEMPTY_VERSION)
+            const fbPosts = Array.isArray(fallback?.posts) ? fallback.posts : []
+            if (fbPosts.length > 0) {
+              setData(fallback)
+              setShowStaleFeed(true)
+              setError(null)
+              writeDeviceCache(shortKey, j, DASHBOARD_FEED_CACHE_TTL_MS, DASHBOARD_FEED_CACHE_VERSION)
+            } else {
+              setData(j)
+              setShowStaleFeed(false)
+              setError(null)
+              writeDeviceCache(shortKey, j, DASHBOARD_FEED_CACHE_TTL_MS, DASHBOARD_FEED_CACHE_VERSION)
+            }
+          } else {
+            setData(j)
+            setShowStaleFeed(false)
+            setError(null)
+            writeDeviceCache(shortKey, j, DASHBOARD_FEED_CACHE_TTL_MS, DASHBOARD_FEED_CACHE_VERSION)
+            if (list.length > 0) {
+              writeDeviceCache(lastKey, j, DASHBOARD_FEED_LAST_NONEMPTY_TTL_MS, DASHBOARD_FEED_LAST_NONEMPTY_VERSION)
+            }
+          }
         } else if (!hadCache) {
           setError(j?.error || 'Error')
+          setShowStaleFeed(false)
         }
       } catch {
         if (mounted && !hadCache) setError('Error loading')
@@ -289,10 +442,54 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
     return () => {
       mounted = false
     }
-  }, [mode, refreshKey])
+  }, [mode, refreshKey, feedMode, feedParentId])
+
+  useEffect(() => {
+    if (mode !== 'dashboard_feed') return
+    recordedViewsRef.current.clear()
+  }, [mode, feedMode, feedParentId])
 
   const posts: Post[] = useMemo(() => data?.posts || [], [data])
-  
+
+  const markPostViewed = useCallback(
+    async (postId: number, alreadyViewed?: boolean): Promise<boolean> => {
+      if (!postId) return false
+      if (alreadyViewed) {
+        recordedViewsRef.current.add(postId)
+        return true
+      }
+      if (recordedViewsRef.current.has(postId)) return false
+      recordedViewsRef.current.add(postId)
+      try {
+        const res = await fetch('/api/post_view', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ post_id: postId }),
+        })
+        const j = await res.json().catch(() => null)
+        if (j?.success) {
+          setData((prev: any) => {
+            if (!prev) return prev
+            const pl = Array.isArray(prev.posts) ? prev.posts : []
+            const updated = pl.map((post: any) =>
+              post.id === postId ? { ...post, has_viewed: true } : post,
+            )
+            return { ...prev, posts: updated }
+          })
+          refreshBadges()
+          return true
+        }
+        recordedViewsRef.current.delete(postId)
+        return false
+      } catch {
+        recordedViewsRef.current.delete(postId)
+        return false
+      }
+    },
+    [refreshBadges],
+  )
+
   const { setTitle } = useHeader()
 
   useEffect(() => {
@@ -363,14 +560,73 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
           paddingTop: 'calc(var(--app-content-gap, 8px) + 1rem)',
         }}
       >
+        {mode === 'dashboard_feed' && hasDashboardCommunities ? (
+          <div className="mb-4 space-y-3">
+            <div className="flex rounded-xl border border-white/10 p-0.5 bg-white/[0.03] gap-0.5">
+              <button
+                type="button"
+                className={`flex-1 py-2 px-2 rounded-lg text-xs font-medium transition-colors touch-manipulation ${
+                  feedMode === 'unread' ? 'bg-white/10 text-white' : 'text-[#9fb0b5] hover:text-white'
+                }`}
+                onClick={() => setFeedMode('unread')}
+              >
+                Unread
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-2 px-2 rounded-lg text-xs font-medium transition-colors touch-manipulation ${
+                  feedMode === 'recent48h' ? 'bg-white/10 text-white' : 'text-[#9fb0b5] hover:text-white'
+                }`}
+                onClick={() => setFeedMode('recent48h')}
+              >
+                Last 48 hours
+              </button>
+            </div>
+            <label className="block">
+              <span className="sr-only">Filter by community</span>
+              <select
+                value={feedParentId ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setFeedParentId(v === '' ? null : parseInt(v, 10))
+                }}
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none focus:border-[#4db6ac]/40"
+              >
+                <option value="">All networks</option>
+                {dashboardParents.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        ) : null}
         {loading ? (
           <div className="p-3 text-[#9fb0b5]">Loading…</div>
         ) : error ? (
           <div className="p-3 text-red-400">{error}</div>
         ) : posts.length === 0 ? (
-          <div className="p-3 text-[#9fb0b5]">{mode === 'dashboard_feed' ? 'No unread posts' : 'No recent posts'}</div>
+          <div className="p-3 text-[#9fb0b5]">
+            {mode === 'dashboard_feed'
+              ? feedMode === 'recent48h'
+                ? 'No posts in the last 48 hours.'
+                : 'No unread posts.'
+              : 'No recent posts'}
+          </div>
         ) : (
           <div className="space-y-3">
+            {showStaleFeed && mode === 'dashboard_feed' ? (
+              <div className="flex flex-col items-center justify-center py-8 px-4 mb-1">
+                <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+                  <i className="fa-regular fa-comment-dots text-3xl text-white/30" />
+                </div>
+                <h3 className="text-lg font-medium text-white/80 mb-2 text-center">You&apos;re caught up</h3>
+                <p className="text-sm text-white/50 text-center max-w-xs">
+                  Showing recent activity from your communities until new posts arrive.
+                </p>
+              </div>
+            ) : null}
             {posts.flatMap((p, i) => {
               const prev = i > 0 ? posts[i - 1] : null
               const prevCid = prev?.community_id ?? null
@@ -379,8 +635,8 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                 mode === 'dashboard_feed' &&
                 prev != null &&
                 (prevCid !== cid || String(prev.community_name || '') !== String(p.community_name || ''))
-              const card = (
-              <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={p.poll ? undefined : () => navigate(`/post/${p.id}`)}>
+              const cardEl = (
+              <div className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={p.poll ? undefined : () => navigate(`/post/${p.id}`)}>
                 <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
                   <Avatar username={p.username} url={p.profile_picture || undefined} size={32} linkToProfile />
                   <div className="min-w-0 flex-1">
@@ -502,14 +758,27 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                 </div>
               </div>
               )
+              const markUnread = mode === 'dashboard_feed' && feedMode === 'unread'
+              const listItem = markUnread ? (
+                <DashboardFeedObservedPostShell
+                  key={p.id}
+                  postId={p.id}
+                  markWhenSeen
+                  hasViewed={p.has_viewed}
+                  onMarkViewed={markPostViewed}
+                >
+                  {cardEl}
+                </DashboardFeedObservedPostShell>
+              ) : (
+                <Fragment key={p.id}>{cardEl}</Fragment>
+              )
               const sep = showSep ? (
-                <div
+                <DashboardFeedCommunityRule
                   key={`sep-before-${p.id}`}
-                  className="border-t border-white/[0.06] my-1 pt-2"
-                  aria-hidden
+                  label={String(p.community_name || 'Community')}
                 />
               ) : null
-              return sep ? [sep, card] : [card]
+              return sep ? [sep, listItem] : [listItem]
             })}
           </div>
         )}
