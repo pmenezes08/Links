@@ -113,7 +113,10 @@ export default function PremiumDashboard() {
   const [showSuccessModal, setShowSuccessModal] = useState(false)  // Success modal for join
   const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done'
   const { setTitle, setHeaderHidden, setTitleAccessory } = useHeader()
-  useEffect(() => { setTitle('Dashboard') }, [setTitle])
+  useEffect(() => {
+    setTitle('')
+    return () => setTitle('')
+  }, [setTitle])
   useEffect(() => {
     const hideHeaderForOnboarding = showOnboarding || onboardingLaunching
     setHeaderHidden(hideHeaderForOnboarding)
@@ -128,7 +131,7 @@ export default function PremiumDashboard() {
     setTitleAccessory(
       <button
         type="button"
-        className="shrink-0 px-2 py-1 rounded-md bg-[#4db6ac] text-black text-[9px] sm:text-[10px] font-semibold hover:brightness-110 transition-all touch-manipulation whitespace-nowrap"
+        className="shrink-0 px-3 py-1.5 rounded-lg bg-[#4db6ac] text-black text-xs sm:text-sm font-semibold hover:brightness-110 transition-all touch-manipulation whitespace-nowrap"
         onClick={() => {
           setNewCommType('General')
           setShowCreateModal(true)
@@ -963,7 +966,7 @@ export default function PremiumDashboard() {
         </div>
       )}
 
-      {/* Communities modal removed; button links to /communities */}
+      {/* Communities modal removed; dashboard links use /communities?parent_id= */}
         {showCreateModal && (
           <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> { if (e.currentTarget===e.target) handleCloseCreateModal() }}>
           <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-black p-4">

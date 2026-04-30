@@ -122,7 +122,7 @@ export default function AdminProfile(){
           <div className="text-sm font-semibold mb-3">Admin Links</div>
           <div className="grid grid-cols-2 gap-2 text-sm">
             <a href="/admin_dashboard" className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10">Dashboard</a>
-            <a href="/communities" className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10">Manage Communities</a>
+            <a href="/premium_dashboard" className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10">Manage Communities</a>
           </div>
         </div>
       </div>

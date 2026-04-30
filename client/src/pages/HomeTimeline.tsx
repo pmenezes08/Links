@@ -352,23 +352,10 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
 
   return (
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
-      {/* Secondary header below global header */}
-
-      {/* Secondary tabs */}
-      <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
-        <div className="max-w-2xl mx-auto h-full flex">
-          <button type="button" className="flex-1 text-center text-sm font-medium text-white/95">
-            <div className="pt-2">Home timeline</div>
-            <div className="h-0.5 bg-[#4db6ac] rounded-full w-16 mx-auto mt-1" />
-          </button>
-          <button type="button" className="flex-1 text-center text-sm font-medium text-[#9fb0b5] hover:text-white/90" onClick={()=> navigate('/communities')}>
-            <div className="pt-2">Communities</div>
-            <div className="h-0.5 bg-transparent rounded-full w-16 mx-auto mt-1" />
-          </button>
-        </div>
-      </div>
-
-      <div className="h-full max-w-2xl mx-auto overflow-y-auto px-3 pb-24" style={{ WebkitOverflowScrolling: 'touch' as any, paddingTop: '50px' }}>
+      <div
+        className={`h-full max-w-2xl mx-auto overflow-y-auto px-3 ${mode === 'dashboard_feed' && hasDashboardCommunities ? 'pb-[calc(3.5rem+env(safe-area-inset-bottom,0px)+12px)]' : 'pb-24'}`}
+        style={{ WebkitOverflowScrolling: 'touch' as any, paddingTop: '12px' }}
+      >
         {loading ? (
           <div className="p-3 text-[#9fb0b5]">Loading…</div>
         ) : error ? (
@@ -377,7 +364,15 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
           <div className="p-3 text-[#9fb0b5]">{mode === 'dashboard_feed' ? 'No unread posts' : 'No recent posts'}</div>
         ) : (
           <div className="space-y-3">
-            {posts.map(p => (
+            {posts.flatMap((p, i) => {
+              const prev = i > 0 ? posts[i - 1] : null
+              const prevCid = prev?.community_id ?? null
+              const cid = p.community_id ?? null
+              const showSep =
+                mode === 'dashboard_feed' &&
+                prev != null &&
+                (prevCid !== cid || String(prev.community_name || '') !== String(p.community_name || ''))
+              const card = (
               <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={p.poll ? undefined : () => navigate(`/post/${p.id}`)}>
                 <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
                   <Avatar username={p.username} url={p.profile_picture || undefined} size={32} linkToProfile />
@@ -499,7 +494,16 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                   )}
                 </div>
               </div>
-            ))}
+              )
+              const sep = showSep ? (
+                <div
+                  key={`sep-before-${p.id}`}
+                  className="border-t border-white/[0.06] my-1 pt-2"
+                  aria-hidden
+                />
+              ) : null
+              return sep ? [sep, card] : [card]
+            })}
           </div>
         )}
       </div>

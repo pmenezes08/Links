@@ -206,7 +206,7 @@ export default function Members(){
     if (j?.success){
       await triggerDashboardServerPull()
       await refreshDashboardCommunities()
-      navigate('/communities')
+      navigate('/premium_dashboard')
     } else {
       alert(j?.error || 'Unable to leave community')
     }

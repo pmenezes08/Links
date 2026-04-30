@@ -1756,7 +1756,7 @@ export default function AdminDashboard() {
                     Add to Community
                   </button>
                   <button 
-                    onClick={() => navigate('/communities')}
+                    onClick={() => navigate('/premium_dashboard')}
                     className="py-2 px-3 bg-[#4db6ac]/20 text-[#4db6ac] rounded-lg text-sm font-medium hover:bg-[#4db6ac]/30 transition-colors"
                   >
                     Create Community
@@ -1993,7 +1993,7 @@ export default function AdminDashboard() {
                 className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]"
               />
               <button
-                onClick={() => navigate('/communities')}
+                onClick={() => navigate('/premium_dashboard')}
                 className="px-3 py-1.5 bg-[#4db6ac] text-black rounded-lg text-sm font-medium hover:bg-[#45a099]"
               >
                 Create New

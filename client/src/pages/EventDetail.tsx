@@ -367,14 +367,14 @@ export default function EventDetail(){
           <button
             type="button"
             className="min-h-[44px] py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 shadow-[0_12px_28px_rgba(77,182,172,0.25)]"
-            onClick={()=> navigate(event.community_id ? `/community/${event.community_id}/calendar_react` : '/communities_react')}
+            onClick={()=> navigate(event.community_id ? `/community/${event.community_id}/calendar_react` : '/premium_dashboard')}
           >
             View Events
           </button>
           <button
             type="button"
             className="min-h-[44px] py-2.5 rounded-xl border border-white/15 liquid-glass-surface text-sm text-white/90 hover:border-teal-400/35"
-            onClick={()=> navigate(event.community_id ? `/community_feed_react/${event.community_id}` : '/communities_react')}
+            onClick={()=> navigate(event.community_id ? `/community_feed_react/${event.community_id}` : '/premium_dashboard')}
           >
             Back to Community
           </button>

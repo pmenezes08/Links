@@ -4,7 +4,7 @@ import type { PluginListenerHandle } from '@capacitor/core'
 import { App as CapacitorApp } from '@capacitor/app'
 import { Keyboard, KeyboardResize } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
-import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate, useSearchParams } from 'react-router-dom'
 import { extractInviteToken, isInternalLink, joinCommunityWithInvite } from './utils/internalLinkHandler'
 import {
   isClipboardInviteConsumed,
@@ -44,6 +44,15 @@ import CreatePost from './pages/CreatePost'
 import Members from './pages/Members'
 import EditCommunity from './pages/EditCommunity'
 import Communities from './pages/Communities'
+
+function CommunitiesScopedRoute() {
+  const [searchParams] = useSearchParams()
+  const pid = searchParams.get('parent_id')
+  if (!pid || !/^\d+$/.test(pid.trim())) {
+    return <Navigate to="/premium_dashboard" replace />
+  }
+  return <Communities />
+}
 import Followers from './pages/Followers'
 import Networking from './pages/Networking'
 import HomeTimeline from './pages/HomeTimeline'
@@ -814,7 +823,7 @@ function AppRoutes(){
                 <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
                 <Route path="/crossfit" element={<CrossfitExact />} />
                 <Route path="/crossfit_react" element={<CrossfitExact />} />
-                <Route path="/communities" element={<Communities />} />
+                <Route path="/communities" element={<CommunitiesScopedRoute />} />
                 <Route path="/followers" element={<Followers />} />
                 <Route path="/networking" element={<Networking />} />
                 <Route path="/your_sports" element={<YourSports />} />

@@ -344,10 +344,9 @@ export default function Communities(){
           setParentName(parent.name || '')
           setParentType(parent.type || '')
         } else {
-          setCommunities(hierarchyCache.communities)
+          setCommunities([])
+          setError('This community was not found.')
         }
-      } else {
-        setCommunities(hierarchyCache.communities)
       }
       setLoading(false)
     })

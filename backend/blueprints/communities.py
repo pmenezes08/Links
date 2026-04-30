@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from functools import lru_cache, wraps
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from flask import (
     Blueprint,
@@ -22,6 +22,7 @@ from flask import (
 
 from backend.services.content_generation.permissions import can_manage_community_jobs
 from backend.services import community as community_svc
+from backend.services import community_group_feed as community_group_feed_svc
 from backend.services import community_admin_notifications
 from backend.services import community_lifecycle
 from backend.services.database import get_db_connection, get_sql_placeholder
@@ -450,6 +451,163 @@ def api_user_parent_community():
     resp.headers["Pragma"] = "no-cache"
     resp.headers["Expires"] = "0"
     return resp
+
+
+@communities_bp.route("/api/community_group_feed/<int:parent_id>", methods=["GET"])
+@_login_required
+def api_community_group_feed(parent_id: int):
+    """Unread posts for a parent community and all descendants (no post_views row for viewer)."""
+    username = session.get("username")
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            descendant_ids = community_svc.get_descendant_community_ids(c, parent_id) or []
+            if not descendant_ids:
+                return jsonify({"success": True, "posts": [], "username": username})
+
+            placeholders = ",".join([ph] * len(descendant_ids))
+            c.execute(
+                f"SELECT id, name FROM communities WHERE id IN ({placeholders})",
+                tuple(descendant_ids),
+            )
+            name_rows = c.fetchall()
+
+            if not name_rows:
+                return jsonify({"success": True, "posts": [], "username": username})
+
+            name_map: Dict[int, Any] = {}
+            for r in name_rows:
+                cid = r["id"] if hasattr(r, "keys") else r[0]
+                cname = r["name"] if hasattr(r, "keys") else r[1]
+                name_map[cid] = cname
+
+            if parent_id not in name_map:
+                return jsonify({"success": True, "posts": [], "username": username})
+
+            community_ids = [cid for cid in descendant_ids if cid in name_map]
+
+            if not community_ids:
+                return jsonify({"success": True, "posts": [], "username": username})
+
+            placeholders = ",".join([ph for _ in community_ids])
+
+            c.execute(
+                f"""
+                SELECT DISTINCT p.id, p.username, p.content, p.community_id,
+                       p.timestamp, p.image_path, p.video_path,
+                       p.audio_path, p.audio_summary
+                FROM posts p
+                WHERE p.community_id IN ({placeholders})
+                  AND LOWER(p.username) <> LOWER({ph})
+                  AND NOT EXISTS (
+                    SELECT 1 FROM post_views pv
+                    WHERE pv.post_id = p.id AND LOWER(pv.username) = LOWER({ph})
+                  )
+                  AND EXISTS (
+                    SELECT 1 FROM user_communities uc
+                    JOIN users u ON u.id = uc.user_id
+                    WHERE LOWER(u.username) = LOWER({ph}) AND uc.community_id IN ({placeholders})
+                  )
+                ORDER BY p.timestamp DESC
+                LIMIT 200
+            """,
+                tuple(community_ids) + (username, username, username) + tuple(community_ids),
+            )
+
+            rows = c.fetchall()
+
+            if not rows:
+                return jsonify({"success": True, "posts": [], "username": username})
+
+            posts = community_group_feed_svc.build_group_feed_post_dicts(
+                c, rows, username, ph, name_map
+            )
+
+            logger.info(
+                "Community group feed: parent_id=%s, returning %s posts",
+                parent_id,
+                len(posts),
+            )
+            return jsonify({"success": True, "posts": posts, "username": username})
+
+    except Exception as e:
+        logger.error("Error in community_group_feed for parent %s: %s", parent_id, e)
+        return jsonify({"success": False, "error": "Failed to load timeline"}), 500
+
+
+@communities_bp.route("/api/dashboard_unread_feed", methods=["GET"])
+@_login_required
+def api_dashboard_unread_feed():
+    """Unread posts across all dashboard parent networks (each parent's descendant tree)."""
+    username = session.get("username")
+    try:
+        parents = community_svc.get_user_dashboard_communities(username or "")
+        if not parents:
+            return jsonify({"success": True, "posts": [], "username": username})
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            all_cids: Set[int] = set()
+            for p in parents:
+                try:
+                    pid = int(p.get("id") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if pid:
+                    for cid in community_svc.get_descendant_community_ids(c, pid) or []:
+                        all_cids.add(int(cid))
+            community_ids = sorted(all_cids)
+            if not community_ids:
+                return jsonify({"success": True, "posts": [], "username": username})
+            placeholders = ",".join([ph] * len(community_ids))
+            c.execute(
+                f"SELECT id, name FROM communities WHERE id IN ({placeholders})",
+                tuple(community_ids),
+            )
+            name_map: Dict[int, Any] = {}
+            for r in c.fetchall() or []:
+                cid = r["id"] if hasattr(r, "keys") else r[0]
+                cname = r["name"] if hasattr(r, "keys") else r[1]
+                name_map[cid] = cname
+            community_ids = [cid for cid in community_ids if cid in name_map]
+            if not community_ids:
+                return jsonify({"success": True, "posts": [], "username": username})
+            ph_in = ",".join([ph for _ in community_ids])
+            c.execute(
+                f"""
+                SELECT DISTINCT p.id, p.username, p.content, p.community_id,
+                       p.timestamp, p.image_path, p.video_path,
+                       p.audio_path, p.audio_summary
+                FROM posts p
+                WHERE p.community_id IN ({ph_in})
+                  AND LOWER(p.username) <> LOWER({ph})
+                  AND NOT EXISTS (
+                    SELECT 1 FROM post_views pv
+                    WHERE pv.post_id = p.id AND LOWER(pv.username) = LOWER({ph})
+                  )
+                  AND EXISTS (
+                    SELECT 1 FROM user_communities uc
+                    JOIN users u ON u.id = uc.user_id
+                    WHERE LOWER(u.username) = LOWER({ph}) AND uc.community_id IN ({ph_in})
+                  )
+                ORDER BY p.timestamp DESC
+                LIMIT 200
+            """,
+                tuple(community_ids) + (username, username, username) + tuple(community_ids),
+            )
+            rows = c.fetchall()
+            if not rows:
+                return jsonify({"success": True, "posts": [], "username": username})
+            posts = community_group_feed_svc.build_group_feed_post_dicts(
+                c, rows, username, ph, name_map
+            )
+            logger.info("dashboard_unread_feed: returning %s posts for %s", len(posts), username)
+            return jsonify({"success": True, "posts": posts, "username": username})
+    except Exception as e:
+        logger.error("Error in dashboard_unread_feed: %s", e)
+        return jsonify({"success": False, "error": "Failed to load feed"}), 500
 
 
 def _collect_tree_community_ids(nodes: List[Dict[str, Any]]) -> List[int]:

@@ -298,7 +298,7 @@ export default function GroupFeed(){
               onClick={()=> {
                 const cid = communityMeta?.id
                 if (cid) navigate(`/communities?parent_id=${cid}`)
-                else navigate('/communities')
+                else navigate('/premium_dashboard')
               }}
             >
               ← Back to Communities

@@ -68,3 +68,4 @@ def test_auth_and_webhook_routes_still_exist():
     assert "/api/clear_stale_session" in rules
     assert "/api/me/platform-activity-digest" in rules
     assert "/api/dashboard_unread_feed" in rules
+    assert "/api/community_group_feed/<int:parent_id>" in rules

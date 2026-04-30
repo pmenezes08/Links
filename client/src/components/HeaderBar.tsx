@@ -48,13 +48,21 @@ export default function HeaderBar({ title, username, displayName, avatarUrl, tit
             <Avatar username={username || ''} url={resolvedAvatar} size={32} />
           </button>
         )}
-        <div className="tracking-[-0.01em] flex-1 min-w-0 flex items-center justify-center gap-2">
+        <div className="tracking-[-0.01em] flex-1 min-w-0 relative flex items-center justify-center min-h-[2.5rem]">
           {(() => {
-            const t = String(title || '')
-            const idx = t.indexOf(' · ')
+            const t = String(title || '').trim()
+            if (!t && titleAccessory) {
+              return (
+                <div className="pointer-events-none absolute left-1/2 top-1/2 z-[1] -translate-x-1/2 -translate-y-1/2 max-w-[min(100%,18rem)]">
+                  <span className="pointer-events-auto inline-flex">{titleAccessory}</span>
+                </div>
+              )
+            }
+            const full = String(title || '')
+            const idx = full.indexOf(' · ')
             if (idx > -1){
-              const left = t.slice(0, idx)
-              const right = t.slice(idx + 3)
+              const left = full.slice(0, idx)
+              const right = full.slice(idx + 3)
               return (
                 <div className="inline-flex max-w-[70%] min-w-0 items-center gap-2">
                   <div className="min-w-0 whitespace-nowrap overflow-hidden text-ellipsis">
@@ -67,7 +75,7 @@ export default function HeaderBar({ title, username, displayName, avatarUrl, tit
             }
             return (
               <div className="inline-flex max-w-[70%] min-w-0 items-center gap-2 justify-center">
-                <span className="font-semibold truncate align-baseline min-w-0">{t}</span>
+                <span className="font-semibold truncate align-baseline min-w-0">{full}</span>
                 {titleAccessory ? <span className="flex-shrink-0">{titleAccessory}</span> : null}
               </div>
             )
