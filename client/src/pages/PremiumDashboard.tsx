@@ -709,7 +709,7 @@ export default function PremiumDashboard() {
 
       {/* Main content area with proper positioning */}
       <div
-        className={`min-h-screen ${communities.length > 0 ? 'pb-[calc(3.5rem+env(safe-area-inset-bottom,0px)+12px)]' : 'pb-20'} ${isWeb ? 'lg:ml-64' : 'md:ml-52'}`}
+        className={`min-h-screen pb-[calc(3.5rem+env(safe-area-inset-bottom,0px)+12px)] ${isWeb ? 'lg:ml-64' : 'md:ml-52'}`}
       >
         <div className="app-content max-w-5xl mx-auto px-3 py-6">
           <div 
@@ -744,6 +744,19 @@ export default function PremiumDashboard() {
           </div>
             {communities.length === 0 ? (
               <div className="px-3 py-6 space-y-4">
+                <div className="mx-auto max-w-xl rounded-xl border border-white/10 bg-white/[0.02] p-3 sm:p-4">
+                  <div className="text-sm font-semibold text-white mb-1.5">About C-Point</div>
+                  <p className="text-sm text-[#9fb0b5] leading-relaxed mb-3">
+                    Manifesto, how the app works, and what Steve can do — a short in-app guide.
+                  </p>
+                  <button
+                    type="button"
+                    className="w-full py-2 rounded-lg border border-[#4db6ac]/50 text-sm font-medium text-[#4db6ac] hover:bg-[#4db6ac]/10 touch-manipulation"
+                    onClick={() => navigate('/about_cpoint')}
+                  >
+                    Read About C-Point
+                  </button>
+                </div>
                 {/* Welcome Card */}
                 <div className="mx-auto max-w-xl liquid-glass-surface border border-white/10 rounded-2xl p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
                   <div className="text-base font-semibold text-white mb-3">
@@ -898,9 +911,7 @@ export default function PremiumDashboard() {
             )}
         </div>
 
-        {communities.length > 0 ? (
-          <DashboardBottomNav show searchOpen={searchOpen} onToggleSearch={() => setSearchOpen((v) => !v)} />
-        ) : null}
+        <DashboardBottomNav show searchOpen={searchOpen} onToggleSearch={() => setSearchOpen((v) => !v)} />
       </div>
 
       {/* Conversational Onboarding with Steve */}

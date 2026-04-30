@@ -67,6 +67,7 @@ import GroupChatMedia from './pages/GroupChatMedia'
 import ChatMedia from './pages/ChatMedia'
 import Profile from './pages/Profile'
 import SteveKnowsMe from './pages/SteveKnowsMe'
+import AboutCPoint from './pages/AboutCPoint'
 import PublicProfile from './pages/PublicProfile'
 import AccountSettings from './pages/AccountSettings'
 import AccountSecurity from './pages/AccountSecurity'
@@ -836,8 +837,9 @@ function AppRoutes(){
                   <Route path="/group_chat/:group_id/media" element={<GroupChatMedia />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/profile_react" element={<Profile />} />
-                  <Route path="/steve-knows-me" element={<SteveKnowsMe />} />
-                  <Route path="/profile/:username" element={<PublicProfile />} />
+                <Route path="/steve-knows-me" element={<SteveKnowsMe />} />
+                <Route path="/about_cpoint" element={<AboutCPoint />} />
+                <Route path="/profile/:username" element={<PublicProfile />} />
                 <Route path="/account_settings" element={<AccountSettings />} />
                 <Route path="/settings" element={<AccountSettings />} />
                 <Route path="/settings/membership" element={<AccountSettings />} />

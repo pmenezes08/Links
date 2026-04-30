@@ -694,6 +694,27 @@ export default function ChatThread(){
     }
   }, [username, viewer])
 
+  // Steve DM: optional ?prefill= from About C-Point (after draft restore; overwrites draft for this navigation).
+  const prefillParam = searchParams.get('prefill')
+  useEffect(() => {
+    if (!isSteveDm || !username || !prefillParam?.trim()) return
+    const ta = textareaRef.current
+    if (!ta) return
+    const text = prefillParam.trim()
+    ta.value = text
+    draftRef.current = text
+    setDraftDisplay(text)
+    adjustTextareaHeight()
+    setSearchParams(
+      (p) => {
+        const n = new URLSearchParams(p)
+        n.delete('prefill')
+        return n
+      },
+      { replace: true },
+    )
+  }, [username, isSteveDm, prefillParam, setSearchParams])
+
   // Share handoff must run *after* draft restore above, or saved/cleared draft overwrites shared links.
   const shareAttach = searchParams.get('share')
   useEffect(() => {

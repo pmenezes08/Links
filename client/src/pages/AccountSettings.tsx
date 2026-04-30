@@ -274,6 +274,21 @@ export default function AccountSettings(){
             </div>
           </div>
 
+        <div className="glass-section space-y-2">
+          <div>
+            <h2 className="text-lg font-semibold">About C-Point</h2>
+            <p className="text-sm text-white/60">Manifesto, how it works, and tutorial videos.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/about_cpoint')}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-white hover:border-[#4db6ac]/50"
+          >
+            <i className="fa-solid fa-circle-info" />
+            Open About C-Point
+          </button>
+        </div>
+
           {/* Privacy & Security summary */}
         <div className="glass-section">
             <div className="space-y-2">
