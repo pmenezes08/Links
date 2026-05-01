@@ -69,6 +69,11 @@ flows.
 
 ## Deployment
 
+- After changing `docs/STEVE_PLATFORM_KB.md` (seed for KB slug `steve-platform-manual`),
+  redeploy and refresh MySQL on staging/prod so Steve reads the new manifesto: use
+  admin-web **Reseed + Force** for that page, or call
+  `seed_default_pages(force=True, slug="steve-platform-manual", actor_username="<you>")`.
+  Untouched `system-seed` rows auto-upgrade on seed runs; admin-edited bodies stay until forced.
 - Backend staging: `gcloud builds submit --config=cloudbuild.yaml --project=cpoint-127c2 .`
 - Admin-web staging: from `admin-web/`,
   `gcloud builds submit --config=../cloudbuild-admin-staging.yaml --project=cpoint-127c2 .`

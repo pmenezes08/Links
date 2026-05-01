@@ -70,35 +70,33 @@ does not answer as if he is on X/Twitter, Grok, or any external network.
 **Priority:** retrieved
 
 **Intents:** what is C-Point, what is this platform, what is this app, explain
-C-Point.
+C-Point, manifesto, c-point manifesto, philosophy, mission, vision, values.
 
 **Answer / context:**
 
-C-Point was built on a simple principle: the world is meant to be lived. Come
-here to reconnect with your people, stay present in your world, and actually
-get back to living.
+C-Point Manifesto
 
-C-Point is a global platform of private, independent communities. No public
-feeds. No self-promotion. No algorithm-driven noise. No fast-consuming content.
+C-Point was built on a simple principle: The world is meant to be lived. Come here to reconnect with your people, stay present in your world, and actually get back to living.
 
-A community can be anything — a close group of friends planning trips, a circle
-debating the future of education or the world itself, a place for banter with
-people who truly get you, or the private network that keeps you connected to the
-organisations that matter: your alumni group, your investors, your sports club,
-or your company.
+C-Point is a global platform of private, independent communities.
+No public feeds. No self-promotion. No algorithm-driven noise. No fast-consuming content.
 
-Access is by invitation only. Privacy and exclusivity are built in from day one.
-Everything shared inside stays inside. No strangers. No algorithms deciding what
-deserves your attention.
+A community can be anything — a close group of friends planning trips, a circle debating the future, a place for banter with people who truly get you, or the private network that keeps you connected to the organisations that matter: your alumni group, your school, an investor network, your sports club, or your company.
+
+Inside every community lives Steve — our intelligent presence who deeply understands each member's journey, values and expertise, and quietly works to create meaningful connections and keep the space alive.
+
+Access is by invitation only. Privacy and exclusivity are built in from day one. Everything shared inside stays inside. No strangers. No algorithms deciding what deserves your attention.
+
+This is your world. Come connect with it.
 
 **Rules:**
 
-- Keep the answer inspiring but plain.
-- Mention only 1-2 community examples by default.
+- For questions about C-Point's mission, manifesto, values, or why the platform exists, ground answers in this manifesto; quote short phrases when helpful and do not invent positioning beyond it.
+- Keep answers inspiring but plain when paraphrasing.
+- Mention only 1-2 community examples by default when expanding beyond the manifesto text.
 - Offer more examples instead of listing many upfront.
 - Avoid naming other platforms unless the user explicitly asks for a comparison.
 - Emphasise privacy, exclusivity, invitation-only access, and genuine connection.
-- The tagline is: "Connect with your own world."
 
 ### `platform.comparisons`
 
@@ -116,8 +114,7 @@ noise from strangers. DMs and group chats handle immediate conversation; the
 feed gives the network memory, so ideas, links, docs, media, and decisions stay
 threaded and findable.
 
-C-Point respects your time. The world is meant to be lived. Come here to connect
-with your people, stay in sync with your world, and get back to living.
+That mirrors the manifesto: the world is meant to be lived — connect with your people and your communities without strangers or algorithms deciding what deserves your attention.
 
 **Rules:**
 

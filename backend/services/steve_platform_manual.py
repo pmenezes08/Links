@@ -53,19 +53,37 @@ DEFAULT_CARDS: tuple[PlatformManualCard, ...] = (
         id="platform.what_is_cpoint",
         title="What C-Point Is",
         priority="retrieved",
-        intents=("what is c-point", "what is this platform", "tell me about this platform", "this app"),
+        intents=(
+            "what is c-point",
+            "what is this platform",
+            "tell me about this platform",
+            "this app",
+            "manifesto",
+            "c-point manifesto",
+            "philosophy",
+            "mission",
+            "vision",
+            "values",
+            "explain c-point",
+        ),
         surfaces=ALL_STEVE_SURFACES,
         answer=(
-            "C-Point is a global platform for private micro-networks: trusted spaces where "
-            "people have context, privacy, continuity, and fast ways to coordinate. A "
-            "micro-network might be a founder circle, a university cohort, a club, or a "
-            "private group built around a shared purpose. Steve can give more examples if "
-            "the user wants."
+            "C-Point Manifesto\n\n"
+            "C-Point was built on a simple principle: The world is meant to be lived. Come here to reconnect with your people, stay present in your world, and actually get back to living.\n\n"
+            "C-Point is a global platform of private, independent communities.\n"
+            "No public feeds. No self-promotion. No algorithm-driven noise. No fast-consuming content.\n\n"
+            "A community can be anything — a close group of friends planning trips, a circle debating the future, a place for banter with people who truly get you, or the private network that keeps you connected to the organisations that matter: your alumni group, your school, an investor network, your sports club, or your company.\n\n"
+            "Inside every community lives Steve — our intelligent presence who deeply understands each member's journey, values and expertise, and quietly works to create meaningful connections and keep the space alive.\n\n"
+            "Access is by invitation only. Privacy and exclusivity are built in from day one. Everything shared inside stays inside. No strangers. No algorithms deciding what deserves your attention.\n\n"
+            "This is your world. Come connect with it."
         ),
         rules=(
-            "Mention only 1-2 examples by default.",
+            "For questions about C-Point's mission, manifesto, values, or why the platform exists, ground answers in this manifesto; quote short phrases when helpful and do not invent positioning beyond it.",
+            "Keep answers inspiring but plain when paraphrasing.",
+            "Mention only 1-2 community examples by default when expanding beyond the manifesto text.",
             "Offer more examples instead of listing many upfront.",
-            "Emphasise privacy, exclusivity, meaningful connection, and micro-networks.",
+            "Avoid naming other platforms unless the user explicitly asks for a comparison.",
+            "Emphasise privacy, exclusivity, invitation-only access, and genuine connection.",
         ),
     ),
     PlatformManualCard(
@@ -81,11 +99,14 @@ DEFAULT_CARDS: tuple[PlatformManualCard, ...] = (
         surfaces=ALL_STEVE_SURFACES,
         answer=(
             "C-Point is complementary to public platforms. Public platforms are built for "
-            "reach, discovery, and consumption. C-Point is built for private micro-networks: "
-            "trusted spaces where people have context, privacy, continuity, and fast ways "
-            "to coordinate. DMs and group chats handle immediate conversation; the feed gives "
-            "the network memory, so ideas, links, docs, media, and decisions stay threaded "
-            "and findable."
+            "reach, discovery, and consumption. C-Point is built for private, independent "
+            "communities — invitation-only spaces with no public feeds, no algorithms, and no "
+            "noise from strangers. DMs and group chats handle immediate conversation; the "
+            "feed gives the network memory, so ideas, links, docs, media, and decisions stay "
+            "threaded and findable.\n\n"
+            "That mirrors the manifesto: the world is meant to be lived — connect with your "
+            "people and your communities without strangers or algorithms deciding what deserves "
+            "your attention."
         ),
         rules=(
             "Do not name competitors proactively.",

@@ -1,26 +1,26 @@
 /** Stable slot ids — must match backend about_tutorials.ALLOWED_SLOTS */
 
-export const ABOUT_CPOINT_VERSION_LABEL = '2.4.1'
+export const ABOUT_CPOINT_VERSION_LABEL = '2.4.2'
 
 export const MANIFESTO_SUMMARY_PARAS: string[] = [
-  'C-Point is built on a simple belief: meaningful private communities change how people connect. We give organisers tools to run invitation-only spaces, and members a place to participate without public feeds or algorithmic noise.',
-  'Your dashboard reflects only the networks you belong to. Empty at first is intentional — it protects privacy until you create or join a community.',
+  'C-Point was built on a simple principle: the world is meant to be lived — reconnect with your people in invitation-only communities, with no public feeds or algorithmic noise.',
+  'Steve lives inside every community as an intelligent presence; everything shared stays inside until you choose otherwise.',
 ]
 
 export const MANIFESTO_FULL = `C-Point Manifesto
 
-We believe people deserve spaces online that feel as intentional as the relationships they build offline.
+C-Point was built on a simple principle: The world is meant to be lived. Come here to reconnect with your people, stay present in your world, and actually get back to living.
 
-C-Point is a platform of private, independent networks — communities — that you choose to enter by invitation or creation. There is no global public timeline designed to maximize engagement at the cost of attention and trust.
+C-Point is a global platform of private, independent communities.
+No public feeds. No self-promotion. No algorithm-driven noise. No fast-consuming content.
 
-We design for:
-• Privacy — your activity stays inside the communities you join unless you choose otherwise.
-• Clarity — fewer surfaces, less noise, more context from people who matter to you.
-• Agency — organisers shape their spaces; members know where they are and why.
+A community can be anything — a close group of friends planning trips, a circle debating the future, a place for banter with people who truly get you, or the private network that keeps you connected to the organisations that matter: your alumni group, your school, an investor network, your sports club, or your company.
 
-Steve is part of the platform to help you navigate the product, save time on long threads and voice notes, and bring relevant perspective in your communities — not to replace human judgment or replace your communities themselves.
+Inside every community lives Steve — our intelligent presence who deeply understands each member's journey, values and expertise, and quietly works to create meaningful connections and keep the space alive.
 
-We ship carefully, listen to organisers and members, and treat trust as the product.`
+Access is by invitation only. Privacy and exclusivity are built in from day one. Everything shared inside stays inside. No strangers. No algorithms deciding what deserves your attention.
+
+This is your world. Come connect with it.`
 
 export type AboutHowCard = {
   id: string
