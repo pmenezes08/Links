@@ -144,6 +144,7 @@ def get_group_chat_messages(
     group_id: int,
     username: str,
     before_id: int = None,
+    since_id: int = None,
     limit: int = 50,
     min_id_exclusive: int = 0,
 ):
@@ -151,6 +152,7 @@ def get_group_chat_messages(
     Read group chat messages from Firestore with pagination.
     Returns messages list matching /api/group_chat/{id}/messages response format.
     min_id_exclusive: hide messages with id <= this (per-user clear history; MySQL source of truth).
+    When since_id is set (and before_id is not), returns messages with id > since_id, oldest-first, up to limit.
     """
     try:
         fs = _get_client()
@@ -168,6 +170,11 @@ def get_group_chat_messages(
                     return []
             else:
                 return []
+        elif since_id and since_id > 0:
+            # Fetch a window of recent docs, then filter id > since_id (avoids new Firestore index requirements).
+            fetch_cap = min(200, max(100, limit * 4))
+            query = msgs_ref.order_by('created_at', direction='DESCENDING').limit(fetch_cap)
+            docs = list(query.stream())
         else:
             query = msgs_ref.order_by('created_at', direction='DESCENDING').limit(limit)
             docs = list(query.stream())
@@ -179,6 +186,11 @@ def get_group_chat_messages(
             mid = int(doc.id) if doc.id.isdigit() else d.get('mysql_id', 0)
             if min_id_exclusive and mid <= min_id_exclusive:
                 continue
+            if before_id:
+                pass
+            elif since_id and since_id > 0:
+                if mid <= since_id:
+                    continue
             messages.append({
                 'id': mid,
                 'sender': d.get('sender', ''),
@@ -195,6 +207,12 @@ def get_group_chat_messages(
                 'audio_duration_seconds': None,
                 'reaction': None,
             })
+        if since_id and since_id > 0 and not before_id:
+            messages.sort(key=lambda m: m['id'] or 0)
+            if len(messages) > limit:
+                messages = messages[:limit]
+        elif not before_id and not (since_id and since_id > 0):
+            pass  # already reversed for chronological full page
         return messages
     except Exception as e:
         logger.error(f"Firestore get_group_chat_messages failed: {e}", exc_info=True)

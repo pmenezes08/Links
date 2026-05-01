@@ -892,6 +892,11 @@ def get_group_messages(group_id: int):
     """Get messages for a group chat."""
     username = session["username"]
     before_id = request.args.get("before_id", type=int)
+    since_id = request.args.get("since_id", type=int)
+    if before_id:
+        since_id = None
+    elif since_id is not None and since_id <= 0:
+        since_id = None
     limit = min(request.args.get("limit", 50, type=int), 100)
     
     # --- Firestore dual-read ---
@@ -912,7 +917,12 @@ def get_group_messages(group_id: int):
                 pass
 
             messages = fs_get_gcm(
-                group_id, username, before_id=before_id, limit=limit, min_id_exclusive=cleared_fs
+                group_id,
+                username,
+                before_id=before_id,
+                since_id=since_id if since_id and since_id > 0 else None,
+                limit=limit,
+                min_id_exclusive=cleared_fs,
             )
             messages = _enrich_group_message_profile_pictures(messages)
             logger.info(f"Firestore group chat read: {len(messages)} messages for group {group_id}")
@@ -987,6 +997,16 @@ def get_group_messages(group_id: int):
                     ORDER BY m.created_at DESC
                     LIMIT {ph}
                 """, (group_id, before_id) + cleared_param + (limit,))
+            elif since_id and since_id > 0:
+                c.execute(f"""
+                    SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.client_key, m.created_at,
+                           up.profile_picture, m.is_edited, m.audio_summary
+                    FROM group_chat_messages m
+                    LEFT JOIN user_profiles up ON m.sender_username = up.username
+                    WHERE m.group_id = {ph} AND m.id > {ph} AND m.is_deleted = 0{cleared_sql}
+                    ORDER BY m.id ASC
+                    LIMIT {ph}
+                """, (group_id, since_id) + cleared_param + (limit,))
             else:
                 c.execute(f"""
                     SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.client_key, m.created_at,
@@ -1083,8 +1103,9 @@ def get_group_messages(group_id: int):
                     """, (group_id, username, max_id, now, max_id, now))
                 conn.commit()
             
-            # Reverse to show oldest first
-            messages.reverse()
+            # Reverse to show oldest first (full page and before_id are fetched DESC; since_id is ASC)
+            if not (since_id and since_id > 0):
+                messages.reverse()
             messages = _enrich_group_message_profile_pictures(messages)
             
             # Check if Steve is typing (short-lived cache flag with TTL)
