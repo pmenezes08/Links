@@ -43,10 +43,12 @@ function ModalBackdrop({
       <div
         role="dialog"
         aria-modal="true"
-        className={`w-full ${wide ? 'max-w-lg' : 'max-w-md'} max-h-[85vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-white/10 bg-[#0a0a0a] p-4 shadow-xl`}
+        className={`grid w-full min-h-0 shrink grid-rows-[minmax(0,1fr)] overflow-hidden ${wide ? 'max-w-lg' : 'max-w-md'} max-h-[calc(100dvh-5rem-env(safe-area-inset-bottom,0px))] sm:max-h-[85vh] rounded-t-2xl sm:rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-xl`}
         onClick={(e) => e.stopPropagation()}
       >
-        {children}
+        <div className="min-h-0 overflow-y-auto overscroll-contain touch-pan-y p-4 [-webkit-overflow-scrolling:touch]">
+          {children}
+        </div>
       </div>
     </div>
   )
@@ -337,7 +339,7 @@ export default function AboutCPoint() {
               Close
             </button>
           </div>
-          <pre className="whitespace-pre-wrap text-sm text-[#9fb0b5] font-sans">{MANIFESTO_FULL}</pre>
+          <div className="whitespace-pre-wrap break-words text-sm text-[#9fb0b5] font-sans">{MANIFESTO_FULL}</div>
         </ModalBackdrop>
       ) : null}
 
