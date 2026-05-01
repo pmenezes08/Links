@@ -268,9 +268,11 @@ export default function GroupChatThread() {
     : []
     
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messageStackRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const userHasScrolledRef = useRef(false)
+  const initialPinActiveRef = useRef(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
@@ -408,12 +410,15 @@ export default function GroupChatThread() {
   const listPaddingBottom = `${(androidKeyboardOpen ? 0 : safeBottomPx) + (androidKeyboardOpen ? 0 : keyboardLift) + effectiveComposerHeight + composerGapPx}px`
   const scrollButtonBottom = `${(androidKeyboardOpen ? 0 : safeBottomPx) + (androidKeyboardOpen ? 0 : keyboardLift) + effectiveComposerHeight + 12}px`
 
-  // Instant scroll - only used for initial load
-  const scrollToBottom = useCallback(() => {
+  const scrollListToBottom = useCallback((behavior: ScrollBehavior) => {
     const el = listRef.current
     if (!el) return
-    el.scrollTop = el.scrollHeight
+    el.scrollTo({ top: el.scrollHeight, behavior })
   }, [])
+
+  const scrollToBottom = useCallback(() => {
+    scrollListToBottom('auto')
+  }, [scrollListToBottom])
 
   const scrollToBottomIfAppropriate = useCallback(() => {
     const el = listRef.current
@@ -430,9 +435,14 @@ export default function GroupChatThread() {
   useEffect(() => {
     lastVisibleMsgKeyRef.current = null
     userHasScrolledRef.current = false
+    initialPinActiveRef.current = true
     pollTickRef.current = 0
     skipNextPollsUntil.current = 0
     clientKeyServerIdRef.current.clear()
+    const endInitialPin = window.setTimeout(() => {
+      initialPinActiveRef.current = false
+    }, 450)
+    return () => clearTimeout(endInitialPin)
   }, [group_id])
 
   const messageTailKey = useMemo(() => {
@@ -454,33 +464,34 @@ export default function GroupChatThread() {
     lastVisibleMsgKeyRef.current = messageTailKey
     const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
     if (nearBottom || !userHasScrolledRef.current) {
-      el.scrollTop = el.scrollHeight
+      scrollListToBottom('auto')
       setShowScrollDown(false)
     } else {
       setShowScrollDown(true)
     }
-  }, [messageTailKey, messages.length])
+  }, [messageTailKey, messages.length, scrollListToBottom])
 
-  useEffect(() => {
-    const el = listRef.current
-    if (!el || typeof ResizeObserver === 'undefined') return
+  useLayoutEffect(() => {
+    const stack = messageStackRef.current
+    if (!stack || typeof ResizeObserver === 'undefined') return
     let frame = 0
-    const observer = new ResizeObserver(() => {
+    const onStackResize = () => {
       if (userHasScrolledRef.current) return
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
-        el.scrollTop = el.scrollHeight
+        const list = listRef.current
+        if (!list || userHasScrolledRef.current) return
+        const behavior: ScrollBehavior = initialPinActiveRef.current ? 'smooth' : 'auto'
+        list.scrollTo({ top: list.scrollHeight, behavior })
       })
-    })
-    observer.observe(el)
+    }
+    const observer = new ResizeObserver(onStackResize)
+    observer.observe(stack)
     return () => {
       cancelAnimationFrame(frame)
       observer.disconnect()
     }
-  }, [group_id])
-
-  // Simple scroll-to-bottom for new messages only (no aggressive initial load behavior)
-  // This prevents the unwanted scrolling/jumping when opening a chat
+  }, [group_id, messages.length])
 
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
@@ -2271,6 +2282,7 @@ export default function GroupChatThread() {
               const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
               if (distFromBottom > 80) {
                 userHasScrolledRef.current = true
+                initialPinActiveRef.current = false
                 if (distFromBottom > 150) setShowScrollDown(true)
               } else {
                 userHasScrolledRef.current = false
@@ -2311,7 +2323,7 @@ export default function GroupChatThread() {
                 )}
               </div>
             ) : (
-              <div className="space-y-3 py-3">
+              <div ref={messageStackRef} className="space-y-3 py-3">
                 {messages.map((msg, idx) => {
                   const msgWithKey = msg as Message & { clientKey?: string; replySnippet?: string; replySender?: string }
                   const showAvatar = idx === 0 || messages[idx - 1].sender !== msg.sender
