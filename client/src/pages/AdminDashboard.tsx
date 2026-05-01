@@ -144,6 +144,7 @@ export default function AdminDashboard() {
 
   const [metricsExtra, setMetricsExtra] = useState<Partial<Stats> | null>(null)
   const [metricsLoading, setMetricsLoading] = useState(false)
+  const [metricsError, setMetricsError] = useState<string | null>(null)
 
   const metricsViewStats = useMemo(() => {
     if (!stats) return null
@@ -357,6 +358,7 @@ export default function AdminDashboard() {
   const loadAdminData = async () => {
     setLoading(true)
     setMetricsExtra(null)
+    setMetricsError(null)
     try {
       const response = await fetch('/api/admin/dashboard', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const data = await response.json()
@@ -1050,15 +1052,31 @@ export default function AdminDashboard() {
     if (activeTab !== 'metrics' || !stats) return
     let cancelled = false
     setMetricsLoading(true)
+    setMetricsError(null)
+    setMetricsExtra(null)
     fetch('/api/admin/metrics', { credentials: 'include', headers: { Accept: 'application/json' } })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}))
         if (cancelled) return
-        if (res.ok && data.success && data.stats) setMetricsExtra(data.stats)
-        else setMetricsExtra(null)
+        if (res.ok && data.success && data.stats) {
+          setMetricsExtra(data.stats)
+          setMetricsError(null)
+        } else {
+          setMetricsExtra(null)
+          const msg =
+            typeof data.error === 'string'
+              ? data.error
+              : !res.ok
+                ? `Could not load metrics (HTTP ${res.status})`
+                : 'Could not load metrics'
+          setMetricsError(msg)
+        }
       })
       .catch(() => {
-        if (!cancelled) setMetricsExtra(null)
+        if (!cancelled) {
+          setMetricsExtra(null)
+          setMetricsError('Network error — could not reach the server')
+        }
       })
       .finally(() => {
         if (!cancelled) setMetricsLoading(false)
@@ -1807,12 +1825,36 @@ export default function AdminDashboard() {
 
         {/* Metrics Tab */}
         {activeTab === 'metrics' && metricsViewStats && (
-          <div className="space-y-4">
+          <div className="relative space-y-4 min-h-[24rem]">
+            {metricsLoading && (
+              <div
+                className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 rounded-xl bg-[#0a1214]/90 backdrop-blur-sm border border-white/10 px-6 py-12"
+                role="status"
+                aria-live="polite"
+              >
+                <i className="fa-solid fa-spinner fa-spin text-3xl text-[#4db6ac]" aria-hidden />
+                <div className="text-center max-w-md">
+                  <p className="text-base font-semibold text-white">Calculating usage metrics</p>
+                  <p className="text-sm text-white/65 mt-2 leading-relaxed">
+                    DAU, MAU, cohorts, and leaderboards are computed on the server. On large databases this can take up
+                    to a minute — please wait.
+                  </p>
+                </div>
+              </div>
+            )}
+            {metricsError && !metricsLoading && (
+              <div
+                className="rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+                role="alert"
+              >
+                {metricsError}
+              </div>
+            )}
+            <div
+              className={`space-y-4 transition-opacity ${metricsLoading ? 'opacity-35 pointer-events-none select-none' : ''}`}
+            >
             <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
               <h3 className="text-lg font-semibold mb-3 text-[#4db6ac]">Key Metrics</h3>
-              {metricsLoading && (
-                <div className="text-xs text-white/50 mb-2">Loading extended metrics from server…</div>
-              )}
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <div className="bg-white/5 rounded-lg p-3 border border-white/10">
                   <div className="text-xs text-white/60">DAU</div>
@@ -1915,6 +1957,7 @@ export default function AdminDashboard() {
                   )) : <div className="text-white/60">No data</div>}
                 </div>
               </div>
+            </div>
             </div>
           </div>
         )}

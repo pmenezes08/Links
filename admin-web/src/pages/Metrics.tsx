@@ -51,7 +51,17 @@ export default function Metrics() {
       .finally(() => setLoading(false))
   }, [])
 
-  if (loading) return <div className="text-muted text-center py-20">Loading metrics...</div>
+  if (loading)
+    return (
+      <div className="flex flex-col items-center justify-center py-24 px-6 text-center max-w-lg mx-auto">
+        <i className="fa-solid fa-spinner fa-spin text-3xl text-accent mb-4" aria-hidden />
+        <h2 className="text-lg font-semibold text-white mb-2">Calculating usage metrics</h2>
+        <p className="text-sm text-muted leading-relaxed">
+          DAU, MAU, cohorts, and leaderboards are computed on the server. On large databases this can take up to a minute —
+          please wait.
+        </p>
+      </div>
+    )
   if (error) return <div className="text-red-400 text-center py-20">{error}</div>
   if (!stats) return null
 
