@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { App as CapacitorApp } from '@capacitor/app'
@@ -67,7 +67,7 @@ import EventDetail from './pages/EventDetail'
 import GroupFeed from './pages/GroupFeed'
 import EditGroup from './pages/EditGroup'
 import CommentReply from './pages/CommentReply'
-import ShareIncoming from './pages/ShareIncoming'
+import ShareIncomingRouteRedirect from './pages/ShareIncomingRouteRedirect'
 import {
   GOOGLE_ANDROID_CLIENT_ID,
   GOOGLE_IOS_CLIENT_ID,
@@ -78,6 +78,7 @@ const queryClient = new QueryClient()
 
 function AppRoutes(){
   const [title, setTitle] = useState('')
+  const [titleAccessory, setTitleAccessory] = useState<ReactNode>(null)
   const [headerHiddenOverride, setHeaderHiddenOverride] = useState(false)
   const [userMeta, setUserMeta] = useState<{ username?:string; displayName?:string|null; avatarUrl?:string|null }>({})
   const location = useLocation()
@@ -692,9 +693,9 @@ function AppRoutes(){
   return (
     <UserProfileContext.Provider value={userProfileValue}>
       <BadgeProvider>
-      <HeaderContext.Provider value={{ setTitle, setHeaderHidden: setHeaderHiddenOverride }}>
+      <HeaderContext.Provider value={{ setTitle, setHeaderHidden: setHeaderHiddenOverride, setTitleAccessory }}>
         {showHeader && (
-          <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} />
+          <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} titleAccessory={titleAccessory} />
         )}
         <main
           ref={scrollRegionRef}
@@ -754,7 +755,7 @@ function AppRoutes(){
                 <Route path="/event/:event_id" element={<EventDetail />} />
                 <Route path="/post/:post_id" element={<PostDetail />} />
                 <Route path="/reply/:reply_id" element={<CommentReply />} />
-                <Route path="/share/incoming" element={<ShareIncoming />} />
+                <Route path="/share/incoming" element={<ShareIncomingRouteRedirect />} />
                 <Route path="/compose" element={<CreatePost />} />
                 <Route path="/group_feed_react/:group_id" element={<GroupFeed />} />
                 <Route path="/group/:group_id/edit" element={<EditGroup />} />
