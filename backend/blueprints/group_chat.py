@@ -262,6 +262,35 @@ def _ensure_group_message_reactions_table(cursor):
             logger.warning(f"Could not create group_message_reactions table: {e}")
 
 
+def _merge_user_group_message_reactions(cursor, messages, username, ph):
+    """Load current user's rows from group_message_reactions and set msg['reaction'] (mutates messages)."""
+    if not messages:
+        return
+    message_ids = [msg["id"] for msg in messages if msg.get("id")]
+    if not message_ids:
+        return
+    _ensure_group_message_reactions_table(cursor)
+    try:
+        placeholders = ",".join([ph] * len(message_ids))
+        cursor.execute(
+            f"""
+            SELECT message_id, reaction FROM group_message_reactions
+            WHERE message_id IN ({placeholders}) AND username = {ph}
+        """,
+            (*message_ids, username),
+        )
+        user_reactions = {}
+        for r in cursor.fetchall():
+            msg_id = r["message_id"] if hasattr(r, "keys") else r[0]
+            reaction_emoji = r["reaction"] if hasattr(r, "keys") else r[1]
+            user_reactions[msg_id] = reaction_emoji
+        for msg in messages:
+            msg["reaction"] = user_reactions.get(msg["id"])
+        logger.debug(f"Loaded {len(user_reactions)} reactions for user {username}")
+    except Exception as e:
+        logger.warning(f"Could not fetch reactions: {e}")
+
+
 def _ensure_community_id_column(cursor):
     """Ensure community_id column exists in group_chats table."""
     from backend.services.database import USE_MYSQL
@@ -935,6 +964,7 @@ def get_group_messages(group_id: int):
                         with get_db_connection() as _conn:
                             _c = _conn.cursor()
                             _ph = get_sql_placeholder()
+                            _merge_user_group_message_reactions(_c, messages, username, _ph)
                             from backend.services.database import USE_MYSQL as _USE_MYSQL
                             if _USE_MYSQL:
                                 _c.execute(f"""
@@ -1019,7 +1049,6 @@ def get_group_messages(group_id: int):
                 """, (group_id,) + cleared_param + (limit,))
             
             messages = []
-            message_ids = []
             for row in c.fetchall():
                 # Parse media_paths JSON if present
                 media_paths_raw = row["media_paths"] if hasattr(row, "keys") else row[6]
@@ -1054,31 +1083,8 @@ def get_group_messages(group_id: int):
                     "reaction": None,  # Will be filled below
                 }
                 messages.append(msg_data)
-                message_ids.append(msg_id)
             
-            # Fetch reactions for all messages in batch
-            if message_ids:
-                try:
-                    # Get current user's reactions
-                    placeholders = ','.join([ph] * len(message_ids))
-                    c.execute(f"""
-                        SELECT message_id, reaction FROM group_message_reactions
-                        WHERE message_id IN ({placeholders}) AND username = {ph}
-                    """, (*message_ids, username))
-                    user_reactions = {}
-                    for r in c.fetchall():
-                        # Handle both DictCursor (MySQL) and tuple (SQLite) results
-                        msg_id = r["message_id"] if hasattr(r, "keys") else r[0]
-                        reaction_emoji = r["reaction"] if hasattr(r, "keys") else r[1]
-                        user_reactions[msg_id] = reaction_emoji
-                    
-                    # Update messages with reactions
-                    for msg in messages:
-                        msg["reaction"] = user_reactions.get(msg["id"])
-                    
-                    logger.debug(f"Loaded {len(user_reactions)} reactions for user {username}")
-                except Exception as e:
-                    logger.warning(f"Could not fetch reactions: {e}")
+            _merge_user_group_message_reactions(c, messages, username, ph)
             
             # Update read receipt
             if messages:
