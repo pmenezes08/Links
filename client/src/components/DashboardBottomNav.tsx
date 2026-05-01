@@ -59,10 +59,13 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
     }
   }
 
+  const steveRowBtn =
+    'w-full text-left px-4 py-3.5 rounded-xl border border-white/10 bg-white/[0.04] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] hover:border-[#4db6ac]/40 hover:bg-[#4db6ac]/10 active:bg-[#4db6ac]/15 transition-colors touch-manipulation'
+
   const steveModal =
     steveOpen ? (
       <div
-        className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center sm:p-4 bg-black/60 pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] sm:pb-4"
+        className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center sm:p-4 bg-black/65 backdrop-blur-sm pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] sm:pb-4"
         role="presentation"
         onClick={() => setSteveOpen(false)}
       >
@@ -70,15 +73,18 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
           role="dialog"
           aria-modal="true"
           aria-label={steveModalView === 'main' ? 'Steve' : steveModalView === 'recommendations' ? 'Steve recommendations' : 'News and articles'}
-          className="w-full max-w-sm sm:rounded-2xl rounded-t-2xl border border-white/10 bg-[#0a0a0a] shadow-xl p-2 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] sm:pb-3"
+          className="relative z-[200] w-full max-w-sm sm:rounded-2xl rounded-t-2xl overflow-hidden liquid-glass-surface border border-[#4db6ac]/25 shadow-[0_0_52px_-14px_rgba(77,182,172,0.38),0_24px_56px_rgba(0,0,0,0.52)] pb-[calc(env(safe-area-inset-bottom,0px)+12px)] sm:pb-3"
           onClick={(e) => e.stopPropagation()}
         >
+          <div className="relative z-[1] p-2 space-y-1">
           {steveModalView === 'main' && (
             <>
-              <div className="text-center text-sm font-semibold text-white/90 py-2 border-b border-white/10 mb-1">Steve</div>
+              <div className="text-center text-sm font-semibold text-white/95 py-2 border-b border-[#4db6ac]/20 mb-1 tracking-tight">
+                Steve
+              </div>
               <button
                 type="button"
-                className="w-full text-left px-4 py-3.5 rounded-xl text-white hover:bg-white/10 active:bg-white/15"
+                className={steveRowBtn}
                 onClick={() => {
                   setSteveOpen(false)
                   navigate('/user_chat/chat/Steve')
@@ -89,7 +95,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
               </button>
               <button
                 type="button"
-                className="w-full text-left px-4 py-3.5 rounded-xl text-white hover:bg-white/10 active:bg-white/15"
+                className={steveRowBtn}
                 onClick={() => setSteveModalView('recommendations')}
               >
                 <div className="font-medium">Steve Recommendations</div>
@@ -100,20 +106,20 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
 
           {steveModalView === 'recommendations' && (
             <>
-              <div className="flex items-center gap-2 py-2 border-b border-white/10 mb-1">
+              <div className="flex items-center gap-2 py-2 border-b border-[#4db6ac]/20 mb-1">
                 <button
                   type="button"
-                  className="p-2 rounded-lg text-[#9fb0b5] hover:bg-white/10 hover:text-white"
+                  className="p-2 rounded-lg text-[#9fb0b5] hover:bg-[#4db6ac]/15 hover:text-[#4db6ac] transition-colors"
                   aria-label="Back"
                   onClick={() => setSteveModalView('main')}
                 >
                   <i className="fa-solid fa-arrow-left" />
                 </button>
-                <div className="flex-1 text-center text-sm font-semibold text-white/90 pr-8">Steve Recommendations</div>
+                <div className="flex-1 text-center text-sm font-semibold text-white/95 pr-8 tracking-tight">Steve Recommendations</div>
               </div>
               <button
                 type="button"
-                className="w-full text-left px-4 py-3.5 rounded-xl text-white hover:bg-white/10 active:bg-white/15"
+                className={steveRowBtn}
                 onClick={() => {
                   setSteveOpen(false)
                   setSteveModalView('main')
@@ -125,7 +131,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
               </button>
               <button
                 type="button"
-                className="w-full text-left px-4 py-3.5 rounded-xl text-white hover:bg-white/10 active:bg-white/15"
+                className={steveRowBtn}
                 onClick={() => setSteveModalView('news_soon')}
               >
                 <div className="font-medium">News / Articles</div>
@@ -136,16 +142,16 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
 
           {steveModalView === 'news_soon' && (
             <>
-              <div className="flex items-center gap-2 py-2 border-b border-white/10 mb-1">
+              <div className="flex items-center gap-2 py-2 border-b border-[#4db6ac]/20 mb-1">
                 <button
                   type="button"
-                  className="p-2 rounded-lg text-[#9fb0b5] hover:bg-white/10 hover:text-white"
+                  className="p-2 rounded-lg text-[#9fb0b5] hover:bg-[#4db6ac]/15 hover:text-[#4db6ac] transition-colors"
                   aria-label="Back"
                   onClick={() => setSteveModalView('recommendations')}
                 >
                   <i className="fa-solid fa-arrow-left" />
                 </button>
-                <div className="flex-1 text-center text-sm font-semibold text-white/90 pr-8">News / Articles</div>
+                <div className="flex-1 text-center text-sm font-semibold text-white/95 pr-8 tracking-tight">News / Articles</div>
               </div>
               <div className="px-4 py-6 text-center">
                 <p className="text-base font-medium text-white">Coming soon</p>
@@ -155,6 +161,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
               </div>
             </>
           )}
+          </div>
         </div>
       </div>
     ) : null

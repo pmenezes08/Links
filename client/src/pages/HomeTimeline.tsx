@@ -561,28 +561,38 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
         }}
       >
         {mode === 'dashboard_feed' && hasDashboardCommunities ? (
-          <div className="mb-4 space-y-3">
-            <div className="flex rounded-xl border border-white/10 p-0.5 bg-white/[0.03] gap-0.5">
+          <div className="mb-4 liquid-glass-surface border border-[#4db6ac]/15 rounded-2xl p-3 shadow-[0_20px_60px_rgba(0,0,0,0.45)] space-y-4 relative overflow-hidden">
+            <div className="relative z-[1] flex items-center justify-center gap-6 sm:gap-8">
               <button
                 type="button"
-                className={`flex-1 py-2 px-2 rounded-lg text-xs font-medium transition-colors touch-manipulation ${
-                  feedMode === 'unread' ? 'bg-white/10 text-white' : 'text-[#9fb0b5] hover:text-white'
+                className={`text-sm font-medium transition-opacity touch-manipulation ${
+                  feedMode === 'unread' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
                 }`}
                 onClick={() => setFeedMode('unread')}
               >
-                Unread
+                <div className="pt-1 whitespace-nowrap text-center">Unread</div>
+                <div
+                  className={`h-0.5 rounded-full w-16 mx-auto mt-1 transition-shadow ${
+                    feedMode === 'unread' ? 'bg-[#4db6ac] shadow-[0_0_12px_rgba(77,182,172,0.35)]' : 'bg-transparent'
+                  }`}
+                />
               </button>
               <button
                 type="button"
-                className={`flex-1 py-2 px-2 rounded-lg text-xs font-medium transition-colors touch-manipulation ${
-                  feedMode === 'recent48h' ? 'bg-white/10 text-white' : 'text-[#9fb0b5] hover:text-white'
+                className={`text-sm font-medium transition-opacity touch-manipulation ${
+                  feedMode === 'recent48h' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
                 }`}
                 onClick={() => setFeedMode('recent48h')}
               >
-                Last 48 hours
+                <div className="pt-1 whitespace-nowrap text-center">Last 48 hours</div>
+                <div
+                  className={`h-0.5 rounded-full w-16 mx-auto mt-1 transition-shadow ${
+                    feedMode === 'recent48h' ? 'bg-[#4db6ac] shadow-[0_0_12px_rgba(77,182,172,0.35)]' : 'bg-transparent'
+                  }`}
+                />
               </button>
             </div>
-            <label className="block">
+            <label className="block relative z-[1]">
               <span className="sr-only">Filter by community</span>
               <select
                 value={feedParentId ?? ''}
@@ -590,7 +600,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                   const v = e.target.value
                   setFeedParentId(v === '' ? null : parseInt(v, 10))
                 }}
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none focus:border-[#4db6ac]/40"
+                className="w-full rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5 text-sm text-white focus:outline-none focus:border-[#4db6ac]/50 focus:ring-1 focus:ring-[#4db6ac]/25"
               >
                 <option value="">All networks</option>
                 {dashboardParents.map((c) => (
@@ -635,8 +645,12 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                 mode === 'dashboard_feed' &&
                 prev != null &&
                 (prevCid !== cid || String(prev.community_name || '') !== String(p.community_name || ''))
+              const cardShell =
+                mode === 'dashboard_feed'
+                  ? 'rounded-2xl border border-white/15 liquid-glass-surface shadow-[0_24px_56px_rgba(0,0,0,0.48)] cursor-pointer transition-all duration-300 hover:border-teal-400/40 hover:-translate-y-0.5 hover:shadow-[0_28px_64px_rgba(0,0,0,0.55)] relative overflow-hidden'
+                  : 'rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer'
               const cardEl = (
-              <div className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={p.poll ? undefined : () => navigate(`/post/${p.id}`)}>
+              <div className={cardShell} onClick={p.poll ? undefined : () => navigate(`/post/${p.id}`)}>
                 <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
                   <Avatar username={p.username} url={p.profile_picture || undefined} size={32} linkToProfile />
                   <div className="min-w-0 flex-1">
