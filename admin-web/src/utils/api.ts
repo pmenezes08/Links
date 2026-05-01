@@ -10,6 +10,10 @@ export async function api(path: string, options?: RequestInit) {
 
 export async function apiJson<T = any>(path: string, options?: RequestInit): Promise<T> {
   const res = await api(path, options)
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`HTTP ${res.status}: ${text.slice(0, 240)}`)
+  }
   return res.json()
 }
 

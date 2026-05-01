@@ -532,7 +532,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
             "sort_order": 5,
             "fields": [
                 {"name": "manual_version", "label": "Manual version", "type": "string", "value": "v1"},
-                {"name": "last_reviewed", "label": "Last reviewed", "type": "date", "value": "2026-04-25"},
+                {"name": "last_reviewed", "label": "Last reviewed", "type": "date", "value": "2026-05-01"},
                 {"name": "enabled_surfaces", "label": "Enabled surfaces", "type": "string", "value": "steve_dm, steve_group"},
                 {"name": "always_on_card", "label": "Always-on card", "type": "string", "value": "platform.identity"},
             ],

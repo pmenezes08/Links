@@ -113,6 +113,25 @@ only gate observability:
    - Enable both *Standard usage cost* and *Pricing* exports.
    First data appears ~24h after enabling.
 
+### 0.4 Admin activity metrics (DAU / MAU)
+
+- **Definition** for admins is documented for Steve in the Platform Manual KB
+  (card `platform.dau_mau` in `docs/STEVE_PLATFORM_KB.md`). After changing that
+  markdown, redeploy and use admin-web **Reseed + Force** for
+  `steve-platform-manual` so Steve picks up the new text.
+- **Database:** `user_login_history` and `community_visit_history` are created at
+  app init via `ensure_user_activity_tables`. If an old database lacked
+  `community_visit_history`, the **feed** path uses an **insert-first** write;
+  **DDL runs only if** that insert fails with a missing-table error (no extra
+  work on the hot path when the table already exists).
+- **`GET /api/admin/metrics`** is intentionally **heavy** (full scans + Python
+  aggregation). Large datasets can be slow or hit HTTP timeouts; improving that
+  is a separate performance effort (SQL rollups / caching), not part of basic
+  correctness checks.
+- **Two admin UIs:** the main React **Admin Dashboard → Metrics** tab and
+  **admin-web → Metrics** both rely on `/api/admin/metrics` for DAU/MAU detail
+  (the dashboard listing endpoint does not include those fields).
+
 ---
 
 ## 1. Deploying code

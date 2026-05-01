@@ -4,12 +4,13 @@ import StatCard from '../components/StatCard'
 
 interface LeaderboardEntry {
   username: string
-  score: number
+  count: number
 }
 
 interface Cohort {
   month: string
-  cohort_size: number
+  /** Backend key from /api/admin/metrics */
+  size: number
   retention: number[]
 }
 
@@ -24,7 +25,7 @@ interface DashboardStats {
   mau_pct?: number
   mru_repeat_rate_pct?: number
   wru_repeat_rate_pct?: number
-  mau_month?: string
+  mau_month?: number
   cohorts?: Cohort[]
   leaderboards?: {
     top_posters: LeaderboardEntry[]
@@ -89,7 +90,7 @@ export default function Metrics() {
                 {cohorts.map((row, i) => (
                   <tr key={i} className="border-b border-white/5 last:border-0">
                     <td className="px-3 py-2">{row.month}</td>
-                    <td className="px-3 py-2 text-right text-muted">{row.cohort_size}</td>
+                    <td className="px-3 py-2 text-right text-muted">{row.size}</td>
                     {Array.from({ length: maxRetentionLen }, (_, j) => {
                       const val = row.retention?.[j]
                       return (
@@ -133,7 +134,7 @@ function LeaderboardCard({ title, entries }: { title: string; entries?: Leaderbo
               <span className="text-muted text-xs w-5 text-right">{i + 1}</span>
               <span className="text-accent font-medium">@{entry.username}</span>
             </div>
-            <span className="text-sm font-semibold">{entry.score}</span>
+            <span className="text-sm font-semibold">{entry.count}</span>
           </div>
         ))}
       </div>

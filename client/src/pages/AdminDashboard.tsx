@@ -142,6 +142,13 @@ export default function AdminDashboard() {
     [communityChildrenMap]
   )
 
+  const [metricsExtra, setMetricsExtra] = useState<Partial<Stats> | null>(null)
+  const [metricsLoading, setMetricsLoading] = useState(false)
+
+  const metricsViewStats = useMemo(() => {
+    if (!stats) return null
+    return { ...stats, ...(metricsExtra ?? {}) }
+  }, [stats, metricsExtra])
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities' | 'metrics' | 'content_review' | 'blocked_users' | 'steve_feedback' | 'steve_profiling' | 'network_profiling'>('overview')
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -349,6 +356,7 @@ export default function AdminDashboard() {
 
   const loadAdminData = async () => {
     setLoading(true)
+    setMetricsExtra(null)
     try {
       const response = await fetch('/api/admin/dashboard', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const data = await response.json()
@@ -1037,6 +1045,28 @@ export default function AdminDashboard() {
     loadWelcomeCards()
     loadInviteLogo()
   }, [setTitle, loadWelcomeCards, loadInviteLogo])
+
+  useEffect(() => {
+    if (activeTab !== 'metrics' || !stats) return
+    let cancelled = false
+    setMetricsLoading(true)
+    fetch('/api/admin/metrics', { credentials: 'include', headers: { Accept: 'application/json' } })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}))
+        if (cancelled) return
+        if (res.ok && data.success && data.stats) setMetricsExtra(data.stats)
+        else setMetricsExtra(null)
+      })
+      .catch(() => {
+        if (!cancelled) setMetricsExtra(null)
+      })
+      .finally(() => {
+        if (!cancelled) setMetricsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeTab, stats])
 
   // Load reported posts when content_review tab is active
   useEffect(() => {
@@ -1776,32 +1806,35 @@ export default function AdminDashboard() {
         )}
 
         {/* Metrics Tab */}
-        {activeTab === 'metrics' && stats && (
+        {activeTab === 'metrics' && metricsViewStats && (
           <div className="space-y-4">
             <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
               <h3 className="text-lg font-semibold mb-3 text-[#4db6ac]">Key Metrics</h3>
+              {metricsLoading && (
+                <div className="text-xs text-white/50 mb-2">Loading extended metrics from server…</div>
+              )}
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <div className="bg-white/5 rounded-lg p-3 border border-white/10">
                   <div className="text-xs text-white/60">DAU</div>
-                  <div className="text-xl font-bold">{stats.dau ?? '—'}</div>
-                  <div className="text-xs text-white/60">{stats.dau_pct != null ? `${stats.dau_pct}% of users` : ''}</div>
+                  <div className="text-xl font-bold">{metricsViewStats.dau ?? '—'}</div>
+                  <div className="text-xs text-white/60">{metricsViewStats.dau_pct != null ? `${metricsViewStats.dau_pct}% of users` : ''}</div>
                 </div>
                 <div className="bg-white/5 rounded-lg p-3 border border-white/10">
                   <div className="text-xs text-white/60">MAU</div>
-                  <div className="text-xl font-bold">{stats.mau ?? '—'}</div>
-                  <div className="text-xs text-white/60">{stats.mau_pct != null ? `${stats.mau_pct}% of users` : ''}</div>
+                  <div className="text-xl font-bold">{metricsViewStats.mau ?? '—'}</div>
+                  <div className="text-xs text-white/60">{metricsViewStats.mau_pct != null ? `${metricsViewStats.mau_pct}% of users` : ''}</div>
                 </div>
                 <div className="bg-white/5 rounded-lg p-3 border border-white/10">
                   <div className="text-xs text-white/60">Total Users</div>
-                  <div className="text-xl font-bold">{stats.total_users}</div>
+                  <div className="text-xl font-bold">{metricsViewStats.total_users}</div>
                 </div>
                 <div className="bg-white/5 rounded-lg p-3 border border-white/10">
                   <div className="text-xs text-white/60">Total Communities</div>
-                  <div className="text-xl font-bold">{stats.total_communities}</div>
+                  <div className="text-xl font-bold">{metricsViewStats.total_communities}</div>
                 </div>
                 <div className="bg-white/5 rounded-lg p-3 border border-white/10">
                   <div className="text-xs text-white/60">Avg DAU (30d)</div>
-                  <div className="text-xl font-bold">{stats.avg_dau_30 ?? '—'}</div>
+                  <div className="text-xl font-bold">{metricsViewStats.avg_dau_30 ?? '—'}</div>
                   <div className="text-xs text-white/60">daily avg</div>
                 </div>
               </div>
@@ -1815,15 +1848,15 @@ export default function AdminDashboard() {
                 <div className="flex items-end gap-4">
                   <div>
                     <div className="text-[11px] text-white/60">MRU</div>
-                    <div className="text-xl font-bold">{stats.mru ?? '—'}</div>
+                    <div className="text-xl font-bold">{metricsViewStats.mru ?? '—'}</div>
                   </div>
                   <div>
                     <div className="text-[11px] text-white/60">MAU (month)</div>
-                    <div className="text-xl font-bold">{stats.mau_month ?? '—'}</div>
+                    <div className="text-xl font-bold">{metricsViewStats.mau_month ?? '—'}</div>
                   </div>
                   <div>
                     <div className="text-[11px] text-white/60">Repeat rate</div>
-                    <div className="text-xl font-bold">{stats.mru_repeat_rate_pct != null ? `${stats.mru_repeat_rate_pct}%` : '—'}</div>
+                    <div className="text-xl font-bold">{metricsViewStats.mru_repeat_rate_pct != null ? `${metricsViewStats.mru_repeat_rate_pct}%` : '—'}</div>
                   </div>
                 </div>
               </div>
@@ -1833,15 +1866,15 @@ export default function AdminDashboard() {
                 <div className="flex items-end gap-4">
                   <div>
                     <div className="text-[11px] text-white/60">WRU</div>
-                    <div className="text-xl font-bold">{stats.wru ?? '—'}</div>
+                    <div className="text-xl font-bold">{metricsViewStats.wru ?? '—'}</div>
                   </div>
                   <div>
                     <div className="text-[11px] text-white/60">WAU</div>
-                    <div className="text-xl font-bold">{stats.wau ?? '—'}</div>
+                    <div className="text-xl font-bold">{metricsViewStats.wau ?? '—'}</div>
                   </div>
                   <div>
                     <div className="text-[11px] text-white/60">Repeat rate</div>
-                    <div className="text-xl font-bold">{stats.wru_repeat_rate_pct != null ? `${stats.wru_repeat_rate_pct}%` : '—'}</div>
+                    <div className="text-xl font-bold">{metricsViewStats.wru_repeat_rate_pct != null ? `${metricsViewStats.wru_repeat_rate_pct}%` : '—'}</div>
                   </div>
                 </div>
               </div>
@@ -1852,7 +1885,7 @@ export default function AdminDashboard() {
               <div className="bg-white/5 rounded-lg p-4 border border-white/10">
                 <div className="text-sm font-semibold mb-2">Top Posters</div>
                 <div className="space-y-1 text-sm">
-                  {stats.leaderboards?.top_posters?.length ? stats.leaderboards.top_posters.map((u, i) => (
+                  {metricsViewStats.leaderboards?.top_posters?.length ? metricsViewStats.leaderboards.top_posters.map((u, i) => (
                     <div key={u.username} className="flex items-center justify-between">
                       <span className="text-white/80">{i+1}. {u.username}</span>
                       <span className="text-white/60">{u.count}</span>
@@ -1863,7 +1896,7 @@ export default function AdminDashboard() {
               <div className="bg-white/5 rounded-lg p-4 border border-white/10">
                 <div className="text-sm font-semibold mb-2">Top Reactors</div>
                 <div className="space-y-1 text-sm">
-                  {stats.leaderboards?.top_reactors?.length ? stats.leaderboards.top_reactors.map((u, i) => (
+                  {metricsViewStats.leaderboards?.top_reactors?.length ? metricsViewStats.leaderboards.top_reactors.map((u, i) => (
                     <div key={u.username} className="flex items-center justify-between">
                       <span className="text-white/80">{i+1}. {u.username}</span>
                       <span className="text-white/60">{u.count}</span>
@@ -1874,7 +1907,7 @@ export default function AdminDashboard() {
               <div className="bg-white/5 rounded-lg p-4 border border-white/10">
                 <div className="text-sm font-semibold mb-2">Top Voters</div>
                 <div className="space-y-1 text-sm">
-                  {stats.leaderboards?.top_voters?.length ? stats.leaderboards.top_voters.map((u, i) => (
+                  {metricsViewStats.leaderboards?.top_voters?.length ? metricsViewStats.leaderboards.top_voters.map((u, i) => (
                     <div key={u.username} className="flex items-center justify-between">
                       <span className="text-white/80">{i+1}. {u.username}</span>
                       <span className="text-white/60">{u.count}</span>

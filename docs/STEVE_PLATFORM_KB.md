@@ -144,6 +144,46 @@ decisions attached to context, so important things stay visible and findable.
 - Explain that C-Point has DMs/group chats for fast coordination and feed
   threads for durable network memory.
 
+### `platform.dau_mau`
+
+**Priority:** retrieved
+
+**Intents:** DAU, MAU, daily active users, monthly active users, how you count
+active users, admin metrics, analytics, engagement stats, activity definition.
+
+**Answer / context:**
+
+C-Point’s **admin** DAU and MAU are based on **distinct usernames** with at
+least one qualifying **in-app event** in the time window — not on “logged in
+today” alone and not on simply opening the app unless that action is already
+captured below.
+
+- **DAU (day):** users with any qualifying activity from **midnight today**
+  (server date) through now.
+- **MAU (rolling):** users with any qualifying activity in the **last 30 days**
+  from the start of today (rolling 30-day window).
+
+**What counts as activity (union across these):**
+
+- **Posts** (`posts.username` + timestamp)
+- **Reactions** (`reactions.username` + `created_at` when that column exists)
+- **Poll votes** (`poll_votes.username` + `voted_at`)
+- **Community feed visit** — loading a **community feed** records a row in
+  `community_visit_history` so that visit counts toward DAU/MAU
+- **DMs / messages** (`messages.sender` + timestamp)
+
+**What does not count by itself:** rows in **`user_login_history`** (login
+history is separate from this DAU/MAU definition). Generic “app opened” is not
+counted unless it produces one of the events above.
+
+**Rules:**
+
+- If the user asks how C-Point defines active users for admins, use this card;
+  do not equate DAU with “logged in today” unless they ask about logins
+  specifically.
+- Do not invent stricter or looser definitions; if unsure, say admin metrics
+  follow the events listed here.
+
 ### `dm_and_group_chats.basics`
 
 **Priority:** retrieved
