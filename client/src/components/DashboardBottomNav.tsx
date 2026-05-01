@@ -65,7 +65,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
   const steveModal =
     steveOpen ? (
       <div
-        className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center sm:p-4 bg-black/65 backdrop-blur-sm pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] sm:pb-4"
+        className="fixed inset-0 z-[200] flex items-center justify-center px-4 pt-4 bg-black pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))]"
         role="presentation"
         onClick={() => setSteveOpen(false)}
       >
@@ -73,15 +73,16 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
           role="dialog"
           aria-modal="true"
           aria-label={steveModalView === 'main' ? 'Steve' : steveModalView === 'recommendations' ? 'Steve recommendations' : 'News and articles'}
-          className="relative z-[200] w-full max-w-sm sm:rounded-2xl rounded-t-2xl overflow-hidden liquid-glass-surface border border-[#4db6ac]/25 shadow-[0_0_52px_-14px_rgba(77,182,172,0.38),0_24px_56px_rgba(0,0,0,0.52)] pb-[calc(env(safe-area-inset-bottom,0px)+12px)] sm:pb-3"
+          className="relative z-[200] w-full max-w-sm rounded-2xl overflow-hidden liquid-glass-surface border border-[#4db6ac]/25 shadow-[0_0_52px_-14px_rgba(77,182,172,0.38),0_24px_56px_rgba(0,0,0,0.52)] flex flex-col max-h-[min(420px,78dvh)] min-h-[220px]"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="relative z-[1] p-2 space-y-1">
+          <div className="relative z-[1] flex flex-col flex-1 min-h-0 p-2">
           {steveModalView === 'main' && (
             <>
-              <div className="text-center text-sm font-semibold text-white/95 py-2 border-b border-[#4db6ac]/20 mb-1 tracking-tight">
+              <div className="shrink-0 text-center text-sm font-semibold text-white/95 py-2 border-b border-[#4db6ac]/20 tracking-tight">
                 Steve
               </div>
+              <div className="flex flex-col justify-center gap-2 flex-1 py-4 px-0.5">
               <button
                 type="button"
                 className={steveRowBtn}
@@ -101,12 +102,13 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
                 <div className="font-medium">Steve Recommendations</div>
                 <div className="text-xs text-[#9fb0b5] mt-0.5">Networking and curated picks</div>
               </button>
+              </div>
             </>
           )}
 
           {steveModalView === 'recommendations' && (
             <>
-              <div className="flex items-center gap-2 py-2 border-b border-[#4db6ac]/20 mb-1">
+              <div className="shrink-0 flex items-center gap-2 py-2 border-b border-[#4db6ac]/20">
                 <button
                   type="button"
                   className="p-2 rounded-lg text-[#9fb0b5] hover:bg-[#4db6ac]/15 hover:text-[#4db6ac] transition-colors"
@@ -117,6 +119,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
                 </button>
                 <div className="flex-1 text-center text-sm font-semibold text-white/95 pr-8 tracking-tight">Steve Recommendations</div>
               </div>
+              <div className="flex flex-col justify-center gap-2 flex-1 py-4 px-0.5 min-h-[120px]">
               <button
                 type="button"
                 className={steveRowBtn}
@@ -137,12 +140,13 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
                 <div className="font-medium">News / Articles</div>
                 <div className="text-xs text-[#9fb0b5] mt-0.5">Personalized reading from your networks</div>
               </button>
+              </div>
             </>
           )}
 
           {steveModalView === 'news_soon' && (
             <>
-              <div className="flex items-center gap-2 py-2 border-b border-[#4db6ac]/20 mb-1">
+              <div className="shrink-0 flex items-center gap-2 py-2 border-b border-[#4db6ac]/20">
                 <button
                   type="button"
                   className="p-2 rounded-lg text-[#9fb0b5] hover:bg-[#4db6ac]/15 hover:text-[#4db6ac] transition-colors"
@@ -153,9 +157,9 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
                 </button>
                 <div className="flex-1 text-center text-sm font-semibold text-white/95 pr-8 tracking-tight">News / Articles</div>
               </div>
-              <div className="px-4 py-6 text-center">
+              <div className="flex flex-col flex-1 justify-center items-center px-4 py-6 text-center min-h-[140px]">
                 <p className="text-base font-medium text-white">Coming soon</p>
-                <p className="text-sm text-[#9fb0b5] mt-2 leading-relaxed">
+                <p className="text-sm text-[#9fb0b5] mt-2 leading-relaxed max-w-[280px]">
                   Steve will surface articles and updates tailored to your communities.
                 </p>
               </div>

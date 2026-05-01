@@ -808,7 +808,7 @@ function AppRoutes(){
         <main
           ref={scrollRegionRef}
           data-scroll-region="true"
-          className="app-scroll-region ios-scroll-region"
+          className={`app-scroll-region ios-scroll-region${currentPath === '/feed' || currentPath === '/home' ? ' bg-black' : ''}`}
           style={mainStyle}
         >
             <ErrorBoundary>

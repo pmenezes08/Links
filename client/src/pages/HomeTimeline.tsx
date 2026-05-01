@@ -561,8 +561,8 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
         }}
       >
         {mode === 'dashboard_feed' && hasDashboardCommunities ? (
-          <div className="mb-4 liquid-glass-surface border border-[#4db6ac]/15 rounded-2xl p-3 shadow-[0_20px_60px_rgba(0,0,0,0.45)] space-y-4 relative overflow-hidden">
-            <div className="relative z-[1] flex items-center justify-center gap-6 sm:gap-8">
+          <div className="mb-4 rounded-2xl border border-white/10 bg-black p-3 shadow-sm shadow-black/20 space-y-4">
+            <div className="flex items-center justify-center gap-6 sm:gap-8">
               <button
                 type="button"
                 className={`text-sm font-medium transition-opacity touch-manipulation ${
@@ -592,7 +592,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                 />
               </button>
             </div>
-            <label className="block relative z-[1]">
+            <label className="block">
               <span className="sr-only">Filter by community</span>
               <select
                 value={feedParentId ?? ''}
@@ -646,9 +646,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                 prev != null &&
                 (prevCid !== cid || String(prev.community_name || '') !== String(p.community_name || ''))
               const cardShell =
-                mode === 'dashboard_feed'
-                  ? 'rounded-2xl border border-white/15 liquid-glass-surface shadow-[0_24px_56px_rgba(0,0,0,0.48)] cursor-pointer transition-all duration-300 hover:border-teal-400/40 hover:-translate-y-0.5 hover:shadow-[0_28px_64px_rgba(0,0,0,0.55)] relative overflow-hidden'
-                  : 'rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer'
+                'rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer'
               const cardEl = (
               <div className={cardShell} onClick={p.poll ? undefined : () => navigate(`/post/${p.id}`)}>
                 <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
