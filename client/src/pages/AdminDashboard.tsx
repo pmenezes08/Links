@@ -1855,6 +1855,33 @@ export default function AdminDashboard() {
             >
             <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
               <h3 className="text-lg font-semibold mb-3 text-[#4db6ac]">Key Metrics</h3>
+              <div
+                className="mb-4 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/70 leading-relaxed space-y-2"
+                role="region"
+                aria-label="DAU and MAU definitions"
+              >
+                <p className="font-medium text-white/85">How DAU and MAU are counted</p>
+                <p>
+                  Both use <span className="text-white/90">distinct usernames</span> with at least one qualifying{' '}
+                  <span className="text-white/90">in-app activity</span> in the time window — not login history alone,
+                  and not simply opening the app unless that visit produces an event below.
+                </p>
+                <ul className="list-disc pl-5 space-y-1 text-white/65">
+                  <li>
+                    <span className="text-white/80">DAU:</span> any qualifying activity from{' '}
+                    <span className="text-white/80">midnight today</span> (server date) through now.
+                  </li>
+                  <li>
+                    <span className="text-white/80">MAU:</span> any qualifying activity in the{' '}
+                    <span className="text-white/80">rolling 30 days</span> ending at the start of today.
+                  </li>
+                </ul>
+                <p className="text-white/65">
+                  <span className="text-white/80">Activity includes</span> (union — one is enough): posts, reactions,
+                  poll votes, opening a community feed (visit row), and sending DMs/messages.{' '}
+                  <span className="text-white/80">Login history alone does not count.</span>
+                </p>
+              </div>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <div className="bg-white/5 rounded-lg p-3 border border-white/10">
                   <div className="text-xs text-white/60">DAU</div>

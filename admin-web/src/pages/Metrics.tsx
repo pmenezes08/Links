@@ -73,6 +73,33 @@ export default function Metrics() {
     <div className="space-y-6">
       <h1 className="text-xl font-semibold">Metrics</h1>
 
+      <section
+        className="bg-surface-2 border border-white/10 rounded-xl p-4 text-sm text-muted leading-relaxed space-y-2"
+        aria-label="DAU and MAU definitions"
+      >
+        <h2 className="text-sm font-semibold text-white">How DAU and MAU are counted</h2>
+        <p>
+          Both use <span className="text-white/90">distinct usernames</span> with at least one qualifying{' '}
+          <span className="text-white/90">in-app activity</span> in the time window — not login history alone, and not
+          simply opening the app unless that visit produces an event below.
+        </p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li>
+            <span className="text-white/85">DAU:</span> any qualifying activity from{' '}
+            <span className="text-white/85">midnight today</span> (server date) through now.
+          </li>
+          <li>
+            <span className="text-white/85">MAU:</span> any qualifying activity in the{' '}
+            <span className="text-white/85">rolling 30 days</span> ending at the start of today.
+          </li>
+        </ul>
+        <p>
+          <span className="text-white/85">Activity includes</span> (union — one is enough): posts, reactions, poll votes,
+          opening a community feed (visit row), and sending DMs/messages.{' '}
+          <span className="text-white/85">Login history alone does not count.</span>
+        </p>
+      </section>
+
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <StatCard label="DAU" value={stats.dau} icon="fa-chart-line" />
         <StatCard label="MAU" value={stats.mau} icon="fa-calendar-check" />
