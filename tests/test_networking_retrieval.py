@@ -11,6 +11,7 @@ from backend.services.networking_retrieval import (
     build_retrieval_query,
     fuse_roster,
     load_dimension_metadata_scores,
+    networking_planner_member_block,
     networking_policy_for_size,
     resolve_named_people,
     semantic_match_details,
@@ -24,7 +25,10 @@ from backend.services.networking_retrieval import (
 
 class TestNetworkingRetrieval(unittest.TestCase):
     def _getter(self, row, idx):
-        return row[idx]
+        try:
+            return row[idx] if idx < len(row) else ""
+        except Exception:
+            return ""
 
     def test_structured_candidates_prioritize_members_matching_both_facets(self):
         rows = [
@@ -203,6 +207,42 @@ class TestNetworkingRetrieval(unittest.TestCase):
             query_plan={"named_people": ["Hugo Silva Durao"]},
         )
         self.assertEqual(resolved_from_plan, ["hugosdurao"])
+
+    def test_networking_planner_member_block_includes_legal_name(self):
+        rows = [("susu", "Susu", "", "", "", "", "", "", "", "", "", "Suren", "Kumar")]
+        block = networking_planner_member_block(rows, self._getter)
+        self.assertIn("@susu", block)
+        self.assertIn("Suren", block)
+        self.assertIn("Kumar", block)
+
+    def test_resolve_named_people_unique_first_name_token(self):
+        rows = [("susu", "Susu", "", "", "", "", "", "", "", "", "", "Suren", "Kumar")]
+        out = resolve_named_people(rows, self._getter, message="Is Suren goal driven?")
+        self.assertEqual(out, ["susu"])
+
+    def test_resolve_named_people_ambiguous_first_name_not_auto_resolved(self):
+        rows = [
+            ("susu", "Susu", "", "", "", "", "", "", "", "", "", "Suren", "Kumar"),
+            ("suren2", "S2", "", "", "", "", "", "", "", "", "", "Suren", "Smith"),
+        ]
+        out = resolve_named_people(rows, self._getter, message="Is Suren goal driven?")
+        self.assertEqual(out, [])
+
+    def test_resolve_named_people_unique_full_name_phrase(self):
+        rows = [
+            ("susu", "Susu", "", "", "", "", "", "", "", "", "", "Suren", "Kumar"),
+            ("bob", "Bob", "", "", "", "", "", "", "", "", "", "Bob", "Jones"),
+        ]
+        out = resolve_named_people(rows, self._getter, message="Tell me about Suren Kumar")
+        self.assertEqual(out, ["susu"])
+
+    def test_resolve_named_people_duplicate_full_name_not_auto_resolved(self):
+        rows = [
+            ("a", "A", "", "", "", "", "", "", "", "", "", "Suren", "Kumar"),
+            ("b", "B", "", "", "", "", "", "", "", "", "", "Suren", "Kumar"),
+        ]
+        out = resolve_named_people(rows, self._getter, message="Suren Kumar in tech")
+        self.assertEqual(out, [])
 
     def test_fuse_roster_force_includes_named_usernames(self):
         fused = fuse_roster(

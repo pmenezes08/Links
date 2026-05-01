@@ -14871,6 +14871,11 @@ def _networking_build_members_text(
     """
     from backend.services.embedding_service import search_similar_profiles_ranked, profile_index
     from backend.services.firestore_reads import batch_get_steve_user_profiles
+    from backend.services.networking_retrieval import (
+        NETWORKING_LEGAL_NAME_DISPLAY_MAX_CHARS,
+        NETWORKING_MEMBER_COL_FIRST_NAME,
+        NETWORKING_MEMBER_COL_LAST_NAME,
+    )
 
     _ensure_embedding_index()
 
@@ -14951,6 +14956,13 @@ def _networking_build_members_text(
         if not r:
             continue
         line = f"- {uname} | {_v(r,1)} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'}"
+        fn = str(_v(r, NETWORKING_MEMBER_COL_FIRST_NAME) or "").strip()
+        ln = str(_v(r, NETWORKING_MEMBER_COL_LAST_NAME) or "").strip()
+        legal = " ".join(p for p in (fn, ln) if p).strip()
+        if legal:
+            if len(legal) > NETWORKING_LEGAL_NAME_DISPLAY_MAX_CHARS:
+                legal = legal[: NETWORKING_LEGAL_NAME_DISPLAY_MAX_CHARS - 1] + "…"
+            line += f" | Legal: {legal}"
         count = rec_counts.get(uname, 0)
         if count > 0:
             line += f" | Recommended {count}x recently"
@@ -15099,10 +15111,11 @@ def _normalize_networking_query_plan(raw_plan: dict | None) -> dict | None:
     ) else None
 
 
-def _plan_networking_query(client, *, message: str, conversation_history, member_names) -> dict | None:
+def _plan_networking_query(client, *, message: str, conversation_history, member_rows, member_getter) -> dict | None:
     from backend.services.networking_retrieval import (
         NETWORKING_PLANNER_CONVERSATION_TURNS_SCAN,
         NETWORKING_PLANNER_PRIOR_USER_LINES,
+        networking_planner_member_block,
         should_use_reasoning_planner,
     )
 
@@ -15120,7 +15133,7 @@ def _plan_networking_query(client, *, message: str, conversation_history, member
             if content:
                 recent_user_turns.append(content)
     history_block = "\n".join(f"- {item}" for item in recent_user_turns[-NETWORKING_PLANNER_PRIOR_USER_LINES:]) or "- (none)"
-    member_block = "\n".join(f"- @{u} | {n}" for u, n in member_names[:120]) or "- (none)"
+    member_block = networking_planner_member_block(member_rows, member_getter)
 
     planner_input = [
         {
@@ -15146,7 +15159,7 @@ Index, LifeCareer, GeographyCulture, Expertise, CompanyIntel, Opinions, Identity
 
 Rules:
 - Preserve prior user intent for follow-up questions.
-- If the user mentions a person explicitly, include them in named_people.
+- If the user mentions a person explicitly (including a bare given name or full legal name that appears in Known members), include that string in named_people.
 - Use hard_constraints only for facets the user clearly requires.
 - Use soft_constraints for preferences.
 - Use primary_dimensions for the main KB dimensions this query depends on.
@@ -15281,7 +15294,7 @@ def api_networking_steve_match():
             if _ob_prompt:
                 user_profile = f"{user_profile}\nUser-stated onboarding (verbatim):\n{_ob_prompt}" if user_profile else f"User-stated onboarding (verbatim):\n{_ob_prompt}"
 
-            c.execute(f"SELECT DISTINCT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, p.location, u.professional_about FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
+            c.execute(f"SELECT DISTINCT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, p.location, u.professional_about, u.first_name, u.last_name FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
             member_rows = c.fetchall()
             all_member_usernames = [str(_v(r, 0)) for r in member_rows]
             member_names = [(str(_v(r, 0)), str(_v(r, 1))) for r in member_rows]
@@ -15293,7 +15306,8 @@ def api_networking_steve_match():
                 client,
                 message=message,
                 conversation_history=conversation_history,
-                member_names=member_names,
+                member_rows=member_rows,
+                member_getter=_v,
             )
             retrieval_query = build_retrieval_query(
                 message,
@@ -15565,7 +15579,7 @@ def api_networking_steve_auto_match():
             if requester_profile_ctx:
                 enriched_user_profile += f"\nAI insight: {requester_profile_ctx}"
 
-            c.execute(f"SELECT DISTINCT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, p.location, u.professional_about FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
+            c.execute(f"SELECT DISTINCT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, p.location, u.professional_about, u.first_name, u.last_name FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
             member_rows = c.fetchall()
             all_member_usernames = [str(_v(r, 0)) for r in member_rows]
             member_names = [(str(_v(r, 0)), str(_v(r, 1))) for r in member_rows]

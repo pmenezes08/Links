@@ -20,6 +20,15 @@ NETWORKING_PLANNER_PRIOR_USER_LINES = 10
 NETWORKING_PLANNER_CONVERSATION_TURNS_SCAN = 40
 NETWORKING_GROK_PRIOR_MESSAGES_CAP = 30
 
+# Member roster SQL column indices (0-based). See steve_match SELECT: first_name/last_name appended after professional_about.
+NETWORKING_MEMBER_COL_USERNAME = 0
+NETWORKING_MEMBER_COL_DISPLAY_NAME = 1
+NETWORKING_MEMBER_COL_FIRST_NAME = 11
+NETWORKING_MEMBER_COL_LAST_NAME = 12
+
+NETWORKING_PLANNER_MEMBER_CAP = 120
+NETWORKING_LEGAL_NAME_DISPLAY_MAX_CHARS = 80
+
 _RRF_K = 60
 _STRUCTURED_WEIGHT = 1.75
 _SEMANTIC_WEIGHT = 1.0
@@ -456,19 +465,73 @@ def build_retrieval_query(message: str, conversation_history: Any = None, query_
     return re.sub(r"\s+", " ", merged).strip()
 
 
-def resolve_named_people(
+_NAME_TOKEN_BLOCKLIST = _STOPWORDS | frozenset(
+    {
+        "steve",
+        "admin",
+    }
+)
+
+
+def networking_planner_member_block(
     member_rows: Sequence[Any],
     getter: Callable[[Any, int], Any],
     *,
-    message: str = "",
-    query_plan: dict[str, Any] | None = None,
+    cap: int = NETWORKING_PLANNER_MEMBER_CAP,
+) -> str:
+    """One line per roster member for the reasoning planner (display + optional legal name)."""
+    lines: list[str] = []
+    for row in member_rows[:cap]:
+        username = _row_value(row, getter, NETWORKING_MEMBER_COL_USERNAME).strip()
+        display_name = _row_value(row, getter, NETWORKING_MEMBER_COL_DISPLAY_NAME).strip()
+        if not username:
+            continue
+        fn = (_row_value(row, getter, NETWORKING_MEMBER_COL_FIRST_NAME) or "").strip()
+        ln = (_row_value(row, getter, NETWORKING_MEMBER_COL_LAST_NAME) or "").strip()
+        legal = " ".join(part for part in (fn, ln) if part).strip()
+        if legal:
+            lines.append(f"- @{username} | {display_name} | {legal}")
+        else:
+            lines.append(f"- @{username} | {display_name}")
+    return "\n".join(lines) if lines else "- (none)"
+
+
+def _usernames_from_message_legal_tokens(
+    message: str,
+    given_unique: dict[str, str],
+    by_full: dict[str, str],
 ) -> list[str]:
-    """Resolve explicit names/@mentions to usernames so they are always evaluated."""
+    """Map unambiguous legal first names and unique full names appearing in *message*."""
+    out: list[str] = []
+    msg_norm = _normalize_text(message or "")
+    if msg_norm:
+        for full_key, uname in by_full.items():
+            if _contains_term(msg_norm, full_key):
+                out.append(uname)
+    for tok in re.findall(r"[A-Za-z][A-Za-z0-9']{2,}", message or ""):
+        tlow = tok.lower()
+        if tlow in _NAME_TOKEN_BLOCKLIST:
+            continue
+        wf = _normalize_text(tok)
+        if len(wf) < 3:
+            continue
+        if wf in given_unique:
+            out.append(given_unique[wf])
+    return _dedupe_keep_order(out)
+
+
+def _networking_resolver_maps(
+    member_rows: Sequence[Any],
+    getter: Callable[[Any, int], Any],
+) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
+    """by_username_norm, by_display_norm, given_unique_norm -> username, full_unique_norm -> username."""
     by_username: dict[str, str] = {}
     by_display: dict[str, str] = {}
+    first_groups: dict[str, list[str]] = {}
+    full_groups: dict[str, list[str]] = {}
     for row in member_rows:
-        username = _row_value(row, getter, 0).strip()
-        display_name = _row_value(row, getter, 1).strip()
+        username = _row_value(row, getter, NETWORKING_MEMBER_COL_USERNAME).strip()
+        display_name = _row_value(row, getter, NETWORKING_MEMBER_COL_DISPLAY_NAME).strip()
         if not username:
             continue
         uname_norm = _normalize_text(username)
@@ -478,10 +541,35 @@ def resolve_named_people(
         if display_norm:
             by_display[display_norm] = username
 
+        raw_fn = (_row_value(row, getter, NETWORKING_MEMBER_COL_FIRST_NAME) or "").strip()
+        raw_ln = (_row_value(row, getter, NETWORKING_MEMBER_COL_LAST_NAME) or "").strip()
+        uf = _normalize_text(raw_fn)
+        ul = _normalize_text(raw_ln)
+        if uf:
+            first_groups.setdefault(uf, []).append(username)
+        if uf and ul:
+            full_groups.setdefault(f"{uf} {ul}", []).append(username)
+
+    given_unique = {k: v[0] for k, v in first_groups.items() if len(v) == 1}
+    by_full = {k: v[0] for k, v in full_groups.items() if len(v) == 1}
+    return by_username, by_display, given_unique, by_full
+
+
+def resolve_named_people(
+    member_rows: Sequence[Any],
+    getter: Callable[[Any, int], Any],
+    *,
+    message: str = "",
+    query_plan: dict[str, Any] | None = None,
+) -> list[str]:
+    """Resolve explicit names/@mentions to usernames so they are always evaluated."""
+    by_username, by_display, given_unique, by_full = _networking_resolver_maps(member_rows, getter)
+
     raw_names: list[str] = []
     raw_names.extend(re.findall(r"@([A-Za-z0-9_]{1,40})", message or ""))
     qp = query_plan or {}
     raw_names.extend(str(v).strip() for v in (qp.get("named_people") or []) if str(v).strip())
+    raw_names.extend(_usernames_from_message_legal_tokens(message or "", given_unique, by_full))
 
     resolved: list[str] = []
     for raw in raw_names:
@@ -490,6 +578,12 @@ def resolve_named_people(
             continue
         if norm in by_username:
             resolved.append(by_username[norm])
+            continue
+        if norm in by_full:
+            resolved.append(by_full[norm])
+            continue
+        if norm in given_unique:
+            resolved.append(given_unique[norm])
             continue
         if norm in by_display:
             resolved.append(by_display[norm])
