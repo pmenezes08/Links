@@ -1,0 +1,54 @@
+/**
+ * Injects server.url into assets/capacitor.config.json so the Android WebView loads
+ * a real backend (relative /api/* and static paths resolve correctly).
+ *
+ * Default: staging Cloud Run. Override in gradle.properties:
+ *   cpointCapacitorServerUrl=https://app.c-point.co
+ *
+ * Requires capacitor.config.json in src/main/assets (run from client/: npm run build && npx cap copy android).
+ */
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+
+ext.injectCapacitorRemoteServerUrl = {
+    String defaultUrl = 'https://cpoint-app-staging-739552904126.europe-west1.run.app'
+    def prop = project.findProperty('cpointCapacitorServerUrl')
+    String url = (prop != null ? prop.toString() : defaultUrl).replaceAll(/\/+$/, '')
+
+    File configFile = file("$projectDir/src/main/assets/capacitor.config.json")
+    if (!configFile.exists()) {
+        throw new GradleException(
+            'Missing src/main/assets/capacitor.config.json. From client/: npm run build && npx cap copy android'
+        )
+    }
+
+    def parsed = new JsonSlurper().parse(configFile)
+    if (!(parsed instanceof Map)) {
+        throw new GradleException('capacitor.config.json must be a JSON object')
+    }
+    Map root = new LinkedHashMap(parsed)
+    Map server = (root.server instanceof Map) ? new LinkedHashMap(root.server) : new LinkedHashMap()
+    server.url = url
+    if (server.cleartext == null) {
+        server.cleartext = false
+    }
+    if (server.allowNavigation == null) {
+        server.allowNavigation = [
+            'cpoint-app-staging-739552904126.europe-west1.run.app',
+            'app.c-point.co',
+            '*.c-point.co',
+        ]
+    }
+    root.server = server
+    configFile.text = JsonOutput.prettyPrint(JsonOutput.toJson(root)) + '\n'
+}
+
+tasks.register('injectCapacitorRemoteServer') {
+    group = 'capacitor'
+    description = 'Sets server.url in assets/capacitor.config.json (default: staging)'
+    doLast {
+        injectCapacitorRemoteServerUrl()
+    }
+}
+
+preBuild.dependsOn(tasks.named('injectCapacitorRemoteServer'))
