@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from backend.services.networking_retrieval import (
+    NETWORKING_RETRIEVAL_PRIOR_USER_MESSAGES,
     build_dimension_plan,
     build_retrieval_query,
     fuse_roster,
@@ -153,6 +154,20 @@ class TestNetworkingRetrieval(unittest.TestCase):
         query = build_retrieval_query("What about @member123?", history)
         self.assertIn("experience in Southern Europe", query)
         self.assertIn("@member123", query)
+
+    def test_build_retrieval_query_includes_many_prior_user_turns_on_follow_up(self):
+        """Regression: follow-up merged query should use more than two prior user utterances."""
+        history = []
+        for i in range(15):
+            history.append({"role": "user", "content": f"user turn marker IX{i}Z end"})
+            if i < 14:
+                history.append({"role": "assistant", "content": "ok"})
+        query = build_retrieval_query("What about @memberxyz?", history)
+        for i in range(15 - NETWORKING_RETRIEVAL_PRIOR_USER_MESSAGES):
+            self.assertNotIn(f"IX{i}Z", query)
+        for i in range(15 - NETWORKING_RETRIEVAL_PRIOR_USER_MESSAGES, 15):
+            self.assertIn(f"IX{i}Z", query)
+        self.assertIn("@memberxyz?", query)
 
     def test_build_dimension_plan_maps_legacy_facets_to_kb_dimensions(self):
         plan = build_dimension_plan(

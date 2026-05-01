@@ -13,6 +13,13 @@ import re
 from typing import Any, Callable, Iterable, Sequence
 
 
+# Caps for Networking /api/networking/steve_match conversation context.
+# Client: send >= NETWORKING_GROK_PRIOR_MESSAGES_CAP turns (Networking.tsx NETWORKING_CHAT_HISTORY_SEND_CAP).
+NETWORKING_RETRIEVAL_PRIOR_USER_MESSAGES = 10
+NETWORKING_PLANNER_PRIOR_USER_LINES = 10
+NETWORKING_PLANNER_CONVERSATION_TURNS_SCAN = 40
+NETWORKING_GROK_PRIOR_MESSAGES_CAP = 30
+
 _RRF_K = 60
 _STRUCTURED_WEIGHT = 1.75
 _SEMANTIC_WEIGHT = 1.0
@@ -444,7 +451,7 @@ def build_retrieval_query(message: str, conversation_history: Any = None, query_
     prior_user_messages = _history_user_messages(conversation_history)
     if not _looks_like_follow_up(message) or not prior_user_messages:
         return current
-    prior_context = prior_user_messages[-2:]
+    prior_context = prior_user_messages[-NETWORKING_RETRIEVAL_PRIOR_USER_MESSAGES:]
     merged = " ".join(m for m in prior_context + [current] if str(m).strip())
     return re.sub(r"\s+", " ", merged).strip()
 

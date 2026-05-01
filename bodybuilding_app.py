@@ -15100,14 +15100,18 @@ def _normalize_networking_query_plan(raw_plan: dict | None) -> dict | None:
 
 
 def _plan_networking_query(client, *, message: str, conversation_history, member_names) -> dict | None:
-    from backend.services.networking_retrieval import should_use_reasoning_planner
+    from backend.services.networking_retrieval import (
+        NETWORKING_PLANNER_CONVERSATION_TURNS_SCAN,
+        NETWORKING_PLANNER_PRIOR_USER_LINES,
+        should_use_reasoning_planner,
+    )
 
     if not should_use_reasoning_planner(message, conversation_history):
         return None
 
     recent_user_turns = []
     if isinstance(conversation_history, list):
-        for turn in conversation_history[-8:]:
+        for turn in conversation_history[-NETWORKING_PLANNER_CONVERSATION_TURNS_SCAN:]:
             if not isinstance(turn, dict):
                 continue
             if str(turn.get("role") or "").strip().lower() != "user":
@@ -15115,7 +15119,7 @@ def _plan_networking_query(client, *, message: str, conversation_history, member
             content = str(turn.get("content") or "").strip()
             if content:
                 recent_user_turns.append(content)
-    history_block = "\n".join(f"- {item}" for item in recent_user_turns[-4:]) or "- (none)"
+    history_block = "\n".join(f"- {item}" for item in recent_user_turns[-NETWORKING_PLANNER_PRIOR_USER_LINES:]) or "- (none)"
     member_block = "\n".join(f"- @{u} | {n}" for u, n in member_names[:120]) or "- (none)"
 
     planner_input = [
@@ -15231,6 +15235,7 @@ def api_networking_steve_match():
         return jsonify({'success': False, 'error': 'AI service not available'}), 503
     try:
         from backend.services.networking_retrieval import (
+            NETWORKING_GROK_PRIOR_MESSAGES_CAP,
             build_dimension_plan,
             build_retrieval_query,
             load_dimension_metadata_scores,
@@ -15476,7 +15481,7 @@ RULES:
                 }
             )
         if conversation_history and isinstance(conversation_history, list):
-            for turn in conversation_history[-10:]:
+            for turn in conversation_history[-NETWORKING_GROK_PRIOR_MESSAGES_CAP:]:
                 role = turn.get('role', '')
                 content = turn.get('content', '')
                 if role in ('user', 'assistant') and content:

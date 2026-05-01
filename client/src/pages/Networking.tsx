@@ -30,6 +30,9 @@ const SECTION_DEFINITIONS = [
 ] as const
 type SectionKey = (typeof SECTION_DEFINITIONS)[number]['key']
 
+/** Sends enough turns for backend NETWORKING_GROK_PRIOR_MESSAGES_CAP (30). */
+const NETWORKING_CHAT_HISTORY_SEND_CAP = 50
+
 const NATIVE_KEYBOARD_MIN_HEIGHT = 60
 const KEYBOARD_OFFSET_EPSILON = 6
 const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
@@ -445,7 +448,7 @@ export default function Networking() {
     const sid = await ensureSession()
     if (sid) saveMessage(sid, 'user', msg)
     try {
-      const history = steveMessages.slice(-10).map(m => ({ role: m.role === 'steve' ? 'assistant' : 'user', content: m.text }))
+      const history = steveMessages.slice(-NETWORKING_CHAT_HISTORY_SEND_CAP).map(m => ({ role: m.role === 'steve' ? 'assistant' : 'user', content: m.text }))
       const res = await fetch('/api/networking/steve_match', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ community_id: steveCommunity, message: msg, history }) })
       const data = await res.json()
       const reply = data.success ? data.response : (data.error || 'Something went wrong.')
