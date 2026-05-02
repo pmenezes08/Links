@@ -368,10 +368,11 @@ def _get_firestore_client():
 @_login_required
 def get_onboarding_state():
     """Return persisted onboarding conversation state from Firestore,
-    plus a profile_complete flag based on SQL profile data."""
+    plus profile completion flags and deferral status."""
     username = session["username"]
 
     profile_complete = False
+    sql_row = None
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -382,24 +383,43 @@ def get_onboarding_state():
                 FROM users u LEFT JOIN user_profiles p ON u.username = p.username
                 WHERE u.username = {ph}
             """, (username,))
-            row = c.fetchone()
-            if row:
-                vals = [row[i] if not hasattr(row, 'keys') else list(row.values())[i] for i in range(7)]
+            sql_row = c.fetchone()
+            if sql_row:
+                vals = [
+                    sql_row[i] if not hasattr(sql_row, "keys") else list(sql_row.values())[i]
+                    for i in range(7)
+                ]
                 filled = sum(1 for v in vals if v and str(v).strip())
                 profile_complete = filled >= 4
     except Exception as e:
-        logger.warning(f"Profile completeness check failed for {username}: {e}")
+        logger.warning("Profile completeness check failed for %s: %s", username, e)
 
     try:
+        from backend.services.onboarding_session import build_onboarding_state_payload
+
         db = _get_firestore_client()
         if not db:
-            return jsonify({"success": True, "state": None, "profileComplete": profile_complete})
+            extras = build_onboarding_state_payload(
+                username=username,
+                sql_row=sql_row,
+                firestore_doc=None,
+            )
+            return jsonify(
+                {"success": True, "state": None, **extras}
+            )
+
         doc = db.collection("steve_onboarding").document(username).get()
-        if doc.exists:
-            return jsonify({"success": True, "state": doc.to_dict(), "profileComplete": profile_complete})
-        return jsonify({"success": True, "state": None, "profileComplete": profile_complete})
+        firestore_doc = doc.to_dict() if doc.exists else None
+        extras = build_onboarding_state_payload(
+            username=username,
+            sql_row=sql_row,
+            firestore_doc=firestore_doc,
+        )
+        if firestore_doc:
+            return jsonify({"success": True, "state": firestore_doc, **extras})
+        return jsonify({"success": True, "state": None, **extras})
     except Exception as e:
-        logger.warning(f"Failed to get onboarding state for {username}: {e}")
+        logger.warning("Failed to get onboarding state for %s: %s", username, e)
         return jsonify({"success": True, "state": None, "profileComplete": profile_complete})
 
 
@@ -412,20 +432,93 @@ def save_onboarding_state():
     try:
         db = _get_firestore_client()
         if db:
-            db.collection("steve_onboarding").document(username).set({
+            payload = {
                 "stage": data.get("stage", "welcome"),
                 "collected": data.get("collected", {}),
                 "messages": data.get("messages", [])[-30:],
                 "updated_at": datetime.utcnow().isoformat(),
-            }, merge=True)
+            }
+            intent = data.get("onboarding_intent")
+            if intent in ("b2b", "b2c"):
+                payload["onboarding_intent"] = intent
+            db.collection("steve_onboarding").document(username).set(payload, merge=True)
         try:
             merge_onboarding_identity_to_steve_profile(username, data.get("collected") or {})
         except Exception as merge_err:
-            logger.warning(f"onboardingIdentity sync failed for {username}: {merge_err}")
+            logger.warning("onboardingIdentity sync failed for %s: %s", username, merge_err)
         return jsonify({"success": True})
     except Exception as e:
-        logger.warning(f"Failed to save onboarding state for {username}: {e}")
+        logger.warning("Failed to save onboarding state for %s: %s", username, e)
         return jsonify({"success": True})
+
+
+@onboarding_bp.route("/api/onboarding/defer_profile", methods=["POST"])
+@_login_required
+def onboarding_defer_profile():
+    """Start 72h window where user may use the app before forced resume (server-anchored)."""
+    username = session["username"]
+    data = request.get_json(silent=True) or {}
+    try:
+        from backend.services.onboarding_session import merge_defer_into_state_patch
+
+        db = _get_firestore_client()
+        if not db:
+            return jsonify({"success": False, "error": "Deferral unavailable"}), 503
+        patch = merge_defer_into_state_patch()
+        extra = {
+            "stage": data.get("stage", "welcome"),
+            "updated_at": patch["updated_at"],
+        }
+        if data.get("collected") is not None:
+            extra["collected"] = data.get("collected")
+        if data.get("messages") is not None:
+            msgs = data.get("messages") or []
+            if isinstance(msgs, list):
+                extra["messages"] = msgs[-30:]
+        db.collection("steve_onboarding").document(username).set({**patch, **extra}, merge=True)
+        return jsonify({"success": True, "profileDeferUntil": patch["profile_defer_until"]})
+    except Exception as e:
+        logger.error("onboarding_defer_profile failed for %s: %s", username, e)
+        return jsonify({"success": False, "error": "Could not defer onboarding"}), 500
+
+
+@onboarding_bp.route("/api/onboarding/tier_hints", methods=["GET"])
+@_login_required
+def onboarding_tier_hints():
+    try:
+        from backend.services.onboarding_tier_hints import build_onboarding_tier_hints
+
+        username = session["username"]
+        return jsonify({"success": True, "hints": build_onboarding_tier_hints(username)})
+    except Exception as e:
+        logger.warning("onboarding_tier_hints: %s", e)
+        return jsonify({"success": False, "error": "Unable to load tier hints"}), 500
+
+
+@onboarding_bp.route("/api/onboarding/bootstrap_communities", methods=["POST"])
+@_login_required
+def onboarding_bootstrap_communities():
+    data = request.get_json(silent=True) or {}
+    username = session["username"]
+    parent_name = (data.get("parent_name") or "").strip()
+    parent_type = (data.get("parent_type") or "general").strip().lower() or "general"
+    raw_children = data.get("child_names") or []
+    child_names = [str(x).strip() for x in raw_children if str(x).strip()] if isinstance(raw_children, list) else []
+    if not parent_name:
+        return jsonify({"success": False, "error": "parent_name required"}), 400
+    try:
+        from backend.services.onboarding_bootstrap import bootstrap_communities_for_onboarding
+
+        ok, body, status = bootstrap_communities_for_onboarding(
+            username=username,
+            parent_name=parent_name,
+            child_names=child_names,
+            parent_type=parent_type,
+        )
+        return jsonify(body), status
+    except Exception as e:
+        logger.exception("onboarding_bootstrap_communities failed for %s: %s", username, e)
+        return jsonify({"success": False, "error": "Server error"}), 500
 
 
 @onboarding_bp.route("/api/onboarding/redirect", methods=["POST"])

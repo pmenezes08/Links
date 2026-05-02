@@ -123,6 +123,70 @@ That mirrors the manifesto: the world is meant to be lived — connect with your
 - Do not frame C-Point as replacing group chats, because C-Point includes DMs
   and group chats.
 
+### `platform.value_lens_b2b`
+
+**Priority:** retrieved
+
+**Intents:** run an organisation network, B2B, company community, team hub,
+professional association space, brand community, umbrella network,
+organisers, operators.
+
+**Answer / context:**
+
+C-Point is built for **private, invitation-only communities** — including the
+kind organisers run for members, staff, alumni, or customers. Each community
+gets structured feeds (so decisions and resources stay findable), DMs and
+group chats for fast coordination, polls and calendar-friendly workflows, and
+Steve as the shared intelligent presence that keeps the space warm and
+connected. Larger setups often use a **parent** community as the umbrella and
+optional **sub-communities** for smaller groups, within plan limits.
+
+**Rules:**
+
+- Do not quote specific caps or prices; point to in-app membership / pricing for limits.
+- Emphasise privacy, invitation-only access, and feeds as network memory.
+
+### `platform.value_lens_b2c`
+
+**Priority:** retrieved
+
+**Intents:** personal use, friends trip, book club, family circles,
+B2C, “just for me”, close group, private friends network.
+
+**Answer / context:**
+
+For personal circles, C-Point is a place to **reconnect with your people**
+without public feeds, algorithms, or strangers. Communities stay private and
+explicitly invited. The feed gives your group shared memory (posts, links,
+media, decisions); DMs and chats handle day-to-day coordination; Steve helps
+surface meaningful context when members want it.
+
+**Rules:**
+
+- Keep tone warm and practical; do not invent features beyond this card.
+- Reinforce privacy and invitation-only access from the manifesto.
+
+### `platform.steve_center`
+
+**Priority:** retrieved
+
+**Intents:** Steve center, Steve package, shared Steve, pooled Steve, org Steve,
+who pays for Steve, AI allowance for the community.
+
+**Answer / context:**
+
+**Premium on your personal account** unlocks Steve as *yours* across the
+private spaces you’re part of — deeper context and features tied to your
+membership. **Paid communities** may add a **Steve package**: a shared pool for
+the community so Steve can do more for everyone in that space. The exact
+allowances and billing live in-product on membership and community settings.
+
+**Rules:**
+
+- Do not quote prices, multipliers, or caps from memory — direct users to the
+  app for current numbers.
+- Do not promise a Steve package is available on every plan tier.
+
 ### `feed.private_social_layer`
 
 **Priority:** retrieved

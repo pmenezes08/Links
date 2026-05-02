@@ -90,6 +90,7 @@ export default function PremiumDashboard() {
   const [initialLoading, setInitialLoading] = useState(true)
   // Onboarding
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const [onboardingGateRequired, setOnboardingGateRequired] = useState(false)
   const [onboardingMode, setOnboardingMode] = useState<'fresh' | 'profile_builder'>('fresh')
   const [onboardingLaunching, setOnboardingLaunching] = useState(false)
   const [displayName, setDisplayName] = useState('')
@@ -118,10 +119,10 @@ export default function PremiumDashboard() {
     return () => setTitle('')
   }, [setTitle])
   useEffect(() => {
-    const hideHeaderForOnboarding = showOnboarding || onboardingLaunching
+    const hideHeaderForOnboarding = showOnboarding || onboardingLaunching || onboardingGateRequired
     setHeaderHidden(hideHeaderForOnboarding)
     return () => setHeaderHidden(false)
-  }, [showOnboarding, onboardingLaunching, setHeaderHidden])
+  }, [showOnboarding, onboardingLaunching, onboardingGateRequired, setHeaderHidden])
 
   useEffect(() => {
     if (communities.length === 0) {
@@ -569,7 +570,7 @@ export default function PremiumDashboard() {
     }
   }, [emailVerifiedAt, emailVerified])
 
-  // Auto-prompt conversational onboarding for newly verified users
+  // Auto-prompt conversational onboarding; server state (defer / resume) runs even when not "recently verified"
   useEffect(() => {
     if (onboardingTriggeredRef.current) return
     if (!communitiesLoaded) return
@@ -580,31 +581,43 @@ export default function PremiumDashboard() {
 
     try { if (localStorage.getItem(doneKey) === '1') return } catch {}
 
-    if (!isRecentlyVerified) return
-
-    // Check server-side completion AND profile completeness before triggering
     ;(async () => {
       setOnboardingLaunching(true)
       try {
         const r = await fetch('/api/onboarding/state', { credentials: 'include' })
         const j = await r.json().catch(() => null)
         if (j?.success) {
-          if (j.state && (j.state.stage === 'complete' || j.state.completed_at)) {
-            try { localStorage.setItem(doneKey, '1') } catch {}
+          if (j.requiresOnboardingResume) {
+            setOnboardingGateRequired(true)
+            onboardingTriggeredRef.current = true
             return
           }
-          if (j.profileComplete) {
+          if (j.onboardingComplete || (j.state && (j.state.stage === 'complete' || j.state.completed_at))) {
             try { localStorage.setItem(doneKey, '1') } catch {}
+            onboardingTriggeredRef.current = true
+            return
+          }
+          if (j.profileDeferUntil) {
+            const end = new Date(j.profileDeferUntil).getTime()
+            if (!Number.isNaN(end) && Date.now() < end) {
+              onboardingTriggeredRef.current = true
+              return
+            }
+          }
+          if (j.profileCompleteEffective) {
+            try { localStorage.setItem(doneKey, '1') } catch {}
+            onboardingTriggeredRef.current = true
             return
           }
         }
       } catch {}
+
+      if (!isRecentlyVerified) return
+
       onboardingTriggeredRef.current = true
       setShowOnboarding(true)
-      setOnboardingLaunching(false)
-      return
     })().finally(() => {
-      if (!onboardingTriggeredRef.current) setOnboardingLaunching(false)
+      setOnboardingLaunching(false)
     })
   }, [communitiesLoaded, emailVerified, communities, username, showOnboarding, doneKey, isRecentlyVerified])
 
@@ -924,7 +937,28 @@ export default function PremiumDashboard() {
       </div>
 
       {/* Conversational Onboarding with Steve */}
-      {onboardingLaunching && !showOnboarding && (
+      {onboardingGateRequired && !showOnboarding && (
+        <div className="fixed inset-0 z-[1101] bg-black/90 backdrop-blur-md flex items-center justify-center px-6">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0d1214] p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.55)]">
+            <img src="/api/public/logo" alt="C-Point" className="w-14 h-14 rounded-2xl object-contain mx-auto mb-4" />
+            <h2 className="text-lg font-semibold text-white mb-2">Finish your profile</h2>
+            <p className="text-sm text-[#9fb0b5] mb-6">
+              Your onboarding window has ended. Jump back in with Steve to wrap up — it only takes a few minutes.
+            </p>
+            <button
+              type="button"
+              className="w-full rounded-xl bg-[#4db6ac] text-black font-semibold py-3 text-sm hover:brightness-110 transition"
+              onClick={() => {
+                setOnboardingGateRequired(false)
+                setShowOnboarding(true)
+              }}
+            >
+              Continue with Steve
+            </button>
+          </div>
+        </div>
+      )}
+      {onboardingLaunching && !showOnboarding && !onboardingGateRequired && (
         <div className="fixed inset-0 z-[1100] bg-black/80 backdrop-blur-sm flex items-center justify-center px-6">
           <div className="flex flex-col items-center gap-4 text-center">
             <img src="/api/public/logo" alt="C-Point" className="w-14 h-14 rounded-2xl object-contain" />
@@ -945,6 +979,7 @@ export default function PremiumDashboard() {
           mode={onboardingMode}
           onComplete={() => {
             setShowOnboarding(false)
+            setOnboardingGateRequired(false)
             onboardingTriggeredRef.current = false
             window.location.href = '/premium_dashboard'
           }}

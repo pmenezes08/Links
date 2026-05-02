@@ -3,8 +3,14 @@ import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
+import * as OCopy from '../content/onboardingCopy'
 
 type Stage =
+  | 'intent_fork'
+  | 'b2b_value'
+  | 'b2b_org_type'
+  | 'b2b_parent_name'
+  | 'b2b_sub_names'
   | 'welcome'
   | 'profile_builder_summary'
   | 'pb_confirm_field'
@@ -65,6 +71,9 @@ interface Collected {
   recommend: string
   reachOut: string
   journey: string
+  /** B2B onboarding — persisted in Firestore for resume */
+  b2bOrgTypeHint?: string
+  b2bParentName?: string
 }
 
 interface TourStep {
@@ -99,6 +108,11 @@ interface OnboardingChatProps {
   const USER_FACING_STEPS = 8
 function stageProgress(stage: Stage): number {
   const stepMap: Record<Stage, number> = {
+    intent_fork: 0,
+    b2b_value: 0,
+    b2b_org_type: 0,
+    b2b_parent_name: 0,
+    b2b_sub_names: 0,
     welcome: 0,
     profile_builder_summary: 0,
     pb_confirm_field: 0,
@@ -154,6 +168,14 @@ function pbFieldLabel(field: PbFieldKey): string {
     default:
       return field
   }
+}
+
+/** Map free-text org description to API parent_type (bootstrap normalizes free tier). */
+function mapOrgHintToParentType(hint: string): string {
+  const h = hint.toLowerCase()
+  if (/\b(gym|fitness|studio|crossfit|yoga|pilates)\b/.test(h)) return 'gym'
+  if (/\b(university|college|alumni|school|campus|faculty|student)\b/.test(h)) return 'university'
+  return 'general'
 }
 
 function profileSummaryBlock(c: Collected): string {
@@ -212,7 +234,7 @@ export default function OnboardingChat({
   lastName: initLast,
   username,
   communityName,
-  hasCommunity: _hasCommunity,
+  hasCommunity,
   existingProfilePic,
   onComplete,
   onCreateCommunity,
@@ -269,6 +291,9 @@ export default function OnboardingChat({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const keyboardOffsetRef = useRef(0)
+  const onboardingIntentRef = useRef<'b2b' | 'b2c' | null>(null)
+  const b2bOrgRef = useRef('')
+  const b2bParentRef = useRef('')
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
@@ -392,11 +417,13 @@ export default function OnboardingChat({
 
   const saveState = useCallback(async (s: Stage, c: Collected) => {
     try {
+      const body: Record<string, unknown> = { stage: s, collected: c }
+      if (onboardingIntentRef.current) body.onboarding_intent = onboardingIntentRef.current
       await fetch('/api/onboarding/state', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stage: s, collected: c }),
+        body: JSON.stringify(body),
       })
     } catch {}
   }, [])
@@ -444,16 +471,27 @@ export default function OnboardingChat({
         const j = await r.json().catch(() => null)
         if (j?.success && j.state && j.state.stage && j.state.stage !== 'complete') {
           const saved = j.state
+          if (saved.onboarding_intent === 'b2b' || saved.onboarding_intent === 'b2c') {
+            onboardingIntentRef.current = saved.onboarding_intent
+          }
           if (saved.collected) {
             setCollected(prev => ({ ...prev, ...saved.collected }))
+            const sc = saved.collected as Collected
+            if (sc.b2bOrgTypeHint) b2bOrgRef.current = String(sc.b2bOrgTypeHint)
+            if (sc.b2bParentName) b2bParentRef.current = String(sc.b2bParentName)
           }
-          setStage(saved.stage)
-          startStage(saved.stage, saved.collected || collected)
+          setStage(saved.stage as Stage)
+          startStage(saved.stage as Stage, saved.collected || collected)
           setBooting(false)
           return
         }
       } catch {}
-      startStage('welcome', collected)
+      if (hasCommunity || communityName) {
+        onboardingIntentRef.current = 'b2c'
+        startStage('welcome', collected)
+      } else {
+        startStage('intent_fork', collected)
+      }
       setBooting(false)
     })()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -462,6 +500,50 @@ export default function OnboardingChat({
   function startStage(s: Stage, c?: Collected) {
     const data = c || collected
     switch (s) {
+      case 'intent_fork': {
+        addSteveMessage(
+          `${OCopy.INTENT_QUESTION}\n\n${OCopy.PRIVACY_LINE}`,
+          {
+            options: [
+              { label: 'For me — personal circles', value: 'intent_b2c', icon: '👤' },
+              { label: 'For an organisation I run', value: 'intent_b2b', icon: '🏢' },
+            ],
+          },
+        )
+        break
+      }
+      case 'b2b_value': {
+        addSteveMessage(
+          `${OCopy.B2B_VALUE_OPENER}\n\n${OCopy.PRIVACY_LINE}\n\n${OCopy.STRUCTURED_FEEDS_LINE}\n\n${OCopy.TOOLS_BEYOND_POSTS}\n\n${OCopy.DINNER_POLL_CALENDAR}\n\n${OCopy.DM_LINE}\n\n${OCopy.NETWORKING_TIER_NOTE}\n\n${OCopy.STEVE_PACKAGE_NOTE}\n\n${OCopy.STEVE_CENTER_LINE}\n\n${OCopy.B2B_BRIDGE_PERSONAL}`,
+          { options: [{ label: 'Continue', value: 'b2b_value_continue', icon: '➡️' }] },
+        )
+        break
+      }
+      case 'b2b_org_type': {
+        addSteveMessage(OCopy.ORG_TYPE_PROMPT, {
+          inputType: 'text',
+          inputPlaceholder: 'e.g. yoga studio, alumni association',
+        })
+        break
+      }
+      case 'b2b_parent_name': {
+        addSteveMessage(
+          'What should we name your **main** network — the umbrella where members first connect?',
+          { inputType: 'text', inputPlaceholder: 'e.g. Northside Studio Collective' },
+        )
+        break
+      }
+      case 'b2b_sub_names': {
+        addSteveMessage(
+          'Optional: list **sub-community** names, separated by commas (smaller invite-only spaces under your umbrella). Or skip for now.',
+          {
+            inputType: 'text',
+            inputPlaceholder: 'Team A, Beginners, Staff — or leave blank',
+            options: [{ label: 'Skip sub-communities for now', value: 'b2b_skip_subs', icon: '⏭️' }],
+          },
+        )
+        break
+      }
       case 'welcome': {
         const greeting = data.firstName
           ? `Hey ${data.firstName}! 👋`
@@ -473,12 +555,22 @@ export default function OnboardingChat({
           welcomeText = `${greeting} I'm Steve here at C-Point.`
           if (communityName) {
             welcomeText += ` I see you were invited to ${communityName} — exciting!`
+            welcomeText += `\n\nA great profile helps people recognize you in private networks. I'll walk you through ${USER_FACING_STEPS} quick steps — about 3 minutes. Ready?`
+          } else {
+            welcomeText += `\n\n${OCopy.B2C_MANIFESTO_HOOK}\n\n${OCopy.PRIVACY_LINE}\n\n${OCopy.STRUCTURED_FEEDS_LINE}\n\n${OCopy.TOOLS_BEYOND_POSTS}\n\n${OCopy.DINNER_POLL_CALENDAR}\n\n${OCopy.DM_LINE}\n\n${OCopy.PROFILE_BORING_LINE}\n\n${OCopy.STEVE_CENTER_LINE}`
+            welcomeText += `\n\nWhen you're ready, we'll tidy your profile — ${USER_FACING_STEPS} short steps.`
           }
-          welcomeText += `\n\nA great profile attracts the right connections and lets you control your narrative. I'll walk you through ${USER_FACING_STEPS} quick steps — it takes about 3 minutes. Ready?`
         }
-        addSteveMessage(welcomeText, {
-          options: [{ label: "Let's go!", value: 'start', icon: '🚀' }],
-        })
+        const welcomeOpts: ChatMessage['options'] =
+          mode === 'profile_builder'
+            ? [{ label: "Let's go!", value: 'start', icon: '🚀' }]
+            : communityName
+              ? [{ label: "Let's go!", value: 'start', icon: '🚀' }]
+              : [
+                  { label: "Let's go!", value: 'start', icon: '🚀' },
+                  { label: 'Skip profile for 72 hours', value: 'defer_profile_72', icon: '⏱️' },
+                ]
+        addSteveMessage(welcomeText, { options: welcomeOpts })
         break
       }
       case 'profile_builder_summary': {
@@ -720,6 +812,55 @@ export default function OnboardingChat({
     showCompleteMsg()
   }
 
+  async function runB2bBootstrap(childNames: string[], c: Collected) {
+    const parentName = (b2bParentRef.current || c.b2bParentName || '').trim()
+    const orgHint = (b2bOrgRef.current || c.b2bOrgTypeHint || '').trim()
+    if (!parentName) {
+      addSteveMessage('I still need a name for your main network — what should we call it?', {
+        inputType: 'text',
+        inputPlaceholder: 'e.g. Northside Studio Collective',
+      })
+      setStage('b2b_parent_name')
+      saveState('b2b_parent_name', c)
+      return
+    }
+    const parentType = mapOrgHintToParentType(orgHint)
+    setIsTyping(true)
+    addSteveMessage('Creating your communities — one moment…')
+    try {
+      const r = await fetch('/api/onboarding/bootstrap_communities', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parent_name: parentName,
+          parent_type: parentType,
+          child_names: childNames,
+        }),
+      })
+      const j = await r.json().catch(() => null)
+      setIsTyping(false)
+      if (j?.success) {
+        addSteveMessage(
+          'You’re set — your network shell is ready. Now let’s finish **your** profile so people know who’s leading the space.',
+        )
+        setTimeout(() => advanceTo('name', c), 600)
+      } else {
+        const err = (j?.error || 'Could not create communities right now.') as string
+        addSteveMessage(`Hmm — ${err}\n\nLet’s try a different name for your main network.`)
+        setStage('b2b_parent_name')
+        saveState('b2b_parent_name', c)
+        startStage('b2b_parent_name', c)
+      }
+    } catch {
+      setIsTyping(false)
+      addSteveMessage('Something went wrong creating your communities. Let’s try your main network name again.')
+      setStage('b2b_parent_name')
+      saveState('b2b_parent_name', c)
+      startStage('b2b_parent_name', c)
+    }
+  }
+
   function showCompleteMsg() {
     addSteveMessage(
       "You're all set! 🎉 Your profile is live!\n\nI'm always here if you need anything — just DM me or tag @Steve in any chat.\n\nBy the way, did you know you can create your own communities? Planning a trip with friends? Starting a book club? Organizing weekend tennis? A community is just a group of people you want to keep connected.",
@@ -808,6 +949,56 @@ export default function OnboardingChat({
 
   async function handleOptionClick(value: string) {
     switch (value) {
+      case 'intent_b2c': {
+        addUserMessage('For me — personal circles')
+        onboardingIntentRef.current = 'b2c'
+        advanceTo('welcome', collected)
+        break
+      }
+      case 'intent_b2b': {
+        addUserMessage('For an organisation I run')
+        onboardingIntentRef.current = 'b2b'
+        advanceTo('b2b_value', collected)
+        break
+      }
+      case 'b2b_value_continue': {
+        addUserMessage('Continue')
+        advanceTo('b2b_org_type', collected)
+        break
+      }
+      case 'b2b_skip_subs': {
+        addUserMessage('Skip sub-communities for now')
+        await runB2bBootstrap([], collected)
+        break
+      }
+      case 'defer_profile_72': {
+        addUserMessage('Skip profile for 72 hours')
+        try {
+          const serializable = messages.slice(-30).map(m => ({ from: m.from, text: m.text }))
+          const r = await fetch('/api/onboarding/defer_profile', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              stage,
+              collected,
+              messages: serializable,
+            }),
+          })
+          const j = await r.json().catch(() => null)
+          if (j?.success) {
+            addSteveMessage(
+              'All set — you’ve got time to explore. I’ll remind you later to finish your profile.',
+            )
+            setTimeout(() => onExit(), 800)
+          } else {
+            addSteveMessage('I couldn’t save that just now. Want to continue with your profile instead?')
+          }
+        } catch {
+          addSteveMessage('I couldn’t save that just now. Want to continue with your profile instead?')
+        }
+        break
+      }
       case 'start':
         addUserMessage("Let's go!")
         if (mode === 'profile_builder') {
@@ -1257,12 +1448,34 @@ export default function OnboardingChat({
         setTimeout(() => advanceToComplete(), 800)
         break
       }
+      case 'b2b_org_type': {
+        const newCollected = { ...collected, b2bOrgTypeHint: val }
+        b2bOrgRef.current = val
+        setCollected(newCollected)
+        advanceTo('b2b_parent_name', newCollected)
+        break
+      }
+      case 'b2b_parent_name': {
+        const newCollected = { ...collected, b2bParentName: val }
+        b2bParentRef.current = val
+        setCollected(newCollected)
+        advanceTo('b2b_sub_names', newCollected)
+        break
+      }
+      case 'b2b_sub_names': {
+        const parts = val.split(',').map(s => s.trim()).filter(Boolean)
+        await runB2bBootstrap(parts, collected)
+        break
+      }
       default:
         break
     }
   }
 
   function detectOffScript(currentStage: Stage, input: string): boolean {
+    if (currentStage === 'b2b_org_type' || currentStage === 'b2b_parent_name' || currentStage === 'b2b_sub_names') {
+      return false
+    }
     const lower = input.toLowerCase()
     if (currentStage === 'name') {
       return lower.length > 60 || lower.includes('?') || /^(hey|hi|hello|what|how|can|tell|who)/.test(lower)
@@ -1298,6 +1511,9 @@ export default function OnboardingChat({
         recommend: 'Recommend a book, movie, or TV show to your network.',
         reach_out: 'What do you want people to reach out to you about?',
         pb_edit_field: 'Update this profile field.',
+        b2b_org_type: OCopy.ORG_TYPE_PROMPT,
+        b2b_parent_name: 'What should we name your main network?',
+        b2b_sub_names: 'List sub-communities separated by commas, or use the skip button.',
       }
       const r = await fetch('/api/onboarding/redirect', {
         method: 'POST',
