@@ -1015,10 +1015,10 @@ def google_sign_in():
                 username = row['username'] if hasattr(row, 'keys') else row[0]
                 apply_oauth_email_verified(c, ph, username, bool(email_verified))
                 conn.commit()
-                auth_session.establish_login(username)
+                login_id = auth_session.establish_login(username)
                 _invalidate_profile_and_dashboard_caches(username)
                 logger.info(f"Google sign-in: returning user {username}")
-                resp = make_response(jsonify({'success': True, 'username': username, 'is_new': False}))
+                resp = make_response(jsonify({'success': True, 'username': username, 'is_new': False, 'login_id': login_id}))
                 stale = _apply_login_persistence(resp, username)
                 logger.info("Google sign-in persistence stale_revoked=%d user=%s", stale, username)
                 auth_session.no_store(resp)
@@ -1032,13 +1032,13 @@ def google_sign_in():
                 c.execute(f"UPDATE users SET google_id = {ph} WHERE username = {ph}", (google_id, username))
                 apply_oauth_email_verified(c, ph, username, bool(email_verified))
                 conn.commit()
-                auth_session.establish_login(username)
+                login_id = auth_session.establish_login(username)
                 # Display name is intentionally NOT touched on link: established users keep
                 # whatever they already had in user_profiles. Auto-fill happens only on the
                 # new-user creation branch below.
                 _invalidate_profile_and_dashboard_caches(username)
                 logger.info(f"Google sign-in: linked {username} to Google ID")
-                resp = make_response(jsonify({'success': True, 'username': username, 'is_new': False}))
+                resp = make_response(jsonify({'success': True, 'username': username, 'is_new': False, 'login_id': login_id}))
                 stale = _apply_login_persistence(resp, username)
                 logger.info("Google sign-in linked persistence stale_revoked=%d user=%s", stale, username)
                 auth_session.no_store(resp)
@@ -1086,7 +1086,7 @@ def google_sign_in():
                 except Exception:
                     pass
 
-            auth_session.establish_login(username)
+            login_id = auth_session.establish_login(username)
             # Re-attach the invite token AFTER establish_login (which calls
             # session.clear()), otherwise the onboarding flow would lose it.
             if invite_token:
@@ -1096,7 +1096,7 @@ def google_sign_in():
                     pass
             _invalidate_profile_and_dashboard_caches(username)
             logger.info(f"Google sign-in: created new user {username}")
-            resp = make_response(jsonify({'success': True, 'username': username, 'is_new': True}))
+            resp = make_response(jsonify({'success': True, 'username': username, 'is_new': True, 'login_id': login_id}))
             stale = _apply_login_persistence(resp, username)
             logger.info("Google sign-in new user persistence stale_revoked=%d user=%s", stale, username)
             auth_session.no_store(resp)

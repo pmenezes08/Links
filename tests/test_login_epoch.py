@@ -75,15 +75,17 @@ def test_google_signin_mints_new_login_id_each_time(
     mock_loader.return_value = _stub_profile("eve")
 
     with login_epoch_app.test_client() as client:
-        client.post("/api/auth/google", json={"id_token": "t1", "platform": "web"})
+        first_login = client.post("/api/auth/google", json={"id_token": "t1", "platform": "web"}).get_json()
+        assert first_login["login_id"]
         first = client.get("/api/profile_me?_nocache=1").get_json()
         first_login_id = first["login_id"]
-        assert first_login_id
+        assert first_login_id == first_login["login_id"]
 
-        client.post("/api/auth/google", json={"id_token": "t2", "platform": "web"})
+        second_login = client.post("/api/auth/google", json={"id_token": "t2", "platform": "web"}).get_json()
+        assert second_login["login_id"]
         second = client.get("/api/profile_me?_nocache=1").get_json()
         second_login_id = second["login_id"]
-        assert second_login_id
+        assert second_login_id == second_login["login_id"]
 
         assert first_login_id != second_login_id, "establish_login must mint a new epoch on every call"
 

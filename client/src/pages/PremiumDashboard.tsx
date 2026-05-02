@@ -394,7 +394,8 @@ export default function PremiumDashboard() {
 
       const me = profileResult
       if (me?.success && me.profile && hydratedFromNetwork) {
-        applyProfileFromServer(me.profile as Record<string, unknown>)
+        const loginId = typeof me.login_id === 'string' ? me.login_id : undefined
+        applyProfileFromServer(me.profile as Record<string, unknown>, loginId)
       }
       if (me?.success && me.profile) {
         setEmailVerified(!!me.profile.email_verified)
