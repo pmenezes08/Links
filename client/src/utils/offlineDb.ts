@@ -279,6 +279,15 @@ export async function getCachedKeyVal<T = unknown>(key: string): Promise<T | nul
   }
 }
 
+export async function deleteCachedKeyVal(key: string): Promise<void> {
+  try {
+    const db = await getDb()
+    await db.delete('keyval', key)
+  } catch {
+    /* ignore */
+  }
+}
+
 // ---------- Outbox ----------
 
 export type OutboxEntry = OfflineDB['outbox']['value']

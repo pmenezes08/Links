@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
+import { invalidateDashboardCache } from '../utils/dashboardCache'
+import { deleteCachedKeyVal } from '../utils/offlineDb'
 import { triggerDashboardServerPull } from '../utils/serverPull'
 import { markClipboardInviteConsumed, parseInviteTokenFromClipboard } from '../utils/clipboardInvite'
 import { extractInviteToken } from '../utils/internalLinkHandler'
@@ -110,7 +112,7 @@ export default function MobileLogin() {
     async (idToken: string) => {
       setError(null)
       const isAndroidGoogleDebug = Capacitor.getPlatform() === 'android'
-      const finishSuccess = async (j: { username?: string }) => {
+      const finishSuccess = async (j: { username?: string; is_new?: boolean }) => {
         if (inviteToken) {
           try {
             await fetch('/api/join_with_invite', {
@@ -122,8 +124,22 @@ export default function MobileLogin() {
           } catch {}
         }
         try {
+          localStorage.removeItem('cached_profile')
+        } catch {
+          /* so loadProfile cannot fall back to previous user */
+        }
+        try {
           localStorage.setItem('current_username', j.username ?? '')
         } catch {}
+        invalidateDashboardCache()
+        void deleteCachedKeyVal('dashboard-data')
+        if (j.is_new === false) {
+          try {
+            sessionStorage.setItem('cpoint_signin_notice', 'existing_account')
+          } catch {
+            /* ignore */
+          }
+        }
         await (window as any).__reregisterPushToken?.()
         await triggerDashboardServerPull()
         try {
@@ -131,7 +147,7 @@ export default function MobileLogin() {
         } catch {
           /* ignore; dashboard will refetch */
         }
-        navigate('/premium_dashboard')
+        window.location.assign('/premium_dashboard')
       }
       try {
         const r = await fetch('/api/auth/google', {
@@ -148,7 +164,7 @@ export default function MobileLogin() {
         // Android only: surface HTTP status + non-JSON bodies (iOS/web unchanged).
         if (isAndroidGoogleDebug) {
           const text = await r.text()
-          let j: { success?: boolean; username?: string; error?: string } | null = null
+          let j: { success?: boolean; username?: string; is_new?: boolean; error?: string } | null = null
           try {
             j = text ? (JSON.parse(text) as { success?: boolean; username?: string; error?: string }) : null
           } catch {
@@ -180,7 +196,7 @@ export default function MobileLogin() {
         )
       }
     },
-    [inviteToken, navigate, refresh],
+    [inviteToken, refresh],
   )
 
   useEffect(() => {

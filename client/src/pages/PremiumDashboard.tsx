@@ -4,11 +4,12 @@ import { useUserProfile } from '../contexts/UserProfileContext'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { readDeviceCacheStale, writeDeviceCache } from '../utils/deviceCache'
-import { cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
+import { cacheKeyVal, deleteCachedKeyVal, getCachedKeyVal } from '../utils/offlineDb'
 import {
   DASHBOARD_CACHE_TTL_MS,
   DASHBOARD_CACHE_VERSION,
   DASHBOARD_DEVICE_CACHE_KEY,
+  invalidateDashboardCache,
   refreshDashboardCommunities,
 } from '../utils/dashboardCache'
 import type { DashboardCachePayload } from '../utils/dashboardCache'
@@ -53,6 +54,18 @@ function formatLastActive(timestamp: string | null | undefined): string {
   }
 }
 
+function dashboardDeviceCacheMatchesSession(c: DashboardCachePayload): boolean {
+  const pu = c.profile?.username?.trim()
+  if (!pu) return true
+  try {
+    const hint = localStorage.getItem('current_username')?.trim() ?? ''
+    if (!hint) return false
+    return pu === hint
+  } catch {
+    return false
+  }
+}
+
 function sortCommunitiesByRole(communities: Community[]): Community[] {
   return [...communities].sort((a, b) => {
     // Owner first
@@ -68,7 +81,7 @@ function sortCommunitiesByRole(communities: Community[]): Community[] {
 
 export default function PremiumDashboard() {
   const requestLogout = useLogoutRequest()
-  const { profile: contextProfile, applyProfileFromServer } = useUserProfile()
+  const { applyProfileFromServer } = useUserProfile()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [hasGymAccess, setHasGymAccess] = useState(false)
   const [communities, setCommunities] = useState<Community[]>([])
@@ -112,12 +125,23 @@ export default function PremiumDashboard() {
   const [joinedCommunityId, setJoinedCommunityId] = useState<number | null>(null)
   const [pendingInviteTarget, setPendingInviteTarget] = useState<{ communityId: number; communityName?: string | null } | null>(null)
   const [showSuccessModal, setShowSuccessModal] = useState(false)  // Success modal for join
+  const [googleExistingAccountBanner, setGoogleExistingAccountBanner] = useState(false)
   const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done'
   const { setTitle, setHeaderHidden, setTitleAccessory } = useHeader()
   useEffect(() => {
     setTitle('')
     return () => setTitle('')
   }, [setTitle])
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('cpoint_signin_notice') === 'existing_account') {
+        sessionStorage.removeItem('cpoint_signin_notice')
+        setGoogleExistingAccountBanner(true)
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [])
   useEffect(() => {
     const hideHeaderForOnboarding = showOnboarding || onboardingLaunching || onboardingGateRequired
     setHeaderHidden(hideHeaderForOnboarding)
@@ -192,15 +216,31 @@ export default function PremiumDashboard() {
   }
 
   useEffect(() => {
+    let cancelled = false
     const { data: cached } = readDeviceCacheStale<DashboardCachePayload>(DASHBOARD_DEVICE_CACHE_KEY, DASHBOARD_CACHE_VERSION)
     if (cached) {
-      applyDashboardCache(cached)
-      return
+      if (!dashboardDeviceCacheMatchesSession(cached)) {
+        invalidateDashboardCache()
+        void deleteCachedKeyVal('dashboard-data')
+      } else {
+        applyDashboardCache(cached)
+        return () => {
+          cancelled = true
+        }
+      }
     }
-    // Fallback: try IndexedDB
     getCachedKeyVal<DashboardCachePayload>('dashboard-data').then(idbCached => {
-      if (idbCached) applyDashboardCache(idbCached)
+      if (cancelled || !idbCached) return
+      if (!dashboardDeviceCacheMatchesSession(idbCached)) {
+        invalidateDashboardCache()
+        void deleteCachedKeyVal('dashboard-data')
+        return
+      }
+      applyDashboardCache(idbCached)
     })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   function applyDashboardCache(cached: DashboardCachePayload) {
@@ -325,9 +365,6 @@ export default function PremiumDashboard() {
     try {
       const [profileBundle, gymData, adminCheck, parentData] = await Promise.all([
         (async () => {
-          if (!forceRefresh && contextProfile) {
-            return { profileResult: { success: true, profile: contextProfile } as const, hydratedFromNetwork: false }
-          }
           const profileUrl = forceRefresh ? `/api/profile_me?_nocache=${Date.now()}` : '/api/profile_me'
           const r = await fetch(profileUrl, { credentials:'include', headers: { 'Accept': 'application/json' }, cache: forceRefresh ? 'no-store' : 'default' })
           if (r.status === 403) return { profileResult: { _forbidden: true } as any, hydratedFromNetwork: false }
@@ -404,7 +441,7 @@ export default function PremiumDashboard() {
     } finally {
       setInitialLoading(false)
     }
-  }, [navigate, contextProfile, applyProfileFromServer])
+  }, [navigate, applyProfileFromServer])
 
   const refreshDashboardSilently = useCallback(async () => {
     if (refreshInFlightRef.current) return
@@ -562,13 +599,21 @@ export default function PremiumDashboard() {
       const now = Date.now()
       const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000) // 24 hours in milliseconds
       const isRecent = verifiedTime > twentyFourHoursAgo
-      console.log('Onboarding check:', { emailVerifiedAt, verifiedTime, now, twentyFourHoursAgo, isRecent, diff: (now - verifiedTime) / 1000 + 's ago' })
       setIsRecentlyVerified(isRecent)
     } catch (err) {
       console.error('Error parsing email_verified_at:', err)
       setIsRecentlyVerified(false)
     }
   }, [emailVerifiedAt, emailVerified])
+
+  const previousUsernameForOnboardingRef = useRef<string | null>(null)
+  useEffect(() => {
+    const prev = previousUsernameForOnboardingRef.current
+    const current = username || null
+    previousUsernameForOnboardingRef.current = current
+    if (!prev || !current || prev === current) return
+    onboardingTriggeredRef.current = false
+  }, [username])
 
   // Auto-prompt conversational onboarding; server state (defer / resume) runs even when not "recently verified"
   useEffect(() => {
@@ -612,14 +657,23 @@ export default function PremiumDashboard() {
         }
       } catch {}
 
-      if (!isRecentlyVerified) return
+      if (!isRecentlyVerified) {
+        // Stable "no auto-prompt" for established accounts: do not re-fetch on every communities refresh
+        // (focus/visibility refetch replaces the array and was retriggering this effect).
+        if (emailVerifiedAt != null) {
+          onboardingTriggeredRef.current = true
+        }
+        return
+      }
 
       onboardingTriggeredRef.current = true
       setShowOnboarding(true)
     })().finally(() => {
       setOnboardingLaunching(false)
     })
-  }, [communitiesLoaded, emailVerified, communities, username, showOnboarding, doneKey, isRecentlyVerified])
+    // Intentionally omit `communities`: array identity changes on every parent-community refetch and caused
+    // a one-shot "Starting onboarding..." flicker for users who exit without auto-opening Steve.
+  }, [communitiesLoaded, emailVerified, emailVerifiedAt, username, showOnboarding, doneKey, isRecentlyVerified])
 
   // Parent-only creation: skip loading parent communities
 
@@ -734,6 +788,25 @@ export default function PremiumDashboard() {
         className={`min-h-screen pb-[calc(3.5rem+env(safe-area-inset-bottom,0px)+12px)] ${isWeb ? 'lg:ml-64' : 'md:ml-52'}`}
       >
         <div className="app-content max-w-5xl mx-auto px-3 py-6">
+          {googleExistingAccountBanner && (
+            <div
+              className="mb-4 rounded-xl border border-[#4db6ac]/35 bg-[#4db6ac]/10 px-4 py-3 flex gap-3 items-start justify-between"
+              role="status"
+            >
+              <p className="text-sm text-white/90 pr-2">
+                Signed in to your existing C-Point account — this email was already registered. New
+                communities and profile changes apply to this profile.
+              </p>
+              <button
+                type="button"
+                className="shrink-0 text-white/50 hover:text-white text-lg leading-none px-1"
+                aria-label="Dismiss"
+                onClick={() => setGoogleExistingAccountBanner(false)}
+              >
+                ×
+              </button>
+            </div>
+          )}
           <div 
             className="sticky top-0 z-20 mb-3 flex justify-center pointer-events-none transition-transform duration-150"
             style={{ transform: `translateY(${Math.min(pullPx * 0.5, 30)}px)` }}
