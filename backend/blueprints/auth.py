@@ -38,6 +38,10 @@ from backend.services.email_normalization import (
     canonicalize_with_policy,
     is_well_formed as _email_is_well_formed,
 )
+from backend.services.oauth_email_verification import (
+    apply_oauth_email_verified,
+    first_oauth_verified_at_iso,
+)
 
 
 auth_bp = Blueprint("auth", __name__)
@@ -894,7 +898,6 @@ def google_sign_in():
     Google Sign-In endpoint for iOS/Android.
     Body: { id_token, platform: 'ios'|'android', invite_token? }
     """
-    from bodybuilding_app import add_user_to_community
     logger = current_app.logger
     data = request.get_json() or {}
     id_token_str = (data.get('id_token') or '').strip()
@@ -928,6 +931,8 @@ def google_sign_in():
             row = c.fetchone()
             if row:
                 username = row['username'] if hasattr(row, 'keys') else row[0]
+                apply_oauth_email_verified(c, ph, username, bool(email_verified))
+                conn.commit()
                 session['username'] = username
                 session.permanent = True
                 logger.info(f"Google sign-in: returning user {username}")
@@ -943,8 +948,7 @@ def google_sign_in():
             if row:
                 username = row['username'] if hasattr(row, 'keys') else row[0]
                 c.execute(f"UPDATE users SET google_id = {ph} WHERE username = {ph}", (google_id, username))
-                if email_verified:
-                    c.execute(f"UPDATE users SET email_verified = 1 WHERE username = {ph}", (username,))
+                apply_oauth_email_verified(c, ph, username, bool(email_verified))
                 conn.commit()
                 session['username'] = username
                 session.permanent = True
@@ -979,10 +983,21 @@ def google_sign_in():
 
             random_password = generate_password_hash(secrets.token_urlsafe(32))
             now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            verified_at = first_oauth_verified_at_iso() if email_verified else None
             c.execute(f"""
-                INSERT INTO users (username, email, password, first_name, last_name, google_id, email_verified, created_at)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-            """, (username, email, random_password, first_name, last_name, google_id, 1 if email_verified else 0, now))
+                INSERT INTO users (username, email, password, first_name, last_name, google_id, email_verified, email_verified_at, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """, (
+                username,
+                email,
+                random_password,
+                first_name,
+                last_name,
+                google_id,
+                1 if email_verified else 0,
+                verified_at,
+                now,
+            ))
             conn.commit()
 
             # Create profile with display name
