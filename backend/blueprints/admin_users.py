@@ -25,7 +25,9 @@ from typing import Any, Dict
 from flask import Blueprint, jsonify, request, session
 
 from backend.services import ai_usage, special_access
+from backend.services.account_deletion import AccountDeletionMode, delete_user_in_connection
 from backend.services.content_generation.permissions import is_app_admin
+from backend.services.database import get_db_connection
 from backend.services.entitlements import resolve_entitlements
 
 
@@ -173,3 +175,52 @@ def manage_user(target_username: str):
         },
         "audit": audit,
     })
+
+
+@admin_users_bp.route("/api/admin/delete_user", methods=["POST"])
+@_admin_required
+def admin_delete_user():
+    """Delete a user as admin (FK-safe; same path as legacy monolith route)."""
+    actor = session.get("username")
+    data = _body_json()
+    target_username = (data.get("username") or "").strip()
+    if not target_username:
+        return jsonify({"success": False, "error": "Username required"}), 400
+    if is_app_admin(target_username):
+        return jsonify({"success": False, "error": "Cannot delete admin user"}), 400
+
+    try:
+        with get_db_connection() as conn:
+            former = delete_user_in_connection(
+                conn, target_username, AccountDeletionMode.ADMIN_PURGE
+            )
+            conn.commit()
+    except ValueError as e:
+        if str(e) == "user_not_found":
+            return jsonify({"success": False, "error": "User not found"}), 404
+        logger.exception("admin_delete_user ValueError")
+        return jsonify({"success": False, "error": str(e)}), 500
+    except Exception as e:
+        logger.exception("Error deleting user: %s", e)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+    try:
+        from backend.services import community_lifecycle as _lifecycle
+        from backend.services import subscription_audit as _audit
+
+        for cid in former:
+            try:
+                if _lifecycle.maybe_auto_unfreeze(cid):
+                    _audit.log(
+                        username=target_username or "",
+                        action="community_auto_unfrozen_member_removed",
+                        source="admin_delete_user",
+                        actor_username=actor,
+                        metadata={"community_id": cid},
+                    )
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    return jsonify({"success": True})

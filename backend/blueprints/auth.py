@@ -7,6 +7,7 @@ import re
 import secrets
 import traceback
 from datetime import datetime
+from functools import wraps
 from typing import List, Optional, Set
 from urllib.parse import urlencode, quote
 
@@ -33,6 +34,7 @@ from backend.services.native_push import (
     deactivate_for_install,
 )
 from backend.services import auth_session, disposable_email, remember_tokens
+from backend.services.account_deletion import AccountDeletionMode, delete_user_in_connection
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.email_normalization import (
     canonicalize_with_policy,
@@ -47,6 +49,18 @@ from backend.services.oauth_email_verification import (
 auth_bp = Blueprint("auth", __name__)
 
 MOBILE_UA_KEYWORDS = ("Mobi", "Android", "iPhone", "iPad")
+
+
+def _session_required_api(view_func):
+    """Require a logged-in session for JSON API handlers (no monolith import cycle)."""
+
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        if "username" not in session:
+            return jsonify({"success": False, "error": "Authentication required"}), 401
+        return view_func(*args, **kwargs)
+
+    return wrapper
 
 
 def _apply_login_persistence(resp, username: str) -> int:
@@ -509,7 +523,7 @@ def logout():
     session.clear()
     session.permanent = False
 
-    resp = make_response(redirect("/login"))
+    resp = make_response(redirect("/welcome"))
     remember_tokens.clear_cookie(resp)
     auth_session.clear_session_cookie(resp)
     auth_session.clear_install_cookie(resp)
@@ -531,6 +545,62 @@ def logout():
         push_counts.get("native_push_tokens", 0),
         push_counts.get("fcm_tokens", 0),
     )
+    return resp
+
+
+@auth_bp.route("/delete_account", methods=["POST"])
+@_session_required_api
+def delete_account_post():
+    """Permanently delete the current user's account (FK-safe)."""
+    logger = current_app.logger
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+    logger.info("Starting account deletion for user: %s", username)
+    try:
+        with get_db_connection() as conn:
+            former = delete_user_in_connection(conn, username, AccountDeletionMode.SELF_SERVICE)
+            conn.commit()
+        logger.info("Successfully deleted account for %s", username)
+    except ValueError as e:
+        if str(e) == "user_not_found":
+            return jsonify({"success": False, "error": "User not found"}), 404
+        logger.exception("delete_account ValueError for %s", username)
+        return jsonify({"success": False, "error": "server error"}), 500
+    except Exception:
+        logger.exception("delete_account error for %s", username)
+        return jsonify({"success": False, "error": "server error"}), 500
+
+    session.clear()
+    try:
+        from redis_cache import invalidate_user_cache
+
+        invalidate_user_cache(username)
+    except Exception:
+        pass
+
+    try:
+        from backend.services import community_lifecycle as _lifecycle
+        from backend.services import subscription_audit as _audit
+
+        for cid in former:
+            try:
+                if _lifecycle.maybe_auto_unfreeze(cid):
+                    _audit.log(
+                        username=username or "",
+                        action="community_auto_unfrozen_member_removed",
+                        source="delete_account",
+                        metadata={"community_id": cid},
+                    )
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    resp = jsonify({"success": True, "clear_storage": True})
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
     return resp
 
 

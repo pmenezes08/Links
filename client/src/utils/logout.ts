@@ -210,6 +210,19 @@ export async function performLogout(): Promise<void> {
     console.warn('Error clearing service worker caches:', e)
   }
 
+  // 5b. Unregister service workers so /logout reaches the server (no stale SW shell).
+  try {
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations()
+      for (const registration of registrations) {
+        await registration.unregister()
+        console.log('✅ Service worker unregistered')
+      }
+    }
+  } catch (e) {
+    console.warn('Error unregistering service workers:', e)
+  }
+
   // Expire native push install id cookie client-side (server also clears on /logout)
   try {
     document.cookie = 'native_push_install_id=; Max-Age=0; Path=/; SameSite=Lax'

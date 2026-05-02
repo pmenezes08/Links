@@ -6,9 +6,11 @@ describe('performLogout (Phase G4)', () => {
   let fetchMock: ReturnType<typeof vi.fn>
   let sequence: string[]
   let locationReplace: ReturnType<typeof vi.fn>
+  let swUnregister: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     sequence = []
+    swUnregister = vi.fn(() => Promise.resolve(true))
     locationReplace = vi.fn((href: string) => {
       sequence.push(`replace:${href}`)
     })
@@ -77,6 +79,15 @@ describe('performLogout (Phase G4)', () => {
     })
 
     vi.stubGlobal(
+      'navigator',
+      Object.assign({}, navigator, {
+        serviceWorker: {
+          getRegistrations: () => Promise.resolve([{ unregister: swUnregister }]),
+        },
+      }) as Navigator,
+    )
+
+    vi.stubGlobal(
       'indexedDB',
       {
         deleteDatabase() {
@@ -134,5 +145,6 @@ describe('performLogout (Phase G4)', () => {
     expect(idxReplace).not.toBe(-1)
     expect(idxFetch).toBeLessThan(idxReplace)
     expect(sequence[idxReplace]).toBe('replace:/logout')
+    expect(swUnregister).toHaveBeenCalled()
   })
 })

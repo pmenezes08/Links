@@ -32,9 +32,11 @@ def test_check_pending_login_response_has_no_debug_keys(auth_only_app):
 
 
 def test_logout_monolith_redirects():
-    """Logout route clears session and redirects (full app)."""
+    """Logout route clears session and redirects to welcome (full app)."""
     from bodybuilding_app import app as monolith
 
     with monolith.test_client() as client:
         rv = client.get("/logout", follow_redirects=False)
         assert rv.status_code in (302, 303, 301)
+        loc = rv.headers.get("Location") or ""
+        assert "/welcome" in loc

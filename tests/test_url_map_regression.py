@@ -62,6 +62,12 @@ def test_auth_and_webhook_routes_still_exist():
     from bodybuilding_app import app
 
     rules = _rules(app)
+    assert "/delete_account" in rules
+    delete_account = [r for r in app.url_map.iter_rules() if str(r.rule) == "/delete_account"]
+    assert len(delete_account) == 1
+    assert "/api/admin/delete_user" in rules
+    du = [r for r in app.url_map.iter_rules() if str(r.rule) == "/api/admin/delete_user"]
+    assert len(du) == 1
     assert "/api/auth/google" in rules
     assert "/api/webhooks/stripe" in rules
     assert "/api/check_pending_login" in rules
