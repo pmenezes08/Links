@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useUserProfile } from '../contexts/UserProfileContext'
 
 export default function Signup(){
   const navigate = useNavigate()
+  const { refresh } = useUserProfile()
   const [searchParams] = useSearchParams()
   const inviteToken = searchParams.get('invite')
   
@@ -149,8 +151,14 @@ export default function Signup(){
               setPendingEmail(formData.email)
               setShowVerify(true)
             } else {
-              // Navigate to dashboard - onboarding will show automatically
-              navigate(dest)
+              void (async () => {
+                try {
+                  await refresh()
+                } catch {
+                  /* ignore */
+                }
+                navigate(dest)
+              })()
             }
           } else {
             setError(j?.error || 'Registration failed')

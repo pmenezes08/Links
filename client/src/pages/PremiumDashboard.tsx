@@ -68,7 +68,7 @@ function sortCommunitiesByRole(communities: Community[]): Community[] {
 
 export default function PremiumDashboard() {
   const requestLogout = useLogoutRequest()
-  const { profile: contextProfile } = useUserProfile()
+  const { profile: contextProfile, applyProfileFromServer } = useUserProfile()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [hasGymAccess, setHasGymAccess] = useState(false)
   const [communities, setCommunities] = useState<Community[]>([])
@@ -322,18 +322,24 @@ export default function PremiumDashboard() {
     let hasGymAccessFlag = false
     let isAdminFlag = false
     try {
-      const [profileResult, gymData, adminCheck, parentData] = await Promise.all([
+      const [profileBundle, gymData, adminCheck, parentData] = await Promise.all([
         (async () => {
-          if (!forceRefresh && contextProfile) return { success: true, profile: contextProfile }
+          if (!forceRefresh && contextProfile) {
+            return { profileResult: { success: true, profile: contextProfile } as const, hydratedFromNetwork: false }
+          }
           const profileUrl = forceRefresh ? `/api/profile_me?_nocache=${Date.now()}` : '/api/profile_me'
           const r = await fetch(profileUrl, { credentials:'include', headers: { 'Accept': 'application/json' }, cache: forceRefresh ? 'no-store' : 'default' })
-          if (r.status === 403) return { _forbidden: true } as any
-          return await r.json().catch(() => null)
-        })().catch(() => null),
+          if (r.status === 403) return { profileResult: { _forbidden: true } as any, hydratedFromNetwork: false }
+          const profileResult = await r.json().catch(() => null)
+          return { profileResult, hydratedFromNetwork: true }
+        })().catch(() => ({ profileResult: null as any, hydratedFromNetwork: false })),
         fetchJson('/api/check_gym_membership', forceRefresh),
         fetchJson('/api/check_admin', forceRefresh).catch(() => null),
         fetchJson('/api/user_parent_community', forceRefresh),
       ])
+
+      const profileResult = profileBundle.profileResult
+      const hydratedFromNetwork = profileBundle.hydratedFromNetwork
 
       if (profileResult?._forbidden) {
         navigate('/verify_required', { replace: true })
@@ -341,6 +347,9 @@ export default function PremiumDashboard() {
       }
 
       const me = profileResult
+      if (me?.success && me.profile && hydratedFromNetwork) {
+        applyProfileFromServer(me.profile as Record<string, unknown>)
+      }
       if (me?.success && me.profile) {
         setEmailVerified(!!me.profile.email_verified)
         setEmailVerifiedAt(me.profile.email_verified_at || null)
@@ -394,7 +403,7 @@ export default function PremiumDashboard() {
     } finally {
       setInitialLoading(false)
     }
-  }, [navigate, contextProfile])
+  }, [navigate, contextProfile, applyProfileFromServer])
 
   const refreshDashboardSilently = useCallback(async () => {
     if (refreshInFlightRef.current) return

@@ -10,11 +10,13 @@ import {
   initializeGoogleIdentityOnce,
   renderGoogleSignInButton,
 } from '../utils/googleIdentityWeb'
+import { useUserProfile } from '../contexts/UserProfileContext'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 
 export default function MobileLogin() {
   const navigate = useNavigate()
+  const { refresh, applyProfileFromServer } = useUserProfile()
   const [searchParams] = useSearchParams()
   const inviteToken = searchParams.get('invite')
   const step = searchParams.get('step')
@@ -124,6 +126,11 @@ export default function MobileLogin() {
         } catch {}
         await (window as any).__reregisterPushToken?.()
         await triggerDashboardServerPull()
+        try {
+          await refresh()
+        } catch {
+          /* ignore; dashboard will refetch */
+        }
         navigate('/premium_dashboard')
       }
       try {
@@ -173,7 +180,7 @@ export default function MobileLogin() {
         )
       }
     },
-    [inviteToken, navigate],
+    [inviteToken, navigate, refresh],
   )
 
   useEffect(() => {
@@ -220,7 +227,9 @@ export default function MobileLogin() {
         }
         if (r.ok){
           const j = await r.json()
-          if (j && j.username){
+          if (j?.success && j?.profile) {
+            const profile = j.profile as Record<string, unknown>
+            applyProfileFromServer(profile)
             // If user has invite token, auto-join them
             if (inviteToken) {
               try {
@@ -269,7 +278,7 @@ export default function MobileLogin() {
       }
     }
     check()
-  }, [navigate, inviteToken, step, authCheckDone])
+  }, [navigate, inviteToken, step, authCheckDone, applyProfileFromServer])
 
   // Sync error from query string when URL changes (e.g. /?error=... → /login?invite=...)
   useEffect(() => {

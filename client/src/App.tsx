@@ -108,6 +108,70 @@ function AppRoutes(){
       ]),
     [],
   )
+
+  const applyProfileFromServer = useCallback((profile: Record<string, unknown>) => {
+    setProfileData(profile)
+    setIsVerified(!!(profile as any)?.email_verified)
+    setProfileError(null)
+    try {
+      localStorage.setItem('cached_profile', JSON.stringify(profile))
+    } catch { /* ignore */ }
+
+    const username = (profile as any)?.username as string | undefined
+    const previousUsername = localStorage.getItem('current_username')
+    if (username && previousUsername && previousUsername !== username) {
+      const keysToRemove = ['home-timeline', 'communityManagementShowNested']
+      const prefixesToClear = ['community_', 'chat_', 'dashboard-', 'community-feed:', 'group-feed:']
+
+      try {
+        keysToRemove.forEach(key => localStorage.removeItem(key))
+        Object.keys(localStorage).forEach(key => {
+          if (prefixesToClear.some(prefix => key.startsWith(prefix))) {
+            localStorage.removeItem(key)
+          }
+        })
+      } catch (e) {
+        console.warn('Error clearing localStorage for user change:', e)
+      }
+
+      if ('caches' in window) {
+        caches.keys().then(names => {
+          names.forEach(name => {
+            if (name.includes('runtime') || name.includes('cp-')) {
+              caches.delete(name)
+            }
+          })
+        }).catch(() => {})
+      }
+
+      try {
+        import('./utils/avatarCache').then(({ clearAllAvatarCache }) => clearAllAvatarCache()).catch(() => {})
+      } catch { /* ignore */ }
+    }
+
+    if (username) {
+      try {
+        localStorage.setItem('current_username', username)
+      } catch { /* ignore */ }
+    }
+
+    if (!sessionStorage.getItem('geo_countries')) {
+      fetch('/api/geo/countries', { credentials: 'include' })
+        .then(r => r.json())
+        .then(d => {
+          if (d?.success && Array.isArray(d.countries)) {
+            const names = d.countries
+              .map((item: any) => (typeof item?.name === 'string' ? item.name : null))
+              .filter(Boolean)
+            try {
+              sessionStorage.setItem('geo_countries', JSON.stringify(names))
+            } catch { /* ignore */ }
+          }
+        })
+        .catch(() => {})
+    }
+  }, [])
+
   const applyKeyboardOffset = useCallback((nextOffset: number) => {
     setKeyboardOffset(prev => (Math.abs(prev - nextOffset) < 1 ? prev : nextOffset))
     document.documentElement.style.setProperty('--keyboard-offset', `${nextOffset}px`)
@@ -519,6 +583,7 @@ function AppRoutes(){
       if (response.status === 403) {
         setProfileData(null)
         setIsVerified(false)
+        setProfileError('Email verification required')
         return null
       }
       if (!response.ok) {
@@ -526,63 +591,9 @@ function AppRoutes(){
       }
       const json = await response.json().catch(() => null)
       if (json?.success && json.profile) {
-        const profile = json.profile as UserProfile
-        setProfileData(profile)
-        setIsVerified(!!(profile as any)?.email_verified)
-        setProfileError(null)
-        try { localStorage.setItem('cached_profile', JSON.stringify(profile)) } catch {}
-
-        const username = (profile as any)?.username
-        const previousUsername = localStorage.getItem('current_username')
-        if (username && previousUsername && previousUsername !== username) {
-          const keysToRemove = ['home-timeline', 'communityManagementShowNested']
-          const prefixesToClear = ['community_', 'chat_', 'dashboard-', 'community-feed:', 'group-feed:']
-
-          try {
-            keysToRemove.forEach(key => localStorage.removeItem(key))
-            Object.keys(localStorage).forEach(key => {
-              if (prefixesToClear.some(prefix => key.startsWith(prefix))) {
-                localStorage.removeItem(key)
-              }
-            })
-          } catch (e) {
-            console.warn('Error clearing localStorage for user change:', e)
-          }
-
-          if ('caches' in window) {
-            caches.keys().then(names => {
-              names.forEach(name => {
-                if (name.includes('runtime') || name.includes('cp-')) {
-                  caches.delete(name)
-                }
-              })
-            }).catch(() => {})
-          }
-
-          try {
-            import('./utils/avatarCache').then(({ clearAllAvatarCache }) => clearAllAvatarCache()).catch(() => {})
-          } catch {}
-        }
-
-        if (username) {
-          localStorage.setItem('current_username', username)
-        }
-
-        if (!sessionStorage.getItem('geo_countries')) {
-          fetch('/api/geo/countries', { credentials: 'include' })
-            .then(r => r.json())
-            .then(d => {
-              if (d?.success && Array.isArray(d.countries)) {
-                const names = d.countries
-                  .map((item: any) => typeof item?.name === 'string' ? item.name : null)
-                  .filter(Boolean)
-                try { sessionStorage.setItem('geo_countries', JSON.stringify(names)) } catch {}
-              }
-            })
-            .catch(() => {})
-        }
-
-        return profile
+        const profile = json.profile as Record<string, unknown>
+        applyProfileFromServer(profile)
+        return profile as UserProfile
       }
 
       throw new Error(json?.error || 'Profile response invalid')
@@ -603,7 +614,7 @@ function AppRoutes(){
       setProfileLoading(false)
       setAuthLoaded(true)
     }
-  }, [publicPaths])
+  }, [publicPaths, applyProfileFromServer])
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'scrollRestoration' in window.history) {
@@ -641,11 +652,12 @@ function AppRoutes(){
     () => ({
       profile: profileData,
       setProfile: setProfileData,
+      applyProfileFromServer,
       loading: profileLoading,
       error: profileError,
       refresh: () => loadProfile(),
     }),
-    [profileData, profileLoading, profileError, loadProfile],
+    [profileData, profileLoading, profileError, loadProfile, applyProfileFromServer],
   )
 
   useEffect(() => {
