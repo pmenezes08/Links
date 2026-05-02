@@ -71,6 +71,19 @@ def _apply_login_persistence(resp, username: str) -> int:
     return stale
 
 
+def _invalidate_profile_and_dashboard_caches(username: str) -> None:
+    """Bust Redis profile/dashboard payloads so the next API read matches MySQL."""
+    if not username:
+        return
+    try:
+        from redis_cache import cache, invalidate_user_parent_dashboard
+
+        cache.delete(f"profile:{username}")
+        invalidate_user_parent_dashboard(username)
+    except Exception:
+        pass
+
+
 def _is_mobile_request() -> bool:
     ua = request.headers.get("User-Agent", "")
     return any(token in ua for token in MOBILE_UA_KEYWORDS)
@@ -718,6 +731,8 @@ def login_password():
                     except Exception:
                         pass
 
+                    _invalidate_profile_and_dashboard_caches(username)
+
                     invite_token = session.pop("pending_invite_token", None)
                     if invite_token:
                         try:
@@ -991,6 +1006,9 @@ def google_sign_in():
         return jsonify({'success': False, 'error': 'Incomplete Google profile'}), 400
 
     try:
+        # Drop any prior session keys (pending_username, stale username, etc.) before binding identity.
+        session.clear()
+        session.permanent = False
         ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -1005,6 +1023,7 @@ def google_sign_in():
                 conn.commit()
                 session['username'] = username
                 session.permanent = True
+                _invalidate_profile_and_dashboard_caches(username)
                 logger.info(f"Google sign-in: returning user {username}")
                 resp = make_response(jsonify({'success': True, 'username': username, 'is_new': False}))
                 stale = _apply_login_persistence(resp, username)
@@ -1033,6 +1052,7 @@ def google_sign_in():
                         conn.commit()
                 except Exception:
                     pass
+                _invalidate_profile_and_dashboard_caches(username)
                 logger.info(f"Google sign-in: linked {username} to Google ID")
                 resp = make_response(jsonify({'success': True, 'username': username, 'is_new': False}))
                 stale = _apply_login_persistence(resp, username)
@@ -1091,6 +1111,7 @@ def google_sign_in():
 
             session['username'] = username
             session.permanent = True
+            _invalidate_profile_and_dashboard_caches(username)
             logger.info(f"Google sign-in: created new user {username}")
             resp = make_response(jsonify({'success': True, 'username': username, 'is_new': True}))
             stale = _apply_login_persistence(resp, username)

@@ -10972,9 +10972,14 @@ def profile():
 def api_profile_me():
     username = session['username']
     
-    # Check cache first for faster profile loading
+    # Check cache first for faster profile loading (skip when forcing refresh)
     cache_key = f"profile:{username}"
-    cached_profile = cache.get(cache_key)
+    bypass_profile_cache = bool(
+        request.args.get("_nocache")
+        or request.args.get("nocache")
+        or request.args.get("refresh")
+    )
+    cached_profile = None if bypass_profile_cache else cache.get(cache_key)
     if cached_profile:
         logger.debug(f"🚀 Cache hit: profile for {username}")
         resp = jsonify({'success': True, 'profile': cached_profile})
