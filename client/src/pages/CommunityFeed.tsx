@@ -611,15 +611,15 @@ export default function CommunityFeed() {
     if (cached?.success) {
       setData(cached)
       setLoading(false)
-    } else if (community_id && currentUsername) {
-      getCachedFeed(currentUsername, community_id).then(idbCached => {
+    } else if (community_id) {
+      getCachedFeed(community_id).then(idbCached => {
         if ((idbCached as any)?.success) {
           setData((prev: any) => prev ?? idbCached)
           setLoading(false)
         }
       })
     }
-  }, [deviceFeedCacheKey, routerLocation.state, community_id, currentUsername])
+  }, [deviceFeedCacheKey, routerLocation.state, community_id])
 
   const [isRefreshing, setIsRefreshing] = useState(false)
   const lastRefreshRef = useRef(0)
@@ -780,8 +780,8 @@ export default function CommunityFeed() {
     }
     
     // If no localStorage cache, try IndexedDB before going to network
-    if (!hasCache && community_id && currentUsername) {
-      getCachedFeed(currentUsername, community_id).then(idbCached => {
+    if (!hasCache && community_id) {
+      getCachedFeed(community_id).then(idbCached => {
         if (!isMounted) return
         if ((idbCached as any)?.success) {
           setData((prev: any) => prev ?? idbCached)
@@ -838,14 +838,14 @@ export default function CommunityFeed() {
       })
       .finally(() => isMounted && setLoading(false))
     return () => { isMounted = false }
-  }, [community_id, refreshKey, deviceFeedCacheKey, navigate, currentUsername])
+  }, [community_id, refreshKey, deviceFeedCacheKey, navigate])
 
   useEffect(() => {
     if (!deviceFeedCacheKey) return
     if (!data?.success) return
     writeDeviceCache(deviceFeedCacheKey, data, COMMUNITY_FEED_CACHE_TTL_MS, COMMUNITY_FEED_CACHE_VERSION)
-    if (community_id && currentUsername) cacheFeed(currentUsername, community_id, data)
-  }, [data, deviceFeedCacheKey, community_id, currentUsername])
+    if (community_id) cacheFeed(community_id, data)
+  }, [data, deviceFeedCacheKey, community_id])
 
   // Ads removed
 

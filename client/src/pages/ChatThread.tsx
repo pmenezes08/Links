@@ -899,8 +899,8 @@ export default function ChatThread(){
 
   // Hydrate pending/failed outbox entries so they survive app restarts
   useEffect(() => {
-    if (!username || !viewer) return
-    getOutboxEntries(viewer).then(entries => {
+    if (!username) return
+    getOutboxEntries().then(entries => {
       const myEntries = entries.filter(e => e.type === 'dm' && e.recipient === String(otherUserId || '') && (e.status === 'pending' || e.status === 'failed'))
       if (!myEntries.length) return
       setMessages(prev => {
@@ -922,7 +922,7 @@ export default function ChatThread(){
         return toAdd.length ? [...prev, ...toAdd] : prev
       })
     }).catch(() => {})
-  }, [username, otherUserId, viewer])
+  }, [username, otherUserId])
 
   // Re-fetch messages when outbox drainer completes
   useEffect(() => {
@@ -1563,7 +1563,6 @@ export default function ChatThread(){
     let outboxId = -1
     try {
       outboxId = await addToOutbox({
-        owner: viewer || '',
         type: 'dm',
         recipient: String(resolvedUserId || otherUserId),
         content: formattedMessage,
@@ -1684,7 +1683,7 @@ export default function ChatThread(){
       setMessages(prev => prev.map(m =>
         (m.clientKey || m.id) === clientKey ? { ...m, sendFailed: true } : m
       ))
-      getOutboxEntries(viewer || '').then(entries => {
+      getOutboxEntries().then(entries => {
         const e = entries.find(x => x.clientKey === clientKey)
         if (e?.id != null) updateOutboxStatus(e.id, 'failed', (e.retries || 0) + 1).catch(() => {})
       }).catch(() => {})
@@ -1706,7 +1705,7 @@ export default function ChatThread(){
       .then(j => {
         clearTimeout(retryTimeout)
         if (j?.success && j.message_id) {
-          getOutboxEntries(viewer || '').then(entries => {
+          getOutboxEntries().then(entries => {
             const e = entries.find(x => x.clientKey === clientKey)
             if (e?.id != null) removeFromOutbox(e.id).catch(() => {})
           }).catch(() => {})
@@ -2390,7 +2389,7 @@ export default function ChatThread(){
         } catch {
           /* ignore */
         }
-        getOutboxEntries(viewer || '')
+        getOutboxEntries()
           .then(entries => {
             const e = entries.find(x => x.clientKey === ck && x.type === 'dm')
             if (e?.id != null) removeFromOutbox(e.id).catch(() => {})
