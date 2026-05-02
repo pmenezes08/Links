@@ -149,6 +149,14 @@ export default function PremiumDashboard() {
   }, [showOnboarding, onboardingLaunching, onboardingGateRequired, setHeaderHidden])
 
   useEffect(() => {
+    // Once Steve is mounted, the bridging overlay is no longer needed; clear it so it never
+    // lingers behind the dashboard if the user later exits onboarding.
+    if (showOnboarding && onboardingLaunching) {
+      setOnboardingLaunching(false)
+    }
+  }, [showOnboarding, onboardingLaunching])
+
+  useEffect(() => {
     if (communities.length === 0) {
       setTitleAccessory(null)
       return
@@ -627,7 +635,6 @@ export default function PremiumDashboard() {
     try { if (localStorage.getItem(doneKey) === '1') return } catch {}
 
     ;(async () => {
-      setOnboardingLaunching(true)
       try {
         const r = await fetch('/api/onboarding/state', { credentials: 'include' })
         const j = await r.json().catch(() => null)
@@ -666,11 +673,11 @@ export default function PremiumDashboard() {
         return
       }
 
+      // Only flip the launching overlay on right when we are actually about to mount Steve.
       onboardingTriggeredRef.current = true
+      setOnboardingLaunching(true)
       setShowOnboarding(true)
-    })().finally(() => {
-      setOnboardingLaunching(false)
-    })
+    })()
     // Intentionally omit `communities`: array identity changes on every parent-community refetch and caused
     // a one-shot "Starting onboarding..." flicker for users who exit without auto-opening Steve.
   }, [communitiesLoaded, emailVerified, emailVerifiedAt, username, showOnboarding, doneKey, isRecentlyVerified])
@@ -1052,20 +1059,24 @@ export default function PremiumDashboard() {
           mode={onboardingMode}
           onComplete={() => {
             setShowOnboarding(false)
+            setOnboardingLaunching(false)
             setOnboardingGateRequired(false)
             onboardingTriggeredRef.current = false
             window.location.href = '/premium_dashboard'
           }}
           onCreateCommunity={() => {
             setShowOnboarding(false)
+            setOnboardingLaunching(false)
             setShowCreateModal(true)
           }}
           onGoToCommunity={() => {
             setShowOnboarding(false)
+            setOnboardingLaunching(false)
             handleGoToCommunity()
           }}
           onExit={() => {
             setShowOnboarding(false)
+            setOnboardingLaunching(false)
           }}
         />
       )}

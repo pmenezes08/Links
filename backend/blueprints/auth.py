@@ -1041,17 +1041,9 @@ def google_sign_in():
                 conn.commit()
                 session['username'] = username
                 session.permanent = True
-                # Set display name if not already set
-                try:
-                    c.execute(f"SELECT display_name FROM user_profiles WHERE username = {ph}", (username,))
-                    dp = c.fetchone()
-                    display_name_val = (dp['display_name'] if hasattr(dp, 'keys') else dp[0]) if dp else None
-                    if not display_name_val or display_name_val == username:
-                        full_name = f"{first_name} {last_name}".strip() or username
-                        c.execute(f"UPDATE user_profiles SET display_name = {ph} WHERE username = {ph}", (full_name, username))
-                        conn.commit()
-                except Exception:
-                    pass
+                # Display name is intentionally NOT touched on link: established users keep
+                # whatever they already had in user_profiles. Auto-fill happens only on the
+                # new-user creation branch below.
                 _invalidate_profile_and_dashboard_caches(username)
                 logger.info(f"Google sign-in: linked {username} to Google ID")
                 resp = make_response(jsonify({'success': True, 'username': username, 'is_new': False}))
