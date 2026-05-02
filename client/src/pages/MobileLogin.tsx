@@ -113,7 +113,7 @@ export default function MobileLogin() {
     async (idToken: string) => {
       setError(null)
       const isAndroidGoogleDebug = Capacitor.getPlatform() === 'android'
-      const finishSuccess = async (j: { username?: string; is_new?: boolean; login_id?: string }) => {
+      const finishSuccess = async (j: { username?: string; is_new?: boolean }) => {
         if (inviteToken) {
           try {
             await fetch('/api/join_with_invite', {
@@ -145,7 +145,6 @@ export default function MobileLogin() {
 
         try {
           localStorage.setItem('current_username', j.username ?? '')
-          if (j.login_id) localStorage.setItem('last_login_id', j.login_id)
         } catch {}
 
         invalidateDashboardCache()
@@ -175,9 +174,9 @@ export default function MobileLogin() {
         // Android only: surface HTTP status + non-JSON bodies (iOS/web unchanged).
         if (isAndroidGoogleDebug) {
           const text = await r.text()
-          let j: { success?: boolean; username?: string; is_new?: boolean; login_id?: string; error?: string } | null = null
+          let j: { success?: boolean; username?: string; is_new?: boolean; error?: string } | null = null
           try {
-            j = text ? (JSON.parse(text) as { success?: boolean; username?: string; is_new?: boolean; login_id?: string; error?: string }) : null
+            j = text ? (JSON.parse(text) as { success?: boolean; username?: string; error?: string }) : null
           } catch {
             const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 280)
             setError(

@@ -202,11 +202,9 @@ export default function PushInit(){
               const version = e?.data?.version || 'unknown'
               console.log(`[SW] Service worker activated: v${version}`)
               
-              // A SW activation may ask clients to reload after a deploy, but
-              // it must not keep reloading on every activate/install cycle.
-              const reloadKey = `swReloaded:${version}`
-              if (!sessionStorage.getItem(reloadKey)){
-                sessionStorage.setItem(reloadKey, '1')
+              // Force reload if explicitly requested, or if not reloaded yet
+              if (e?.data?.forceReload || !sessionStorage.getItem('swReloaded')){
+                sessionStorage.setItem('swReloaded', '1')
                 console.log('[SW] Reloading to pick up new assets...')
                 // Hard reload to bypass cache
                 location.reload()
