@@ -4,6 +4,7 @@ import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
 import * as OCopy from '../content/onboardingCopy'
+import { MANIFESTO_FULL } from '../content/aboutCPoint'
 
 type Stage =
   | 'intent_fork'
@@ -281,6 +282,7 @@ export default function OnboardingChat({
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const [headerLogoSrc, setHeaderLogoSrc] = useState('/api/public/logo')
   const [safeBottomPx, setSafeBottomPx] = useState(0)
+  const [showManifesto, setShowManifesto] = useState(false)
 
   const NATIVE_KEYBOARD_MIN_HEIGHT = 60
   const KEYBOARD_OFFSET_EPSILON = 6
@@ -501,15 +503,13 @@ export default function OnboardingChat({
     const data = c || collected
     switch (s) {
       case 'intent_fork': {
-        addSteveMessage(
-          `${OCopy.INTENT_QUESTION}\n\n${OCopy.PRIVACY_LINE}`,
-          {
-            options: [
-              { label: 'For me — personal circles', value: 'intent_b2c', icon: '👤' },
-              { label: 'For an organisation I run', value: 'intent_b2b', icon: '🏢' },
-            ],
-          },
-        )
+        addSteveMessage(OCopy.INTENT_FORK_GREETING)
+        addSteveMessage(OCopy.INTENT_FORK_QUESTION, {
+          options: [
+            { label: OCopy.INTENT_FORK_OPTION_B2C, value: 'intent_b2c', icon: '👤' },
+            { label: OCopy.INTENT_FORK_OPTION_B2B, value: 'intent_b2b', icon: '🏢' },
+          ],
+        })
         break
       }
       case 'b2b_value': {
@@ -551,15 +551,17 @@ export default function OnboardingChat({
         let welcomeText: string
         if (mode === 'profile_builder') {
           welcomeText = `${greeting} Let's update your profile together.\n\nI'll walk you through a few quick questions — anything you've already filled in, we can skip. Ready?`
+        } else if (communityName) {
+          welcomeText =
+            `${greeting} I'm Steve here at C-Point.\n\n` +
+            `I see you were invited to ${communityName} — welcome in. ` +
+            `A great profile helps people recognise you in private networks. ` +
+            `I'll walk you through ${USER_FACING_STEPS} quick steps — about 3 minutes. Ready?`
         } else {
-          welcomeText = `${greeting} I'm Steve here at C-Point.`
-          if (communityName) {
-            welcomeText += ` I see you were invited to ${communityName} — exciting!`
-            welcomeText += `\n\nA great profile helps people recognize you in private networks. I'll walk you through ${USER_FACING_STEPS} quick steps — about 3 minutes. Ready?`
-          } else {
-            welcomeText += `\n\n${OCopy.B2C_MANIFESTO_HOOK}\n\n${OCopy.PRIVACY_LINE}\n\n${OCopy.STRUCTURED_FEEDS_LINE}\n\n${OCopy.TOOLS_BEYOND_POSTS}\n\n${OCopy.DINNER_POLL_CALENDAR}\n\n${OCopy.DM_LINE}\n\n${OCopy.PROFILE_BORING_LINE}\n\n${OCopy.STEVE_CENTER_LINE}`
-            welcomeText += `\n\nWhen you're ready, we'll tidy your profile — ${USER_FACING_STEPS} short steps.`
-          }
+          welcomeText =
+            `${greeting} I'm Steve here at C-Point.\n\n` +
+            `Let's set up your profile so the app fits the way you want to use it. ` +
+            `${USER_FACING_STEPS} short steps, then you're in.`
         }
         const welcomeOpts: ChatMessage['options'] =
           mode === 'profile_builder'
@@ -1625,6 +1627,13 @@ export default function OnboardingChat({
             </div>
             <button
               type="button"
+              onClick={() => setShowManifesto(true)}
+              className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-medium text-white/60 hover:text-white hover:border-white/20 transition"
+            >
+              Manifesto
+            </button>
+            <button
+              type="button"
               onClick={onExit}
               className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-medium text-white/60 hover:text-white hover:border-white/20 transition"
             >
@@ -1942,6 +1951,38 @@ export default function OnboardingChat({
               >
                 {tourStep < TOUR_STEPS.length - 1 ? 'Next' : "Let's go!"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showManifesto && (
+        <div
+          className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center sm:p-4 bg-black/75 pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] sm:pb-4"
+          role="presentation"
+          onClick={() => setShowManifesto(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="C-Point Manifesto"
+            className="grid w-full min-h-0 shrink grid-rows-[auto,minmax(0,1fr)] overflow-hidden max-w-lg max-h-[calc(100dvh-5rem-env(safe-area-inset-bottom,0px))] sm:max-h-[85vh] rounded-t-2xl sm:rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/10">
+              <div className="text-sm font-semibold text-white">C-Point Manifesto</div>
+              <button
+                type="button"
+                onClick={() => setShowManifesto(false)}
+                className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-medium text-white/60 hover:text-white hover:border-white/20 transition"
+              >
+                Close
+              </button>
+            </div>
+            <div className="min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-4 py-4 [-webkit-overflow-scrolling:touch]">
+              <div className="text-[13px] leading-relaxed text-white/85 whitespace-pre-line">
+                {MANIFESTO_FULL}
+              </div>
             </div>
           </div>
         </div>
