@@ -1,9 +1,9 @@
-const SW_VERSION = '2.70.0'
+const SW_VERSION = '2.69.0'
 const APP_SHELL_CACHE = `cp-shell-${SW_VERSION}`
 const RUNTIME_CACHE = `cp-runtime-${SW_VERSION}`
 const MEDIA_CACHE = `cp-media-${SW_VERSION}`
 const MAX_MEDIA_CACHE_SIZE = 50 // Max number of videos/large media to cache
-const FORCE_UPDATE_TIMESTAMP = 1778716800000 // May 2 2026 — account-isolation hardening
+const FORCE_UPDATE_TIMESTAMP = 1776499200000 // Force cache clear - updated Apr 22 2026
 
 const STATIC_ASSETS = [
   '/',
@@ -16,47 +16,29 @@ const STATIC_ASSETS = [
 ]
 
 const STATIC_ASSET_PATHS = new Set(STATIC_ASSETS)
+// These endpoints use stale-while-revalidate (show cached first, update in background)
+// User-specific endpoints (/api/profile_me, /api/profile/*) must NOT be here
+const STALE_API_ENDPOINTS = new Set([
+  '/api/user_communities_hierarchical',
+  '/get_user_communities_with_members',
+  '/api/premium_dashboard_summary',
+  '/api/user_parent_community',
+  '/api/chat_threads',
+  '/api/group_chat/list',
+  '/api/notifications',
+  '/api/check_gym_membership',
+  '/api/check_admin',
+])
 
-// Default-deny posture for authenticated/dynamic routes:
-// any request whose pathname starts with one of these prefixes is passed
-// straight through to the network with NO service-worker cache lookup or
-// cache write, so a previous user's response can never be replayed under
-// another session.
-// Keep in sync with `client/src/utils/swCachePolicy.ts` and
-// `backend/services/http_headers.py::_AUTHENTICATED_PREFIXES`.
-const NEVER_CACHE_PREFIXES = [
-  '/api/',
-  '/get_',
-  '/check_',
-  '/update_',
-  '/delete_',
-  '/add_',
-  '/upload_',
-  '/admin',
-  '/profile/',
-  '/notifications',
-  '/event/',
-  '/account_',
-  '/edit_',
-  '/business_',
-  '/remove_',
-  '/resend_',
-  '/clear_',
-  '/verify_',
-  '/logout',
-  '/login',
-  '/signup',
-]
-
-// Pure helper exported on `self` for vitest. Returns true when the SW must
-// stay out of the request entirely (no cache read, no cache write).
-function shouldBypassCache(pathname) {
-  for (let i = 0; i < NEVER_CACHE_PREFIXES.length; i++) {
-    if (pathname.startsWith(NEVER_CACHE_PREFIXES[i])) return true
-  }
-  return false
-}
-self.shouldBypassCache = shouldBypassCache
+// User-specific endpoints that must NEVER be cached by the service worker.
+// These are excluded from both staleWhileRevalidate and networkFirst caching.
+const NO_CACHE_API_ENDPOINTS = new Set([
+  '/api/profile_me',
+  '/api/profile/ai_suggestions',
+  '/api/profile/ai_review',
+  '/api/profile/steve_analysis',
+  '/api/profile/steve_request_refresh',
+])
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
@@ -76,25 +58,16 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     try {
       const cacheNames = await caches.keys()
-      // Delete every old SW cache from previous versions. Critical for
-      // account isolation: pre-2.70.0 caches stored authenticated /api/*
-      // responses (chat threads, /api/me/*, admin endpoints) keyed by URL
-      // alone, so they would replay the previous user's data on the next
-      // session. Force-purge them all.
+      // Delete ALL old caches to force refresh
       await Promise.all(
         cacheNames
-          .filter((cacheName) =>
-            cacheName !== APP_SHELL_CACHE &&
-            cacheName !== RUNTIME_CACHE &&
-            cacheName !== MEDIA_CACHE,
-          )
+          .filter((cacheName) => cacheName !== APP_SHELL_CACHE && cacheName !== RUNTIME_CACHE && cacheName !== MEDIA_CACHE)
           .map((cacheName) => caches.delete(cacheName))
       )
-
-      // Also delete the current runtime cache to evict any partial state
-      // accumulated by an in-flight migration.
+      
+      // Also clear current runtime cache to force refetch of assets
       await caches.delete(RUNTIME_CACHE)
-
+      
       await self.clients.claim()
       const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
       for (const client of clients){
@@ -142,6 +115,7 @@ async function staleWhileRevalidate(request, cacheName){
   }).catch(() => undefined)
 
   if (cached){
+    // Ensure the network update still runs in background
     networkPromise?.catch(() => {})
     return cached
   }
@@ -149,6 +123,21 @@ async function staleWhileRevalidate(request, cacheName){
   const networkResponse = await networkPromise
   if (networkResponse) return networkResponse
   throw new Error('Network unavailable and no cached response')
+}
+
+async function networkFirst(request, cacheName){
+  const cache = await caches.open(cacheName)
+  try {
+    const response = await fetch(request)
+    if (response?.status === 200){
+      cache.put(request, response.clone())
+    }
+    return response
+  } catch (error) {
+    const cached = await cache.match(request)
+    if (cached) return cached
+    throw error
+  }
 }
 
 // Cache-first for large media (videos) with size limit
@@ -159,20 +148,23 @@ async function cacheFirstMedia(request){
     console.log('[SW] Video served from cache:', request.url)
     return cached
   }
-
+  
   const response = await fetch(request)
   if (response?.status === 200){
+    // Clone before caching
     const responseToCache = response.clone()
-
+    
+    // Limit cache size - remove oldest entries if needed
     cache.keys().then(async (keys) => {
       if (keys.length >= MAX_MEDIA_CACHE_SIZE) {
+        // Delete oldest 10 entries
         const toDelete = keys.slice(0, 10)
         for (const key of toDelete) {
           await cache.delete(key)
         }
       }
     })
-
+    
     cache.put(request, responseToCache)
     console.log('[SW] Video cached:', request.url)
   }
@@ -184,18 +176,6 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return
 
   const url = new URL(request.url)
-
-  // Same-origin gate: cross-origin GETs (e.g. analytics, third-party fonts)
-  // pass through without SW interference.
-  if (url.origin !== self.location.origin) return
-
-  // SECURITY-CRITICAL: never let the SW touch authenticated/dynamic routes.
-  // No cache read, no cache write, no offline fallback — the request goes
-  // straight to the network so the server's session cookie scopes the
-  // response to the correct user. See NEVER_CACHE_PREFIXES above for the
-  // path list and backend/services/http_headers.py for the matching
-  // server-side `Cache-Control: no-store` policy.
-  if (shouldBypassCache(url.pathname)) return
 
   if (request.mode === 'navigate'){
     event.respondWith((async () => {
@@ -218,75 +198,64 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  if (STATIC_ASSET_PATHS.has(url.pathname)){
+  if (url.origin === self.location.origin && STATIC_ASSET_PATHS.has(url.pathname)){
     event.respondWith(cacheFirst(request, APP_SHELL_CACHE))
     return
   }
 
-  if (url.pathname.startsWith('/assets/')){
-    // Network-first for JS so deploys take effect; SWR for CSS.
+  if (url.origin === self.location.origin && url.pathname.startsWith('/assets/')){
+    // Use network-first for JS files to ensure latest code, stale-while-revalidate for CSS
     if (url.pathname.endsWith('.js')) {
-      event.respondWith((async () => {
-        const cache = await caches.open(RUNTIME_CACHE)
-        try {
-          const response = await fetch(request)
-          if (response?.status === 200){
-            cache.put(request, response.clone())
-          }
-          return response
-        } catch (error) {
-          const cached = await cache.match(request)
-          if (cached) return cached
-          throw error
-        }
-      })())
+      event.respondWith(networkFirst(request, RUNTIME_CACHE))
     } else {
       event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE))
     }
     return
   }
 
-  if (url.pathname.startsWith('/static/icons/')){
+  if (url.origin === self.location.origin && url.pathname.startsWith('/static/icons/')){
     event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE))
     return
   }
 
-  if (url.pathname.startsWith('/static/welcome/')){
-    // Welcome card images may be updated by admins at any time.
-    event.respondWith((async () => {
-      const cache = await caches.open(RUNTIME_CACHE)
-      try {
-        const response = await fetch(request)
-        if (response?.status === 200){
-          cache.put(request, response.clone())
-        }
-        return response
-      } catch (error) {
-        const cached = await cache.match(request)
-        if (cached) return cached
-        throw error
-      }
-    })())
+  // Welcome card images should always be fetched fresh (admin can update them anytime)
+  if (url.origin === self.location.origin && url.pathname.startsWith('/static/welcome/')){
+    // Network-first for welcome images to ensure fresh content
+    event.respondWith(networkFirst(request, RUNTIME_CACHE))
     return
   }
 
-  if (request.destination === 'image'){
+  if (url.origin === self.location.origin && request.destination === 'image'){
     event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE))
     return
   }
 
-  if (url.pathname.startsWith('/uploads/') && request.destination === 'video'){
+  // Cache videos from /uploads/ - cache-first since videos don't change
+  if (url.origin === self.location.origin && url.pathname.startsWith('/uploads/') && request.destination === 'video'){
     event.respondWith(cacheFirstMedia(request))
     return
   }
 
-  if (/\.(mp4|webm|mov|m4v)$/i.test(url.pathname)){
+  // Also catch video files by extension (fallback)
+  if (url.origin === self.location.origin && /\.(mp4|webm|mov|m4v)$/i.test(url.pathname)){
     event.respondWith(cacheFirstMedia(request))
     return
   }
 
-  // Fall through: anything not matched above (e.g. /uploads/<id>.bin) goes
-  // to the network without SW caching.
+  // User-specific endpoints: always go straight to network, never cache
+  if (NO_CACHE_API_ENDPOINTS.has(url.pathname)){
+    return // Let the browser handle it directly — no SW caching
+  }
+
+  if (STALE_API_ENDPOINTS.has(url.pathname) && request.headers.get('accept')?.includes('application/json')){
+    event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE))
+    return
+  }
+
+  if (url.pathname.startsWith('/api/') && request.headers.get('accept')?.includes('application/json')){
+    event.respondWith(networkFirst(request, RUNTIME_CACHE))
+    return
+  }
 })
 
 self.addEventListener('push', (event) => {
@@ -360,48 +329,10 @@ self.addEventListener('pushsubscriptionchange', (event) => {
   })())
 })
 
-async function clearAllRuntimeCaches(){
-  try {
-    const cacheNames = await caches.keys()
-    await Promise.all(
-      cacheNames
-        .filter((name) =>
-          name.startsWith('cp-runtime-') ||
-          name.startsWith('runtime-') ||
-          name.startsWith('cp-media-')
-        )
-        .map((name) => caches.delete(name))
-    )
-  } catch (error) {
-    console.warn('[SW] clearAllRuntimeCaches failed', error)
-  }
-}
-
 self.addEventListener('message', (event) => {
   const data = event.data || {}
   if (data.type === 'SKIP_WAITING'){
     self.skipWaiting()
-    return
-  }
-
-  if (data.type === 'CLEAR_USER_CACHES'){
-    // Triggered by client during logout / account switch so any cached
-    // bytes for the previous identity are gone before the next request.
-    event.waitUntil((async () => {
-      await clearAllRuntimeCaches()
-      const requestId = data.requestId
-      const targets = []
-      if (event.source) targets.push(event.source)
-      try {
-        const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' })
-        for (const client of clientsList){
-          if (!targets.includes(client)) targets.push(client)
-        }
-      } catch {}
-      for (const client of targets){
-        try { client.postMessage({ type: 'CLEAR_USER_CACHES_COMPLETE', requestId }) } catch {}
-      }
-    })())
     return
   }
 
@@ -415,14 +346,6 @@ self.addEventListener('message', (event) => {
       for (const rawUrl of urls){
         const absolute = rawUrl.startsWith('http') ? rawUrl : new URL(rawUrl, self.location.origin).href
         try{
-          // SERVER_PULL is only used for explicit prefetch of static-ish data.
-          // We still respect the bypass list so authenticated APIs are not
-          // accidentally cached by a misuse of this channel.
-          const targetPath = new URL(absolute).pathname
-          if (shouldBypassCache(targetPath)){
-            results.push({ url: rawUrl, success: false, error: 'bypass' })
-            continue
-          }
           const request = new Request(absolute, { credentials: 'include', cache: 'reload' })
           const response = await fetch(request)
           if (response && response.ok){

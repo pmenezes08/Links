@@ -551,7 +551,6 @@ def logout():
 
     current_app.session_interface.save_session(current_app, session, resp)
     auth_session.no_store(resp)
-    auth_session.clear_site_data(resp)
     logger.info(
         "auth.logout pre_username=%s tokens_revoked=%d push_native=%d push_fcm=%d",
         username or "-",
@@ -612,8 +611,9 @@ def delete_account_post():
         pass
 
     resp = jsonify({"success": True, "clear_storage": True})
-    auth_session.no_store(resp)
-    auth_session.clear_site_data(resp)
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
     return resp
 
 

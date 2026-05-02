@@ -451,9 +451,84 @@ def handle_broken_pipe(f):
             raise
     return decorated_function
 
-# Response-header policies (CORS, cache-control, security, onboarding redirect
-# logging) are registered through `backend.services.http_headers.init_app` from
-# `backend.__init__.init_app`. See backend/services/http_headers.py.
+# Add caching headers for static files (especially images)
+@app.after_request
+def add_cors_headers(response):
+    """CORS for admin.c-point.co (Phase 2: tenant subdomains will be added here)."""
+    origin = request.headers.get('Origin', '')
+    allowed_origins = [
+        'https://admin.c-point.co',
+        'https://cpoint-admin-739552904126.europe-west1.run.app',
+    ]
+    # Also allow any Cloud Run admin origin (staging may have different URL)
+    if origin and ('.run.app' in origin or 'localhost' in origin):
+        allowed_origins.append(origin)
+    if origin in allowed_origins:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+    return response
+
+@app.after_request
+def add_cache_headers(response):
+    """Add caching headers for static files to improve performance"""
+    content_type = response.headers.get('Content-Type', '')
+    if 'text/html' in content_type:
+        response.headers['Cache-Control'] = 'no-cache'
+        response.headers['Pragma'] = 'no-cache'
+        return response
+    
+    if request.path.endswith('sw.js'):
+        response.headers['Cache-Control'] = 'no-cache'
+        response.headers['Pragma'] = 'no-cache'
+        return response
+    
+    # Check if this is a static file request
+    if request.path.startswith('/static/'):
+        # Images get long cache time (7 days)
+        if any(request.path.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.ico']):
+            response.headers['Cache-Control'] = 'public, max-age=604800, immutable'  # 7 days
+            response.headers['Expires'] = (datetime.now() + timedelta(days=7)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+        # CSS and JS get medium cache time (1 day) with immutable flag
+        # Vite's filename hashing (index-B1Wbmng4.js) ensures new builds get new files
+        # The hash changes on every build, so aggressive caching is safe
+        elif any(request.path.endswith(ext) for ext in ['.css', '.js']):
+            response.headers['Cache-Control'] = 'public, max-age=86400, immutable'  # 1 day
+            response.headers['Expires'] = (datetime.now() + timedelta(days=1)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+        # Other static files get short cache time (1 hour)
+        else:
+            response.headers['Cache-Control'] = 'public, max-age=3600'  # 1 hour
+    
+    # Cache uploaded media files (videos, images) - iOS WKWebView respects these headers
+    if request.path.startswith('/uploads/'):
+        # Videos get long cache time (30 days) - they don't change after upload
+        if any(request.path.endswith(ext) for ext in ['.mp4', '.webm', '.mov', '.m4v', '.avi']):
+            response.headers['Cache-Control'] = 'public, max-age=2592000, immutable'  # 30 days
+            response.headers['Expires'] = (datetime.now() + timedelta(days=30)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+        # Images in uploads also get long cache time
+        elif any(request.path.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+            response.headers['Cache-Control'] = 'public, max-age=2592000, immutable'  # 30 days
+            response.headers['Expires'] = (datetime.now() + timedelta(days=30)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+        # Audio files
+        elif any(request.path.endswith(ext) for ext in ['.mp3', '.m4a', '.wav', '.ogg', '.webm']):
+            response.headers['Cache-Control'] = 'public, max-age=2592000, immutable'  # 30 days
+            response.headers['Expires'] = (datetime.now() + timedelta(days=30)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+    
+    # Add security headers while we're at it
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    
+    return response
+
+@app.after_request
+def log_onboarding_redirects(response):
+    try:
+        if response.status_code in (301, 302) and '/onboarding' in (response.headers.get('Location') or ''):
+            logger.warning(f"HTTP redirect to /onboarding: path={request.path}, referer={request.headers.get('Referer')}, ua={request.headers.get('User-Agent')}")
+    except Exception:
+        pass
+    return response
 
 # Custom template filters
 @app.template_filter('nl2br')
