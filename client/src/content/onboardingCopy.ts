@@ -47,17 +47,5 @@ export const STEVE_PACKAGE_NOTE =
 
 export const INTENT_QUESTION = 'First, which best describes you right now?'
 
-export const INTENT_FORK_GREETING =
-  "Hey 👋 Welcome to C-Point — I'm Steve, your guide here. " +
-  "Take a moment to settle in; I'll get to know you a little so the rest of the app fits you properly."
-
-export const INTENT_FORK_QUESTION = 'What brings you here?'
-
-export const INTENT_FORK_OPTION_B2C =
-  "I'm a new user and want to build personal networks"
-
-export const INTENT_FORK_OPTION_B2B =
-  "I'm a business and want to set up my business network"
-
 export const ORG_TYPE_PROMPT =
   'What type of organisation are you setting this up for? A short label is enough — e.g. fitness studio, school, professional association, brand.'
