@@ -1,25 +1,22 @@
 /**
- * Proper logout utility that clears all client-side state before navigating to /logout
+ * `performLogout` — explicit user-initiated logout flow.
+ *
+ * Delegates the heavy lifting to `resetAllAccountState`, which is the
+ * single source of truth for "wipe every byte tied to the previous
+ * identity". This module's only remaining job is the network round-trip
+ * to deactivate push tokens before the session cookie is cleared, then
+ * navigating to `/logout` so the server can revoke the remember-me
+ * token and stamp `Clear-Site-Data` (PR 1).
+ *
+ * NEVER reintroduce inline state-clearing here — past regressions came
+ * from `MobileLogin.finishSuccess` and `App.applyProfileFromServer`
+ * each maintaining their own divergent purge lists. All three paths now
+ * funnel through `resetAllAccountState` so they cannot drift.
  */
 
-import { VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES } from './chatThreadsCache'
+import { resetAllAccountState } from './accountStateReset'
 
-// Dynamic import for Capacitor to avoid issues on web
-async function clearCapacitorStorage(): Promise<void> {
-  try {
-    const { Capacitor } = await import('@capacitor/core')
-    if (Capacitor.isNativePlatform()) {
-      const { Preferences } = await import('@capacitor/preferences')
-      await Preferences.clear()
-      console.log('✅ Capacitor Preferences cleared')
-    }
-  } catch (e) {
-    // Not on native platform or Capacitor not available
-    console.log('Capacitor not available or not on native platform')
-  }
-}
-
-/** Deactivate server-side push mappings and browser subscription before session cookies are cleared. */
+/** Deactivate server-side push mappings + browser subscription before session cookies are cleared. */
 async function unregisterPushBeforeLogout(): Promise<void> {
   const w = typeof window !== 'undefined' ? (window as unknown as { __fcmToken?: string }) : null
   const fcmToken = w?.__fcmToken?.trim() || ''
@@ -59,183 +56,19 @@ async function unregisterPushBeforeLogout(): Promise<void> {
 }
 
 export async function performLogout(): Promise<void> {
-  console.log('🚪 Starting logout process...')
-  
-  // 0. Clear Google Sign-In cached account (so next sign-in shows account picker)
-  try {
-    const { Capacitor } = await import('@capacitor/core')
-    if (Capacitor.isNativePlatform()) {
-      const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth')
-      await GoogleAuth.signOut()
-    }
-  } catch {}
+  console.log('[logout] starting')
 
-  // 0a. Clear avatar cache so next login doesn't show stale profile picture
-  try {
-    const { clearAllAvatarCache } = await import('./avatarCache')
-    clearAllAvatarCache()
-  } catch {}
-
-  // 0b. Clear Capacitor native storage first (critical for iOS apps)
-  await clearCapacitorStorage()
-  
-  // 1. Clear localStorage items related to the session (keep in sync with App.tsx account-switch purge)
-  const keysToRemove = [
-    'signal_device_id',
-    'current_username',
-    'encryption_keys_generated_at',
-    'encryption_needs_sync',
-    'encryption_reset_requested',
-    'last_community_id',
-    'mic_permission_granted',
-    'home-timeline',
-    'communityManagementShowNested',
-    'cached_profile',
-  ]
-
-  // Also clear any keys that start with these prefixes
-  const prefixesToClear = [
-    'signal_',
-    'chat_',
-    'community_',
-    'cpoint_',
-    'onboarding_',
-    'signal-store-',
-    'dashboard-',
-    'community-feed:',
-    'group-feed:',
-    ...VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES,
-  ]
-  
-  try {
-    // Remove known keys
-    keysToRemove.forEach(key => {
-      try { localStorage.removeItem(key) } catch {}
-    })
-    
-    // Remove keys by prefix
-    const allKeys = Object.keys(localStorage)
-    allKeys.forEach(key => {
-      if (prefixesToClear.some(prefix => key.startsWith(prefix))) {
-        try { localStorage.removeItem(key) } catch {}
-      }
-    })
-    console.log('✅ localStorage cleared')
-  } catch (e) {
-    console.warn('Error clearing localStorage:', e)
-  }
-
-  // 3. Clear sessionStorage (preserve deep-link dedupe so iOS does not replay
-  // share URLs after logout — see App.tsx cpoint_processed_deep_links)
-  try {
-    const SESSION_PRESERVE_ON_LOGOUT = ['cpoint_processed_deep_links']
-    const preserved: Record<string, string> = {}
-    for (const key of SESSION_PRESERVE_ON_LOGOUT) {
-      try {
-        const v = sessionStorage.getItem(key)
-        if (v != null) preserved[key] = v
-      } catch {
-        /* ignore */
-      }
-    }
-    sessionStorage.clear()
-    for (const [key, val] of Object.entries(preserved)) {
-      try {
-        sessionStorage.setItem(key, val)
-      } catch {
-        /* ignore */
-      }
-    }
-    console.log('✅ sessionStorage cleared')
-  } catch (e) {
-    console.warn('Error clearing sessionStorage:', e)
-  }
-
-  // 4. Clear IndexedDB databases (encryption, signal protocol, offline DM/feed)
-  try {
-    const { deleteCpointOfflineDatabase } = await import('./offlineDb')
-    await deleteCpointOfflineDatabase()
-  } catch {
-    /* ignore */
-  }
-
-  const dbsToDelete = [
-    'chat-encryption',
-    'signal-protocol',
-    'signal-store',
-  ]
-  
-  for (const dbName of dbsToDelete) {
-    try {
-      await new Promise<void>((resolve) => {
-        const request = indexedDB.deleteDatabase(dbName)
-        request.onsuccess = () => {
-          console.log(`✅ Deleted IndexedDB: ${dbName}`)
-          resolve()
-        }
-        request.onerror = () => {
-          console.warn(`⚠️ Could not delete IndexedDB: ${dbName}`)
-          resolve()
-        }
-        request.onblocked = () => {
-          console.warn(`⚠️ IndexedDB deletion blocked: ${dbName}`)
-          resolve()
-        }
-        // Timeout after 1 second
-        setTimeout(resolve, 1000)
-      })
-    } catch (e) {
-      console.warn(`Error deleting IndexedDB ${dbName}:`, e)
-    }
-  }
-
-  // 5. Clear service worker caches (only user-specific data, NOT app shell or welcome images)
-  try {
-    if ('caches' in window) {
-      const cacheNames = await caches.keys()
-      await Promise.all(
-        cacheNames
-          .filter(cacheName => {
-            // User data caches (match App.tsx account-change sweep; keep static shell)
-            return cacheName.includes('runtime') || cacheName.includes('cp-')
-          })
-          .map(cacheName => {
-            console.log(`🗑️ Deleting cache: ${cacheName}`)
-            return caches.delete(cacheName)
-          })
-      )
-      console.log('✅ Service worker user caches cleared')
-    }
-  } catch (e) {
-    console.warn('Error clearing service worker caches:', e)
-  }
-
-  // 5b. Unregister service workers so /logout reaches the server (no stale SW shell).
-  try {
-    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations()
-      for (const registration of registrations) {
-        await registration.unregister()
-        console.log('✅ Service worker unregistered')
-      }
-    }
-  } catch (e) {
-    console.warn('Error unregistering service workers:', e)
-  }
-
-  // Expire native push install id cookie client-side (server also clears on /logout)
-  try {
-    document.cookie = 'native_push_install_id=; Max-Age=0; Path=/; SameSite=Lax'
-  } catch {
-    /* ignore */
-  }
-
-  // 6. Unregister push tokens while session cookie is still valid (stops post-logout notifications)
+  // 1. Push deactivation must run while the session cookie is still valid;
+  // do it before resetAllAccountState wipes the SW.
   await unregisterPushBeforeLogout()
 
-  // 7. Clear any cached data in memory by reloading the page after logout
-  console.log('🚪 Navigating to /logout endpoint...')
+  // 2. Wipe everything client-side (localStorage / sessionStorage / IndexedDB
+  // / Cache Storage / SW registration / Capacitor prefs / Google Auth).
+  await resetAllAccountState({ unregisterServiceWorkers: true })
 
-  // Navigate to logout endpoint - use replace to prevent back button issues
+  // 3. Hand off to the server. /logout returns Clear-Site-Data + no-store
+  // (PR 1) and redirects to /welcome. We use replace so the back button
+  // cannot resurrect the dashboard.
+  console.log('[logout] navigating to /logout')
   window.location.replace('/logout')
 }

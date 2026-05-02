@@ -430,8 +430,7 @@ def signup():
                     notify_community_new_member(community_id, username, conn)
                     conn.commit()
 
-                    session["username"] = username
-                    session.permanent = True
+                    auth_session.establish_login(username)
 
                     if _is_mobile_request():
                         return jsonify(
@@ -714,8 +713,7 @@ def login_password():
                     except Exception as exc:
                         logger.error("Error tracking login: %s", exc)
 
-                    session.permanent = True
-                    session["username"] = username
+                    auth_session.establish_login(username)
                     try:
                         install_cookie = request.cookies.get("native_push_install_id")
                         if install_cookie:
@@ -726,10 +724,6 @@ def login_password():
                                 logger.warning("fcm_tokens install association failed: %s", fcm_exc)
                     except Exception as exc:
                         logger.warning("native push install association failed: %s", exc)
-                    try:
-                        session.pop("pending_username", None)
-                    except Exception:
-                        pass
 
                     _invalidate_profile_and_dashboard_caches(username)
 
@@ -1021,8 +1015,7 @@ def google_sign_in():
                 username = row['username'] if hasattr(row, 'keys') else row[0]
                 apply_oauth_email_verified(c, ph, username, bool(email_verified))
                 conn.commit()
-                session['username'] = username
-                session.permanent = True
+                auth_session.establish_login(username)
                 _invalidate_profile_and_dashboard_caches(username)
                 logger.info(f"Google sign-in: returning user {username}")
                 resp = make_response(jsonify({'success': True, 'username': username, 'is_new': False}))
@@ -1039,8 +1032,7 @@ def google_sign_in():
                 c.execute(f"UPDATE users SET google_id = {ph} WHERE username = {ph}", (google_id, username))
                 apply_oauth_email_verified(c, ph, username, bool(email_verified))
                 conn.commit()
-                session['username'] = username
-                session.permanent = True
+                auth_session.establish_login(username)
                 # Display name is intentionally NOT touched on link: established users keep
                 # whatever they already had in user_profiles. Auto-fill happens only on the
                 # new-user creation branch below.
@@ -1094,15 +1086,14 @@ def google_sign_in():
                 except Exception:
                     pass
 
-            # Handle invite token
+            auth_session.establish_login(username)
+            # Re-attach the invite token AFTER establish_login (which calls
+            # session.clear()), otherwise the onboarding flow would lose it.
             if invite_token:
                 try:
                     session['pending_invite_token'] = invite_token
                 except Exception:
                     pass
-
-            session['username'] = username
-            session.permanent = True
             _invalidate_profile_and_dashboard_caches(username)
             logger.info(f"Google sign-in: created new user {username}")
             resp = make_response(jsonify({'success': True, 'username': username, 'is_new': True}))

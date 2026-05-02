@@ -134,7 +134,16 @@ def issue(response, username: str) -> str:
 
 
 def restore_session(request, session) -> Optional[str]:
-    """Restore the session from a valid remember_token cookie."""
+    """Restore a session from a valid remember-token cookie.
+
+    Looks up the cookie's hash in ``remember_tokens``; if a non-expired row
+    is found, the session is established via
+    :func:`backend.services.auth_session.establish_login`, which clears any
+    leftover keys, mints a fresh ``login_id``, and marks the session
+    permanent. We deliberately go through ``establish_login`` rather than
+    setting session keys directly so silent restorations get the same
+    account-isolation guarantees as explicit logins (PR 2).
+    """
     token_hash = cookie_hash(request)
     if not token_hash:
         return None
@@ -167,8 +176,12 @@ def restore_session(request, session) -> Optional[str]:
     if not username:
         return None
 
-    session.permanent = True
-    session["username"] = username
+    # Local import to break the circular dependency:
+    # auth_session is allowed to import remember_tokens (it doesn't today,
+    # but might in the future), so we import lazily here.
+    from backend.services import auth_session
+
+    auth_session.establish_login(str(username))
     return str(username)
 
 

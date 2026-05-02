@@ -109,7 +109,53 @@ function AppRoutes(){
     [],
   )
 
-  const applyProfileFromServer = useCallback((profile: Record<string, unknown>) => {
+  const applyProfileFromServer = useCallback((profile: Record<string, unknown>, loginId?: string) => {
+    // Account-isolation second-line defense (PR 2).
+    //
+    // The server mints a fresh `login_id` (uuid4) on every successful login
+    // through `auth_session.establish_login` and echoes it back here in the
+    // `/api/profile_me` payload. We cache the value in
+    // `localStorage.last_login_id`. If the next profile load returns a
+    // different epoch — meaning the browser silently picked up another
+    // user's session (remember-me, native Google Auto-sign-in, account
+    // switch, etc.) — we run the full client-side reset and reload
+    // immediately, so no React tree ever paints with mixed-identity data.
+    //
+    // The same-username comparison kept as a belt-and-braces fallback for
+    // older clients/server versions that don't yet propagate `login_id`.
+    const username = (profile as any)?.username as string | undefined
+    const previousUsername = localStorage.getItem('current_username')
+    const previousLoginId = localStorage.getItem('last_login_id')
+
+    const epochMismatch = !!loginId && !!previousLoginId && loginId !== previousLoginId
+    const usernameMismatch = !!username && !!previousUsername && username !== previousUsername
+
+    if (epochMismatch || usernameMismatch) {
+      console.warn(
+        '[applyProfileFromServer] account switch detected',
+        { epochMismatch, usernameMismatch, previousUsername, username },
+      )
+      // Don't paint the new profile with stale state hanging around; reset
+      // everything (keep the SW alive), record the new identity, then
+      // reload so React mounts cleanly. The reload is intentional: in-flight
+      // state hooks (queries, contexts, refs) cannot be safely re-keyed
+      // mid-render without risking a partial purge.
+      ;(async () => {
+        try {
+          const { resetAllAccountState } = await import('./utils/accountStateReset')
+          await resetAllAccountState({ unregisterServiceWorkers: false })
+        } catch (err) {
+          console.warn('resetAllAccountState failed during applyProfileFromServer', err)
+        }
+        try {
+          if (username) localStorage.setItem('current_username', username)
+          if (loginId) localStorage.setItem('last_login_id', loginId)
+        } catch { /* ignore */ }
+        window.location.reload()
+      })()
+      return
+    }
+
     setProfileData(profile)
     setIsVerified(!!(profile as any)?.email_verified)
     setProfileError(null)
@@ -117,41 +163,14 @@ function AppRoutes(){
       localStorage.setItem('cached_profile', JSON.stringify(profile))
     } catch { /* ignore */ }
 
-    const username = (profile as any)?.username as string | undefined
-    const previousUsername = localStorage.getItem('current_username')
-    if (username && previousUsername && previousUsername !== username) {
-      const keysToRemove = ['home-timeline', 'communityManagementShowNested']
-      const prefixesToClear = ['community_', 'chat_', 'dashboard-', 'community-feed:', 'group-feed:']
-
-      try {
-        keysToRemove.forEach(key => localStorage.removeItem(key))
-        Object.keys(localStorage).forEach(key => {
-          if (prefixesToClear.some(prefix => key.startsWith(prefix))) {
-            localStorage.removeItem(key)
-          }
-        })
-      } catch (e) {
-        console.warn('Error clearing localStorage for user change:', e)
-      }
-
-      if ('caches' in window) {
-        caches.keys().then(names => {
-          names.forEach(name => {
-            if (name.includes('runtime') || name.includes('cp-')) {
-              caches.delete(name)
-            }
-          })
-        }).catch(() => {})
-      }
-
-      try {
-        import('./utils/avatarCache').then(({ clearAllAvatarCache }) => clearAllAvatarCache()).catch(() => {})
-      } catch { /* ignore */ }
-    }
-
     if (username) {
       try {
         localStorage.setItem('current_username', username)
+      } catch { /* ignore */ }
+    }
+    if (loginId) {
+      try {
+        localStorage.setItem('last_login_id', loginId)
       } catch { /* ignore */ }
     }
 
@@ -592,7 +611,8 @@ function AppRoutes(){
       const json = await response.json().catch(() => null)
       if (json?.success && json.profile) {
         const profile = json.profile as Record<string, unknown>
-        applyProfileFromServer(profile)
+        const loginId = typeof json.login_id === 'string' ? json.login_id : undefined
+        applyProfileFromServer(profile, loginId)
         return profile as UserProfile
       }
 
