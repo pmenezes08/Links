@@ -8,7 +8,10 @@ from .blueprints import register_blueprints
 
 
 def init_app(app: Flask) -> None:
-    """Attach blueprints and future extensions to the given Flask app."""
+    """Attach blueprints, response-header policies, and CLI commands."""
+    from .services.http_headers import init_app as _init_http_headers
+
+    _init_http_headers(app)
     register_blueprints(app)
 
     # Register the Steve community-welcome backfill CLI command. Doing this

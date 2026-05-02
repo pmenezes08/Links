@@ -52,10 +52,25 @@ def no_store(response):
     return response
 
 
+def clear_site_data(response):
+    """Tell compliant browsers to wipe storage for this origin.
+
+    Set on `/logout` (and on permanent account deletion) so Chrome, Edge, and
+    Firefox flush Cache Storage, IndexedDB, localStorage, sessionStorage,
+    cookies, and SW registrations in one shot. Safari ignores the header
+    today, so the client-side scrub in `client/src/utils/logout.ts` remains
+    the primary mechanism for that browser; this header is a strong second
+    line of defense for the rest.
+    """
+    response.headers["Clear-Site-Data"] = '"cache", "cookies", "storage"'
+    return response
+
+
 __all__ = [
     "INSTALL_COOKIE_NAME",
     "clear_install_cookie",
     "clear_session_cookie",
+    "clear_site_data",
     "no_store",
     "set_install_cookie",
 ]
