@@ -20,7 +20,7 @@ import { SENDING_MEDIA_LABEL } from '../chat/mediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
 import { openExternalNativeLink } from '../utils/openExternalInApp'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
-import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
+import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries, groupConversationOfflineKey } from '../utils/offlineDb'
 import {
   takePendingShareFilesOnce,
   takePendingShareUrlsOnce,
@@ -638,11 +638,14 @@ export default function GroupChatThread() {
   }, [group_id])
 
   const loadMessages = useCallback(async (silent = false, opts?: { pollTick?: number }) => {
+    const offlineKey = currentUsername && group_id ? groupConversationOfflineKey(currentUsername, group_id) : null
     if (!navigator.onLine) {
       if (!silent) {
-        const cached = await getCachedMessages(`group:${group_id}`)
-        if (cached?.length) {
-          setServerMessages(cached as Message[])
+        if (offlineKey) {
+          const cached = await getCachedMessages(offlineKey)
+          if (cached?.length) {
+            setServerMessages(cached as Message[])
+          }
         }
         setLoading(false)
       }
@@ -700,8 +703,8 @@ export default function GroupChatThread() {
           setReactions(prev => mergeGroupReactionsFromMessages(prev, newServerMessages))
         } else {
           if (!silent) setHasMoreMessages(!!data.has_more)
-          if (!isDelta) {
-            cacheMessages(`group:${group_id}`, newServerMessages)
+          if (!isDelta && offlineKey) {
+            cacheMessages(offlineKey, newServerMessages)
           }
 
           setServerMessages(prev => {
@@ -757,7 +760,7 @@ export default function GroupChatThread() {
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [group_id])
+  }, [group_id, currentUsername])
 
   const loadOlderMessages = useCallback(async () => {
     if (loadingOlderRef.current || !hasMoreMessages) return
@@ -836,8 +839,8 @@ export default function GroupChatThread() {
 
   // Hydrate pending/failed outbox entries so they survive app restarts
   useEffect(() => {
-    if (!group_id) return
-    getOutboxEntries().then(entries => {
+    if (!group_id || !currentUsername) return
+    getOutboxEntries(currentUsername).then(entries => {
       const myEntries = entries.filter(e => e.type === 'group' && e.groupId === String(group_id) && (e.status === 'pending' || e.status === 'failed'))
       if (!myEntries.length) return
       setServerMessages(prev => {
@@ -1058,6 +1061,7 @@ export default function GroupChatThread() {
 
     let outboxId = -1
     addToOutbox({
+      owner: currentUsername || '',
       type: 'group',
       recipient: '',
       groupId: String(group_id),
@@ -1138,7 +1142,7 @@ export default function GroupChatThread() {
       setServerMessages(prev => prev.map(m =>
         (m as any).clientKey === clientKey ? { ...m, sendFailed: true } : m
       ))
-      getOutboxEntries().then(entries => {
+      getOutboxEntries(currentUsername || '').then(entries => {
         const e = entries.find(x => x.clientKey === clientKey)
         if (e?.id != null) updateOutboxStatus(e.id, 'failed', (e.retries || 0) + 1).catch(() => {})
       }).catch(() => {})
@@ -1156,7 +1160,7 @@ export default function GroupChatThread() {
       .then(data => {
         clearTimeout(retryTimeout)
         if (data.success) {
-          getOutboxEntries().then(entries => {
+          getOutboxEntries(currentUsername || '').then(entries => {
             const e = entries.find(x => x.clientKey === clientKey)
             if (e?.id != null) removeFromOutbox(e.id).catch(() => {})
           }).catch(() => {})
@@ -1820,7 +1824,7 @@ export default function GroupChatThread() {
       setServerMessages(prev => prev.filter(m => m.id !== messageId))
       const ck = (messageData as { clientKey?: string }).clientKey
       if (ck) {
-        getOutboxEntries()
+        getOutboxEntries(currentUsername || '')
           .then(entries => {
             const e = entries.find(x => x.clientKey === ck && x.type === 'group')
             if (e?.id != null) removeFromOutbox(e.id).catch(() => {})
@@ -1917,7 +1921,7 @@ export default function GroupChatThread() {
         if (typeof m.id === 'number' && m.id <= 0) {
           const ck = (m as { clientKey?: string }).clientKey
           if (ck) {
-            getOutboxEntries()
+            getOutboxEntries(currentUsername || '')
               .then(entries => {
                 const e = entries.find(x => x.clientKey === ck && x.type === 'group')
                 if (e?.id != null) removeFromOutbox(e.id).catch(() => {})

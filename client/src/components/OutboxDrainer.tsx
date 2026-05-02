@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useNetwork } from '../contexts/NetworkContext'
+import { useUserProfile } from '../contexts/UserProfileContext'
 import { getOutboxEntries, updateOutboxStatus, removeFromOutbox, type OutboxEntry } from '../utils/offlineDb'
 
 const MAX_RETRIES = 3
@@ -28,17 +29,30 @@ async function sendGroup(entry: OutboxEntry): Promise<boolean> {
   return !!j?.success
 }
 
+/**
+ * Drain queued offline sends after a network reconnect.
+ *
+ * Drains ONLY the entries owned by the currently signed-in viewer. This is
+ * critical: ``getOutboxEntries(viewer)`` filters by the ``owner`` field so a
+ * pending message that was queued by user A on this device can never be
+ * delivered as user B after a logout/login. (Pre-PR-3 entries lacking the
+ * ``owner`` field are deleted on read inside ``getOutboxEntries`` since they
+ * cannot be safely attributed to anyone.)
+ */
 export default function OutboxDrainer() {
   const { justReconnected } = useNetwork()
+  const { profile } = useUserProfile()
   const drainingRef = useRef(false)
+  const viewer = (profile as { username?: string } | null)?.username || ''
 
   useEffect(() => {
     if (!justReconnected || drainingRef.current) return
+    if (!viewer) return
     drainingRef.current = true
 
     ;(async () => {
       try {
-        const entries = await getOutboxEntries()
+        const entries = await getOutboxEntries(viewer)
         const now = Date.now()
         const eligible = entries.filter(e =>
           e.status !== 'sending' &&
@@ -68,7 +82,7 @@ export default function OutboxDrainer() {
       } catch { /* IDB unavailable */ }
       drainingRef.current = false
     })()
-  }, [justReconnected])
+  }, [justReconnected, viewer])
 
   return null
 }
