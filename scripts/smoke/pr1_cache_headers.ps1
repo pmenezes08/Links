@@ -106,22 +106,19 @@ foreach ($path in $PublicEndpoints) {
 }
 
 # /logout must redirect AND carry Clear-Site-Data.
-# We use curl rather than Invoke-WebRequest because PowerShell's web cmdlet
-# refuses to surface the headers of a 30x response cleanly (it follows by
-# default, and -MaximumRedirection 0 still throws). curl's `-I` returns the
-# raw response head we actually want to inspect.
 Write-Host "  checking /logout Clear-Site-Data"
-$curlExe = (Get-Command curl.exe -ErrorAction SilentlyContinue).Source
-if (-not $curlExe) {
-    $failures += "SKIPPED: /logout check (curl.exe not on PATH)"
+try {
+    $logoutResp = Invoke-WebRequest -Uri "$BaseUrl/logout" -Method Get -MaximumRedirection 0 -UseBasicParsing -ErrorAction Stop
+} catch [System.Net.WebException] {
+    $logoutResp = $_.Exception.Response
+}
+if ($logoutResp -and $logoutResp.Headers) {
+    $csd = ($logoutResp.Headers['Clear-Site-Data'] | Out-String).Trim()
+    if ($csd -notmatch '"cache".*"cookies".*"storage"') {
+        $failures += "MISSING: /logout has Clear-Site-Data='$csd'"
+    }
 } else {
-    $headOutput = & $curlExe -I -s "$BaseUrl/logout" 2>&1
-    if (-not ($headOutput -match '(?im)^clear-site-data:\s*"cache".*"cookies".*"storage"')) {
-        $failures += "MISSING: /logout response did not include Clear-Site-Data with cache/cookies/storage"
-    }
-    if (-not ($headOutput -match '(?im)^cache-control:\s*[^\r\n]*no-store')) {
-        $failures += "MISSING: /logout response did not include Cache-Control: no-store"
-    }
+    $failures += "MISSING: /logout did not return readable headers"
 }
 
 if ($failures.Count -gt 0) {

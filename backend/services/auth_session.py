@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import time
-import uuid
-
-from flask import current_app, session
+from flask import current_app
 
 
 INSTALL_COOKIE_NAME = "native_push_install_id"
@@ -69,45 +66,11 @@ def clear_site_data(response):
     return response
 
 
-def establish_login(username: str) -> str:
-    """Reset the Flask session and mint a fresh login epoch for ``username``.
-
-    Account-isolation guarantee (PR 2). Every successful authentication path
-    (password login, Google sign-in, invite acceptance, remember-me restore,
-    etc.) MUST funnel through this helper so:
-
-      * any keys left over from a previous identity are wiped via
-        ``session.clear()`` before the new username is written;
-      * the session is marked permanent so the cookie is sent back;
-      * a fresh ``login_id`` (UUID4) is minted and echoed back to the client
-        through ``/api/profile_me``. The client compares it to the
-        previously-cached ``last_login_id`` and triggers a full state reset
-        on mismatch — see ``client/src/utils/accountStateReset.ts``.
-
-    Returns the newly minted ``login_id`` so callers that already constructed
-    a response can include it in the JSON payload (the bootstrap login flows
-    rely on the subsequent ``/api/profile_me`` round-trip, but mobile login
-    surfaces the value directly via ``finishSuccess``).
-    """
-    if not username:
-        raise ValueError("establish_login: username is required")
-
-    session.clear()
-    session["username"] = username
-    login_id = uuid.uuid4().hex
-    session["login_id"] = login_id
-    session["login_at_unix"] = int(time.time())
-    session.permanent = True
-    session.modified = True
-    return login_id
-
-
 __all__ = [
     "INSTALL_COOKIE_NAME",
     "clear_install_cookie",
     "clear_session_cookie",
     "clear_site_data",
-    "establish_login",
     "no_store",
     "set_install_cookie",
 ]

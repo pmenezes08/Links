@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
-import { resetAllAccountState } from '../utils/accountStateReset'
 import { invalidateDashboardCache } from '../utils/dashboardCache'
 import { deleteCachedKeyVal } from '../utils/offlineDb'
 import { triggerDashboardServerPull } from '../utils/serverPull'
@@ -124,17 +123,16 @@ export default function MobileLogin() {
             })
           } catch {}
         }
-
-        // CRITICAL ORDER (account-isolation hardening, PR 2):
-        // 1. Reset all client state BEFORE writing the new identity, so any
-        //    leftover bytes from the previous session cannot leak into the
-        //    bootstrap render. Keep the SW registered (we still want it) but
-        //    flush every cache, IndexedDB row, and localStorage key.
-        // 2. Then capture the new username + signin-notice flag.
-        await resetAllAccountState({ unregisterServiceWorkers: false })
-
-        // Restore the existing-account banner flag AFTER the reset, since
-        // resetAllAccountState wipes sessionStorage.
+        try {
+          localStorage.removeItem('cached_profile')
+        } catch {
+          /* so loadProfile cannot fall back to previous user */
+        }
+        try {
+          localStorage.setItem('current_username', j.username ?? '')
+        } catch {}
+        invalidateDashboardCache()
+        void deleteCachedKeyVal('dashboard-data')
         if (j.is_new === false) {
           try {
             sessionStorage.setItem('cpoint_signin_notice', 'existing_account')
@@ -142,14 +140,6 @@ export default function MobileLogin() {
             /* ignore */
           }
         }
-
-        try {
-          localStorage.setItem('current_username', j.username ?? '')
-        } catch {}
-
-        invalidateDashboardCache()
-        void deleteCachedKeyVal('dashboard-data')
-
         await (window as any).__reregisterPushToken?.()
         await triggerDashboardServerPull()
         try {
@@ -255,8 +245,7 @@ export default function MobileLogin() {
           const j = await r.json()
           if (j?.success && j?.profile) {
             const profile = j.profile as Record<string, unknown>
-            const loginId = typeof j.login_id === 'string' ? j.login_id : undefined
-            applyProfileFromServer(profile, loginId)
+            applyProfileFromServer(profile)
             // If user has invite token, auto-join them
             if (inviteToken) {
               try {

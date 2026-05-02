@@ -23,7 +23,6 @@ from urllib.parse import urlencode, urljoin
 from flask import Blueprint, jsonify, request, session
 
 from backend.services import ai_usage, user_billing
-from backend.services.community import is_app_admin
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.entitlements import resolve_entitlements
 from backend.services.feature_flags import entitlements_enforcement_enabled
@@ -129,22 +128,6 @@ def _build_usage(username: str, ent: Dict[str, Any]) -> Dict[str, Any]:
         "resets_at_monthly": summary.get("resets_at_monthly"),
         "resets_at_daily": summary.get("resets_at_daily"),
     }
-
-
-@me_bp.route("/api/check_admin", methods=["GET"])
-def check_admin():
-    """Return ``{is_admin}`` for the signed-in user.
-
-    Unauthenticated callers get ``{is_admin: False}`` rather than 401 so the
-    existing client UI (which renders the badge if ``is_admin`` is true and
-    a no-op otherwise) keeps working without a special-case for logged-out
-    users. The endpoint is exclusively for UI gating; every admin-only route
-    re-checks server-side via :func:`backend.services.community.is_app_admin`.
-    """
-    username = _session_username()
-    if not username:
-        return jsonify({"is_admin": False})
-    return jsonify({"is_admin": bool(is_app_admin(username))})
 
 
 @me_bp.route("/api/me/entitlements", methods=["GET"])

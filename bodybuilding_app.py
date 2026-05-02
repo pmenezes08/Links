@@ -6100,7 +6100,13 @@ def auto_flag_content_if_needed(post_id, content, username, community_id):
             logger.error(f"Error auto-flagging content: {e}")
 
 
-# /api/check_admin moved to backend/blueprints/me.py
+@app.route('/api/check_admin', methods=['GET'])
+@login_required
+def check_admin():
+    """Check if current user is admin"""
+    username = session.get('username')
+    return jsonify({'is_admin': is_app_admin(username)})
+
 
 @app.route('/api/admin/steve_profiles', methods=['GET'])
 @login_required
@@ -10886,8 +10892,156 @@ def profile():
         logger.error(f"Error in profile for {username}: {str(e)}")
         abort(500)
 
-# /api/profile_me moved to backend/blueprints/profile_me.py
-# (uses backend/services/profile_loader.py for the SQL + row mapping)
+@app.route('/api/profile_me')
+@login_required
+def api_profile_me():
+    username = session['username']
+    
+    # Check cache first for faster profile loading (skip when forcing refresh)
+    cache_key = f"profile:{username}"
+    bypass_profile_cache = bool(
+        request.args.get("_nocache")
+        or request.args.get("nocache")
+        or request.args.get("refresh")
+    )
+    cached_profile = None if bypass_profile_cache else cache.get(cache_key)
+    if cached_profile:
+        logger.debug(f"🚀 Cache hit: profile for {username}")
+        resp = jsonify({'success': True, 'profile': cached_profile})
+        # Prevent browser caching so profile picture changes appear immediately
+        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        resp.headers['Pragma'] = 'no-cache'
+        resp.headers['Expires'] = '0'
+        return resp
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Include professional fields in the query (notification_show_previews added in migration)
+            row = None
+            try:
+                c.execute("""
+                    SELECT u.username, u.email, u.subscription, u.email_verified, u.email_verified_at,
+                           u.first_name, u.last_name, u.gender, u.country, u.city, u.date_of_birth, u.age,
+                           p.display_name, p.bio, p.location, p.website,
+                           p.instagram, p.twitter, p.profile_picture, p.cover_photo,
+                           u.role, u.company, u.industry, u.linkedin, u.professional_about, u.professional_interests,
+                           u.professional_company_intel, u.notification_show_previews
+                    FROM users u
+                    LEFT JOIN user_profiles p ON u.username = p.username
+                    WHERE u.username = ?
+                """, (username,))
+                row = c.fetchone()
+            except Exception:
+                c.execute("""
+                    SELECT u.username, u.email, u.subscription, u.email_verified, u.email_verified_at,
+                           u.first_name, u.last_name, u.gender, u.country, u.city, u.date_of_birth, u.age,
+                           p.display_name, p.bio, p.location, p.website,
+                           p.instagram, p.twitter, p.profile_picture, p.cover_photo,
+                           u.role, u.company, u.industry, u.linkedin, u.professional_about, u.professional_interests,
+                           u.professional_company_intel
+                    FROM users u
+                    LEFT JOIN user_profiles p ON u.username = p.username
+                    WHERE u.username = ?
+                """, (username,))
+                row = c.fetchone()
+            if not row:
+                return jsonify({ 'success': False, 'error': 'not found' }), 404
+            def get_val(key_or_idx):
+                try:
+                    if hasattr(row, 'keys'):
+                        if isinstance(key_or_idx, str):
+                            return row.get(key_or_idx)
+                        return row[key_or_idx]
+                    else:
+                        return row[key_or_idx]
+                except Exception:
+                    return None
+            
+            # Parse interests from JSON or comma-separated string
+            interests_raw = get_val('professional_interests') if hasattr(row, 'keys') else get_val(25)
+            company_intel_val = get_val('professional_company_intel') if hasattr(row, 'keys') else get_val(26)
+            interests_list = []
+            if interests_raw:
+                try:
+                    decoded = json.loads(interests_raw)
+                    if isinstance(decoded, list):
+                        interests_list = [str(i).strip() for i in decoded if i and str(i).strip()]
+                except (json.JSONDecodeError, TypeError):
+                    interests_list = [part.strip() for part in str(interests_raw).split(',') if part and part.strip()]
+            
+            profile = {
+                'username': username,
+                'email': get_val('email') if hasattr(row, 'keys') else row[1],
+                'subscription': get_val('subscription') if hasattr(row, 'keys') else row[2],
+                'email_verified': bool(get_val('email_verified') if hasattr(row, 'keys') else row[3]),
+                'email_verified_at': get_val('email_verified_at') if hasattr(row, 'keys') else row[4],
+                'first_name': get_val('first_name') if hasattr(row, 'keys') else row[5],
+                'last_name': get_val('last_name') if hasattr(row, 'keys') else row[6],
+                'gender': get_val('gender') if hasattr(row, 'keys') else row[7],
+                'country': get_val('country') if hasattr(row, 'keys') else row[8],
+                'city': get_val('city') if hasattr(row, 'keys') else row[9],
+                'date_of_birth': get_val('date_of_birth') if hasattr(row, 'keys') else row[10],
+                'age': get_val('age') if hasattr(row, 'keys') else row[11],
+                'display_name': get_val('display_name') if hasattr(row, 'keys') else row[12],
+                'bio': get_val('bio') if hasattr(row, 'keys') else row[13],
+                'location': get_val('location') if hasattr(row, 'keys') else row[14],
+                'website': get_val('website') if hasattr(row, 'keys') else row[15],
+                'instagram': get_val('instagram') if hasattr(row, 'keys') else row[16],
+                'twitter': get_val('twitter') if hasattr(row, 'keys') else row[17],
+                'profile_picture': get_val('profile_picture') if hasattr(row, 'keys') else row[18],
+                'cover_photo': get_val('cover_photo') if hasattr(row, 'keys') else row[19],
+                'personal': {
+                    'display_name': (get_val('display_name') if hasattr(row, 'keys') else row[12]) or username,
+                    'bio': get_val('bio') if hasattr(row, 'keys') else row[13],
+                    'date_of_birth': get_val('date_of_birth') if hasattr(row, 'keys') else row[10],
+                    'gender': get_val('gender') if hasattr(row, 'keys') else row[7],
+                    'country': get_val('country') if hasattr(row, 'keys') else row[8],
+                    'city': get_val('city') if hasattr(row, 'keys') else row[9],
+                },
+                'professional': {
+                    'role': get_val('role') if hasattr(row, 'keys') else get_val(20),
+                    'company': get_val('company') if hasattr(row, 'keys') else get_val(21),
+                    'industry': get_val('industry') if hasattr(row, 'keys') else get_val(22),
+                    'linkedin': get_val('linkedin') if hasattr(row, 'keys') else get_val(23),
+                    'about': get_val('professional_about') if hasattr(row, 'keys') else get_val(24),
+                    'interests': interests_list,
+                    'company_intel': (str(company_intel_val).strip() if company_intel_val is not None else ''),
+                },
+                'notification_show_previews': (
+                    True
+                    if get_val('notification_show_previews') is None
+                    else bool(int(get_val('notification_show_previews')))
+                ),
+            }
+            try:
+                c.execute("SELECT timezone FROM users WHERE username = ?", (username,))
+                tz_row = c.fetchone()
+                if tz_row:
+                    tz_raw = tz_row["timezone"] if hasattr(tz_row, "keys") else tz_row[0]
+                    profile["timezone"] = (str(tz_raw).strip() if tz_raw is not None else "") or None
+                else:
+                    profile["timezone"] = None
+            except Exception:
+                profile["timezone"] = None
+
+            # Cache profile for faster future requests
+            from redis_cache import USER_CACHE_TTL
+            cache.set(cache_key, profile, USER_CACHE_TTL)  # Optimized TTL
+            logger.debug(f"💾 Cached profile for {username}")
+            
+            resp = jsonify({ 'success': True, 'profile': profile })
+            # Prevent browser caching so profile picture changes appear immediately
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+            return resp
+    except Exception as e:
+        logger.error(f"Error in api_profile_me: {e}")
+        logger.error(f"Error details: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({ 'success': False, 'error': 'server error' }), 500
 
 
 @app.route('/api/account/timezone', methods=['POST'])
