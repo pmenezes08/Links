@@ -753,6 +753,7 @@ function AppRoutes(){
                 <Route path="/admin_dashboard_react" element={<AdminDashboard />} />
                 <Route path="/admin_profile_react" element={<AdminProfile />} />
                 <Route path="/home" element={<HomeTimeline />} />
+                <Route path="/feed" element={<HomeTimeline mode="dashboard_feed" />} />
                 <Route path="/workout_tracking" element={<WorkoutTracking />} />
                 <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
                 <Route path="/community/:community_id/calendar_react" element={<CommunityCalendar />} />
