@@ -344,6 +344,103 @@ class TestNetworkingRetrieval(unittest.TestCase):
         self.assertEqual(ranked[0], "founder_parent")
         self.assertNotEqual(ranked[0], "founder_not_parent")
 
+    def test_goal_seeking_prompt_uses_reasoning_planner(self):
+        self.assertTrue(
+            should_use_reasoning_planner(
+                "I want to fly a fighter jet and need someone who can help me achieve this dream",
+                [],
+            )
+        )
+
+    def test_search_rewrite_fallback_prefers_practitioner_dimensions(self):
+        plan = build_dimension_plan(
+            {
+                "search_rewrite": "pilot commercial pilot flying aircraft flight experience gliding",
+                "facets": {},
+            }
+        )
+
+        self.assertEqual(
+            plan["primary_dimensions"],
+            ["LifeCareer", "Expertise", "InferredContext", "UniqueFingerprint"],
+        )
+        self.assertIn("Index", plan["secondary_dimensions"])
+        self.assertIn("GeographyCulture", plan["secondary_dimensions"])
+
+    def test_location_and_trait_facets_keep_targeted_dimensions_primary(self):
+        location_plan = build_dimension_plan(
+            {
+                "facets": {"geography": ["Lisbon"]},
+                "search_rewrite": "Lisbon current location",
+            }
+        )
+        trait_plan = build_dimension_plan(
+            {
+                "facets": {"traits": ["goal-driven", "collaborative"]},
+                "search_rewrite": "goal-driven collaborative traits",
+            }
+        )
+
+        self.assertEqual(location_plan["primary_dimensions"][:2], ["GeographyCulture", "InferredContext"])
+        self.assertEqual(trait_plan["primary_dimensions"][:2], ["Identity", "UniqueFingerprint"])
+
+    def test_practitioner_scoring_ranks_pilot_above_aviation_adjacent(self):
+        rows = [
+            (
+                "pilot",
+                "Pilot",
+                "Former commercial pilot and competitive glider.",
+                "",
+                "",
+                "Investing",
+                "Managing Director",
+                "Family Office",
+                "gliding, aircraft, aviation",
+                "",
+                "Commercial pilot for 20 years with extensive flight experience, aircraft operations, and competitive gliding.",
+            ),
+            (
+                "aviation_adjacent",
+                "Aviation Adjacent",
+                "Investor in aviation companies.",
+                "",
+                "",
+                "Aviation",
+                "Investor",
+                "Aero Ventures",
+                "aviation, aerospace",
+                "",
+                "Works with aviation operations companies and aerospace suppliers but has no personal flying background.",
+            ),
+        ]
+        plan = {
+            "facets": {
+                "experiences": [
+                    "pilot",
+                    "commercial pilot",
+                    "flying",
+                    "aircraft",
+                    "flight experience",
+                    "gliding",
+                    "aviation operations",
+                ]
+            },
+            "primary_dimensions": ["LifeCareer", "Expertise", "InferredContext", "UniqueFingerprint"],
+            "hard_dimensions": ["LifeCareer"],
+            "search_rewrite": "pilot commercial pilot flying aircraft flight experience gliding aviation operations fighter jet mentor",
+        }
+
+        ranked = structured_candidates(
+            rows,
+            "I want to fly a fighter jet and need someone who can help me achieve this dream",
+            self._getter,
+            retrieval_plan=plan,
+        )
+        details = structured_match_details(rows, self._getter, retrieval_plan=plan)
+
+        self.assertEqual(ranked[0], "pilot")
+        self.assertGreater(details["pilot"]["practitioner_hits"], details["aviation_adjacent"]["practitioner_hits"])
+
     def test_tiered_roster_separates_direct_and_broader_matches(self):
         rows = [
             (

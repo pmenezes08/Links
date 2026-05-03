@@ -113,7 +113,40 @@ _PLANNER_LEAD_PHRASES = (
     "anyone who",
     "someone who",
     "people who",
+    "introduce me to someone who",
 )
+
+_GOAL_SEEKING_PHRASES = (
+    "i want to",
+    "i would like to",
+    "help me",
+    "can help me",
+    "achieve",
+    "learn",
+    "become",
+    "try",
+    "dream",
+    "mentor",
+    "advise",
+    "advice",
+    "guide me",
+    "teach me",
+    "get into",
+)
+
+_PRACTITIONER_SIGNAL_TERMS = (
+    "pilot",
+    "commercial pilot",
+    "airline pilot",
+    "flight",
+    "flying",
+    "aircraft",
+    "gliding",
+    "aviation operations",
+    "flight hours",
+)
+
+_PRACTITIONER_DIMENSIONS = ("LifeCareer", "Expertise", "InferredContext", "UniqueFingerprint")
 
 _INDUSTRY_ALIASES = {
     "tech": (
@@ -197,7 +230,7 @@ _FACET_DIMENSION_MAP = {
     "company_builder": ("LifeCareer", "UniqueFingerprint", "CompanyIntel", "Identity"),
     "traits": ("Identity", "UniqueFingerprint", "Index"),
     "interests": ("Identity", "InferredContext", "UniqueFingerprint"),
-    "experiences": ("InferredContext", "LifeCareer", "GeographyCulture", "UniqueFingerprint"),
+    "experiences": ("LifeCareer", "Expertise", "InferredContext", "UniqueFingerprint"),
     "identity_life_stage": ("Identity", "InferredContext", "UniqueFingerprint"),
 }
 
@@ -208,7 +241,7 @@ _FACET_HARD_DIMENSION_MAP = {
     "company_builder": ("LifeCareer",),
     "traits": ("Identity",),
     "interests": ("Identity",),
-    "experiences": ("InferredContext",),
+    "experiences": ("LifeCareer",),
     "identity_life_stage": ("Identity",),
 }
 
@@ -219,7 +252,7 @@ _FACET_STRUCTURED_DIMENSION_MAP = {
     "company_builder": ("LifeCareer",),
     "traits": ("Identity",),
     "interests": ("Identity",),
-    "experiences": ("InferredContext",),
+    "experiences": ("LifeCareer", "Expertise", "InferredContext"),
     "identity_life_stage": ("Identity",),
 }
 
@@ -316,6 +349,44 @@ def _normalize_constraint_keys(values: Any) -> list[str]:
     return out
 
 
+def _query_has_goal_seeking_intent(message_norm: str) -> bool:
+    if not message_norm:
+        return False
+    return any(phrase in message_norm for phrase in _GOAL_SEEKING_PHRASES)
+
+
+def _planner_plan_has_practitioner_intent(query_plan: dict[str, Any] | None) -> bool:
+    if not isinstance(query_plan, dict):
+        return False
+    search_text = _normalize_text(query_plan.get("search_rewrite") or "")
+    facets = query_plan.get("facets") or {}
+    facet_text = ""
+    if isinstance(facets, dict):
+        facet_values: list[str] = []
+        for values in facets.values():
+            if isinstance(values, str):
+                facet_values.append(values)
+            else:
+                facet_values.extend(str(value or "") for value in (values or []))
+        facet_text = _normalize_text(" ".join(facet_values))
+    combined = f"{search_text} {facet_text}".strip()
+    if not combined:
+        return False
+    if _query_has_goal_seeking_intent(combined):
+        return True
+    return any(_contains_term(combined, term) for term in _PRACTITIONER_SIGNAL_TERMS)
+
+
+def _practitioner_terms_for_plan(dimension_plan: dict[str, Any]) -> list[str]:
+    terms = list(_PRACTITIONER_SIGNAL_TERMS)
+    search_terms = _query_keywords(_normalize_text(dimension_plan.get("search_rewrite") or ""))
+    terms.extend(search_terms[:8])
+    dimension_terms = dimension_plan.get("dimension_terms") or {}
+    for dimension in _PRACTITIONER_DIMENSIONS:
+        terms.extend(_normalize_phrase_list(dimension_terms.get(dimension)))
+    return _dedupe_keep_order(_normalize_phrase_list(terms))
+
+
 def _dimension_terms_from_facets(query_plan: dict[str, Any] | None) -> dict[str, list[str]]:
     out = {dimension: [] for dimension in KB_DIMENSIONS}
     if not isinstance(query_plan, dict):
@@ -354,8 +425,8 @@ def build_dimension_plan(query_plan: dict[str, Any] | None = None) -> dict[str, 
                             target.append(dimension)
 
     if not primary and query_plan.get("search_rewrite"):
-        primary = ["Index", "Expertise", "LifeCareer"]
-        secondary = ["Identity", "UniqueFingerprint", "InferredContext"]
+        primary = ["LifeCareer", "Expertise", "InferredContext", "UniqueFingerprint"]
+        secondary = ["Index", "Identity", "GeographyCulture", "CompanyIntel", "Network", "Opinions"]
 
     if not hard:
         legacy_hard = _normalize_constraint_keys(query_plan.get("hard_constraints"))
@@ -443,6 +514,8 @@ def should_use_reasoning_planner(message: str, conversation_history: Any = None)
     if "@" in message:
         return True
     keyword_count = len(_query_keywords(norm))
+    if _query_has_goal_seeking_intent(norm) and keyword_count >= 2:
+        return True
     if keyword_count >= 3 and any(norm.startswith(prefix) for prefix in _PLANNER_LEAD_PHRASES):
         return True
     if _structural_constraint_count(message) >= 2 and keyword_count >= 3:
@@ -657,6 +730,9 @@ def _structured_match_details_from_plan(
     secondary_dimensions = dimension_plan.get("secondary_dimensions") or []
     hard_dimensions = set(dimension_plan.get("hard_dimensions") or [])
     relevant_dimensions = _dedupe_keep_order(primary_dimensions + secondary_dimensions + list(hard_dimensions))
+    practitioner_intent = _planner_plan_has_practitioner_intent(retrieval_plan)
+    practitioner_terms = _practitioner_terms_for_plan(dimension_plan) if practitioner_intent else []
+    hard_constraints = _normalize_constraint_keys(retrieval_plan.get("hard_constraints"))
     if not relevant_dimensions:
         return {}
     details: dict[str, dict[str, Any]] = {}
@@ -677,8 +753,26 @@ def _structured_match_details_from_plan(
         matched_dimensions = {dimension for dimension, score in dimension_scores.items() if score > 0}
         if not matched_dimensions:
             continue
+        practitioner_hits = 0
+        if practitioner_terms:
+            practitioner_hits = sum(
+                _match_any_terms(dimension_texts.get(dimension, ""), practitioner_terms)
+                for dimension in _PRACTITIONER_DIMENSIONS
+                if dimension in relevant_dimensions
+            )
         hard_hits = sum(1 for dimension in hard_dimensions if dimension in matched_dimensions)
         hard_misses = sum(1 for dimension in hard_dimensions if dimension not in matched_dimensions)
+        hard_facet_hits = 0
+        hard_facet_misses = 0
+        for facet in hard_constraints:
+            terms = _facet_terms_with_aliases(facet, _plan_facet_terms(retrieval_plan, facet))
+            if not terms:
+                continue
+            dimensions = _FACET_STRUCTURED_DIMENSION_MAP.get(facet, _FACET_DIMENSION_MAP.get(facet, ()))
+            if any(_match_any_terms(dimension_texts.get(dimension, ""), terms) for dimension in dimensions):
+                hard_facet_hits += 1
+            else:
+                hard_facet_misses += 1
         primary_hits = sum(1 for dimension in primary_dimensions if dimension in matched_dimensions)
         secondary_hits = sum(1 for dimension in secondary_dimensions if dimension in matched_dimensions)
         score = (
@@ -686,7 +780,10 @@ def _structured_match_details_from_plan(
             + primary_hits * 3.0
             + secondary_hits * 1.25
             + hard_hits * 5.0
+            + hard_facet_hits * 4.0
+            + practitioner_hits * 4.0
             - hard_misses * 3.0
+            - hard_facet_misses * 8.0
         )
         details[username] = {
             "username": username,
@@ -695,8 +792,11 @@ def _structured_match_details_from_plan(
             "matched_dimensions_count": len(matched_dimensions),
             "hard_hits": hard_hits,
             "hard_misses": hard_misses,
+            "hard_facet_hits": hard_facet_hits,
+            "hard_facet_misses": hard_facet_misses,
             "primary_hits": primary_hits,
             "secondary_hits": secondary_hits,
+            "practitioner_hits": practitioner_hits,
             "structured_score": score,
             "semantic_score": 0.0,
             "metadata_score": 0.0,
