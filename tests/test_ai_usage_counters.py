@@ -29,12 +29,14 @@ from backend.services.ai_usage import (
     SURFACE_DM,
     SURFACE_FEED,
     SURFACE_GROUP,
+    SURFACE_NETWORKING_STEVE,
     SURFACE_POST_SUMMARY,
     SURFACE_VOICE_SUMMARY,
     SURFACE_WHISPER,
     daily_any_count,
     daily_count,
     monthly_steve_count,
+    networking_prompts_last_7_days,
     whisper_minutes_this_month,
 )
 
@@ -198,6 +200,48 @@ class TestBlockedRowsExcluded:
                            reason="daily_limit_reached")
         assert daily_count("alice") == 1
         assert monthly_steve_count("alice") == 1
+
+
+class TestNetworkingPromptCounter:
+    """Networking prompt allowance counts user-visible prompts only."""
+
+    def test_networking_prompts_last_7_days_counts_final_prompt_rows(self, mysql_dsn):
+        make_user("alice")
+        log_row(
+            "alice",
+            surface=SURFACE_NETWORKING_STEVE,
+            request_type="networking_match",
+            created_at=hours_ago(2),
+        )
+        log_row(
+            "alice",
+            surface=SURFACE_NETWORKING_STEVE,
+            request_type="networking_auto_match",
+            created_at=hours_ago(3),
+        )
+        log_row(
+            "alice",
+            surface=SURFACE_NETWORKING_STEVE,
+            request_type="networking_planner",
+            created_at=hours_ago(1),
+        )
+        log_row(
+            "alice",
+            surface=SURFACE_NETWORKING_STEVE,
+            request_type="networking_match",
+            created_at=days_ago(8),
+        )
+        log_row(
+            "alice",
+            surface=SURFACE_NETWORKING_STEVE,
+            request_type="networking_match",
+            success=False,
+            reason_blocked="weekly_networking_prompt_cap",
+        )
+
+        assert networking_prompts_last_7_days("alice") == 2
+        assert daily_count("alice") == 0
+        assert monthly_steve_count("alice") == 0
 
 
 # ── 4. Current-month summary (powers the AI Usage modal) ────────────────

@@ -15,7 +15,7 @@ Schema additions (all nullable, so old rows keep working):
 
     surface           VARCHAR(32)   ('dm' | 'group' | 'feed' | 'post_summary'
                                      | 'voice_summary' | 'content_gen'
-                                     | 'whisper')
+                                     | 'whisper' | 'networking_steve')
     tokens_in         INT
     tokens_out        INT
     cost_usd          DECIMAL(10, 6)
@@ -60,6 +60,7 @@ SURFACE_POST_SUMMARY = "post_summary"
 SURFACE_VOICE_SUMMARY = "voice_summary"
 SURFACE_CONTENT_GEN = "content_gen"
 SURFACE_WHISPER = "whisper"
+SURFACE_NETWORKING_STEVE = "networking_steve"
 
 ALL_SURFACES = (
     SURFACE_DM,
@@ -69,6 +70,7 @@ ALL_SURFACES = (
     SURFACE_VOICE_SUMMARY,
     SURFACE_CONTENT_GEN,
     SURFACE_WHISPER,
+    SURFACE_NETWORKING_STEVE,
 )
 
 # Surfaces that count against the user-facing "Steve uses / month" allowance.
@@ -312,6 +314,10 @@ def _twenty_four_hours_ago() -> str:
     return (datetime.utcnow() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _seven_days_ago() -> str:
+    return (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def _fetch_count(cursor, sql: str, params: tuple) -> int:
     try:
         cursor.execute(sql, params)
@@ -432,6 +438,38 @@ def monthly_count(username: str, surface: Optional[str] = None) -> int:
     with get_db_connection() as conn:
         c = conn.cursor()
         return _fetch_count(c, sql, tuple(params))
+
+
+def networking_prompts_last_7_days(username: str) -> int:
+    """Successful user-visible Steve networking prompts in the rolling week.
+
+    Internal planner / fallback rows are logged for cost attribution but do not
+    count against the user prompt allowance.
+    """
+    if not username:
+        return 0
+    ensure_tables()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        return _fetch_count(
+            c,
+            f"""
+            SELECT COUNT(*) AS cnt FROM ai_usage_log
+            WHERE username = {ph}
+              AND surface = {ph}
+              AND request_type IN ({ph}, {ph})
+              AND success = 1
+              AND created_at >= {ph}
+            """,
+            (
+                username,
+                SURFACE_NETWORKING_STEVE,
+                "networking_match",
+                "networking_auto_match",
+                _seven_days_ago(),
+            ),
+        )
 
 
 def monthly_spend_usd(username: str) -> float:

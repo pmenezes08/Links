@@ -41,6 +41,7 @@ CATEGORIES: List[Dict[str, str]] = [
     {"id": "pricing", "label": "Pricing", "icon": "fa-euro-sign"},
     {"id": "policy", "label": "Policy", "icon": "fa-shield-halved"},
     {"id": "steve", "label": "Steve", "icon": "fa-user-astronaut"},
+    {"id": "ai", "label": "AI", "icon": "fa-brain"},
     {"id": "planning", "label": "Planning", "icon": "fa-map"},
     {"id": "reference", "label": "Reference", "icon": "fa-book"},
     {"id": "audit", "label": "Audit", "icon": "fa-clock-rotate-left"},
@@ -1095,6 +1096,73 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 "**Pricing**: €{paid_addon_price_eur_monthly}/month for Paid communities, "
                 "included for Enterprise. Price is still TBD and should be validated "
                 "against what communities are willing to pay for 'discoverable' status."
+            ),
+        },
+        {
+            "slug": "networking-ai",
+            "title": "Networking AI",
+            "category": "ai",
+            "icon": "fa-network-wired",
+            "description": "Steve networking model choices, weekly prompt caps, and cost assumptions.",
+            "sort_order": 20,
+            "fields": [
+                {"name": "networking_ai_enabled", "label": "Networking AI enabled", "type": "boolean", "value": True,
+                 "help": "Master switch for Steve-powered networking recommendations."},
+                {"name": "weekly_prompts_per_user", "label": "Prompts / user / rolling 7 days", "type": "integer", "value": 20,
+                 "help": "Counts user-visible networking prompts, not internal planner calls."},
+                {"name": "planner_model", "label": "Query planner model", "type": "enum",
+                 "allowed_values": ["grok-4-1-fast-reasoning", "grok-4.3", "grok-4.20-reasoning"],
+                 "value": "grok-4-1-fast-reasoning",
+                 "help": "Turns a user ask into facets, dimensions, constraints, named people, and a retrieval query."},
+                {"name": "final_answer_model", "label": "Final answer model", "type": "enum",
+                 "allowed_values": ["grok-4.3", "grok-4-1-fast-reasoning", "grok-4.20-reasoning"],
+                 "value": "grok-4.3",
+                 "help": "Writes the user-facing networking recommendation from the bounded roster."},
+                {"name": "kb_synthesis_model", "label": "Member KB synthesis model", "type": "enum",
+                 "allowed_values": ["grok-4.3", "grok-4.20-reasoning", "grok-4-1-fast-reasoning"],
+                 "value": "grok-4.3",
+                 "help": "Builds the long-lived member Knowledge Base dimensions used by search."},
+                {"name": "large_context_model", "label": "Large-context model", "type": "enum",
+                 "allowed_values": ["grok-4.20-reasoning", "grok-4.3"],
+                 "value": "grok-4.20-reasoning",
+                 "help": "Reserved for very large prompts that need a 2M-token context window."},
+                {"name": "use_large_context_model_after_tokens", "label": "Large-context threshold tokens", "type": "integer",
+                 "value": 900000, "help": "Future guardrail for switching to the large-context model."},
+                {"name": "fallback_enabled", "label": "Fallback retry enabled", "type": "boolean", "value": False,
+                 "help": "Retry only when the primary final-answer call produces no usable matches."},
+                {"name": "fallback_model", "label": "Fallback model", "type": "enum",
+                 "allowed_values": ["grok-4.3", "grok-4.20-reasoning", "grok-4.20-multi-agent"],
+                 "value": "grok-4.3"},
+                {"name": "planner_input_usd_per_million", "label": "Planner input $ / 1M tokens", "type": "decimal", "prefix": "$", "value": 0.20},
+                {"name": "planner_output_usd_per_million", "label": "Planner output $ / 1M tokens", "type": "decimal", "prefix": "$", "value": 0.50},
+                {"name": "final_input_usd_per_million", "label": "Final input $ / 1M tokens", "type": "decimal", "prefix": "$", "value": 1.25},
+                {"name": "final_output_usd_per_million", "label": "Final output $ / 1M tokens", "type": "decimal", "prefix": "$", "value": 2.50},
+                {"name": "kb_synthesis_input_usd_per_million", "label": "KB synthesis input $ / 1M tokens", "type": "decimal", "prefix": "$", "value": 1.25},
+                {"name": "kb_synthesis_output_usd_per_million", "label": "KB synthesis output $ / 1M tokens", "type": "decimal", "prefix": "$", "value": 2.50},
+                {"name": "target_margin_percent", "label": "Target gross margin", "type": "percent", "value": 60},
+                {"name": "recommended_price_eur_per_100_users_monthly", "label": "Recommended price / 100 users / month", "type": "decimal",
+                 "prefix": "€", "value": 1000},
+            ],
+            "body": (
+                "# Networking AI controls\n\n"
+                "This page controls the model-backed stages of Steve-powered networking search. "
+                "Use it to test output quality, latency, and cost before changing fixed monthly pricing.\n\n"
+                "## Editable model stages\n\n"
+                "- **Member KB synthesis**: builds the long-lived member Knowledge Base. Default: `grok-4.3`.\n"
+                "- **Query planner**: converts a user prompt into facets, constraints, dimensions, named people, and search rewrite. Default: `grok-4-1-fast-reasoning`.\n"
+                "- **Final answer**: writes the recommendation from the bounded roster. Default: `grok-4.3`.\n"
+                "- **Large-context fallback**: reserved for prompts that need a 2M-token context window. Default: `grok-4.20-reasoning`.\n"
+                "- **Retry fallback**: optional retry for no-match failures. Default: disabled, model `grok-4.3`.\n\n"
+                "## Locked stages\n\n"
+                "These are not editable from the KB because they are deterministic infrastructure, "
+                "not reasoning/generation choices:\n\n"
+                "- **Embedding generation**: OpenAI `text-embedding-3-small`.\n"
+                "- **Structured search**: deterministic SQL / keyword / KB-dimension scoring.\n"
+                "- **Semantic search**: FAISS or numpy cosine search over precomputed embeddings.\n"
+                "- **Ranking and fusion**: deterministic structured + semantic merge.\n"
+                "- **Context assembly**: deterministic full / mid / slim roster context selection.\n\n"
+                "Invalid model IDs are ignored by the backend and replaced with safe defaults. "
+                "Do not use non-reasoning models for KB synthesis, query planning, or final recommendations."
             ),
         },
 

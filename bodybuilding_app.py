@@ -14395,8 +14395,6 @@ _NETWORKING_NO_MATCH_MARKERS = (
 
 
 def _networking_should_retry_multi_agent(ai_response: str, recommended: list[str]) -> bool:
-    if not STEVE_NETWORKING_MULTI_AGENT:
-        return False
     text = (ai_response or '').strip().lower()
     if not text:
         return True
@@ -14501,16 +14499,32 @@ def _normalize_networking_query_plan(raw_plan: dict | None) -> dict | None:
     ) else None
 
 
-def _plan_networking_query(client, *, message: str, conversation_history, member_rows, member_getter) -> dict | None:
+def _plan_networking_query(
+    client,
+    *,
+    message: str,
+    conversation_history,
+    member_rows,
+    member_getter,
+    networking_ai_config=None,
+    username: str | None = None,
+    community_id=None,
+) -> dict | None:
     from backend.services.networking_retrieval import (
         NETWORKING_PLANNER_CONVERSATION_TURNS_SCAN,
         NETWORKING_PLANNER_PRIOR_USER_LINES,
         networking_planner_member_block,
         should_use_reasoning_planner,
     )
+    from backend.services.networking_ai_config import (
+        DEFAULT_CONFIG,
+        estimate_cost_usd,
+        usage_tokens,
+    )
 
     if not should_use_reasoning_planner(message, conversation_history):
         return None
+    networking_ai_config = networking_ai_config or DEFAULT_CONFIG
 
     recent_user_turns = []
     if isinstance(conversation_history, list):
@@ -14567,12 +14581,36 @@ Rules:
     ]
 
     try:
+        t0 = time.time()
         response = client.responses.create(
-            model=GROK_MODEL_REASONING,
+            model=networking_ai_config.planner_model,
             input=planner_input,
             max_output_tokens=350,
             temperature=0.1,
         )
+        response_time_ms = int((time.time() - t0) * 1000)
+        try:
+            from backend.services import ai_usage as _ai_usage
+
+            tokens_in, tokens_out = usage_tokens(response)
+            _ai_usage.log_usage(
+                username or "unknown",
+                surface=_ai_usage.SURFACE_NETWORKING_STEVE,
+                request_type="networking_planner",
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                cost_usd=estimate_cost_usd(
+                    networking_ai_config,
+                    "planner",
+                    tokens_in,
+                    tokens_out,
+                ),
+                response_time_ms=response_time_ms,
+                community_id=community_id,
+                model=networking_ai_config.planner_model,
+            )
+        except Exception as usage_err:
+            logger.debug("Networking planner usage logging failed: %s", usage_err)
         planner_text = (response.output_text or "").strip() if hasattr(response, "output_text") else ""
         plan = _normalize_networking_query_plan(_extract_json_object(planner_text))
         if plan:
@@ -14588,31 +14626,96 @@ Rules:
         return None
 
 
-def _run_networking_completion(client, *, prompt_input, member_names, context_label: str):
+def _run_networking_completion(
+    client,
+    *,
+    prompt_input,
+    member_names,
+    context_label: str,
+    networking_ai_config=None,
+    username: str | None = None,
+    community_id=None,
+    request_type: str = "networking_match",
+):
+    from backend.services.networking_ai_config import (
+        DEFAULT_CONFIG,
+        estimate_cost_usd,
+        usage_tokens,
+    )
+
+    networking_ai_config = networking_ai_config or DEFAULT_CONFIG
+    t0 = time.time()
     response = client.responses.create(
-        model=STEVE_NETWORKING_MODEL,
+        model=networking_ai_config.final_answer_model,
         input=prompt_input,
         max_output_tokens=800,
         temperature=0.5,
     )
+    response_time_ms = int((time.time() - t0) * 1000)
     ai_response = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
     recommended = _extract_recommended_usernames(ai_response, member_names)
-    model_used = STEVE_NETWORKING_MODEL
+    model_used = networking_ai_config.final_answer_model
+    try:
+        from backend.services import ai_usage as _ai_usage
 
-    if _networking_should_retry_multi_agent(ai_response, recommended):
+        tokens_in, tokens_out = usage_tokens(response)
+        _ai_usage.log_usage(
+            username or "unknown",
+            surface=_ai_usage.SURFACE_NETWORKING_STEVE,
+            request_type=request_type,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_usd=estimate_cost_usd(
+                networking_ai_config,
+                "final",
+                tokens_in,
+                tokens_out,
+            ),
+            response_time_ms=response_time_ms,
+            community_id=community_id,
+            model=model_used,
+        )
+    except Exception as usage_err:
+        logger.debug("Networking completion usage logging failed: %s", usage_err)
+
+    if networking_ai_config.fallback_enabled and _networking_should_retry_multi_agent(ai_response, recommended):
         logger.info("Networking fallback: retrying with multi-agent for %s", context_label)
+        t1 = time.time()
         retry = client.responses.create(
-            model=GROK_MODEL_MULTI_AGENT,
+            model=networking_ai_config.fallback_model,
             input=prompt_input,
             max_output_tokens=800,
             temperature=0.4,
         )
+        retry_response_time_ms = int((time.time() - t1) * 1000)
         retry_text = (retry.output_text or '').strip() if hasattr(retry, 'output_text') else ''
         retry_recommended = _extract_recommended_usernames(retry_text, member_names)
+        try:
+            from backend.services import ai_usage as _ai_usage
+
+            tokens_in, tokens_out = usage_tokens(retry)
+            _ai_usage.log_usage(
+                username or "unknown",
+                surface=_ai_usage.SURFACE_NETWORKING_STEVE,
+                request_type="networking_fallback",
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                cost_usd=estimate_cost_usd(
+                    networking_ai_config,
+                    "fallback",
+                    tokens_in,
+                    tokens_out,
+                ),
+                response_time_ms=retry_response_time_ms,
+                community_id=community_id,
+                model=networking_ai_config.fallback_model,
+            )
+        except Exception as usage_err:
+            logger.debug("Networking fallback usage logging failed: %s", usage_err)
         if retry_text:
             ai_response = retry_text
             recommended = retry_recommended
-            model_used = GROK_MODEL_MULTI_AGENT
+            model_used = networking_ai_config.fallback_model
 
     logger.info(
         "Steve networking completion context=%s model=%s recommended=%s",
@@ -14634,6 +14737,36 @@ def api_networking_steve_match():
     conversation_history = data.get('history', [])
     if not community_id or not message:
         return jsonify({'success': False, 'error': 'community_id and message required'}), 400
+    from backend.services import ai_usage as _networking_ai_usage
+    from backend.services.networking_ai_config import get_networking_ai_config
+
+    networking_ai_config = get_networking_ai_config()
+    if not networking_ai_config.enabled:
+        _networking_ai_usage.log_block(
+            username,
+            surface=_networking_ai_usage.SURFACE_NETWORKING_STEVE,
+            reason="networking_ai_disabled",
+            community_id=community_id,
+        )
+        return jsonify({'success': False, 'error': 'Steve networking search is currently disabled.'}), 403
+    used_this_week = _networking_ai_usage.networking_prompts_last_7_days(username)
+    if used_this_week >= networking_ai_config.weekly_prompts_per_user:
+        _networking_ai_usage.log_block(
+            username,
+            surface=_networking_ai_usage.SURFACE_NETWORKING_STEVE,
+            reason="weekly_networking_prompt_cap",
+            community_id=community_id,
+        )
+        return jsonify({
+            'success': False,
+            'error': f'Weekly Steve networking limit reached ({networking_ai_config.weekly_prompts_per_user} prompts).',
+            'reason': 'weekly_networking_prompt_cap',
+            'usage': {
+                'used': used_this_week,
+                'limit': networking_ai_config.weekly_prompts_per_user,
+                'window': 'rolling_7_days',
+            },
+        }), 429
     if not XAI_API_KEY:
         return jsonify({'success': False, 'error': 'AI service not available'}), 503
     try:
@@ -14698,6 +14831,9 @@ def api_networking_steve_match():
                 conversation_history=conversation_history,
                 member_rows=member_rows,
                 member_getter=_v,
+                networking_ai_config=networking_ai_config,
+                username=username,
+                community_id=community_id,
             )
             retrieval_query = build_retrieval_query(
                 message,
@@ -14764,7 +14900,7 @@ def api_networking_steve_match():
                 sum(1 for tier in tiered_matches.values() if tier == "direct"),
                 sum(1 for tier in tiered_matches.values() if tier == "broader"),
                 len(forced_usernames),
-                STEVE_NETWORKING_MODEL,
+                networking_ai_config.final_answer_model,
             )
 
             members_text = _networking_build_members_text(
@@ -14896,6 +15032,10 @@ RULES:
             prompt_input=grok_input,
             member_names=member_names,
             context_label="steve_match",
+            networking_ai_config=networking_ai_config,
+            username=username,
+            community_id=community_id,
+            request_type="networking_match",
         )
         if not ai_response:
             ai_response = "I couldn't find matching members. Try refining your request."
@@ -14922,6 +15062,36 @@ def api_networking_steve_auto_match():
     community_id = data.get('community_id')
     if not community_id:
         return jsonify({'success': False, 'error': 'community_id required'}), 400
+    from backend.services import ai_usage as _networking_ai_usage
+    from backend.services.networking_ai_config import get_networking_ai_config
+
+    networking_ai_config = get_networking_ai_config()
+    if not networking_ai_config.enabled:
+        _networking_ai_usage.log_block(
+            username,
+            surface=_networking_ai_usage.SURFACE_NETWORKING_STEVE,
+            reason="networking_ai_disabled",
+            community_id=community_id,
+        )
+        return jsonify({'success': False, 'error': 'Steve networking search is currently disabled.'}), 403
+    used_this_week = _networking_ai_usage.networking_prompts_last_7_days(username)
+    if used_this_week >= networking_ai_config.weekly_prompts_per_user:
+        _networking_ai_usage.log_block(
+            username,
+            surface=_networking_ai_usage.SURFACE_NETWORKING_STEVE,
+            reason="weekly_networking_prompt_cap",
+            community_id=community_id,
+        )
+        return jsonify({
+            'success': False,
+            'error': f'Weekly Steve networking limit reached ({networking_ai_config.weekly_prompts_per_user} prompts).',
+            'reason': 'weekly_networking_prompt_cap',
+            'usage': {
+                'used': used_this_week,
+                'limit': networking_ai_config.weekly_prompts_per_user,
+                'window': 'rolling_7_days',
+            },
+        }), 429
     if not XAI_API_KEY:
         return jsonify({'success': False, 'error': 'AI service not available'}), 503
     try:
@@ -14992,7 +15162,7 @@ def api_networking_steve_auto_match():
                 len(structured_ids),
                 len(semantic_ids),
                 len(ordered_usernames),
-                STEVE_NETWORKING_MODEL,
+                networking_ai_config.final_answer_model,
             )
             members_text = _networking_build_members_text(
                 member_rows, all_member_usernames, user_subcommunities,
@@ -15057,6 +15227,10 @@ RULES:
             prompt_input=auto_input,
             member_names=member_names,
             context_label="steve_auto_match",
+            networking_ai_config=networking_ai_config,
+            username=username,
+            community_id=community_id,
+            request_type="networking_auto_match",
         )
         if not ai_response:
             ai_response = "I couldn't generate matches. Please try again."

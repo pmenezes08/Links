@@ -1513,9 +1513,16 @@ def _call_grok_for_synthesis(
         if admin_corrections:
             user_content += f"\n\n{admin_corrections}"
 
+        from backend.services.networking_ai_config import (
+            estimate_cost_usd,
+            get_networking_ai_config,
+            usage_tokens,
+        )
+
         max_out = _kb_synthesis_max_output_tokens()
+        networking_ai_config = get_networking_ai_config()
         response = client.responses.create(
-            model="grok-4-1-fast-non-reasoning",
+            model=networking_ai_config.kb_synthesis_model,
             input=[
                 {"role": "system", "content": KNOWLEDGE_SYNTHESIS_PROMPT},
                 {"role": "user", "content": user_content},
@@ -1533,6 +1540,26 @@ def _call_grok_for_synthesis(
                 usage,
                 max_out,
             )
+            try:
+                from backend.services import ai_usage
+
+                tokens_in, tokens_out = usage_tokens(response)
+                ai_usage.log_usage(
+                    username,
+                    surface=ai_usage.SURFACE_NETWORKING_STEVE,
+                    request_type="networking_kb_synthesis",
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    cost_usd=estimate_cost_usd(
+                        networking_ai_config,
+                        "kb_synthesis",
+                        tokens_in,
+                        tokens_out,
+                    ),
+                    model=networking_ai_config.kb_synthesis_model,
+                )
+            except Exception as usage_err:
+                logger.debug("Could not log KB synthesis networking AI usage for %s: %s", username, usage_err)
         if not raw:
             logger.warning("Grok returned empty synthesis for %s", username)
             return None, {
