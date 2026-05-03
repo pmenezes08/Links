@@ -83,7 +83,7 @@ Rules:
 - deprioritized_evidence_query should describe evidence that should not outrank direct matches.
 - search_rewrite should combine the target, relationship, and direct evidence in a compact retrieval query.
 - For sensitive life-stage / identity asks like parent, include them only when the user explicitly asked for them.
-- If the ask is simple and single-facet, keep the JSON minimal.
+- Even when the ask is simple, still return target, relationship_to_target, dimension_analysis, primary_dimensions, secondary_dimensions, search_rewrite, and direct_evidence_query. Simple wording can still require nuanced dimension reasoning.
 - search_state_action must be one of: clarify, retrieve, refine, close.
 - Never mention internal reasoning. JSON only.
 

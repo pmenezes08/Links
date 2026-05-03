@@ -26,6 +26,7 @@ class TestNetworkingPlanner(unittest.TestCase):
         self.assertIn("direct_evidence_query", system_text)
         self.assertIn("LifeInterests", system_text)
         self.assertIn("cooking", system_text)
+        self.assertIn("Even when the ask is simple", system_text)
         self.assertIn("@pilot", user_text)
 
     def test_normalize_keeps_only_allowed_facets_and_dimensions(self):

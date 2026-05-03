@@ -24,6 +24,16 @@ from backend.services.networking_retrieval import (
 
 
 class TestNetworkingRetrieval(unittest.TestCase):
+    def setUp(self):
+        self._kb_batch_patcher = patch(
+            "backend.services.steve_knowledge_base.batch_get_member_knowledge",
+            side_effect=lambda usernames, dimensions: {username: {} for username in usernames},
+        )
+        self._kb_batch_patcher.start()
+
+    def tearDown(self):
+        self._kb_batch_patcher.stop()
+
     def _getter(self, row, idx):
         try:
             return row[idx] if idx < len(row) else ""
@@ -148,7 +158,9 @@ class TestNetworkingRetrieval(unittest.TestCase):
                 [],
             )
         )
-        self.assertFalse(should_use_reasoning_planner("Who is in Austin?", []))
+        self.assertTrue(should_use_reasoning_planner("Who is in Austin?", []))
+        self.assertTrue(should_use_reasoning_planner("gardening", []))
+        self.assertFalse(should_use_reasoning_planner("", []))
 
     def test_build_retrieval_query_merges_prior_user_context_for_follow_ups(self):
         history = [
@@ -511,6 +523,70 @@ class TestNetworkingRetrieval(unittest.TestCase):
             details["direct_investor"]["direct_evidence_hits"],
             details["finance_adjacent"]["direct_evidence_hits"],
         )
+
+    def test_planned_dimension_scoring_reads_synthesized_kb_generically(self):
+        rows = [
+            (
+                "kb_direct",
+                "KB Direct",
+                "",
+                "",
+                "",
+                "Technology",
+                "Founder",
+                "BuildCo",
+                "",
+                "",
+                "",
+            ),
+            (
+                "profile_adjacent",
+                "Profile Adjacent",
+                "Works on enterprise software compliance.",
+                "",
+                "",
+                "Technology",
+                "Policy Lead",
+                "PolicyCo",
+                "",
+                "",
+                "Professional background in software compliance.",
+            ),
+        ]
+        plan = {
+            "primary_dimensions": ["Opinions"],
+            "secondary_dimensions": ["Expertise"],
+            "direct_evidence_query": "strong opinions AI regulation public policy",
+            "adjacent_evidence_query": "software compliance professional background",
+            "search_rewrite": "people with strong opinions on AI regulation",
+        }
+        fake_docs = {
+            "Opinions": {
+                "content": {
+                    "consistentBeliefs": [
+                        "Has strong opinions on AI regulation and public policy tradeoffs.",
+                    ],
+                    "evidence": "Repeatedly writes about AI regulation.",
+                }
+            }
+        }
+
+        def fake_batch_get_member_knowledge(usernames, dimensions):
+            return {username: (fake_docs if username == "kb_direct" else {}) for username in usernames}
+
+        with patch("backend.services.steve_knowledge_base.batch_get_member_knowledge", side_effect=fake_batch_get_member_knowledge):
+            ranked = structured_candidates(
+                rows,
+                "Who has strong opinions on AI regulation?",
+                self._getter,
+                retrieval_plan=plan,
+            )
+            details = structured_match_details(rows, self._getter, retrieval_plan=plan)
+
+        self.assertEqual(ranked[0], "kb_direct")
+        self.assertIn("Opinions", details["kb_direct"]["matched_dimensions"])
+        self.assertGreater(details["kb_direct"]["direct_evidence_hits"], 0)
+        self.assertGreater(details["kb_direct"]["score"], details["profile_adjacent"]["score"])
 
     def test_tiered_roster_separates_direct_and_broader_matches(self):
         rows = [

@@ -10,7 +10,7 @@ This module keeps the retrieval logic deterministic and cheap:
 from __future__ import annotations
 
 import re
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 
 # Caps for Networking /api/networking/steve_match conversation context.
@@ -515,26 +515,8 @@ def _structural_constraint_count(message: str) -> int:
 
 
 def should_use_reasoning_planner(message: str, conversation_history: Any = None) -> bool:
-    """Use the extra planner only when the query is complex enough to justify it."""
-    norm = _normalize_text(message)
-    if not norm:
-        return False
-    if _looks_like_follow_up(message) and _history_user_messages(conversation_history):
-        return True
-    if "@" in message:
-        return True
-    keyword_count = len(_query_keywords(norm))
-    if _query_has_goal_seeking_intent(norm) and keyword_count >= 2:
-        return True
-    if keyword_count >= 2 and any(prefix in norm for prefix in _PLANNER_LEAD_PHRASES):
-        return True
-    if _structural_constraint_count(message) >= 2 and keyword_count >= 3:
-        return True
-    if keyword_count >= 2 and any(token in norm for token in ("investor", "investment", "capital", "mentor", "expert", "knows", "learn", "help")):
-        return True
-    if keyword_count >= 7:
-        return True
-    return False
+    """Run the reasoning planner for every non-empty manual Steve search."""
+    return bool(_normalize_text(message))
 
 
 def build_retrieval_query(message: str, conversation_history: Any = None, query_plan: dict[str, Any] | None = None) -> str:
@@ -731,6 +713,68 @@ def _structured_dimension_texts_from_row(
     return texts
 
 
+def _flatten_kb_value(value: Any, *, depth: int = 0) -> list[str]:
+    if depth > 5 or value is None:
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    if isinstance(value, (int, float, bool)):
+        return [str(value)]
+    if isinstance(value, Mapping):
+        parts: list[str] = []
+        for key, item in list(value.items())[:40]:
+            key_text = str(key or "").strip()
+            child = _flatten_kb_value(item, depth=depth + 1)
+            if not child:
+                continue
+            if key_text:
+                parts.append(key_text)
+            parts.extend(child)
+        return parts
+    if isinstance(value, (list, tuple, set)):
+        parts: list[str] = []
+        for item in list(value)[:40]:
+            parts.extend(_flatten_kb_value(item, depth=depth + 1))
+        return parts
+    return [str(value)]
+
+
+def _kb_dimension_texts_for_users(
+    usernames: Sequence[str],
+    dimensions: Sequence[str],
+) -> dict[str, dict[str, str]]:
+    planned_dimensions = _dedupe_keep_order([dimension for dimension in dimensions if dimension in KB_DIMENSIONS])
+    planned_usernames = _dedupe_keep_order([str(username).strip() for username in usernames if str(username).strip()])
+    if not planned_dimensions or not planned_usernames:
+        return {}
+    try:
+        from backend.services.steve_knowledge_base import batch_get_member_knowledge
+    except Exception:
+        return {}
+
+    try:
+        docs_by_user = batch_get_member_knowledge(planned_usernames, planned_dimensions)
+    except Exception:
+        return {}
+
+    out: dict[str, dict[str, str]] = {}
+    for username in planned_usernames:
+        docs = (docs_by_user or {}).get(username) or {}
+        user_texts: dict[str, str] = {}
+        for dimension in planned_dimensions:
+            doc = (docs or {}).get(dimension) or {}
+            if not isinstance(doc, Mapping):
+                continue
+            content = doc.get("content") or {}
+            parts = _flatten_kb_value(content)
+            if parts:
+                user_texts[dimension] = _normalize_text(" ".join(parts)[:5000])
+        if user_texts:
+            out[username] = user_texts
+    return out
+
+
 def _dimension_terms_for_plan(dimension_plan: dict[str, Any], dimension: str) -> list[str]:
     terms = _normalize_phrase_list((dimension_plan.get("dimension_terms") or {}).get(dimension))
     if terms:
@@ -757,11 +801,18 @@ def _structured_match_details_from_plan(
     if not relevant_dimensions:
         return {}
     details: dict[str, dict[str, Any]] = {}
+    row_usernames = [_row_value(row, getter, 0).strip() for row in member_rows]
+    kb_dimension_texts = _kb_dimension_texts_for_users(row_usernames, relevant_dimensions)
     for row in member_rows:
         username = _row_value(row, getter, 0).strip()
         if not username:
             continue
         dimension_texts = _structured_dimension_texts_from_row(row, getter)
+        for dimension, kb_text in (kb_dimension_texts.get(username) or {}).items():
+            if kb_text:
+                dimension_texts[dimension] = " ".join(
+                    part for part in (dimension_texts.get(dimension, ""), kb_text) if part
+                )
         dimension_scores: dict[str, float] = {}
         for dimension in relevant_dimensions:
             terms = _dimension_terms_for_plan(dimension_plan, dimension)
