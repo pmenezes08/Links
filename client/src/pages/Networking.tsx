@@ -224,14 +224,15 @@ export default function Networking() {
       .finally(() => setLoading(false))
   }, [profileGateLoading, profileReadyForNetworking])
 
-  const loadSessions = useCallback((communityId: number) => {
+  const loadSessions = useCallback((communityId: number, options: { openLatest?: boolean } = {}) => {
+    const { openLatest = true } = options
     setSessionsLoading(true)
     fetch(`/api/networking/steve_sessions?community_id=${communityId}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(data => {
         if (data.success) {
           setSteveSessions(data.sessions || [])
-          if (data.sessions?.length > 0) {
+          if (openLatest && data.sessions?.length > 0) {
             const latest = data.sessions[0]
             setSteveSessionId(latest.id)
             fetch(`/api/networking/steve_session/${latest.id}/messages`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
@@ -408,11 +409,13 @@ export default function Networking() {
       .then(r => r.json())
       .then(data => {
         if (data.success) {
+          setDeletingSessionId(null)
           if (steveSessionId === sessionId) {
             setSteveSessionId(null)
             setSteveMessages([])
+            setSteveFeedback({})
           }
-          loadSessions(steveCommunity)
+          loadSessions(steveCommunity, { openLatest: false })
         }
       })
       .catch(() => {})
@@ -616,17 +619,32 @@ export default function Networking() {
                           <div className="text-[10px] text-[#6f7c81] mt-0.5">{new Date(s.created_at.replace(' ', 'T') + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
                         </button>
                         {deletingSessionId === s.id && (
-                          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-black/90 border border-red-500/30 backdrop-blur-sm">
+                          <div
+                            className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-black/90 border border-red-500/30 backdrop-blur-sm"
+                            onClick={e => e.stopPropagation()}
+                            onPointerDown={e => e.stopPropagation()}
+                            onTouchStart={e => e.stopPropagation()}
+                          >
                             <div className="flex items-center gap-2">
                               <span className="text-[11px] text-[#a7b8be]">Delete?</span>
                               <button
-                                onClick={() => deleteSession(s.id)}
+                                type="button"
+                                onClick={e => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  deleteSession(s.id)
+                                }}
                                 className="rounded-md bg-red-500/20 border border-red-500/40 px-2.5 py-1 text-[11px] font-medium text-red-400 hover:bg-red-500/30 transition"
                               >
                                 Delete
                               </button>
                               <button
-                                onClick={() => setDeletingSessionId(null)}
+                                type="button"
+                                onClick={e => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  setDeletingSessionId(null)
+                                }}
                                 className="rounded-md border border-white/15 px-2.5 py-1 text-[11px] font-medium text-[#a7b8be] hover:bg-white/5 transition"
                               >
                                 Cancel
