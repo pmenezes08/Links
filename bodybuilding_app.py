@@ -14512,6 +14512,8 @@ def api_networking_steve_match():
     community_id = data.get('community_id')
     message = (data.get('message') or '').strip()
     conversation_history = data.get('history', [])
+    debug_requested = bool(data.get('debug'))
+    debug_allowed = bool(debug_requested and username and is_app_admin(username))
     if not community_id or not message:
         return jsonify({'success': False, 'error': 'community_id and message required'}), 400
     from backend.services import ai_usage as _networking_ai_usage
@@ -14560,6 +14562,7 @@ def api_networking_steve_match():
             structured_candidates,
             tiered_roster,
         )
+        from backend.services.networking_debug_trace import build_networking_debug_trace
         from backend.services.networking_planner import plan_networking_query
         from backend.services.networking_prompting import final_answer_policy_block
 
@@ -14837,7 +14840,29 @@ RULES:
             logger.warning("Steve networking safety footer failed (non-fatal): %s", safety_err)
         ai_response = inject_member_mentions(ai_response, member_names)
         ai_response = _sanitize_networking_response_mentions(ai_response, member_names)
-        return jsonify({'success': True, 'response': format_steve_response_links(ai_response)})
+        response_payload = {'success': True, 'response': format_steve_response_links(ai_response)}
+        if debug_allowed:
+            response_payload['debug_trace'] = build_networking_debug_trace(
+                query_plan=query_plan,
+                dimension_plan=dimension_plan,
+                retrieval_query=retrieval_query,
+                structured_ids=structured_ids,
+                structured_details=structured_details,
+                semantic_ids=semantic_ids,
+                semantic_details=semantic_details,
+                candidate_pool=candidate_pool,
+                metadata_scores=metadata_scores,
+                ordered_usernames=ordered_usernames,
+                tiered_matches=tiered_matches,
+                forced_usernames=forced_usernames,
+                retrieval_policy=retrieval_policy,
+                all_member_usernames=all_member_usernames,
+                model_used=_model_used,
+                recommended=recommended,
+                ai_response=ai_response,
+                planner_model=networking_ai_config.planner_model,
+            )
+        return jsonify(response_payload)
     except Exception as e:
         logger.error(f"Error in steve_match: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'AI service error'}), 500

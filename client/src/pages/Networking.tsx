@@ -23,6 +23,22 @@ type MemberProfile = {
   bio?: string | null
 }
 type FilterOptions = { locations: string[]; industries: string[]; interests: string[] }
+type SteveDebugTrace = {
+  planner?: Record<string, unknown>
+  retrieval?: Record<string, unknown>
+  fusion?: Record<string, unknown>
+  context?: Record<string, unknown>
+  final_answer?: Record<string, unknown>
+}
+
+const DEBUG_TABS = [
+  { key: 'planner', label: 'Planner' },
+  { key: 'retrieval', label: 'Retrieval' },
+  { key: 'fusion', label: 'Fusion' },
+  { key: 'context', label: 'Context' },
+  { key: 'final_answer', label: 'Final' },
+] as const
+type DebugTabKey = (typeof DEBUG_TABS)[number]['key']
 
 const SECTION_DEFINITIONS = [
   { key: 'steve', label: 'Steve Recommendations' },
@@ -36,6 +52,62 @@ const NETWORKING_CHAT_HISTORY_SEND_CAP = 50
 const NATIVE_KEYBOARD_MIN_HEIGHT = 60
 const KEYBOARD_OFFSET_EPSILON = 6
 const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
+
+function DebugJsonBlock({ data }: { data: unknown }) {
+  return (
+    <pre className="max-h-[58vh] overflow-auto whitespace-pre-wrap rounded-xl border border-white/10 bg-black/70 p-3 text-[11px] leading-relaxed text-[#c8d6db]">
+      {JSON.stringify(data ?? {}, null, 2)}
+    </pre>
+  )
+}
+
+function SteveDebugModal({
+  trace,
+  activeTab,
+  onTabChange,
+  onClose,
+}: {
+  trace: SteveDebugTrace
+  activeTab: DebugTabKey
+  onTabChange: (tab: DebugTabKey) => void
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm px-3 py-6" role="dialog" aria-modal="true" aria-label="Steve search debug trace">
+      <div className="mx-auto flex max-h-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-[#4db6ac]/25 bg-[#050707] shadow-2xl">
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 p-4">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#4db6ac]">Staging Diagnostic</p>
+            <h2 className="mt-1 text-lg font-semibold text-white">Steve Search Debug</h2>
+            <p className="mt-1 text-xs text-[#8ca0a8]">Sanitized planner, retrieval, fusion, context, and final-answer internals.</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/80 hover:border-white/35"
+          >
+            Close
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2 border-b border-white/10 p-3">
+          {DEBUG_TABS.map(tab => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => onTabChange(tab.key)}
+              className={`rounded-full border px-3 py-1.5 text-xs transition ${activeTab === tab.key ? 'border-[#4db6ac]/60 bg-[#4db6ac]/10 text-[#4db6ac]' : 'border-white/15 text-[#a7b8be] hover:border-white/35'}`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div className="overflow-auto p-4">
+          <DebugJsonBlock data={trace[activeTab]} />
+        </div>
+      </div>
+    </div>
+  )
+}
 
 /** Steve empty-thread welcome (variant A) — community name + active member count from networking API */
 function SteveWelcomeCopy({ communityName, activeMemberCount }: { communityName: string; activeMemberCount: number }) {
@@ -81,6 +153,11 @@ export default function Networking() {
   const [steveFeedback, setSteveFeedback] = useState<Record<string, { feedback: 'up' | 'down'; reasoning?: string }>>({})
   const [steveMemberCount, setSteveMemberCount] = useState<number | null>(null)
   const [steveMembersLoading, setSteveMembersLoading] = useState(false)
+  const [isAppAdmin, setIsAppAdmin] = useState(false)
+  const [steveDebugEnabled, setSteveDebugEnabled] = useState(false)
+  const [lastSteveDebugTrace, setLastSteveDebugTrace] = useState<SteveDebugTrace | null>(null)
+  const [showDebugModal, setShowDebugModal] = useState(false)
+  const [debugTab, setDebugTab] = useState<DebugTabKey>('planner')
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const longPressActiveRef = useRef(false)
 
@@ -224,6 +301,19 @@ export default function Networking() {
       .finally(() => setLoading(false))
   }, [profileGateLoading, profileReadyForNetworking])
 
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/check_admin', { credentials: 'include', headers: { 'Accept': 'application/json' } })
+      .then(r => r.json())
+      .then(data => {
+        if (!cancelled) setIsAppAdmin(Boolean(data?.is_admin))
+      })
+      .catch(() => {
+        if (!cancelled) setIsAppAdmin(false)
+      })
+    return () => { cancelled = true }
+  }, [])
+
   const loadSessions = useCallback((communityId: number, options: { openLatest?: boolean } = {}) => {
     const { openLatest = true } = options
     setSessionsLoading(true)
@@ -235,6 +325,8 @@ export default function Networking() {
           if (openLatest && data.sessions?.length > 0) {
             const latest = data.sessions[0]
             setSteveSessionId(latest.id)
+            setLastSteveDebugTrace(null)
+            setShowDebugModal(false)
             fetch(`/api/networking/steve_session/${latest.id}/messages`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
               .then(r => r.json())
               .then(d => { if (d.success) setSteveMessages(d.messages || []) })
@@ -242,6 +334,8 @@ export default function Networking() {
           } else {
             setSteveSessionId(null)
             setSteveMessages([])
+            setLastSteveDebugTrace(null)
+            setShowDebugModal(false)
           }
         }
       })
@@ -282,6 +376,8 @@ export default function Networking() {
           setSteveSessionId(data.session_id)
           setSteveMessages([])
           setSteveFeedback({})
+          setLastSteveDebugTrace(null)
+          setShowDebugModal(false)
           setShowSessionList(false)
           loadSessions(steveCommunity)
         }
@@ -292,6 +388,8 @@ export default function Networking() {
   const loadSession = useCallback((sessionId: number) => {
     setSteveSessionId(sessionId)
     setShowSessionList(false)
+    setLastSteveDebugTrace(null)
+    setShowDebugModal(false)
     fetch(`/api/networking/steve_session/${sessionId}/messages`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(d => {
@@ -414,6 +512,8 @@ export default function Networking() {
             setSteveSessionId(null)
             setSteveMessages([])
             setSteveFeedback({})
+            setLastSteveDebugTrace(null)
+            setShowDebugModal(false)
           }
           loadSessions(steveCommunity, { openLatest: false })
         }
@@ -452,10 +552,17 @@ export default function Networking() {
     if (sid) saveMessage(sid, 'user', msg)
     try {
       const history = steveMessages.slice(-NETWORKING_CHAT_HISTORY_SEND_CAP).map(m => ({ role: m.role === 'steve' ? 'assistant' : 'user', content: m.text }))
-      const res = await fetch('/api/networking/steve_match', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ community_id: steveCommunity, message: msg, history }) })
+      const res = await fetch('/api/networking/steve_match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ community_id: steveCommunity, message: msg, history, debug: isAppAdmin && steveDebugEnabled }),
+      })
       const data = await res.json()
       const reply = data.success ? data.response : (data.error || 'Something went wrong.')
       setSteveMessages(prev => [...prev, { role: 'steve', text: reply }])
+      setLastSteveDebugTrace(data.debug_trace || null)
+      if (!data.debug_trace) setShowDebugModal(false)
       if (sid) saveMessage(sid, 'steve', reply)
     } catch {
       const errMsg = 'Network error. Please try again.'
@@ -572,14 +679,22 @@ export default function Networking() {
               {/* Community selector */}
               <select
                 value={steveCommunity || ''}
-                onChange={e => { setSteveCommunity(Number(e.target.value)); setSteveMessages([]); setSteveSessionId(null); setShowSessionList(false); setSteveFeedback({}) }}
+                onChange={e => {
+                  setSteveCommunity(Number(e.target.value))
+                  setSteveMessages([])
+                  setSteveSessionId(null)
+                  setShowSessionList(false)
+                  setSteveFeedback({})
+                  setLastSteveDebugTrace(null)
+                  setShowDebugModal(false)
+                }}
                 className="w-full rounded-lg border border-white/15 bg-transparent px-3 py-2 text-xs text-white focus:outline-none focus:border-[#4db6ac]"
               >
                 {communities.map(c => <option key={c.id} value={c.id} className="bg-black">{c.name}</option>)}
               </select>
 
               {/* Session controls */}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={startNewChat}
                   className="flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white hover:border-white/35 transition"
@@ -595,6 +710,27 @@ export default function Networking() {
                   History
                   {steveSessions.length > 0 && <span className="text-[10px] text-[#6f7c81]">({steveSessions.length})</span>}
                 </button>
+                {isAppAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setSteveDebugEnabled(prev => !prev)}
+                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition ${steveDebugEnabled ? 'border-[#4db6ac]/60 bg-[#4db6ac]/10 text-[#4db6ac]' : 'border-white/15 text-white hover:border-white/35'}`}
+                    title="Request a sanitized debug trace on the next Steve search"
+                  >
+                    <i className="fa-solid fa-bug text-[10px]" />
+                    Debug {steveDebugEnabled ? 'On' : 'Off'}
+                  </button>
+                )}
+                {isAppAdmin && lastSteveDebugTrace && (
+                  <button
+                    type="button"
+                    onClick={() => { setDebugTab('planner'); setShowDebugModal(true) }}
+                    className="flex items-center gap-1.5 rounded-lg border border-[#4db6ac]/50 px-3 py-1.5 text-xs text-[#4db6ac] hover:bg-[#4db6ac]/10 transition"
+                  >
+                    <i className="fa-solid fa-magnifying-glass-chart text-[10px]" />
+                    View Steve reasoning
+                  </button>
+                )}
               </div>
 
               {/* Session history list */}
@@ -900,6 +1036,14 @@ export default function Networking() {
           </div>
         )}
       </div>
+      {isAppAdmin && showDebugModal && lastSteveDebugTrace && (
+        <SteveDebugModal
+          trace={lastSteveDebugTrace}
+          activeTab={debugTab}
+          onTabChange={setDebugTab}
+          onClose={() => setShowDebugModal(false)}
+        />
+      )}
     </div>
   )
 }
