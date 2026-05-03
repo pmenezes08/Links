@@ -48,6 +48,7 @@ const KB_DIMENSION_LABELS: Record<string, { label: string; icon: string }> = {
   Index: { label: 'Overview', icon: 'fa-solid fa-layer-group' },
   Identity: { label: 'Identity & Traits', icon: 'fa-solid fa-fingerprint' },
   UniqueFingerprint: { label: 'Unique Fingerprint', icon: 'fa-solid fa-star' },
+  LifeInterests: { label: 'Life Interests', icon: 'fa-solid fa-wine-glass' },
   LifeCareer: { label: 'Life & Career', icon: 'fa-solid fa-road' },
   GeographyCulture: { label: 'Geography & Culture', icon: 'fa-solid fa-globe' },
   Expertise: { label: 'Expertise', icon: 'fa-solid fa-microscope' },
@@ -58,7 +59,7 @@ const KB_DIMENSION_LABELS: Record<string, { label: string; icon: string }> = {
 }
 
 const KB_DIMENSION_ORDER = [
-  'Index', 'Identity', 'UniqueFingerprint', 'LifeCareer',
+  'Index', 'Identity', 'UniqueFingerprint', 'LifeInterests', 'LifeCareer',
   'GeographyCulture', 'Expertise', 'Opinions', 'CompanyIntel',
   'InferredContext', 'Network',
 ]
