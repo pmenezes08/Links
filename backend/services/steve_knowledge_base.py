@@ -2,8 +2,8 @@
 Steve Knowledge Base — Per-Member + Per-Network Architecture
 
 Manages the structured, evolutionary Knowledge Base in Firestore collection
-``steve_knowledge_base``. Each member has up to 10 synthesis documents
-(9 core dimensions + InferredContext for nuanced insights). Each network has 6 aggregated synthesis documents:
+``steve_knowledge_base``. Each member has up to 11 synthesis documents
+(10 core dimensions + InferredContext for nuanced insights). Each network has 6 aggregated synthesis documents:
 NetworkIndex, NetworkExpertise, NetworkGeographyCulture, NetworkComposition,
 NetworkInferredContext, and NetworkUniqueFingerprint. These provide rich,
 multi-dimensional views of network composition, expertise, culture, and
@@ -36,7 +36,7 @@ USE_KNOWLEDGE_BASE_V1 = os.environ.get(
     "USE_KNOWLEDGE_BASE_V1", "true"
 ).lower() == "true"
 
-# Grok KB synthesis returns a large JSON object (10 dimensions). 4k output tokens routinely
+# Grok KB synthesis returns a large JSON object (11 dimensions). 4k output tokens routinely
 # truncates mid-JSON and causes JSONDecodeError. Override via KNOWLEDGE_SYNTHESIS_MAX_OUTPUT_TOKENS.
 _KB_SYNTHESIS_MAX_OUT_DEFAULT = 32768
 _KB_SYNTHESIS_MAX_OUT_MIN = 8192
@@ -200,6 +200,7 @@ SYNTHESIS_NOTE_TYPES = (
     "Network",
     "UniqueFingerprint",
     "InferredContext",
+    "LifeInterests",
     # Network-level variants (aggregated across members and sub-communities)
     "NetworkIndex",
     "NetworkExpertise",
@@ -277,6 +278,14 @@ SYNTHESIS_SCHEMAS: Dict[str, Dict[str, str]] = {
         "worldviewEvolution": "narrative of how fundamental perspectives have shifted over time",
         "strategicImplications": "what this means for future trajectory, networking value, and platform fit",
         "confidence": "0.0-1.0 score on the strength/evidence of these inferences",
+    },
+    "LifeInterests": {
+        "interests": "list of recurring non-professional interests, hobbies, and personal pursuits with evidence",
+        "rituals": "repeated lifestyle practices, routines, and habits (weekly cooking, hikes, dinners, sports)",
+        "tasteSignals": "food, wine, design, music, culture, travel, art, sport, or other taste markers",
+        "socialContexts": "how interests show up socially: hosting, clubs, shared activities, community rituals",
+        "capabilitySignals": "evidence the person can actually do or teach the activity, not merely likes adjacent content",
+        "evidence": "short source-backed snippets or references from posts/profile/external context",
     },
     "NetworkIndex": {
         "currentSynthesis": "3-5 sentence overview of the network's collective identity and strengths",
@@ -457,7 +466,7 @@ def save_synthesis_note(
     *,
     admin_feedback: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """Save or update a synthesis note (one of the 10 core dimensions, including InferredContext).
+    """Save or update a synthesis note (one of the member core dimensions, including InferredContext).
 
     Uses Firestore ``set(merge=True)`` so partial updates are safe.
     Increments ``version`` on every write. Validates against SYNTHESIS_NOTE_TYPES.
@@ -741,6 +750,7 @@ def build_knowledge_context_for_steve(
 
     dimension_order = [
         ("UniqueFingerprint", "UNIQUE FINGERPRINT"),
+        ("LifeInterests", "LIFE INTERESTS"),
         ("LifeCareer", "LIFE & CAREER EVOLUTION"),
         ("GeographyCulture", "GEOGRAPHIC & CULTURAL JOURNEY"),
         ("Expertise", "EXPERTISE & DEPTH"),
@@ -855,7 +865,7 @@ def _mid_field_text(content: dict, key: str, max_items: int = 5, max_chars: int 
 
 
 _MID_DIMENSIONS = [
-    "Index", "Identity", "UniqueFingerprint", "LifeCareer",
+    "Index", "Identity", "UniqueFingerprint", "LifeInterests", "LifeCareer",
     "GeographyCulture", "Expertise", "InferredContext",
     "CompanyIntel", "Opinions",
 ]
@@ -916,6 +926,14 @@ def build_knowledge_context_mid(username: str) -> str:
             if isinstance(matched, list):
                 matched = "; ".join(str(m) for m in matched[:4])
             parts.append(f"Best matched with: {matched}")
+
+        life_interests = dims.get("LifeInterests", {})
+        if life_interests.get("interests"):
+            parts.append(f"Life interests: {_mid_field_text(life_interests, 'interests', 6, 180)}")
+        if life_interests.get("rituals"):
+            parts.append(f"Rituals: {_mid_field_text(life_interests, 'rituals', 4, 160)}")
+        if life_interests.get("capabilitySignals"):
+            parts.append(f"Personal capabilities: {_mid_field_text(life_interests, 'capabilitySignals', 5, 180)}")
 
         lc = dims.get("LifeCareer", {})
         if lc.get("trajectory"):
@@ -1014,7 +1032,7 @@ You may also receive a PREVIOUS SYNTHESIS section — this is the existing knowl
 Your job is to ENHANCE and REFINE it, not start from scratch. Preserve what's correct, add new evidence,
 and update anything that has changed.
 
-Focus on these 10 dimensions:
+Focus on these 11 dimensions:
 1. LifeCareer — career stages, transitions, trajectory, turning points
 2. GeographyCulture — locations lived, cultural influences, geographic expertise
 3. Expertise — domains, depth progression, current focus, credibility signals
@@ -1025,6 +1043,7 @@ Focus on these 10 dimensions:
 8. UniqueFingerprint — what makes this person truly special, rare qualities, bridging capability
 9. Index — overall synthesis tying everything together
 10. InferredContext — dedicated home for deep holistic/transformative inferences (the "what does this *mean* about who this person is" layer, including cultural/slang context from posts and comments). This is where the HOLISTIC EXPERIENCE INFERENCE ENGINE output should be primarily captured.
+11. LifeInterests — non-professional recurring interests, hobbies, rituals, taste signals, social contexts, and personal capability evidence from posts, comments, profile data, and external context.
 
 CRITICAL RULES:
 - Track EVOLUTION, not just current state. "Used to be X, now Y" is more valuable than just "is Y".
@@ -1072,7 +1091,8 @@ Move beyond listing facts. For every significant experience (professional role, 
 
 Rules for all users:
 - Be SPECIFIC, EVIDENCE-BASED, and NUANCED. Always tie inferences to concrete details from verifiedLinks, manualContext, manualEdits, enriched content (articles/podcasts), authored posts, replies, and shared external sources with captions. These are now the *only* sources for network and cultural insights.
-- Be HOLISTIC. Connect professional, personal, geographic, cultural, educational, and volunteer experiences into a coherent narrative. **Populate InferredContext as the primary home for these insights** while cross-referencing relevant dimensions (Identity, UniqueFingerprint, LifeCareer, etc.).
+- Be HOLISTIC. Connect professional, personal, geographic, cultural, educational, and volunteer experiences into a coherent narrative. **Populate InferredContext as the primary home for these insights** while cross-referencing relevant dimensions (Identity, UniqueFingerprint, LifeCareer, LifeInterests, etc.).
+- Capture non-professional interests as first-class evidence in LifeInterests. If posts say someone cooks weekly with wine, trains for marathons, hosts dinners, sails, paints, performs music, follows restaurants, or practices any recurring personal pursuit, record both the interest and whether there is capability evidence versus casual liking.
 - CULTURAL & SLANG CONTEXT (CRITICAL FOR POSTS/COMMENTS): Pay special attention to native-language nuances. E.g. Portuguese "Hey Malta", "E aí malta", or "Malta vai" is colloquial for "Hey guys/folks" in group settings — not a literal reference to the country of Malta. Use surrounding comment thread and user background to disambiguate. Surface these interpretations prominently in InferredContext.
 - For CompanyIntel: Always enrich with reputation, selectivity, stage, globalPresence, and how it shapes the user's credibility (e.g., "xAI role carries far more weight than a similar title at a small foundation"). Surface the valuation insight in InferredContext.
 - globalPresence (CompanyIntel — judge the **named organization only**, not halo reach):
@@ -1125,6 +1145,7 @@ Return ONLY valid JSON with this structure:
   "Identity": {"coreValues": [...], "traits": [...], "contradictions": "...", "energyPatterns": "...", "communicationStyle": "..."},
   "Network": {"interactionFrequency": [...], "networkEvolution": "...", "communityParticipation": [...], "relationshipStrength": [...]},
   "UniqueFingerprint": {"whatMakesThemSpecial": "...", "bridgingCapability": "...", "rareQualities": [...], "bestMatchedWith": "..."},
+  "LifeInterests": {"interests": [...], "rituals": [...], "tasteSignals": [...], "socialContexts": [...], "capabilitySignals": [...], "evidence": [...]},
   "InferredContext": {
     "experiences": [{"experience": "...", "transformativeImpact": "...", "strategicIntent": "...", "capabilitySignals": "...", "bridgingValue": "...", "implicationsForIdentity": "..."}],
     "overarchingThemes": ["..."],
@@ -1140,7 +1161,7 @@ def synthesize_member_knowledge(
     *,
     profile_data: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bool, Optional[Dict[str, str]]]:
-    """Auto-synthesize the 10 core dimension notes from existing data (including the new InferredContext layer).
+    """Auto-synthesize the member core dimension notes from existing data (including the new InferredContext layer).
 
     Collects all available data (Firestore profile, SQL posts/replies,
     enriched external content) and calls Grok to produce structured synthesis

@@ -351,6 +351,8 @@ class TestNetworkingRetrieval(unittest.TestCase):
                 [],
             )
         )
+        self.assertTrue(should_use_reasoning_planner("I am looking for investment", []))
+        self.assertTrue(should_use_reasoning_planner("angel investor to invest in C-Point", []))
 
     def test_search_rewrite_fallback_prefers_practitioner_dimensions(self):
         plan = build_dimension_plan(
@@ -366,6 +368,26 @@ class TestNetworkingRetrieval(unittest.TestCase):
         )
         self.assertIn("Index", plan["secondary_dimensions"])
         self.assertIn("GeographyCulture", plan["secondary_dimensions"])
+
+    def test_dimension_plan_uses_life_interests_from_planner_analysis(self):
+        plan = build_dimension_plan(
+            {
+                "dimension_analysis": {
+                    "LifeInterests": {"priority": "primary", "reason": "Cooking is a personal recurring interest."},
+                    "InferredContext": {"priority": "primary", "reason": "Posts can imply rituals."},
+                    "UniqueFingerprint": {"priority": "secondary", "reason": "May be distinctive."},
+                    "LifeCareer": {"priority": "ignored", "reason": "Only relevant if professional cooking."},
+                },
+                "direct_evidence_query": "personally cooks recipes weekly cooking hosts dinners",
+                "adjacent_evidence_query": "food restaurants wine hospitality",
+                "search_rewrite": "people who know how to cook",
+            }
+        )
+
+        self.assertEqual(plan["primary_dimensions"], ["LifeInterests", "InferredContext"])
+        self.assertEqual(plan["secondary_dimensions"], ["UniqueFingerprint"])
+        self.assertIn("personally", plan["dimension_terms"]["LifeInterests"])
+        self.assertIn("restaurants", plan["dimension_terms"]["UniqueFingerprint"])
 
     def test_location_and_trait_facets_keep_targeted_dimensions_primary(self):
         location_plan = build_dimension_plan(
@@ -384,62 +406,111 @@ class TestNetworkingRetrieval(unittest.TestCase):
         self.assertEqual(location_plan["primary_dimensions"][:2], ["GeographyCulture", "InferredContext"])
         self.assertEqual(trait_plan["primary_dimensions"][:2], ["Identity", "UniqueFingerprint"])
 
-    def test_practitioner_scoring_ranks_pilot_above_aviation_adjacent(self):
+    def test_generic_direct_evidence_ranks_cooking_practitioner_above_adjacent(self):
         rows = [
             (
-                "pilot",
-                "Pilot",
-                "Former commercial pilot and competitive glider.",
+                "cook",
+                "Cook",
+                "Hosts weekly cooking nights with wine.",
                 "",
                 "",
-                "Investing",
-                "Managing Director",
-                "Family Office",
-                "gliding, aircraft, aviation",
+                "Technology",
+                "Product Manager",
+                "AppCo",
+                "cooking, wine, hosting dinners",
                 "",
-                "Commercial pilot for 20 years with extensive flight experience, aircraft operations, and competitive gliding.",
+                "Personally cooks every week, develops recipes, and hosts dinner gatherings with wine.",
             ),
             (
-                "aviation_adjacent",
-                "Aviation Adjacent",
-                "Investor in aviation companies.",
+                "food_adjacent",
+                "Food Adjacent",
+                "Investor in restaurant technology.",
                 "",
                 "",
-                "Aviation",
+                "Food Tech",
                 "Investor",
-                "Aero Ventures",
-                "aviation, aerospace",
+                "Food Ventures",
+                "restaurants, hospitality",
                 "",
-                "Works with aviation operations companies and aerospace suppliers but has no personal flying background.",
+                "Invests in food-tech and restaurant software but has no evidence of personal cooking practice.",
             ),
         ]
         plan = {
-            "facets": {
-                "experiences": [
-                    "pilot",
-                    "commercial pilot",
-                    "flying",
-                    "aircraft",
-                    "flight experience",
-                    "gliding",
-                    "aviation operations",
-                ]
+            "dimension_analysis": {
+                "LifeInterests": {"priority": "primary", "reason": "Cooking is a non-professional personal capability."},
+                "InferredContext": {"priority": "primary", "reason": "Rituals and posts may imply practice."},
+                "UniqueFingerprint": {"priority": "secondary", "reason": "May be distinctive."},
             },
-            "primary_dimensions": ["LifeCareer", "Expertise", "InferredContext", "UniqueFingerprint"],
-            "hard_dimensions": ["LifeCareer"],
-            "search_rewrite": "pilot commercial pilot flying aircraft flight experience gliding aviation operations fighter jet mentor",
+            "primary_dimensions": ["LifeInterests", "InferredContext"],
+            "secondary_dimensions": ["UniqueFingerprint"],
+            "direct_evidence_query": "personally cooks recipes weekly cooking hosts dinners",
+            "adjacent_evidence_query": "food restaurants hospitality",
+            "deprioritized_evidence_query": "food tech investor without personal cooking",
+            "search_rewrite": "people who know how to cook",
         }
 
         ranked = structured_candidates(
             rows,
-            "I want to fly a fighter jet and need someone who can help me achieve this dream",
+            "I want people who know how to cook",
             self._getter,
             retrieval_plan=plan,
         )
         details = structured_match_details(rows, self._getter, retrieval_plan=plan)
 
-        self.assertEqual(ranked[0], "pilot")
-        self.assertGreater(details["pilot"]["practitioner_hits"], details["aviation_adjacent"]["practitioner_hits"])
+        self.assertEqual(ranked[0], "cook")
+        self.assertGreater(details["cook"]["direct_evidence_hits"], details["food_adjacent"]["direct_evidence_hits"])
+
+    def test_generic_direct_evidence_ranks_angel_investor_above_finance_adjacent(self):
+        rows = [
+            (
+                "direct_investor",
+                "Direct Investor",
+                "Family office investor and acquisition backer.",
+                "",
+                "",
+                "Investing",
+                "Managing Director",
+                "JSS Invest",
+                "startup investing",
+                "",
+                "JSS Invest Geschäftsführer and key investor backing a 2025 ICEA acquisition through Lynx Trail.",
+            ),
+            (
+                "finance_adjacent",
+                "Finance Adjacent",
+                "Finance operator.",
+                "",
+                "",
+                "Finance",
+                "Banker",
+                "BankCo",
+                "fundraising",
+                "",
+                "Works in corporate finance and advises companies on banking relationships.",
+            ),
+        ]
+        plan = {
+            "primary_dimensions": ["LifeCareer", "Expertise", "CompanyIntel", "InferredContext"],
+            "secondary_dimensions": ["Network", "UniqueFingerprint", "Index"],
+            "direct_evidence_query": "angel investor startup investor private investor key investor family office acquisition backer invested companies",
+            "adjacent_evidence_query": "finance venture capital banking startup fundraising advisor investor network",
+            "deprioritized_evidence_query": "generic finance background without direct investing backing evidence",
+            "search_rewrite": "angel investor to invest in C-Point",
+        }
+
+        ranked = structured_candidates(
+            rows,
+            "angel investor to invest in C-Point",
+            self._getter,
+            retrieval_plan=plan,
+        )
+        details = structured_match_details(rows, self._getter, retrieval_plan=plan)
+
+        self.assertEqual(ranked[0], "direct_investor")
+        self.assertGreater(
+            details["direct_investor"]["direct_evidence_hits"],
+            details["finance_adjacent"]["direct_evidence_hits"],
+        )
 
     def test_tiered_roster_separates_direct_and_broader_matches(self):
         rows = [

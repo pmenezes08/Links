@@ -35,6 +35,10 @@ ALLOWED_FACETS = (
 
 PLANNER_SYSTEM_PROMPT = """You are a query planner for a private professional networking search assistant.
 Return JSON only with keys:
+- intent_summary
+- target
+- relationship_to_target
+- dimension_analysis
 - facets
 - hard_constraints
 - soft_constraints
@@ -43,22 +47,27 @@ Return JSON only with keys:
 - hard_dimensions
 - named_people
 - search_rewrite
+- direct_evidence_query
+- adjacent_evidence_query
+- deprioritized_evidence_query
 - needs_clarification
 - clarifying_question
+- search_state_action
 
 Facet keys may only be:
 geography, industry, roles, company_builder, traits, interests, experiences, identity_life_stage
 
 Dimension keys may only be:
-Index, LifeCareer, GeographyCulture, Expertise, CompanyIntel, Opinions, Identity, Network, UniqueFingerprint, InferredContext
+Index, LifeCareer, GeographyCulture, Expertise, CompanyIntel, Opinions, Identity, Network, UniqueFingerprint, InferredContext, LifeInterests
 
-Dimension selection policy:
-- Practitioner / goal-seeking asks ("I want to...", "help me...", "learn...", "achieve...", "find a mentor...") depend primarily on LifeCareer, Expertise, InferredContext, and UniqueFingerprint. Prefer people who have personally done the activity over people who merely work near the industry.
-- Location asks depend primarily on GeographyCulture; use InferredContext and Index as secondary unless the ask is only current location.
-- Trait / personality asks depend primarily on Identity and UniqueFingerprint; use Index as secondary.
-- Company / industry asks depend primarily on Expertise, CompanyIntel, and LifeCareer.
-- Opinion / belief asks depend primarily on Opinions and Expertise.
-- Relationship, access, or community-connector asks depend primarily on Network; use Identity and Index as secondary.
+Dimension reasoning policy:
+- First identify the target of the request and the relationship the user wants to that target.
+- Then assess every relevant KB dimension as primary, secondary, hard, or ignored for this exact request.
+- Do not classify by a hardcoded domain taxonomy. Decide from what evidence would actually answer the user's ask.
+- Primary dimensions are where decisive evidence is most likely to live.
+- Secondary dimensions may contain helpful or adjacent evidence.
+- Hard dimensions are required only when evidence in that dimension is necessary to satisfy the request.
+- Ignored dimensions should not drive retrieval.
 
 Rules:
 - Preserve prior user intent for follow-up questions.
@@ -68,20 +77,25 @@ Rules:
 - Use primary_dimensions for the main KB dimensions this query depends on.
 - Use secondary_dimensions for adjacent or broader evidence dimensions.
 - Use hard_dimensions only when a KB dimension is truly required to satisfy the ask.
-- search_rewrite should be a compact search query for retrieval.
+- dimension_analysis must explain why each selected dimension is primary/secondary/hard/ignored.
+- direct_evidence_query should describe concrete evidence that would make someone a direct match.
+- adjacent_evidence_query should describe broader or weaker evidence that may still help.
+- deprioritized_evidence_query should describe evidence that should not outrank direct matches.
+- search_rewrite should combine the target, relationship, and direct evidence in a compact retrieval query.
 - For sensitive life-stage / identity asks like parent, include them only when the user explicitly asked for them.
 - If the ask is simple and single-facet, keep the JSON minimal.
+- search_state_action must be one of: clarify, retrieve, refine, close.
 - Never mention internal reasoning. JSON only.
 
 Examples:
-- User: "I want to fly a fighter jet and need someone who can help me achieve this dream"
-  Plan: primary_dimensions=["LifeCareer","Expertise","InferredContext","UniqueFingerprint"], secondary_dimensions=["Index","GeographyCulture"], facets={"experiences":["pilot","commercial pilot","flying","aircraft","flight experience","gliding"]}, search_rewrite="pilot commercial pilot flying aircraft flight experience gliding aviation operations fighter jet mentor", hard_dimensions=["LifeCareer"]
+- User: "I want people who know how to cook"
+  Plan: target="cooking", relationship_to_target="direct personal capability", primary_dimensions=["LifeInterests","InferredContext"], secondary_dimensions=["UniqueFingerprint","Expertise","Identity"], direct_evidence_query="personally cooks cooking recipes culinary training chef hosts dinners weekly cooking", adjacent_evidence_query="food restaurants wine hospitality food industry", deprioritized_evidence_query="restaurant investor food tech without personal cooking evidence", search_state_action="retrieve"
+- User: "I am looking for an angel investor to invest in C-Point"
+  Plan: target="angel investment in C-Point", relationship_to_target="capital provider / direct investor", primary_dimensions=["LifeCareer","Expertise","CompanyIntel","InferredContext"], secondary_dimensions=["Network","UniqueFingerprint","Index"], direct_evidence_query="angel investor startup investor private investor key investor family office acquisition backer seed investor invested in companies", adjacent_evidence_query="finance venture capital banking startup fundraising advisor investor network", deprioritized_evidence_query="generic finance background without direct investing or backing evidence", search_state_action="retrieve"
 - User: "Who lives in Lisbon?"
-  Plan: primary_dimensions=["GeographyCulture"], secondary_dimensions=["Index"], facets={"geography":["Lisbon"]}, search_rewrite="Lisbon current location"
+  Plan: target="Lisbon", relationship_to_target="current location", primary_dimensions=["GeographyCulture"], secondary_dimensions=["Index","InferredContext"], direct_evidence_query="currently lives in Lisbon based in Lisbon located in Lisbon", search_state_action="retrieve"
 - User: "Who is goal-driven and collaborative?"
-  Plan: primary_dimensions=["Identity","UniqueFingerprint"], secondary_dimensions=["Index"], facets={"traits":["goal-driven","collaborative"]}, search_rewrite="goal-driven collaborative traits values identity"
-- User: "Who has strong opinions on AI regulation?"
-  Plan: primary_dimensions=["Opinions","Expertise"], secondary_dimensions=["Index"], facets={"industry":["AI regulation"]}, search_rewrite="AI regulation opinions policy expertise"
+  Plan: target="goal-driven collaborative working style", relationship_to_target="traits and working style", primary_dimensions=["Identity","UniqueFingerprint"], secondary_dimensions=["Index","InferredContext"], direct_evidence_query="goal-driven collaborative traits values working style", search_state_action="retrieve"
 """
 
 
@@ -138,7 +152,34 @@ def normalize_networking_query_plan(raw_plan: dict | None) -> dict | None:
         named_people = [named_people]
     named_people = [str(v).strip()[:120] for v in named_people if str(v).strip()][:6]
 
+    def _clean_text(name: str, limit: int = 500) -> str:
+        return str(raw_plan.get(name) or "").strip()[:limit]
+
+    dimension_analysis_in = raw_plan.get("dimension_analysis") or {}
+    dimension_analysis: dict[str, dict[str, str]] = {}
+    if isinstance(dimension_analysis_in, dict):
+        for dimension, value in dimension_analysis_in.items():
+            if dimension not in KB_DIMENSIONS:
+                continue
+            if isinstance(value, str):
+                priority = value.strip().lower()
+                reason = ""
+            elif isinstance(value, dict):
+                priority = str(value.get("priority") or "").strip().lower()
+                reason = str(value.get("reason") or "").strip()[:300]
+            else:
+                continue
+            if priority in {"primary", "secondary", "hard", "ignored", "ignore"}:
+                dimension_analysis[dimension] = {
+                    "priority": "ignored" if priority == "ignore" else priority,
+                    "reason": reason,
+                }
+
     plan = {
+        "intent_summary": _clean_text("intent_summary", 400),
+        "target": _clean_text("target", 200),
+        "relationship_to_target": _clean_text("relationship_to_target", 200),
+        "dimension_analysis": dimension_analysis,
         "facets": facets_out,
         "hard_constraints": _clean_constraints(raw_plan.get("hard_constraints")),
         "soft_constraints": _clean_constraints(raw_plan.get("soft_constraints")),
@@ -146,17 +187,39 @@ def normalize_networking_query_plan(raw_plan: dict | None) -> dict | None:
         "secondary_dimensions": _clean_dimensions(raw_plan.get("secondary_dimensions")),
         "hard_dimensions": _clean_dimensions(raw_plan.get("hard_dimensions")),
         "named_people": named_people,
-        "search_rewrite": str(raw_plan.get("search_rewrite") or "").strip()[:500],
+        "search_rewrite": _clean_text("search_rewrite", 700),
+        "direct_evidence_query": _clean_text("direct_evidence_query", 700),
+        "adjacent_evidence_query": _clean_text("adjacent_evidence_query", 700),
+        "deprioritized_evidence_query": _clean_text("deprioritized_evidence_query", 700),
         "needs_clarification": bool(raw_plan.get("needs_clarification")),
         "clarifying_question": str(raw_plan.get("clarifying_question") or "").strip()[:300],
+        "search_state_action": _clean_text("search_state_action", 40)
+        if _clean_text("search_state_action", 40) in {"clarify", "retrieve", "refine", "close"}
+        else "retrieve",
     }
+    if not plan["primary_dimensions"] and dimension_analysis:
+        plan["primary_dimensions"] = [
+            dimension for dimension, info in dimension_analysis.items() if info.get("priority") in {"primary", "hard"}
+        ]
+    if not plan["secondary_dimensions"] and dimension_analysis:
+        plan["secondary_dimensions"] = [
+            dimension for dimension, info in dimension_analysis.items() if info.get("priority") == "secondary"
+        ]
+    if not plan["hard_dimensions"] and dimension_analysis:
+        plan["hard_dimensions"] = [
+            dimension for dimension, info in dimension_analysis.items() if info.get("priority") == "hard"
+        ]
     return plan if (
-        plan["facets"]
+        plan["intent_summary"]
+        or plan["target"]
+        or plan["dimension_analysis"]
+        or plan["facets"]
         or plan["primary_dimensions"]
         or plan["secondary_dimensions"]
         or plan["hard_dimensions"]
         or plan["named_people"]
         or plan["search_rewrite"]
+        or plan["direct_evidence_query"]
     ) else None
 
 

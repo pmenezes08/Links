@@ -14748,6 +14748,7 @@ KNOWLEDGE BASE CONTEXT (when available):
 - ALWAYS prioritize knowledge base insights over basic profile data. The knowledge base tracks how people EVOLVE over time — opinion shifts, career transitions, geographic moves, and contradictions.
 - When matching for locations (e.g. "Miami", "UK knowledge"), look at the GEOGRAPHIC & CULTURAL JOURNEY dimension — it distinguishes between "currently lives there" vs "has lived there before" vs "has deep historical knowledge" without living there now.
 - When matching for expertise, look at EXPERTISE & DEPTH for progression and credibility signals.
+- When matching for non-professional interests, hobbies, rituals, taste, or personal capabilities (e.g. cooking, wine, sports, art), look at LIFE INTERESTS when available.
 - The UNIQUE FINGERPRINT dimension reveals rare qualities and bridging capabilities that make someone an exceptional match.
 
 LOAD BALANCING & QUALITY SIGNALS — VERY IMPORTANT:
@@ -14784,6 +14785,10 @@ RULES:
         if query_plan:
             planner_hint = json.dumps(
                 {
+                    "intent_summary": query_plan.get("intent_summary") or "",
+                    "target": query_plan.get("target") or "",
+                    "relationship_to_target": query_plan.get("relationship_to_target") or "",
+                    "dimension_analysis": query_plan.get("dimension_analysis") or {},
                     "facets": query_plan.get("facets") or {},
                     "hard_constraints": query_plan.get("hard_constraints") or [],
                     "soft_constraints": query_plan.get("soft_constraints") or [],
@@ -14792,6 +14797,10 @@ RULES:
                     "hard_dimensions": query_plan.get("hard_dimensions") or [],
                     "named_people": query_plan.get("named_people") or [],
                     "search_rewrite": query_plan.get("search_rewrite") or "",
+                    "direct_evidence_query": query_plan.get("direct_evidence_query") or "",
+                    "adjacent_evidence_query": query_plan.get("adjacent_evidence_query") or "",
+                    "deprioritized_evidence_query": query_plan.get("deprioritized_evidence_query") or "",
+                    "search_state_action": query_plan.get("search_state_action") or "retrieve",
                 },
                 ensure_ascii=True,
             )

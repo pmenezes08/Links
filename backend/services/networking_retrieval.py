@@ -94,6 +94,13 @@ _FOLLOW_UP_PREFIXES = (
     "tell me more about",
     "more on",
     "what about @",
+    "yes",
+    "yeah",
+    "yep",
+    "i mean",
+    "i meant",
+    "to clarify",
+    "specifically",
 )
 
 _FOLLOW_UP_EXACT = {
@@ -133,20 +140,6 @@ _GOAL_SEEKING_PHRASES = (
     "teach me",
     "get into",
 )
-
-_PRACTITIONER_SIGNAL_TERMS = (
-    "pilot",
-    "commercial pilot",
-    "airline pilot",
-    "flight",
-    "flying",
-    "aircraft",
-    "gliding",
-    "aviation operations",
-    "flight hours",
-)
-
-_PRACTITIONER_DIMENSIONS = ("LifeCareer", "Expertise", "InferredContext", "UniqueFingerprint")
 
 _INDUSTRY_ALIASES = {
     "tech": (
@@ -221,6 +214,7 @@ KB_DIMENSIONS = (
     "Network",
     "UniqueFingerprint",
     "InferredContext",
+    "LifeInterests",
 )
 
 _FACET_DIMENSION_MAP = {
@@ -229,7 +223,7 @@ _FACET_DIMENSION_MAP = {
     "roles": ("LifeCareer", "Expertise", "CompanyIntel", "Index"),
     "company_builder": ("LifeCareer", "UniqueFingerprint", "CompanyIntel", "Identity"),
     "traits": ("Identity", "UniqueFingerprint", "Index"),
-    "interests": ("Identity", "InferredContext", "UniqueFingerprint"),
+    "interests": ("LifeInterests", "Identity", "InferredContext", "UniqueFingerprint"),
     "experiences": ("LifeCareer", "Expertise", "InferredContext", "UniqueFingerprint"),
     "identity_life_stage": ("Identity", "InferredContext", "UniqueFingerprint"),
 }
@@ -240,7 +234,7 @@ _FACET_HARD_DIMENSION_MAP = {
     "roles": ("LifeCareer",),
     "company_builder": ("LifeCareer",),
     "traits": ("Identity",),
-    "interests": ("Identity",),
+    "interests": ("LifeInterests",),
     "experiences": ("LifeCareer",),
     "identity_life_stage": ("Identity",),
 }
@@ -251,7 +245,7 @@ _FACET_STRUCTURED_DIMENSION_MAP = {
     "roles": ("LifeCareer",),
     "company_builder": ("LifeCareer",),
     "traits": ("Identity",),
-    "interests": ("Identity",),
+    "interests": ("LifeInterests", "Identity", "InferredContext"),
     "experiences": ("LifeCareer", "Expertise", "InferredContext"),
     "identity_life_stage": ("Identity",),
 }
@@ -267,6 +261,7 @@ _DIMENSION_WEIGHT = {
     "Network": 0.95,
     "UniqueFingerprint": 1.1,
     "InferredContext": 1.1,
+    "LifeInterests": 1.2,
 }
 
 _STRUCTURED_DIMENSION_FIELDS = {
@@ -280,6 +275,7 @@ _STRUCTURED_DIMENSION_FIELDS = {
     "Network": ("interests", "bio", "professional_about"),
     "UniqueFingerprint": ("bio", "professional_about", "company", "role", "interests"),
     "InferredContext": ("bio", "interests", "professional_about", "profile_location", "company"),
+    "LifeInterests": ("interests", "bio", "professional_about"),
 }
 
 
@@ -355,36 +351,34 @@ def _query_has_goal_seeking_intent(message_norm: str) -> bool:
     return any(phrase in message_norm for phrase in _GOAL_SEEKING_PHRASES)
 
 
-def _planner_plan_has_practitioner_intent(query_plan: dict[str, Any] | None) -> bool:
+def _query_terms_from_plan(query_plan: dict[str, Any] | None, *field_names: str) -> list[str]:
     if not isinstance(query_plan, dict):
-        return False
-    search_text = _normalize_text(query_plan.get("search_rewrite") or "")
-    facets = query_plan.get("facets") or {}
-    facet_text = ""
-    if isinstance(facets, dict):
-        facet_values: list[str] = []
-        for values in facets.values():
-            if isinstance(values, str):
-                facet_values.append(values)
-            else:
-                facet_values.extend(str(value or "") for value in (values or []))
-        facet_text = _normalize_text(" ".join(facet_values))
-    combined = f"{search_text} {facet_text}".strip()
-    if not combined:
-        return False
-    if _query_has_goal_seeking_intent(combined):
-        return True
-    return any(_contains_term(combined, term) for term in _PRACTITIONER_SIGNAL_TERMS)
+        return []
+    terms: list[str] = []
+    for field_name in field_names:
+        terms.extend(_query_keywords(_normalize_text(query_plan.get(field_name) or ""))[:16])
+    return _dedupe_keep_order(terms)
 
 
-def _practitioner_terms_for_plan(dimension_plan: dict[str, Any]) -> list[str]:
-    terms = list(_PRACTITIONER_SIGNAL_TERMS)
-    search_terms = _query_keywords(_normalize_text(dimension_plan.get("search_rewrite") or ""))
-    terms.extend(search_terms[:8])
-    dimension_terms = dimension_plan.get("dimension_terms") or {}
-    for dimension in _PRACTITIONER_DIMENSIONS:
-        terms.extend(_normalize_phrase_list(dimension_terms.get(dimension)))
-    return _dedupe_keep_order(_normalize_phrase_list(terms))
+def _dimension_analysis_priorities(query_plan: dict[str, Any] | None) -> dict[str, str]:
+    if not isinstance(query_plan, dict):
+        return {}
+    analysis = query_plan.get("dimension_analysis") or {}
+    if not isinstance(analysis, dict):
+        return {}
+    out: dict[str, str] = {}
+    for dimension, info in analysis.items():
+        if dimension not in KB_DIMENSIONS:
+            continue
+        if isinstance(info, dict):
+            priority = str(info.get("priority") or "").strip().lower()
+        else:
+            priority = str(info or "").strip().lower()
+        if priority == "ignore":
+            priority = "ignored"
+        if priority in {"primary", "secondary", "hard", "ignored"}:
+            out[dimension] = priority
+    return out
 
 
 def _dimension_terms_from_facets(query_plan: dict[str, Any] | None) -> dict[str, list[str]]:
@@ -413,10 +407,15 @@ def build_dimension_plan(query_plan: dict[str, Any] | None = None) -> dict[str, 
     primary = _normalize_dimension_list(query_plan.get("primary_dimensions"))
     secondary = _normalize_dimension_list(query_plan.get("secondary_dimensions"))
     hard = _normalize_dimension_list(query_plan.get("hard_dimensions"))
+    analysis_priorities = _dimension_analysis_priorities(query_plan)
 
     if not primary and not secondary:
+        if analysis_priorities:
+            primary = [d for d, p in analysis_priorities.items() if p in {"primary", "hard"}]
+            secondary = [d for d, p in analysis_priorities.items() if p == "secondary"]
+            hard = hard or [d for d, p in analysis_priorities.items() if p == "hard"]
         facets = query_plan.get("facets") or {}
-        if isinstance(facets, dict):
+        if not primary and not secondary and isinstance(facets, dict):
             for facet, dimensions in _FACET_DIMENSION_MAP.items():
                 if _normalize_phrase_list(facets.get(facet)):
                     for idx, dimension in enumerate(dimensions):
@@ -437,19 +436,30 @@ def build_dimension_plan(query_plan: dict[str, Any] | None = None) -> dict[str, 
 
     dimension_terms = _dimension_terms_from_facets(query_plan)
     fallback_terms = _query_keywords(_normalize_text(query_plan.get("search_rewrite") or ""))
+    direct_terms = _query_terms_from_plan(query_plan, "direct_evidence_query")
+    adjacent_terms = _query_terms_from_plan(query_plan, "adjacent_evidence_query")
+    deprioritized_terms = _query_terms_from_plan(query_plan, "deprioritized_evidence_query")
     for dimension in primary + secondary + hard:
         if not dimension_terms.get(dimension):
-            dimension_terms[dimension] = fallback_terms[:8]
+            if dimension in primary or dimension in hard:
+                dimension_terms[dimension] = _dedupe_keep_order(direct_terms + fallback_terms)[:12]
+            else:
+                dimension_terms[dimension] = _dedupe_keep_order(adjacent_terms + fallback_terms)[:12]
 
     plan = {
         "primary_dimensions": _dedupe_keep_order(primary),
         "secondary_dimensions": [d for d in _dedupe_keep_order(secondary) if d not in primary],
         "hard_dimensions": _dedupe_keep_order(hard),
         "dimension_terms": {d: terms for d, terms in dimension_terms.items() if terms},
+        "direct_evidence_terms": direct_terms,
+        "adjacent_evidence_terms": adjacent_terms,
+        "deprioritized_evidence_terms": deprioritized_terms,
+        "dimension_analysis": query_plan.get("dimension_analysis") or {},
         "named_people": [str(v).strip() for v in (query_plan.get("named_people") or []) if str(v).strip()],
         "search_rewrite": str(query_plan.get("search_rewrite") or "").strip(),
         "needs_clarification": bool(query_plan.get("needs_clarification")),
         "clarifying_question": str(query_plan.get("clarifying_question") or "").strip(),
+        "search_state_action": str(query_plan.get("search_state_action") or "retrieve").strip(),
     }
     relevant = plan["primary_dimensions"] or plan["secondary_dimensions"] or plan["hard_dimensions"]
     return plan if relevant or plan["named_people"] or plan["search_rewrite"] else None
@@ -516,9 +526,11 @@ def should_use_reasoning_planner(message: str, conversation_history: Any = None)
     keyword_count = len(_query_keywords(norm))
     if _query_has_goal_seeking_intent(norm) and keyword_count >= 2:
         return True
-    if keyword_count >= 3 and any(norm.startswith(prefix) for prefix in _PLANNER_LEAD_PHRASES):
+    if keyword_count >= 2 and any(prefix in norm for prefix in _PLANNER_LEAD_PHRASES):
         return True
     if _structural_constraint_count(message) >= 2 and keyword_count >= 3:
+        return True
+    if keyword_count >= 2 and any(token in norm for token in ("investor", "investment", "capital", "mentor", "expert", "knows", "learn", "help")):
         return True
     if keyword_count >= 7:
         return True
@@ -527,7 +539,15 @@ def should_use_reasoning_planner(message: str, conversation_history: Any = None)
 
 def build_retrieval_query(message: str, conversation_history: Any = None, query_plan: dict[str, Any] | None = None) -> str:
     """Build a retrieval-oriented query, preserving follow-up context when needed."""
-    current = str((query_plan or {}).get("search_rewrite") or message or "").strip()
+    if query_plan:
+        planned_parts = [
+            str(query_plan.get("search_rewrite") or "").strip(),
+            str(query_plan.get("direct_evidence_query") or "").strip(),
+        ]
+        current = re.sub(r"\s+", " ", " ".join(part for part in planned_parts if part)).strip()
+    else:
+        current = ""
+    current = current or str(message or "").strip()
     if not current:
         return ""
     prior_user_messages = _history_user_messages(conversation_history)
@@ -730,8 +750,9 @@ def _structured_match_details_from_plan(
     secondary_dimensions = dimension_plan.get("secondary_dimensions") or []
     hard_dimensions = set(dimension_plan.get("hard_dimensions") or [])
     relevant_dimensions = _dedupe_keep_order(primary_dimensions + secondary_dimensions + list(hard_dimensions))
-    practitioner_intent = _planner_plan_has_practitioner_intent(retrieval_plan)
-    practitioner_terms = _practitioner_terms_for_plan(dimension_plan) if practitioner_intent else []
+    direct_evidence_terms = _normalize_phrase_list(dimension_plan.get("direct_evidence_terms"))
+    adjacent_evidence_terms = _normalize_phrase_list(dimension_plan.get("adjacent_evidence_terms"))
+    deprioritized_evidence_terms = _normalize_phrase_list(dimension_plan.get("deprioritized_evidence_terms"))
     hard_constraints = _normalize_constraint_keys(retrieval_plan.get("hard_constraints"))
     if not relevant_dimensions:
         return {}
@@ -753,13 +774,14 @@ def _structured_match_details_from_plan(
         matched_dimensions = {dimension for dimension, score in dimension_scores.items() if score > 0}
         if not matched_dimensions:
             continue
-        practitioner_hits = 0
-        if practitioner_terms:
-            practitioner_hits = sum(
-                _match_any_terms(dimension_texts.get(dimension, ""), practitioner_terms)
-                for dimension in _PRACTITIONER_DIMENSIONS
-                if dimension in relevant_dimensions
-            )
+        primary_blob = " ".join(dimension_texts.get(dimension, "") for dimension in primary_dimensions + list(hard_dimensions))
+        secondary_blob = " ".join(dimension_texts.get(dimension, "") for dimension in secondary_dimensions)
+        all_relevant_blob = " ".join(dimension_texts.get(dimension, "") for dimension in relevant_dimensions)
+        direct_evidence_hits = _match_any_terms(primary_blob, direct_evidence_terms)
+        if not direct_evidence_hits:
+            direct_evidence_hits = _match_any_terms(all_relevant_blob, direct_evidence_terms)
+        adjacent_evidence_hits = _match_any_terms(secondary_blob or all_relevant_blob, adjacent_evidence_terms)
+        deprioritized_evidence_hits = _match_any_terms(all_relevant_blob, deprioritized_evidence_terms)
         hard_hits = sum(1 for dimension in hard_dimensions if dimension in matched_dimensions)
         hard_misses = sum(1 for dimension in hard_dimensions if dimension not in matched_dimensions)
         hard_facet_hits = 0
@@ -781,9 +803,11 @@ def _structured_match_details_from_plan(
             + secondary_hits * 1.25
             + hard_hits * 5.0
             + hard_facet_hits * 4.0
-            + practitioner_hits * 4.0
+            + direct_evidence_hits * 4.0
+            + adjacent_evidence_hits * 1.0
             - hard_misses * 3.0
             - hard_facet_misses * 8.0
+            - deprioritized_evidence_hits * 2.0
         )
         details[username] = {
             "username": username,
@@ -796,7 +820,9 @@ def _structured_match_details_from_plan(
             "hard_facet_misses": hard_facet_misses,
             "primary_hits": primary_hits,
             "secondary_hits": secondary_hits,
-            "practitioner_hits": practitioner_hits,
+            "direct_evidence_hits": direct_evidence_hits,
+            "adjacent_evidence_hits": adjacent_evidence_hits,
+            "deprioritized_evidence_hits": deprioritized_evidence_hits,
             "structured_score": score,
             "semantic_score": 0.0,
             "metadata_score": 0.0,
@@ -809,7 +835,14 @@ def _structured_match_details_from_plan(
     if cap and len(details) > cap:
         ranked = sorted(
             details.values(),
-            key=lambda item: (-item["hard_hits"], -item["primary_hits"], -item["matched_dimensions_count"], -item["score"], item["username"]),
+            key=lambda item: (
+                -item["hard_hits"],
+                -item["direct_evidence_hits"],
+                -item["primary_hits"],
+                -item["matched_dimensions_count"],
+                -item["score"],
+                item["username"],
+            ),
         )[:cap]
         return {item["username"]: item for item in ranked}
     return details
@@ -830,7 +863,14 @@ def _structured_candidates_from_plan(
     )
     ranked = sorted(
         details.values(),
-        key=lambda item: (-item["hard_hits"], -item["primary_hits"], -item["matched_dimensions_count"], -item["score"], item["username"]),
+        key=lambda item: (
+            -item["hard_hits"],
+            -item["direct_evidence_hits"],
+            -item["primary_hits"],
+            -item["matched_dimensions_count"],
+            -item["score"],
+            item["username"],
+        ),
     )
     return [item["username"] for item in ranked[:cap]]
 
@@ -1247,10 +1287,16 @@ def _merge_match_details(
         secondary_hits = sum(1 for dimension in secondary_dimensions if dimension in matched_dimensions)
         hard_hits = sum(1 for dimension in hard_dimensions if dimension in matched_dimensions)
         hard_misses = sum(1 for dimension in hard_dimensions if dimension not in matched_dimensions)
+        direct_evidence_hits = int(structured.get("direct_evidence_hits") or 0)
+        adjacent_evidence_hits = int(structured.get("adjacent_evidence_hits") or 0)
+        deprioritized_evidence_hits = int(structured.get("deprioritized_evidence_hits") or 0)
         combined_score = (
             float(structured.get("structured_score") or 0.0) * _STRUCTURED_WEIGHT
             + float(semantic.get("semantic_score") or 0.0) * _SEMANTIC_WEIGHT
             + sum(dimension_scores.values()) * 0.35
+            + direct_evidence_hits * 2.0
+            + adjacent_evidence_hits * 0.4
+            - deprioritized_evidence_hits * 1.0
             + metadata_score
         )
         merged[username] = {
@@ -1262,6 +1308,9 @@ def _merge_match_details(
             "secondary_hits": secondary_hits,
             "hard_hits": hard_hits,
             "hard_misses": hard_misses,
+            "direct_evidence_hits": direct_evidence_hits,
+            "adjacent_evidence_hits": adjacent_evidence_hits,
+            "deprioritized_evidence_hits": deprioritized_evidence_hits,
             "structured_score": float(structured.get("structured_score") or 0.0),
             "semantic_score": float(semantic.get("semantic_score") or 0.0),
             "metadata_score": metadata_score,
@@ -1308,7 +1357,10 @@ def _tiered_matches_from_details(
         primary_dimensions = info.get("primary_dimensions") or []
         hard_dimensions = info.get("hard_dimensions") or []
         direct_required = len(hard_dimensions) if hard_dimensions else (2 if len(primary_dimensions) >= 2 else 1)
-        if info.get("hard_misses", 0) == 0 and info.get("primary_hits", 0) >= max(1, direct_required):
+        if info.get("hard_misses", 0) == 0 and (
+            info.get("primary_hits", 0) >= max(1, direct_required)
+            or info.get("direct_evidence_hits", 0) > 0
+        ):
             tier_map[username] = "direct"
         elif info.get("primary_hits", 0) > 0 or info.get("secondary_hits", 0) > 0:
             tier_map[username] = "broader"
