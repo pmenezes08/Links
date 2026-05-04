@@ -19,6 +19,7 @@ from flask import (
     url_for,
 )
 
+from backend.services import auth_session
 from backend.services.database import USE_MYSQL, get_db_connection
 from backend.services.notifications import (
     check_single_event_notifications,
@@ -27,6 +28,11 @@ from backend.services.notifications import (
 
 
 notifications_bp = Blueprint("notifications", __name__)
+
+
+@notifications_bp.after_request
+def _no_store_user_scoped_responses(response):
+    return auth_session.no_store(response)
 
 
 def _cron_authed() -> bool:

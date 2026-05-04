@@ -22,7 +22,7 @@ from urllib.parse import urlencode, urljoin
 
 from flask import Blueprint, jsonify, request, session
 
-from backend.services import ai_usage, user_billing
+from backend.services import ai_usage, auth_session, user_billing
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.entitlements import resolve_entitlements
 from backend.services.feature_flags import entitlements_enforcement_enabled
@@ -30,6 +30,11 @@ from backend.services.feature_flags import entitlements_enforcement_enabled
 
 me_bp = Blueprint("me", __name__)
 logger = logging.getLogger(__name__)
+
+
+@me_bp.after_request
+def _no_store_user_scoped_responses(response):
+    return auth_session.no_store(response)
 
 
 def _session_username() -> str | None:

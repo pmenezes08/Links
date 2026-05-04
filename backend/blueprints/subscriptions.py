@@ -36,6 +36,7 @@ from flask import Blueprint, jsonify, request, session
 
 from backend.services import community as community_svc
 from backend.services import (
+    auth_session,
     community_admin_notifications,
     community_billing,
     community_lifecycle,
@@ -50,6 +51,11 @@ from backend.services.database import get_db_connection, get_sql_placeholder
 
 subscriptions_bp = Blueprint("subscriptions", __name__)
 logger = logging.getLogger(__name__)
+
+
+@subscriptions_bp.after_request
+def _no_store_user_scoped_responses(response):
+    return auth_session.no_store(response)
 
 
 # ── Session / Stripe helpers ────────────────────────────────────────────

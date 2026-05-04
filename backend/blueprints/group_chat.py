@@ -15,7 +15,7 @@ from werkzeug.utils import secure_filename
 
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.media import save_uploaded_file
-from backend.services import ai_usage
+from backend.services import ai_usage, auth_session
 from backend.services.entitlements_gate import gate_or_reason
 from backend.services.feature_flags import entitlements_enforcement_enabled
 from backend.services.steve_dm_typing import clear_group_typing, is_group_typing, mark_group_typing
@@ -31,6 +31,11 @@ logger = logging.getLogger(__name__)
 MAX_GROUP_MEMBERS = 5
 AI_USERNAME = 'steve'
 XAI_API_KEY = os.getenv('XAI_API_KEY', '')
+
+
+@group_chat_bp.after_request
+def _no_store_user_scoped_responses(response):
+    return auth_session.no_store(response)
 
 
 def _public_profile_picture_url(picture_rel):

@@ -33,6 +33,7 @@ from flask import Blueprint, jsonify, request, session
 import os
 
 from backend.services import (
+    auth_session,
     enterprise_iap_nag,
     enterprise_membership,
     subscription_audit,
@@ -44,6 +45,11 @@ from backend.services.database import get_db_connection, get_sql_placeholder
 
 enterprise_bp = Blueprint("enterprise", __name__)
 logger = logging.getLogger(__name__)
+
+
+@enterprise_bp.after_request
+def _no_store_user_scoped_responses(response):
+    return auth_session.no_store(response)
 
 
 def _session_username() -> str | None:

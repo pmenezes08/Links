@@ -7,6 +7,7 @@ from functools import wraps
 
 from flask import Blueprint, abort, jsonify, request, session
 
+from backend.services import auth_session
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.dm_chat_threads import build_chat_threads_payload
 from backend.services.dm_chats_tables import ensure_deleted_chat_threads_table
@@ -16,6 +17,11 @@ from redis_cache import cache, invalidate_message_cache
 logger = logging.getLogger(__name__)
 
 dm_chats_bp = Blueprint("dm_chats", __name__)
+
+
+@dm_chats_bp.after_request
+def _no_store_user_scoped_responses(response):
+    return auth_session.no_store(response)
 
 
 def _login_required(view_func):
