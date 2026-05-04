@@ -47,10 +47,10 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
   const showVideo = Boolean(videoUrl && !videoFailed)
 
   return (
-    <div className="fixed inset-0 z-[1101] overflow-y-auto bg-[#050809] text-white">
+    <div className="fixed inset-0 z-[1101] overflow-y-auto bg-black text-white">
       <div className="min-h-full px-5 py-8 flex items-center justify-center">
         <div className="w-full max-w-md">
-          <div className="rounded-[28px] border border-white/10 bg-[#0d1214]/95 shadow-[0_24px_80px_rgba(0,0,0,0.55)] overflow-hidden">
+          <div className="rounded-[28px] border border-[#4db6ac]/45 bg-black shadow-[0_24px_80px_rgba(77,182,172,0.16)] overflow-hidden">
             <div className="p-6 sm:p-7">
               <img
                 src="/api/public/logo"
@@ -59,7 +59,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
               />
 
               {showVideo && (
-                <div className="mb-5 rounded-2xl overflow-hidden border border-white/10 bg-black/40">
+                <div className="mb-5 rounded-2xl overflow-hidden border border-[#4db6ac]/35 bg-black">
                   <video
                     src={videoUrl || undefined}
                     className="w-full aspect-video object-cover"
@@ -93,7 +93,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                 <button
                   type="button"
                   onClick={() => setManifestoOpen(true)}
-                  className="w-full rounded-xl bg-white/5 text-white/75 border border-white/10 font-medium py-3 text-sm hover:bg-white/10 transition"
+                  className="w-full rounded-xl bg-[#4db6ac]/10 text-[#d5fffb] border border-[#4db6ac]/30 font-medium py-3 text-sm hover:bg-[#4db6ac]/15 transition"
                 >
                   Read the manifesto
                 </button>
@@ -106,7 +106,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
       {manifestoOpen && (
         <div className="fixed inset-0 z-[1110] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={() => setManifestoOpen(false)} />
-          <div className="relative w-full max-w-lg max-h-[88vh] overflow-y-auto rounded-2xl border border-white/10 bg-[#0d1214] p-6 shadow-2xl">
+          <div className="relative w-full max-w-lg max-h-[88vh] overflow-y-auto rounded-2xl border border-[#4db6ac]/45 bg-black p-6 shadow-[0_24px_80px_rgba(77,182,172,0.18)]">
             <img
               src="/api/public/logo"
               alt="C-Point"
@@ -122,7 +122,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
               <button
                 type="button"
                 onClick={() => setManifestoOpen(false)}
-                className="rounded-xl bg-white/5 text-white/75 border border-white/10 font-medium py-3 text-sm hover:bg-white/10 transition"
+                className="rounded-xl bg-[#4db6ac]/10 text-[#d5fffb] border border-[#4db6ac]/30 font-medium py-3 text-sm hover:bg-[#4db6ac]/15 transition"
               >
                 Close
               </button>
