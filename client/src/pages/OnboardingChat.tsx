@@ -552,12 +552,12 @@ export default function OnboardingChat({
         if (mode === 'profile_builder') {
           welcomeText = `${greeting} Let's update your profile together.\n\nI'll walk you through a few quick questions — anything you've already filled in, we can skip. Ready?`
         } else {
-          welcomeText = `${greeting} I'm Steve. Let's set up your profile.`
+          welcomeText = `${greeting} I'm Steve. Great to meet you.`
           if (communityName) {
             welcomeText += ` I see you were invited to ${communityName}.`
-            welcomeText += `\n\nA clear profile helps people recognize you in the right private spaces. I'll walk you through ${USER_FACING_STEPS} quick steps - about 3 minutes. Ready?`
+            welcomeText += `\n\nI'll help you build a profile that feels like you, so people in your private communities know who they're talking to. We'll keep it light - you can change anything later. Ready?`
           } else {
-            welcomeText += `\n\nI'll ask a few quick questions so people can recognize you in the right communities and conversations. ${USER_FACING_STEPS} short steps - about 3 minutes. Ready?`
+            welcomeText += `\n\nI'll ask a few simple questions so your profile feels like you, and so the right people can understand who you are inside C-Point. We'll keep it light - you can change anything later. Ready?`
           }
         }
         const welcomeOpts: ChatMessage['options'] =

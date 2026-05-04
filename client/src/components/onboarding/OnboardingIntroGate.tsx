@@ -77,8 +77,10 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                 <h1 className="text-2xl font-semibold tracking-tight mb-3">Welcome to C-Point</h1>
                 <p className="text-sm leading-relaxed text-[#d5e4e7] mb-4">{MANIFESTO_SUMMARY}</p>
                 <p className="text-sm leading-relaxed text-[#9fb0b5] mb-6">
-                  Steve will help personalize your profile so your communities, conversations, and
-                  connections start from the right place.
+                  C-Point&apos;s heart and intelligence lives in Steve, an AI user and agent inside the
+                  platform. Steve helps you build your profile, answers questions in DMs and group chats,
+                  understands what is happening inside your communities, and helps people find the right
+                  conversations, knowledge, and connections.
                 </p>
               </div>
 
