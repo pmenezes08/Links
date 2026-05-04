@@ -698,33 +698,46 @@ def onboarding_resolve_location():
 @onboarding_bp.route("/api/onboarding/compose_bio", methods=["POST"])
 @_login_required
 def onboarding_compose_bio():
-    """Compose a polished identity paragraph from the user's onboarding answers. Personal first, professional second."""
+    """Compose a polished personal or professional bio from onboarding answers."""
     data = request.get_json(silent=True) or {}
+    kind = (data.get("kind") or "personal").strip().lower()
     talk_all_day = (data.get("talk_all_day") or "").strip()
     recommend = (data.get("recommend") or "").strip()
     reach_out = (data.get("reach_out") or "").strip()
     journey = (data.get("journey") or "").strip()
     role = (data.get("role") or "").strip()
     company = (data.get("company") or "").strip()
+    professional_associations = (data.get("professional_associations") or "").strip()
+    professional_strengths = (data.get("professional_strengths") or "").strip()
     city = (data.get("city") or "").strip()
     country = (data.get("country") or "").strip()
     existing_bio = (data.get("existing_bio") or "").strip()
 
-    if not talk_all_day and not recommend and not reach_out and not journey:
+    personal_has_answers = bool(talk_all_day or recommend or reach_out or journey)
+    professional_has_answers = bool(role or company or professional_associations or professional_strengths)
+    if kind == "professional" and not professional_has_answers:
+        return jsonify({"success": False, "error": "No professional answers provided"}), 400
+    if kind != "professional" and not personal_has_answers:
         return jsonify({"success": False, "error": "No answers provided"}), 400
 
     if not XAI_API_KEY:
         parts = []
-        if talk_all_day:
-            parts.append(f"I could talk all day about {talk_all_day.lower()}.")
-        if journey:
-            parts.append(f"What shaped how I show up today: {journey}.")
-        if recommend:
-            parts.append(f"Currently recommending: {recommend}.")
-        if role:
-            parts.append(f"{role}{' at ' + company if company else ''}.")
-        if reach_out:
-            parts.append(f"Reach out about {reach_out.lower()}.")
+        if kind == "professional":
+            if role:
+                parts.append(f"I work as {role}{' at ' + company if company else ''}.")
+            if professional_associations:
+                parts.append(f"People should associate me with {professional_associations.lower()}.")
+            if professional_strengths:
+                parts.append(f"People usually come to me for {professional_strengths.lower()}.")
+        else:
+            if talk_all_day:
+                parts.append(f"I could talk all day about {talk_all_day.lower()}.")
+            if journey:
+                parts.append(f"What shaped how I show up today: {journey}.")
+            if recommend:
+                parts.append(f"Currently recommending: {recommend}.")
+            if reach_out:
+                parts.append(f"Reach out about {reach_out.lower()}.")
         new_text = " ".join(parts)
         if existing_bio and new_text:
             return jsonify({"success": True, "bio": f"{existing_bio} {new_text}"})
@@ -745,35 +758,53 @@ def onboarding_compose_bio():
 
         journey_text = f"Highlight from their journey: {journey}" if journey else ""
         existing_block = (
-            f"Their current public profile bio (preserve accurate facts and voice unless new answers clearly replace them):\n{existing_bio}\n\n"
+            f"Their current bio for this section (preserve accurate facts and voice unless new answers clearly replace them):\n{existing_bio}\n\n"
             if existing_bio
             else ""
         )
+        if kind == "professional":
+            system_prompt = (
+                "You are a professional profile writer for a private networking platform. "
+                "Compose a polished 2-4 sentence professional bio in first person. "
+                "Focus on what they do, what people should associate them with, and where collaboration makes sense. "
+                "Use the role and company as context, not as a resume dump. "
+                "If an existing bio is provided, weave it together with the new onboarding answers into one coherent whole. "
+                "Do NOT use hashtags, emojis, or buzzwords. Return ONLY the bio text."
+            )
+            user_prompt = (
+                existing_block
+                + "Professional details from onboarding:\n"
+                f"{professional}\n"
+                f"People should associate them with: {professional_associations}\n"
+                f"People usually come to them for: {professional_strengths}\n"
+                f"{'Based in ' + location if location else ''}\n\n"
+                "Write their professional bio:"
+            )
+        else:
+            system_prompt = (
+                "You are an identity writer for a private networking platform. Compose a polished, engaging 2-4 sentence personal bio. "
+                "Focus on who they are as a person, what makes them easy to talk to, and what others can reach out about. "
+                "Professional details should not dominate this section. "
+                "If an existing bio is provided, weave it together with the new onboarding answers into one coherent whole. "
+                "Write in first person. Be authentic and human, not corporate or generic. "
+                "Do NOT use hashtags, emojis, or buzzwords. Return ONLY the bio text."
+            )
+            user_prompt = (
+                existing_block
+                + "Personal details from onboarding:\n"
+                f"Things they could talk about all day: {talk_all_day}\n"
+                f"They recommend: {recommend}\n"
+                f"They want people to reach out about: {reach_out}\n"
+                f"{journey_text}\n"
+                f"{'Based in ' + location if location else ''}\n\n"
+                "Write their personal bio:"
+            )
 
         response = client.chat.completions.create(
             model=GROK_MODEL_FAST,
             messages=[
-                {"role": "system", "content": (
-                    "You are an identity writer for a networking platform. Compose a polished, engaging 2-4 sentence personal identity paragraph. "
-                    "PERSONAL comes first — who they are as a person, their passions, what makes them interesting. "
-                    "PROFESSIONAL comes second — their role is context, not the headline. "
-                    "If an existing public bio is provided, weave it together with the new onboarding answers into one coherent whole — "
-                    "do not drop important specifics from the old bio unless they clearly contradict new information. "
-                    "Write in first person. Be authentic and human — not corporate or generic. "
-                    "Do NOT use hashtags, emojis, or buzzwords. Just clean, compelling prose. "
-                    "Return ONLY the identity text, nothing else."
-                )},
-                {"role": "user", "content": (
-                    existing_block
-                    + f"New details from onboarding:\n"
-                    f"Things they could talk about all day: {talk_all_day}\n"
-                    f"They recommend: {recommend}\n"
-                    f"They want people to reach out about: {reach_out}\n"
-                    f"{journey_text}\n"
-                    f"{professional}\n"
-                    f"{'Based in ' + location if location else ''}\n\n"
-                    "Write their unified identity:"
-                )},
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
             ],
             max_tokens=200,
             temperature=0.7,
@@ -785,16 +816,22 @@ def onboarding_compose_bio():
     except Exception as e:
         logger.warning(f"compose_bio LLM error: {e}")
         parts = []
-        if talk_all_day:
-            parts.append(f"I could talk all day about {talk_all_day.lower()}.")
-        if journey:
-            parts.append(f"What shaped how I show up today: {journey}.")
-        if recommend:
-            parts.append(f"Currently recommending: {recommend}.")
-        if role:
-            parts.append(f"{role}{' at ' + company if company else ''}.")
-        if reach_out:
-            parts.append(f"Reach out about {reach_out.lower()}.")
+        if kind == "professional":
+            if role:
+                parts.append(f"I work as {role}{' at ' + company if company else ''}.")
+            if professional_associations:
+                parts.append(f"People should associate me with {professional_associations.lower()}.")
+            if professional_strengths:
+                parts.append(f"People usually come to me for {professional_strengths.lower()}.")
+        else:
+            if talk_all_day:
+                parts.append(f"I could talk all day about {talk_all_day.lower()}.")
+            if journey:
+                parts.append(f"What shaped how I show up today: {journey}.")
+            if recommend:
+                parts.append(f"Currently recommending: {recommend}.")
+            if reach_out:
+                parts.append(f"Reach out about {reach_out.lower()}.")
         new_text = " ".join(parts)
         if existing_bio and new_text:
             return jsonify({"success": True, "bio": f"{existing_bio} {new_text}"})
@@ -996,7 +1033,7 @@ def _build_review_cards(analysis: dict) -> list:
 @onboarding_bp.route("/api/onboarding/save_field", methods=["POST"])
 @_login_required
 def onboarding_save_field():
-    """Save a single profile field during onboarding. Supports first_name, last_name, display_name, role, company, city, country, linkedin, bio."""
+    """Save a single profile field during onboarding."""
     username = session["username"]
     data = request.get_json(silent=True) or {}
     field = data.get("field", "")
@@ -1010,7 +1047,7 @@ def onboarding_save_field():
             c = conn.cursor()
             ph = get_sql_placeholder()
 
-            user_fields = {"first_name", "last_name", "role", "company", "industry", "linkedin", "city", "country"}
+            user_fields = {"first_name", "last_name", "role", "company", "industry", "linkedin", "city", "country", "professional_about", "professional_interests"}
             profile_fields = {"display_name", "bio"}
             # journey is stored only in onboarding state (not in main profile table)
 

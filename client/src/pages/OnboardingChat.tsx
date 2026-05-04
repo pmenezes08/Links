@@ -22,17 +22,24 @@ type Stage =
   | 'location_confirm'
   | 'location_city'
   | 'photo'
+  | 'personal_section_intro'
   | 'talk_all_day'
   | 'reach_out'
+  | 'personal_bio_review'
+  | 'professional_section_intro'
   | 'professional'
   | 'professional_confirm'
   | 'fix_role'
   | 'fix_company'
+  | 'professional_associations'
+  | 'professional_strengths'
+  | 'professional_bio_review'
+  | 'profile_review'
   | 'recommend'
   | 'linkedin'
   | 'optional_social'
   | 'journey'
-  | 'compose'
+  | 'manual_bio_edit'
   | 'gibberish_check'
   | 'enriching'
   | 'review'
@@ -49,6 +56,17 @@ interface ChatMessage {
   inputType?: 'text' | 'url' | 'textarea'
   inputPlaceholder?: string
   composedBio?: string
+  composedBioKind?: 'personal' | 'professional'
+  sectionCard?: {
+    title: string
+    subtitle: string
+    steps: string[]
+    activeIndex?: number
+  }
+  profileReview?: {
+    personalBio: string
+    professionalBio: string
+  }
 }
 
 interface EnrichmentCard {
@@ -94,6 +112,9 @@ interface Collected {
   country: string
   linkedin: string
   bio: string
+  professionalBio: string
+  professionalAssociations: string
+  professionalStrengths: string
   talkAllDay: string
   recommend: string
   reachOut: string
@@ -212,17 +233,24 @@ function stageProgress(stage: Stage): number {
     location_confirm: 2,
     location_city: 2,
     photo: 3,
+    personal_section_intro: 3,
     talk_all_day: 4,
-    reach_out: 5,
+    reach_out: 4,
+    journey: 5,
+    recommend: 5,
+    optional_social: 5,
+    personal_bio_review: 6,
+    professional_section_intro: 6,
     professional: 6,
     professional_confirm: 6,
     fix_role: 6,
     fix_company: 6,
+    professional_associations: 7,
+    professional_strengths: 7,
     linkedin: 7,
-    optional_social: 7,
-    journey: 8,
-    recommend: 9,
-    compose: 9,
+    professional_bio_review: 8,
+    profile_review: 8,
+    manual_bio_edit: 8,
     gibberish_check: 0,
     enriching: 8,
     review: 8,
@@ -233,7 +261,7 @@ function stageProgress(stage: Stage): number {
 }
 
 const STAGES_REQUIRING_VALIDATION: Stage[] = [
-  'talk_all_day', 'reach_out', 'professional', 'recommend', 'journey', 'pb_edit_field',
+  'talk_all_day', 'reach_out', 'professional', 'professional_associations', 'professional_strengths', 'recommend', 'journey', 'pb_edit_field',
 ]
 
 const PB_FIELD_ORDER: PbFieldKey[] = ['city', 'country', 'role', 'company']
@@ -278,14 +306,18 @@ function profileSummaryBlock(c: Collected): string {
   if (c.company?.trim()) lines.push(`• **Company:** ${c.company.trim()}`)
   if (c.bio?.trim()) {
     const t = c.bio.trim()
-    lines.push(`• **Bio:** ${t.length > 220 ? `${t.slice(0, 217)}…` : t}`)
+    lines.push(`• **Personal bio:** ${t.length > 220 ? `${t.slice(0, 217)}…` : t}`)
+  }
+  if (c.professionalBio?.trim()) {
+    const t = c.professionalBio.trim()
+    lines.push(`• **Professional bio:** ${t.length > 220 ? `${t.slice(0, 217)}…` : t}`)
   }
   if (c.linkedin?.trim()) lines.push('• **LinkedIn:** on file')
   if (lines.length === 0) return 'Nothing is on your public profile yet — we’ll build it together.'
   return lines.join('\n')
 }
 
-/** Parse optional social URLs (Instagram / TikTok / Snapchat / Facebook) for Firestore onboardingIdentity.socialProvidedLinks. */
+/** Parse optional personal social URLs for Firestore onboardingIdentity.socialProvidedLinks. */
 function parseSocialUrlsFromInput(raw: string): { platform: string; url: string }[] {
   const out: { platform: string; url: string }[] = []
   for (const line of raw.split(/\n/).map(l => l.trim()).filter(Boolean)) {
@@ -295,8 +327,7 @@ function parseSocialUrlsFromInput(raw: string): { platform: string; url: string 
       let platform = ''
       if (host.includes('instagram')) platform = 'Instagram'
       else if (host.includes('tiktok')) platform = 'TikTok'
-      else if (host.includes('snapchat')) platform = 'Snapchat'
-      else if (host.includes('facebook') || host === 'fb.com' || host.endsWith('.facebook.com')) platform = 'Facebook'
+      else if (host === 'x.com' || host.endsWith('.x.com') || host.includes('twitter')) platform = 'X'
       else continue
       out.push({ platform, url: u.toString() })
     } catch {
@@ -344,6 +375,9 @@ export default function OnboardingChat({
     country: '',
     linkedin: '',
     bio: '',
+    professionalBio: '',
+    professionalAssociations: '',
+    professionalStrengths: '',
     talkAllDay: '',
     recommend: '',
     reachOut: '',
@@ -361,6 +395,7 @@ export default function OnboardingChat({
   const pbConfirmQueueRef = useRef<PbFieldKey[]>([])
   const pbEditFieldRef = useRef<PbFieldKey | null>(null)
   const originalPublicBioRef = useRef('')
+  const originalProfessionalBioRef = useRef('')
   const profileBuilderPostPbRef = useRef<{ skipLocation: boolean; skipProfessional: boolean }>({
     skipLocation: false,
     skipProfessional: false,
@@ -552,12 +587,16 @@ export default function OnboardingChat({
               country: (p.personal?.country || p.country || '').trim(),
               linkedin: (p.professional?.linkedin || p.linkedin || '').trim(),
               bio: (p.personal?.bio || p.bio || '').trim(),
+              professionalBio: (p.professional?.about || p.professional_about || '').trim(),
+              professionalAssociations: '',
+              professionalStrengths: '',
               talkAllDay: '',
               recommend: '',
               reachOut: '',
               journey: '',
             }
             originalPublicBioRef.current = next.bio
+            originalProfessionalBioRef.current = next.professionalBio
             setCollected(next)
             startStage('welcome', next)
             setBooting(false)
@@ -565,6 +604,7 @@ export default function OnboardingChat({
           }
         } catch {}
         originalPublicBioRef.current = ''
+        originalProfessionalBioRef.current = ''
         startStage('welcome', collected)
         setBooting(false)
         return
@@ -793,9 +833,23 @@ export default function OnboardingChat({
           options: [{ label: 'Skip for now', value: 'skip_photo', icon: '⏭️' }],
         })
         break
+      case 'personal_section_intro':
+        addSteveMessage(
+          "First, let's build your Personal Identity. This helps people understand the human side of you and gives Steve enough context to draft a personal bio.",
+          {
+            sectionCard: {
+              title: 'Personal Identity',
+              subtitle: 'A warmer profile section for conversation, interests, and personality.',
+              steps: ['Conversation hooks', 'Reach-out signal', 'Journey', 'Recommendation', 'Personal social links', 'Personal bio draft'],
+              activeIndex: 0,
+            },
+            options: [{ label: 'Start personal section', value: 'start_personal_section' }],
+          },
+        )
+        break
       case 'talk_all_day':
         addSteveMessage(
-          "Now let's make your profile useful inside private communities.\n\nWhat are a few things you could happily talk about for ages?\n\nExamples: AI, leadership, travel, startups",
+          "What are a few things you could happily talk about for ages?\n\nExamples: AI, leadership, travel, startups",
           {
             inputType: 'text',
             inputPlaceholder: 'Type your answer…',
@@ -849,6 +903,34 @@ export default function OnboardingChat({
         }
         break
       }
+      case 'professional_section_intro':
+        addSteveMessage(
+          "Now let's build your Professional Context. This section helps people understand your work, what to associate you with, and where collaboration might make sense.",
+          {
+            sectionCard: {
+              title: 'Professional Context',
+              subtitle: 'A practical profile section for work, expertise, and collaboration.',
+              steps: ['Role or current work', 'Collaboration signals', 'Strengths', 'LinkedIn', 'Professional bio draft'],
+              activeIndex: 0,
+            },
+            options: [{ label: 'Start professional section', value: 'start_professional_section' }],
+          },
+        )
+        break
+      case 'professional_associations':
+        addSteveMessage('What kinds of work, ideas, or opportunities should people associate you with?', {
+          inputType: 'text',
+          inputPlaceholder: 'e.g. product strategy, community building, early-stage ventures',
+          options: stageHistory.current.length > 1 ? [{ label: '← Go back', value: 'go_back', icon: '↩️' }] : undefined,
+        })
+        break
+      case 'professional_strengths':
+        addSteveMessage('What are you especially good at, or what do people usually come to you for?', {
+          inputType: 'text',
+          inputPlaceholder: 'e.g. simplifying complex ideas, partnerships, go-to-market',
+          options: stageHistory.current.length > 1 ? [{ label: '← Go back', value: 'go_back', icon: '↩️' }] : undefined,
+        })
+        break
       case 'recommend': {
         const recOpts: ChatMessage['options'] = [{ label: 'Skip', value: 'skip_recommend', icon: '⏭️' }]
         if (stageHistory.current.length > 1) recOpts.push({ label: '← Go back', value: 'go_back', icon: '↩️' })
@@ -873,10 +955,10 @@ export default function OnboardingChat({
         const soOpts: ChatMessage['options'] = [{ label: 'Skip', value: 'skip_optional_social', icon: '⏭️' }]
         if (stageHistory.current.length > 1) soOpts.push({ label: '← Go back', value: 'go_back', icon: '↩️' })
         addSteveMessage(
-          'Optional: share profile links for **Instagram**, **TikTok**, or **Snapchat** if you want Steve to understand more of your public background. We only use links you provide.\n\nPaste one URL per line, or skip.',
+          'Optional: share personal social profiles for **Instagram**, **X**, or **TikTok** if you want Steve to understand more of your public background. We only use links you provide.\n\nPaste one URL per line, or skip.',
           {
             inputType: 'textarea',
-            inputPlaceholder: 'https://instagram.com/yourprofile\nhttps://www.tiktok.com/@you',
+            inputPlaceholder: 'https://instagram.com/yourprofile\nhttps://x.com/yourprofile\nhttps://www.tiktok.com/@you',
             options: soOpts,
           }
         )
@@ -893,8 +975,22 @@ export default function OnboardingChat({
           })(),
         })
         break
-      case 'compose':
-        composeBio(data)
+      case 'personal_bio_review':
+        composeBio('personal', data)
+        break
+      case 'professional_bio_review':
+        composeBio('professional', data)
+        break
+      case 'profile_review':
+        addSteveMessage('Here is the profile we built together. You can edit either section later from your profile.', {
+          profileReview: {
+            personalBio: data.bio,
+            professionalBio: data.professionalBio,
+          },
+          options: [{ label: 'Looks good', value: 'finish_profile_review' }],
+        })
+        break
+      case 'manual_bio_edit':
         break
       case 'enriching':
         // Enrichment disabled for normal users (admin-only on profile edit page)
@@ -914,7 +1010,12 @@ export default function OnboardingChat({
 
   function advanceTo(next: Stage, data?: Collected) {
     const c = data || collected
-    const mainStages: Stage[] = ['name', 'location', 'photo', 'talk_all_day', 'reach_out', 'professional', 'journey', 'recommend', 'linkedin', 'optional_social', 'compose']
+    const mainStages: Stage[] = [
+      'name', 'location', 'photo', 'personal_section_intro', 'talk_all_day',
+      'reach_out', 'journey', 'recommend', 'optional_social', 'personal_bio_review',
+      'professional_section_intro', 'professional', 'professional_associations',
+      'professional_strengths', 'linkedin', 'professional_bio_review', 'profile_review',
+    ]
     if (mainStages.includes(next)) {
       const hist = stageHistory.current
       if (hist[hist.length - 1] !== next) hist.push(next)
@@ -1001,46 +1102,62 @@ export default function OnboardingChat({
     )
   }
 
-  async function composeBio(data?: Collected) {
+  async function composeBio(kind: 'personal' | 'professional', data?: Collected) {
     const c = data || collected
     setComposingBio(true)
-    addSteveMessage("Nice! Give me a sec — I'm putting your identity together... ✍️")
+    addSteveMessage(
+      kind === 'personal'
+        ? "Nice. Give me a sec — I'm drafting your personal bio."
+        : "Great. Give me a sec — I'm drafting your professional bio.",
+    )
     try {
       const r = await fetch('/api/onboarding/compose_bio', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          kind,
           talk_all_day: c.talkAllDay,
           recommend: c.recommend,
           reach_out: c.reachOut,
           journey: c.journey,
           role: c.role,
           company: c.company,
+          professional_associations: c.professionalAssociations,
+          professional_strengths: c.professionalStrengths,
           city: c.city,
           country: c.country,
           existing_bio:
-            mode === 'profile_builder'
-              ? (originalPublicBioRef.current || '').trim()
-              : (c.bio || '').trim(),
+            kind === 'professional'
+              ? (mode === 'profile_builder'
+                  ? (originalProfessionalBioRef.current || '').trim()
+                  : (c.professionalBio || '').trim())
+              : (mode === 'profile_builder'
+                  ? (originalPublicBioRef.current || '').trim()
+                  : (c.bio || '').trim()),
         }),
       })
       const j = await r.json().catch(() => null)
       const bio = j?.bio || ''
       setComposingBio(false)
       if (bio) {
-        addSteveMessage("Here's your identity, based on what you told me:", { composedBio: bio })
+        addSteveMessage(
+          kind === 'personal'
+            ? "Here's a personal bio based on what you told me:"
+            : "Here's a professional bio based on what you told me:",
+          { composedBio: bio, composedBioKind: kind },
+        )
       } else {
-        addSteveMessage("I couldn't compose your identity right now — would you like to write one yourself?", {
+        addSteveMessage(`I couldn't compose your ${kind} bio right now — would you like to write one yourself?`, {
           inputType: 'textarea',
-          inputPlaceholder: 'Write a 2-3 sentence intro...',
+          inputPlaceholder: `Write a 2-3 sentence ${kind} bio...`,
         })
       }
     } catch {
       setComposingBio(false)
-      addSteveMessage("Something went wrong. Want to write your own intro instead?", {
+      addSteveMessage(`Something went wrong. Want to write your own ${kind} bio instead?`, {
         inputType: 'textarea',
-        inputPlaceholder: 'Write a 2-3 sentence intro...',
+        inputPlaceholder: `Write a 2-3 sentence ${kind} bio...`,
       })
     }
   }
@@ -1235,7 +1352,7 @@ export default function OnboardingChat({
         addUserMessage(`Yes, ${profLabel}`)
         await saveField('role', collected.role)
         if (collected.company) await saveField('company', collected.company)
-        advanceTo('journey')
+        advanceTo('professional_associations')
         break
       }
       case 'edit_professional':
@@ -1288,12 +1405,14 @@ export default function OnboardingChat({
         addUserMessage('Yes, skip it')
         const skipMap: Partial<Record<Stage, Stage>> = {
           talk_all_day: 'reach_out',
-          reach_out: 'professional',
-          professional: 'journey',
+          reach_out: 'journey',
           journey: 'recommend',
-          recommend: 'linkedin',
-          linkedin: 'optional_social',
-          optional_social: 'compose',
+          recommend: 'optional_social',
+          optional_social: 'personal_bio_review',
+          professional: 'professional_associations',
+          professional_associations: 'professional_strengths',
+          professional_strengths: 'linkedin',
+          linkedin: 'professional_bio_review',
         }
         const returnStage = gibberishReturnStage.current
         gibberishReturnStage.current = null
@@ -1315,15 +1434,23 @@ export default function OnboardingChat({
       case 'skip_photo':
         addUserMessage('Skip for now')
         addSteveMessage("No problem — you can always add one later from your profile.")
-        setTimeout(() => advanceTo('talk_all_day'), 600)
+        setTimeout(() => advanceTo('personal_section_intro'), 600)
+        break
+      case 'start_personal_section':
+        addUserMessage('Start personal section')
+        advanceTo('talk_all_day')
+        break
+      case 'start_professional_section':
+        addUserMessage('Start professional section')
+        advanceTo('professional')
         break
       case 'skip_linkedin':
         addUserMessage('Skip')
-        advanceTo('optional_social')
+        advanceTo('professional_bio_review')
         break
       case 'skip_optional_social':
         addUserMessage('Skip')
-        advanceTo('compose')
+        advanceTo('personal_bio_review')
         break
       case 'skip_journey':
         addUserMessage('Skip')
@@ -1331,37 +1458,54 @@ export default function OnboardingChat({
         break
       case 'skip_recommend':
         addUserMessage('Skip')
-        advanceTo('linkedin')
+        advanceTo('optional_social')
         break
       case 'use_bio': {
-        const lastComposed = [...messages].reverse().find(m => m.composedBio)?.composedBio || ''
+        const lastMessage = [...messages].reverse().find(m => m.composedBio)
+        const lastComposed = lastMessage?.composedBio || ''
+        const kind = lastMessage?.composedBioKind || 'personal'
         if (lastComposed) {
           addUserMessage('Use this')
-          const newCollected = { ...collected, bio: lastComposed }
+          const newCollected =
+            kind === 'professional'
+              ? { ...collected, professionalBio: lastComposed }
+              : { ...collected, bio: lastComposed }
           setCollected(newCollected)
-          await saveField('bio', lastComposed)
-          addSteveMessage('Your identity is set! 🎯')
-          // Removed automatic enrichment call per requirements - now admin-only feature on edit profile
-          setTimeout(() => advanceToComplete(), 800)
+          await saveField(kind === 'professional' ? 'professional_about' : 'bio', lastComposed)
+          addSteveMessage(kind === 'professional' ? 'Professional bio saved.' : 'Personal bio saved.')
+          setTimeout(
+            () => advanceTo(kind === 'professional' ? 'profile_review' : 'professional_section_intro', newCollected),
+            800,
+          )
         }
         break
       }
       case 'edit_bio': {
-        const bioToEdit = [...messages].reverse().find(m => m.composedBio)?.composedBio || ''
+        const lastMessage = [...messages].reverse().find(m => m.composedBio)
+        const bioToEdit = lastMessage?.composedBio || ''
         addUserMessage('Let me edit')
         setInputValue(bioToEdit)
-        addSteveMessage("Go ahead — tweak it however you'd like:", {
+        addSteveMessage("Go ahead — tweak it however you'd like. I'll save this version for the current section.", {
           inputType: 'textarea',
-          inputPlaceholder: 'Edit your identity...',
+          inputPlaceholder: 'Edit this bio...',
         })
+        setStage('manual_bio_edit')
+        saveState('manual_bio_edit', collected)
         break
       }
       case 'redo_bio':
         addUserMessage('Start fresh')
-        addSteveMessage('No problem — write your own intro. 2-3 sentences is perfect.', {
+        addSteveMessage('No problem — write your own version. 2-3 sentences is perfect.', {
           inputType: 'textarea',
-          inputPlaceholder: 'Write your intro...',
+          inputPlaceholder: 'Write this bio...',
         })
+        setStage('manual_bio_edit')
+        saveState('manual_bio_edit', collected)
+        break
+      case 'finish_profile_review':
+        addUserMessage('Looks good')
+        addSteveMessage('Your profile sections are set.')
+        setTimeout(() => advanceToComplete(), 800)
         break
       case 'start_tour':
         addUserMessage('Show me around')
@@ -1490,11 +1634,7 @@ export default function OnboardingChat({
       case 'reach_out': {
         const newCollected = { ...collected, reachOut: val }
         setCollected(newCollected)
-        const nextProf =
-          mode === 'profile_builder' && profileBuilderPostPbRef.current.skipProfessional
-            ? 'journey'
-            : 'professional'
-        advanceTo(nextProf, newCollected)
+        advanceTo('journey', newCollected)
         break
       }
       case 'pb_edit_field': {
@@ -1551,11 +1691,23 @@ export default function OnboardingChat({
         advanceTo('professional_confirm', newCollected)
         break
       }
+      case 'professional_associations': {
+        const newCollected = { ...collected, professionalAssociations: val }
+        setCollected(newCollected)
+        advanceTo('professional_strengths', newCollected)
+        break
+      }
+      case 'professional_strengths': {
+        const newCollected = { ...collected, professionalStrengths: val }
+        setCollected(newCollected)
+        advanceTo('linkedin', newCollected)
+        break
+      }
       case 'recommend': {
         const newCollected = { ...collected, recommend: val }
         setCollected(newCollected)
         addSteveMessage('Good pick.')
-        setTimeout(() => advanceTo('linkedin', newCollected), 600)
+        setTimeout(() => advanceTo('optional_social', newCollected), 600)
         break
       }
       case 'linkedin': {
@@ -1563,7 +1715,7 @@ export default function OnboardingChat({
         setCollected(newCollected)
         await saveField('linkedin', val)
         addSteveMessage('Perfect, that will help me learn more about your background!')
-        setTimeout(() => advanceTo('optional_social', newCollected), 600)
+        setTimeout(() => advanceTo('professional_bio_review', newCollected), 600)
         break
       }
       case 'optional_social': {
@@ -1581,7 +1733,7 @@ export default function OnboardingChat({
         } else {
           addSteveMessage('No problem — you can add links later from your profile.')
         }
-        setTimeout(() => advanceTo('compose', collected), 600)
+        setTimeout(() => advanceTo('personal_bio_review', collected), 600)
         break
       }
       case 'journey': {
@@ -1591,12 +1743,19 @@ export default function OnboardingChat({
         setTimeout(() => advanceTo('recommend', newCollected), 800)
         break
       }
-      case 'compose': {
-        const newCollected = { ...collected, bio: val }
+      case 'manual_bio_edit': {
+        const lastKind = [...messages].reverse().find(m => m.composedBio)?.composedBioKind || 'personal'
+        const newCollected =
+          lastKind === 'professional'
+            ? { ...collected, professionalBio: val }
+            : { ...collected, bio: val }
         setCollected(newCollected)
-        await saveField('bio', val)
-        addSteveMessage('Your identity is set! 🎯')
-        setTimeout(() => advanceToComplete(), 800)
+        await saveField(lastKind === 'professional' ? 'professional_about' : 'bio', val)
+        addSteveMessage(lastKind === 'professional' ? 'Professional bio saved.' : 'Personal bio saved.')
+        setTimeout(
+          () => advanceTo(lastKind === 'professional' ? 'profile_review' : 'professional_section_intro', newCollected),
+          800,
+        )
         break
       }
       case 'b2b_org_type': {
@@ -1624,7 +1783,7 @@ export default function OnboardingChat({
   }
 
   function detectOffScript(currentStage: Stage, input: string): boolean {
-    if (currentStage === 'b2b_network_size' || currentStage === 'b2b_tier_guidance' || currentStage === 'b2b_org_type' || currentStage === 'b2b_parent_name' || currentStage === 'b2b_sub_names') {
+    if (currentStage === 'b2b_network_size' || currentStage === 'b2b_tier_guidance' || currentStage === 'b2b_org_type' || currentStage === 'b2b_parent_name' || currentStage === 'b2b_sub_names' || currentStage === 'manual_bio_edit') {
       return false
     }
     const lower = input.toLowerCase()
@@ -1702,7 +1861,7 @@ export default function OnboardingChat({
         addUserMessage('📷 Photo uploaded!')
         addSteveMessage('Looking great! 👌')
         setPicFile(null)
-        setTimeout(() => advanceTo('talk_all_day'), 600)
+        setTimeout(() => advanceTo('personal_section_intro'), 600)
       } else {
         addSteveMessage(j?.error || "Hmm, that didn't work. Try again or skip for now.", {
           photoUpload: true,
@@ -1809,6 +1968,30 @@ export default function OnboardingChat({
                     <div className="bg-white/[0.06] border border-white/[0.08] rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-[13px] text-white/90 leading-relaxed whitespace-pre-line">
                       {msg.text}
                     </div>
+                    {msg.sectionCard && (
+                      <div className="rounded-2xl border border-[#4db6ac]/30 bg-[#4db6ac]/[0.06] px-4 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]">
+                          {msg.sectionCard.title}
+                        </div>
+                        <div className="mt-1 text-xs leading-relaxed text-white/70">
+                          {msg.sectionCard.subtitle}
+                        </div>
+                        <div className="mt-3 grid gap-2">
+                          {msg.sectionCard.steps.map((step, idx) => (
+                            <div
+                              key={step}
+                              className={`rounded-lg border px-3 py-2 text-[12px] ${
+                                idx === msg.sectionCard?.activeIndex
+                                  ? 'border-[#4db6ac]/40 bg-[#4db6ac]/10 text-[#d5fffb]'
+                                  : 'border-white/10 bg-black/20 text-white/60'
+                              }`}
+                            >
+                              {idx + 1}. {step}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {/* Quick reply buttons */}
                     {msg.options && i === messages.length - 1 && stage !== 'complete' && (
                       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
@@ -1838,9 +2021,12 @@ export default function OnboardingChat({
                       </div>
                     )}
                     {/* Composed bio preview with action buttons */}
-                    {msg.composedBio && i === messages.length - 1 && stage === 'compose' && !composingBio && (
+                    {msg.composedBio && i === messages.length - 1 && (stage === 'personal_bio_review' || stage === 'professional_bio_review') && !composingBio && (
                       <div className="space-y-2 mt-1">
                         <div className="rounded-xl border border-[#4db6ac]/20 bg-[#4db6ac]/5 px-3.5 py-3">
+                          <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#4db6ac]">
+                            {msg.composedBioKind === 'professional' ? 'Professional Bio' : 'Personal Bio'}
+                          </div>
                           <div className="text-[13px] text-white/90 leading-relaxed italic">"{msg.composedBio}"</div>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -1853,6 +2039,26 @@ export default function OnboardingChat({
                           <button onClick={() => handleOptionClick('redo_bio')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
                             Start fresh
                           </button>
+                        </div>
+                      </div>
+                    )}
+                    {msg.profileReview && i === messages.length - 1 && (
+                      <div className="space-y-2 mt-1">
+                        <div className="rounded-xl border border-[#4db6ac]/20 bg-[#4db6ac]/5 px-3.5 py-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#4db6ac]">
+                            Personal Bio
+                          </div>
+                          <div className="mt-2 text-[13px] leading-relaxed text-white/90">
+                            {msg.profileReview.personalBio || 'Not added yet.'}
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/50">
+                            Professional Bio
+                          </div>
+                          <div className="mt-2 text-[13px] leading-relaxed text-white/90">
+                            {msg.profileReview.professionalBio || 'Not added yet.'}
+                          </div>
                         </div>
                       </div>
                     )}
