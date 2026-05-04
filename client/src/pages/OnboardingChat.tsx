@@ -501,12 +501,16 @@ export default function OnboardingChat({
     const data = c || collected
     switch (s) {
       case 'intent_fork': {
+        const greeting = data.firstName
+          ? `Hey ${data.firstName}! 👋`
+          : 'Hey there! 👋'
         addSteveMessage(
-          `${OCopy.INTENT_QUESTION}\n\n${OCopy.PRIVACY_LINE}`,
+          `${greeting} I'm Steve. Great to meet you.\n\nI'll ask a few simple questions so your profile feels like you, and so the right people can understand who you are inside C-Point. We'll keep it light - you can change anything later.\n\n${OCopy.INTENT_QUESTION}`,
           {
             options: [
               { label: 'For me — personal circles', value: 'intent_b2c', icon: '👤' },
               { label: 'For an organisation I run', value: 'intent_b2b', icon: '🏢' },
+              { label: 'Skip profile for 72 hours', value: 'defer_profile_72', icon: '⏱️' },
             ],
           },
         )
@@ -951,7 +955,7 @@ export default function OnboardingChat({
       case 'intent_b2c': {
         addUserMessage('For me — personal circles')
         onboardingIntentRef.current = 'b2c'
-        advanceTo('welcome', collected)
+        advanceTo('name', collected)
         break
       }
       case 'intent_b2b': {

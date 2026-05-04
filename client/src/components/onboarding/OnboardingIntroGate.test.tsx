@@ -10,7 +10,7 @@ describe('OnboardingIntroGate', () => {
     vi.unstubAllGlobals()
   })
 
-  it('renders the welcome milestone with logo, manifesto summary, and start action', async () => {
+  it('renders the welcome milestone, then shows Steve before starting onboarding', async () => {
     const onStart = vi.fn()
     vi.stubGlobal(
       'fetch',
@@ -24,7 +24,11 @@ describe('OnboardingIntroGate', () => {
     expect(screen.getByRole('img', { name: 'C-Point' })).toHaveAttribute('src', '/api/public/logo')
     expect(screen.getByRole('heading', { name: 'Welcome to C-Point' })).toBeInTheDocument()
     expect(screen.getByText(/the world is meant to be lived/i)).toBeInTheDocument()
+    expect(screen.queryByText(/C-Point's heart and intelligence/i)).not.toBeInTheDocument()
 
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(screen.getByRole('heading', { name: 'Meet Steve' })).toBeInTheDocument()
+    expect(screen.getByText(/C-Point's heart and intelligence/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Start onboarding' }))
     expect(onStart).toHaveBeenCalledTimes(1)
 
@@ -51,7 +55,7 @@ describe('OnboardingIntroGate', () => {
     expect(screen.getByRole('heading', { name: 'The C-Point Manifesto' })).toBeInTheDocument()
     expect(screen.getByText(/No public feeds\. No self-promotion/i)).toBeInTheDocument()
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Start onboarding' })[1])
+    fireEvent.click(screen.getByRole('button', { name: 'Start onboarding' }))
     expect(onStart).toHaveBeenCalledTimes(1)
   })
 

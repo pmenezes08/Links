@@ -22,6 +22,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [videoFailed, setVideoFailed] = useState(false)
   const [manifestoOpen, setManifestoOpen] = useState(false)
+  const [page, setPage] = useState<0 | 1>(0)
 
   useEffect(() => {
     let cancelled = false
@@ -73,32 +74,56 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                 </div>
               )}
 
-              <div className="text-center">
-                <h1 className="text-2xl font-semibold tracking-tight mb-3">Welcome to C-Point</h1>
-                <p className="text-sm leading-relaxed text-[#d5e4e7] mb-4">{MANIFESTO_SUMMARY}</p>
-                <p className="text-sm leading-relaxed text-[#9fb0b5] mb-6">
-                  C-Point&apos;s heart and intelligence lives in Steve, an AI user and agent inside the
-                  platform. Steve helps you build your profile, answers questions in DMs and group chats,
-                  understands what is happening inside your communities, and helps people find the right
-                  conversations, knowledge, and connections.
-                </p>
-              </div>
+              {page === 0 ? (
+                <div className="text-center">
+                  <h1 className="text-2xl font-semibold tracking-tight mb-3">Welcome to C-Point</h1>
+                  <p className="text-sm leading-relaxed text-[#d5e4e7] mb-6">{MANIFESTO_SUMMARY}</p>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <h1 className="text-2xl font-semibold tracking-tight mb-3">Meet Steve</h1>
+                  <p className="text-sm leading-relaxed text-[#9fb0b5] mb-6">
+                    C-Point&apos;s heart and intelligence lives in Steve, an AI user and agent inside the
+                    platform. Steve helps you build your profile, answers questions in DMs and group chats,
+                    understands what is happening inside your communities, and helps people find the right
+                    conversations, knowledge, and connections.
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-3">
+                {page === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setPage(1)}
+                    className="w-full rounded-xl bg-[#4db6ac] text-black font-semibold py-3 text-sm hover:brightness-110 active:scale-[0.99] transition"
+                  >
+                    Continue
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onStart}
+                    className="w-full rounded-xl bg-[#4db6ac] text-black font-semibold py-3 text-sm hover:brightness-110 active:scale-[0.99] transition"
+                  >
+                    Start onboarding
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={onStart}
-                  className="w-full rounded-xl bg-[#4db6ac] text-black font-semibold py-3 text-sm hover:brightness-110 active:scale-[0.99] transition"
-                >
-                  Start onboarding
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setManifestoOpen(true)}
+                  onClick={page === 0 ? () => setManifestoOpen(true) : () => setPage(0)}
                   className="w-full rounded-xl bg-[#4db6ac]/10 text-[#d5fffb] border border-[#4db6ac]/30 font-medium py-3 text-sm hover:bg-[#4db6ac]/15 transition"
                 >
-                  Read the manifesto
+                  {page === 0 ? 'Read the manifesto' : 'Back'}
                 </button>
+              </div>
+              <div className="mt-5 flex justify-center gap-2" aria-label="Welcome progress">
+                {[0, 1].map((item) => (
+                  <span
+                    key={item}
+                    className={`h-1.5 w-6 rounded-full ${page === item ? 'bg-[#4db6ac]' : 'bg-[#4db6ac]/25'}`}
+                  />
+                ))}
               </div>
             </div>
           </div>
