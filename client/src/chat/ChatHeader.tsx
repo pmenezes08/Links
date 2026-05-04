@@ -6,14 +6,12 @@ interface ChatHeaderProps {
   username?: string
   displayName?: string
   profilePicture?: string | null
-  encryptionNeedsSync?: boolean
 }
 
 export default function ChatHeader({
   username,
   displayName,
   profilePicture,
-  encryptionNeedsSync = false,
 }: ChatHeaderProps) {
   const navigate = useNavigate()
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
@@ -45,46 +43,17 @@ export default function ChatHeader({
 
   return (
     <>
-      {/* Encryption Sync Banner */}
-      {encryptionNeedsSync && (
-        <div 
-          className="flex-shrink-0 bg-yellow-500/90 text-black px-4 py-2"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            width: '100vw',
-            zIndex: 1002,
-            paddingTop: 'env(safe-area-inset-top, 0px)',
-          }}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-sm">
-              <i className="fa-solid fa-rotate" />
-              <span className="font-medium">Encryption keys need sync</span>
-            </div>
-            <Link 
-              to="/settings/encryption"
-              className="px-3 py-1 text-xs font-semibold bg-black/20 rounded-full hover:bg-black/30"
-            >
-              Sync Now
-            </Link>
-          </div>
-        </div>
-      )}
-
       {/* Header - fixed at top with safe area, full viewport width */}
       <div 
         className="flex-shrink-0 border-b border-[#262f30]"
         style={{
           position: 'fixed',
-          top: encryptionNeedsSync ? 'calc(env(safe-area-inset-top, 0px) + 40px)' : 0,
+          top: 0,
           left: 0,
           right: 0,
           width: '100vw',
           zIndex: 1001,
-          paddingTop: encryptionNeedsSync ? '0px' : 'env(safe-area-inset-top, 0px)',
+          paddingTop: 'env(safe-area-inset-top, 0px)',
           paddingLeft: 'env(safe-area-inset-left, 0px)',
           paddingRight: 'env(safe-area-inset-right, 0px)',
           background: '#000',

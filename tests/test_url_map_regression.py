@@ -76,3 +76,12 @@ def test_auth_and_webhook_routes_still_exist():
     assert "/api/dashboard_unread_feed" in rules
     assert "/api/community_group_feed/<int:parent_id>" in rules
     assert "/api/about/tutorial_videos" in rules
+
+
+def test_legacy_encryption_routes_removed():
+    from bodybuilding_app import app
+
+    for rule in app.url_map.iter_rules():
+        path = str(rule.rule)
+        assert not path.startswith("/api/encryption/"), f"legacy encryption route still registered: {path}"
+        assert not path.startswith("/api/signal/"), f"legacy signal route still registered: {path}"

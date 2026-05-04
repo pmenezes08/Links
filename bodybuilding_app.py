@@ -42,8 +42,6 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from urllib.parse import urlencode, urljoin, quote, quote_plus, urlparse
 from typing import Optional, Dict, Any, List, Iterable, Tuple, Set
 from concurrent.futures import ThreadPoolExecutor
-from encryption_endpoints import register_encryption_endpoints
-from signal_endpoints import register_signal_endpoints
 from backend import init_app
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.user_activity_tables import ensure_user_activity_tables, record_community_feed_visit
@@ -33004,18 +33002,6 @@ def get_active_chat_counts():
     except Exception as e:
         logger.error(f"Error in get_active_chat_counts: {e}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
-
-# Register encryption endpoints for E2E encryption
-try:
-    register_encryption_endpoints(app, get_db_connection, logger)
-except Exception as e:
-    logger.error(f"Failed to register encryption endpoints: {e}")
-
-try:
-    register_signal_endpoints(app, get_db_connection, logger)
-except Exception as e:
-    logger.error(f"Failed to register signal endpoints: {e}")
-
 
 @app.route('/api/admin/embeddings/backfill', methods=['POST'])
 @login_required
