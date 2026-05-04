@@ -104,9 +104,20 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
       </div>
 
       {manifestoOpen && (
-        <div className="fixed inset-0 z-[1110] flex items-center justify-center p-4">
+        <div
+          className="fixed inset-0 z-[1110] flex items-center justify-center px-4"
+          style={{
+            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
+            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)',
+          }}
+        >
           <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={() => setManifestoOpen(false)} />
-          <div className="relative w-full max-w-lg max-h-[88vh] overflow-y-auto rounded-2xl border border-[#4db6ac]/45 bg-black p-6 shadow-[0_24px_80px_rgba(77,182,172,0.18)]">
+          <div
+            className="relative w-full max-w-lg overflow-y-auto rounded-2xl border border-[#4db6ac]/45 bg-black p-6 shadow-[0_24px_80px_rgba(77,182,172,0.18)]"
+            style={{
+              maxHeight: 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2rem)',
+            }}
+          >
             <img
               src="/api/public/logo"
               alt="C-Point"
