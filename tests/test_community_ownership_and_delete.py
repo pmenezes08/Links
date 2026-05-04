@@ -7,6 +7,7 @@ from backend.blueprints.communities import communities_bp
 from backend.services import community as community_svc
 from backend.services import community_billing, community_lifecycle
 from backend.services.database import get_db_connection, get_sql_placeholder
+from backend.services.user_activity_tables import ensure_user_activity_tables
 from tests.fixtures import make_community, make_user
 
 
@@ -83,6 +84,29 @@ def test_delete_community_cascade_returns_honest_rowcount():
         c = conn.cursor()
         assert community_svc.delete_community_cascade(c, cid) == 1
         assert community_svc.delete_community_cascade(c, cid) == 0
+        conn.commit()
+
+
+def test_delete_community_cascade_removes_visit_history():
+    make_user("visit_history_owner", subscription="free")
+    cid = make_community("cascade-visit-history", creator_username="visit_history_owner")
+    ph = get_sql_placeholder()
+
+    with get_db_connection() as conn:
+        ensure_user_activity_tables(conn)
+        c = conn.cursor()
+        c.execute(
+            f"""
+            INSERT INTO community_visit_history (username, community_id, visit_time)
+            VALUES ({ph}, {ph}, {ph})
+            """,
+            ("visit_history_owner", cid, "2026-05-04T15:29:00Z"),
+        )
+
+        assert community_svc.delete_community_cascade(c, cid) == 1
+
+        c.execute(f"SELECT 1 FROM community_visit_history WHERE community_id = {ph}", (cid,))
+        assert c.fetchone() is None
         conn.commit()
 
 

@@ -71,6 +71,7 @@ _COMMUNITY_DEPENDENT_TABLES: List[Tuple[str, str]] = [
     ("community_files", "community_id = {ph}"),
     ("community_invites", "community_id = {ph}"),
     ("community_billing", "community_id = {ph}"),
+    ("community_visit_history", "community_id = {ph}"),
     ("user_muted_communities", "community_id = {ph}"),
 ]
 
