@@ -15,7 +15,7 @@ from werkzeug.utils import secure_filename
 
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.media import save_uploaded_file
-from backend.services import ai_usage, auth_session
+from backend.services import ai_usage, auth_session, session_identity
 from backend.services.entitlements_gate import gate_or_reason
 from backend.services.feature_flags import entitlements_enforcement_enabled
 from backend.services.steve_dm_typing import clear_group_typing, is_group_typing, mark_group_typing
@@ -123,7 +123,7 @@ def _login_required(view_func):
 
     @wraps(view_func)
     def wrapper(*args, **kwargs):
-        if "username" not in session:
+        if not session_identity.valid_session_username(session):
             return jsonify({"success": False, "error": "Login required"}), 401
         return view_func(*args, **kwargs)
 

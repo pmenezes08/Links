@@ -50,6 +50,7 @@ from backend.services.dm_chats_tables import ensure_archived_chats_table
 from backend.services import ai_usage as _ai_usage
 from backend.services import community_lifecycle as _community_lifecycle
 from backend.services import remember_tokens as remember_tokens_service
+from backend.services import session_identity
 from backend.services.community import (
     can_manage_community,
     fetch_community_names,
@@ -392,21 +393,10 @@ def login_required(f):
         # CRITICAL: Verify user still exists in database (handles deleted accounts)
         username = session.get('username')
         try:
-            with get_db_connection() as conn:
-                c = conn.cursor()
-                c.execute("SELECT id FROM users WHERE username=?", (username,))
-                user_exists = c.fetchone() is not None
-                if not user_exists:
-                    logger.warning(f"User {username} no longer exists in database, clearing session")
-                    # Clear the ghost session
-                    session.clear()
-                    session.permanent = False
-                    # Invalidate any cached data
-                    try:
-                        invalidate_user_cache(username)
-                    except Exception:
-                        pass
-                    return redirect(url_for('auth.login'))
+            if not session_identity.user_exists(username):
+                logger.warning(f"User {username} no longer exists in database, clearing session")
+                session_identity.clear_invalid_session(session, username)
+                return redirect(url_for('auth.login'))
         except Exception as e:
             logger.error(f"Error verifying user exists: {e}")
             # On error, allow through but log it

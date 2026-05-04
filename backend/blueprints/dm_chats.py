@@ -7,7 +7,7 @@ from functools import wraps
 
 from flask import Blueprint, abort, jsonify, request, session
 
-from backend.services import auth_session
+from backend.services import auth_session, session_identity
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.dm_chat_threads import build_chat_threads_payload
 from backend.services.dm_chats_tables import ensure_deleted_chat_threads_table
@@ -27,7 +27,7 @@ def _no_store_user_scoped_responses(response):
 def _login_required(view_func):
     @wraps(view_func)
     def wrapper(*args, **kwargs):
-        if "username" not in session:
+        if not session_identity.valid_session_username(session):
             if request.path.startswith("/api/") or request.path.startswith("/check_"):
                 return jsonify({"success": False, "error": "unauthenticated"}), 401
             from flask import redirect, url_for

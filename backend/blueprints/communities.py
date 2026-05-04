@@ -21,10 +21,11 @@ from flask import (
 )
 
 from backend.services.content_generation.permissions import can_manage_community_jobs
-from backend.services import community as community_svc
+from backend.services import auth_session, community as community_svc
 from backend.services import community_group_feed as community_group_feed_svc
 from backend.services import community_admin_notifications
 from backend.services import community_lifecycle
+from backend.services import session_identity
 from backend.services.database import get_db_connection, get_sql_placeholder
 from redis_cache import (
     CACHE_TTL_USER_PARENT_DASHBOARD,
@@ -37,6 +38,11 @@ from redis_cache import (
 
 communities_bp = Blueprint("communities", __name__)
 logger = logging.getLogger(__name__)
+
+
+@communities_bp.after_request
+def _no_store_user_scoped_responses(response):
+    return auth_session.no_store(response)
 
 
 def _stripe_client():
@@ -84,13 +90,15 @@ def _login_required(view_func):
 
     @wraps(view_func)
     def wrapper(*args, **kwargs):
-        if "username" not in session:
+        if not session_identity.valid_session_username(session):
             try:
                 current_app.logger.info(
                     "No username in session for %s, redirecting to login", request.path
                 )
             except Exception:
                 pass
+            if request.path.startswith("/api/") or request.path.startswith("/check_"):
+                return jsonify({"success": False, "error": "unauthenticated"}), 401
             return redirect(url_for("auth.login"))
         return view_func(*args, **kwargs)
 

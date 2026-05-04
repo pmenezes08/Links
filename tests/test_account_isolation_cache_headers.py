@@ -4,6 +4,7 @@ import pytest
 from flask import Flask
 
 from backend.blueprints.dm_chats import dm_chats_bp
+from backend.blueprints.communities import communities_bp
 from backend.blueprints.enterprise import enterprise_bp
 from backend.blueprints.group_chat import group_chat_bp
 from backend.blueprints.me import me_bp
@@ -25,6 +26,7 @@ def _assert_no_store(resp) -> None:
         (dm_chats_bp, "/api/chat_threads"),
         (group_chat_bp, "/api/group_chat/list"),
         (notifications_bp, "/api/notifications/badge-count"),
+        (communities_bp, "/api/user_communities_hierarchical"),
         (enterprise_bp, "/api/me/enterprise-seats"),
     ],
 )

@@ -19,7 +19,7 @@ from flask import (
     url_for,
 )
 
-from backend.services import auth_session
+from backend.services import auth_session, session_identity
 from backend.services.database import USE_MYSQL, get_db_connection
 from backend.services.notifications import (
     check_single_event_notifications,
@@ -70,7 +70,7 @@ def _login_required(view_func):
 
     @wraps(view_func)
     def wrapper(*args, **kwargs):
-        if "username" not in session:
+        if not session_identity.valid_session_username(session):
             try:
                 current_app.logger.info("No username in session for %s", request.path)
             except Exception:
