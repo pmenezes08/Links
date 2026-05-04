@@ -8,6 +8,7 @@ import * as OCopy from '../content/onboardingCopy'
 type Stage =
   | 'intent_fork'
   | 'b2b_value'
+  | 'b2b_network_size'
   | 'b2b_org_type'
   | 'b2b_parent_name'
   | 'b2b_sub_names'
@@ -72,6 +73,7 @@ interface Collected {
   reachOut: string
   journey: string
   /** B2B onboarding — persisted in Firestore for resume */
+  b2bNetworkSize?: string
   b2bOrgTypeHint?: string
   b2bParentName?: string
 }
@@ -105,11 +107,27 @@ interface OnboardingChatProps {
   onExit: () => void
 }
 
-  const USER_FACING_STEPS = 8
+const USER_FACING_STEPS = 8
+const B2B_NETWORK_SIZE_OPTIONS = [
+  { label: 'Up to 50 people', value: 'b2b_size_up_to_50', icon: '🌱' },
+  { label: '51 to 250 people', value: 'b2b_size_51_250', icon: '🏘️' },
+  { label: '251 to 1,000 people', value: 'b2b_size_251_1000', icon: '🏙️' },
+  { label: 'More than 1,000 people', value: 'b2b_size_over_1000', icon: '🌍' },
+] as const
+
+type B2BNetworkSizeValue = (typeof B2B_NETWORK_SIZE_OPTIONS)[number]['value']
+
+const B2B_NETWORK_SIZE_LABELS: Record<B2BNetworkSizeValue, string> =
+  Object.fromEntries(B2B_NETWORK_SIZE_OPTIONS.map(option => [option.value, option.label])) as Record<
+    B2BNetworkSizeValue,
+    string
+  >
+
 function stageProgress(stage: Stage): number {
   const stepMap: Record<Stage, number> = {
     intent_fork: 0,
     b2b_value: 0,
+    b2b_network_size: 0,
     b2b_org_type: 0,
     b2b_parent_name: 0,
     b2b_sub_names: 0,
@@ -518,8 +536,15 @@ export default function OnboardingChat({
       }
       case 'b2b_value': {
         addSteveMessage(
-          `${OCopy.B2B_VALUE_OPENER}\n\n${OCopy.PRIVACY_LINE}\n\n${OCopy.STRUCTURED_FEEDS_LINE}\n\n${OCopy.TOOLS_BEYOND_POSTS}\n\n${OCopy.DINNER_POLL_CALENDAR}\n\n${OCopy.DM_LINE}\n\n${OCopy.NETWORKING_TIER_NOTE}\n\n${OCopy.STEVE_PACKAGE_NOTE}\n\n${OCopy.STEVE_CENTER_LINE}\n\n${OCopy.B2B_BRIDGE_PERSONAL}`,
+          'Great. Let’s shape a private network for your organisation — a trusted place for the right people to connect, share updates, and keep useful context together. I’ll ask a few quick questions so we can set it up properly.',
           { options: [{ label: 'Continue', value: 'b2b_value_continue', icon: '➡️' }] },
+        )
+        break
+      }
+      case 'b2b_network_size': {
+        addSteveMessage(
+          'Great. Let’s shape a private network for your organisation — a trusted place for the right people to connect, share updates, and keep useful context together.\n\nFirst, about how many people do you expect in this network? This helps me point you toward the right setup.',
+          { options: [...B2B_NETWORK_SIZE_OPTIONS] },
         )
         break
       }
@@ -532,14 +557,14 @@ export default function OnboardingChat({
       }
       case 'b2b_parent_name': {
         addSteveMessage(
-          'What should we name your **main** network — the umbrella where members first connect?',
+          'What should we call this network?',
           { inputType: 'text', inputPlaceholder: 'e.g. Northside Studio Collective' },
         )
         break
       }
       case 'b2b_sub_names': {
         addSteveMessage(
-          'Optional: list **sub-community** names, separated by commas (smaller invite-only spaces under your umbrella). Or skip for now.',
+          'Optional: list **sub-community** names, separated by commas (smaller invite-only private communities under your network). Or skip for now.',
           {
             inputType: 'text',
             inputPlaceholder: 'Team A, Beginners, Staff — or leave blank',
@@ -845,7 +870,7 @@ export default function OnboardingChat({
       setIsTyping(false)
       if (j?.success) {
         addSteveMessage(
-          'You’re set — your network shell is ready. Now let’s finish **your** profile so people know who’s leading the space.',
+          'You’re set — your network shell is ready. Now let’s finish **your** profile so people know who’s leading the network.',
         )
         setTimeout(() => advanceTo('name', c), 600)
       } else {
@@ -961,12 +986,12 @@ export default function OnboardingChat({
       case 'intent_b2b': {
         addUserMessage('A private network for my organisation')
         onboardingIntentRef.current = 'b2b'
-        advanceTo('b2b_value', collected)
+        advanceTo('b2b_network_size', collected)
         break
       }
       case 'b2b_value_continue': {
         addUserMessage('Continue')
-        advanceTo('b2b_org_type', collected)
+        advanceTo('b2b_network_size', collected)
         break
       }
       case 'b2b_skip_subs': {
@@ -1000,6 +1025,17 @@ export default function OnboardingChat({
         } catch {
           addSteveMessage('I couldn’t save that just now. Want to continue with your profile instead?')
         }
+        break
+      }
+      case 'b2b_size_up_to_50':
+      case 'b2b_size_51_250':
+      case 'b2b_size_251_1000':
+      case 'b2b_size_over_1000': {
+        const networkSize = B2B_NETWORK_SIZE_LABELS[value as B2BNetworkSizeValue]
+        addUserMessage(networkSize)
+        const newCollected = { ...collected, b2bNetworkSize: networkSize }
+        setCollected(newCollected)
+        advanceTo('b2b_parent_name', newCollected)
         break
       }
       case 'start':
@@ -1455,14 +1491,14 @@ export default function OnboardingChat({
         const newCollected = { ...collected, b2bOrgTypeHint: val }
         b2bOrgRef.current = val
         setCollected(newCollected)
-        advanceTo('b2b_parent_name', newCollected)
+        await runB2bBootstrap([], newCollected)
         break
       }
       case 'b2b_parent_name': {
         const newCollected = { ...collected, b2bParentName: val }
         b2bParentRef.current = val
         setCollected(newCollected)
-        advanceTo('b2b_sub_names', newCollected)
+        advanceTo('b2b_org_type', newCollected)
         break
       }
       case 'b2b_sub_names': {
@@ -1476,7 +1512,7 @@ export default function OnboardingChat({
   }
 
   function detectOffScript(currentStage: Stage, input: string): boolean {
-    if (currentStage === 'b2b_org_type' || currentStage === 'b2b_parent_name' || currentStage === 'b2b_sub_names') {
+    if (currentStage === 'b2b_network_size' || currentStage === 'b2b_org_type' || currentStage === 'b2b_parent_name' || currentStage === 'b2b_sub_names') {
       return false
     }
     const lower = input.toLowerCase()
@@ -1514,8 +1550,9 @@ export default function OnboardingChat({
         recommend: 'Recommend a book, movie, or TV show to your network.',
         reach_out: 'What do you want people to reach out to you about?',
         pb_edit_field: 'Update this profile field.',
+        b2b_network_size: 'How many people do you expect in this network?',
         b2b_org_type: OCopy.ORG_TYPE_PROMPT,
-        b2b_parent_name: 'What should we name your main network?',
+        b2b_parent_name: 'What should we call this network?',
         b2b_sub_names: 'List sub-communities separated by commas, or use the skip button.',
       }
       const r = await fetch('/api/onboarding/redirect', {

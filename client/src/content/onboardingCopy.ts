@@ -48,4 +48,4 @@ export const STEVE_PACKAGE_NOTE =
 export const INTENT_QUESTION = 'What are you here to build today?'
 
 export const ORG_TYPE_PROMPT =
-  'What type of organisation are you setting this up for? A short label is enough — e.g. fitness studio, school, professional association, brand.'
+  'What type of organisation is it? A short label is enough — e.g. fitness studio, school, professional association, brand.'
