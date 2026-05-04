@@ -12,6 +12,25 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 
 PROFILE_DEFER_GRACE_HOURS = 72
+PERSONAL_STAGES = {
+    "talk_all_day",
+    "reach_out",
+    "journey",
+    "recommend",
+    "optional_social",
+    "personal_bio_review",
+}
+
+PROFESSIONAL_STAGES = {
+    "professional",
+    "professional_confirm",
+    "fix_role",
+    "fix_company",
+    "professional_associations",
+    "professional_strengths",
+    "linkedin",
+    "professional_bio_review",
+}
 
 
 def _parse_iso_utc(value: Optional[str]) -> Optional[datetime]:
@@ -116,6 +135,52 @@ def build_defer_timestamps(now_utc: Optional[datetime] = None) -> Tuple[str, str
     return base.isoformat(), until.isoformat()
 
 
+def next_unanswered_profile_stage(
+    stage: Optional[str],
+    collected: Optional[Dict[str, Any]],
+) -> str:
+    """Return the next durable profile prompt from saved onboarding answers."""
+    data = collected or {}
+    saved_stage = str(stage or "").strip()
+    if saved_stage == "complete":
+        return "complete"
+
+    if saved_stage in PERSONAL_STAGES:
+        if data.get("personalSectionComplete"):
+            return "section_picker"
+        if not str(data.get("talkAllDay") or "").strip():
+            return "talk_all_day"
+        if not str(data.get("reachOut") or "").strip():
+            return "reach_out"
+        if not str(data.get("journey") or "").strip():
+            return "journey"
+        if not str(data.get("recommend") or "").strip():
+            return "recommend"
+        if not str(data.get("bio") or "").strip():
+            return "optional_social"
+        return "personal_bio_review"
+
+    if saved_stage in PROFESSIONAL_STAGES:
+        if data.get("professionalSectionComplete"):
+            return "section_picker"
+        if not str(data.get("role") or "").strip():
+            return "professional"
+        if not str(data.get("professionalAssociations") or "").strip():
+            return "professional_associations"
+        if not str(data.get("professionalStrengths") or "").strip():
+            return "professional_strengths"
+        if not str(data.get("professionalBio") or "").strip():
+            return "linkedin"
+        return "professional_bio_review"
+
+    if saved_stage == "profile_review":
+        if data.get("personalSectionComplete") and data.get("professionalSectionComplete"):
+            return "profile_review"
+        return "section_picker"
+
+    return saved_stage or "section_picker"
+
+
 def merge_defer_into_state_patch(
     *,
     now_utc: Optional[datetime] = None,
@@ -124,6 +189,9 @@ def merge_defer_into_state_patch(
     return {
         "profile_deferred_at": deferred_at,
         "profile_defer_until": defer_until,
+        "onboarding_auto_open_suppressed": True,
+        "onboarding_reminder_24h_sent_at": None,
+        "onboarding_reminder_48h_sent_at": None,
         "updated_at": deferred_at,
     }
 
@@ -151,7 +219,17 @@ def build_onboarding_state_payload(
         "serverTime": now.isoformat(),
         "requiresOnboardingResume": requires_onboarding_resume(doc=firestore_doc, now_utc=now),
         "onboardingComplete": complete_fs,
+        "onboardingAutoOpenSuppressed": bool((firestore_doc or {}).get("onboarding_auto_open_suppressed")),
+        "profileDeferredAt": (firestore_doc or {}).get("profile_deferred_at"),
     }
+    collected = (firestore_doc or {}).get("collected") or {}
+    if isinstance(collected, dict):
+        payload["onboardingProgress"] = {
+            "personalSectionComplete": bool(collected.get("personalSectionComplete")),
+            "professionalSectionComplete": bool(collected.get("professionalSectionComplete")),
+            "activeProfileSection": collected.get("activeProfileSection"),
+            "nextStage": next_unanswered_profile_stage((firestore_doc or {}).get("stage"), collected),
+        }
     if firestore_doc and firestore_doc.get("onboarding_intent"):
         payload["onboardingIntent"] = firestore_doc.get("onboarding_intent")
     return payload

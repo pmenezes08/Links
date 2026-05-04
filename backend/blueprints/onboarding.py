@@ -50,6 +50,13 @@ def _login_required(view_func):
     return wrapper
 
 
+def _cron_authed() -> bool:
+    expected = os.environ.get("CRON_SHARED_SECRET") or ""
+    if not expected:
+        return False
+    return (request.headers.get("X-Cron-Secret") or "") == expected
+
+
 @onboarding_bp.route("/onboarding")
 @_login_required
 def onboarding_react():
@@ -438,6 +445,10 @@ def save_onboarding_state():
                 "messages": data.get("messages", [])[-30:],
                 "updated_at": datetime.utcnow().isoformat(),
             }
+            if "resume_welcome_shown" in data:
+                payload["resume_welcome_shown"] = bool(data.get("resume_welcome_shown"))
+            if "onboarding_auto_open_suppressed" in data:
+                payload["onboarding_auto_open_suppressed"] = bool(data.get("onboarding_auto_open_suppressed"))
             intent = data.get("onboarding_intent")
             if intent in ("b2b", "b2c"):
                 payload["onboarding_intent"] = intent
@@ -467,6 +478,7 @@ def onboarding_defer_profile():
         patch = merge_defer_into_state_patch()
         extra = {
             "stage": data.get("stage", "welcome"),
+            "onboarding_auto_open_suppressed": bool(data.get("onboarding_auto_open_suppressed", True)),
             "updated_at": patch["updated_at"],
         }
         if data.get("collected") is not None:
@@ -480,6 +492,23 @@ def onboarding_defer_profile():
     except Exception as e:
         logger.error("onboarding_defer_profile failed for %s: %s", username, e)
         return jsonify({"success": False, "error": "Could not defer onboarding"}), 500
+
+
+@onboarding_bp.route("/api/cron/onboarding/reminders", methods=["POST"])
+def onboarding_reminders_cron():
+    """Dispatch gentle deferred-onboarding reminders via Cloud Scheduler."""
+    if not _cron_authed():
+        return jsonify({"success": False, "error": "forbidden"}), 403
+    try:
+        from backend.services.onboarding_reminders import dispatch_onboarding_reminders
+
+        dry_run = str(request.args.get("dry_run") or "").lower() in {"1", "true", "yes"}
+        result = dispatch_onboarding_reminders(dry_run=dry_run)
+        status = 200 if result.get("success") else 500
+        return jsonify(result), status
+    except Exception as e:
+        logger.exception("onboarding reminder cron failed: %s", e)
+        return jsonify({"success": False, "error": "onboarding_reminders_failed"}), 500
 
 
 @onboarding_bp.route("/api/onboarding/tier_hints", methods=["GET"])
@@ -712,6 +741,8 @@ def onboarding_compose_bio():
     city = (data.get("city") or "").strip()
     country = (data.get("country") or "").strip()
     existing_bio = (data.get("existing_bio") or "").strip()
+    current_bio = (data.get("current_bio") or "").strip()
+    style = (data.get("style") or "").strip().lower()
 
     personal_has_answers = bool(talk_all_day or recommend or reach_out or journey)
     professional_has_answers = bool(role or company or professional_associations or professional_strengths)
@@ -762,41 +793,60 @@ def onboarding_compose_bio():
             if existing_bio
             else ""
         )
+        revision_block = (
+            f"Revise this current draft instead of starting over:\n{current_bio}\n\n"
+            if current_bio
+            else ""
+        )
+        style_guidance = {
+            "more_natural": "Make the draft more natural, less polished, and closer to how a person would actually introduce themselves.",
+            "shorter": "Make the draft shorter while preserving the most concrete detail.",
+            "more_professional": "Make the draft a little more professionally useful without becoming corporate.",
+        }.get(style, "")
         if kind == "professional":
             system_prompt = (
                 "You are a professional profile writer for a private networking platform. "
-                "Compose a polished 2-4 sentence professional bio in first person. "
+                "Compose a clear 2-4 sentence professional bio in first person. "
                 "Focus on what they do, what people should associate them with, and where collaboration makes sense. "
                 "Use the role and company as context, not as a resume dump. "
                 "If an existing bio is provided, weave it together with the new onboarding answers into one coherent whole. "
-                "Do NOT use hashtags, emojis, or buzzwords. Return ONLY the bio text."
+                "Preserve at least one concrete phrase or detail from the user's answers when possible. "
+                "Avoid generic phrases such as 'passionate about', 'driven by', 'meaningful connections', and 'leveraging'. "
+                "Keep it useful and human, not corporate. Do NOT use hashtags, emojis, or buzzwords. Return ONLY the bio text."
             )
             user_prompt = (
-                existing_block
+                revision_block
+                + existing_block
                 + "Professional details from onboarding:\n"
                 f"{professional}\n"
                 f"People should associate them with: {professional_associations}\n"
                 f"People usually come to them for: {professional_strengths}\n"
                 f"{'Based in ' + location if location else ''}\n\n"
+                f"{style_guidance}\n\n"
                 "Write their professional bio:"
             )
         else:
             system_prompt = (
-                "You are an identity writer for a private networking platform. Compose a polished, engaging 2-4 sentence personal bio. "
+                "You are an identity writer for a private networking platform. Compose a warm 2-4 sentence personal bio. "
                 "Focus on who they are as a person, what makes them easy to talk to, and what others can reach out about. "
                 "Professional details should not dominate this section. "
                 "If an existing bio is provided, weave it together with the new onboarding answers into one coherent whole. "
+                "Preserve at least one concrete phrase or detail from the user's answers when possible. "
+                "Vary sentence rhythm and keep it less polished than a marketing bio. "
                 "Write in first person. Be authentic and human, not corporate or generic. "
+                "Avoid generic phrases such as 'passionate about', 'driven by', 'meaningful connections', and 'leveraging'. "
                 "Do NOT use hashtags, emojis, or buzzwords. Return ONLY the bio text."
             )
             user_prompt = (
-                existing_block
+                revision_block
+                + existing_block
                 + "Personal details from onboarding:\n"
                 f"Things they could talk about all day: {talk_all_day}\n"
                 f"They recommend: {recommend}\n"
                 f"They want people to reach out about: {reach_out}\n"
                 f"{journey_text}\n"
                 f"{'Based in ' + location if location else ''}\n\n"
+                f"{style_guidance}\n\n"
                 "Write their personal bio:"
             )
 

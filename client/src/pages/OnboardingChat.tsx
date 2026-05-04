@@ -22,6 +22,7 @@ type Stage =
   | 'location_confirm'
   | 'location_city'
   | 'photo'
+  | 'section_picker'
   | 'personal_section_intro'
   | 'talk_all_day'
   | 'reach_out'
@@ -46,6 +47,7 @@ type Stage =
   | 'complete'
 
 type PbFieldKey = 'city' | 'country' | 'role' | 'company'
+type ProfileSection = 'personal' | 'professional'
 
 interface ChatMessage {
   from: 'steve' | 'user'
@@ -66,6 +68,10 @@ interface ChatMessage {
   profileReview?: {
     personalBio: string
     professionalBio: string
+  }
+  sectionPicker?: {
+    personalStatus: string
+    professionalStatus: string
   }
 }
 
@@ -119,6 +125,10 @@ interface Collected {
   recommend: string
   reachOut: string
   journey: string
+  personalSectionComplete?: boolean
+  professionalSectionComplete?: boolean
+  activeProfileSection?: ProfileSection
+  profileSectionOrder?: ProfileSection[]
   /** B2B onboarding — persisted in Firestore for resume */
   b2bNetworkSize?: string
   b2bOrgTypeHint?: string
@@ -137,6 +147,23 @@ const TOUR_STEPS: TourStep[] = [
   { icon: 'fa-solid fa-users', title: 'Followers', description: 'See who follows you and who you follow across your communities.' },
   { icon: 'fa-solid fa-network-wired', title: 'Networking', description: 'Discover people in your networks — Steve helps match you with relevant connections.' },
   { icon: 'fa-solid fa-cog', title: 'Account Settings', description: 'Manage your email, notifications, and privacy preferences.' },
+]
+
+const PERSONAL_SECTION_STEPS = [
+  'Conversation hooks',
+  'Reach-out signal',
+  'Personal highlight',
+  'Recommendation',
+  'Public social links',
+  'Personal bio draft',
+]
+
+const PROFESSIONAL_SECTION_STEPS = [
+  'Role or current work',
+  'Collaboration signals',
+  'Strengths',
+  'LinkedIn',
+  'Professional bio draft',
 ]
 
 interface OnboardingChatProps {
@@ -233,6 +260,7 @@ function stageProgress(stage: Stage): number {
     location_confirm: 2,
     location_city: 2,
     photo: 3,
+    section_picker: 3,
     personal_section_intro: 3,
     talk_all_day: 4,
     reach_out: 4,
@@ -258,6 +286,57 @@ function stageProgress(stage: Stage): number {
   }
   const step = stepMap[stage] ?? 0
   return Math.round((step / USER_FACING_STEPS) * 100)
+}
+
+function buildSectionPickerOptions(c: Collected): ChatMessage['options'] {
+  const options: ChatMessage['options'] = []
+  if (!c.personalSectionComplete) {
+    options.push({ label: 'Personal Identity - about 2 minutes - 6 prompts', value: 'choose_personal_section' })
+  }
+  if (!c.professionalSectionComplete) {
+    options.push({ label: 'Professional Identity - about 2 minutes - 5 prompts', value: 'choose_professional_section' })
+  }
+  if (c.personalSectionComplete && c.professionalSectionComplete) {
+    options.push({ label: 'Review profile', value: 'finish_sections_review' })
+  }
+  options.push({ label: 'Finish later', value: 'open_defer_modal' })
+  return options
+}
+
+function firstUnansweredStageForSection(section: ProfileSection, c: Collected): Stage {
+  if (section === 'personal') {
+    if (!c.talkAllDay?.trim()) return 'talk_all_day'
+    if (!c.reachOut?.trim()) return 'reach_out'
+    if (!c.journey?.trim()) return 'journey'
+    if (!c.recommend?.trim()) return 'recommend'
+    if (!c.bio?.trim()) return 'optional_social'
+    return 'personal_bio_review'
+  }
+  if (!c.role?.trim()) return 'professional'
+  if (!c.professionalAssociations?.trim()) return 'professional_associations'
+  if (!c.professionalStrengths?.trim()) return 'professional_strengths'
+  if (!c.professionalBio?.trim()) return 'linkedin'
+  return 'professional_bio_review'
+}
+
+function nextSectionAfterCompletion(c: Collected): Stage {
+  if (!c.personalSectionComplete || !c.professionalSectionComplete) return 'section_picker'
+  return 'profile_review'
+}
+
+function normalizeResumeStage(savedStage: Stage, c: Collected): Stage {
+  if (savedStage === 'complete') return 'complete'
+  if (savedStage === 'personal_section_intro' || savedStage === 'professional_section_intro') return savedStage
+  if (savedStage === 'talk_all_day' || savedStage === 'reach_out' || savedStage === 'journey' || savedStage === 'recommend' || savedStage === 'optional_social' || savedStage === 'personal_bio_review') {
+    return c.personalSectionComplete ? 'section_picker' : firstUnansweredStageForSection('personal', c)
+  }
+  if (savedStage === 'professional' || savedStage === 'professional_confirm' || savedStage === 'fix_role' || savedStage === 'fix_company' || savedStage === 'professional_associations' || savedStage === 'professional_strengths' || savedStage === 'linkedin' || savedStage === 'professional_bio_review') {
+    return c.professionalSectionComplete ? 'section_picker' : firstUnansweredStageForSection('professional', c)
+  }
+  if (savedStage === 'profile_review') {
+    return c.personalSectionComplete && c.professionalSectionComplete ? 'profile_review' : 'section_picker'
+  }
+  return savedStage || 'section_picker'
 }
 
 const STAGES_REQUIRING_VALIDATION: Stage[] = [
@@ -382,6 +461,10 @@ export default function OnboardingChat({
     recommend: '',
     reachOut: '',
     journey: '',
+    personalSectionComplete: false,
+    professionalSectionComplete: false,
+    activeProfileSection: undefined,
+    profileSectionOrder: [],
   })
   const [isTyping, setIsTyping] = useState(false)
   const [picFile, setPicFile] = useState<File | null>(null)
@@ -407,6 +490,8 @@ export default function OnboardingChat({
   const [headerLogoSrc, setHeaderLogoSrc] = useState('/api/public/logo')
   const [safeBottomPx, setSafeBottomPx] = useState(0)
   const [tierHints, setTierHints] = useState<OnboardingTierHints | null>(null)
+  const [showDeferConfirm, setShowDeferConfirm] = useState(false)
+  const [deferringProfile, setDeferringProfile] = useState(false)
 
   const NATIVE_KEYBOARD_MIN_HEIGHT = 60
   const KEYBOARD_OFFSET_EPSILON = 6
@@ -544,7 +629,11 @@ export default function OnboardingChat({
 
   const saveState = useCallback(async (s: Stage, c: Collected) => {
     try {
-      const body: Record<string, unknown> = { stage: s, collected: c }
+      const body: Record<string, unknown> = {
+        stage: s,
+        collected: c,
+        onboarding_auto_open_suppressed: false,
+      }
       if (onboardingIntentRef.current) body.onboarding_intent = onboardingIntentRef.current
       await fetch('/api/onboarding/state', {
         method: 'POST',
@@ -594,6 +683,10 @@ export default function OnboardingChat({
               recommend: '',
               reachOut: '',
               journey: '',
+              personalSectionComplete: false,
+              professionalSectionComplete: false,
+              activeProfileSection: undefined,
+              profileSectionOrder: [],
             }
             originalPublicBioRef.current = next.bio
             originalProfessionalBioRef.current = next.professionalBio
@@ -617,14 +710,33 @@ export default function OnboardingChat({
           if (saved.onboarding_intent === 'b2b' || saved.onboarding_intent === 'b2c') {
             onboardingIntentRef.current = saved.onboarding_intent
           }
+          const savedCollected = saved.collected ? ({ ...collected, ...saved.collected } as Collected) : collected
           if (saved.collected) {
-            setCollected(prev => ({ ...prev, ...saved.collected }))
-            const sc = saved.collected as Collected
+            setCollected(savedCollected)
+            const sc = savedCollected
             if (sc.b2bOrgTypeHint) b2bOrgRef.current = String(sc.b2bOrgTypeHint)
             if (sc.b2bParentName) b2bParentRef.current = String(sc.b2bParentName)
           }
-          setStage(saved.stage as Stage)
-          startStage(saved.stage as Stage, saved.collected || collected)
+          const resumeStage = normalizeResumeStage(saved.stage as Stage, savedCollected)
+          setStage(resumeStage)
+          if (!saved.resume_welcome_shown) {
+            setMessages([{ from: 'steve', text: 'Welcome back. I saved your progress, so we will pick up where you left off.' }])
+            try {
+              await fetch('/api/onboarding/state', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  stage: resumeStage,
+                  collected: savedCollected,
+                  resume_welcome_shown: true,
+                  onboarding_auto_open_suppressed: false,
+                  onboarding_intent: onboardingIntentRef.current || undefined,
+                }),
+              })
+            } catch {}
+          }
+          startStage(resumeStage, savedCollected)
           setBooting(false)
           return
         }
@@ -653,7 +765,7 @@ export default function OnboardingChat({
             options: [
               { label: 'A private community for my personal circles', value: 'intent_b2c' },
               { label: 'A private network for my organisation', value: 'intent_b2b' },
-              { label: 'Skip profile for 72 hours', value: 'defer_profile_72' },
+              { label: 'Finish later', value: 'open_defer_modal' },
             ],
           },
         )
@@ -734,8 +846,8 @@ export default function OnboardingChat({
             : communityName
               ? [{ label: "Let's go!", value: 'start', icon: '🚀' }]
               : [
-                  { label: "Let's go!", value: 'start', icon: '🚀' },
-                  { label: 'Skip profile for 72 hours', value: 'defer_profile_72', icon: '⏱️' },
+                  { label: "Let's go!", value: 'start' },
+                  { label: 'Finish later', value: 'open_defer_modal' },
                 ]
         addSteveMessage(welcomeText, { options: welcomeOpts })
         break
@@ -830,20 +942,35 @@ export default function OnboardingChat({
       case 'photo':
         addSteveMessage("Add a profile picture if you want people to recognize you more easily.", {
           photoUpload: true,
-          options: [{ label: 'Skip for now', value: 'skip_photo', icon: '⏭️' }],
+          options: [{ label: 'Skip for now', value: 'skip_photo' }],
         })
         break
+      case 'section_picker': {
+        const personalStatus = data.personalSectionComplete ? 'Personal complete' : 'Personal pending'
+        const professionalStatus = data.professionalSectionComplete ? 'Professional complete' : 'Professional pending'
+        addSteveMessage(
+          'You can choose what to build next. Each section is short and finite, so this is not an open-ended interview.',
+          {
+            sectionPicker: { personalStatus, professionalStatus },
+            options: buildSectionPickerOptions(data),
+          },
+        )
+        break
+      }
       case 'personal_section_intro':
         addSteveMessage(
-          "First, let's build your Personal Identity. This helps people understand the human side of you and gives Steve enough context to draft a personal bio.",
+          "Let's build your Personal Identity. This is 6 dedicated prompts, about 2 minutes, so people can understand the human side of you.",
           {
             sectionCard: {
               title: 'Personal Identity',
               subtitle: 'A warmer profile section for conversation, interests, and personality.',
-              steps: ['Conversation hooks', 'Reach-out signal', 'Journey', 'Recommendation', 'Personal social links', 'Personal bio draft'],
+              steps: PERSONAL_SECTION_STEPS,
               activeIndex: 0,
             },
-            options: [{ label: 'Start personal section', value: 'start_personal_section' }],
+            options: [
+              { label: 'Start personal section', value: 'start_personal_section' },
+              { label: 'Finish later', value: 'open_defer_modal' },
+            ],
           },
         )
         break
@@ -905,15 +1032,18 @@ export default function OnboardingChat({
       }
       case 'professional_section_intro':
         addSteveMessage(
-          "Now let's build your Professional Context. This section helps people understand your work, what to associate you with, and where collaboration might make sense.",
+          "Let's build your Professional Identity. This is 5 dedicated prompts, about 2 minutes, to make your work and collaboration context clear.",
           {
             sectionCard: {
-              title: 'Professional Context',
+              title: 'Professional Identity',
               subtitle: 'A practical profile section for work, expertise, and collaboration.',
-              steps: ['Role or current work', 'Collaboration signals', 'Strengths', 'LinkedIn', 'Professional bio draft'],
+              steps: PROFESSIONAL_SECTION_STEPS,
               activeIndex: 0,
             },
-            options: [{ label: 'Start professional section', value: 'start_professional_section' }],
+            options: [
+              { label: 'Start professional section', value: 'start_professional_section' },
+              { label: 'Finish later', value: 'open_defer_modal' },
+            ],
           },
         )
         break
@@ -955,7 +1085,7 @@ export default function OnboardingChat({
         const soOpts: ChatMessage['options'] = [{ label: 'Skip', value: 'skip_optional_social', icon: '⏭️' }]
         if (stageHistory.current.length > 1) soOpts.push({ label: '← Go back', value: 'go_back', icon: '↩️' })
         addSteveMessage(
-          'Optional: share personal social profiles for **Instagram**, **X**, or **TikTok** if you want Steve to understand more of your public background. We only use links you provide.\n\nPaste one URL per line, or skip.',
+          'Optional: share public social profiles for Instagram, X, or TikTok if you want Steve to understand more of your public background. We only use links you provide.\n\nPaste one URL per line, or skip.',
           {
             inputType: 'textarea',
             inputPlaceholder: 'https://instagram.com/yourprofile\nhttps://x.com/yourprofile\nhttps://www.tiktok.com/@you',
@@ -965,9 +1095,9 @@ export default function OnboardingChat({
         break
       }
       case 'journey':
-        addSteveMessage(`What is something your network should remember about your journey?\n\n${'Totally optional. Share a highlight from work or life, something you are proud of, or something that shapes how you show up today.'}\n\nExamples: “Consulting background • Two marathons • Former competitive athlete”`, {
+        addSteveMessage('What is something your networks should know about you? Feel free to share an achievement you are proud of or a highlight that shapes who you are today.', {
           inputType: 'textarea',
-          inputPlaceholder: 'e.g. Consulting background • Two marathons • Former competitive athlete',
+          inputPlaceholder: 'Type your answer...',
           options: (() => {
             const opts: ChatMessage['options'] = [{ label: 'Skip', value: 'skip_journey', icon: '⏭️' }]
             if (stageHistory.current.length > 1) opts.push({ label: '← Go back', value: 'go_back', icon: '↩️' })
@@ -987,7 +1117,10 @@ export default function OnboardingChat({
             personalBio: data.bio,
             professionalBio: data.professionalBio,
           },
-          options: [{ label: 'Looks good', value: 'finish_profile_review' }],
+          options: [
+            { label: 'Looks good', value: 'finish_profile_review' },
+            { label: 'Finish later', value: 'open_defer_modal' },
+          ],
         })
         break
       case 'manual_bio_edit':
@@ -1011,7 +1144,7 @@ export default function OnboardingChat({
   function advanceTo(next: Stage, data?: Collected) {
     const c = data || collected
     const mainStages: Stage[] = [
-      'name', 'location', 'photo', 'personal_section_intro', 'talk_all_day',
+      'name', 'location', 'photo', 'section_picker', 'personal_section_intro', 'talk_all_day',
       'reach_out', 'journey', 'recommend', 'optional_social', 'personal_bio_review',
       'professional_section_intro', 'professional', 'professional_associations',
       'professional_strengths', 'linkedin', 'professional_bio_review', 'profile_review',
@@ -1102,14 +1235,15 @@ export default function OnboardingChat({
     )
   }
 
-  async function composeBio(kind: 'personal' | 'professional', data?: Collected) {
+  async function composeBio(
+    kind: 'personal' | 'professional',
+    data?: Collected,
+    style?: 'more_natural' | 'shorter' | 'more_professional',
+    currentBio?: string,
+  ) {
     const c = data || collected
     setComposingBio(true)
-    addSteveMessage(
-      kind === 'personal'
-        ? "Nice. Give me a sec — I'm drafting your personal bio."
-        : "Great. Give me a sec — I'm drafting your professional bio.",
-    )
+    setIsTyping(true)
     try {
       const r = await fetch('/api/onboarding/compose_bio', {
         method: 'POST',
@@ -1127,6 +1261,8 @@ export default function OnboardingChat({
           professional_strengths: c.professionalStrengths,
           city: c.city,
           country: c.country,
+          style,
+          current_bio: currentBio || '',
           existing_bio:
             kind === 'professional'
               ? (mode === 'profile_builder'
@@ -1140,6 +1276,7 @@ export default function OnboardingChat({
       const j = await r.json().catch(() => null)
       const bio = j?.bio || ''
       setComposingBio(false)
+      setIsTyping(false)
       if (bio) {
         addSteveMessage(
           kind === 'personal'
@@ -1155,6 +1292,7 @@ export default function OnboardingChat({
       }
     } catch {
       setComposingBio(false)
+      setIsTyping(false)
       addSteveMessage(`Something went wrong. Want to write your own ${kind} bio instead?`, {
         inputType: 'textarea',
         inputPlaceholder: `Write a 2-3 sentence ${kind} bio...`,
@@ -1191,6 +1329,38 @@ export default function OnboardingChat({
     setTimeout(() => advanceToComplete(), 800)
   }
 
+  async function finishLater() {
+    if (deferringProfile) return
+    setDeferringProfile(true)
+    addUserMessage('Finish later')
+    try {
+      const serializable = messages.slice(-30).map(m => ({ from: m.from, text: m.text }))
+      const r = await fetch('/api/onboarding/defer_profile', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stage,
+          collected,
+          messages: serializable,
+          onboarding_auto_open_suppressed: true,
+        }),
+      })
+      const j = await r.json().catch(() => null)
+      if (j?.success) {
+        addSteveMessage('Saved. You can come back anytime from your dashboard, and I will send two gentle reminders while this is still fresh.')
+        setShowDeferConfirm(false)
+        setTimeout(() => onExit(), 800)
+      } else {
+        addSteveMessage('I couldn’t save that just now. Want to continue with your profile instead?')
+      }
+    } catch {
+      addSteveMessage('I couldn’t save that just now. Want to continue with your profile instead?')
+    } finally {
+      setDeferringProfile(false)
+    }
+  }
+
   async function handleOptionClick(value: string) {
     switch (value) {
       case 'intent_b2c': {
@@ -1215,32 +1385,9 @@ export default function OnboardingChat({
         await runB2bBootstrap([], collected)
         break
       }
+      case 'open_defer_modal':
       case 'defer_profile_72': {
-        addUserMessage('Skip profile for 72 hours')
-        try {
-          const serializable = messages.slice(-30).map(m => ({ from: m.from, text: m.text }))
-          const r = await fetch('/api/onboarding/defer_profile', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              stage,
-              collected,
-              messages: serializable,
-            }),
-          })
-          const j = await r.json().catch(() => null)
-          if (j?.success) {
-            addSteveMessage(
-              'All set — you’ve got time to explore. I’ll remind you later to finish your profile.',
-            )
-            setTimeout(() => onExit(), 800)
-          } else {
-            addSteveMessage('I couldn’t save that just now. Want to continue with your profile instead?')
-          }
-        } catch {
-          addSteveMessage('I couldn’t save that just now. Want to continue with your profile instead?')
-        }
+        setShowDeferConfirm(true)
         break
       }
       case 'b2b_size_free':
@@ -1434,7 +1581,31 @@ export default function OnboardingChat({
       case 'skip_photo':
         addUserMessage('Skip for now')
         addSteveMessage("No problem — you can always add one later from your profile.")
-        setTimeout(() => advanceTo('personal_section_intro'), 600)
+        setTimeout(() => advanceTo('section_picker'), 600)
+        break
+      case 'choose_personal_section': {
+        addUserMessage('Personal Identity - about 2 minutes - 6 prompts')
+        const order = collected.profileSectionOrder?.includes('personal')
+          ? collected.profileSectionOrder
+          : [...(collected.profileSectionOrder || []), 'personal' as ProfileSection]
+        const newCollected = { ...collected, activeProfileSection: 'personal' as ProfileSection, profileSectionOrder: order }
+        setCollected(newCollected)
+        advanceTo('personal_section_intro', newCollected)
+        break
+      }
+      case 'choose_professional_section': {
+        addUserMessage('Professional Identity - about 2 minutes - 5 prompts')
+        const order = collected.profileSectionOrder?.includes('professional')
+          ? collected.profileSectionOrder
+          : [...(collected.profileSectionOrder || []), 'professional' as ProfileSection]
+        const newCollected = { ...collected, activeProfileSection: 'professional' as ProfileSection, profileSectionOrder: order }
+        setCollected(newCollected)
+        advanceTo('professional_section_intro', newCollected)
+        break
+      }
+      case 'finish_sections_review':
+        addUserMessage('Review profile')
+        advanceTo('profile_review')
         break
       case 'start_personal_section':
         addUserMessage('Start personal section')
@@ -1468,16 +1639,31 @@ export default function OnboardingChat({
           addUserMessage('Use this')
           const newCollected =
             kind === 'professional'
-              ? { ...collected, professionalBio: lastComposed }
-              : { ...collected, bio: lastComposed }
+              ? { ...collected, professionalBio: lastComposed, professionalSectionComplete: true }
+              : { ...collected, bio: lastComposed, personalSectionComplete: true }
           setCollected(newCollected)
           await saveField(kind === 'professional' ? 'professional_about' : 'bio', lastComposed)
           addSteveMessage(kind === 'professional' ? 'Professional bio saved.' : 'Personal bio saved.')
           setTimeout(
-            () => advanceTo(kind === 'professional' ? 'profile_review' : 'professional_section_intro', newCollected),
+            () => advanceTo(nextSectionAfterCompletion(newCollected), newCollected),
             800,
           )
         }
+        break
+      }
+      case 'bio_more_natural':
+      case 'bio_shorter':
+      case 'bio_more_professional': {
+        const lastMessage = [...messages].reverse().find(m => m.composedBio)
+        const kind = lastMessage?.composedBioKind || 'personal'
+        const style =
+          value === 'bio_shorter'
+            ? 'shorter'
+            : value === 'bio_more_professional'
+              ? 'more_professional'
+              : 'more_natural'
+        addUserMessage(value === 'bio_shorter' ? 'Shorter' : value === 'bio_more_professional' ? 'More professional' : 'More natural')
+        await composeBio(kind, collected, style, lastMessage?.composedBio || '')
         break
       }
       case 'edit_bio': {
@@ -1747,13 +1933,13 @@ export default function OnboardingChat({
         const lastKind = [...messages].reverse().find(m => m.composedBio)?.composedBioKind || 'personal'
         const newCollected =
           lastKind === 'professional'
-            ? { ...collected, professionalBio: val }
-            : { ...collected, bio: val }
+            ? { ...collected, professionalBio: val, professionalSectionComplete: true }
+            : { ...collected, bio: val, personalSectionComplete: true }
         setCollected(newCollected)
         await saveField(lastKind === 'professional' ? 'professional_about' : 'bio', val)
         addSteveMessage(lastKind === 'professional' ? 'Professional bio saved.' : 'Personal bio saved.')
         setTimeout(
-          () => advanceTo(lastKind === 'professional' ? 'profile_review' : 'professional_section_intro', newCollected),
+          () => advanceTo(nextSectionAfterCompletion(newCollected), newCollected),
           800,
         )
         break
@@ -1861,7 +2047,7 @@ export default function OnboardingChat({
         addUserMessage('📷 Photo uploaded!')
         addSteveMessage('Looking great! 👌')
         setPicFile(null)
-        setTimeout(() => advanceTo('personal_section_intro'), 600)
+        setTimeout(() => advanceTo('section_picker'), 600)
       } else {
         addSteveMessage(j?.error || "Hmm, that didn't work. Try again or skip for now.", {
           photoUpload: true,
@@ -1937,7 +2123,7 @@ export default function OnboardingChat({
             </div>
             <button
               type="button"
-              onClick={onExit}
+              onClick={() => setShowDeferConfirm(true)}
               className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-medium text-white/60 hover:text-white hover:border-white/20 transition"
             >
               Exit for now
@@ -1992,6 +2178,23 @@ export default function OnboardingChat({
                         </div>
                       </div>
                     )}
+                    {msg.sectionPicker && (
+                      <div className="grid gap-2 rounded-2xl border border-[#4db6ac]/25 bg-[#4db6ac]/[0.05] px-4 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]">
+                          Choose Your Next Section
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                            <div className="text-[12px] font-semibold text-white">Personal Identity</div>
+                            <div className="mt-1 text-[11px] text-white/55">About 2 minutes · 6 prompts · {msg.sectionPicker.personalStatus}</div>
+                          </div>
+                          <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                            <div className="text-[12px] font-semibold text-white">Professional Identity</div>
+                            <div className="mt-1 text-[11px] text-white/55">About 2 minutes · 5 prompts · {msg.sectionPicker.professionalStatus}</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     {/* Quick reply buttons */}
                     {msg.options && i === messages.length - 1 && stage !== 'complete' && (
                       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
@@ -2033,8 +2236,17 @@ export default function OnboardingChat({
                           <button onClick={() => handleOptionClick('use_bio')} className="px-3.5 py-2 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 text-[12px] font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20 transition-colors">
                             Use this
                           </button>
+                          <button onClick={() => handleOptionClick('bio_more_natural')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
+                            More natural
+                          </button>
+                          <button onClick={() => handleOptionClick('bio_shorter')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
+                            Shorter
+                          </button>
+                          <button onClick={() => handleOptionClick('bio_more_professional')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
+                            More professional
+                          </button>
                           <button onClick={() => handleOptionClick('edit_bio')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
-                            Let me edit
+                            Edit
                           </button>
                           <button onClick={() => handleOptionClick('redo_bio')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
                             Start fresh
@@ -2252,6 +2464,34 @@ export default function OnboardingChat({
             >
               <i className="fa-solid fa-paper-plane" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {showDeferConfirm && (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          <div className="w-full max-w-sm rounded-3xl border border-[#4db6ac]/25 bg-[#0d1214] p-5 shadow-[0_24px_80px_rgba(77,182,172,0.16)]">
+            <div className="text-lg font-semibold text-white">Need more time?</div>
+            <div className="mt-3 text-sm leading-relaxed text-white/70">
+              A good profile is easier to build when you are not rushing. We will save what you have shared so far, and you can come back anytime from your dashboard. To help you finish while it is still fresh, we will send two gentle reminders: one after 24 hours and one after 48 hours.
+            </div>
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => setShowDeferConfirm(false)}
+                className="flex-1 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 px-4 py-2.5 text-sm font-semibold text-[#d5fffb] transition hover:bg-[#4db6ac]/15"
+              >
+                Keep going
+              </button>
+              <button
+                type="button"
+                onClick={finishLater}
+                disabled={deferringProfile}
+                className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white/75 transition hover:bg-white/10 disabled:opacity-50"
+              >
+                {deferringProfile ? 'Saving...' : 'Finish later'}
+              </button>
+            </div>
           </div>
         </div>
       )}

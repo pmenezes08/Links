@@ -162,6 +162,20 @@ gcloud scheduler jobs create http event-reminder-dispatch \
   --headers="X-Cron-Secret=$SECRET" \
   --attempt-deadline=300s
 
+# Onboarding profile reminders — sends the 24h and 48h gentle reminders
+# for users who chose Finish later during profile onboarding. The endpoint
+# dedupes with Firestore sent markers and supports dry-run:
+#   curl -X POST "$BASE/api/cron/onboarding/reminders?dry_run=1" \
+#     -H "X-Cron-Secret: $CRON_SECRET"
+gcloud scheduler jobs create http onboarding-profile-reminders \
+  --location=europe-west1 \
+  --schedule="*/30 * * * *" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/onboarding/reminders" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=120s
+
 # Steve member KB — weekly auto-synthesis. Refreshes every active
 # member's Knowledge Base once per calendar week by processing one of
 # seven daily buckets keyed off CRC32(username) % 7 (today's

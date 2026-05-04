@@ -35,6 +35,33 @@ type Community = {
   unread_posts_count?: number
 }
 
+type OnboardingStateSummary = {
+  profileDeferUntil?: string | null
+  serverTime?: string | null
+  requiresOnboardingResume?: boolean
+  onboardingComplete?: boolean
+  onboardingProgress?: {
+    personalSectionComplete?: boolean
+    professionalSectionComplete?: boolean
+    nextStage?: string
+  }
+}
+
+function formatOnboardingRemaining(profileDeferUntil?: string | null, serverTime?: string | null): string {
+  if (!profileDeferUntil) return ''
+  const end = new Date(profileDeferUntil).getTime()
+  const server = serverTime ? new Date(serverTime).getTime() : Date.now()
+  if (Number.isNaN(end) || Number.isNaN(server)) return ''
+  const diffMs = end - server
+  if (diffMs <= 0) return 'Ready to continue'
+  const hours = Math.ceil(diffMs / 3600000)
+  const days = Math.floor(hours / 24)
+  const remHours = hours % 24
+  if (days > 0 && remHours > 0) return `${days} day${days === 1 ? '' : 's'} ${remHours} hour${remHours === 1 ? '' : 's'} remaining`
+  if (days > 0) return `${days} day${days === 1 ? '' : 's'} remaining`
+  return `${hours} hour${hours === 1 ? '' : 's'} remaining`
+}
+
 function formatLastActive(timestamp: string | null | undefined): string {
   if (!timestamp) return ''
   try {
@@ -117,6 +144,7 @@ export default function PremiumDashboard() {
   const [existingProfilePic, setExistingProfilePic] = useState<string>('')
   const [emailVerifiedAt, setEmailVerifiedAt] = useState<string | null>(null)
   const [isRecentlyVerified, setIsRecentlyVerified] = useState(false)
+  const [onboardingStateSummary, setOnboardingStateSummary] = useState<OnboardingStateSummary | null>(null)
   const onboardingTriggeredRef = useRef(false)  // Track if onboarding was already triggered
   const refreshInFlightRef = useRef(false)
   const lastScrollRefreshRef = useRef(0)
@@ -625,6 +653,30 @@ export default function PremiumDashboard() {
     onboardingTriggeredRef.current = false
   }, [username])
 
+  const openOnboardingResume = useCallback(() => {
+    setOnboardingGateRequired(false)
+    setShowOnboardingWelcome(false)
+    setOnboardingMode('fresh')
+    setOnboardingLaunching(true)
+    setShowOnboarding(true)
+  }, [])
+
+  const refreshOnboardingStateSummary = useCallback(async () => {
+    try {
+      const r = await fetch('/api/onboarding/state', { credentials: 'include' })
+      const j = await r.json().catch(() => null)
+      if (j?.success) {
+        setOnboardingStateSummary({
+          profileDeferUntil: j.profileDeferUntil,
+          serverTime: j.serverTime,
+          requiresOnboardingResume: j.requiresOnboardingResume,
+          onboardingComplete: j.onboardingComplete || (j.state && (j.state.stage === 'complete' || j.state.completed_at)),
+          onboardingProgress: j.onboardingProgress,
+        })
+      }
+    } catch {}
+  }, [])
+
   // Auto-prompt conversational onboarding; server state (defer / resume) runs even when not "recently verified"
   useEffect(() => {
     if (onboardingTriggeredRef.current) return
@@ -642,6 +694,13 @@ export default function PremiumDashboard() {
         const r = await fetch('/api/onboarding/state', { credentials: 'include' })
         const j = await r.json().catch(() => null)
         if (j?.success) {
+          setOnboardingStateSummary({
+            profileDeferUntil: j.profileDeferUntil,
+            serverTime: j.serverTime,
+            requiresOnboardingResume: j.requiresOnboardingResume,
+            onboardingComplete: j.onboardingComplete || (j.state && (j.state.stage === 'complete' || j.state.completed_at)),
+            onboardingProgress: j.onboardingProgress,
+          })
           if (j.requiresOnboardingResume) {
             setOnboardingGateRequired(true)
             onboardingTriggeredRef.current = true
@@ -688,6 +747,15 @@ export default function PremiumDashboard() {
 
 
   const hasAnyCommunity = communities.length > 0
+  const showOnboardingCompletionCard = !!(
+    onboardingStateSummary &&
+    !onboardingStateSummary.onboardingComplete &&
+    (onboardingStateSummary.profileDeferUntil || onboardingStateSummary.requiresOnboardingResume)
+  )
+  const onboardingRemaining = formatOnboardingRemaining(
+    onboardingStateSummary?.profileDeferUntil,
+    onboardingStateSummary?.serverTime,
+  )
   const resolvedCommunityName = (() => {
     if (pendingInviteTarget?.communityName) return pendingInviteTarget.communityName
     if (joinedCommunityName) return joinedCommunityName
@@ -814,6 +882,38 @@ export default function PremiumDashboard() {
               >
                 ×
               </button>
+            </div>
+          )}
+          {showOnboardingCompletionCard && (
+            <div className="mb-4 rounded-2xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 p-4 shadow-[0_16px_45px_rgba(0,0,0,0.28)]">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-base font-semibold text-white">Complete your onboarding</div>
+                  <p className="mt-1 text-sm leading-relaxed text-white/70">
+                    {onboardingStateSummary?.requiresOnboardingResume
+                      ? 'Your profile is saved. Continue when you are ready so people can understand who you are in your communities.'
+                      : 'Your progress is saved. You can continue from where you left off.'}
+                  </p>
+                  {onboardingRemaining && (
+                    <div className="mt-2 text-xs font-medium text-[#d5fffb]">{onboardingRemaining}</div>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                    <span className={`rounded-full border px-2.5 py-1 ${onboardingStateSummary?.onboardingProgress?.personalSectionComplete ? 'border-[#4db6ac]/35 bg-[#4db6ac]/10 text-[#d5fffb]' : 'border-white/10 bg-white/5 text-white/55'}`}>
+                      {onboardingStateSummary?.onboardingProgress?.personalSectionComplete ? 'Personal complete' : 'Personal pending'}
+                    </span>
+                    <span className={`rounded-full border px-2.5 py-1 ${onboardingStateSummary?.onboardingProgress?.professionalSectionComplete ? 'border-[#4db6ac]/35 bg-[#4db6ac]/10 text-[#d5fffb]' : 'border-white/10 bg-white/5 text-white/55'}`}>
+                      {onboardingStateSummary?.onboardingProgress?.professionalSectionComplete ? 'Professional complete' : 'Professional pending'}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={openOnboardingResume}
+                  className="shrink-0 rounded-xl bg-[#4db6ac] px-4 py-2.5 text-sm font-semibold text-black transition hover:brightness-110"
+                >
+                  Continue onboarding
+                </button>
+              </div>
             </div>
           )}
           <div 
@@ -1039,10 +1139,7 @@ export default function PremiumDashboard() {
             <button
               type="button"
               className="w-full rounded-xl bg-[#4db6ac] text-black font-semibold py-3 text-sm hover:brightness-110 transition"
-              onClick={() => {
-                setOnboardingGateRequired(false)
-                setShowOnboarding(true)
-              }}
+              onClick={openOnboardingResume}
             >
               Continue with Steve
             </button>
@@ -1092,6 +1189,7 @@ export default function PremiumDashboard() {
             setShowOnboarding(false)
             setShowOnboardingWelcome(false)
             setOnboardingLaunching(false)
+            setTimeout(() => { void refreshOnboardingStateSummary() }, 900)
           }}
         />
       )}
