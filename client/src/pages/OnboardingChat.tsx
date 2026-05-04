@@ -508,8 +508,8 @@ export default function OnboardingChat({
           `${greeting} I'm Steve. Great to meet you.\n\nI'll ask a few simple questions so your profile feels like you, and so the right people can understand who you are inside C-Point. We'll keep it light - you can change anything later.\n\n${OCopy.INTENT_QUESTION}`,
           {
             options: [
-              { label: 'For me — personal circles', value: 'intent_b2c', icon: '👤' },
-              { label: 'For an organisation I run', value: 'intent_b2b', icon: '🏢' },
+              { label: 'A private community for my personal circles', value: 'intent_b2c', icon: '👤' },
+              { label: 'A private network for my organisation', value: 'intent_b2b', icon: '🏢' },
               { label: 'Skip profile for 72 hours', value: 'defer_profile_72', icon: '⏱️' },
             ],
           },
@@ -953,13 +953,13 @@ export default function OnboardingChat({
   async function handleOptionClick(value: string) {
     switch (value) {
       case 'intent_b2c': {
-        addUserMessage('For me — personal circles')
+        addUserMessage('A private community for my personal circles')
         onboardingIntentRef.current = 'b2c'
         advanceTo('name', collected)
         break
       }
       case 'intent_b2b': {
-        addUserMessage('For an organisation I run')
+        addUserMessage('A private network for my organisation')
         onboardingIntentRef.current = 'b2b'
         advanceTo('b2b_value', collected)
         break

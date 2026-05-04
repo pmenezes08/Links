@@ -45,7 +45,7 @@ export const NETWORKING_TIER_NOTE =
 export const STEVE_PACKAGE_NOTE =
   'Paid communities can add a Steve package — a shared pool for members. Premium on your own account is what makes Steve yours across your private spaces.'
 
-export const INTENT_QUESTION = 'First, which best describes you right now?'
+export const INTENT_QUESTION = 'What are you here to build today?'
 
 export const ORG_TYPE_PROMPT =
   'What type of organisation are you setting this up for? A short label is enough — e.g. fitness studio, school, professional association, brand.'
