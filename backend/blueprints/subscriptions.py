@@ -44,6 +44,7 @@ from backend.services import (
     enterprise_membership,
     knowledge_base,
     media_assets,
+    session_identity,
     user_billing,
 )
 from backend.services.database import get_db_connection, get_sql_placeholder
@@ -62,8 +63,7 @@ def _no_store_user_scoped_responses(response):
 
 
 def _session_username() -> Optional[str]:
-    uname = session.get("username")
-    return str(uname) if uname else None
+    return session_identity.valid_session_username(session)
 
 
 _DEFAULT_STRIPE_API_KEY = "sk_test_your_stripe_key"

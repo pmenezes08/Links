@@ -4,11 +4,13 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta
 from http.cookies import SimpleCookie
+from unittest.mock import MagicMock
 
 from flask import Flask, make_response, request, session
 
 from backend.services import remember_tokens
 from backend.services.database import get_db_connection, get_sql_placeholder
+from tests.fixtures import make_user
 
 
 def _app() -> Flask:
@@ -54,6 +56,7 @@ def _insert_token(username: str, raw: str, expires_at: datetime | None = None) -
 
 
 def test_issue_then_restore_round_trip(mysql_dsn):
+    make_user("alice")
     app = _app()
     with app.app_context():
         remember_tokens.ensure_tables()
@@ -66,6 +69,45 @@ def test_issue_then_restore_round_trip(mysql_dsn):
         assert restored == "alice"
         assert session["username"] == "alice"
         assert session.permanent is True
+
+
+def test_restore_revokes_token_for_missing_user(mysql_dsn):
+    app = _app()
+    _insert_token("ghost_user", "ghost-raw")
+
+    with app.test_request_context("/", environ_overrides={"HTTP_COOKIE": "remember_token=ghost-raw"}):
+        assert remember_tokens.restore_session(request, session) is None
+        assert "username" not in session
+
+    assert _row_count() == 0
+
+
+def test_restore_rejects_missing_user_without_setting_session(monkeypatch):
+    app = _app()
+    raw = "ghost-raw-unit"
+    token_hash = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    cursor = MagicMock()
+    cursor.fetchone.return_value = {
+        "username": "ghost_user",
+        "expires_at": datetime.utcnow() + timedelta(days=30),
+    }
+    conn = MagicMock()
+    conn.cursor.return_value = cursor
+    cm = MagicMock()
+    cm.__enter__.return_value = conn
+    cm.__exit__.return_value = None
+    revoked: list[str] = []
+
+    monkeypatch.setattr(remember_tokens, "ensure_tables", lambda: None)
+    monkeypatch.setattr(remember_tokens, "get_db_connection", lambda: cm)
+    monkeypatch.setattr(remember_tokens.session_identity, "user_exists", lambda username: False)
+    monkeypatch.setattr(remember_tokens, "revoke_by_token_hash", lambda value: revoked.append(value) or 1)
+
+    with app.test_request_context("/", environ_overrides={"HTTP_COOKIE": f"remember_token={raw}"}):
+        assert remember_tokens.restore_session(request, session) is None
+        assert "username" not in session
+
+    assert revoked == [token_hash]
 
 
 def test_revoke_by_cookie_deletes_one_row(mysql_dsn):
@@ -149,6 +191,7 @@ def test_pending_username_blocks_auto_login_restore(mysql_dsn):
     """Two-step login: remember cookie must not hydrate username while pending_username is set."""
     from backend.blueprints.auth import auth_bp, auto_login_from_remember_token
 
+    make_user("alice")
     raw = secrets.token_urlsafe(16)
     _insert_token("alice", raw)
 

@@ -22,7 +22,7 @@ from urllib.parse import urlencode, urljoin
 
 from flask import Blueprint, jsonify, request, session
 
-from backend.services import ai_usage, auth_session, user_billing
+from backend.services import ai_usage, auth_session, session_identity, user_billing
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.entitlements import resolve_entitlements
 from backend.services.feature_flags import entitlements_enforcement_enabled
@@ -38,8 +38,7 @@ def _no_store_user_scoped_responses(response):
 
 
 def _session_username() -> str | None:
-    uname = session.get("username")
-    return str(uname) if uname else None
+    return session_identity.valid_session_username(session)
 
 
 # ── Privacy scrub ──────────────────────────────────────────────────────

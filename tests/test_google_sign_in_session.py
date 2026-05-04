@@ -59,6 +59,16 @@ def test_google_sign_in_new_user_clears_stale_session_keys(
             assert "pending_username" not in sess
             assert sess.get("username") == "freshsignup"
 
+    user_insert_calls = [
+        call for call in cursor.execute.call_args_list
+        if "INSERT INTO users" in str(call.args[0])
+    ]
+    assert user_insert_calls
+    sql = str(user_insert_calls[0].args[0])
+    params = user_insert_calls[0].args[1]
+    assert "canonical_email" in sql
+    assert params[2] == "freshsignup@example.com"
+
 
 @patch("backend.blueprints.auth._ensure_google_id_column")
 @patch("backend.blueprints.auth._apply_login_persistence", return_value=0)
@@ -93,3 +103,18 @@ def test_google_sign_in_email_link_returns_existing_username(
         assert js["username"] == "oldaccount"
         with client.session_transaction() as sess:
             assert sess.get("username") == "oldaccount"
+
+    lookup_calls = [
+        call for call in cursor.execute.call_args_list
+        if "canonical_email" in str(call.args[0]) and "SELECT username" in str(call.args[0])
+    ]
+    assert lookup_calls
+    assert lookup_calls[0].args[1] == ("existing@example.com", "existing@example.com")
+
+    link_calls = [
+        call for call in cursor.execute.call_args_list
+        if "UPDATE users SET google_id" in str(call.args[0])
+    ]
+    assert link_calls
+    assert "canonical_email = COALESCE" in str(link_calls[0].args[0])
+    assert link_calls[0].args[1] == ("google-sub-link", "existing@example.com", "oldaccount")

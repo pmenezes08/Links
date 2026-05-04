@@ -36,6 +36,7 @@ from backend.services import (
     auth_session,
     enterprise_iap_nag,
     enterprise_membership,
+    session_identity,
     subscription_audit,
     winback_promo,
 )
@@ -53,8 +54,7 @@ def _no_store_user_scoped_responses(response):
 
 
 def _session_username() -> str | None:
-    uname = session.get("username")
-    return str(uname) if uname else None
+    return session_identity.valid_session_username(session)
 
 
 def _login_required(view):

@@ -11,6 +11,7 @@ from typing import Any, Optional
 from flask import current_app
 
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
+from backend.services import session_identity
 
 
 logger = logging.getLogger(__name__)
@@ -165,6 +166,10 @@ def restore_session(request, session) -> Optional[str]:
 
     username = _row_value(row, "username", 0)
     if not username:
+        return None
+
+    if not session_identity.user_exists(str(username)):
+        revoke_by_token_hash(token_hash)
         return None
 
     session.permanent = True

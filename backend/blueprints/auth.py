@@ -33,7 +33,7 @@ from backend.services.native_push import (
     associate_install_tokens_with_user,
     deactivate_for_install,
 )
-from backend.services import auth_session, disposable_email, remember_tokens
+from backend.services import auth_session, disposable_email, remember_tokens, session_identity
 from backend.services.account_deletion import AccountDeletionMode, delete_user_in_connection
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.email_normalization import (
@@ -894,23 +894,11 @@ def api_clear_stale_session():
     """Clear session when stored username no longer exists."""
     logger = current_app.logger
     try:
-        username = session.get("username")
+        username = session_identity.current_session_username(session)
         if not username:
             return jsonify({"success": True, "cleared": False, "reason": "no_session"})
-        ph = get_sql_placeholder()
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute(f"SELECT id FROM users WHERE username={ph}", (username,))
-            user_exists = c.fetchone() is not None
-        if not user_exists:
-            session.clear()
-            session.permanent = False
-            try:
-                from redis_cache import invalidate_user_cache
-
-                invalidate_user_cache(username)
-            except Exception:
-                pass
+        if not session_identity.user_exists(username):
+            session_identity.clear_invalid_session(session, username)
             logger.info("api_clear_stale_session cleared session for missing user")
             return jsonify({"success": True, "cleared": True, "reason": "user_deleted"})
         return jsonify({"success": True, "cleared": False, "reason": "user_exists"})
@@ -998,6 +986,7 @@ def google_sign_in():
 
     google_id = payload.get('sub')
     email = (payload.get('email') or '').lower().strip()
+    canonical = canonicalize_with_policy(email) if email else ""
     first_name = payload.get('given_name') or ''
     last_name = payload.get('family_name') or ''
     email_verified = payload.get('email_verified', False)
@@ -1032,11 +1021,17 @@ def google_sign_in():
                 return resp
 
             # 2. Look up by email (link existing account)
-            c.execute(f"SELECT username FROM users WHERE LOWER(email) = LOWER({ph})", (email,))
+            c.execute(
+                f"SELECT username FROM users WHERE canonical_email = {ph} OR LOWER(email) = LOWER({ph})",
+                (canonical, email),
+            )
             row = c.fetchone()
             if row:
                 username = row['username'] if hasattr(row, 'keys') else row[0]
-                c.execute(f"UPDATE users SET google_id = {ph} WHERE username = {ph}", (google_id, username))
+                c.execute(
+                    f"UPDATE users SET google_id = {ph}, canonical_email = COALESCE(canonical_email, {ph}) WHERE username = {ph}",
+                    (google_id, canonical, username),
+                )
                 apply_oauth_email_verified(c, ph, username, bool(email_verified))
                 conn.commit()
                 session['username'] = username
@@ -1067,11 +1062,12 @@ def google_sign_in():
             now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
             verified_at = first_oauth_verified_at_iso() if email_verified else None
             c.execute(f"""
-                INSERT INTO users (username, email, password, first_name, last_name, google_id, email_verified, email_verified_at, created_at)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                INSERT INTO users (username, email, canonical_email, password, first_name, last_name, google_id, email_verified, email_verified_at, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
             """, (
                 username,
                 email,
+                canonical,
                 random_password,
                 first_name,
                 last_name,
