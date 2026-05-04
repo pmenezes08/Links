@@ -3,6 +3,7 @@
 import unittest
 
 from backend.services.networking_planner import (
+    PLANNER_MAX_OUTPUT_TOKENS,
     build_networking_planner_input,
     normalize_networking_query_plan,
     plan_networking_query,
@@ -16,8 +17,10 @@ class TestNetworkingPlanner(unittest.TestCase):
     class _FakeResponses:
         def __init__(self, output_text):
             self.output_text = output_text
+            self.kwargs = None
 
         def create(self, **kwargs):
+            self.kwargs = kwargs
             return type("Response", (), {"output_text": self.output_text, "usage": {}})()
 
     class _FakeClient:
@@ -98,19 +101,20 @@ class TestNetworkingPlanner(unittest.TestCase):
 
     def test_plan_networking_query_records_success_diagnostics(self):
         diagnostics = {}
+        client = self._FakeClient(
+            """{
+                "intent_summary": "User wants analytical healthcare people.",
+                "target": "analytical healthcare people",
+                "relationship_to_target": "trait plus domain relevance",
+                "dimension_analysis": {
+                    "Identity": {"priority": "primary", "reason": "Analytical is a trait."},
+                    "Expertise": {"priority": "primary", "reason": "Healthcare domain evidence."}
+                },
+                "direct_evidence_query": "analytical healthcare medical health care"
+            }"""
+        )
         plan = plan_networking_query(
-            self._FakeClient(
-                """{
-                    "intent_summary": "User wants analytical healthcare people.",
-                    "target": "analytical healthcare people",
-                    "relationship_to_target": "trait plus domain relevance",
-                    "dimension_analysis": {
-                        "Identity": {"priority": "primary", "reason": "Analytical is a trait."},
-                        "Expertise": {"priority": "primary", "reason": "Healthcare domain evidence."}
-                    },
-                    "direct_evidence_query": "analytical healthcare medical health care"
-                }"""
-            ),
+            client,
             message="I want to meet people that are analytical and work in healthcare",
             conversation_history=[],
             member_rows=[],
@@ -125,6 +129,8 @@ class TestNetworkingPlanner(unittest.TestCase):
         self.assertTrue(diagnostics["normalized"])
         self.assertEqual(diagnostics["failure_reason"], "")
         self.assertIn("analytical healthcare", diagnostics["raw_preview"])
+        self.assertEqual(client.responses.kwargs["max_output_tokens"], PLANNER_MAX_OUTPUT_TOKENS)
+        self.assertEqual(PLANNER_MAX_OUTPUT_TOKENS, 1200)
 
     def test_plan_networking_query_records_empty_normalization_diagnostics(self):
         diagnostics = {}

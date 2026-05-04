@@ -32,6 +32,7 @@ ALLOWED_FACETS = (
     "experiences",
     "identity_life_stage",
 )
+PLANNER_MAX_OUTPUT_TOKENS = 1200
 
 PLANNER_SYSTEM_PROMPT = """You are a query planner for a private professional networking search assistant.
 Return JSON only with keys:
@@ -299,7 +300,7 @@ def plan_networking_query(
         response = client.responses.create(
             model=networking_ai_config.planner_model,
             input=planner_input,
-            max_output_tokens=350,
+            max_output_tokens=PLANNER_MAX_OUTPUT_TOKENS,
             temperature=0.1,
         )
         response_time_ms = int((time.time() - t0) * 1000)
