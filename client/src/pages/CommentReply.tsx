@@ -1436,7 +1436,7 @@ export default function CommentReply() {
             <div className="relative">
               <button
                 type="button"
-                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/15"
+                className="w-9 h-9 flex-none flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/15"
                 onClick={() => setShowAttachMenu(!showAttachMenu)}
                 aria-label="Add attachment"
               >
@@ -1501,7 +1501,7 @@ export default function CommentReply() {
             {!recording && !replyText.trim() && (
               <button
                 type="button"
-                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/15"
+                className="w-9 h-9 flex-none flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/15"
                 onClick={() => startRec()}
                 aria-label="Record audio"
               >
@@ -1512,7 +1512,7 @@ export default function CommentReply() {
             {recording && (
               <button
                 type="button"
-                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac] text-white"
+                className="w-9 h-9 flex-none flex items-center justify-center rounded-lg bg-[#4db6ac] text-white"
                 onClick={async () => {
                   const p = await stopRec()
                   if (!p?.blob?.size) {
@@ -1530,9 +1530,9 @@ export default function CommentReply() {
                 type="button"
                 onClick={handleSubmitReply}
                 disabled={sendingReply}
-                className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#4db6ac] text-white transition-opacity disabled:opacity-40"
+                className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-[#4db6ac] text-white transition-opacity disabled:opacity-40"
               >
-                <span className="inline-flex size-4 items-center justify-center" aria-hidden>
+                <span className="inline-flex h-5 w-5 items-center justify-center" aria-hidden>
                   {sendingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
                 </span>
               </button>

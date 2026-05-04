@@ -349,9 +349,11 @@ export default function PostDetail(){
     }
   }, [])
 
-  // Visual viewport tracking for web
+  // Visual viewport tracking for web only. Native uses Capacitor Keyboard;
+  // mixing both sources can leave stale offsets after notification/resume.
   useEffect(() => {
     if (typeof window === 'undefined') return
+    if (Capacitor.getPlatform() !== 'web') return
     const viewport = window.visualViewport
     if (!viewport) return
 
@@ -386,6 +388,44 @@ export default function PostDetail(){
       if (rafId) cancelAnimationFrame(rafId)
       viewport.removeEventListener('resize', handleChange)
       viewport.removeEventListener('scroll', handleChange)
+    }
+  }, [])
+
+  // Reset keyboard lift and nudge layout after app resume/notification open.
+  useEffect(() => {
+    const nudgeLayout = () => {
+      keyboardOffsetRef.current = 0
+      setKeyboardOffset(0)
+      setViewportLift(0)
+      viewportBaseRef.current = null
+      requestAnimationFrame(() => {
+        window.dispatchEvent(new Event('resize'))
+        requestAnimationFrame(() => {
+          try {
+            contentRef.current?.scrollBy({ top: 0, left: 0 })
+          } catch {
+            /* ignore */
+          }
+        })
+      })
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') nudgeLayout()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    let resumeHandle: PluginListenerHandle | undefined
+    const setupResume = async () => {
+      if (!Capacitor.isNativePlatform()) return
+      const { App } = await import('@capacitor/app')
+      resumeHandle = await App.addListener('resume', nudgeLayout)
+    }
+    void setupResume()
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      void resumeHandle?.remove()
     }
   }, [])
 
@@ -1915,7 +1955,7 @@ export default function PostDetail(){
             <div className="relative">
               <button 
                 type="button" 
-                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
+                className="w-9 h-9 flex-none flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
                 onPointerDown={preventComposerBlur}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => setShowAttachMenu(!showAttachMenu)}
@@ -1990,7 +2030,7 @@ export default function PostDetail(){
             {!recording && !content.trim() && (
               <button
                 type="button"
-                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
+                className="w-9 h-9 flex-none flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
                 onPointerDown={preventComposerBlur}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => startRec()}
@@ -2004,7 +2044,7 @@ export default function PostDetail(){
             {recording && (
               <button
                 type="button"
-                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-[#4db6ac] text-white transition-all"
+                className="w-9 h-9 flex-none flex items-center justify-center rounded-xl bg-[#4db6ac] text-white transition-all"
                 onPointerDown={preventComposerBlur}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={async () => {
@@ -2023,14 +2063,14 @@ export default function PostDetail(){
             {!recording && (content.trim() || file || replyPreview || replyGif) && (
               <button
                 type="button"
-                className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#4db6ac] text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 transition-opacity"
+                className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-[#4db6ac] text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 transition-opacity"
                 onPointerDown={preventComposerBlur}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => submitReply()}
                 aria-label="Send reply"
                 disabled={submittingReply}
               >
-                <span className="inline-flex size-4 items-center justify-center" aria-hidden>
+                <span className="inline-flex h-5 w-5 items-center justify-center" aria-hidden>
                   {submittingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
                 </span>
               </button>
