@@ -177,6 +177,9 @@ export default function AdminDashboard() {
   const [inviteLogo, setInviteLogo] = useState<string | null>(null)
   const [inviteLogoStatus, setInviteLogoStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [inviteLogoUploading, setInviteLogoUploading] = useState(false)
+  const [onboardingVideo, setOnboardingVideo] = useState<string | null>(null)
+  const [onboardingVideoStatus, setOnboardingVideoStatus] = useState<'loading' | 'success' | 'error'>('loading')
+  const [onboardingVideoUploading, setOnboardingVideoUploading] = useState(false)
   const [welcomeUploadingIndex, setWelcomeUploadingIndex] = useState<number | null>(null)
   const [welcomeError, setWelcomeError] = useState<string>('')
   const [welcomeMessage, setWelcomeMessage] = useState<string>('')
@@ -470,6 +473,101 @@ export default function AdminDashboard() {
     } catch (error) {
       console.error('Error removing invite logo:', error)
       alert('Server error while removing logo')
+    }
+  }
+
+  const loadOnboardingWelcomeVideo = useCallback(async () => {
+    setOnboardingVideoStatus('loading')
+    try {
+      const response = await fetch('/admin/get_onboarding_welcome_video', {
+        credentials: 'include',
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      })
+      const data = await response.json()
+      if (data?.success) {
+        setOnboardingVideo(data.video_url || null)
+        setOnboardingVideoStatus('success')
+      } else {
+        setOnboardingVideoStatus('error')
+      }
+    } catch (error) {
+      console.error('Error loading onboarding welcome video:', error)
+      setOnboardingVideoStatus('error')
+    }
+  }, [])
+
+  const validateOnboardingVideoDuration = (file: File): Promise<void> => new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file)
+    const video = document.createElement('video')
+    const cleanup = () => URL.revokeObjectURL(objectUrl)
+    video.preload = 'metadata'
+    video.onloadedmetadata = () => {
+      const duration = Number.isFinite(video.duration) ? video.duration : 0
+      cleanup()
+      if (duration > 15.5) {
+        reject(new Error('Keep the onboarding welcome video to 15 seconds or less.'))
+        return
+      }
+      resolve()
+    }
+    video.onerror = () => {
+      cleanup()
+      reject(new Error('Could not read this video. Please upload a valid MP4 or WebM file.'))
+    }
+    video.src = objectUrl
+  })
+
+  const handleOnboardingVideoUpload = async (file: File) => {
+    const hasAllowedType = ['video/mp4', 'video/webm'].includes(file.type)
+    const hasAllowedExtension = /\.(mp4|webm)$/i.test(file.name)
+    if (!hasAllowedType && !hasAllowedExtension) {
+      alert('Use an MP4 or WebM video.')
+      return
+    }
+    setOnboardingVideoUploading(true)
+    try {
+      await validateOnboardingVideoDuration(file)
+      const formData = new FormData()
+      formData.append('video', file)
+
+      const response = await fetch('/admin/upload_onboarding_welcome_video', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+      })
+      const data = await response.json()
+      if (data?.success) {
+        setOnboardingVideo(data.video_url || null)
+        setOnboardingVideoStatus('success')
+      } else {
+        alert(data?.error || 'Failed to upload onboarding welcome video')
+      }
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Server error while uploading video')
+    } finally {
+      setOnboardingVideoUploading(false)
+    }
+  }
+
+  const handleRemoveOnboardingVideo = async () => {
+    if (!confirm('Remove the onboarding welcome video?')) return
+
+    try {
+      const response = await fetch('/admin/remove_onboarding_welcome_video', {
+        method: 'POST',
+        credentials: 'include'
+      })
+      const data = await response.json()
+      if (data?.success) {
+        setOnboardingVideo(null)
+        setOnboardingVideoStatus('success')
+      } else {
+        alert(data?.error || 'Failed to remove onboarding welcome video')
+      }
+    } catch (error) {
+      console.error('Error removing onboarding welcome video:', error)
+      alert('Server error while removing video')
     }
   }
 
@@ -1046,7 +1144,8 @@ export default function AdminDashboard() {
     loadAdminData()
     loadWelcomeCards()
     loadInviteLogo()
-  }, [setTitle, loadWelcomeCards, loadInviteLogo])
+    loadOnboardingWelcomeVideo()
+  }, [setTitle, loadWelcomeCards, loadInviteLogo, loadOnboardingWelcomeVideo])
 
   useEffect(() => {
     if (activeTab !== 'metrics' || !stats) return
@@ -1634,6 +1733,70 @@ export default function AdminDashboard() {
                         Remove Logo
                       </button>
                     )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Onboarding Welcome Video */}
+              <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
+                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-[#4db6ac]">Onboarding Welcome Video</h3>
+                    <p className="text-xs text-white/60 mt-1">
+                      This appears on the first post-login onboarding welcome screen. Use MP4 or WebM, 15 seconds max.
+                    </p>
+                  </div>
+                  <div className="text-xs text-white/50">
+                    {onboardingVideoStatus === 'loading' && <span className="text-white/60">Loading…</span>}
+                    {onboardingVideoStatus === 'success' && <span className="text-[#4db6ac]">Up to date</span>}
+                    {onboardingVideoStatus === 'error' && <span className="text-red-400">Failed to load</span>}
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-4 items-start">
+                  <div className="w-full sm:w-72 aspect-video rounded-xl overflow-hidden border border-white/10 bg-black/30 flex items-center justify-center flex-shrink-0">
+                    {onboardingVideoStatus === 'loading' ? (
+                      <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+                    ) : onboardingVideo ? (
+                      <video
+                        src={onboardingVideo}
+                        className="w-full h-full object-contain"
+                        controls
+                        preload="metadata"
+                      />
+                    ) : (
+                      <div className="text-xs text-white/50 text-center px-4">No onboarding video configured</div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="px-4 py-2 bg-[#4db6ac] text-black rounded-lg text-sm font-medium cursor-pointer hover:bg-[#4db6ac]/90 transition-colors text-center">
+                      {onboardingVideoUploading ? 'Uploading...' : 'Upload Video'}
+                      <input
+                        type="file"
+                        accept="video/mp4,video/webm"
+                        hidden
+                        disabled={onboardingVideoUploading}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            handleOnboardingVideoUpload(file)
+                          }
+                          e.target.value = ''
+                        }}
+                      />
+                    </label>
+                    {onboardingVideo && (
+                      <button
+                        onClick={handleRemoveOnboardingVideo}
+                        className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30 transition-colors"
+                      >
+                        Remove Video
+                      </button>
+                    )}
+                    <p className="text-xs text-white/50 max-w-sm">
+                      The welcome screen still works without a video. The Start onboarding button is always visible immediately.
+                    </p>
                   </div>
                 </div>
               </div>

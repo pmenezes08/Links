@@ -278,7 +278,7 @@ export default function MobileLogin() {
               const hasCommunities = Boolean(hj?.admin_communities?.length || hj?.communities_list?.length)
               if (!hasCommunities){
                 setAuthCheckDone(true)
-                navigate('/onboarding', { replace: true })
+                navigate('/premium_dashboard', { replace: true })
                 return
               }
             }catch{}

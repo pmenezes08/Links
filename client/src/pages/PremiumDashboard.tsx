@@ -16,6 +16,7 @@ import type { DashboardCachePayload } from '../utils/dashboardCache'
 import { triggerDashboardServerPull } from '../utils/serverPull'
 import { useLogoutRequest } from '../contexts/LogoutPromptContext'
 import OnboardingChat from './OnboardingChat'
+import OnboardingIntroGate from '../components/onboarding/OnboardingIntroGate'
 import DashboardBottomNav, { isPremiumDashboardPath } from '../components/DashboardBottomNav'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
@@ -103,6 +104,7 @@ export default function PremiumDashboard() {
   const [initialLoading, setInitialLoading] = useState(true)
   // Onboarding
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const [showOnboardingWelcome, setShowOnboardingWelcome] = useState(false)
   const [onboardingGateRequired, setOnboardingGateRequired] = useState(false)
   const [onboardingMode, setOnboardingMode] = useState<'fresh' | 'profile_builder'>('fresh')
   const [onboardingLaunching, setOnboardingLaunching] = useState(false)
@@ -143,10 +145,10 @@ export default function PremiumDashboard() {
     }
   }, [])
   useEffect(() => {
-    const hideHeaderForOnboarding = showOnboarding || onboardingLaunching || onboardingGateRequired
+    const hideHeaderForOnboarding = showOnboarding || showOnboardingWelcome || onboardingLaunching || onboardingGateRequired
     setHeaderHidden(hideHeaderForOnboarding)
     return () => setHeaderHidden(false)
-  }, [showOnboarding, onboardingLaunching, onboardingGateRequired, setHeaderHidden])
+  }, [showOnboarding, showOnboardingWelcome, onboardingLaunching, onboardingGateRequired, setHeaderHidden])
 
   useEffect(() => {
     // Once Steve is mounted, the bridging overlay is no longer needed; clear it so it never
@@ -631,6 +633,7 @@ export default function PremiumDashboard() {
     if (!Array.isArray(communities)) return
     if (!username) return
     if (showOnboarding) return
+    if (showOnboardingWelcome) return
 
     try { if (localStorage.getItem(doneKey) === '1') return } catch {}
 
@@ -675,12 +678,11 @@ export default function PremiumDashboard() {
 
       // Only flip the launching overlay on right when we are actually about to mount Steve.
       onboardingTriggeredRef.current = true
-      setOnboardingLaunching(true)
-      setShowOnboarding(true)
+      setShowOnboardingWelcome(true)
     })()
     // Intentionally omit `communities`: array identity changes on every parent-community refetch and caused
     // a one-shot "Starting onboarding..." flicker for users who exit without auto-opening Steve.
-  }, [communitiesLoaded, emailVerified, emailVerifiedAt, username, showOnboarding, doneKey, isRecentlyVerified])
+  }, [communitiesLoaded, emailVerified, emailVerifiedAt, username, showOnboarding, showOnboardingWelcome, doneKey, isRecentlyVerified])
 
   // Parent-only creation: skip loading parent communities
 
@@ -1017,6 +1019,15 @@ export default function PremiumDashboard() {
       </div>
 
       {/* Conversational Onboarding with Steve */}
+      {showOnboardingWelcome && !showOnboarding && !onboardingGateRequired && (
+        <OnboardingIntroGate
+          onStart={() => {
+            setShowOnboardingWelcome(false)
+            setOnboardingLaunching(true)
+            setShowOnboarding(true)
+          }}
+        />
+      )}
       {onboardingGateRequired && !showOnboarding && (
         <div className="fixed inset-0 z-[1101] bg-black/90 backdrop-blur-md flex items-center justify-center px-6">
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0d1214] p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.55)]">
@@ -1043,7 +1054,7 @@ export default function PremiumDashboard() {
           <div className="flex flex-col items-center gap-4 text-center">
             <img src="/api/public/logo" alt="C-Point" className="w-14 h-14 rounded-2xl object-contain" />
             <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-[#4db6ac] animate-spin" />
-            <div className="text-sm text-white/65">Starting onboarding...</div>
+            <div className="text-sm text-white/65">Opening Steve...</div>
           </div>
         </div>
       )}
@@ -1059,6 +1070,7 @@ export default function PremiumDashboard() {
           mode={onboardingMode}
           onComplete={() => {
             setShowOnboarding(false)
+            setShowOnboardingWelcome(false)
             setOnboardingLaunching(false)
             setOnboardingGateRequired(false)
             onboardingTriggeredRef.current = false
@@ -1066,16 +1078,19 @@ export default function PremiumDashboard() {
           }}
           onCreateCommunity={() => {
             setShowOnboarding(false)
+            setShowOnboardingWelcome(false)
             setOnboardingLaunching(false)
             setShowCreateModal(true)
           }}
           onGoToCommunity={() => {
             setShowOnboarding(false)
+            setShowOnboardingWelcome(false)
             setOnboardingLaunching(false)
             handleGoToCommunity()
           }}
           onExit={() => {
             setShowOnboarding(false)
+            setShowOnboardingWelcome(false)
             setOnboardingLaunching(false)
           }}
         />

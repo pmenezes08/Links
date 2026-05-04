@@ -552,13 +552,12 @@ export default function OnboardingChat({
         if (mode === 'profile_builder') {
           welcomeText = `${greeting} Let's update your profile together.\n\nI'll walk you through a few quick questions — anything you've already filled in, we can skip. Ready?`
         } else {
-          welcomeText = `${greeting} I'm Steve here at C-Point.`
+          welcomeText = `${greeting} I'm Steve. Let's set up your profile.`
           if (communityName) {
-            welcomeText += ` I see you were invited to ${communityName} — exciting!`
-            welcomeText += `\n\nA great profile helps people recognize you in private networks. I'll walk you through ${USER_FACING_STEPS} quick steps — about 3 minutes. Ready?`
+            welcomeText += ` I see you were invited to ${communityName}.`
+            welcomeText += `\n\nA clear profile helps people recognize you in the right private spaces. I'll walk you through ${USER_FACING_STEPS} quick steps - about 3 minutes. Ready?`
           } else {
-            welcomeText += `\n\n${OCopy.B2C_MANIFESTO_HOOK}\n\n${OCopy.PRIVACY_LINE}\n\n${OCopy.STRUCTURED_FEEDS_LINE}\n\n${OCopy.TOOLS_BEYOND_POSTS}\n\n${OCopy.DINNER_POLL_CALENDAR}\n\n${OCopy.DM_LINE}\n\n${OCopy.PROFILE_BORING_LINE}\n\n${OCopy.STEVE_CENTER_LINE}`
-            welcomeText += `\n\nWhen you're ready, we'll tidy your profile — ${USER_FACING_STEPS} short steps.`
+            welcomeText += `\n\nI'll ask a few quick questions so people can recognize you in the right communities and conversations. ${USER_FACING_STEPS} short steps - about 3 minutes. Ready?`
           }
         }
         const welcomeOpts: ChatMessage['options'] =
