@@ -42,6 +42,9 @@ class TestNetworkingPlanner(unittest.TestCase):
         self.assertIn("LifeInterests", system_text)
         self.assertIn("cooking", system_text)
         self.assertIn("Even when the ask is simple", system_text)
+        self.assertIn("dimension_analysis MUST be a JSON object, never a string", system_text)
+        self.assertIn('"priority":"primary|secondary|hard|ignored"', system_text)
+        self.assertIn("facets MUST be a JSON object whose values are arrays of strings", system_text)
         self.assertIn("@pilot", user_text)
 
     def test_normalize_keeps_only_allowed_facets_and_dimensions(self):

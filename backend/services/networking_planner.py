@@ -61,6 +61,15 @@ geography, industry, roles, company_builder, traits, interests, experiences, ide
 Dimension keys may only be:
 Index, LifeCareer, GeographyCulture, Expertise, CompanyIntel, Opinions, Identity, Network, UniqueFingerprint, InferredContext, LifeInterests
 
+Required JSON shapes:
+- dimension_analysis MUST be a JSON object, never a string. Its keys are dimension names and each value is {"priority":"primary|secondary|hard|ignored","reason":"short reason"}.
+- facets MUST be a JSON object whose values are arrays of strings, e.g. {"geography":["Miami area"],"traits":["goal-driven analytical"]}.
+- hard_constraints and soft_constraints MUST be arrays of facet keys, e.g. ["geography"].
+- primary_dimensions, secondary_dimensions, hard_dimensions, and named_people MUST be arrays of strings.
+- needs_clarification MUST be a boolean.
+- All other fields are strings.
+- Do not put prose paragraphs in any field. Keep reasons short.
+
 Dimension reasoning policy:
 - First identify the target of the request and the relationship the user wants to that target.
 - Then assess every relevant KB dimension as primary, secondary, hard, or ignored for this exact request.
@@ -78,7 +87,7 @@ Rules:
 - Use primary_dimensions for the main KB dimensions this query depends on.
 - Use secondary_dimensions for adjacent or broader evidence dimensions.
 - Use hard_dimensions only when a KB dimension is truly required to satisfy the ask.
-- dimension_analysis must explain why each selected dimension is primary/secondary/hard/ignored.
+- dimension_analysis must explain why each selected dimension is primary/secondary/hard/ignored using the required object shape.
 - direct_evidence_query should describe concrete evidence that would make someone a direct match.
 - adjacent_evidence_query should describe broader or weaker evidence that may still help.
 - deprioritized_evidence_query should describe evidence that should not outrank direct matches.
