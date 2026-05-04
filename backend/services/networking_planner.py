@@ -267,11 +267,27 @@ def plan_networking_query(
     networking_ai_config=None,
     username: str | None = None,
     community_id=None,
+    diagnostics: dict[str, Any] | None = None,
 ) -> dict | None:
     """Run the optional reasoning planner and return a normalized plan."""
+    diagnostics_out = diagnostics if isinstance(diagnostics, dict) else None
+    if diagnostics_out is not None:
+        diagnostics_out.clear()
+        diagnostics_out.update(
+            {
+                "attempted": False,
+                "skipped": False,
+                "succeeded": False,
+                "failure_reason": "",
+            }
+        )
     if not should_use_reasoning_planner(message, conversation_history):
+        if diagnostics_out is not None:
+            diagnostics_out.update({"skipped": True, "failure_reason": "empty_or_unplannable_message"})
         return None
     networking_ai_config = networking_ai_config or DEFAULT_CONFIG
+    if diagnostics_out is not None:
+        diagnostics_out.update({"attempted": True, "model": networking_ai_config.planner_model})
     planner_input = build_networking_planner_input(
         message=message,
         conversation_history=conversation_history,
@@ -310,7 +326,20 @@ def plan_networking_query(
         except Exception as usage_err:
             logger.debug("Networking planner usage logging failed: %s", usage_err)
         planner_text = (response.output_text or "").strip() if hasattr(response, "output_text") else ""
-        plan = normalize_networking_query_plan(extract_json_object(planner_text))
+        raw_plan = extract_json_object(planner_text)
+        plan = normalize_networking_query_plan(raw_plan)
+        if diagnostics_out is not None:
+            diagnostics_out.update(
+                {
+                    "response_time_ms": response_time_ms,
+                    "raw_preview": planner_text[:1000],
+                    "raw_length": len(planner_text),
+                    "json_extracted": bool(raw_plan),
+                    "normalized": bool(plan),
+                    "succeeded": bool(plan),
+                    "failure_reason": "" if plan else ("normalization_empty" if raw_plan else "json_extract_empty"),
+                }
+            )
         if plan:
             logger.info(
                 "Networking planner active facets=%s hard=%s named=%s",
@@ -319,6 +348,15 @@ def plan_networking_query(
                 plan.get("named_people") or [],
             )
         return plan
-    except Exception:
+    except Exception as exc:
+        if diagnostics_out is not None:
+            diagnostics_out.update(
+                {
+                    "attempted": True,
+                    "succeeded": False,
+                    "failure_reason": f"exception:{type(exc).__name__}",
+                    "error_preview": str(exc)[:500],
+                }
+            )
         logger.warning("Networking planner failed; falling back to direct retrieval", exc_info=True)
         return None

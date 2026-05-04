@@ -5,12 +5,24 @@ import unittest
 from backend.services.networking_planner import (
     build_networking_planner_input,
     normalize_networking_query_plan,
+    plan_networking_query,
 )
 
 
 class TestNetworkingPlanner(unittest.TestCase):
     def _getter(self, row, idx):
         return row[idx] if idx < len(row) else ""
+
+    class _FakeResponses:
+        def __init__(self, output_text):
+            self.output_text = output_text
+
+        def create(self, **kwargs):
+            return type("Response", (), {"output_text": self.output_text, "usage": {}})()
+
+    class _FakeClient:
+        def __init__(self, output_text):
+            self.responses = TestNetworkingPlanner._FakeResponses(output_text)
 
     def test_prompt_contains_generic_dimension_policy_and_life_interests_example(self):
         prompt_input = build_networking_planner_input(
@@ -83,6 +95,53 @@ class TestNetworkingPlanner(unittest.TestCase):
         self.assertEqual(plan["primary_dimensions"], ["LifeInterests", "InferredContext"])
         self.assertEqual(plan["secondary_dimensions"], ["UniqueFingerprint"])
         self.assertEqual(plan["hard_dimensions"], [])
+
+    def test_plan_networking_query_records_success_diagnostics(self):
+        diagnostics = {}
+        plan = plan_networking_query(
+            self._FakeClient(
+                """{
+                    "intent_summary": "User wants analytical healthcare people.",
+                    "target": "analytical healthcare people",
+                    "relationship_to_target": "trait plus domain relevance",
+                    "dimension_analysis": {
+                        "Identity": {"priority": "primary", "reason": "Analytical is a trait."},
+                        "Expertise": {"priority": "primary", "reason": "Healthcare domain evidence."}
+                    },
+                    "direct_evidence_query": "analytical healthcare medical health care"
+                }"""
+            ),
+            message="I want to meet people that are analytical and work in healthcare",
+            conversation_history=[],
+            member_rows=[],
+            member_getter=self._getter,
+            diagnostics=diagnostics,
+        )
+
+        self.assertIsNotNone(plan)
+        self.assertTrue(diagnostics["attempted"])
+        self.assertTrue(diagnostics["succeeded"])
+        self.assertTrue(diagnostics["json_extracted"])
+        self.assertTrue(diagnostics["normalized"])
+        self.assertEqual(diagnostics["failure_reason"], "")
+        self.assertIn("analytical healthcare", diagnostics["raw_preview"])
+
+    def test_plan_networking_query_records_empty_normalization_diagnostics(self):
+        diagnostics = {}
+        plan = plan_networking_query(
+            self._FakeClient("{}"),
+            message="gardening",
+            conversation_history=[],
+            member_rows=[],
+            member_getter=self._getter,
+            diagnostics=diagnostics,
+        )
+
+        self.assertIsNone(plan)
+        self.assertTrue(diagnostics["attempted"])
+        self.assertFalse(diagnostics["succeeded"])
+        self.assertTrue(diagnostics["json_extracted"] is False or diagnostics["normalized"] is False)
+        self.assertEqual(diagnostics["failure_reason"], "json_extract_empty")
 
 
 if __name__ == "__main__":

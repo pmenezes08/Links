@@ -112,6 +112,7 @@ def build_networking_debug_trace(
     recommended: Sequence[str],
     ai_response: str,
     planner_model: str = "",
+    planner_diagnostics: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a compact JSON-safe trace for admin diagnostics."""
     qp = query_plan or {}
@@ -120,6 +121,7 @@ def build_networking_debug_trace(
     return {
         "planner": {
             "model": _safe_text(planner_model, limit=100),
+            "diagnostics": _json_safe(planner_diagnostics or {}, text_limit=1000),
             "normalized_plan": _json_safe(qp),
             "intent_summary": _safe_text(qp.get("intent_summary")),
             "target": _safe_text(qp.get("target"), limit=200),

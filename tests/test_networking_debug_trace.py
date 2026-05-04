@@ -40,8 +40,19 @@ def test_debug_trace_is_compact_json_safe_and_redacts_sensitive_keys():
         recommended=["chef"],
         ai_response="@" + "chef " * 300,
         planner_model="grok-4-1-fast-reasoning",
+        planner_diagnostics={
+            "attempted": True,
+            "succeeded": False,
+            "failure_reason": "normalization_empty",
+            "raw_preview": "{" + ("x" * 1200),
+            "api_key": "hidden",
+        },
     )
 
+    assert trace["planner"]["diagnostics"]["attempted"] is True
+    assert trace["planner"]["diagnostics"]["failure_reason"] == "normalization_empty"
+    assert trace["planner"]["diagnostics"]["api_key"] == "[redacted]"
+    assert len(trace["planner"]["diagnostics"]["raw_preview"]) <= 1000
     assert trace["planner"]["dimension_analysis"]["LifeInterests"]["priority"] == "primary"
     assert trace["planner"]["dimension_analysis"]["system_prompt"] == "[redacted]"
     assert trace["retrieval"]["dimension_plan"]["primary_dimensions"] == ["LifeInterests"]

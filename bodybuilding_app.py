@@ -14595,6 +14595,7 @@ def api_networking_steve_match():
             from openai import OpenAI
             client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
+            planner_diagnostics = {}
             query_plan = plan_networking_query(
                 client,
                 message=message,
@@ -14604,6 +14605,7 @@ def api_networking_steve_match():
                 networking_ai_config=networking_ai_config,
                 username=username,
                 community_id=community_id,
+                diagnostics=planner_diagnostics,
             )
             retrieval_query = build_retrieval_query(
                 message,
@@ -14849,6 +14851,7 @@ RULES:
                 recommended=recommended,
                 ai_response=ai_response,
                 planner_model=networking_ai_config.planner_model,
+                planner_diagnostics=planner_diagnostics,
             )
         return jsonify(response_payload)
     except Exception as e:
