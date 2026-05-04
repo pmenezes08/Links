@@ -3,6 +3,7 @@ import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
+import { resetAccountScopedState } from '../utils/accountStateReset'
 
 // Comprehensive cache clearing for account deletion
 async function clearAllUserData(): Promise<void> {
@@ -18,76 +19,15 @@ async function clearAllUserData(): Promise<void> {
     console.warn('Error clearing Capacitor Preferences:', e)
   }
 
-  // 2. Clear all localStorage
-  try {
-    localStorage.clear()
-    console.log('✅ localStorage cleared')
-  } catch (e) {
-    console.warn('Error clearing localStorage:', e)
-  }
+  await resetAccountScopedState({
+    localStorageMode: 'all',
+    clearSessionStorage: true,
+    preserveSessionStorageKeys: [],
+    cacheMode: 'all',
+    unregisterServiceWorkers: true,
+  })
 
-  // 3. Clear sessionStorage
-  try {
-    sessionStorage.clear()
-    console.log('✅ sessionStorage cleared')
-  } catch (e) {
-    console.warn('Error clearing sessionStorage:', e)
-  }
-
-  // 4. Clear IndexedDB databases
-  const dbsToDelete = [
-    'chat-encryption',
-    'signal-protocol',
-    'signal-store',
-  ]
-  
-  for (const dbName of dbsToDelete) {
-    try {
-      await new Promise<void>((resolve) => {
-        const request = indexedDB.deleteDatabase(dbName)
-        request.onsuccess = () => {
-          console.log(`✅ Deleted IndexedDB: ${dbName}`)
-          resolve()
-        }
-        request.onerror = () => resolve()
-        request.onblocked = () => resolve()
-        setTimeout(resolve, 1000)
-      })
-    } catch (e) {
-      console.warn(`Error deleting IndexedDB ${dbName}:`, e)
-    }
-  }
-
-  // 5. Clear ALL service worker caches (not just runtime - full cleanup for deleted account)
-  try {
-    if ('caches' in window) {
-      const cacheNames = await caches.keys()
-      await Promise.all(
-        cacheNames.map(cacheName => {
-          console.log(`🗑️ Deleting cache: ${cacheName}`)
-          return caches.delete(cacheName)
-        })
-      )
-      console.log('✅ All service worker caches cleared')
-    }
-  } catch (e) {
-    console.warn('Error clearing service worker caches:', e)
-  }
-
-  // 6. Unregister service workers
-  try {
-    if ('serviceWorker' in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations()
-      for (const registration of registrations) {
-        await registration.unregister()
-        console.log('✅ Service worker unregistered')
-      }
-    }
-  } catch (e) {
-    console.warn('Error unregistering service workers:', e)
-  }
-
-  // 7. Clear cookies by calling logout endpoint with cache-busting
+  // 2. Clear cookies by calling logout endpoint with cache-busting
   try {
     await fetch('/logout?_=' + Date.now(), { 
       credentials: 'include',

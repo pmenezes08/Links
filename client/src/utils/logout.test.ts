@@ -7,9 +7,11 @@ describe('performLogout (Phase G4)', () => {
   let sequence: string[]
   let locationReplace: ReturnType<typeof vi.fn>
   let swUnregister: ReturnType<typeof vi.fn>
+  let deletedDbs: string[]
 
   beforeEach(() => {
     sequence = []
+    deletedDbs = []
     swUnregister = vi.fn(() => Promise.resolve(true))
     locationReplace = vi.fn((href: string) => {
       sequence.push(`replace:${href}`)
@@ -90,7 +92,8 @@ describe('performLogout (Phase G4)', () => {
     vi.stubGlobal(
       'indexedDB',
       {
-        deleteDatabase() {
+        deleteDatabase(dbName: string) {
+          deletedDbs.push(dbName)
           const req = {} as Record<string, unknown>
           Object.defineProperty(req, 'onsuccess', {
             configurable: true,
@@ -146,5 +149,10 @@ describe('performLogout (Phase G4)', () => {
     expect(idxFetch).toBeLessThan(idxReplace)
     expect(sequence[idxReplace]).toBe('replace:/logout')
     expect(swUnregister).toHaveBeenCalled()
+  })
+
+  it('deletes the offline account database during logout', async () => {
+    await performLogout()
+    expect(deletedDbs).toContain('cpoint-offline')
   })
 })

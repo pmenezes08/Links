@@ -68,6 +68,7 @@ import GroupFeed from './pages/GroupFeed'
 import EditGroup from './pages/EditGroup'
 import CommentReply from './pages/CommentReply'
 import ShareIncomingRouteRedirect from './pages/ShareIncomingRouteRedirect'
+import { resetAccountScopedState } from './utils/accountStateReset'
 import {
   GOOGLE_ANDROID_CLIENT_ID,
   GOOGLE_IOS_CLIENT_ID,
@@ -113,47 +114,25 @@ function AppRoutes(){
     setProfileData(profile)
     setIsVerified(!!(profile as any)?.email_verified)
     setProfileError(null)
-    try {
-      localStorage.setItem('cached_profile', JSON.stringify(profile))
-    } catch { /* ignore */ }
 
     const username = (profile as any)?.username as string | undefined
     const previousUsername = localStorage.getItem('current_username')
     if (username && previousUsername && previousUsername !== username) {
-      const keysToRemove = ['home-timeline', 'communityManagementShowNested']
-      const prefixesToClear = ['community_', 'chat_', 'dashboard-', 'community-feed:', 'group-feed:']
-
-      try {
-        keysToRemove.forEach(key => localStorage.removeItem(key))
-        Object.keys(localStorage).forEach(key => {
-          if (prefixesToClear.some(prefix => key.startsWith(prefix))) {
-            localStorage.removeItem(key)
-          }
-        })
-      } catch (e) {
-        console.warn('Error clearing localStorage for user change:', e)
-      }
-
-      if ('caches' in window) {
-        caches.keys().then(names => {
-          names.forEach(name => {
-            if (name.includes('runtime') || name.includes('cp-')) {
-              caches.delete(name)
-            }
-          })
-        }).catch(() => {})
-      }
-
-      try {
-        import('./utils/avatarCache').then(({ clearAllAvatarCache }) => clearAllAvatarCache()).catch(() => {})
-      } catch { /* ignore */ }
+      void resetAccountScopedState({ clearSessionStorage: false }).catch((e) => {
+        console.warn('Error clearing account-scoped state for user change:', e)
+      })
     }
+
+    try {
+      localStorage.setItem('cached_profile', JSON.stringify(profile))
+    } catch { /* ignore */ }
 
     if (username) {
       try {
         localStorage.setItem('current_username', username)
       } catch { /* ignore */ }
     }
+
 
     if (!sessionStorage.getItem('geo_countries')) {
       fetch('/api/geo/countries', { credentials: 'include' })
