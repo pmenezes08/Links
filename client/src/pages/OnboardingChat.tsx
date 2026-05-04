@@ -9,6 +9,7 @@ type Stage =
   | 'intent_fork'
   | 'b2b_value'
   | 'b2b_network_size'
+  | 'b2b_tier_guidance'
   | 'b2b_org_type'
   | 'b2b_parent_name'
   | 'b2b_sub_names'
@@ -57,6 +58,31 @@ interface EnrichmentCard {
   detail: string
   field: string
   status?: 'pending' | 'accepted' | 'dismissed'
+}
+
+type B2BTierCode = 'free' | 'paid_l1' | 'paid_l2' | 'paid_l3' | 'enterprise'
+
+type B2BNetworkSizeValue =
+  | 'b2b_size_free'
+  | 'b2b_size_paid_l1'
+  | 'b2b_size_paid_l2'
+  | 'b2b_size_paid_l3'
+  | 'b2b_size_enterprise'
+
+interface CommunityTierHint {
+  label: string
+  min_members?: number | null
+  max_members?: number | null
+  price_eur_monthly?: number | string | null
+  pricing?: string | null
+}
+
+interface OnboardingTierHints {
+  communities_max?: number | null
+  members_per_owned_community?: number | null
+  free_community_media_gb?: number | string | null
+  can_use_steve?: boolean
+  community_tiers?: Partial<Record<B2BTierCode, CommunityTierHint>>
 }
 
 interface Collected {
@@ -108,26 +134,72 @@ interface OnboardingChatProps {
 }
 
 const USER_FACING_STEPS = 8
-const B2B_NETWORK_SIZE_OPTIONS = [
-  { label: 'Up to 50 people', value: 'b2b_size_up_to_50', icon: '🌱' },
-  { label: '51 to 250 people', value: 'b2b_size_51_250', icon: '🏘️' },
-  { label: '251 to 1,000 people', value: 'b2b_size_251_1000', icon: '🏙️' },
-  { label: 'More than 1,000 people', value: 'b2b_size_over_1000', icon: '🌍' },
-] as const
+const SALES_EMAIL = 'sales@c-point.co'
+const DEFAULT_COMMUNITY_TIER_HINTS: Record<B2BTierCode, CommunityTierHint> = {
+  free: { label: 'Free Community', max_members: 25 },
+  paid_l1: { label: 'Paid L1', min_members: 26, max_members: 75, price_eur_monthly: 25 },
+  paid_l2: { label: 'Paid L2', min_members: 76, max_members: 150, price_eur_monthly: 50 },
+  paid_l3: { label: 'Paid L3', min_members: 151, max_members: 250, price_eur_monthly: 80 },
+  enterprise: { label: 'Enterprise', min_members: 251, pricing: 'custom' },
+}
 
-type B2BNetworkSizeValue = (typeof B2B_NETWORK_SIZE_OPTIONS)[number]['value']
+const B2B_SIZE_TO_TIER: Record<B2BNetworkSizeValue, B2BTierCode> = {
+  b2b_size_free: 'free',
+  b2b_size_paid_l1: 'paid_l1',
+  b2b_size_paid_l2: 'paid_l2',
+  b2b_size_paid_l3: 'paid_l3',
+  b2b_size_enterprise: 'enterprise',
+}
 
-const B2B_NETWORK_SIZE_LABELS: Record<B2BNetworkSizeValue, string> =
-  Object.fromEntries(B2B_NETWORK_SIZE_OPTIONS.map(option => [option.value, option.label])) as Record<
-    B2BNetworkSizeValue,
-    string
-  >
+function formatCurrencyEur(value: number | string | null | undefined): string {
+  const amount = Number(value)
+  if (!Number.isFinite(amount)) return 'the published monthly price'
+  return `€${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}/month`
+}
+
+function tierHintsFromState(hints?: OnboardingTierHints | null): Record<B2BTierCode, CommunityTierHint> {
+  return { ...DEFAULT_COMMUNITY_TIER_HINTS, ...(hints?.community_tiers || {}) }
+}
+
+function b2bNetworkSizeOptions(hints?: OnboardingTierHints | null): ChatMessage['options'] {
+  const tiers = tierHintsFromState(hints)
+  return [
+    { label: `Up to ${tiers.free.max_members} members`, value: 'b2b_size_free' },
+    { label: `${tiers.paid_l1.min_members} to ${tiers.paid_l1.max_members} members`, value: 'b2b_size_paid_l1' },
+    { label: `${tiers.paid_l2.min_members} to ${tiers.paid_l2.max_members} members`, value: 'b2b_size_paid_l2' },
+    { label: `${tiers.paid_l3.min_members} to ${tiers.paid_l3.max_members} members`, value: 'b2b_size_paid_l3' },
+    { label: `${tiers.enterprise.min_members}+ members`, value: 'b2b_size_enterprise' },
+  ]
+}
+
+function b2bNetworkSizeLabel(value: string, hints?: OnboardingTierHints | null): string {
+  return b2bNetworkSizeOptions(hints)?.find(option => option.value === value)?.label || 'Organisation network'
+}
+
+function b2bTierGuidanceText(value: string | undefined, hints?: OnboardingTierHints | null): string {
+  const tierCode = B2B_SIZE_TO_TIER[value as B2BNetworkSizeValue] || 'free'
+  const tiers = tierHintsFromState(hints)
+  const freeCap = tiers.free.max_members || 25
+  const tier = tiers[tierCode]
+  if (tierCode === 'free') {
+    return `That fits the Free Community tier: up to ${freeCap} members. I can create it now so you can start inviting people.`
+  }
+  if (tierCode === 'enterprise') {
+    return `That sounds like an Enterprise network. Enterprise is custom pricing, so the best next step is to speak with the sales team.\n\nI can still create your network now on the Free Community tier, so it will support up to ${freeCap} members until an Enterprise plan is in place.`
+  }
+  return `That fits ${tier.label}: up to ${tier.max_members} members for ${formatCurrencyEur(tier.price_eur_monthly)}.\n\nI can still create your network now on the Free Community tier, so it will support up to ${freeCap} members until you subscribe to ${tier.label}.`
+}
+
+function isEnterpriseSize(value: string | undefined): boolean {
+  return B2B_SIZE_TO_TIER[value as B2BNetworkSizeValue] === 'enterprise'
+}
 
 function stageProgress(stage: Stage): number {
   const stepMap: Record<Stage, number> = {
     intent_fork: 0,
     b2b_value: 0,
     b2b_network_size: 0,
+    b2b_tier_guidance: 0,
     b2b_org_type: 0,
     b2b_parent_name: 0,
     b2b_sub_names: 0,
@@ -299,6 +371,7 @@ export default function OnboardingChat({
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const [headerLogoSrc, setHeaderLogoSrc] = useState('/api/public/logo')
   const [safeBottomPx, setSafeBottomPx] = useState(0)
+  const [tierHints, setTierHints] = useState<OnboardingTierHints | null>(null)
 
   const NATIVE_KEYBOARD_MIN_HEIGHT = 60
   const KEYBOARD_OFFSET_EPSILON = 6
@@ -312,6 +385,7 @@ export default function OnboardingChat({
   const onboardingIntentRef = useRef<'b2b' | 'b2c' | null>(null)
   const b2bOrgRef = useRef('')
   const b2bParentRef = useRef('')
+  const tierHintsRef = useRef<OnboardingTierHints | null>(null)
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
@@ -451,6 +525,17 @@ export default function OnboardingChat({
     if (initialized) return
     setInitialized(true)
     ;(async () => {
+      try {
+        const tr = await fetch('/api/onboarding/tier_hints', {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+        })
+        const tj = await tr.json().catch(() => null)
+        if (tj?.success && tj.hints) {
+          tierHintsRef.current = tj.hints as OnboardingTierHints
+          setTierHints(tj.hints as OnboardingTierHints)
+        }
+      } catch {}
       if (mode === 'profile_builder') {
         profileBuilderPostPbRef.current = { skipLocation: false, skipProfessional: false }
         try {
@@ -526,9 +611,9 @@ export default function OnboardingChat({
           `${greeting} I'm Steve. Great to meet you.\n\nI'll ask a few simple questions so your profile feels like you, and so the right people can understand who you are inside C-Point. We'll keep it light - you can change anything later.\n\n${OCopy.INTENT_QUESTION}`,
           {
             options: [
-              { label: 'A private community for my personal circles', value: 'intent_b2c', icon: '👤' },
-              { label: 'A private network for my organisation', value: 'intent_b2b', icon: '🏢' },
-              { label: 'Skip profile for 72 hours', value: 'defer_profile_72', icon: '⏱️' },
+              { label: 'A private community for my personal circles', value: 'intent_b2c' },
+              { label: 'A private network for my organisation', value: 'intent_b2b' },
+              { label: 'Skip profile for 72 hours', value: 'defer_profile_72' },
             ],
           },
         )
@@ -537,14 +622,28 @@ export default function OnboardingChat({
       case 'b2b_value': {
         addSteveMessage(
           'Great. Let’s shape a private network for your organisation — a trusted place for the right people to connect, share updates, and keep useful context together. I’ll ask a few quick questions so we can set it up properly.',
-          { options: [{ label: 'Continue', value: 'b2b_value_continue', icon: '➡️' }] },
+          { options: [{ label: 'Continue', value: 'b2b_value_continue' }] },
         )
         break
       }
       case 'b2b_network_size': {
         addSteveMessage(
           'Great. Let’s shape a private network for your organisation — a trusted place for the right people to connect, share updates, and keep useful context together.\n\nFirst, about how many people do you expect in this network? This helps me point you toward the right setup.',
-          { options: [...B2B_NETWORK_SIZE_OPTIONS] },
+          { options: b2bNetworkSizeOptions(tierHintsRef.current || tierHints) },
+        )
+        break
+      }
+      case 'b2b_tier_guidance': {
+        const sizeValue = data.b2bNetworkSize || ''
+        const options: ChatMessage['options'] = [
+          { label: 'Continue creating network', value: 'b2b_tier_continue' },
+        ]
+        if (isEnterpriseSize(sizeValue)) {
+          options.push({ label: 'Contact sales', value: 'contact_sales_enterprise' })
+        }
+        addSteveMessage(
+          b2bTierGuidanceText(sizeValue, tierHintsRef.current || tierHints),
+          { options },
         )
         break
       }
@@ -568,7 +667,7 @@ export default function OnboardingChat({
           {
             inputType: 'text',
             inputPlaceholder: 'Team A, Beginners, Staff — or leave blank',
-            options: [{ label: 'Skip sub-communities for now', value: 'b2b_skip_subs', icon: '⏭️' }],
+            options: [{ label: 'Skip sub-communities for now', value: 'b2b_skip_subs' }],
           },
         )
         break
@@ -647,7 +746,7 @@ export default function OnboardingChat({
             ],
           })
         } else {
-          addSteveMessage("Let's start with your name. What's your first and last name?", {
+          addSteveMessage("Let's start with your name. What should people call you here? First and last name is best.", {
             inputType: 'text',
             inputPlaceholder: 'First Last',
           })
@@ -689,14 +788,14 @@ export default function OnboardingChat({
         break
       }
       case 'photo':
-        addSteveMessage("Let's add a profile picture — it helps people recognize you.", {
+        addSteveMessage("Add a profile picture if you want people to recognize you more easily.", {
           photoUpload: true,
           options: [{ label: 'Skip for now', value: 'skip_photo', icon: '⏭️' }],
         })
         break
       case 'talk_all_day':
         addSteveMessage(
-          "Now let's get to know the real you.\n\nWhat are the things you could talk about all day?\n\nExamples: AI, leadership, travel, startups",
+          "Now let's make your profile useful inside private communities.\n\nWhat are a few things you could happily talk about for ages?\n\nExamples: AI, leadership, travel, startups",
           {
             inputType: 'text',
             inputPlaceholder: 'Type your answer…',
@@ -706,7 +805,7 @@ export default function OnboardingChat({
         break
       case 'reach_out':
         addSteveMessage(
-          "What do you want people to reach out to you about?\n\nExamples: Coffee chats, brainstorming, partnerships, new ventures",
+          "What would you like people to reach out to you about?\n\nExamples: coffee chats, brainstorming, partnerships, new ventures",
           {
             inputType: 'text',
             inputPlaceholder: 'Type your answer…',
@@ -715,7 +814,7 @@ export default function OnboardingChat({
         )
         break
       case 'professional':
-        addSteveMessage('What do you do professionally? Something like "Product Manager at Google" or "Founder, building in fintech" works great.', {
+        addSteveMessage('What do you do professionally, or what are you building right now? Something like "Product Manager at Google" or "Founder, building in fintech" works great.', {
           inputType: 'text',
           inputPlaceholder: 'e.g. Product Manager at Google',
           options: stageHistory.current.length > 1 ? [{ label: '← Go back', value: 'go_back', icon: '↩️' }] : undefined,
@@ -753,9 +852,9 @@ export default function OnboardingChat({
       case 'recommend': {
         const recOpts: ChatMessage['options'] = [{ label: 'Skip', value: 'skip_recommend', icon: '⏭️' }]
         if (stageHistory.current.length > 1) recOpts.push({ label: '← Go back', value: 'go_back', icon: '↩️' })
-        addSteveMessage("As a gift to your network — recommend a book, movie, or TV show.", {
+        addSteveMessage("Recommend one book, film, podcast, place, or idea you think others might enjoy.", {
           inputType: 'text',
-          inputPlaceholder: 'e.g. Sapiens by Yuval Noah Harari',
+          inputPlaceholder: 'e.g. Sapiens, a favorite podcast, or a local place',
           options: recOpts,
         })
         break
@@ -763,7 +862,7 @@ export default function OnboardingChat({
       case 'linkedin': {
         const lnOpts: ChatMessage['options'] = [{ label: 'Skip', value: 'skip_linkedin', icon: '⏭️' }]
         if (stageHistory.current.length > 1) lnOpts.push({ label: '← Go back', value: 'go_back', icon: '↩️' })
-        addSteveMessage("Got a LinkedIn URL? It helps me learn more about your background. Feel free to skip if you'd rather not share.", {
+        addSteveMessage("Optional: add a LinkedIn URL if you want Steve to understand your professional background better. You can skip this.", {
           inputType: 'url',
           inputPlaceholder: 'https://linkedin.com/in/yourprofile',
           options: lnOpts,
@@ -774,7 +873,7 @@ export default function OnboardingChat({
         const soOpts: ChatMessage['options'] = [{ label: 'Skip', value: 'skip_optional_social', icon: '⏭️' }]
         if (stageHistory.current.length > 1) soOpts.push({ label: '← Go back', value: 'go_back', icon: '↩️' })
         addSteveMessage(
-          'Optional: share profile links for **Instagram**, **TikTok**, or **Snapchat** if you want Steve to use them when profiling you. We only use these when you provide a link.\n\nPaste one URL per line, or skip.',
+          'Optional: share profile links for **Instagram**, **TikTok**, or **Snapchat** if you want Steve to understand more of your public background. We only use links you provide.\n\nPaste one URL per line, or skip.',
           {
             inputType: 'textarea',
             inputPlaceholder: 'https://instagram.com/yourprofile\nhttps://www.tiktok.com/@you',
@@ -784,7 +883,7 @@ export default function OnboardingChat({
         break
       }
       case 'journey':
-        addSteveMessage(`What should your network remember about your journey?\n\n${'Totally optional. Share a highlight from work or life—something you’re proud of or that shapes how you show up today.'}\n\nExamples: “Consulting background • Two marathons • Former competitive athlete”`, {
+        addSteveMessage(`What is something your network should remember about your journey?\n\n${'Totally optional. Share a highlight from work or life, something you are proud of, or something that shapes how you show up today.'}\n\nExamples: “Consulting background • Two marathons • Former competitive athlete”`, {
           inputType: 'textarea',
           inputPlaceholder: 'e.g. Consulting background • Two marathons • Former competitive athlete',
           options: (() => {
@@ -815,7 +914,7 @@ export default function OnboardingChat({
 
   function advanceTo(next: Stage, data?: Collected) {
     const c = data || collected
-    const mainStages: Stage[] = ['name', 'location', 'photo', 'talk_all_day', 'reach_out', 'professional', 'linkedin', 'optional_social', 'journey', 'recommend', 'compose']
+    const mainStages: Stage[] = ['name', 'location', 'photo', 'talk_all_day', 'reach_out', 'professional', 'journey', 'recommend', 'linkedin', 'optional_social', 'compose']
     if (mainStages.includes(next)) {
       const hist = stageHistory.current
       if (hist[hist.length - 1] !== next) hist.push(next)
@@ -1027,15 +1126,28 @@ export default function OnboardingChat({
         }
         break
       }
-      case 'b2b_size_up_to_50':
-      case 'b2b_size_51_250':
-      case 'b2b_size_251_1000':
-      case 'b2b_size_over_1000': {
-        const networkSize = B2B_NETWORK_SIZE_LABELS[value as B2BNetworkSizeValue]
-        addUserMessage(networkSize)
-        const newCollected = { ...collected, b2bNetworkSize: networkSize }
+      case 'b2b_size_free':
+      case 'b2b_size_paid_l1':
+      case 'b2b_size_paid_l2':
+      case 'b2b_size_paid_l3':
+      case 'b2b_size_enterprise': {
+        addUserMessage(b2bNetworkSizeLabel(value, tierHintsRef.current || tierHints))
+        const newCollected = { ...collected, b2bNetworkSize: value }
         setCollected(newCollected)
-        advanceTo('b2b_parent_name', newCollected)
+        advanceTo('b2b_tier_guidance', newCollected)
+        break
+      }
+      case 'b2b_tier_continue': {
+        addUserMessage('Continue creating network')
+        advanceTo('b2b_parent_name', collected)
+        break
+      }
+      case 'contact_sales_enterprise': {
+        addUserMessage('Contact sales')
+        window.location.href = `mailto:${SALES_EMAIL}?subject=${encodeURIComponent('Enterprise community plan')}`
+        addSteveMessage('I opened an email to the sales team. You can still continue creating the network now.', {
+          options: [{ label: 'Continue creating network', value: 'b2b_tier_continue' }],
+        })
         break
       }
       case 'start':
@@ -1123,7 +1235,7 @@ export default function OnboardingChat({
         addUserMessage(`Yes, ${profLabel}`)
         await saveField('role', collected.role)
         if (collected.company) await saveField('company', collected.company)
-        advanceTo('linkedin')
+        advanceTo('journey')
         break
       }
       case 'edit_professional':
@@ -1177,11 +1289,11 @@ export default function OnboardingChat({
         const skipMap: Partial<Record<Stage, Stage>> = {
           talk_all_day: 'reach_out',
           reach_out: 'professional',
-          professional: 'linkedin',
-          linkedin: 'optional_social',
-          recommend: 'compose',
+          professional: 'journey',
           journey: 'recommend',
-          optional_social: 'journey',
+          recommend: 'linkedin',
+          linkedin: 'optional_social',
+          optional_social: 'compose',
         }
         const returnStage = gibberishReturnStage.current
         gibberishReturnStage.current = null
@@ -1211,7 +1323,7 @@ export default function OnboardingChat({
         break
       case 'skip_optional_social':
         addUserMessage('Skip')
-        advanceTo('journey')
+        advanceTo('compose')
         break
       case 'skip_journey':
         addUserMessage('Skip')
@@ -1219,7 +1331,7 @@ export default function OnboardingChat({
         break
       case 'skip_recommend':
         addUserMessage('Skip')
-        advanceTo('compose')
+        advanceTo('linkedin')
         break
       case 'use_bio': {
         const lastComposed = [...messages].reverse().find(m => m.composedBio)?.composedBio || ''
@@ -1380,7 +1492,7 @@ export default function OnboardingChat({
         setCollected(newCollected)
         const nextProf =
           mode === 'profile_builder' && profileBuilderPostPbRef.current.skipProfessional
-            ? 'linkedin'
+            ? 'journey'
             : 'professional'
         advanceTo(nextProf, newCollected)
         break
@@ -1442,8 +1554,8 @@ export default function OnboardingChat({
       case 'recommend': {
         const newCollected = { ...collected, recommend: val }
         setCollected(newCollected)
-        addSteveMessage('Good pick! 📚')
-        setTimeout(() => advanceTo('compose', newCollected), 600)
+        addSteveMessage('Good pick.')
+        setTimeout(() => advanceTo('linkedin', newCollected), 600)
         break
       }
       case 'linkedin': {
@@ -1469,7 +1581,7 @@ export default function OnboardingChat({
         } else {
           addSteveMessage('No problem — you can add links later from your profile.')
         }
-        setTimeout(() => advanceTo('journey', collected), 600)
+        setTimeout(() => advanceTo('compose', collected), 600)
         break
       }
       case 'journey': {
@@ -1512,7 +1624,7 @@ export default function OnboardingChat({
   }
 
   function detectOffScript(currentStage: Stage, input: string): boolean {
-    if (currentStage === 'b2b_network_size' || currentStage === 'b2b_org_type' || currentStage === 'b2b_parent_name' || currentStage === 'b2b_sub_names') {
+    if (currentStage === 'b2b_network_size' || currentStage === 'b2b_tier_guidance' || currentStage === 'b2b_org_type' || currentStage === 'b2b_parent_name' || currentStage === 'b2b_sub_names') {
       return false
     }
     const lower = input.toLowerCase()
@@ -1551,6 +1663,7 @@ export default function OnboardingChat({
         reach_out: 'What do you want people to reach out to you about?',
         pb_edit_field: 'Update this profile field.',
         b2b_network_size: 'How many people do you expect in this network?',
+        b2b_tier_guidance: 'Review the recommended tier, then continue creating the network.',
         b2b_org_type: OCopy.ORG_TYPE_PROMPT,
         b2b_parent_name: 'What should we call this network?',
         b2b_sub_names: 'List sub-communities separated by commas, or use the skip button.',
@@ -1698,14 +1811,13 @@ export default function OnboardingChat({
                     </div>
                     {/* Quick reply buttons */}
                     {msg.options && i === messages.length - 1 && stage !== 'complete' && (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                         {msg.options.map(opt => (
                           <button
                             key={opt.value}
                             onClick={() => handleOptionClick(opt.value)}
-                            className="px-3.5 py-2 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 text-[12px] font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20 transition-colors"
+                            className="rounded-xl border border-[#4db6ac]/35 bg-black/25 px-4 py-2.5 text-left text-[12px] font-semibold text-[#d5fffb] transition-colors hover:bg-[#4db6ac]/10"
                           >
-                            {opt.icon && <span className="mr-1.5">{opt.icon}</span>}
                             {opt.label}
                           </button>
                         ))}
@@ -1713,14 +1825,13 @@ export default function OnboardingChat({
                     )}
                     {/* Complete stage options persist */}
                     {msg.options && stage === 'complete' && i === messages.length - 1 && (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                         {msg.options.map(opt => (
                           <button
                             key={opt.value}
                             onClick={() => handleOptionClick(opt.value)}
-                            className="px-3.5 py-2 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 text-[12px] font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20 transition-colors"
+                            className="rounded-xl border border-[#4db6ac]/35 bg-black/25 px-4 py-2.5 text-left text-[12px] font-semibold text-[#d5fffb] transition-colors hover:bg-[#4db6ac]/10"
                           >
-                            {opt.icon && <span className="mr-1.5">{opt.icon}</span>}
                             {opt.label}
                           </button>
                         ))}
@@ -1734,13 +1845,13 @@ export default function OnboardingChat({
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <button onClick={() => handleOptionClick('use_bio')} className="px-3.5 py-2 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 text-[12px] font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20 transition-colors">
-                            ✅ Use this
+                            Use this
                           </button>
                           <button onClick={() => handleOptionClick('edit_bio')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
-                            ✏️ Let me edit
+                            Let me edit
                           </button>
                           <button onClick={() => handleOptionClick('redo_bio')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
-                            🔄 Start fresh
+                            Start fresh
                           </button>
                         </div>
                       </div>
