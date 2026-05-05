@@ -155,23 +155,12 @@ export default function PremiumDashboard() {
   const [joinedCommunityId, setJoinedCommunityId] = useState<number | null>(null)
   const [pendingInviteTarget, setPendingInviteTarget] = useState<{ communityId: number; communityName?: string | null } | null>(null)
   const [showSuccessModal, setShowSuccessModal] = useState(false)  // Success modal for join
-  const [googleExistingAccountBanner, setGoogleExistingAccountBanner] = useState(false)
   const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done'
   const { setTitle, setHeaderHidden, setTitleAccessory } = useHeader()
   useEffect(() => {
     setTitle('')
     return () => setTitle('')
   }, [setTitle])
-  useEffect(() => {
-    try {
-      if (sessionStorage.getItem('cpoint_signin_notice') === 'existing_account') {
-        sessionStorage.removeItem('cpoint_signin_notice')
-        setGoogleExistingAccountBanner(true)
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [])
   useEffect(() => {
     const hideHeaderForOnboarding = showOnboarding || showOnboardingWelcome || onboardingLaunching || onboardingGateRequired
     setHeaderHidden(hideHeaderForOnboarding)
@@ -865,25 +854,6 @@ export default function PremiumDashboard() {
         className={`min-h-screen pb-[calc(3.5rem+env(safe-area-inset-bottom,0px)+12px)] ${isWeb ? 'lg:ml-64' : 'md:ml-52'}`}
       >
         <div className="app-content max-w-5xl mx-auto px-3 py-6">
-          {googleExistingAccountBanner && (
-            <div
-              className="mb-4 rounded-xl border border-[#4db6ac]/35 bg-[#4db6ac]/10 px-4 py-3 flex gap-3 items-start justify-between"
-              role="status"
-            >
-              <p className="text-sm text-white/90 pr-2">
-                Signed in to your existing C-Point account — this email was already registered. New
-                communities and profile changes apply to this profile.
-              </p>
-              <button
-                type="button"
-                className="shrink-0 text-white/50 hover:text-white text-lg leading-none px-1"
-                aria-label="Dismiss"
-                onClick={() => setGoogleExistingAccountBanner(false)}
-              >
-                ×
-              </button>
-            </div>
-          )}
           {showOnboardingCompletionCard && (
             <div className="mb-4 rounded-2xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 p-4 shadow-[0_16px_45px_rgba(0,0,0,0.28)]">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
