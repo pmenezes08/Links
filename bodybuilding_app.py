@@ -2548,6 +2548,29 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure users.professional_share_community_id: {e}")
 
+            # Structured profile (current role start YYYY-MM, work/education JSON, personal highlight answers JSON)
+            try:
+                for col, coltype in [
+                    ('current_role_start_ym', 'TEXT'),
+                    ('professional_work_history', 'TEXT'),
+                    ('professional_education', 'TEXT'),
+                    ('personal_highlight_answers', 'TEXT'),
+                ]:
+                    try:
+                        c.execute(f"SHOW COLUMNS FROM users LIKE '{col}'")
+                        if not c.fetchone():
+                            c.execute(f"ALTER TABLE users ADD COLUMN {col} {coltype}")
+                            logger.info(f"Added users.{col}")
+                    except Exception:
+                        try:
+                            c.execute(f"ALTER TABLE users ADD COLUMN {col} {coltype}")
+                            logger.info(f"Added users.{col} (sqlite fallback)")
+                        except Exception as ce2:
+                            logger.warning(f"Could not ensure users.{col}: {ce2}")
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure structured profile columns on users: {e}")
+
             # Ensure personal info columns (country, city, age, gender) exist on users
             try:
                 for col, coltype in [
@@ -6245,6 +6268,8 @@ def _execute_steve_profile_analysis(
                        u.role, u.company, u.industry, u.degree,
                        u.school, u.skills, u.linkedin, u.experience,
                        u.professional_about, u.professional_interests, u.professional_company_intel,
+                       u.current_role_start_ym, u.professional_work_history, u.professional_education,
+                       u.personal_highlight_answers,
                        u.country, u.city,
                        p.display_name, p.bio AS profile_bio, p.location
                 FROM users u
@@ -7723,6 +7748,46 @@ def _build_profile_text_for_grok(
     if gv('linkedin'):
         parts.append(f"LinkedIn: {gv('linkedin')}")
 
+    try:
+        if hasattr(user_row, 'keys'):
+            crs_txt = user_row.get('current_role_start_ym')
+            if crs_txt and str(crs_txt).strip():
+                parts.append(f"Current role start (YYYY-MM): {str(crs_txt).strip()}")
+            from backend.services.profile_structured_fields import (
+                decode_work_history_db,
+                decode_education_db,
+                decode_personal_highlights_for_api,
+            )
+            for i, item in enumerate(decode_work_history_db(user_row.get('professional_work_history')), 1):
+                bits = [item.get('title'), item.get('company'), item.get('location')]
+                span = ""
+                if item.get('start') or item.get('end'):
+                    span = f"{item.get('start', '')}–{item.get('end', '')}"
+                frag = " | ".join(x for x in bits if x) + (f" ({span})" if span.strip("–") else "")
+                desc = (item.get('description') or "").strip()
+                if desc:
+                    frag += f" — {desc[:500]}"
+                if frag.strip():
+                    parts.append(f"Experience {i}: {frag}")
+            for i, item in enumerate(decode_education_db(user_row.get('professional_education')), 1):
+                bits = [item.get('school'), item.get('degree')]
+                span = ""
+                if item.get('start') or item.get('end'):
+                    span = f"{item.get('start', '')}–{item.get('end', '')}"
+                frag = " | ".join(x for x in bits if x) + (f" ({span})" if span.strip("–") else "")
+                desc = (item.get('description') or "").strip()
+                if desc:
+                    frag += f" — {desc[:500]}"
+                if frag.strip():
+                    parts.append(f"Education {i}: {frag}")
+            for hl in decode_personal_highlights_for_api(user_row.get('personal_highlight_answers')):
+                q = hl.get('question', '')
+                a = (hl.get('answer') or '').strip()
+                if a:
+                    parts.append(f"Profile question ({q}): {a[:500]}")
+    except Exception as _prof_ctx_err:
+        logger.debug(f"profile grok extra fields skipped: {_prof_ctx_err}")
+
     if onboarding_context:
         if onboarding_context.get('talkAllDay'):
             parts.append(
@@ -8616,6 +8681,8 @@ def _trigger_background_profile_analysis(username: str):
                            u.role, u.company, u.industry, u.degree,
                            u.school, u.skills, u.linkedin, u.experience,
                            u.professional_about, u.professional_interests, u.professional_company_intel,
+                           u.current_role_start_ym, u.professional_work_history, u.professional_education,
+                           u.personal_highlight_answers,
                            u.country, u.city,
                            p.display_name, p.bio AS profile_bio, p.location
                     FROM users u
@@ -9662,7 +9729,9 @@ def api_public_profile(username):
                        u.role, u.company, u.industry, u.degree, u.school,
                        u.skills, u.linkedin, u.experience,
                        u.professional_about, u.professional_interests,
-                       u.professional_share_community_id, u.professional_company_intel
+                       u.professional_share_community_id, u.professional_company_intel,
+                       u.current_role_start_ym, u.professional_work_history, u.professional_education,
+                       u.personal_highlight_answers
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
                 WHERE LOWER(u.username) = LOWER({ph})
@@ -9710,11 +9779,20 @@ def api_public_profile(username):
                 'professional': None
             }
 
+            from backend.services.profile_structured_fields import (
+                decode_work_history_db,
+                decode_education_db,
+                decode_personal_highlights_for_api,
+            )
+            personal_highlights = decode_personal_highlights_for_api(gv('personal_highlight_answers', 33))
+            profile['personal']['highlights'] = personal_highlights
+
             if not profile['is_public'] and viewer_username != actual_username:
                 profile['personal'] = {
                     'display_name': profile['personal']['display_name'],
                     'first_name': None, 'last_name': None, 'gender': None,
                     'country': None, 'city': None, 'date_of_birth': None, 'age': None,
+                    'highlights': [],
                 }
 
             # Professional info from the same merged row (no second query needed)
@@ -9735,11 +9813,16 @@ def api_public_profile(username):
                     ]
                 interests_list = list(dict.fromkeys(interests_list))
 
+            work_hist_list = decode_work_history_db(gv('professional_work_history', 31))
+            edu_list = decode_education_db(gv('professional_education', 32))
+            crs_raw = gv('current_role_start_ym', 30)
+            crs_s = (str(crs_raw).strip() if crs_raw is not None else '')
+
             has_professional = any(gv(k, i) for k, i in [
                 ('role', 18), ('company', 19), ('industry', 20), ('degree', 21),
                 ('school', 22), ('skills', 23), ('linkedin', 24), ('experience', 25),
                 ('professional_about', 26), ('professional_company_intel', 29),
-            ]) or interests_list
+            ]) or interests_list or bool(work_hist_list) or bool(edu_list) or bool(crs_s)
             if has_professional:
                 company_intel_val = gv('professional_company_intel', 29)
                 profile['professional'] = {
@@ -9755,6 +9838,9 @@ def api_public_profile(username):
                     'interests': interests_list,
                     'share_community_id': gv('professional_share_community_id', 28),
                     'company_intel': (str(company_intel_val).strip() if company_intel_val is not None else ''),
+                    'current_role_start': crs_s if crs_s else None,
+                    'work_history': work_hist_list,
+                    'education': edu_list,
                 }
 
             profile['is_self'] = viewer_username == actual_username
@@ -10989,7 +11075,9 @@ def api_profile_me():
                            p.display_name, p.bio, p.location, p.website,
                            p.instagram, p.twitter, p.profile_picture, p.cover_photo,
                            u.role, u.company, u.industry, u.linkedin, u.professional_about, u.professional_interests,
-                           u.professional_company_intel, u.notification_show_previews
+                           u.professional_company_intel, u.notification_show_previews,
+                           u.current_role_start_ym, u.professional_work_history, u.professional_education,
+                           u.personal_highlight_answers
                     FROM users u
                     LEFT JOIN user_profiles p ON u.username = p.username
                     WHERE u.username = ?
@@ -11002,7 +11090,9 @@ def api_profile_me():
                            p.display_name, p.bio, p.location, p.website,
                            p.instagram, p.twitter, p.profile_picture, p.cover_photo,
                            u.role, u.company, u.industry, u.linkedin, u.professional_about, u.professional_interests,
-                           u.professional_company_intel
+                           u.professional_company_intel,
+                           u.current_role_start_ym, u.professional_work_history, u.professional_education,
+                           u.personal_highlight_answers
                     FROM users u
                     LEFT JOIN user_profiles p ON u.username = p.username
                     WHERE u.username = ?
@@ -11022,8 +11112,8 @@ def api_profile_me():
                     return None
             
             # Parse interests from JSON or comma-separated string
-            interests_raw = get_val('professional_interests') if hasattr(row, 'keys') else get_val(25)
-            company_intel_val = get_val('professional_company_intel') if hasattr(row, 'keys') else get_val(26)
+            interests_raw = get_val('professional_interests')
+            company_intel_val = get_val('professional_company_intel')
             interests_list = []
             if interests_raw:
                 try:
@@ -11032,6 +11122,17 @@ def api_profile_me():
                         interests_list = [str(i).strip() for i in decoded if i and str(i).strip()]
                 except (json.JSONDecodeError, TypeError):
                     interests_list = [part.strip() for part in str(interests_raw).split(',') if part and part.strip()]
+
+            from backend.services.profile_structured_fields import (
+                decode_work_history_db,
+                decode_education_db,
+                decode_personal_highlights_for_api,
+            )
+            work_l = decode_work_history_db(get_val('professional_work_history'))
+            edu_l = decode_education_db(get_val('professional_education'))
+            crs_raw = get_val('current_role_start_ym')
+            crs_out = (str(crs_raw).strip() if crs_raw is not None else '') or None
+            highlights_me = decode_personal_highlights_for_api(get_val('personal_highlight_answers'))
             
             profile = {
                 'username': username,
@@ -11061,6 +11162,7 @@ def api_profile_me():
                     'gender': get_val('gender') if hasattr(row, 'keys') else row[7],
                     'country': get_val('country') if hasattr(row, 'keys') else row[8],
                     'city': get_val('city') if hasattr(row, 'keys') else row[9],
+                    'highlights': highlights_me,
                 },
                 'professional': {
                     'role': get_val('role') if hasattr(row, 'keys') else get_val(20),
@@ -11070,6 +11172,9 @@ def api_profile_me():
                     'about': get_val('professional_about') if hasattr(row, 'keys') else get_val(24),
                     'interests': interests_list,
                     'company_intel': (str(company_intel_val).strip() if company_intel_val is not None else ''),
+                    'current_role_start': crs_out,
+                    'work_history': work_l,
+                    'education': edu_l,
                 },
                 'notification_show_previews': (
                     True
@@ -11751,6 +11856,15 @@ def update_professional():
                 professional_share_community_id = share_int if share_int > 0 else None
         except Exception:
             professional_share_community_id = None
+
+        from backend.services.profile_structured_fields import (
+            normalize_yyyy_mm,
+            parse_work_history_for_storage,
+            parse_education_for_storage,
+        )
+        current_role_start_ym = normalize_yyyy_mm((request.form.get('current_role_start_ym') or '').strip())
+        work_json, _ = parse_work_history_for_storage(request.form.get('work_history_json'))
+        edu_json, _ = parse_education_for_storage(request.form.get('education_json'))
         
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -11759,12 +11873,14 @@ def update_professional():
                 UPDATE users SET 
                     role={ph}, company={ph}, industry={ph}, degree={ph}, school={ph}, 
                     skills={ph}, linkedin={ph}, experience={ph}, professional_about={ph},
-                    professional_interests={ph}, professional_company_intel={ph}, professional_share_community_id={ph}
+                    professional_interests={ph}, professional_company_intel={ph}, professional_share_community_id={ph},
+                    current_role_start_ym={ph}, professional_work_history={ph}, professional_education={ph}
                 WHERE username={ph}
             """
             c.execute(update_sql, (
                 role, company, industry, degree, school, skills, linkedin, experience, professional_about,
-                interests_payload, professional_company_intel, professional_share_community_id, username
+                interests_payload, professional_company_intel, professional_share_community_id,
+                current_role_start_ym or None, work_json, edu_json, username
             ))
             conn.commit()
         
@@ -11815,8 +11931,15 @@ def update_personal_info():
                     age_val = int(age)
                 except Exception:
                     age_val = None
-            c.execute("""UPDATE users SET first_name=?, last_name=?, age=?, gender=?, country=?, city=?, date_of_birth=? 
-                        WHERE username=?""", (first_name, last_name, age_val, gender, country, city, date_of_birth_iso, username))
+            from backend.services.profile_structured_fields import normalize_personal_highlights_payload
+            personal_blob = normalize_personal_highlights_payload(
+                request.form.get('personal_answer_five_minutes'),
+                request.form.get('personal_answer_outside_work'),
+                request.form.get('personal_answer_cpoint_goals'),
+            )
+            ph = get_sql_placeholder()
+            c.execute(f"""UPDATE users SET first_name={ph}, last_name={ph}, age={ph}, gender={ph}, country={ph}, city={ph}, date_of_birth={ph}, personal_highlight_answers={ph} 
+                        WHERE username={ph}""", (first_name, last_name, age_val, gender, country, city, date_of_birth_iso, personal_blob, username))
             
             if display_name:
                 try:
