@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import logging
 from enum import Enum
-from typing import List, Sequence
+from typing import Any, List, Optional, Sequence
 
 from backend.services import remember_tokens
 from backend.services.database import USE_MYSQL, get_sql_placeholder
 
 logger = logging.getLogger(__name__)
+
+FIRESTORE_USER_STATE_COLLECTIONS = ("steve_onboarding", "steve_user_profiles")
 
 
 class AccountDeletionMode(Enum):
@@ -47,6 +49,26 @@ def _former_community_ids(c, ph: str, user_id: int) -> List[int]:
         return out
     except Exception:
         return []
+
+
+def delete_firestore_user_state(username: str, db: Optional[Any] = None) -> int:
+    """Best-effort cleanup for Firestore docs keyed by username."""
+    if not username:
+        return 0
+    try:
+        fs = db
+        if fs is None:
+            from backend.services.firestore_reads import _get_client
+
+            fs = _get_client()
+        deleted = 0
+        for collection in FIRESTORE_USER_STATE_COLLECTIONS:
+            fs.collection(collection).document(username).delete()
+            deleted += 1
+        return deleted
+    except Exception as e:
+        logger.warning("firestore account state cleanup failed for %s: %s", username, e)
+        return 0
 
 
 def _purge_user_posts_admin(c, ph: str, username: str) -> None:
@@ -119,6 +141,7 @@ def delete_user_in_connection(conn, username: str, mode: AccountDeletionMode) ->
     user_id = int(user_id)
 
     former_community_ids = _former_community_ids(c, ph, user_id)
+    delete_firestore_user_state(username)
 
     _exec_optional(
         c,
@@ -236,4 +259,4 @@ def delete_user_in_connection(conn, username: str, mode: AccountDeletionMode) ->
     return former_community_ids
 
 
-__all__ = ["AccountDeletionMode", "delete_user_in_connection"]
+__all__ = ["AccountDeletionMode", "delete_firestore_user_state", "delete_user_in_connection"]
