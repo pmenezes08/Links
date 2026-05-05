@@ -95,12 +95,12 @@ export function ProfileDetailsModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex min-h-0 items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:py-6"
+      className="fixed inset-0 z-[100] flex min-h-0 items-start justify-center overflow-hidden bg-black/75 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 backdrop-blur-sm sm:px-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="profile-details-title"
     >
-      <div className="relative flex max-h-[min(90dvh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111] shadow-xl">
+      <div className="relative flex max-h-[min(720px,calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1.5rem))] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111] shadow-xl">
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-4 py-3">
           <div>
             <h2 id="profile-details-title" className="text-base font-semibold text-white">

@@ -486,19 +486,6 @@ export default function PublicProfile() {
                   <p className="mt-1 whitespace-pre-wrap leading-relaxed text-white/90">{renderTextWithSourceLinks(bioText)}</p>
                 </div>
               ) : null}
-              {hasPersonalHighlights ? (
-                <div className="space-y-4 pt-2 border-t border-white/10">
-                  <div className="text-xs font-medium uppercase tracking-wide text-[#9fb0b5]">More about them</div>
-                  {highlightItems.map(h => (
-                    <div key={h.id || `${h.question}-${h.answer}`}>
-                      <div className="text-[#9fb0b5] text-xs mb-1">{h.question || ''}</div>
-                      <p className="whitespace-pre-wrap leading-relaxed text-white/90">
-                        {renderTextWithSourceLinks(String(h.answer || '').trim())}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
               {formattedDob ? (
                 <div>
                   <span className="text-[#9fb0b5] mr-2">Date of birth:</span>
@@ -510,6 +497,24 @@ export default function PublicProfile() {
                   <span className="text-[#9fb0b5] mr-2">Location:</span>
                   {location}
                 </div>
+              ) : null}
+              {hasPersonalHighlights ? (
+                <details className="group mt-2 rounded-lg border border-white/10 bg-black/25 open:bg-black/30">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium text-white select-none [&::-webkit-details-marker]:hidden">
+                    <span className="text-white/90">Spotlight answers</span>
+                    <i className="fa-solid fa-chevron-down text-xs text-[#9fb0b5] transition-transform group-open:rotate-180" aria-hidden={true} />
+                  </summary>
+                  <div className="space-y-4 border-t border-white/10 px-3 py-3 text-sm">
+                    {highlightItems.map(h => (
+                      <div key={h.id || `${h.question}-${h.answer}`}>
+                        <div className="text-[#9fb0b5] text-xs mb-1">{h.question || ''}</div>
+                        <p className="whitespace-pre-wrap leading-relaxed text-white/90">
+                          {renderTextWithSourceLinks(String(h.answer || '').trim())}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </details>
               ) : null}
             </div>
           </section>
@@ -536,12 +541,6 @@ export default function PublicProfile() {
                   {professional.company}
                 </div>
               ) : null}
-              {currentRoleStartYm && (professional.role || professional.company) ? (
-                <div>
-                  <span className="text-[#9fb0b5] mr-2">In this role since:</span>
-                  {formatYmRange(currentRoleStartYm, '')}
-                </div>
-              ) : null}
               {professional.company_intel?.trim() ? (
                 <div>
                   <span className="text-[#9fb0b5] mr-2">Company intel:</span>
@@ -554,59 +553,75 @@ export default function PublicProfile() {
                   {professional.industry}
                 </div>
               ) : null}
-              {hasStructuredWork ? (
-                <div className="space-y-3 pt-2 border-t border-white/10">
-                  <div className="text-xs font-medium uppercase tracking-wide text-[#9fb0b5]">Experience</div>
-                  {workTimeline.map((w, idx) => {
-                    if (!w) return null
-                    const title = String(w.title || '').trim()
-                    const company = String(w.company || '').trim()
-                    const loc = String(w.location || '').trim()
-                    const desc = String(w.description || '').trim()
-                    const start = String(w.start || '').trim()
-                    const end = String(w.end || '').trim()
-                    if (!title && !company && !desc) return null
-                    return (
-                      <div key={idx} className="border-l-2 border-[#4db6ac]/35 pl-3 space-y-1">
-                        <div className="font-medium text-white/95">
-                          {[title, company].filter(Boolean).join(' · ') || company || title || 'Role'}
-                        </div>
-                        {loc ? <div className="text-xs text-[#9fb0b5]">{loc}</div> : null}
-                        {start || end ? (
-                          <div className="text-xs text-[#9fb0b5]">{formatYmRange(start, end)}</div>
-                        ) : null}
-                        {desc ? (
-                          <p className="whitespace-pre-wrap leading-relaxed text-white/90">{desc}</p>
-                        ) : null}
+              {(currentRoleStartYm && (professional.role || professional.company)) || hasStructuredWork || hasStructuredEdu ? (
+                <details className="group mt-2 rounded-lg border border-white/10 bg-black/25 open:bg-black/30">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium text-white select-none [&::-webkit-details-marker]:hidden">
+                    <span className="text-white/90">Career timeline</span>
+                    <i className="fa-solid fa-chevron-down text-xs text-[#9fb0b5] transition-transform group-open:rotate-180" aria-hidden={true} />
+                  </summary>
+                  <div className="space-y-3 border-t border-white/10 px-3 py-3 text-sm text-white/90">
+                    {currentRoleStartYm && (professional.role || professional.company) ? (
+                      <div>
+                        <span className="text-[#9fb0b5] mr-2">In this role since:</span>
+                        {formatYmRange(currentRoleStartYm, '')}
                       </div>
-                    )
-                  })}
-                </div>
-              ) : null}
-              {hasStructuredEdu ? (
-                <div className="space-y-3 pt-2 border-t border-white/10">
-                  <div className="text-xs font-medium uppercase tracking-wide text-[#9fb0b5]">Education</div>
-                  {eduTimeline.map((e, idx) => {
-                    if (!e) return null
-                    const school = String(e.school || '').trim()
-                    const degree = String(e.degree || '').trim()
-                    const desc = String(e.description || '').trim()
-                    const start = String(e.start || '').trim()
-                    const end = String(e.end || '').trim()
-                    if (!school && !degree && !desc) return null
-                    return (
-                      <div key={idx} className="border-l-2 border-white/20 pl-3 space-y-1">
-                        <div className="font-medium text-white/95">{[school, degree].filter(Boolean).join(' · ')}</div>
-                        {start || end ? (
-                          <div className="text-xs text-[#9fb0b5]">{formatYmRange(start, end)}</div>
-                        ) : null}
-                        {desc ? (
-                          <p className="whitespace-pre-wrap leading-relaxed text-white/90">{desc}</p>
-                        ) : null}
+                    ) : null}
+                    {hasStructuredWork ? (
+                      <div className="space-y-3">
+                        <div className="text-xs font-medium uppercase tracking-wide text-[#9fb0b5]">Experience</div>
+                        {workTimeline.map((w, idx) => {
+                          if (!w) return null
+                          const title = String(w.title || '').trim()
+                          const company = String(w.company || '').trim()
+                          const loc = String(w.location || '').trim()
+                          const desc = String(w.description || '').trim()
+                          const start = String(w.start || '').trim()
+                          const end = String(w.end || '').trim()
+                          if (!title && !company && !desc) return null
+                          return (
+                            <div key={idx} className="border-l-2 border-[#4db6ac]/35 pl-3 space-y-1">
+                              <div className="font-medium text-white/95">
+                                {[title, company].filter(Boolean).join(' · ') || company || title || 'Role'}
+                              </div>
+                              {loc ? <div className="text-xs text-[#9fb0b5]">{loc}</div> : null}
+                              {start || end ? (
+                                <div className="text-xs text-[#9fb0b5]">{formatYmRange(start, end)}</div>
+                              ) : null}
+                              {desc ? (
+                                <p className="whitespace-pre-wrap leading-relaxed text-white/90">{desc}</p>
+                              ) : null}
+                            </div>
+                          )
+                        })}
                       </div>
-                    )
-                  })}
-                </div>
+                    ) : null}
+                    {hasStructuredEdu ? (
+                      <div className="space-y-3">
+                        <div className="text-xs font-medium uppercase tracking-wide text-[#9fb0b5]">Education</div>
+                        {eduTimeline.map((e, idx) => {
+                          if (!e) return null
+                          const school = String(e.school || '').trim()
+                          const degree = String(e.degree || '').trim()
+                          const desc = String(e.description || '').trim()
+                          const start = String(e.start || '').trim()
+                          const end = String(e.end || '').trim()
+                          if (!school && !degree && !desc) return null
+                          return (
+                            <div key={idx} className="border-l-2 border-white/20 pl-3 space-y-1">
+                              <div className="font-medium text-white/95">{[school, degree].filter(Boolean).join(' · ')}</div>
+                              {start || end ? (
+                                <div className="text-xs text-[#9fb0b5]">{formatYmRange(start, end)}</div>
+                              ) : null}
+                              {desc ? (
+                                <p className="whitespace-pre-wrap leading-relaxed text-white/90">{desc}</p>
+                              ) : null}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                </details>
               ) : null}
               {professional.degree ? (
                 <div>
