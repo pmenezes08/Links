@@ -61,6 +61,7 @@ SURFACE_VOICE_SUMMARY = "voice_summary"
 SURFACE_CONTENT_GEN = "content_gen"
 SURFACE_WHISPER = "whisper"
 SURFACE_NETWORKING_STEVE = "networking_steve"
+SURFACE_ONBOARDING_AI = "onboarding_ai"
 
 ALL_SURFACES = (
     SURFACE_DM,
@@ -71,6 +72,7 @@ ALL_SURFACES = (
     SURFACE_CONTENT_GEN,
     SURFACE_WHISPER,
     SURFACE_NETWORKING_STEVE,
+    SURFACE_ONBOARDING_AI,
 )
 
 # Surfaces that count against the user-facing "Steve uses / month" allowance.

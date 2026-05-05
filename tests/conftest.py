@@ -261,6 +261,13 @@ def _bootstrap_schema() -> None:
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(_USERS_TABLE_SQL)
+        for column, col_def in (
+            ("professional_company_intel", "TEXT NULL"),
+        ):
+            try:
+                c.execute(f"ALTER TABLE users ADD COLUMN {column} {col_def}")
+            except Exception:
+                pass
         c.execute(_COMMUNITIES_TABLE_SQL)
         for column, col_def in (
             ("type", "VARCHAR(32) DEFAULT 'free'"),

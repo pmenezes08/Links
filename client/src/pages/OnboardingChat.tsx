@@ -59,6 +59,7 @@ interface ChatMessage {
   inputPlaceholder?: string
   composedBio?: string
   composedBioKind?: 'personal' | 'professional'
+  composedCompanyIntel?: string
   sectionCard?: {
     title: string
     subtitle: string
@@ -68,6 +69,7 @@ interface ChatMessage {
     personalBio: string
     professionalBio: string
     linkedinAdded?: boolean
+    companyIntelAdded?: boolean
   }
   sectionPicker?: {
     personalStatus: string
@@ -125,6 +127,7 @@ interface Collected {
   recommend: string
   reachOut: string
   journey: string
+  companyIntel?: string
   personalSectionComplete?: boolean
   professionalSectionComplete?: boolean
   activeProfileSection?: ProfileSection
@@ -493,6 +496,7 @@ export default function OnboardingChat({
     recommend: '',
     reachOut: '',
     journey: '',
+    companyIntel: '',
     personalSectionComplete: false,
     professionalSectionComplete: false,
     activeProfileSection: undefined,
@@ -516,6 +520,7 @@ export default function OnboardingChat({
     skipProfessional: false,
   })
   const stageHistory = useRef<Stage[]>([])
+  const lastComposedCompanyIntelRef = useRef('')
   const [composingBio, setComposingBio] = useState(false)
   const [tourStep, setTourStep] = useState<number | null>(null)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
@@ -711,6 +716,7 @@ export default function OnboardingChat({
               linkedin: (p.professional?.linkedin || p.linkedin || '').trim(),
               bio: (p.personal?.bio || p.bio || '').trim(),
               professionalBio: (p.professional?.about || p.professional_about || '').trim(),
+              companyIntel: (p.professional?.company_intel || '').trim(),
               professionalAssociations: '',
               professionalStrengths: '',
               talkAllDay: '',
@@ -1159,6 +1165,7 @@ export default function OnboardingChat({
             personalBio: data.bio,
             professionalBio: data.professionalBio,
             linkedinAdded: !!data.linkedin?.trim(),
+            companyIntelAdded: !!(data.companyIntel?.trim()),
           },
           options: [
             { label: 'Looks good', value: 'finish_profile_review' },
@@ -1290,6 +1297,10 @@ export default function OnboardingChat({
     setBioDraftingKind(kind)
     setIsTyping(true)
     try {
+      const reuseIntel =
+        kind === 'professional' && style && (currentBio || '').trim()
+          ? lastComposedCompanyIntelRef.current
+          : ''
       const r = await fetch('/api/onboarding/compose_bio', {
         method: 'POST',
         credentials: 'include',
@@ -1317,19 +1328,34 @@ export default function OnboardingChat({
               : (mode === 'profile_builder'
                   ? (originalPublicBioRef.current || '').trim()
                   : (c.bio || '').trim()),
+          reuse_company_intel: reuseIntel,
         }),
       })
       const j = await r.json().catch(() => null)
       const bio = j?.bio || ''
+      const companyIntelRaw = (j?.company_intel || '').trim()
       setComposingBio(false)
       setBioDraftingKind(null)
       setIsTyping(false)
       if (bio) {
+        if (kind === 'professional') {
+          if (companyIntelRaw) {
+            lastComposedCompanyIntelRef.current = companyIntelRaw
+            setCollected(prev => ({ ...prev, companyIntel: companyIntelRaw }))
+          } else if (!reuseIntel) {
+            lastComposedCompanyIntelRef.current = ''
+            setCollected(prev => ({ ...prev, companyIntel: '' }))
+          }
+        }
+        const msgOpts: Partial<ChatMessage> = { composedBio: bio, composedBioKind: kind }
+        if (kind === 'professional' && companyIntelRaw) {
+          msgOpts.composedCompanyIntel = companyIntelRaw
+        }
         addSteveMessage(
           kind === 'personal'
             ? "Here's a personal bio based on what you told me:"
             : "Here's a professional bio based on what you told me:",
-          { composedBio: bio, composedBioKind: kind },
+          msgOpts,
         )
       } else {
         addSteveMessage(`I couldn't compose your ${kind} bio right now — would you like to write one yourself?`, {
@@ -1689,14 +1715,26 @@ export default function OnboardingChat({
         const lastMessage = [...messages].reverse().find(m => m.composedBio)
         const lastComposed = lastMessage?.composedBio || ''
         const kind = lastMessage?.composedBioKind || 'personal'
+        const intel =
+          kind === 'professional'
+            ? ((lastMessage?.composedCompanyIntel || lastComposedCompanyIntelRef.current || '').trim())
+            : ''
         if (lastComposed) {
           addUserMessage('Use this')
           const newCollected =
             kind === 'professional'
-              ? { ...collected, professionalBio: lastComposed, professionalSectionComplete: true }
+              ? {
+                  ...collected,
+                  professionalBio: lastComposed,
+                  companyIntel: intel || collected.companyIntel,
+                  professionalSectionComplete: true,
+                }
               : { ...collected, bio: lastComposed, personalSectionComplete: true }
           setCollected(newCollected)
           await saveField(kind === 'professional' ? 'professional_about' : 'bio', lastComposed)
+          if (kind === 'professional' && intel) {
+            await saveField('professional_company_intel', intel)
+          }
           addSteveMessage(kind === 'professional' ? 'Professional bio saved.' : 'Personal bio saved.')
           setTimeout(
             () => advanceTo(nextSectionAfterCompletion(newCollected), newCollected),
@@ -1734,6 +1772,8 @@ export default function OnboardingChat({
         break
       }
       case 'redo_bio':
+        lastComposedCompanyIntelRef.current = ''
+        setCollected(prev => ({ ...prev, companyIntel: '' }))
         addUserMessage('Start fresh')
         addSteveMessage('No problem — write your own version. 2-3 sentences is perfect.', {
           inputType: 'textarea',
@@ -2000,12 +2040,21 @@ export default function OnboardingChat({
       }
       case 'manual_bio_edit': {
         const lastKind = [...messages].reverse().find(m => m.composedBio)?.composedBioKind || 'personal'
+        const intel = lastComposedCompanyIntelRef.current.trim()
         const newCollected =
           lastKind === 'professional'
-            ? { ...collected, professionalBio: val, professionalSectionComplete: true }
+            ? {
+                ...collected,
+                professionalBio: val,
+                companyIntel: intel || collected.companyIntel,
+                professionalSectionComplete: true,
+              }
             : { ...collected, bio: val, personalSectionComplete: true }
         setCollected(newCollected)
         await saveField(lastKind === 'professional' ? 'professional_about' : 'bio', val)
+        if (lastKind === 'professional' && intel) {
+          await saveField('professional_company_intel', intel)
+        }
         addSteveMessage(lastKind === 'professional' ? 'Professional bio saved.' : 'Personal bio saved.')
         setTimeout(
           () => advanceTo(nextSectionAfterCompletion(newCollected), newCollected),
@@ -2305,6 +2354,14 @@ export default function OnboardingChat({
                           </div>
                           <div className="text-[13px] text-white/90 leading-relaxed italic">"{msg.composedBio}"</div>
                         </div>
+                        {msg.composedBioKind === 'professional' && msg.composedCompanyIntel ? (
+                          <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-3">
+                            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/50">
+                              Company intel
+                            </div>
+                            <div className="text-[13px] text-white/90 leading-relaxed italic">"{msg.composedCompanyIntel}"</div>
+                          </div>
+                        ) : null}
                         <div className="flex flex-wrap gap-2">
                           <button onClick={() => handleOptionClick('use_bio')} className="px-3.5 py-2 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 text-[12px] font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20 transition-colors">
                             Use this
@@ -2346,6 +2403,9 @@ export default function OnboardingChat({
                           </div>
                           <div className="mt-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[12px] text-white/65">
                             LinkedIn: {msg.profileReview.linkedinAdded ? 'added' : 'not added'}
+                          </div>
+                          <div className="mt-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[12px] text-white/65">
+                            Company intel: {msg.profileReview.companyIntelAdded ? 'added' : 'not added'}
                           </div>
                         </div>
                       </div>

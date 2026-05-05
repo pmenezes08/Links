@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import threading
+import time
 from datetime import datetime
 
 from functools import wraps
@@ -761,6 +762,9 @@ def onboarding_compose_bio():
     if kind != "professional" and not personal_has_answers:
         return jsonify({"success": False, "error": "No answers provided"}), 400
 
+    username = session["username"]
+    reuse_company_intel = (data.get("reuse_company_intel") or "").strip()
+
     if not XAI_API_KEY:
         parts = []
         if kind == "professional":
@@ -781,13 +785,17 @@ def onboarding_compose_bio():
                 parts.append(f"Reach out about {reach_out.lower()}.")
         new_text = " ".join(parts)
         if existing_bio and new_text:
-            return jsonify({"success": True, "bio": f"{existing_bio} {new_text}"})
+            return jsonify({"success": True, "bio": f"{existing_bio} {new_text}", "company_intel": ""})
         if existing_bio and not new_text:
-            return jsonify({"success": True, "bio": existing_bio})
-        return jsonify({"success": True, "bio": new_text})
+            return jsonify({"success": True, "bio": existing_bio, "company_intel": ""})
+        return jsonify({"success": True, "bio": new_text, "company_intel": ""})
 
     try:
         from openai import OpenAI
+
+        from backend.services import ai_usage
+        from backend.services import onboarding_company_intel as onboarding_ci
+
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
         location = f"{city}, {country}".strip(', ') if city else ""
@@ -876,6 +884,7 @@ def onboarding_compose_bio():
                 "Write their personal bio:"
             )
 
+        bio_t0 = time.perf_counter()
         response = client.chat.completions.create(
             model=GROK_MODEL_FAST,
             messages=[
@@ -885,12 +894,82 @@ def onboarding_compose_bio():
             max_tokens=200,
             temperature=0.7,
         )
+        bio_rt_ms = int((time.perf_counter() - bio_t0) * 1000)
+        bt_in, bt_out = onboarding_ci.usage_from_chat_completion(response)
         bio = (response.choices[0].message.content or "").strip().strip('"')
         if not bio:
-            return jsonify({"success": False, "error": "Empty response"}), 500
-        return jsonify({"success": True, "bio": bio})
+            ai_usage.log_usage(
+                username,
+                surface=ai_usage.SURFACE_ONBOARDING_AI,
+                request_type="onboarding_compose_bio",
+                tokens_in=bt_in,
+                tokens_out=bt_out,
+                success=False,
+                reason_blocked="empty_bio",
+                response_time_ms=bio_rt_ms,
+                model=GROK_MODEL_FAST,
+            )
+            return jsonify({"success": False, "error": "Empty response", "company_intel": ""}), 500
+        ai_usage.log_usage(
+            username,
+            surface=ai_usage.SURFACE_ONBOARDING_AI,
+            request_type="onboarding_compose_bio",
+            tokens_in=bt_in,
+            tokens_out=bt_out,
+            success=True,
+            response_time_ms=bio_rt_ms,
+            model=GROK_MODEL_FAST,
+        )
+
+        company_intel = ""
+        if kind == "professional" and company:
+            if reuse_company_intel:
+                company_intel = reuse_company_intel
+            else:
+                intel_t0 = time.perf_counter()
+                company_intel, ci_resp = onboarding_ci.fetch_company_intel_blurb(company, role=role)
+                intel_rt_ms = int((time.perf_counter() - intel_t0) * 1000)
+                cit, cout = onboarding_ci.usage_from_responses_api(ci_resp)
+                if company_intel:
+                    ai_usage.log_usage(
+                        username,
+                        surface=ai_usage.SURFACE_ONBOARDING_AI,
+                        request_type="onboarding_company_intel",
+                        tokens_in=cit,
+                        tokens_out=cout,
+                        success=True,
+                        response_time_ms=intel_rt_ms,
+                        model=onboarding_ci.GROK_MODEL,
+                    )
+                else:
+                    ai_usage.log_usage(
+                        username,
+                        surface=ai_usage.SURFACE_ONBOARDING_AI,
+                        request_type="onboarding_company_intel",
+                        tokens_in=cit,
+                        tokens_out=cout,
+                        success=False,
+                        reason_blocked="company_intel_failed",
+                        response_time_ms=intel_rt_ms,
+                        model=onboarding_ci.GROK_MODEL,
+                    )
+
+        return jsonify({"success": True, "bio": bio, "company_intel": company_intel})
     except Exception as e:
         logger.warning(f"compose_bio LLM error: {e}")
+        try:
+            from backend.services import ai_usage
+
+            ai_usage.log_usage(
+                username,
+                surface=ai_usage.SURFACE_ONBOARDING_AI,
+                request_type="onboarding_compose_bio",
+                success=False,
+                reason_blocked="compose_bio_error",
+                model=GROK_MODEL_FAST,
+            )
+        except Exception:
+            pass
         parts = []
         if kind == "professional":
             if role:
@@ -910,10 +989,10 @@ def onboarding_compose_bio():
                 parts.append(f"Reach out about {reach_out.lower()}.")
         new_text = " ".join(parts)
         if existing_bio and new_text:
-            return jsonify({"success": True, "bio": f"{existing_bio} {new_text}"})
+            return jsonify({"success": True, "bio": f"{existing_bio} {new_text}", "company_intel": ""})
         if existing_bio and not new_text:
-            return jsonify({"success": True, "bio": existing_bio})
-        return jsonify({"success": True, "bio": new_text})
+            return jsonify({"success": True, "bio": existing_bio, "company_intel": ""})
+        return jsonify({"success": True, "bio": new_text, "company_intel": ""})
 
 
 @onboarding_bp.route("/api/onboarding/enrich", methods=["POST"])
@@ -1123,7 +1202,19 @@ def onboarding_save_field():
             c = conn.cursor()
             ph = get_sql_placeholder()
 
-            user_fields = {"first_name", "last_name", "role", "company", "industry", "linkedin", "city", "country", "professional_about", "professional_interests"}
+            user_fields = {
+                "first_name",
+                "last_name",
+                "role",
+                "company",
+                "industry",
+                "linkedin",
+                "city",
+                "country",
+                "professional_about",
+                "professional_interests",
+                "professional_company_intel",
+            }
             profile_fields = {"display_name", "bio"}
             # journey is stored only in onboarding state (not in main profile table)
 
