@@ -640,6 +640,9 @@ export default function PremiumDashboard() {
     previousUsernameForOnboardingRef.current = current
     if (!prev || !current || prev === current) return
     onboardingTriggeredRef.current = false
+    setOnboardingStateSummary(null)
+    setOnboardingGateRequired(false)
+    setShowOnboardingWelcome(false)
   }, [username])
 
   const openOnboardingResume = useCallback(() => {
@@ -662,6 +665,9 @@ export default function PremiumDashboard() {
           onboardingComplete: j.onboardingComplete || (j.state && (j.state.stage === 'complete' || j.state.completed_at)),
           onboardingProgress: j.onboardingProgress,
         })
+      } else if (r.status === 401 || r.status === 404 || j?.success === false) {
+        setOnboardingStateSummary(null)
+        setOnboardingGateRequired(false)
       }
     } catch {}
   }, [])
@@ -712,6 +718,9 @@ export default function PremiumDashboard() {
             onboardingTriggeredRef.current = true
             return
           }
+        } else if (r.status === 401 || r.status === 404 || j?.success === false) {
+          setOnboardingStateSummary(null)
+          setOnboardingGateRequired(false)
         }
       } catch {}
 
