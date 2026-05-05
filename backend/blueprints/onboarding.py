@@ -813,6 +813,11 @@ def onboarding_compose_bio():
             if opposite_bio
             else ""
         )
+        location_dedup_note = (
+            "If the other-section text already mentions where they live, are based, or their city or country, do not repeat that in this bio. Use this bio for complementary detail only.\n\n"
+            if opposite_bio
+            else ""
+        )
         style_guidance = {
             "more_natural": "Make the draft more natural, less polished, and closer to how a person would actually introduce themselves.",
             "shorter": "Make the draft shorter while preserving the most concrete detail.",
@@ -834,6 +839,7 @@ def onboarding_compose_bio():
                 revision_block
                 + existing_block
                 + opposite_bio_block
+                + location_dedup_note
                 + "Professional details from onboarding:\n"
                 f"{professional}\n"
                 f"People should associate them with: {professional_associations}\n"
@@ -859,6 +865,7 @@ def onboarding_compose_bio():
                 revision_block
                 + existing_block
                 + opposite_bio_block
+                + location_dedup_note
                 + "Personal details from onboarding:\n"
                 f"Things they could talk about all day: {talk_all_day}\n"
                 f"They recommend: {recommend}\n"

@@ -64,6 +64,8 @@ interface ChatMessage {
     subtitle: string
     steps: string[]
     activeIndex?: number
+    /** When set, step rows navigate within Personal or Professional onboarding. */
+    sectionKind?: ProfileSection
   }
   profileReview?: {
     personalBio: string
@@ -165,6 +167,25 @@ const PROFESSIONAL_SECTION_STEPS = [
   'Strengths',
   'LinkedIn',
   'Professional bio draft',
+]
+
+/** Step outline index → stage (must stay in sync with PERSONAL_SECTION_STEPS). */
+const PERSONAL_SECTION_INDEX_TO_STAGE: Stage[] = [
+  'talk_all_day',
+  'reach_out',
+  'journey',
+  'recommend',
+  'optional_social',
+  'personal_bio_review',
+]
+
+/** Step outline index → stage (must stay in sync with PROFESSIONAL_SECTION_STEPS). */
+const PROFESSIONAL_SECTION_INDEX_TO_STAGE: Stage[] = [
+  'professional',
+  'professional_associations',
+  'professional_strengths',
+  'linkedin',
+  'professional_bio_review',
 ]
 
 interface OnboardingChatProps {
@@ -1011,6 +1032,7 @@ export default function OnboardingChat({
               subtitle: 'A warmer profile section for conversation, interests, and personality.',
               steps: PERSONAL_SECTION_STEPS,
               activeIndex: 0,
+              sectionKind: 'personal',
             },
             options: [
               { label: 'Start personal section', value: 'start_personal_section' },
@@ -1084,6 +1106,7 @@ export default function OnboardingChat({
               subtitle: 'A practical profile section for work, expertise, and collaboration.',
               steps: PROFESSIONAL_SECTION_STEPS,
               activeIndex: 0,
+              sectionKind: 'professional',
             },
             options: [
               { label: 'Start professional section', value: 'start_professional_section' },
@@ -1204,6 +1227,17 @@ export default function OnboardingChat({
     startStage(next, c)
   }
 
+  function jumpToSectionOutlineStep(sectionKind: ProfileSection, idx: number) {
+    const map = sectionKind === 'personal' ? PERSONAL_SECTION_INDEX_TO_STAGE : PROFESSIONAL_SECTION_INDEX_TO_STAGE
+    const target = map[idx]
+    if (!target) return
+    setCollected(prev => {
+      const next = { ...prev, activeProfileSection: sectionKind }
+      Promise.resolve().then(() => advanceTo(target, next))
+      return next
+    })
+  }
+
   function finishProfileBuilderQueueAndGoName(c: Collected) {
     profileBuilderPostPbRef.current = {
       skipLocation: !!(c.city?.trim() && c.country?.trim()),
@@ -1249,7 +1283,7 @@ export default function OnboardingChat({
       setIsTyping(false)
       if (j?.success) {
         addSteveMessage(
-          'You’re set — your network shell is ready. Now let’s finish **your** profile so people know who’s leading the network.',
+          "You're set — your network shell is ready. Now let's finish your profile so people know who's leading the network.",
         )
         setTimeout(() => advanceTo('name', c), 600)
       } else {
@@ -1270,10 +1304,11 @@ export default function OnboardingChat({
 
   function showCompleteMsg() {
     addSteveMessage(
-      "You're all set! Your profile is live.\n\nI'm always here if you need anything - just DM me or tag @Steve in any chat.\n\nA richer profile makes it easier for people to understand who you are, what you care about, and where collaboration might make sense. You can add more background, interests, and goals in Edit Profile, which also helps me make better introductions across your networks.",
+      "You're all set! Your profile is live.\n\nI'm always here if you need anything — just DM me or tag @Steve in any chat.\n\nA richer profile makes it easier for people to understand who you are, what you care about, and where collaboration might make sense. You can add more background, interests, and goals on Edit Profile, which also helps me make better introductions across your networks.",
       {
         options: [
           { label: 'Add more in Edit Profile', value: 'edit_profile' },
+          { label: 'Show me around', value: 'start_tour' },
           { label: 'Take me to the dashboard', value: 'go_feed' },
           { label: 'Create a community', value: 'create_community' },
         ],
@@ -1751,6 +1786,7 @@ export default function OnboardingChat({
         break
       case 'start_tour':
         addUserMessage('Show me around')
+        await completeOnboarding()
         setTourStep(0)
         break
       case 'go_feed':
@@ -1760,7 +1796,7 @@ export default function OnboardingChat({
       case 'edit_profile':
         addUserMessage('Add more in Edit Profile')
         await completeOnboarding()
-        window.location.href = '/account_settings'
+        window.location.href = '/profile'
         break
       case 'create_community':
         await completeOnboarding()
@@ -2233,18 +2269,32 @@ export default function OnboardingChat({
                           {msg.sectionCard.subtitle}
                         </div>
                         <div className="mt-3 grid gap-2">
-                          {msg.sectionCard.steps.map((step, idx) => (
-                            <div
-                              key={step}
-                              className={`rounded-lg border px-3 py-2 text-[12px] ${
-                                idx === msg.sectionCard?.activeIndex
-                                  ? 'border-[#4db6ac]/40 bg-[#4db6ac]/10 text-[#d5fffb]'
-                                  : 'border-white/10 bg-black/20 text-white/60'
-                              }`}
-                            >
-                              {idx + 1}. {step}
-                            </div>
-                          ))}
+                          {msg.sectionCard.steps.map((step, idx) => {
+                            const sk = msg.sectionCard?.sectionKind
+                            const active = idx === msg.sectionCard?.activeIndex
+                            const rowClass = `w-full rounded-lg border px-3 py-2 text-[12px] ${
+                              active
+                                ? 'border-[#4db6ac]/40 bg-[#4db6ac]/10 text-[#d5fffb]'
+                                : 'border-white/10 bg-black/20 text-white/60'
+                            }`
+                            if (sk) {
+                              return (
+                                <button
+                                  key={step}
+                                  type="button"
+                                  onClick={() => jumpToSectionOutlineStep(sk, idx)}
+                                  className={`text-left transition hover:border-[#4db6ac]/35 hover:bg-black/30 ${rowClass}`}
+                                >
+                                  {idx + 1}. {step}
+                                </button>
+                              )
+                            }
+                            return (
+                              <div key={step} className={rowClass}>
+                                {idx + 1}. {step}
+                              </div>
+                            )
+                          })}
                         </div>
                       </div>
                     )}
