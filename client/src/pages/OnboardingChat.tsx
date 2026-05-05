@@ -63,9 +63,6 @@ interface ChatMessage {
     title: string
     subtitle: string
     steps: string[]
-    activeIndex?: number
-    /** When set, step rows navigate within Personal or Professional onboarding. */
-    sectionKind?: ProfileSection
   }
   profileReview?: {
     personalBio: string
@@ -167,25 +164,6 @@ const PROFESSIONAL_SECTION_STEPS = [
   'Strengths',
   'LinkedIn',
   'Professional bio draft',
-]
-
-/** Step outline index → stage (must stay in sync with PERSONAL_SECTION_STEPS). */
-const PERSONAL_SECTION_INDEX_TO_STAGE: Stage[] = [
-  'talk_all_day',
-  'reach_out',
-  'journey',
-  'recommend',
-  'optional_social',
-  'personal_bio_review',
-]
-
-/** Step outline index → stage (must stay in sync with PROFESSIONAL_SECTION_STEPS). */
-const PROFESSIONAL_SECTION_INDEX_TO_STAGE: Stage[] = [
-  'professional',
-  'professional_associations',
-  'professional_strengths',
-  'linkedin',
-  'professional_bio_review',
 ]
 
 interface OnboardingChatProps {
@@ -1031,8 +1009,6 @@ export default function OnboardingChat({
               title: 'Personal Identity',
               subtitle: 'A warmer profile section for conversation, interests, and personality.',
               steps: PERSONAL_SECTION_STEPS,
-              activeIndex: 0,
-              sectionKind: 'personal',
             },
             options: [
               { label: 'Start personal section', value: 'start_personal_section' },
@@ -1105,8 +1081,6 @@ export default function OnboardingChat({
               title: 'Professional Identity',
               subtitle: 'A practical profile section for work, expertise, and collaboration.',
               steps: PROFESSIONAL_SECTION_STEPS,
-              activeIndex: 0,
-              sectionKind: 'professional',
             },
             options: [
               { label: 'Start professional section', value: 'start_professional_section' },
@@ -1225,17 +1199,6 @@ export default function OnboardingChat({
     setStage(next)
     saveState(next, c)
     startStage(next, c)
-  }
-
-  function jumpToSectionOutlineStep(sectionKind: ProfileSection, idx: number) {
-    const map = sectionKind === 'personal' ? PERSONAL_SECTION_INDEX_TO_STAGE : PROFESSIONAL_SECTION_INDEX_TO_STAGE
-    const target = map[idx]
-    if (!target) return
-    setCollected(prev => {
-      const next = { ...prev, activeProfileSection: sectionKind }
-      Promise.resolve().then(() => advanceTo(target, next))
-      return next
-    })
   }
 
   function finishProfileBuilderQueueAndGoName(c: Collected) {
@@ -2269,32 +2232,14 @@ export default function OnboardingChat({
                           {msg.sectionCard.subtitle}
                         </div>
                         <div className="mt-3 grid gap-2">
-                          {msg.sectionCard.steps.map((step, idx) => {
-                            const sk = msg.sectionCard?.sectionKind
-                            const active = idx === msg.sectionCard?.activeIndex
-                            const rowClass = `w-full rounded-lg border px-3 py-2 text-[12px] ${
-                              active
-                                ? 'border-[#4db6ac]/40 bg-[#4db6ac]/10 text-[#d5fffb]'
-                                : 'border-white/10 bg-black/20 text-white/60'
-                            }`
-                            if (sk) {
-                              return (
-                                <button
-                                  key={step}
-                                  type="button"
-                                  onClick={() => jumpToSectionOutlineStep(sk, idx)}
-                                  className={`text-left transition hover:border-[#4db6ac]/35 hover:bg-black/30 ${rowClass}`}
-                                >
-                                  {idx + 1}. {step}
-                                </button>
-                              )
-                            }
-                            return (
-                              <div key={step} className={rowClass}>
-                                {idx + 1}. {step}
-                              </div>
-                            )
-                          })}
+                          {msg.sectionCard.steps.map((step, idx) => (
+                            <div
+                              key={step}
+                              className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[12px] text-white/60"
+                            >
+                              {idx + 1}. {step}
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
