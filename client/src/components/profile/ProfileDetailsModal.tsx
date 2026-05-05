@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import type { PersonalForm, ProfessionalForm } from '../../pages/Profile'
 
@@ -87,15 +88,24 @@ export function ProfileDetailsModal({
     if (open) setPage(1)
   }, [open])
 
+  useEffect(() => {
+    if (!open) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prevOverflow
+    }
+  }, [open])
+
   const requestClose = useCallback(() => {
     onClose()
   }, [onClose])
 
   if (!open) return null
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex min-h-0 items-start justify-center overflow-hidden bg-black/75 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 backdrop-blur-sm sm:px-4"
+      className="fixed inset-0 z-[1100] flex min-h-0 items-start justify-center overflow-hidden bg-black/75 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 backdrop-blur-sm sm:px-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="profile-details-title"
@@ -435,6 +445,7 @@ export function ProfileDetailsModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
