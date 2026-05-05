@@ -492,6 +492,7 @@ export default function OnboardingChat({
   const [tierHints, setTierHints] = useState<OnboardingTierHints | null>(null)
   const [showDeferConfirm, setShowDeferConfirm] = useState(false)
   const [deferringProfile, setDeferringProfile] = useState(false)
+  const [deferError, setDeferError] = useState('')
 
   const NATIVE_KEYBOARD_MIN_HEIGHT = 60
   const KEYBOARD_OFFSET_EPSILON = 6
@@ -1332,13 +1333,17 @@ export default function OnboardingChat({
   async function finishLater() {
     if (deferringProfile) return
     setDeferringProfile(true)
+    setDeferError('')
     addUserMessage('Finish later')
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(() => controller.abort(), 12000)
     try {
       const serializable = messages.slice(-30).map(m => ({ from: m.from, text: m.text }))
       const r = await fetch('/api/onboarding/defer_profile', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           stage,
           collected,
@@ -1347,16 +1352,18 @@ export default function OnboardingChat({
         }),
       })
       const j = await r.json().catch(() => null)
-      if (j?.success) {
+      if (r.ok && j?.success) {
         addSteveMessage('Saved. You can come back anytime from your dashboard, and I will send two gentle reminders while this is still fresh.')
         setShowDeferConfirm(false)
         setTimeout(() => onExit(), 800)
       } else {
-        addSteveMessage('I couldn’t save that just now. Want to continue with your profile instead?')
+        setDeferError(j?.error || 'I could not save that just now. Please try again, or keep going for now.')
       }
-    } catch {
-      addSteveMessage('I couldn’t save that just now. Want to continue with your profile instead?')
+    } catch (err) {
+      const timedOut = err instanceof DOMException && err.name === 'AbortError'
+      setDeferError(timedOut ? 'Saving is taking longer than expected. Please try again.' : 'I could not save that just now. Please try again, or keep going for now.')
     } finally {
+      window.clearTimeout(timeoutId)
       setDeferringProfile(false)
     }
   }
@@ -2478,7 +2485,10 @@ export default function OnboardingChat({
             <div className="mt-5 flex flex-col gap-2 sm:flex-row">
               <button
                 type="button"
-                onClick={() => setShowDeferConfirm(false)}
+                onClick={() => {
+                  setDeferError('')
+                  setShowDeferConfirm(false)
+                }}
                 className="flex-1 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 px-4 py-2.5 text-sm font-semibold text-[#d5fffb] transition hover:bg-[#4db6ac]/15"
               >
                 Keep going
@@ -2492,6 +2502,11 @@ export default function OnboardingChat({
                 {deferringProfile ? 'Saving...' : 'Finish later'}
               </button>
             </div>
+            {deferError && (
+              <div className="mt-3 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs leading-relaxed text-red-100">
+                {deferError}
+              </div>
+            )}
           </div>
         </div>
       )}

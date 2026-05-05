@@ -78,3 +78,12 @@ def test_onboarding_reminder_cron_rejects_missing_secret(monkeypatch):
     app.register_blueprint(onboarding_bp)
     response = app.test_client().post("/api/cron/onboarding/reminders")
     assert response.status_code == 403
+
+
+def test_onboarding_api_auth_failure_returns_json():
+    app = Flask(__name__)
+    app.secret_key = "test-secret"
+    app.register_blueprint(onboarding_bp)
+    response = app.test_client().post("/api/onboarding/defer_profile", json={})
+    assert response.status_code == 401
+    assert response.get_json() == {"success": False, "error": "Unauthorized"}

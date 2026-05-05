@@ -40,6 +40,8 @@ def _login_required(view_func):
     @wraps(view_func)
     def wrapper(*args, **kwargs):
         if "username" not in session:
+            if request.path.startswith("/api/"):
+                return jsonify({"success": False, "error": "Unauthorized"}), 401
             try:
                 current_app.logger.info("No username in session for %s, redirecting to login", request.path)
             except Exception:
@@ -365,8 +367,15 @@ def onboarding_welcome():
 
 def _get_firestore_client():
     try:
-        from google.cloud.firestore import Client
-        return Client()
+        from google.cloud import firestore
+
+        firestore_database = os.environ.get("FIRESTORE_DATABASE", "cpoint")
+        project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCP_PROJECT")
+        return (
+            firestore.Client(project=project, database=firestore_database)
+            if project
+            else firestore.Client(database=firestore_database)
+        )
     except Exception:
         return None
 
