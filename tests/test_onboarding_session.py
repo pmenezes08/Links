@@ -89,6 +89,35 @@ def test_next_unanswered_profile_stage_respects_saved_answers():
     assert osess.next_unanswered_profile_stage("recommend", collected) == "journey"
 
 
+def test_next_unanswered_profile_stage_resumes_incomplete_professional_section():
+    collected = {
+        "personalSectionComplete": True,
+        "professionalSectionComplete": False,
+    }
+    assert osess.next_unanswered_profile_stage("section_picker", collected) == "professional_section_intro"
+
+
+def test_next_unanswered_profile_stage_resumes_first_unanswered_professional_question():
+    collected = {
+        "personalSectionComplete": True,
+        "professionalSectionComplete": False,
+        "role": "Founder",
+        "professionalAssociations": "community strategy",
+        "professionalStrengths": "",
+    }
+    assert osess.next_unanswered_profile_stage("section_picker", collected) == "professional_strengths"
+
+
+def test_next_unanswered_profile_stage_resumes_incomplete_personal_section():
+    collected = {
+        "personalSectionComplete": False,
+        "professionalSectionComplete": True,
+        "talkAllDay": "AI and tennis",
+        "reachOut": "",
+    }
+    assert osess.next_unanswered_profile_stage("profile_review", collected) == "reach_out"
+
+
 def test_state_payload_includes_profile_section_progress():
     now = datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc)
     doc = {

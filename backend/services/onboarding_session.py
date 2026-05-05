@@ -135,19 +135,22 @@ def build_defer_timestamps(now_utc: Optional[datetime] = None) -> Tuple[str, str
     return base.isoformat(), until.isoformat()
 
 
-def next_unanswered_profile_stage(
-    stage: Optional[str],
-    collected: Optional[Dict[str, Any]],
-) -> str:
-    """Return the next durable profile prompt from saved onboarding answers."""
-    data = collected or {}
-    saved_stage = str(stage or "").strip()
-    if saved_stage == "complete":
-        return "complete"
+def _section_started(section: str, data: Dict[str, Any]) -> bool:
+    if section == "personal":
+        keys = ("talkAllDay", "reachOut", "journey", "recommend", "bio")
+    else:
+        keys = (
+            "role",
+            "professionalAssociations",
+            "professionalStrengths",
+            "linkedin",
+            "professionalBio",
+        )
+    return any(str(data.get(key) or "").strip() for key in keys)
 
-    if saved_stage in PERSONAL_STAGES:
-        if data.get("personalSectionComplete"):
-            return "section_picker"
+
+def _first_unanswered_stage_for_section(section: str, data: Dict[str, Any]) -> str:
+    if section == "personal":
         if not str(data.get("talkAllDay") or "").strip():
             return "talk_all_day"
         if not str(data.get("reachOut") or "").strip():
@@ -160,23 +163,73 @@ def next_unanswered_profile_stage(
             return "optional_social"
         return "personal_bio_review"
 
+    if not str(data.get("role") or "").strip():
+        return "professional"
+    if not str(data.get("professionalAssociations") or "").strip():
+        return "professional_associations"
+    if not str(data.get("professionalStrengths") or "").strip():
+        return "professional_strengths"
+    if not str(data.get("professionalBio") or "").strip():
+        return "linkedin"
+    return "professional_bio_review"
+
+
+def _start_or_resume_section(section: str, data: Dict[str, Any]) -> str:
+    if section == "personal":
+        if data.get("personalSectionComplete"):
+            return "profile_review" if data.get("professionalSectionComplete") else "section_picker"
+        if _section_started("personal", data):
+            return _first_unanswered_stage_for_section("personal", data)
+        return "personal_section_intro"
+
+    if data.get("professionalSectionComplete"):
+        return "profile_review" if data.get("personalSectionComplete") else "section_picker"
+    if _section_started("professional", data):
+        return _first_unanswered_stage_for_section("professional", data)
+    return "professional_section_intro"
+
+
+def next_incomplete_profile_stage(collected: Optional[Dict[str, Any]]) -> str:
+    """Return the next profile section entry point for mixed complete/incomplete state."""
+    data = collected or {}
+    personal_complete = bool(data.get("personalSectionComplete"))
+    professional_complete = bool(data.get("professionalSectionComplete"))
+    if not personal_complete and not professional_complete:
+        return "section_picker"
+    if personal_complete and not professional_complete:
+        return _start_or_resume_section("professional", data)
+    if professional_complete and not personal_complete:
+        return _start_or_resume_section("personal", data)
+    return "profile_review"
+
+
+def next_unanswered_profile_stage(
+    stage: Optional[str],
+    collected: Optional[Dict[str, Any]],
+) -> str:
+    """Return the next durable profile prompt from saved onboarding answers."""
+    data = collected or {}
+    saved_stage = str(stage or "").strip()
+    if saved_stage == "complete":
+        return "complete"
+
+    if saved_stage in PERSONAL_STAGES:
+        if data.get("personalSectionComplete"):
+            return next_incomplete_profile_stage(data)
+        return _first_unanswered_stage_for_section("personal", data)
+
     if saved_stage in PROFESSIONAL_STAGES:
         if data.get("professionalSectionComplete"):
-            return "section_picker"
-        if not str(data.get("role") or "").strip():
-            return "professional"
-        if not str(data.get("professionalAssociations") or "").strip():
-            return "professional_associations"
-        if not str(data.get("professionalStrengths") or "").strip():
-            return "professional_strengths"
-        if not str(data.get("professionalBio") or "").strip():
-            return "linkedin"
-        return "professional_bio_review"
+            return next_incomplete_profile_stage(data)
+        return _first_unanswered_stage_for_section("professional", data)
+
+    if saved_stage == "section_picker":
+        return next_incomplete_profile_stage(data)
 
     if saved_stage == "profile_review":
         if data.get("personalSectionComplete") and data.get("professionalSectionComplete"):
             return "profile_review"
-        return "section_picker"
+        return next_incomplete_profile_stage(data)
 
     return saved_stage or "section_picker"
 

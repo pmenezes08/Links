@@ -305,22 +305,47 @@ function firstUnansweredStageForSection(section: ProfileSection, c: Collected): 
   return 'professional_bio_review'
 }
 
-function nextSectionAfterCompletion(c: Collected): Stage {
-  if (!c.personalSectionComplete || !c.professionalSectionComplete) return 'section_picker'
+function sectionHasStarted(section: ProfileSection, c: Collected): boolean {
+  if (section === 'personal') {
+    return !!(c.talkAllDay?.trim() || c.reachOut?.trim() || c.journey?.trim() || c.recommend?.trim() || c.bio?.trim())
+  }
+  return !!(c.role?.trim() || c.professionalAssociations?.trim() || c.professionalStrengths?.trim() || c.linkedin?.trim() || c.professionalBio?.trim())
+}
+
+function startOrResumeSection(section: ProfileSection, c: Collected): Stage {
+  if (section === 'personal') {
+    if (c.personalSectionComplete) return c.professionalSectionComplete ? 'profile_review' : 'section_picker'
+    return sectionHasStarted('personal', c) ? firstUnansweredStageForSection('personal', c) : 'personal_section_intro'
+  }
+  if (c.professionalSectionComplete) return c.personalSectionComplete ? 'profile_review' : 'section_picker'
+  return sectionHasStarted('professional', c) ? firstUnansweredStageForSection('professional', c) : 'professional_section_intro'
+}
+
+function nextIncompleteProfileStage(c: Collected): Stage {
+  if (!c.personalSectionComplete && !c.professionalSectionComplete) return 'section_picker'
+  if (c.personalSectionComplete && !c.professionalSectionComplete) return startOrResumeSection('professional', c)
+  if (c.professionalSectionComplete && !c.personalSectionComplete) return startOrResumeSection('personal', c)
   return 'profile_review'
+}
+
+function nextSectionAfterCompletion(c: Collected): Stage {
+  return nextIncompleteProfileStage(c)
 }
 
 function normalizeResumeStage(savedStage: Stage, c: Collected): Stage {
   if (savedStage === 'complete') return 'complete'
   if (savedStage === 'personal_section_intro' || savedStage === 'professional_section_intro') return savedStage
   if (savedStage === 'talk_all_day' || savedStage === 'reach_out' || savedStage === 'journey' || savedStage === 'recommend' || savedStage === 'optional_social' || savedStage === 'personal_bio_review') {
-    return c.personalSectionComplete ? 'section_picker' : firstUnansweredStageForSection('personal', c)
+    return c.personalSectionComplete ? nextIncompleteProfileStage(c) : firstUnansweredStageForSection('personal', c)
   }
   if (savedStage === 'professional' || savedStage === 'professional_confirm' || savedStage === 'fix_role' || savedStage === 'fix_company' || savedStage === 'professional_associations' || savedStage === 'professional_strengths' || savedStage === 'linkedin' || savedStage === 'professional_bio_review') {
-    return c.professionalSectionComplete ? 'section_picker' : firstUnansweredStageForSection('professional', c)
+    return c.professionalSectionComplete ? nextIncompleteProfileStage(c) : firstUnansweredStageForSection('professional', c)
+  }
+  if (savedStage === 'section_picker') {
+    return nextIncompleteProfileStage(c)
   }
   if (savedStage === 'profile_review') {
-    return c.personalSectionComplete && c.professionalSectionComplete ? 'profile_review' : 'section_picker'
+    return c.personalSectionComplete && c.professionalSectionComplete ? 'profile_review' : nextIncompleteProfileStage(c)
   }
   return savedStage || 'section_picker'
 }
@@ -1620,11 +1645,7 @@ export default function OnboardingChat({
           : [...(collected.profileSectionOrder || []), 'personal' as ProfileSection]
         const newCollected = { ...collected, activeProfileSection: 'personal' as ProfileSection, profileSectionOrder: order }
         setCollected(newCollected)
-        const hasStarted = !!(newCollected.talkAllDay?.trim() || newCollected.reachOut?.trim() || newCollected.journey?.trim() || newCollected.recommend?.trim() || newCollected.bio?.trim())
-        const nextStage = newCollected.personalSectionComplete
-          ? (newCollected.professionalSectionComplete ? 'profile_review' : 'section_picker')
-          : hasStarted ? firstUnansweredStageForSection('personal', newCollected) : 'personal_section_intro'
-        advanceTo(nextStage, newCollected)
+        advanceTo(startOrResumeSection('personal', newCollected), newCollected)
         break
       }
       case 'choose_professional_section': {
@@ -1634,11 +1655,7 @@ export default function OnboardingChat({
           : [...(collected.profileSectionOrder || []), 'professional' as ProfileSection]
         const newCollected = { ...collected, activeProfileSection: 'professional' as ProfileSection, profileSectionOrder: order }
         setCollected(newCollected)
-        const hasStarted = !!(newCollected.role?.trim() || newCollected.professionalAssociations?.trim() || newCollected.professionalStrengths?.trim() || newCollected.linkedin?.trim() || newCollected.professionalBio?.trim())
-        const nextStage = newCollected.professionalSectionComplete
-          ? (newCollected.personalSectionComplete ? 'profile_review' : 'section_picker')
-          : hasStarted ? firstUnansweredStageForSection('professional', newCollected) : 'professional_section_intro'
-        advanceTo(nextStage, newCollected)
+        advanceTo(startOrResumeSection('professional', newCollected), newCollected)
         break
       }
       case 'finish_sections_review':
