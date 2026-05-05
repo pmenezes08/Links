@@ -1004,7 +1004,7 @@ export default function OnboardingChat({
       }
       case 'personal_section_intro':
         addSteveMessage(
-          "Let's build your Personal Identity. This is 6 dedicated questions, about 2 minutes, so people can understand the human side of you.",
+          "Let's build your Personal Identity. This has 6 steps, including 4 dedicated questions, public social links, and your personal bio draft. It takes about 2 minutes and helps people understand the human side of you.",
           {
             sectionCard: {
               title: 'Personal Identity',
@@ -1077,7 +1077,7 @@ export default function OnboardingChat({
       }
       case 'professional_section_intro':
         addSteveMessage(
-          "Let's build your Professional Identity. This is 5 dedicated questions, about 2 minutes, to make your work and collaboration context clear.",
+          "Let's build your Professional Identity. This has 5 steps, including 3 dedicated questions, LinkedIn, and your professional bio draft. It takes about 2 minutes and helps make your work and collaboration context clear.",
           {
             sectionCard: {
               title: 'Professional Identity',
@@ -1130,7 +1130,7 @@ export default function OnboardingChat({
         const soOpts: ChatMessage['options'] = [{ label: 'Skip', value: 'skip_optional_social', icon: '⏭️' }]
         if (stageHistory.current.length > 1) soOpts.push({ label: '← Go back', value: 'go_back', icon: '↩️' })
         addSteveMessage(
-          'Optional: share public social profiles for Instagram, X, or TikTok if you want Steve to understand more of your public background. We only use links you provide.\n\nPaste one URL per line, or skip.',
+          'Optional: share your Instagram, X, or TikTok links so other members in your networks can find your public profiles.\n\nPaste one URL per line, or skip.',
           {
             inputType: 'textarea',
             inputPlaceholder: 'https://instagram.com/yourprofile\nhttps://x.com/yourprofile\nhttps://www.tiktok.com/@you',
@@ -1270,12 +1270,12 @@ export default function OnboardingChat({
 
   function showCompleteMsg() {
     addSteveMessage(
-      "You're all set! 🎉 Your profile is live!\n\nI'm always here if you need anything — just DM me or tag @Steve in any chat.\n\nBy the way, did you know you can create your own communities? Planning a trip with friends? Starting a book club? Organizing weekend tennis? A community is just a group of people you want to keep connected.",
+      "You're all set! Your profile is live.\n\nI'm always here if you need anything - just DM me or tag @Steve in any chat.\n\nA richer profile makes it easier for people to understand who you are, what you care about, and where collaboration might make sense. You can add more background, interests, and goals in Edit Profile, which also helps me make better introductions across your networks.",
       {
         options: [
-          { label: 'Show me around', value: 'start_tour', icon: '🗺️' },
-          { label: 'Take me to the dashboard', value: 'go_feed', icon: '🚀' },
-          { label: 'Create a community', value: 'create_community', icon: '➕' },
+          { label: 'Add more in Edit Profile', value: 'edit_profile' },
+          { label: 'Take me to the dashboard', value: 'go_feed' },
+          { label: 'Create a community', value: 'create_community' },
         ],
       }
     )
@@ -1310,6 +1310,7 @@ export default function OnboardingChat({
           country: c.country,
           style,
           current_bio: currentBio || '',
+          opposite_bio: kind === 'professional' ? (c.bio || '').trim() : (c.professionalBio || '').trim(),
           existing_bio:
             kind === 'professional'
               ? (mode === 'profile_builder'
@@ -1639,7 +1640,7 @@ export default function OnboardingChat({
         setTimeout(() => advanceTo('section_picker'), 600)
         break
       case 'choose_personal_section': {
-        addUserMessage('Personal Identity - about 2 minutes - 6 questions')
+        addUserMessage('Personal Identity - about 2 minutes - 6 steps - 4 questions')
         const order = collected.profileSectionOrder?.includes('personal')
           ? collected.profileSectionOrder
           : [...(collected.profileSectionOrder || []), 'personal' as ProfileSection]
@@ -1649,7 +1650,7 @@ export default function OnboardingChat({
         break
       }
       case 'choose_professional_section': {
-        addUserMessage('Professional Identity - about 2 minutes - 5 questions')
+        addUserMessage('Professional Identity - about 2 minutes - 5 steps - 3 questions')
         const order = collected.profileSectionOrder?.includes('professional')
           ? collected.profileSectionOrder
           : [...(collected.profileSectionOrder || []), 'professional' as ProfileSection]
@@ -1755,6 +1756,11 @@ export default function OnboardingChat({
       case 'go_feed':
         await completeOnboarding()
         onComplete()
+        break
+      case 'edit_profile':
+        addUserMessage('Add more in Edit Profile')
+        await completeOnboarding()
+        window.location.href = '/account_settings'
         break
       case 'create_community':
         await completeOnboarding()
@@ -2251,20 +2257,18 @@ export default function OnboardingChat({
                           <button
                             type="button"
                             onClick={() => handleOptionClick('choose_personal_section')}
-                            disabled={i !== messages.length - 1}
-                            className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-left transition hover:border-[#4db6ac]/35 hover:bg-[#4db6ac]/10 disabled:cursor-default disabled:hover:border-white/10 disabled:hover:bg-black/20"
+                            className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-left transition hover:border-[#4db6ac]/35 hover:bg-[#4db6ac]/10"
                           >
                             <div className="text-[12px] font-semibold text-white">Personal Identity</div>
-                            <div className="mt-1 text-[11px] text-white/55">About 2 minutes · 6 questions · {msg.sectionPicker.personalStatus}</div>
+                            <div className="mt-1 text-[11px] text-white/55">About 2 minutes · 6 steps · 4 questions · {msg.sectionPicker.personalStatus}</div>
                           </button>
                           <button
                             type="button"
                             onClick={() => handleOptionClick('choose_professional_section')}
-                            disabled={i !== messages.length - 1}
-                            className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-left transition hover:border-[#4db6ac]/35 hover:bg-[#4db6ac]/10 disabled:cursor-default disabled:hover:border-white/10 disabled:hover:bg-black/20"
+                            className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-left transition hover:border-[#4db6ac]/35 hover:bg-[#4db6ac]/10"
                           >
                             <div className="text-[12px] font-semibold text-white">Professional Identity</div>
-                            <div className="mt-1 text-[11px] text-white/55">About 2 minutes · 5 questions · {msg.sectionPicker.professionalStatus}</div>
+                            <div className="mt-1 text-[11px] text-white/55">About 2 minutes · 5 steps · 3 questions · {msg.sectionPicker.professionalStatus}</div>
                           </button>
                         </div>
                       </div>

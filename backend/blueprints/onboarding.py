@@ -751,6 +751,7 @@ def onboarding_compose_bio():
     country = (data.get("country") or "").strip()
     existing_bio = (data.get("existing_bio") or "").strip()
     current_bio = (data.get("current_bio") or "").strip()
+    opposite_bio = (data.get("opposite_bio") or "").strip()
     style = (data.get("style") or "").strip().lower()
 
     personal_has_answers = bool(talk_all_day or recommend or reach_out or journey)
@@ -807,6 +808,11 @@ def onboarding_compose_bio():
             if current_bio
             else ""
         )
+        opposite_bio_block = (
+            f"The other profile section already says this. Do not repeat concrete facts from it unless they are essential, especially location:\n{opposite_bio}\n\n"
+            if opposite_bio
+            else ""
+        )
         style_guidance = {
             "more_natural": "Make the draft more natural, less polished, and closer to how a person would actually introduce themselves.",
             "shorter": "Make the draft shorter while preserving the most concrete detail.",
@@ -819,6 +825,7 @@ def onboarding_compose_bio():
                 "Focus on what they do, what people should associate them with, and where collaboration makes sense. "
                 "Use the role and company as context, not as a resume dump. "
                 "If an existing bio is provided, weave it together with the new onboarding answers into one coherent whole. "
+                "Avoid repeating concrete facts already used in the personal bio, especially location, unless the fact is central to the professional context. "
                 "Preserve at least one concrete phrase or detail from the user's answers when possible. "
                 "Avoid generic phrases such as 'passionate about', 'driven by', 'meaningful connections', and 'leveraging'. "
                 "Keep it useful and human, not corporate. Do NOT use hashtags, emojis, or buzzwords. Return ONLY the bio text."
@@ -826,6 +833,7 @@ def onboarding_compose_bio():
             user_prompt = (
                 revision_block
                 + existing_block
+                + opposite_bio_block
                 + "Professional details from onboarding:\n"
                 f"{professional}\n"
                 f"People should associate them with: {professional_associations}\n"
@@ -840,6 +848,7 @@ def onboarding_compose_bio():
                 "Focus on who they are as a person, what makes them easy to talk to, and what others can reach out about. "
                 "Professional details should not dominate this section. "
                 "If an existing bio is provided, weave it together with the new onboarding answers into one coherent whole. "
+                "Avoid repeating concrete facts already used in the professional bio, especially location, unless the fact is central to their personal identity. "
                 "Preserve at least one concrete phrase or detail from the user's answers when possible. "
                 "Vary sentence rhythm and keep it less polished than a marketing bio. "
                 "Write in first person. Be authentic and human, not corporate or generic. "
@@ -849,6 +858,7 @@ def onboarding_compose_bio():
             user_prompt = (
                 revision_block
                 + existing_block
+                + opposite_bio_block
                 + "Personal details from onboarding:\n"
                 f"Things they could talk about all day: {talk_all_day}\n"
                 f"They recommend: {recommend}\n"
