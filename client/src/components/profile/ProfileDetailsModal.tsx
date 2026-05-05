@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
-import { ProfileSelectField, type SelectOption } from './ProfileSelectField'
+import type { PersonalForm, ProfessionalForm } from '../../pages/Profile'
 
 export type WorkExperienceRow = {
   title: string
@@ -56,47 +56,13 @@ const PERSONAL_FIELDS = [
   },
 ]
 
-type PersonalFormShape = {
-  first_name: string
-  last_name: string
-  bio: string
-  display_name: string
-  date_of_birth: string
-  gender: string
-  country: string
-  city: string
-  personal_answer_five_minutes: string
-  personal_answer_outside_work: string
-  personal_answer_cpoint_goals: string
-}
-
-type ProfessionalFormShape = {
-  role: string
-  company: string
-  company_intel: string
-  industry: string
-  linkedin: string
-  about: string
-  interests: string[]
-  current_role_start: string
-  work_history: WorkExperienceRow[]
-  education: EducationRow[]
-}
-
 type ProfileDetailsModalProps = {
   open: boolean
   onClose: () => void
-  personal: PersonalFormShape
-  setPersonal: Dispatch<SetStateAction<PersonalFormShape>>
-  professional: ProfessionalFormShape
-  setProfessional: Dispatch<SetStateAction<ProfessionalFormShape>>
-  genderOptions: SelectOption[]
-  countryOptions: SelectOption[]
-  cityOptions: SelectOption[]
-  industryOptions: SelectOption[]
-  citySelectDisabled: boolean
-  cityPlaceholder: string
-  citiesLoading: boolean
+  personal: PersonalForm
+  setPersonal: Dispatch<SetStateAction<PersonalForm>>
+  professional: ProfessionalForm
+  setProfessional: Dispatch<SetStateAction<ProfessionalForm>>
   onSavePersonal: (e: FormEvent<HTMLFormElement>) => void | Promise<void>
   onSaveProfessional: (e: FormEvent<HTMLFormElement>) => void | Promise<void>
   savingPersonal: boolean
@@ -110,13 +76,6 @@ export function ProfileDetailsModal({
   setPersonal,
   professional,
   setProfessional,
-  genderOptions,
-  countryOptions,
-  cityOptions,
-  industryOptions,
-  citySelectDisabled,
-  cityPlaceholder,
-  citiesLoading,
   onSavePersonal,
   onSaveProfessional,
   savingPersonal,
@@ -136,19 +95,19 @@ export function ProfileDetailsModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-sm px-3 py-6"
+      className="fixed inset-0 z-[100] flex min-h-0 items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:py-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="profile-details-title"
     >
-      <div className="relative flex max-h-[min(90vh,720px)] w-full max-w-lg flex-col rounded-2xl border border-white/10 bg-[#111] shadow-xl">
-        <div className="flex items-start justify-between gap-3 border-b border-white/10 px-4 py-3">
+      <div className="relative flex max-h-[min(90dvh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111] shadow-xl">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-4 py-3">
           <div>
             <h2 id="profile-details-title" className="text-base font-semibold text-white">
-              Edit profile details
+              Spotlight and timeline
             </h2>
             <p className="text-[11px] text-[#9fb0b5]">
-              Page {page} of 2 — {page === 1 ? 'Personal' : 'Professional'}
+              Step {page} of 2 — {page === 1 ? 'Spotlight answers' : 'Career timeline'}
             </p>
           </div>
           <button
@@ -161,7 +120,7 @@ export function ProfileDetailsModal({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3">
           {page === 1 ? (
             <form id="form-personal-modal" className="space-y-4" onSubmit={onSavePersonal}>
               <p className="text-xs leading-relaxed text-[#b8c8cc] border border-[#4db6ac]/25 rounded-lg px-3 py-2 bg-[#4db6ac]/5">
@@ -179,169 +138,24 @@ export function ProfileDetailsModal({
                   />
                 </label>
               ))}
-              <label className="text-sm block">
-                Personal bio
-                <textarea
-                  className="mt-1 w-full min-h-[80px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
-                  value={personal.bio}
-                  onChange={e => setPersonal(prev => ({ ...prev, bio: e.target.value }))}
-                />
-              </label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="text-sm min-w-0">
-                  First name
-                  <input
-                    className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
-                    value={personal.first_name}
-                    onChange={e => setPersonal(prev => ({ ...prev, first_name: e.target.value }))}
-                  />
-                </label>
-                <label className="text-sm min-w-0">
-                  Last name
-                  <input
-                    className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
-                    value={personal.last_name}
-                    onChange={e => setPersonal(prev => ({ ...prev, last_name: e.target.value }))}
-                  />
-                </label>
-                <label className="text-sm min-w-0">
-                  Display name
-                  <input
-                    className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
-                    value={personal.display_name}
-                    onChange={e => setPersonal(prev => ({ ...prev, display_name: e.target.value }))}
-                  />
-                </label>
-                <label className="text-sm min-w-0">
-                  Date of birth
-                  <input
-                    type="date"
-                    className="mt-1 w-full min-w-0 rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
-                    value={personal.date_of_birth}
-                    onChange={e => setPersonal(prev => ({ ...prev, date_of_birth: e.target.value }))}
-                  />
-                </label>
-                <label className="text-sm min-w-0">
-                  Gender
-                  <div className="mt-1">
-                    <ProfileSelectField
-                      value={personal.gender}
-                      onChange={v => setPersonal(prev => ({ ...prev, gender: v }))}
-                      options={genderOptions}
-                      placeholder="Select a value"
-                    />
-                  </div>
-                </label>
-                <label className="text-sm min-w-0">
-                  Country
-                  <div className="mt-1">
-                    <ProfileSelectField
-                      value={personal.country}
-                      onChange={v => setPersonal(prev => ({ ...prev, country: v, city: '' }))}
-                      options={countryOptions}
-                      placeholder="Select a country"
-                      searchable
-                      allowCustomOption
-                      emptyMessage="No countries match your search"
-                    />
-                  </div>
-                </label>
-                <label className="text-sm min-w-0 sm:col-span-2">
-                  City
-                  <div className="mt-1">
-                    <ProfileSelectField
-                      value={personal.city}
-                      onChange={v => setPersonal(prev => ({ ...prev, city: v }))}
-                      options={cityOptions}
-                      placeholder={cityPlaceholder}
-                      disabled={citySelectDisabled}
-                      loading={citiesLoading}
-                      searchable
-                      allowCustomOption
-                      emptyMessage={personal.country ? 'No cities found, type to add your own' : 'Select a country first'}
-                    />
-                  </div>
-                </label>
-              </div>
             </form>
           ) : (
             <form id="form-professional-modal" className="space-y-4" onSubmit={onSaveProfessional}>
               <p className="text-xs leading-relaxed text-[#b8c8cc] border border-[#4db6ac]/25 rounded-lg px-3 py-2 bg-[#4db6ac]/5">
                 <span className="font-medium text-[#4db6ac]">Steve:</span> {STEVE_PAGE2}
               </p>
-              <label className="text-sm block">
-                About
-                <textarea
-                  className="mt-1 w-full min-h-[72px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
-                  value={professional.about}
-                  onChange={e => setProfessional(prev => ({ ...prev, about: e.target.value }))}
-                  placeholder="Short professional summary"
+              <label className="text-sm sm:col-span-2 block">
+                <span className="text-white/90">Current role start</span>
+                <span className="block text-[11px] text-[#9fb0b5] font-normal">
+                  Month you started your current role (optional). Shown as start — Present on your public profile.
+                </span>
+                <input
+                  type="month"
+                  className="mt-1 w-full max-w-[200px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  value={professional.current_role_start}
+                  onChange={e => setProfessional(prev => ({ ...prev, current_role_start: e.target.value }))}
                 />
               </label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="text-sm">
-                  Current position
-                  <input
-                    className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
-                    value={professional.role}
-                    onChange={e => setProfessional(prev => ({ ...prev, role: e.target.value }))}
-                    placeholder="e.g. Product Manager"
-                  />
-                </label>
-                <label className="text-sm">
-                  Company
-                  <input
-                    className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
-                    value={professional.company}
-                    onChange={e => setProfessional(prev => ({ ...prev, company: e.target.value }))}
-                    placeholder="Company name"
-                  />
-                </label>
-                <label className="text-sm sm:col-span-2">
-                  <span className="text-white/90">Current role start</span>
-                  <span className="block text-[11px] text-[#9fb0b5] font-normal">Month you started this role (optional). Shown as start — Present.</span>
-                  <input
-                    type="month"
-                    className="mt-1 w-full max-w-[200px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
-                    value={professional.current_role_start}
-                    onChange={e => setProfessional(prev => ({ ...prev, current_role_start: e.target.value }))}
-                  />
-                </label>
-                <label className="text-sm sm:col-span-2">
-                  Company description
-                  <span className="block text-[11px] text-[#9fb0b5] font-normal mb-1">
-                    In your own words, what the company does (optional).
-                  </span>
-                  <textarea
-                    className="mt-1 w-full min-h-[72px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
-                    value={professional.company_intel}
-                    onChange={e => setProfessional(prev => ({ ...prev, company_intel: e.target.value }))}
-                  />
-                </label>
-                <label className="text-sm">
-                  Industry
-                  <div className="mt-1">
-                    <ProfileSelectField
-                      value={professional.industry}
-                      onChange={v => setProfessional(prev => ({ ...prev, industry: v }))}
-                      options={industryOptions}
-                      placeholder="Select an industry"
-                      searchable
-                      allowCustomOption
-                      emptyMessage="No industries match your search"
-                    />
-                  </div>
-                </label>
-                <label className="text-sm">
-                  LinkedIn URL
-                  <input
-                    className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
-                    value={professional.linkedin}
-                    onChange={e => setProfessional(prev => ({ ...prev, linkedin: e.target.value }))}
-                    placeholder="https://..."
-                  />
-                </label>
-              </div>
 
               <div className="rounded-lg border border-white/10 p-3 space-y-3">
                 <div className="flex items-center justify-between gap-2">
@@ -525,7 +339,6 @@ export function ProfileDetailsModal({
                       <input
                         type="month"
                         className="rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm"
-                        placeholder="Start"
                         value={row.start}
                         onChange={e => {
                           const v = e.target.value
@@ -567,7 +380,9 @@ export function ProfileDetailsModal({
           )}
         </div>
 
-        <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-2 border-t border-white/10 px-4 py-3">
+        <div
+          className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-white/10 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        >
           <div className="flex gap-2">
             {page === 2 ? (
               <button
@@ -588,7 +403,7 @@ export function ProfileDetailsModal({
                   className="rounded-md bg-[#4db6ac] px-4 py-2 text-sm font-medium text-black hover:brightness-110 disabled:opacity-50"
                   disabled={savingPersonal}
                 >
-                  {savingPersonal ? 'Saving…' : 'Save personal'}
+                  {savingPersonal ? 'Saving…' : 'Save highlights'}
                 </button>
                 <button
                   type="button"
@@ -606,7 +421,7 @@ export function ProfileDetailsModal({
                   className="rounded-md bg-[#4db6ac] px-4 py-2 text-sm font-medium text-black hover:brightness-110 disabled:opacity-50"
                   disabled={savingProfessional}
                 >
-                  {savingProfessional ? 'Saving…' : 'Save professional'}
+                  {savingProfessional ? 'Saving…' : 'Save timeline'}
                 </button>
                 <button
                   type="button"

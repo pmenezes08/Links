@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react'
+import type { ChangeEvent, CSSProperties, FormEvent, KeyboardEvent } from 'react'
 import Avatar, { clearImageCache } from '../components/Avatar'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { useNavigate } from 'react-router-dom'
 import { clearAvatarCache } from '../utils/avatarCache'
-import type { SelectOption } from '../components/profile/ProfileSelectField'
+import { ProfileSelectField, type SelectOption } from '../components/profile/ProfileSelectField'
 import { ProfileDetailsModal, type WorkExperienceRow, type EducationRow } from '../components/profile/ProfileDetailsModal'
 
 const PROFILE_DRAFT_KEY = 'cpoint_profile_personal_draft'
@@ -12,7 +12,7 @@ const PROFILE_DRAFT_KEY = 'cpoint_profile_personal_draft'
 const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
 const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
 
-type PersonalForm = {
+export type PersonalForm = {
   first_name: string
   last_name: string
   bio: string
@@ -26,7 +26,7 @@ type PersonalForm = {
   personal_answer_cpoint_goals: string
 }
 
-type ProfessionalForm = {
+export type ProfessionalForm = {
   role: string
   company: string
   company_intel: string
@@ -1059,26 +1059,212 @@ export default function Profile() {
         </div>
 
         <section className="rounded-xl border border-white/10 p-4 space-y-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="font-semibold">Profile details</div>
-              <p className="text-xs text-[#9fb0b5]">
-                Personal story, location, professional background, and history. Opens in a two-step editor with tips from Steve.
-              </p>
+          <form className="space-y-3" onSubmit={handlePersonalSubmit}>
+            <header>
+              <div className="font-semibold">Personal information</div>
+              <p className="text-xs text-[#9fb0b5]">Your bio and profile basics.</p>
+            </header>
+            <label className="text-sm block">
+              Personal bio
+              <textarea
+                className="mt-1 w-full min-h-[100px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                style={{ userSelect: 'text', WebkitUserSelect: 'text' } as CSSProperties}
+                value={personal.bio}
+                onChange={event => setPersonal(prev => ({ ...prev, bio: event.target.value }))}
+                placeholder={`💼 Your bio is currently consulting its therapist.\nDrop one polished line to lure it back.`}
+              />
+            </label>
+            {personal.bio.trim() ? null : (
+              <div className="rounded-lg border border-dashed border-white/15 bg-white/[0.03] px-3 py-2 text-xs leading-relaxed text-[#9fb0b5]">
+                <p className="text-white/80 font-medium">
+                  💼 Your bio is currently consulting its therapist.
+                </p>
+                <p>Drop one polished line to lure it back.</p>
+                <p className="mt-2 whitespace-pre-line">
+                  Example:
+                  {"\n"}"Owned by a sassy rescue cat named Pickles 🐱{'\n'}Excel wizard by day,{'\n'}jazz vinyl curator by night"
+                </p>
+                <p className="mt-2 text-white/70">Impress us—bonus points for zero typos. 🖋️</p>
+              </div>
+            )}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm min-w-0">
+                First name
+                <input
+                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
+                  value={personal.first_name}
+                  onChange={event => setPersonal(prev => ({ ...prev, first_name: event.target.value }))}
+                />
+              </label>
+              <label className="text-sm min-w-0">
+                Last name
+                <input
+                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
+                  value={personal.last_name}
+                  onChange={event => setPersonal(prev => ({ ...prev, last_name: event.target.value }))}
+                />
+              </label>
+              <label className="text-sm min-w-0">
+                Display name
+                <input
+                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
+                  value={personal.display_name}
+                  onChange={event => setPersonal(prev => ({ ...prev, display_name: event.target.value }))}
+                />
+              </label>
+              <label className="text-sm min-w-0">
+                Date of birth
+                <input
+                  type="date"
+                  className="mt-1 w-full min-w-0 rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
+                  value={personal.date_of_birth}
+                  onChange={event => setPersonal(prev => ({ ...prev, date_of_birth: event.target.value }))}
+                />
+              </label>
+              <label className="text-sm min-w-0">
+                Gender
+                <div className="mt-1">
+                  <ProfileSelectField
+                    value={personal.gender}
+                    onChange={nextValue => setPersonal(prev => ({ ...prev, gender: nextValue }))}
+                    options={genderOptions}
+                    placeholder="Select a value"
+                  />
+                </div>
+              </label>
+              <label className="text-sm min-w-0">
+                Country
+                <div className="mt-1">
+                  <ProfileSelectField
+                    value={personal.country}
+                    onChange={nextValue => setPersonal(prev => ({ ...prev, country: nextValue, city: '' }))}
+                    options={countryOptions}
+                    placeholder="Select a country"
+                    searchable
+                    allowCustomOption
+                    emptyMessage="No countries match your search"
+                  />
+                </div>
+              </label>
+              <label className="text-sm min-w-0 sm:col-span-2">
+                City
+                <div className="mt-1">
+                  <ProfileSelectField
+                    value={personal.city}
+                    onChange={nextValue => setPersonal(prev => ({ ...prev, city: nextValue }))}
+                    options={cityOptions}
+                    placeholder={cityPlaceholder}
+                    disabled={citySelectDisabled}
+                    loading={citiesLoading}
+                    searchable
+                    allowCustomOption
+                    emptyMessage={personal.country ? 'No cities found, type to add your own' : 'Select a country first'}
+                  />
+                </div>
+              </label>
             </div>
             <button
-              type="button"
-              className="shrink-0 rounded-md border border-[#4db6ac]/50 bg-[#4db6ac]/10 px-4 py-2 text-sm font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20"
-              onClick={() => setDetailsModalOpen(true)}
+              type="submit"
+              className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
+              disabled={savingPersonal}
             >
-              Edit details
+              {savingPersonal ? 'Saving…' : 'Save bio and personal info'}
             </button>
-          </div>
-          {personal.bio.trim() ? (
-            <p className="text-sm text-[#cfd8dc] line-clamp-4 whitespace-pre-wrap">{personal.bio}</p>
-          ) : (
-            <p className="text-xs text-[#9fb0b5]">No bio yet — use Edit details to add your story and highlights.</p>
-          )}
+          </form>
+        </section>
+
+        <section className="rounded-xl border border-white/10 p-4">
+          <form className="space-y-4" onSubmit={handleProfessionalSubmit}>
+            <header>
+              <div className="font-semibold">Professional information</div>
+              <p className="text-xs text-[#9fb0b5]">How you work and what you do — edit anytime.</p>
+            </header>
+            <label className="text-sm block">
+              Professional bio / about
+              <textarea
+                className="mt-1 w-full min-h-[96px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                value={professional.about}
+                onChange={event => setProfessional(prev => ({ ...prev, about: event.target.value }))}
+                placeholder="Share a short summary about your professional background"
+              />
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm">
+                Current position
+                <input
+                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  value={professional.role}
+                  onChange={event => setProfessional(prev => ({ ...prev, role: event.target.value }))}
+                  placeholder="e.g. Product Manager"
+                />
+              </label>
+              <label className="text-sm">
+                Company
+                <input
+                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  value={professional.company}
+                  onChange={event => setProfessional(prev => ({ ...prev, company: event.target.value }))}
+                  placeholder="Company name"
+                />
+              </label>
+              <label className="text-sm sm:col-span-2">
+                Company description
+                <span className="block text-[11px] text-[#9fb0b5] font-normal mt-0.5 mb-1">
+                  In your own words, what the company does (optional).
+                </span>
+                <textarea
+                  className="mt-1 w-full min-h-[72px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  value={professional.company_intel}
+                  onChange={event => setProfessional(prev => ({ ...prev, company_intel: event.target.value }))}
+                  placeholder="Brief description of the company (optional)"
+                />
+              </label>
+              <label className="text-sm">
+                Industry
+                <div className="mt-1">
+                  <ProfileSelectField
+                    value={professional.industry}
+                    onChange={nextValue => setProfessional(prev => ({ ...prev, industry: nextValue }))}
+                    options={industryOptions}
+                    placeholder="Select an industry"
+                    searchable
+                    allowCustomOption
+                    emptyMessage="No industries match your search"
+                  />
+                </div>
+              </label>
+              <label className="text-sm">
+                LinkedIn URL
+                <input
+                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  value={professional.linkedin}
+                  onChange={event => setProfessional(prev => ({ ...prev, linkedin: event.target.value }))}
+                  placeholder="https://www.linkedin.com/in/username"
+                />
+              </label>
+            </div>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
+              disabled={savingProfessional}
+            >
+              {savingProfessional ? 'Saving…' : 'Save professional info'}
+            </button>
+          </form>
+        </section>
+
+        <section className="rounded-xl border border-white/10 p-4 space-y-3">
+          <div className="font-semibold">Spotlight and timeline</div>
+          <p className="text-xs text-[#9fb0b5]">
+            Optional spotlight answers and your experience or education history. Two quick steps with tips from Steve — use your main profile above for bio and role details.
+          </p>
+          <button
+            type="button"
+            className="rounded-md border border-[#4db6ac]/50 bg-[#4db6ac]/10 px-4 py-2 text-sm font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20"
+            onClick={() => setDetailsModalOpen(true)}
+          >
+            Open spotlight and timeline
+          </button>
         </section>
 
         <section className="rounded-xl border border-white/10 p-4">
@@ -1153,13 +1339,6 @@ export default function Profile() {
           setPersonal={setPersonal}
           professional={professional}
           setProfessional={setProfessional}
-          genderOptions={genderOptions}
-          countryOptions={countryOptions}
-          cityOptions={cityOptions}
-          industryOptions={industryOptions}
-          citySelectDisabled={citySelectDisabled}
-          cityPlaceholder={cityPlaceholder}
-          citiesLoading={citiesLoading}
           onSavePersonal={handlePersonalSubmit}
           onSaveProfessional={handleProfessionalSubmit}
           savingPersonal={savingPersonal}
