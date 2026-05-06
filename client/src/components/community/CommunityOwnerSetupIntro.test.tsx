@@ -3,7 +3,10 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { MemoryRouter } from 'react-router-dom'
 
-import CommunityOwnerSetupIntro, { communityOwnerSetupStorageKey } from './CommunityOwnerSetupIntro'
+import CommunityOwnerSetupIntro, {
+  communityOwnerSetupResumeKey,
+  communityOwnerSetupStorageKey,
+} from './CommunityOwnerSetupIntro'
 
 const snapshot = {
   name: 'Test Comm',
@@ -19,6 +22,8 @@ describe('CommunityOwnerSetupIntro', () => {
   const base = {
     communityId: '42',
     username: 'alice',
+    ownerDisplayName: 'Alice',
+    showSubCommunityFirstStep: false,
     memberCap: 25 as number | null,
     tierLabel: 'Free' as string | null,
     billingInherited: false,
@@ -31,6 +36,7 @@ describe('CommunityOwnerSetupIntro', () => {
 
   beforeEach(() => {
     localStorage.clear()
+    sessionStorage.clear()
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -41,6 +47,7 @@ describe('CommunityOwnerSetupIntro', () => {
 
   afterEach(() => {
     localStorage.clear()
+    sessionStorage.clear()
     vi.clearAllMocks()
     vi.unstubAllGlobals()
   })
@@ -53,9 +60,35 @@ describe('CommunityOwnerSetupIntro', () => {
     )
   }
 
+  it('shows personalized greeting and general setup when not sub-community first step', () => {
+    renderIntro({ ownerDisplayName: 'Pat' })
+    expect(screen.getByText(/Hey Pat, Steve here/i)).toBeInTheDocument()
+    expect(screen.getByText(/Let's get your community set up/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Everyone who joins the community is part of the main network/i)).not.toBeInTheDocument()
+  })
+
+  it('shows Option A body when sub-community first step', () => {
+    renderIntro({ showSubCommunityFirstStep: true })
+    expect(screen.getByText(/Hey Alice, Steve here/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/Everyone who joins the community is part of the main network/i),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/C-Point dashboard/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Let's get your community set up/i)).not.toBeInTheDocument()
+  })
+
+  it('resumes at subscription step from sessionStorage', () => {
+    sessionStorage.setItem(
+      communityOwnerSetupResumeKey('alice', '42'),
+      JSON.stringify({ stepIndex: 2 }),
+    )
+    renderIntro()
+    expect(screen.getByRole('heading', { name: /subscription/i })).toBeInTheDocument()
+  })
+
   it('advances steps and completes wizard with Manage hint', () => {
     renderIntro()
-    expect(screen.getByText(/Set up your community/i)).toBeInTheDocument()
+    expect(screen.getByText(/Hey Alice, Steve here/i)).toBeInTheDocument()
     for (let i = 0; i < 5; i++) {
       fireEvent.click(screen.getByRole('button', { name: /next/i }))
     }
@@ -65,6 +98,7 @@ describe('CommunityOwnerSetupIntro', () => {
     fireEvent.click(screen.getByRole('button', { name: /stay on feed/i }))
     expect(base.onFinished).toHaveBeenCalledWith('completed')
     expect(localStorage.getItem(communityOwnerSetupStorageKey('alice', '42'))).toBe('completed')
+    expect(sessionStorage.getItem(communityOwnerSetupResumeKey('alice', '42'))).toBeNull()
   })
 
   it('skip then stay dismisses with dismissed status', () => {
@@ -73,5 +107,6 @@ describe('CommunityOwnerSetupIntro', () => {
     fireEvent.click(screen.getByRole('button', { name: /stay on feed/i }))
     expect(base.onFinished).toHaveBeenCalledWith('dismissed')
     expect(localStorage.getItem(communityOwnerSetupStorageKey('alice', '42'))).toBe('dismissed')
+    expect(sessionStorage.getItem(communityOwnerSetupResumeKey('alice', '42'))).toBeNull()
   })
 })

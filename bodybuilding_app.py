@@ -25832,6 +25832,21 @@ def api_community_feed(community_id):
                 # This community is already a root
                 root_parent_id = community_id
 
+            # Direct child communities (sub-communities) for owner intro / clients
+            try:
+                c.execute(
+                    "SELECT COUNT(*) AS cnt FROM communities WHERE parent_community_id = ?",
+                    (community_id,),
+                )
+                _child_row = c.fetchone()
+                if _child_row is not None:
+                    _cnt = _child_row['cnt'] if hasattr(_child_row, 'keys') else (_child_row[0] if _child_row else 0)
+                    community['child_community_count'] = int(_cnt or 0)
+                else:
+                    community['child_community_count'] = 0
+            except Exception:
+                community['child_community_count'] = 0
+
             # Current user's profile picture
             try:
                 c.execute("SELECT display_name, profile_picture FROM user_profiles WHERE username = ?", (username,))

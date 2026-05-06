@@ -6,6 +6,24 @@ import { invalidateDashboardCache } from '../../utils/dashboardCache'
 export const communityOwnerSetupStorageKey = (username: string, communityId: string) =>
   `cpoint_community_owner_setup:v1:${username}:${communityId}`
 
+export const communityOwnerSetupResumeKey = (username: string, communityId: string) =>
+  `cpoint_community_owner_setup_resume:v1:${username}:${communityId}`
+
+const STEP_COUNT = 6
+
+function readResumeStepIndex(username: string, communityId: string): number {
+  try {
+    const raw = sessionStorage.getItem(communityOwnerSetupResumeKey(username, communityId))
+    if (!raw) return 0
+    const j = JSON.parse(raw) as { stepIndex?: unknown }
+    const idx = Number(j?.stepIndex)
+    if (!Number.isFinite(idx)) return 0
+    return Math.max(0, Math.min(STEP_COUNT - 1, Math.floor(idx)))
+  } catch {
+    return 0
+  }
+}
+
 export type CommunityOwnerSetupSnapshot = {
   name: string
   description: string
@@ -19,6 +37,8 @@ export type CommunityOwnerSetupSnapshot = {
 export type CommunityOwnerSetupIntroProps = {
   communityId: string
   username: string
+  ownerDisplayName: string
+  showSubCommunityFirstStep: boolean
   memberCap: number | null
   tierLabel: string | null
   billingInherited: boolean
@@ -31,11 +51,11 @@ export type CommunityOwnerSetupIntroProps = {
 
 const PANEL_CLASS = 'rounded-2xl border border-white/10 bg-black'
 
-const WELCOME = {
-  title: 'Set up your community',
-  body:
-    "I'm Steve. We'll walk through settings you can save as we go. Use More (⋯) on the bottom bar anytime for Manage Community.",
-}
+const SUB_COMMUNITY_FIRST_BODY =
+  "Everyone who joins the community is part of the main network — that's the shared home base. Sub-communities are smaller groups within that network: each has its own membership and its own feed, so only people in that sub-community see what's posted there."
+
+const GENERAL_SETUP_BODY =
+  "Let's get your community set up. Over the next steps you can save as you go — description, plan, member limit, look and feel, and how I show up for your members. Skip anytime; nothing is final until you save."
 
 function ManageCommunityHint({
   onOpenManageCommunity,
@@ -49,9 +69,9 @@ function ManageCommunityHint({
       <p className="text-sm leading-relaxed text-[#d5e4e7]">
         You can finish setting up the community in <span className="font-semibold text-white">Manage Community</span>.
       </p>
-      <p className="text-xs leading-relaxed text-[#9fb0b5]">
-        Tap <span className="text-[#4db6ac]">More</span> (<span className="text-white/90">⋯</span>) on the bottom navigation
-        bar, then tap <span className="text-white/90">Manage Community</span>.
+      <p className="text-[10px] leading-relaxed text-white/30">
+        Tap <span className="text-white/40">More</span> (<span className="text-white/40">⋯</span>) on the bottom navigation
+        bar, then tap <span className="text-white/40">Manage Community</span>.
       </p>
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
         <button
@@ -76,6 +96,8 @@ function ManageCommunityHint({
 export default function CommunityOwnerSetupIntro({
   communityId,
   username,
+  ownerDisplayName,
+  showSubCommunityFirstStep,
   memberCap,
   tierLabel,
   billingInherited,
@@ -88,7 +110,7 @@ export default function CommunityOwnerSetupIntro({
   const navigate = useNavigate()
   const titleId = useId()
   const [phase, setPhase] = useState<'steps' | 'exit_hint'>('steps')
-  const [stepIndex, setStepIndex] = useState(0)
+  const [stepIndex, setStepIndex] = useState(() => readResumeStepIndex(username, communityId))
   const [exitContext, setExitContext] = useState<'skipped' | 'finished_wizard' | null>(null)
   const [reducedMotion, setReducedMotion] = useState(false)
 
@@ -151,8 +173,25 @@ export default function CommunityOwnerSetupIntro({
     }
   }, [communityId])
 
+  useEffect(() => {
+    if (phase !== 'steps') return
+    try {
+      sessionStorage.setItem(
+        communityOwnerSetupResumeKey(username, communityId),
+        JSON.stringify({ stepIndex }),
+      )
+    } catch {
+      /* ignore */
+    }
+  }, [phase, stepIndex, username, communityId])
+
   const persist = useCallback(
     (reason: 'completed' | 'dismissed') => {
+      try {
+        sessionStorage.removeItem(communityOwnerSetupResumeKey(username, communityId))
+      } catch {
+        /* ignore */
+      }
       try {
         localStorage.setItem(communityOwnerSetupStorageKey(username, communityId), reason)
       } catch {
@@ -169,6 +208,11 @@ export default function CommunityOwnerSetupIntro({
   }, [])
 
   const openManageAndComplete = useCallback(() => {
+    try {
+      sessionStorage.removeItem(communityOwnerSetupResumeKey(username, communityId))
+    } catch {
+      /* ignore */
+    }
     try {
       localStorage.setItem(communityOwnerSetupStorageKey(username, communityId), 'completed')
     } catch {
@@ -301,13 +345,13 @@ export default function CommunityOwnerSetupIntro({
       ? `On your current plan${tierLabel ? ` (${tierLabel})` : ''}, you can have up to ${memberCap} members. Leave blank for no custom cap.`
       : 'Leave blank for no custom cap, or set a limit that fits your plan (see Manage Community for the exact ceiling).'
 
-  const stepCount = 6
-  const lastStep = stepIndex >= stepCount - 1
+  const heyName = (ownerDisplayName || 'there').trim() || 'there'
+  const lastStep = stepIndex >= STEP_COUNT - 1
 
   const persistFooter = (
-    <p className="text-center text-[11px] leading-relaxed text-white/35">
-      Any time: <span className="text-white/50">More</span> (⋯) on the bottom bar →{' '}
-      <span className="text-white/50">Manage Community</span>.
+    <p className="text-center text-[10px] leading-relaxed text-white/30">
+      Use <span className="text-white/35">More</span> (⋯) on the bottom bar anytime for{' '}
+      <span className="text-white/35">Manage Community</span>.
     </p>
   )
 
@@ -343,8 +387,19 @@ export default function CommunityOwnerSetupIntro({
   if (stepIndex === 0) {
     stepContent = (
       <>
-        <h3 className="text-base font-semibold text-white">{WELCOME.title}</h3>
-        <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{WELCOME.body}</p>
+        <h3 className="text-base font-semibold text-white">{`Hey ${heyName}, Steve here.`}</h3>
+        {showSubCommunityFirstStep ? (
+          <>
+            <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{SUB_COMMUNITY_FIRST_BODY}</p>
+            <p className="mt-3 text-sm leading-relaxed text-[#9fb0b5]">
+              You can add sub-communities anytime from{' '}
+              <span className="font-medium text-white/85">Manage Community</span> or your{' '}
+              <span className="font-medium text-white/85">C-Point dashboard</span>.
+            </p>
+          </>
+        ) : (
+          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{GENERAL_SETUP_BODY}</p>
+        )}
       </>
     )
   } else if (stepIndex === 1) {
@@ -551,7 +606,7 @@ export default function CommunityOwnerSetupIntro({
             </button>
           </div>
           <div className="mt-3 flex gap-1.5" aria-hidden={reducedMotion}>
-            {Array.from({ length: stepCount }, (_, i) => (
+            {Array.from({ length: STEP_COUNT }, (_, i) => (
               <span
                 key={i}
                 className={`h-1 flex-1 rounded-full ${i <= stepIndex ? 'bg-[#4db6ac]' : 'bg-white/15'}`}
@@ -575,7 +630,7 @@ export default function CommunityOwnerSetupIntro({
           {!lastStep ? (
             <button
               type="button"
-              onClick={() => setStepIndex(i => Math.min(stepCount - 1, i + 1))}
+              onClick={() => setStepIndex(i => Math.min(STEP_COUNT - 1, i + 1))}
               className="order-1 w-full rounded-xl bg-[#4db6ac] px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:order-2 sm:w-auto"
             >
               Next

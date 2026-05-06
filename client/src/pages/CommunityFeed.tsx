@@ -391,6 +391,22 @@ export default function CommunityFeed() {
     data?.community?.background_path,
   ])
 
+  const ownerIntroChildCount = useMemo(() => {
+    const raw = (data?.community as { child_community_count?: unknown })?.child_community_count
+    if (raw == null || raw === '') return 0
+    const n = Number(raw)
+    return Number.isFinite(n) ? Math.max(0, n) : 0
+  }, [data?.community])
+
+  const showSubCommunityFirstStep = useMemo(() => {
+    const c = data?.community
+    if (!c) return false
+    const pid = c.parent_community_id
+    const hasParent = pid != null && String(pid).trim() !== ''
+    if (hasParent) return false
+    return ownerIntroChildCount === 0
+  }, [data?.community, ownerIntroChildCount])
+
   useEffect(() => {
     if (!community_id || !data?.community || !currentUsername) {
       setOwnerIntroGateReady(false)
@@ -2423,8 +2439,11 @@ export default function CommunityFeed() {
         ownerIntroSnapshot &&
         !showFrozenOwnerModal && (
           <CommunityOwnerSetupIntro
+            key={`owner-setup-intro-${community_id}-${currentUsername}`}
             communityId={String(community_id)}
             username={currentUsername}
+            ownerDisplayName={currentDisplayName}
+            showSubCommunityFirstStep={showSubCommunityFirstStep}
             memberCap={ownerIntroBilling?.member_cap ?? null}
             tierLabel={ownerIntroBilling?.tier_label ?? null}
             billingInherited={!!ownerIntroBilling?.is_inherited}
