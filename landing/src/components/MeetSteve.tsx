@@ -1,61 +1,64 @@
-import { Mic, Brain, Shuffle, Globe } from "lucide-react";
+import { Mic, MessagesSquare, ListTree, Shuffle, Globe } from "lucide-react";
 
 const features = [
   {
-    icon: Mic,
-    title: "Instant Voice Summaries",
-    tagline: "Never miss a beat, even when you're busy.",
+    icon: MessagesSquare,
+    title: "Steve in DMs & group chats",
+    tagline: "Where you already talk.",
     description:
-      "Send or receive voice notes and let Steve do the heavy lifting. Steve automatically generates high-level summaries of every audio message, so you can stay in the loop without listening to every second.",
+      "Message Steve one-to-one for product help or a second opinion, and bring him into group chats when the room wants context — including tagging @Steve when your plan allows.",
   },
   {
-    icon: Brain,
-    title: "Conversation Intelligence",
-    tagline: "An AI that actually reads the room.",
+    icon: ListTree,
+    title: "Steve in the feed",
+    tagline: "Threads that stay readable.",
     description:
-      "Steve follows the flow of your group chats, understands context, and provides real-time inputs. Tag @Steve to settle a debate, pull live web data, or get a professional analysis on the topic at hand.",
+      "Use Steve on community posts and long threads so ideas stay summarised and searchable — not lost under yesterday's scroll.",
+  },
+  {
+    icon: Mic,
+    title: "Voice summaries",
+    tagline: "Catch up without hitting play on everything.",
+    description:
+      "Voice notes can be transcribed and summarised so busy members stay in the loop when listening isn't an option.",
   },
   {
     icon: Shuffle,
-    title: "Proactive Matchmaking",
-    tagline: "Networking on Autopilot.",
+    title: "Networking matches",
+    tagline: "Introductions across your networks.",
     description:
-      "Steve studies member profiles — skills, roles, and interests — to proactively facilitate connections. He identifies synergies and introduces members who should be talking to each other.",
+      "Steve can help surface people you should meet based on roles, skills, and interests — inside the private networks you already trust.",
   },
   {
     icon: Globe,
-    title: "Cross-Language Fluency",
-    tagline: "Global Connectivity, Local Nuance.",
+    title: "Cross-language tone",
+    tagline: "Many languages, one community spirit.",
     description:
-      "Steve is a polyglot. Whether your community speaks English, Portuguese, or Spanish, Steve adapts his tone and dialect to match the group's culture, ensuring nothing is lost in translation.",
+      "Steve adapts across languages such as English, Portuguese, and Spanish so tone and nuance fit your group's culture.",
   },
 ];
 
 export const MeetSteve = () => {
   return (
-    <section id="networking" className="section-padding relative overflow-hidden">
-      {/* Background accent */}
+    <section id="steve" className="section-padding relative overflow-hidden">
       <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-primary/[0.03] rounded-full blur-3xl pointer-events-none" />
 
       <div className="max-w-6xl mx-auto px-6">
-        {/* Section header */}
         <div className="max-w-2xl mb-16">
           <p className="text-sm font-semibold text-primary uppercase tracking-widest mb-3">
             Meet Steve
           </p>
           <h2 className="heading-lg text-foreground mb-4">
-            Networking that{" "}
+            Intelligent presence in{" "}
             <span className="bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
-              Thinks.
+              every community.
             </span>
           </h2>
           <p className="body-lg">
-            Most platforms give you a directory. C-Point gives you Steve — an advanced AI that lives
-            inside your community to bridge gaps, summarize insights, and drive engagement.
+            Steve isn't bolted-on support — he lives inside each private network to bridge gaps, summarise what matters, and help members connect when it makes sense.
           </p>
         </div>
 
-        {/* Feature grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {features.map((f, i) => (
             <div
@@ -72,7 +75,6 @@ export const MeetSteve = () => {
           ))}
         </div>
 
-        {/* Tagline */}
         <div className="mt-16 text-center">
           <p className="text-lg italic text-muted-foreground">
             "Your community has a brain. His name is Steve."

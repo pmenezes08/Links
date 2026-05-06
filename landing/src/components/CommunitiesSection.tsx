@@ -4,17 +4,20 @@ const capabilities = [
   {
     icon: Lock,
     title: "Private by Default",
-    description: "Invite-only communities with approval controls. Your network, your rules.",
+    description:
+      "Invite-only communities with approval controls. Each private network stands on its own — not a tab inside a global feed for strangers.",
   },
   {
     icon: Layers,
     title: "Nested Sub-Communities",
-    description: "Create focused sub-groups within communities for targeted discussions and collaboration.",
+    description:
+      "Create focused sub-groups under a parent community for committees, chapters, or projects — within your plan.",
   },
   {
     icon: Users,
     title: "Group Workspaces",
-    description: "Each group gets its own feed, calendar, photos, and member management — fully independent.",
+    description:
+      "Each group gets its own feed, calendar, photos, and member management — its own durable memory and rituals.",
   },
   {
     icon: FolderTree,
@@ -40,8 +43,8 @@ export const CommunitiesSection = () => {
             </span>
           </h2>
           <p className="body-lg">
-            Create silos for success. Organise your community into focused sub-groups with their own
-            discussion feeds, event calendars, and resource libraries.
+            One global platform hosts many private networks. Structure yours with parent and sub-communities,
+            each with its own discussion feed, calendars, and resources — so focus and history stay where they belong.
           </p>
         </div>
 
