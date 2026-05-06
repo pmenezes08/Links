@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { clearDeviceCache } from '../../utils/deviceCache'
 import { invalidateDashboardCache } from '../../utils/dashboardCache'
@@ -9,19 +9,69 @@ export const communityOwnerSetupStorageKey = (username: string, communityId: str
 export const communityOwnerSetupResumeKey = (username: string, communityId: string) =>
   `cpoint_community_owner_setup_resume:v1:${username}:${communityId}`
 
-const STEP_COUNT = 6
+export type IntroStepId =
+  | 'welcome'
+  | 'structure'
+  | 'description'
+  | 'subscription'
+  | 'member_limit'
+  | 'image'
+  | 'personality'
 
-function readResumeStepIndex(username: string, communityId: string): number {
+const LEGACY_STEP_ORDER: IntroStepId[] = [
+  'welcome',
+  'description',
+  'subscription',
+  'member_limit',
+  'image',
+  'personality',
+]
+
+export function buildIntroSteps(includeStructure: boolean): IntroStepId[] {
+  if (includeStructure) {
+    return [
+      'welcome',
+      'structure',
+      'description',
+      'subscription',
+      'member_limit',
+      'image',
+      'personality',
+    ]
+  }
+  return [...LEGACY_STEP_ORDER]
+}
+
+function readInitialStepIndex(
+  username: string,
+  communityId: string,
+  steps: IntroStepId[],
+): number {
   try {
     const raw = sessionStorage.getItem(communityOwnerSetupResumeKey(username, communityId))
     if (!raw) return 0
-    const j = JSON.parse(raw) as { stepIndex?: unknown }
-    const idx = Number(j?.stepIndex)
-    if (!Number.isFinite(idx)) return 0
-    return Math.max(0, Math.min(STEP_COUNT - 1, Math.floor(idx)))
+    const j = JSON.parse(raw) as { step?: unknown; stepIndex?: unknown }
+    if (typeof j?.step === 'string') {
+      const id = j.step as IntroStepId
+      let idx = steps.indexOf(id)
+      if (id === 'structure' && idx < 0) {
+        idx = steps.indexOf('description')
+      }
+      if (idx >= 0) return idx
+    }
+    if (typeof j?.stepIndex === 'number' && Number.isFinite(j.stepIndex)) {
+      const legacy = Math.max(0, Math.min(LEGACY_STEP_ORDER.length - 1, Math.floor(j.stepIndex)))
+      const id = LEGACY_STEP_ORDER[legacy]
+      const includeStructure = steps.includes('structure')
+      if (includeStructure) {
+        return legacy === 0 ? 0 : legacy + 1
+      }
+      return steps.indexOf(id)
+    }
   } catch {
-    return 0
+    /* ignore */
   }
+  return 0
 }
 
 export type CommunityOwnerSetupSnapshot = {
@@ -54,8 +104,10 @@ const PANEL_CLASS = 'rounded-2xl border border-white/10 bg-black'
 const SUB_COMMUNITY_FIRST_BODY =
   "Everyone who joins the community is part of the main network — that's the shared home base. Sub-communities are smaller groups within that network: each has its own membership and its own feed, so only people in that sub-community see what's posted there."
 
-const GENERAL_SETUP_BODY =
-  "Let's get your community set up. Over the next steps you can save as you go — description, plan, member limit, look and feel, and how I show up for your members. Skip anytime; nothing is final until you save."
+const SETUP_HEADLINE = "Let's set up your community."
+
+const OPTION_B_BODY =
+  "We'll start with structure — the shape of your network and sub-communities. The steps that follow focus only on the main community: what it says about itself, the plan, how many members it can hold, its image, and my personality when members talk to me. You can skip ahead whenever you like; you're not committing until you hit Save."
 
 function ManageCommunityHint({
   onOpenManageCommunity,
@@ -109,10 +161,18 @@ export default function CommunityOwnerSetupIntro({
 }: CommunityOwnerSetupIntroProps) {
   const navigate = useNavigate()
   const titleId = useId()
+  const steps = useMemo(() => buildIntroSteps(showSubCommunityFirstStep), [showSubCommunityFirstStep])
+  const stepCount = steps.length
+
+  const prevIncludeStructureRef = useRef(showSubCommunityFirstStep)
   const [phase, setPhase] = useState<'steps' | 'exit_hint'>('steps')
-  const [stepIndex, setStepIndex] = useState(() => readResumeStepIndex(username, communityId))
+  const [stepIndex, setStepIndex] = useState(() =>
+    readInitialStepIndex(username, communityId, buildIntroSteps(showSubCommunityFirstStep)),
+  )
   const [exitContext, setExitContext] = useState<'skipped' | 'finished_wizard' | null>(null)
   const [reducedMotion, setReducedMotion] = useState(false)
+
+  const currentStepId = steps[Math.min(stepIndex, steps.length - 1)] ?? 'welcome'
 
   const [draft, setDraft] = useState<CommunityOwnerSetupSnapshot>(() => ({ ...initialSnapshot }))
   const [imageFile, setImageFile] = useState<File | null>(null)
@@ -127,6 +187,20 @@ export default function CommunityOwnerSetupIntro({
   useEffect(() => {
     setDraft({ ...initialSnapshot })
   }, [initialSnapshot])
+
+  useEffect(() => {
+    const prev = prevIncludeStructureRef.current
+    if (prev === showSubCommunityFirstStep) return
+    prevIncludeStructureRef.current = showSubCommunityFirstStep
+    const oldSteps = buildIntroSteps(prev)
+    const newSteps = buildIntroSteps(showSubCommunityFirstStep)
+    setStepIndex(cur => {
+      const id = oldSteps[Math.min(cur, oldSteps.length - 1)]
+      let idx = newSteps.indexOf(id)
+      if (id === 'structure' && idx < 0) idx = newSteps.indexOf('description')
+      return idx >= 0 ? idx : 0
+    })
+  }, [showSubCommunityFirstStep])
 
   useEffect(() => {
     setSaveHint(null)
@@ -175,15 +249,17 @@ export default function CommunityOwnerSetupIntro({
 
   useEffect(() => {
     if (phase !== 'steps') return
+    const id = steps[stepIndex]
+    if (!id) return
     try {
       sessionStorage.setItem(
         communityOwnerSetupResumeKey(username, communityId),
-        JSON.stringify({ stepIndex }),
+        JSON.stringify({ step: id }),
       )
     } catch {
       /* ignore */
     }
-  }, [phase, stepIndex, username, communityId])
+  }, [phase, stepIndex, username, communityId, steps])
 
   const persist = useCallback(
     (reason: 'completed' | 'dismissed') => {
@@ -346,7 +422,13 @@ export default function CommunityOwnerSetupIntro({
       : 'Leave blank for no custom cap, or set a limit that fits your plan (see Manage Community for the exact ceiling).'
 
   const heyName = (ownerDisplayName || 'there').trim() || 'there'
-  const lastStep = stepIndex >= STEP_COUNT - 1
+  const lastStep = stepIndex >= stepCount - 1
+
+  const goCommunitiesStructure = useCallback(() => {
+    navigate(
+      `/communities?parent_id=${encodeURIComponent(communityId)}&from_owner_intro=1&resume_feed_id=${encodeURIComponent(communityId)}`,
+    )
+  }, [communityId, navigate])
 
   const persistFooter = (
     <p className="text-center text-[10px] leading-relaxed text-white/30">
@@ -384,175 +466,212 @@ export default function CommunityOwnerSetupIntro({
   )
 
   let stepContent: ReactNode = null
-  if (stepIndex === 0) {
-    stepContent = (
-      <>
-        <h3 className="text-base font-semibold text-white">{`Hey ${heyName}, Steve here.`}</h3>
-        {showSubCommunityFirstStep ? (
-          <>
-            <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{SUB_COMMUNITY_FIRST_BODY}</p>
-            <p className="mt-3 text-sm leading-relaxed text-[#9fb0b5]">
-              You can add sub-communities anytime from{' '}
-              <span className="font-medium text-white/85">Manage Community</span> or your{' '}
-              <span className="font-medium text-white/85">C-Point dashboard</span>.
-            </p>
-          </>
-        ) : (
-          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{GENERAL_SETUP_BODY}</p>
-        )}
-      </>
-    )
-  } else if (stepIndex === 1) {
-    stepContent = (
-      <>
-        <h3 className="text-base font-semibold text-white">Description</h3>
-        <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">
-          This appears under your community name on the feed.
-        </p>
-        <textarea
-          className="mt-3 w-full rounded-md border border-white/15 bg-black px-3 py-2 text-[16px] text-white outline-none focus:border-[#4db6ac] min-h-[100px]"
-          value={draft.description}
-          onChange={e => setDraft(d => ({ ...d, description: e.target.value }))}
-          placeholder="What is this community about?"
-          rows={4}
-        />
-        {saveBarDescription}
-      </>
-    )
-  } else if (stepIndex === 2) {
-    stepContent = (
-      <>
-        <h3 className="text-base font-semibold text-white">Subscription</h3>
-        <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">
-          {billingInherited
-            ? 'Billing and tier for this community are managed on the parent network. Open the root community’s Manage Community to change the plan.'
-            : 'Your community plan sets member caps, storage, and more. You can compare tiers and checkout here.'}
-        </p>
-        {!billingInherited && (
+  switch (currentStepId) {
+    case 'welcome':
+      stepContent = (
+        <>
+          <h3 className="text-base font-semibold text-white">{`Hey ${heyName}, Steve here.`}</h3>
+          <p className="mt-2 text-base font-semibold text-white">{SETUP_HEADLINE}</p>
+          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{OPTION_B_BODY}</p>
+        </>
+      )
+      break
+    case 'structure':
+      stepContent = (
+        <>
+          <h3 className="text-base font-semibold text-white">Let&apos;s define your community structure</h3>
+          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{SUB_COMMUNITY_FIRST_BODY}</p>
+          <p className="mt-3 text-sm leading-relaxed text-[#9fb0b5]">
+            To help you plan — you don&apos;t have to lock this in yet:
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-relaxed text-[#9fb0b5]">
+            <li>
+              Roughly <span className="font-medium text-white/85">how many</span> sub-communities do you want to start
+              with? (You can always add more later.)
+            </li>
+            <li>
+              Any <span className="font-medium text-white/85">working names</span> in mind — by team, cohort, topic, or
+              region?
+            </li>
+            <li>
+              Do you imagine <span className="font-medium text-white/85">nested</span> spaces (a group inside a
+              sub-community), or is <span className="font-medium text-white/85">one level</span> enough for now?
+            </li>
+          </ul>
+          <p className="mt-3 text-sm leading-relaxed text-[#9fb0b5]">
+            <span className="font-medium text-white/85">See where to manage structure</span> on{' '}
+            <span className="font-medium text-white/85">Communities</span>.
+          </p>
           <button
             type="button"
-            onClick={() =>
-              navigate(`/subscription_plans?mode=choose&open=community_plans&community_id=${communityId}`)
-            }
-            className="mt-4 w-full rounded-xl bg-[#4db6ac] px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110"
+            onClick={goCommunitiesStructure}
+            className="mt-3 w-full rounded-xl border border-[#4db6ac]/50 bg-[#4db6ac]/10 px-5 py-3 text-sm font-semibold text-[#4db6ac] transition hover:bg-[#4db6ac]/20"
           >
-            Community plans & billing
+            See where to manage structure
           </button>
-        )}
-      </>
-    )
-  } else if (stepIndex === 3) {
-    stepContent = (
-      <>
-        <h3 className="text-base font-semibold text-white">Member limit</h3>
-        <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{memberLimitHelp}</p>
-        <input
-          type="number"
-          min={1}
-          inputMode="numeric"
-          className="mt-3 w-full rounded-md border border-white/15 bg-black px-3 py-2 text-[16px] text-white outline-none focus:border-[#4db6ac]"
-          placeholder={memberCap != null && memberCap > 0 ? `e.g., ${memberCap}` : 'e.g., 25'}
-          value={draft.maxMembers}
-          onChange={e => setDraft(d => ({ ...d, maxMembers: e.target.value.replace(/[^0-9]/g, '') }))}
-        />
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => void saveMemberLimitOnly()}
-            className="rounded-xl bg-[#4db6ac] px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : 'Save limit'}
-          </button>
-          {saveHint ? <span className="text-xs text-[#4db6ac]">{saveHint}</span> : null}
-        </div>
-      </>
-    )
-  } else if (stepIndex === 4) {
-    stepContent = (
-      <>
-        <h3 className="text-base font-semibold text-white">Community image</h3>
-        <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">
-          Banner shown for your community. Save after choosing a file or removing the current image.
-        </p>
-        {draft.backgroundPath && !removeBackground && !imageFile && (
-          <div className="mt-3 overflow-hidden rounded-lg border border-white/10">
-            <img
-              src={`/uploads/${draft.backgroundPath}`}
-              alt=""
-              className="max-h-40 w-full object-cover"
-            />
-          </div>
-        )}
-        {imageFile && (
-          <div className="mt-3 overflow-hidden rounded-lg border border-white/10">
-            <img src={URL.createObjectURL(imageFile)} alt="" className="max-h-40 w-full object-cover" />
-          </div>
-        )}
-        {removeBackground && !imageFile && (
-          <p className="mt-2 text-xs text-amber-200/90">Current image will be removed when you save.</p>
-        )}
-        <input
-          type="file"
-          accept="image/*"
-          className="mt-3 block w-full text-sm text-[#9fb0b5]"
-          onChange={e => {
-            const f = e.target.files?.[0] || null
-            setImageFile(f)
-            if (f) setRemoveBackground(false)
-          }}
-        />
-        {draft.backgroundPath && (
-          <button
-            type="button"
-            className="mt-2 text-xs text-[#9fb0b5] underline hover:text-white"
-            onClick={() => {
-              setRemoveBackground(true)
-              setImageFile(null)
-            }}
-          >
-            Remove current image
-          </button>
-        )}
-        {saveBarImage}
-      </>
-    )
-  } else if (stepIndex === 5) {
-    stepContent = (
-      <>
-        <h3 className="text-base font-semibold text-white">Steve personality</h3>
-        <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">
-          How Steve responds when members mention @Steve in comments.
-        </p>
-        <select
-          className="mt-3 w-full rounded-md border border-white/15 bg-black px-3 py-2 text-[16px] text-white outline-none focus:border-[#4db6ac]"
-          value={aiPersonality}
-          onChange={e => setAiPersonality(e.target.value)}
-          disabled={savingPersonality}
-        >
-          {aiPersonalities.length === 0 ? (
-            <option value={aiPersonality}>{aiPersonality}</option>
-          ) : (
-            aiPersonalities.map(p => (
-              <option key={p.key} value={p.key}>
-                {p.name}
-              </option>
-            ))
+        </>
+      )
+      break
+    case 'description':
+      stepContent = (
+        <>
+          <h3 className="text-base font-semibold text-white">Description</h3>
+          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">
+            This appears under your community name on the feed.
+          </p>
+          <textarea
+            className="mt-3 w-full rounded-md border border-white/15 bg-black px-3 py-2 text-[16px] text-white outline-none focus:border-[#4db6ac] min-h-[100px]"
+            value={draft.description}
+            onChange={e => setDraft(d => ({ ...d, description: e.target.value }))}
+            placeholder="What is this community about?"
+            rows={4}
+          />
+          {saveBarDescription}
+        </>
+      )
+      break
+    case 'subscription':
+      stepContent = (
+        <>
+          <h3 className="text-base font-semibold text-white">Subscription</h3>
+          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">
+            {billingInherited
+              ? 'Billing and tier for this community are managed on the parent network. Open the root community’s Manage Community to change the plan.'
+              : 'Your community plan sets member caps, storage, and more. You can compare tiers and checkout here.'}
+          </p>
+          {!billingInherited && (
+            <button
+              type="button"
+              onClick={() =>
+                navigate(
+                  `/subscription_plans?mode=choose&open=community_plans&community_id=${encodeURIComponent(communityId)}&from_owner_intro=1`,
+                )
+              }
+              className="mt-4 w-full rounded-xl bg-[#4db6ac] px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110"
+            >
+              Community plans & billing
+            </button>
           )}
-        </select>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
+        </>
+      )
+      break
+    case 'member_limit':
+      stepContent = (
+        <>
+          <h3 className="text-base font-semibold text-white">Member limit</h3>
+          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{memberLimitHelp}</p>
+          <input
+            type="number"
+            min={1}
+            inputMode="numeric"
+            className="mt-3 w-full rounded-md border border-white/15 bg-black px-3 py-2 text-[16px] text-white outline-none focus:border-[#4db6ac]"
+            placeholder={memberCap != null && memberCap > 0 ? `e.g., ${memberCap}` : 'e.g., 25'}
+            value={draft.maxMembers}
+            onChange={e => setDraft(d => ({ ...d, maxMembers: e.target.value.replace(/[^0-9]/g, '') }))}
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void saveMemberLimitOnly()}
+              className="rounded-xl bg-[#4db6ac] px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save limit'}
+            </button>
+            {saveHint ? <span className="text-xs text-[#4db6ac]">{saveHint}</span> : null}
+          </div>
+        </>
+      )
+      break
+    case 'image':
+      stepContent = (
+        <>
+          <h3 className="text-base font-semibold text-white">Community image</h3>
+          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">
+            Banner shown for your community. Save after choosing a file or removing the current image.
+          </p>
+          {draft.backgroundPath && !removeBackground && !imageFile && (
+            <div className="mt-3 overflow-hidden rounded-lg border border-white/10">
+              <img
+                src={`/uploads/${draft.backgroundPath}`}
+                alt=""
+                className="max-h-40 w-full object-cover"
+              />
+            </div>
+          )}
+          {imageFile && (
+            <div className="mt-3 overflow-hidden rounded-lg border border-white/10">
+              <img src={URL.createObjectURL(imageFile)} alt="" className="max-h-40 w-full object-cover" />
+            </div>
+          )}
+          {removeBackground && !imageFile && (
+            <p className="mt-2 text-xs text-amber-200/90">Current image will be removed when you save.</p>
+          )}
+          <input
+            type="file"
+            accept="image/*"
+            className="mt-3 block w-full text-sm text-[#9fb0b5]"
+            onChange={e => {
+              const f = e.target.files?.[0] || null
+              setImageFile(f)
+              if (f) setRemoveBackground(false)
+            }}
+          />
+          {draft.backgroundPath && (
+            <button
+              type="button"
+              className="mt-2 text-xs text-[#9fb0b5] underline hover:text-white"
+              onClick={() => {
+                setRemoveBackground(true)
+                setImageFile(null)
+              }}
+            >
+              Remove current image
+            </button>
+          )}
+          {saveBarImage}
+        </>
+      )
+      break
+    case 'personality':
+      stepContent = (
+        <>
+          <h3 className="text-base font-semibold text-white">Steve personality</h3>
+          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">
+            How Steve responds when members mention @Steve in comments.
+          </p>
+          <select
+            className="mt-3 w-full rounded-md border border-white/15 bg-black px-3 py-2 text-[16px] text-white outline-none focus:border-[#4db6ac]"
+            value={aiPersonality}
+            onChange={e => setAiPersonality(e.target.value)}
             disabled={savingPersonality}
-            onClick={() => void savePersonality()}
-            className="rounded-xl bg-[#4db6ac] px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
           >
-            {savingPersonality ? 'Saving…' : 'Save personality'}
-          </button>
-          {saveHint ? <span className="text-xs text-[#4db6ac]">{saveHint}</span> : null}
-        </div>
-      </>
-    )
+            {aiPersonalities.length === 0 ? (
+              <option value={aiPersonality}>{aiPersonality}</option>
+            ) : (
+              aiPersonalities.map(p => (
+                <option key={p.key} value={p.key}>
+                  {p.name}
+                </option>
+              ))
+            )}
+          </select>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={savingPersonality}
+              onClick={() => void savePersonality()}
+              className="rounded-xl bg-[#4db6ac] px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
+            >
+              {savingPersonality ? 'Saving…' : 'Save personality'}
+            </button>
+            {saveHint ? <span className="text-xs text-[#4db6ac]">{saveHint}</span> : null}
+          </div>
+        </>
+      )
+      break
+    default:
+      stepContent = null
   }
 
   if (phase === 'exit_hint') {
@@ -606,7 +725,7 @@ export default function CommunityOwnerSetupIntro({
             </button>
           </div>
           <div className="mt-3 flex gap-1.5" aria-hidden={reducedMotion}>
-            {Array.from({ length: STEP_COUNT }, (_, i) => (
+            {Array.from({ length: stepCount }, (_, i) => (
               <span
                 key={i}
                 className={`h-1 flex-1 rounded-full ${i <= stepIndex ? 'bg-[#4db6ac]' : 'bg-white/15'}`}
@@ -630,7 +749,7 @@ export default function CommunityOwnerSetupIntro({
           {!lastStep ? (
             <button
               type="button"
-              onClick={() => setStepIndex(i => Math.min(STEP_COUNT - 1, i + 1))}
+              onClick={() => setStepIndex(i => Math.min(stepCount - 1, i + 1))}
               className="order-1 w-full rounded-xl bg-[#4db6ac] px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:order-2 sm:w-auto"
             >
               Next

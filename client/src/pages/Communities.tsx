@@ -588,6 +588,15 @@ export default function Communities(){
 
   const guideHighlightTab = communitiesGuideStep !== null ? COMMUNITIES_GUIDE_STEPS[communitiesGuideStep]?.tab : null
 
+  const ownerIntroResumeFeedId = useMemo(() => {
+    const sp = new URLSearchParams(location.search)
+    if (sp.get('from_owner_intro') !== '1') return null
+    const raw = sp.get('resume_feed_id')
+    if (!raw) return null
+    const n = Number(raw)
+    return Number.isFinite(n) && n > 0 ? n : null
+  }, [location.search])
+
   return (
     <div className="min-h-screen bg-black text-white relative pb-safe">
       {/* Global header used from App */}
@@ -757,6 +766,20 @@ export default function Communities(){
         className="app-subnav-offset max-w-2xl mx-auto pb-6 px-3"
         style={{ '--app-subnav-height': '48px' } as CSSProperties}
       >
+        {ownerIntroResumeFeedId != null && (
+          <div className="mb-3 flex flex-col gap-3 rounded-xl border border-[#4db6ac]/35 bg-[#4db6ac]/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-[#d5e4e7]">
+              Continue the guided setup for this community on the feed when you&apos;re ready.
+            </p>
+            <button
+              type="button"
+              className="shrink-0 rounded-xl bg-[#4db6ac] px-4 py-2.5 text-sm font-semibold text-black hover:brightness-110"
+              onClick={() => navigate(`/community_feed_react/${ownerIntroResumeFeedId}`)}
+            >
+              Continue community setup
+            </button>
+          </div>
+        )}
         {loading ? (
           <div className="text-[#9fb0b5]">Loading…</div>
         ) : error ? (

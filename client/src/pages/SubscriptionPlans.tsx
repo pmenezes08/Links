@@ -240,6 +240,14 @@ export default function SubscriptionPlans() {
   const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search])
   const preselectedCommunityId = queryParams.get('community_id') || ''
 
+  const ownerIntroFeedReturnId = useMemo(() => {
+    if (queryParams.get('from_owner_intro') !== '1') return null
+    const raw = queryParams.get('community_id')
+    if (!raw) return null
+    const n = Number(raw)
+    return Number.isFinite(n) && n > 0 ? n : null
+  }, [queryParams])
+
   useEffect(() => {
     const qsStatus = queryParams.get('status')
     if (qsStatus === 'cancelled') {
@@ -464,6 +472,20 @@ export default function SubscriptionPlans() {
   return (
     <div className="min-h-screen bg-black text-white pt-16 pb-24">
       <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+        {ownerIntroFeedReturnId != null && (
+          <div className="mb-6 flex flex-col gap-3 rounded-xl border border-cpoint-turquoise/40 bg-cpoint-turquoise/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-white/85">
+              Return to your community feed to continue the guided setup when you&apos;re done here.
+            </p>
+            <button
+              type="button"
+              className="shrink-0 rounded-full bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-black hover:bg-cpoint-turquoise/90"
+              onClick={() => navigate(`/community_feed_react/${ownerIntroFeedReturnId}`)}
+            >
+              Continue community setup
+            </button>
+          </div>
+        )}
         <header className="text-center pt-8 pb-10">
           <p className="text-xs uppercase tracking-[0.28em] text-cpoint-turquoise/80">
             Memberships

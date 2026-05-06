@@ -60,27 +60,27 @@ describe('CommunityOwnerSetupIntro', () => {
     )
   }
 
-  it('shows personalized greeting and general setup when not sub-community first step', () => {
+  it('shows welcome with Option B for everyone (no structure on step 0)', () => {
     renderIntro({ ownerDisplayName: 'Pat' })
     expect(screen.getByText(/Hey Pat, Steve here/i)).toBeInTheDocument()
-    expect(screen.getByText(/Let's get your community set up/i)).toBeInTheDocument()
-    expect(screen.queryByText(/Everyone who joins the community is part of the main network/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Let's set up your community/i)).toBeInTheDocument()
+    expect(screen.getByText(/We'll start with structure/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Let's define your community structure/i)).not.toBeInTheDocument()
   })
 
-  it('shows Option A body when sub-community first step', () => {
+  it('shows structure as second step when showSubCommunityFirstStep', () => {
     renderIntro({ showSubCommunityFirstStep: true })
     expect(screen.getByText(/Hey Alice, Steve here/i)).toBeInTheDocument()
-    expect(
-      screen.getByText(/Everyone who joins the community is part of the main network/i),
-    ).toBeInTheDocument()
-    expect(screen.getByText(/C-Point dashboard/i)).toBeInTheDocument()
-    expect(screen.queryByText(/Let's get your community set up/i)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /next/i }))
+    expect(screen.getByText(/Let's define your community structure/i)).toBeInTheDocument()
+    expect(screen.getByText(/Everyone who joins the community is part of the main network/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /see where to manage structure/i })).toBeInTheDocument()
   })
 
-  it('resumes at subscription step from sessionStorage', () => {
+  it('resumes at subscription via step id', () => {
     sessionStorage.setItem(
       communityOwnerSetupResumeKey('alice', '42'),
-      JSON.stringify({ stepIndex: 2 }),
+      JSON.stringify({ step: 'subscription' }),
     )
     renderIntro()
     expect(screen.getByRole('heading', { name: /subscription/i })).toBeInTheDocument()
