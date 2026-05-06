@@ -24,8 +24,9 @@ export const Hero = () => {
         </div>
 
         <h1 className="heading-xl text-white mb-6 fade-in-up" style={{ animationDelay: "0.2s" }}>
-          Your people.{" "}
-          <span className="text-white/90 italic">Your</span> invite-only world.
+          Enter the network where ideas{" "}
+          <span className="text-white/90 italic">connect</span>{" "}
+          people
         </h1>
 
         <p className="text-lg md:text-xl text-white/85 leading-relaxed max-w-2xl mx-auto mb-6 fade-in-up" style={{ animationDelay: "0.3s" }}>
