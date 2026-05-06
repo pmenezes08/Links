@@ -6,10 +6,13 @@ import logging
 from collections import deque
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from backend.services.database import get_db_connection, get_sql_placeholder
+from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 
 
 logger = logging.getLogger(__name__)
+
+# New communities default to notifying all members when someone joins.
+DEFAULT_NOTIFY_ON_NEW_MEMBER = 1
 
 
 _COMMUNITY_DEPENDENT_TABLES: List[Tuple[str, str]] = [
@@ -226,6 +229,103 @@ def render_member_cap_error(
         },
         403,
     )
+
+
+def insert_new_community_row(
+    cursor: Any,
+    *,
+    name: str,
+    community_type: str,
+    creator_username: str,
+    join_code: str,
+    created_at: str,
+    description: str,
+    location: str,
+    background_path: Optional[str],
+    template: str,
+    background_color: str,
+    text_color: str,
+    accent_color: str,
+    card_color: str,
+    parent_community_id: Optional[int],
+    notify_on_new_member: int = DEFAULT_NOTIFY_ON_NEW_MEMBER,
+) -> None:
+    """Insert a ``communities`` row with explicit ``notify_on_new_member``.
+
+    Callers read ``cursor.lastrowid`` after this returns. Single source of
+    truth for the column list shared by ``/create_community`` and
+    onboarding bootstrap.
+    """
+    ph = get_sql_placeholder()
+    placeholders = ", ".join([ph] * 15)
+    cursor.execute(
+        f"""
+        INSERT INTO communities (
+            name, type, creator_username, join_code, created_at, description, location,
+            background_path, template, background_color, text_color, accent_color, card_color,
+            parent_community_id, notify_on_new_member
+        )
+        VALUES ({placeholders})
+        """,
+        (
+            name,
+            community_type,
+            creator_username,
+            join_code,
+            created_at,
+            description,
+            location,
+            background_path,
+            template,
+            background_color,
+            text_color,
+            accent_color,
+            card_color,
+            parent_community_id,
+            int(notify_on_new_member),
+        ),
+    )
+
+
+def ensure_notify_on_new_member_schema(cursor: Any, conn: Any) -> None:
+    """Ensure ``notify_on_new_member`` exists with default **on** for new rows.
+
+    Does not update existing rows that already store ``0``.
+    """
+    try:
+        if USE_MYSQL:
+            cursor.execute("SHOW COLUMNS FROM communities LIKE 'notify_on_new_member'")
+            if not cursor.fetchone():
+                cursor.execute(
+                    "ALTER TABLE communities ADD COLUMN notify_on_new_member "
+                    "TINYINT(1) DEFAULT 1"
+                )
+                conn.commit()
+                return
+            cursor.execute(
+                "ALTER TABLE communities MODIFY COLUMN notify_on_new_member "
+                "TINYINT(1) DEFAULT 1"
+            )
+            conn.commit()
+            return
+
+        cursor.execute("PRAGMA table_info(communities)")
+        rows = cursor.fetchall() or []
+        cols: List[str] = []
+        for r in rows:
+            if isinstance(r, (list, tuple)):
+                cols.append(str(r[1]))
+            elif hasattr(r, "keys") and "name" in r.keys():
+                cols.append(str(r["name"]))
+            else:
+                cols.append(str(r[1]) if len(r) > 1 else "")
+        if "notify_on_new_member" not in cols:
+            cursor.execute(
+                "ALTER TABLE communities ADD COLUMN notify_on_new_member INTEGER DEFAULT 1"
+            )
+            conn.commit()
+    except Exception:
+        logger.warning("ensure_notify_on_new_member_schema failed", exc_info=True)
 
 
 def _normalize_subscription(value: Optional[str]) -> str:

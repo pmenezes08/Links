@@ -9,6 +9,9 @@ import { CSS } from '@dnd-kit/utilities'
 import Avatar from '../components/Avatar'
 import ContentGenerationModal from '../components/ContentGenerationModal'
 import FrozenCommunityModal from '../components/FrozenCommunityModal'
+import CommunityOwnerSetupIntro, {
+  communityOwnerSetupStorageKey,
+} from '../components/community/CommunityOwnerSetupIntro'
 import MentionTextarea from '../components/MentionTextarea'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import ImageLoader from '../components/ImageLoader'
@@ -354,6 +357,76 @@ export default function CommunityFeed() {
   )
   const showFrozenOwnerModal = isFrozenForSubscription && isCommunityOwner
 
+  const [showOwnerIntro, setShowOwnerIntro] = useState(false)
+  const [ownerIntroGateReady, setOwnerIntroGateReady] = useState(false)
+  const [ownerIntroBilling, setOwnerIntroBilling] = useState<{
+    member_cap: number | null
+    tier_label: string | null
+  } | null>(null)
+
+  useEffect(() => {
+    if (!community_id || !data?.community || !currentUsername) {
+      setOwnerIntroGateReady(false)
+      setShowOwnerIntro(false)
+      return
+    }
+    if (!isCommunityOwner || isFrozenForSubscription) {
+      setOwnerIntroGateReady(true)
+      setShowOwnerIntro(false)
+      return
+    }
+    try {
+      const key = communityOwnerSetupStorageKey(currentUsername, community_id)
+      if (localStorage.getItem(key)) {
+        setOwnerIntroGateReady(true)
+        setShowOwnerIntro(false)
+        return
+      }
+    } catch {
+      // ignore
+    }
+    setOwnerIntroGateReady(true)
+    setShowOwnerIntro(true)
+  }, [
+    community_id,
+    currentUsername,
+    data?.community,
+    isCommunityOwner,
+    isFrozenForSubscription,
+  ])
+
+  useEffect(() => {
+    if (!community_id || !showOwnerIntro) {
+      setOwnerIntroBilling(null)
+      return
+    }
+    let cancelled = false
+    fetch(`/api/communities/${community_id}/billing`, {
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+      .then(r => r.json().catch(() => null))
+      .then(json => {
+        if (cancelled || !json?.success) return
+        const capRaw = json.member_cap
+        const cap =
+          capRaw != null && Number.isFinite(Number(capRaw)) ? Number(capRaw) : null
+        setOwnerIntroBilling({
+          member_cap: cap != null && cap > 0 ? cap : null,
+          tier_label:
+            typeof json.tier_label === 'string' && json.tier_label.trim()
+              ? json.tier_label.trim()
+              : typeof json.tier === 'string' && json.tier.trim()
+                ? json.tier.trim()
+                : null,
+        })
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [community_id, showOwnerIntro])
+
   useEffect(() => {
     if (!community_id) return
     fetch(`/api/community/mute_status?community_id=${community_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
@@ -589,14 +662,18 @@ export default function CommunityFeed() {
     [reactToStory]
   )
   
-  // Check if we should highlight from onboarding
+  // Check if we should highlight from onboarding (after owner-setup intro gate)
   const [highlightStep, setHighlightStep] = useState<'reaction' | 'post' | null>(null)
-    useEffect(() => {
+  useEffect(() => {
+    if (!ownerIntroGateReady || showOwnerIntro) return
     const params = new URLSearchParams(window.location.search)
     if (params.get('highlight_post') === 'true') {
       setHighlightStep('reaction') // Start with reaction
     }
-  }, [])
+  }, [ownerIntroGateReady, showOwnerIntro])
+  useEffect(() => {
+    if (showOwnerIntro) setHighlightStep(null)
+  }, [showOwnerIntro])
   // Modal removed in favor of dedicated PostDetail route
 
   // Set header title consistently
@@ -2284,8 +2361,22 @@ export default function CommunityFeed() {
         memberCount={Number(frozenBilling?.member_count || 0)}
         freeMemberCap={Number(frozenBilling?.free_member_cap || 25)}
         frozenAt={frozenBilling?.frozen_at || data?.community?.frozen_at || null}
-        onManageMembers={() => navigate(`/edit_community/${community_id}#members`)}
+        onManageMembers={() => navigate(`/community/${community_id}/edit`)}
       />
+      {showOwnerIntro &&
+        currentUsername &&
+        community_id &&
+        !showFrozenOwnerModal && (
+          <CommunityOwnerSetupIntro
+            communityId={String(community_id)}
+            communityName={String(data?.community?.name || '')}
+            username={currentUsername}
+            memberCap={ownerIntroBilling?.member_cap ?? null}
+            tierLabel={ownerIntroBilling?.tier_label ?? null}
+            onFinished={() => setShowOwnerIntro(false)}
+            onOpenManageCommunity={() => navigate(`/community/${community_id}/edit`)}
+          />
+        )}
       {/* Fixed Header */}
       <div
         className="fixed left-0 right-0 top-0 z-[1000] border-b border-white/10"

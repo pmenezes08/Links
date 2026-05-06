@@ -57,6 +57,7 @@ from backend.services.community import (
     get_community_ancestors,
     get_community_basic,
     get_parent_chain_ids,
+    insert_new_community_row,
     invalidate_dashboard_caches_for_community_subtree,
     is_app_admin,
     is_community_admin,
@@ -3120,20 +3121,17 @@ def init_db():
                           accent_color TEXT DEFAULT '#4db6ac',
                           card_color TEXT DEFAULT '#1a2526',
                           parent_community_id INTEGER,
-                          notify_on_new_member TINYINT(1) DEFAULT 0,
+                          notify_on_new_member TINYINT(1) DEFAULT 1,
                           FOREIGN KEY (creator_username) REFERENCES users(username),
                           FOREIGN KEY (parent_community_id) REFERENCES communities(id))''')
             
-            # Add notify_on_new_member column to existing communities table
+            # Ensure notify_on_new_member exists with default on for new rows.
             try:
-                c.execute("SHOW COLUMNS FROM communities LIKE 'notify_on_new_member'")
-                if not c.fetchone():
-                    logger.info("Adding notify_on_new_member column to communities table...")
-                    c.execute("ALTER TABLE communities ADD COLUMN notify_on_new_member TINYINT(1) DEFAULT 0")
-                    conn.commit()
-                    logger.info("Added notify_on_new_member column to communities table")
+                from backend.services.community import ensure_notify_on_new_member_schema
+
+                ensure_notify_on_new_member_schema(c, conn)
             except Exception as e:
-                logger.warning(f"Could not add notify_on_new_member column: {e}")
+                logger.warning(f"Could not ensure notify_on_new_member schema: {e}")
 
             # Create user_communities table
             logger.info("Creating user_communities table...")
@@ -24410,11 +24408,23 @@ def create_community():
 
             # If creating a sub-community, enforce premium-only for creators as well
             # (Already enforced above for community creation, but keep guard explicit)
-            placeholders = ', '.join([get_sql_placeholder()] * 14)
-            c.execute(f"""
-                INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id)
-                VALUES ({placeholders})
-            """, (name, normalized_type, username, join_code, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_id_int))
+            insert_new_community_row(
+                c,
+                name=name,
+                community_type=normalized_type,
+                creator_username=username,
+                join_code=join_code,
+                created_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                description=description,
+                location=location,
+                background_path=background_path,
+                template=template,
+                background_color=background_color,
+                text_color=text_color,
+                accent_color=accent_color,
+                card_color=card_color,
+                parent_community_id=parent_id_int,
+            )
             
             community_id = c.lastrowid
             
@@ -24753,7 +24763,7 @@ def update_community():
                 if 'USE_MYSQL' in globals() and USE_MYSQL:
                     c.execute("SHOW COLUMNS FROM communities LIKE 'notify_on_new_member'")
                     if not c.fetchone():
-                        c.execute("ALTER TABLE communities ADD COLUMN notify_on_new_member TINYINT(1) DEFAULT 0")
+                        c.execute("ALTER TABLE communities ADD COLUMN notify_on_new_member TINYINT(1) DEFAULT 1")
                         conn.commit()
                     c.execute("SHOW COLUMNS FROM communities LIKE 'max_members'")
                     if not c.fetchone():
@@ -24767,7 +24777,7 @@ def update_community():
                     c.execute("PRAGMA table_info(communities)")
                     cols = [row[1] if isinstance(row, (list, tuple)) else row['name'] for row in c.fetchall()]
                     if 'notify_on_new_member' not in cols:
-                        c.execute("ALTER TABLE communities ADD COLUMN notify_on_new_member INTEGER DEFAULT 0")
+                        c.execute("ALTER TABLE communities ADD COLUMN notify_on_new_member INTEGER DEFAULT 1")
                         conn.commit()
                     if 'max_members' not in cols:
                         c.execute("ALTER TABLE communities ADD COLUMN max_members INTEGER NULL")

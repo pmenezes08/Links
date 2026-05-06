@@ -18,6 +18,7 @@ from backend.services.community import (
     CommunityMembershipLimitError,
     get_community_ancestors,
     get_community_basic,
+    insert_new_community_row,
     is_app_admin,
     render_member_cap_error,
 )
@@ -208,31 +209,22 @@ def _create_single_community(
                             "error": "Free plan sub-communities can have only one nested community.",
                         }, 403
 
-        placeholders = ", ".join([ph] * 14)
-        c.execute(
-            f"""
-            INSERT INTO communities (
-                name, type, creator_username, join_code, created_at, description, location,
-                background_path, template, background_color, text_color, accent_color, card_color, parent_community_id
-            )
-            VALUES ({placeholders})
-            """,
-            (
-                name,
-                normalized_type,
-                username,
-                join_code,
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                description,
-                location,
-                background_path,
-                template,
-                background_color,
-                text_color,
-                accent_color,
-                card_color,
-                parent_id_int,
-            ),
+        insert_new_community_row(
+            c,
+            name=name,
+            community_type=normalized_type,
+            creator_username=username,
+            join_code=join_code,
+            created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            description=description,
+            location=location,
+            background_path=background_path,
+            template=template,
+            background_color=background_color,
+            text_color=text_color,
+            accent_color=accent_color,
+            card_color=card_color,
+            parent_community_id=parent_id_int,
         )
         community_id = int(c.lastrowid)
 

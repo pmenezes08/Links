@@ -532,12 +532,24 @@ export default function EditCommunity(){
               type="number"
               min={1}
               inputMode="numeric"
-              placeholder="e.g., 100"
+              placeholder={
+                billing?.member_cap != null && billing.member_cap > 0
+                  ? `e.g., ${billing.member_cap}`
+                  : 'e.g., 25'
+              }
               className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none"
               value={maxMembers}
               onChange={e=> setMaxMembers(e.target.value.replace(/[^0-9]/g,''))}
             />
-            <div className="text-xs text-[#9fb0b5] mt-1">When set, new joins are blocked once the limit is reached.</div>
+            <div className="text-xs text-[#9fb0b5] mt-1">
+              {billing?.member_cap != null && billing.member_cap > 0 ? (
+                <>
+                  Plan cap: {billing.member_cap} members (your optional limit should stay at or below this.)
+                </>
+              ) : (
+                <>When set, new joins are blocked once the limit is reached.</>
+              )}
+            </div>
           </div>
           <div>
             <label className="block text-sm text-[#9fb0b5] mb-1">Hierarchy</label>
@@ -665,12 +677,11 @@ export default function EditCommunity(){
             />
           </div>
           
-          {/* AI Assistant Personality */}
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-2">AI Assistant Personality (@Steve)</label>
+            <label className="block text-sm text-[#9fb0b5] mb-2">Steve Personality</label>
             <div className="rounded-lg border border-white/15 bg-black p-4">
               <p className="text-xs text-[#9fb0b5] mb-3">
-                Choose how Steve (the AI assistant) responds when members mention @Steve in comments.
+                Choose how Steve responds when members mention @Steve in comments.
               </p>
               <select 
                 className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none"

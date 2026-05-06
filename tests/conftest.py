@@ -273,6 +273,15 @@ def _bootstrap_schema() -> None:
             ("type", "VARCHAR(32) DEFAULT 'free'"),
             ("description", "TEXT NULL"),
             ("is_frozen", "TINYINT(1) DEFAULT 0"),
+            ("join_code", "VARCHAR(32) NULL"),
+            ("location", "TEXT NULL"),
+            ("background_path", "TEXT NULL"),
+            ("template", "VARCHAR(32) DEFAULT 'default'"),
+            ("background_color", "VARCHAR(32) DEFAULT '#2d3839'"),
+            ("text_color", "VARCHAR(32) DEFAULT '#ffffff'"),
+            ("accent_color", "VARCHAR(32) DEFAULT '#4db6ac'"),
+            ("card_color", "VARCHAR(32) DEFAULT '#1a2526'"),
+            ("notify_on_new_member", "TINYINT(1) DEFAULT 0"),
         ):
             try:
                 c.execute(f"ALTER TABLE communities ADD COLUMN {column} {col_def}")
