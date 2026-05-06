@@ -11,6 +11,7 @@ import ContentGenerationModal from '../components/ContentGenerationModal'
 import FrozenCommunityModal from '../components/FrozenCommunityModal'
 import CommunityOwnerSetupIntro, {
   communityOwnerSetupStorageKey,
+  type CommunityOwnerSetupSnapshot,
 } from '../components/community/CommunityOwnerSetupIntro'
 import MentionTextarea from '../components/MentionTextarea'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
@@ -362,7 +363,33 @@ export default function CommunityFeed() {
   const [ownerIntroBilling, setOwnerIntroBilling] = useState<{
     member_cap: number | null
     tier_label: string | null
+    is_inherited: boolean
   } | null>(null)
+
+  const ownerIntroSnapshot = useMemo((): CommunityOwnerSetupSnapshot | null => {
+    const c = data?.community
+    if (!c) return null
+    return {
+      name: String(c.name || ''),
+      description: String(c.description ?? ''),
+      networkType: String(c.network_type || 'professional'),
+      parentCommunityId:
+        c.parent_community_id != null && c.parent_community_id !== ''
+          ? Number(c.parent_community_id)
+          : null,
+      notifyOnNewMember: !!c.notify_on_new_member,
+      maxMembers: c.max_members != null ? String(c.max_members) : '',
+      backgroundPath: c.background_path ? String(c.background_path) : null,
+    }
+  }, [
+    data?.community?.name,
+    data?.community?.description,
+    data?.community?.network_type,
+    data?.community?.parent_community_id,
+    data?.community?.notify_on_new_member,
+    data?.community?.max_members,
+    data?.community?.background_path,
+  ])
 
   useEffect(() => {
     if (!community_id || !data?.community || !currentUsername) {
@@ -413,6 +440,7 @@ export default function CommunityFeed() {
           capRaw != null && Number.isFinite(Number(capRaw)) ? Number(capRaw) : null
         setOwnerIntroBilling({
           member_cap: cap != null && cap > 0 ? cap : null,
+          is_inherited: !!json.is_inherited,
           tier_label:
             typeof json.tier_label === 'string' && json.tier_label.trim()
               ? json.tier_label.trim()
@@ -748,6 +776,32 @@ export default function CommunityFeed() {
       setIsRefreshing(false)
     }
   }, [community_id, deviceFeedCacheKey, isRefreshing, navigate])
+
+  const reloadCommunityFromServer = useCallback(async () => {
+    if (!community_id) return
+    try {
+      if (deviceFeedCacheKey) clearDeviceCache(deviceFeedCacheKey)
+      const r = await fetch(`/api/community_feed/${community_id}`, {
+        credentials: 'include',
+        cache: 'reload',
+        headers: { Accept: 'application/json' },
+      })
+      const json = await r.json().catch(() => null)
+      if (json?.success) {
+        setData(json)
+        if (deviceFeedCacheKey) {
+          writeDeviceCache(deviceFeedCacheKey, json, COMMUNITY_FEED_CACHE_TTL_MS, COMMUNITY_FEED_CACHE_VERSION)
+        }
+        setStoryRefreshKey(prev => prev + 1)
+      } else if (json?.reason === 'community_frozen') {
+        if (deviceFeedCacheKey) clearDeviceCache(deviceFeedCacheKey)
+        alert(json.error || 'This community has been frozen, please contact the owner for more information.')
+        navigate('/premium_dashboard')
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [community_id, deviceFeedCacheKey, navigate])
 
   useEffect(() => {
     // Pull-to-refresh behavior on overscroll at top with a small elastic offset
@@ -2366,15 +2420,19 @@ export default function CommunityFeed() {
       {showOwnerIntro &&
         currentUsername &&
         community_id &&
+        ownerIntroSnapshot &&
         !showFrozenOwnerModal && (
           <CommunityOwnerSetupIntro
             communityId={String(community_id)}
-            communityName={String(data?.community?.name || '')}
             username={currentUsername}
             memberCap={ownerIntroBilling?.member_cap ?? null}
             tierLabel={ownerIntroBilling?.tier_label ?? null}
+            billingInherited={!!ownerIntroBilling?.is_inherited}
+            initialSnapshot={ownerIntroSnapshot}
+            deviceFeedCacheKey={deviceFeedCacheKey}
             onFinished={() => setShowOwnerIntro(false)}
             onOpenManageCommunity={() => navigate(`/community/${community_id}/edit`)}
+            onCommunityUpdated={() => reloadCommunityFromServer()}
           />
         )}
       {/* Fixed Header */}
