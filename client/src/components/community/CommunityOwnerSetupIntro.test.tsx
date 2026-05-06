@@ -86,13 +86,26 @@ describe('CommunityOwnerSetupIntro', () => {
     expect(screen.getByRole('heading', { name: /subscription/i })).toBeInTheDocument()
   })
 
+  it('shows invite step last with Members page copy', () => {
+    renderIntro()
+    for (let i = 0; i < 6; i++) {
+      fireEvent.click(screen.getByRole('button', { name: /next/i }))
+    }
+    expect(screen.getByRole('heading', { name: /your community is ready/i })).toBeInTheDocument()
+    expect(
+      screen.getByText(/I'll take you to the Members page/i),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /invite people/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /not yet/i })).toBeInTheDocument()
+  })
+
   it('advances steps and completes wizard with Manage hint', () => {
     renderIntro()
     expect(screen.getByText(/Hey Alice, Steve here/i)).toBeInTheDocument()
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       fireEvent.click(screen.getByRole('button', { name: /next/i }))
     }
-    fireEvent.click(screen.getByRole('button', { name: /done/i }))
+    fireEvent.click(screen.getByRole('button', { name: /not yet/i }))
     expect(screen.getByText(/finish setting up the community/i)).toBeInTheDocument()
     expect(screen.getByText(/More/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /stay on feed/i }))

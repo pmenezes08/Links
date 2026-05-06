@@ -17,6 +17,7 @@ export type IntroStepId =
   | 'member_limit'
   | 'image'
   | 'personality'
+  | 'invite'
 
 const LEGACY_STEP_ORDER: IntroStepId[] = [
   'welcome',
@@ -37,9 +38,10 @@ export function buildIntroSteps(includeStructure: boolean): IntroStepId[] {
       'member_limit',
       'image',
       'personality',
+      'invite',
     ]
   }
-  return [...LEGACY_STEP_ORDER]
+  return [...LEGACY_STEP_ORDER, 'invite']
 }
 
 function readInitialStepIndex(
@@ -108,6 +110,9 @@ const SETUP_HEADLINE = "Let's set up your community."
 
 const OPTION_B_BODY =
   "We'll start with structure — the shape of your network and sub-communities. The steps that follow focus only on the main community: what it says about itself, the plan, how many members it can hold, its image, and my personality when members talk to me. You can skip ahead whenever you like; you're not committing until you hit Save."
+
+const INVITE_BODY =
+  "This is when your space really comes alive. When you're ready, I'll take you to the Members page — from there you can invite people by link, email, or username."
 
 function ManageCommunityHint({
   onOpenManageCommunity,
@@ -297,6 +302,21 @@ export default function CommunityOwnerSetupIntro({
     onOpenManageCommunity()
     onFinished('completed')
   }, [communityId, onFinished, onOpenManageCommunity, username])
+
+  const openInviteAndComplete = useCallback(() => {
+    try {
+      sessionStorage.removeItem(communityOwnerSetupResumeKey(username, communityId))
+    } catch {
+      /* ignore */
+    }
+    try {
+      localStorage.setItem(communityOwnerSetupStorageKey(username, communityId), 'completed')
+    } catch {
+      /* ignore */
+    }
+    onFinished('completed')
+    navigate(`/community/${encodeURIComponent(communityId)}/members?open_invite=1`)
+  }, [communityId, navigate, onFinished, username])
 
   const postUpdateCommunity = useCallback(
     async (next: CommunityOwnerSetupSnapshot, opts?: { imageFile?: File | null; removeBackground?: boolean }) => {
@@ -670,6 +690,14 @@ export default function CommunityOwnerSetupIntro({
         </>
       )
       break
+    case 'invite':
+      stepContent = (
+        <>
+          <h3 className="text-base font-semibold text-white">Your community is ready</h3>
+          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{INVITE_BODY}</p>
+        </>
+      )
+      break
     default:
       stepContent = null
   }
@@ -754,6 +782,23 @@ export default function CommunityOwnerSetupIntro({
             >
               Next
             </button>
+          ) : currentStepId === 'invite' ? (
+            <>
+              <button
+                type="button"
+                onClick={finishFromSteps}
+                className="order-1 w-full rounded-xl border border-white/15 bg-white/[0.04] px-5 py-3 text-sm font-medium text-white/90 transition hover:bg-white/[0.08] sm:order-2 sm:w-auto"
+              >
+                Not yet
+              </button>
+              <button
+                type="button"
+                onClick={openInviteAndComplete}
+                className="order-2 w-full rounded-xl bg-[#4db6ac] px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:order-3 sm:w-auto"
+              >
+                Invite people
+              </button>
+            </>
           ) : (
             <button
               type="button"

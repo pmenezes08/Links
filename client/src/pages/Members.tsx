@@ -1,5 +1,5 @@
-import { useEffect, useState, type CSSProperties } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import { triggerDashboardServerPull } from '../utils/serverPull'
 import { refreshDashboardCommunities } from '../utils/dashboardCache'
@@ -16,6 +16,8 @@ type InviteStep = 'choose' | 'username' | 'email' | 'link'
 export default function Members(){
   const { community_id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  const openedInviteFromQueryRef = useRef(false)
   const [members, setMembers] = useState<Member[]>([])
   const [communityName, setCommunityName] = useState<string>('')
   const [loading, setLoading] = useState(true)
@@ -159,6 +161,18 @@ export default function Members(){
 
     setShowInviteModal(true)
   }
+
+  useEffect(() => {
+    if (openedInviteFromQueryRef.current) return
+    const sp = new URLSearchParams(location.search)
+    if (sp.get('open_invite') !== '1') return
+    if (loading || !numericCommunityId || !canManage) return
+    openedInviteFromQueryRef.current = true
+    handleOpenInviteModal()
+    if (community_id) {
+      navigate(`/community/${community_id}/members`, { replace: true })
+    }
+  }, [loading, canManage, numericCommunityId, location.search, community_id, navigate])
 
   // Add member removed per new requirements; community code is displayed instead
 
