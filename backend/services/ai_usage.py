@@ -24,7 +24,7 @@ Schema additions (all nullable, so old rows keep working):
     reason_blocked    VARCHAR(64)       (enum from entitlements_errors)
     response_time_ms  INT
     community_id      INT               (for community-pool accounting later)
-    model             VARCHAR(64)       (e.g. grok-4-1-fast-reasoning)
+    model             VARCHAR(64)       (e.g. grok-4.3, grok-4.20-non-reasoning)
 
 Counter semantics:
     * :func:`daily_count` — rows in the last 24h, used for ``ai_daily_limit``.

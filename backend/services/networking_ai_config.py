@@ -15,25 +15,21 @@ logger = logging.getLogger(__name__)
 
 KB_SLUG = "networking-ai"
 
-MODEL_GROK_41_REASONING = "grok-4-1-fast-reasoning"
 MODEL_GROK_43 = "grok-4.3"
 MODEL_GROK_420_REASONING = "grok-4.20-reasoning"
 MODEL_GROK_420_MULTI_AGENT = "grok-4.20-multi-agent"
 
 PLANNER_MODELS = frozenset({
-    MODEL_GROK_41_REASONING,
     MODEL_GROK_43,
     MODEL_GROK_420_REASONING,
 })
 FINAL_MODELS = frozenset({
     MODEL_GROK_43,
-    MODEL_GROK_41_REASONING,
     MODEL_GROK_420_REASONING,
 })
 KB_SYNTHESIS_MODELS = frozenset({
     MODEL_GROK_43,
     MODEL_GROK_420_REASONING,
-    MODEL_GROK_41_REASONING,
 })
 LARGE_CONTEXT_MODELS = frozenset({
     MODEL_GROK_420_REASONING,
@@ -50,7 +46,7 @@ FALLBACK_MODELS = frozenset({
 class NetworkingAiConfig:
     enabled: bool = True
     weekly_prompts_per_user: int = 20
-    planner_model: str = MODEL_GROK_41_REASONING
+    planner_model: str = MODEL_GROK_43
     final_answer_model: str = MODEL_GROK_43
     kb_synthesis_model: str = MODEL_GROK_43
     large_context_model: str = MODEL_GROK_420_REASONING

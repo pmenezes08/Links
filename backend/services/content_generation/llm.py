@@ -14,7 +14,7 @@ from openai import OpenAI
 logger = logging.getLogger(__name__)
 
 XAI_API_KEY = os.getenv("XAI_API_KEY", "")
-GROK_MODEL_FAST = os.getenv("STEVE_CONTENT_MODEL", "grok-4-1-fast-non-reasoning")
+GROK_MODEL_FAST = os.getenv("STEVE_CONTENT_MODEL", "grok-4.20-non-reasoning")
 
 # Tech, culture, analysis, fashion, music — US/Europe-oriented; bare + www for filter_links netloc match.
 _EXPANDED_ROUNDUP_DOMAINS = frozenset(

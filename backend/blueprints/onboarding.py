@@ -32,7 +32,7 @@ onboarding_bp = Blueprint("onboarding", __name__)
 logger = logging.getLogger(__name__)
 
 XAI_API_KEY = os.getenv('XAI_API_KEY', '')
-GROK_MODEL_FAST = 'grok-3-mini-fast-beta'
+GROK_MODEL_FAST = 'grok-4.20-non-reasoning'
 
 
 def _login_required(view_func):

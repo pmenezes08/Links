@@ -155,7 +155,7 @@ the user receives only a markdown **subscription CTA** pointing at **`/account_s
        tokens_out=usage.completion_tokens,
        cost_usd=computed_cost,
        community_id=community_id_or_None,
-       model="grok-4-1-fast-reasoning",
+       model="grok-4.3",
        response_time_ms=int((t1 - t0) * 1000),
    )
    ```

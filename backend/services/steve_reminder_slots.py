@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-from backend.services.content_generation.llm import XAI_API_KEY, generate_json
+from backend.services.content_generation.llm import XAI_API_KEY, generate_json, GROK_MODEL_FAST
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,7 @@ def extract_reminder_slots_llm(
             username.strip(),
             surface=ai_usage.SURFACE_DM,
             request_type="steve_reminder_slots",
-            model="grok-json",
+            model=GROK_MODEL_FAST,
         )
     except Exception:
         pass

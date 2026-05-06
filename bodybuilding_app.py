@@ -1166,8 +1166,8 @@ TYPING_TTL_SECONDS = 5
 
 # Grok model configuration for Steve
 # Using 4.20 multi-agent only for complex networking/community analysis to control costs
-GROK_MODEL_FAST = "grok-4-1-fast-non-reasoning"          # Default for most interactions
-GROK_MODEL_REASONING = "grok-4-1-fast-reasoning"         # For group chat reasoning
+GROK_MODEL_FAST = "grok-4.20-non-reasoning"          # Default for most interactions
+GROK_MODEL_REASONING = "grok-4.3"         # For group chat reasoning
 GROK_MODEL_420_REASONING = "grok-4.20-0309-reasoning"    # Premium reasoning for flagship networking
 GROK_MODEL_MULTI_AGENT = "grok-4.20-multi-agent-0309"    # Only for profile analysis (web_search tool use)
 STEVE_NETWORKING_MODEL = os.getenv('STEVE_NETWORKING_MODEL', GROK_MODEL_REASONING)
@@ -22760,7 +22760,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             
             ai_response = None
             try:
-                logger.info(f"Steve post reply using Grok 4.1 Fast Reasoning with web+X search ({ai_personality} mode)")
+                logger.info(f"Steve post reply using Grok reasoning with web+X search ({ai_personality} mode)")
                 client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
                 
                 # Build user content - include images if present (Grok supports vision)
@@ -22777,7 +22777,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                     effective_system = system_prompt
                 
                 response = client.responses.create(
-                    model="grok-4-1-fast-reasoning",
+                    model=GROK_MODEL_REASONING,
                     input=[
                         {"role": "system", "content": effective_system},
                         {"role": "user", "content": user_content}
@@ -22791,7 +22791,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 
                 ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
                 if ai_response:
-                    logger.info("Steve post reply Grok 4.1 Fast successful")
+                    logger.info("Steve post reply Grok reasoning successful")
                     
             except Exception as ai_err:
                 logger.error(f"AI error in Steve post reply: {ai_err}")
@@ -22829,7 +22829,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                     surface=_ai_usage.SURFACE_FEED,
                     request_type='steve_post_reply',
                     community_id=community_id,
-                    model='grok-4-1-fast-reasoning',
+                    model=GROK_MODEL_REASONING,
                 )
             except Exception:
                 pass
@@ -23224,10 +23224,10 @@ def ai_steve_reply():
                 
                 ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
                 if ai_response:
-                    logger.info("Steve Grok 4.1 Fast with web+X search successful")
+                    logger.info("Steve Grok reasoning with web+X search successful")
                 
                 if ai_response is None:
-                    logger.error("Grok 4.1 Fast returned empty response")
+                    logger.error("Grok reasoning returned empty response")
                     return jsonify({'success': False, 'error': 'AI service returned empty response'}), 503
                 
             except Exception as ai_err:
@@ -23911,7 +23911,7 @@ Keep the summary to 3-5 sentences maximum. Be objective and informative."""
             )
             
             response = client.chat.completions.create(
-                model="grok-4-1-fast-non-reasoning",
+                model=GROK_MODEL_FAST,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": context}

@@ -1111,15 +1111,15 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "weekly_prompts_per_user", "label": "Prompts / user / rolling 7 days", "type": "integer", "value": 20,
                  "help": "Counts user-visible networking prompts, not internal planner calls."},
                 {"name": "planner_model", "label": "Query planner model", "type": "enum",
-                 "allowed_values": ["grok-4-1-fast-reasoning", "grok-4.3", "grok-4.20-reasoning"],
-                 "value": "grok-4-1-fast-reasoning",
+                 "allowed_values": ["grok-4.3", "grok-4.20-reasoning"],
+                 "value": "grok-4.3",
                  "help": "Turns a user ask into facets, dimensions, constraints, named people, and a retrieval query."},
                 {"name": "final_answer_model", "label": "Final answer model", "type": "enum",
-                 "allowed_values": ["grok-4.3", "grok-4-1-fast-reasoning", "grok-4.20-reasoning"],
+                 "allowed_values": ["grok-4.3", "grok-4.20-reasoning"],
                  "value": "grok-4.3",
                  "help": "Writes the user-facing networking recommendation from the bounded roster."},
                 {"name": "kb_synthesis_model", "label": "Member KB synthesis model", "type": "enum",
-                 "allowed_values": ["grok-4.3", "grok-4.20-reasoning", "grok-4-1-fast-reasoning"],
+                 "allowed_values": ["grok-4.3", "grok-4.20-reasoning"],
                  "value": "grok-4.3",
                  "help": "Builds the long-lived member Knowledge Base dimensions used by search."},
                 {"name": "large_context_model", "label": "Large-context model", "type": "enum",
@@ -1149,7 +1149,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 "Use it to test output quality, latency, and cost before changing fixed monthly pricing.\n\n"
                 "## Editable model stages\n\n"
                 "- **Member KB synthesis**: builds the long-lived member Knowledge Base. Default: `grok-4.3`.\n"
-                "- **Query planner**: converts a user prompt into facets, constraints, dimensions, named people, and search rewrite. Default: `grok-4-1-fast-reasoning`.\n"
+                "- **Query planner**: converts a user prompt into facets, constraints, dimensions, named people, and search rewrite. Default: `grok-4.3`.\n"
                 "- **Final answer**: writes the recommendation from the bounded roster. Default: `grok-4.3`.\n"
                 "- **Large-context fallback**: reserved for prompts that need a 2M-token context window. Default: `grok-4.20-reasoning`.\n"
                 "- **Retry fallback**: optional retry for no-match failures. Default: disabled, model `grok-4.3`.\n\n"
@@ -1240,17 +1240,17 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "topup_pack_credits", "label": "Credit top-up pack size (future)", "type": "integer", "value": 50, "tbd": True, "group": "safety"},
 
                 # Model costs — single source of truth
-                {"name": "model_primary", "label": "Primary model", "type": "string", "value": "grok-4-1-fast-reasoning", "group": "model_costs"},
+                {"name": "model_primary", "label": "Primary model", "type": "string", "value": "grok-4.3", "group": "model_costs"},
                 {"name": "model_primary_input_per_m_usd", "label": "Primary model — input $/1M tokens", "type": "decimal", "prefix": "$", "value": 0.20, "group": "model_costs"},
                 {"name": "model_primary_output_per_m_usd", "label": "Primary model — output $/1M tokens", "type": "decimal", "prefix": "$", "value": 0.50, "group": "model_costs"},
-                {"name": "model_heavy", "label": "Heavy model (reasoning)", "type": "string", "value": "grok-4-20-reasoning", "group": "model_costs"},
+                {"name": "model_heavy", "label": "Heavy model (reasoning)", "type": "string", "value": "grok-4.20-reasoning", "group": "model_costs"},
                 {"name": "model_heavy_input_per_m_usd", "label": "Heavy model — input $/1M", "type": "decimal", "prefix": "$", "value": 2.00, "group": "model_costs"},
                 {"name": "model_heavy_output_per_m_usd", "label": "Heavy model — output $/1M", "type": "decimal", "prefix": "$", "value": 6.00, "group": "model_costs"},
                 {"name": "whisper_per_minute_usd", "label": "OpenAI Whisper ($/minute)", "type": "decimal", "prefix": "$", "value": 0.006, "group": "model_costs"},
                 {"name": "tool_call_per_1000_usd", "label": "Web / X / code-exec tool calls ($/1000 calls)", "type": "decimal", "prefix": "$", "value": 5.00, "group": "model_costs"},
                 {"name": "usd_to_eur_rate", "label": "USD → EUR rate", "type": "decimal", "value": 0.92, "group": "model_costs",
                  "help": "Used by the calculator to convert xAI/OpenAI bills to €."},
-                {"name": "model_costs_last_checked", "label": "Model costs last checked", "type": "date", "value": "2026-04-19", "group": "model_costs"},
+                {"name": "model_costs_last_checked", "label": "Model costs last checked", "type": "date", "value": "2026-05-06", "group": "model_costs"},
                 {"name": "model_costs_source", "label": "Source of pricing", "type": "string",
                  "value": "x.ai/pricing + openai.com/pricing — re-verify monthly.", "group": "model_costs"},
             ],

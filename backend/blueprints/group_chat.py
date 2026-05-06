@@ -19,6 +19,7 @@ from backend.services import ai_usage, auth_session, session_identity
 from backend.services.entitlements_gate import gate_or_reason
 from backend.services.feature_flags import entitlements_enforcement_enabled
 from backend.services.steve_dm_typing import clear_group_typing, is_group_typing, mark_group_typing
+from backend.services.networking_ai_config import MODEL_GROK_43
 
 # Allowed extensions for chat uploads
 # Include HEIC/HEIF for iOS devices
@@ -2763,7 +2764,7 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
     """
     Generate and post Steve's AI reply to a group chat message.
     Runs in a background thread.
-    Uses Grok 4.1 Fast with built-in web search capabilities.
+    Uses Grok reasoning with built-in web search capabilities.
     """
     import time
     from datetime import datetime
@@ -3276,7 +3277,7 @@ RESPONSE FORMAT:
         
         ai_response = None
         
-        logger.info(f"Steve using Grok 4.1 Fast Reasoning with web+X search for group {group_id}")
+        logger.info(f"Steve using Grok reasoning with web+X search for group {group_id}")
         client = OpenAI(
             api_key=XAI_API_KEY,
             base_url="https://api.x.ai/v1"
@@ -3308,7 +3309,7 @@ RESPONSE FORMAT:
                 effective_system = system_prompt
             
             response = client.responses.create(
-                model="grok-4-1-fast-reasoning",
+                model=MODEL_GROK_43,
                 input=[
                     {"role": "system", "content": effective_system},
                     {"role": "user", "content": user_content}
@@ -3323,9 +3324,9 @@ RESPONSE FORMAT:
             ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
             
             if ai_response:
-                logger.info(f"Steve Grok 4.1 Fast successful for group {group_id}")
+                logger.info(f"Steve Grok reasoning successful for group {group_id}")
         except Exception as grok_err:
-            logger.error(f"Grok 4.1 Fast failed for group {group_id}: {grok_err}")
+            logger.error(f"Grok reasoning failed for group {group_id}: {grok_err}")
         
         if not ai_response:
             logger.warning("Steve got empty response from API")
@@ -3383,7 +3384,7 @@ RESPONSE FORMAT:
                 sender_username,
                 surface=ai_usage.SURFACE_GROUP,
                 request_type='steve_group_reply',
-                model='grok-4-1-fast-reasoning',
+                model=MODEL_GROK_43,
                 community_id=None,
             )
         except Exception:

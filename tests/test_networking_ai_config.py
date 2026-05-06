@@ -25,7 +25,7 @@ def test_networking_ai_config_defaults_without_page():
 
     assert config.enabled is True
     assert config.weekly_prompts_per_user == 20
-    assert config.planner_model == "grok-4-1-fast-reasoning"
+    assert config.planner_model == "grok-4.3"
     assert config.final_answer_model == "grok-4.3"
     assert config.kb_synthesis_model == "grok-4.3"
 
@@ -55,9 +55,9 @@ def test_networking_ai_config_accepts_allowed_models_and_caps():
 def test_networking_ai_config_rejects_invalid_models():
     config = get_networking_ai_config(
         _page({
-            "planner_model": "grok-4-1-fast-non-reasoning",
+            "planner_model": "grok-4.20-non-reasoning",
             "final_answer_model": "made-up-model",
-            "kb_synthesis_model": "grok-3-mini",
+            "kb_synthesis_model": "grok-4.20-non-reasoning",
             "weekly_prompts_per_user": -10,
         })
     )

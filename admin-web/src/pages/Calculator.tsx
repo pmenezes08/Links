@@ -35,10 +35,10 @@ interface UserAllowance {
 }
 
 const DEFAULT_MODEL_COSTS: ModelCosts = {
-  primary_name: 'grok-4-1-fast-reasoning',
+  primary_name: 'grok-4.3',
   primary_input_per_m: 0.20,
   primary_output_per_m: 0.50,
-  heavy_name: 'grok-4-20-reasoning',
+  heavy_name: 'grok-4.20-reasoning',
   heavy_input_per_m: 2.0,
   heavy_output_per_m: 6.0,
   whisper_per_minute: 0.006,

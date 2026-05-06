@@ -194,7 +194,7 @@ class TestBlockedRowsExcluded:
             "alice",
             surface=SURFACE_DM,
             tokens_in=10, tokens_out=20,
-            cost_usd=0.000123, model="grok-4-1-fast-reasoning",
+            cost_usd=0.000123, model="grok-4.3",
         )
         ai_usage.log_block("alice", surface=SURFACE_DM,
                            reason="daily_limit_reached")
