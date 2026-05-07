@@ -20,7 +20,7 @@ const painPoints = [
 
 export function PrivateNetworksSection() {
   return (
-    <section id="why-cpoint" className="section-padding relative overflow-hidden">
+    <section id="why-cpoint" className="section-padding bg-primary/[0.05] relative overflow-hidden">
       <div className="absolute top-1/2 right-0 w-[380px] h-[380px] bg-primary/[0.04] rounded-full blur-3xl pointer-events-none" />
 
       <div className="max-w-6xl mx-auto px-6 relative">
