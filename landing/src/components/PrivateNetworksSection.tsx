@@ -26,7 +26,7 @@ export function PrivateNetworksSection() {
       <div className="max-w-6xl mx-auto px-6 relative">
         <div className="text-center max-w-2xl mx-auto mb-14">
           <p className="text-sm font-semibold text-primary uppercase tracking-widest mb-3">
-            Private networks, not public noise
+            Global platform of private micro-networks
           </p>
           <h2 className="heading-lg text-foreground mb-4">
             Chat for speed. Feed for{" "}

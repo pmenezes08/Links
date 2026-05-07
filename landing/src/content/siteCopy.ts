@@ -33,3 +33,8 @@ Access is by invitation only. Privacy and exclusivity are built in from day one.
 This is your world. Come connect with it.`;
 
 export const androidComingSoonLabel = "Android — coming soon on Google Play";
+
+/** High-level hero paragraph approved by user - global platform of private micro-networks framing. Keep in sync with manifesto in docs/STEVE_PLATFORM_KB.md and client/src/content/aboutCPoint.ts */
+export const HERO_SUBHEAD =
+  "C-Point is a global platform of private, invitation-only micro-networks. Each network is its own world — no public feeds, no strangers, no algorithmic noise. Come reconnect with your people, keep shared memory in a real feed, and have Steve as the intelligent presence inside every community.";
+

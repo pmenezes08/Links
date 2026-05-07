@@ -11,7 +11,7 @@ export function ManifestoSection() {
   const [open, setOpen] = useState(false);
 
   return (
-    <section id="manifesto" className="section-padding bg-muted/40">
+    <section id="manifesto" className="section-padding bg-primary/[0.02]">
       <div className="max-w-3xl mx-auto px-6">
         <p className="text-sm font-semibold text-primary uppercase tracking-widest mb-3 text-center">
           C-Point manifesto

@@ -1,7 +1,7 @@
 import { Apple, Laptop } from "lucide-react";
 import heroBg from "@/assets/hero-community.jpg";
 import { AndroidComingSoonButton } from "@/components/AndroidComingSoonButton";
-import { APP_STORE_URL, APP_WEB_URL, PLATFORM_AVAILABILITY_LINE } from "@/content/siteCopy";
+import { APP_STORE_URL, APP_WEB_URL, PLATFORM_AVAILABILITY_LINE, HERO_SUBHEAD } from "@/content/siteCopy";
 
 export const Hero = () => {
   return (
@@ -30,7 +30,7 @@ export const Hero = () => {
         </h1>
 
         <p className="text-lg md:text-xl text-white/85 leading-relaxed max-w-2xl mx-auto mb-6 fade-in-up" style={{ animationDelay: "0.3s" }}>
-          Stop losing decisions in chaotic group chats. C-Point gives each network its own memory — a durable feed alongside private messaging — with Steve inside every community.
+          {HERO_SUBHEAD}
         </p>
 
         <p className="text-sm text-white/70 max-w-xl mx-auto mb-10 fade-in-up" style={{ animationDelay: "0.38s" }}>

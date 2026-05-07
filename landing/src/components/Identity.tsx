@@ -14,7 +14,7 @@ export const Identity = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
           <div>
             <p className="text-sm font-semibold text-primary uppercase tracking-widest mb-3">
-              Professional Identity
+              Trust inside private micro-networks
             </p>
             <h2 className="heading-lg text-foreground mb-4">
               Trust inside{" "}

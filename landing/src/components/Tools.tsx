@@ -53,7 +53,7 @@ export const Tools = () => {
       <div className="max-w-6xl mx-auto px-6">
         <div className="text-center max-w-2xl mx-auto mb-16">
           <p className="text-sm font-semibold text-primary uppercase tracking-widest mb-3">
-            Built-in Utility
+            Tools for every micro-network
           </p>
           <h2 className="heading-lg text-foreground mb-4">
             Everything in{" "}
