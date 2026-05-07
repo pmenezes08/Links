@@ -18,7 +18,7 @@ const items = [
 
 export function MembershipSection() {
   return (
-    <section id="membership" className="section-padding bg-primary/[0.02] relative overflow-hidden">
+    <section id="membership" className="section-padding bg-primary/[0.1] relative overflow-hidden">
       <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-primary/[0.04] rounded-full blur-3xl pointer-events-none" />
 
       <div className="max-w-6xl mx-auto px-6 relative">

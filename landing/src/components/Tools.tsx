@@ -49,7 +49,7 @@ const tools = [
 
 export const Tools = () => {
   return (
-    <section id="tools" className="section-padding bg-primary/[0.05]">
+    <section id="tools" className="section-padding bg-primary/[0.1]">
       <div className="max-w-6xl mx-auto px-6">
         <div className="text-center max-w-2xl mx-auto mb-16">
           <p className="text-sm font-semibold text-primary uppercase tracking-widest mb-3">
