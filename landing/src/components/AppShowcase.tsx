@@ -1,6 +1,6 @@
 export const AppShowcase = () => {
   return (
-    <section id="experience" className="section-padding bg-primary/[0.1] overflow-hidden">
+    <section id="experience" className="section-padding bg-white overflow-hidden">
       <div className="max-w-6xl mx-auto px-6">
         <div className="text-center max-w-2xl mx-auto mb-16">
           <p className="text-sm font-semibold text-primary uppercase tracking-widest mb-3">

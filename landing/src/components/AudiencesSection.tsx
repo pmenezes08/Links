@@ -25,7 +25,7 @@ const audiences = [
 
 export function AudiencesSection() {
   return (
-    <section id="audiences" className="section-padding bg-primary/[0.1]">
+    <section id="audiences" className="section-padding bg-[#4db6ac]/10">
       <div className="max-w-6xl mx-auto px-6">
         <div className="text-center max-w-2xl mx-auto mb-14">
           <p className="text-sm font-semibold text-primary uppercase tracking-widest mb-3">

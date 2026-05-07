@@ -28,7 +28,7 @@ const capabilities = [
 
 export const CommunitiesSection = () => {
   return (
-    <section id="communities" className="section-padding bg-primary/[0.1] relative overflow-hidden">
+    <section id="communities" className="section-padding bg-[#4db6ac]/10 relative overflow-hidden">
       <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-primary/[0.03] rounded-full blur-3xl pointer-events-none" />
 
       <div className="max-w-6xl mx-auto px-6">

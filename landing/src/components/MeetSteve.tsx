@@ -40,7 +40,7 @@ const features = [
 
 export const MeetSteve = () => {
   return (
-    <section id="steve" className="section-padding bg-primary/[0.1] relative overflow-hidden">
+    <section id="steve" className="section-padding bg-[#4db6ac]/10 relative overflow-hidden">
       <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-primary/[0.03] rounded-full blur-3xl pointer-events-none" />
 
       <div className="max-w-6xl mx-auto px-6">
