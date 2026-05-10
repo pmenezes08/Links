@@ -12,9 +12,10 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/about/tutorial_videos` | GET | `get_tutorial_videos` | `backend/blueprints/about_tutorials.py:36` | get tutorial videos | `client/src/pages/AboutCPoint.tsx` (1) |
 | `/api/admin/about/tutorial_video` | POST | `admin_set_tutorial_video` | `backend/blueprints/about_tutorials.py:48` | admin set tutorial video | `client/src/pages/AboutCPoint.tsx` (1) |
 | `/api/admin/about/tutorial_upload_url` | POST | `admin_tutorial_upload_url` | `backend/blueprints/about_tutorials.py:89` | admin tutorial upload url | `client/src/pages/AboutCPoint.tsx` (1) |
+| `/api/admin/communities/directory` | GET | `api_admin_communities_directory` | `backend/blueprints/admin_communities.py:49` | api admin communities directory | `admin-web/src/pages/CommunitiesDirectory.tsx` (1) |
 | `/api/admin/subscriptions/users` | GET | `api_admin_subscription_users` | `backend/blueprints/admin_subscriptions.py:38` | api admin subscription users | `admin-web/src/pages/Subscriptions.tsx` (1) |
 | `/api/admin/subscriptions/communities` | GET | `api_admin_subscription_communities` | `backend/blueprints/admin_subscriptions.py:78` | api admin subscription communities | `admin-web/src/pages/Subscriptions.tsx` (1) |
-| `/api/admin/subscriptions/pricing_diagnostics` | GET | `api_admin_subscription_pricing_diagnostics` | `backend/blueprints/admin_subscriptions.py:106` | api admin subscription pricing diagnostics | `admin-web/src/pages/Subscriptions.tsx` (1) |
+| `/api/admin/subscriptions/pricing_diagnostics` | GET | `api_admin_subscription_pricing_diagnostics` | `backend/blueprints/admin_subscriptions.py:106` | api admin subscription pricing diagnostics | `admin-web/src/pages/CommunitiesDirectory.tsx` (1), `admin-web/src/pages/Subscriptions.tsx` (1) |
 | `/api/admin/users/<string:target_username>/special/grant` | POST | `grant_special` | `backend/blueprints/admin_users.py:54` | grant special | *(no exact string match — may use helpers)* |
 | `/api/admin/users/<string:target_username>/special/revoke` | POST | `revoke_special` | `backend/blueprints/admin_users.py:81` | revoke special | *(no exact string match — may use helpers)* |
 | `/api/admin/users/<string:target_username>/trial/revoke` | POST | `revoke_trial` | `backend/blueprints/admin_users.py:108` | revoke trial | *(no exact string match — may use helpers)* |
@@ -34,9 +35,9 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/admin/upload_onboarding_welcome_video` | POST | `admin_upload_onboarding_welcome_video` | `backend/blueprints/branding_assets.py:48` | admin upload onboarding welcome video | `client/src/pages/AdminDashboard.tsx` (1) |
 | `/admin/remove_onboarding_welcome_video` | POST | `admin_remove_onboarding_welcome_video` | `backend/blueprints/branding_assets.py:79` | admin remove onboarding welcome video | `client/src/pages/AdminDashboard.tsx` (1) |
 | `/api/public/onboarding_welcome_video` | GET | `api_public_onboarding_welcome_video` | `backend/blueprints/branding_assets.py:90` | api public onboarding welcome video | `client/src/components/onboarding/OnboardingIntroGate.test.tsx` (1), `client/src/components/onboarding/OnboardingIntroGate.tsx` (1) |
-| `/communities` | GET (default) | `communities_list` | `backend/blueprints/communities.py:108` | communities list | `client/src/pages/CommunityFeed.tsx` (3), `client/src/pages/EditCommunity.tsx` (3), `client/src/pages/PremiumDashboard.tsx` (3), `admin-web/src/pages/Subscriptions.tsx` (2), `admin-web/src/pages/Tenants.tsx` (2), `client/src/App.tsx` (1), `client/src/pages/GroupFeed.tsx` (1), `client/src/pages/Networking.tsx` (1) |
-| `/delete_community` | POST | `delete_community` | `backend/blueprints/communities.py:319` | delete community | `client/src/pages/Communities.tsx` (2), `client/src/pages/AdminDashboard.tsx` (1), `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/EditCommunity.tsx` (1), `admin-web/src/pages/Communities.tsx` (1) |
-| `/api/admin/delete_community` | POST | `admin_delete_community` | `backend/blueprints/communities.py:336` | admin delete community | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Communities.tsx` (1) |
+| `/communities` | GET (default) | `communities_list` | `backend/blueprints/communities.py:108` | communities list | `client/src/pages/CommunityFeed.tsx` (3), `client/src/pages/EditCommunity.tsx` (3), `client/src/pages/PremiumDashboard.tsx` (3), `admin-web/src/pages/CommunitiesDirectory.tsx` (2), `admin-web/src/pages/Subscriptions.tsx` (2), `admin-web/src/pages/Tenants.tsx` (2), `client/src/App.tsx` (1), `client/src/pages/GroupFeed.tsx` (1) |
+| `/delete_community` | POST | `delete_community` | `backend/blueprints/communities.py:319` | delete community | `client/src/pages/Communities.tsx` (2), `client/src/pages/AdminDashboard.tsx` (1), `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/EditCommunity.tsx` (1), `admin-web/src/pages/NetworkInsights.tsx` (1) |
+| `/api/admin/delete_community` | POST | `admin_delete_community` | `backend/blueprints/communities.py:336` | admin delete community | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/NetworkInsights.tsx` (1) |
 | `/api/communities/<int:community_id>/freeze` | POST | `freeze_community` | `backend/blueprints/communities.py:359` | freeze community | *(no exact string match — may use helpers)* |
 | `/api/communities/<int:community_id>/unfreeze` | POST | `unfreeze_community` | `backend/blueprints/communities.py:383` | unfreeze community | *(no exact string match — may use helpers)* |
 | `/api/user_communities_hierarchical` | GET | `user_communities_hierarchical` | `backend/blueprints/communities.py:405` | user communities hierarchical | `client/src/pages/SubscriptionPlans.test.tsx` (3), `client/src/pages/Communities.tsx` (1), `client/src/pages/Messages.tsx` (1), `client/src/pages/SubscriptionPlans.tsx` (1), `client/src/utils/serverPull.ts` (1) |
@@ -162,7 +163,7 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/admin/kb/tests/<test_id>/status` | PATCH | `kb_update_test_status` | `backend/blueprints/knowledge_base.py:239` | kb update test status | *(no exact string match — may use helpers)* |
 | `/api/admin/kb/special-access/audit` | GET | `kb_special_access_audit` | `backend/blueprints/knowledge_base.py:279` | kb special access audit | *(no exact string match — may use helpers)* |
 | `/api/admin/kb/special-access/revoke-expired` | POST | `kb_special_access_revoke_expired` | `backend/blueprints/knowledge_base.py:298` | kb special access revoke expired | *(no exact string match — may use helpers)* |
-| `/api/me/entitlements` | GET | `me_entitlements` | `backend/blueprints/me.py:137` | me entitlements | `client/src/hooks/useEntitlements.ts` (4) |
+| `/api/me/entitlements` | GET | `me_entitlements` | `backend/blueprints/me.py:137` | me entitlements | `client/src/hooks/useEntitlements.ts` (4), `client/src/utils/steveClientGate.ts` (1) |
 | `/api/me/ai-usage` | GET | `me_ai_usage` | `backend/blueprints/me.py:169` | me ai usage | `client/src/pages/MembershipAIUsage.tsx` (2), `client/src/components/membership/ManageMembershipModal.tsx` (1) |
 | `/api/me/billing` | GET | `me_billing` | `backend/blueprints/me.py:301` | me billing | `client/src/components/membership/ManageMembershipModal.tsx` (4), `client/src/pages/Success.tsx` (2), `client/src/pages/SubscriptionPlans.tsx` (1) |
 | `/api/me/billing/portal` | POST | `me_billing_portal` | `backend/blueprints/me.py:352` | me billing portal | `client/src/pages/Success.tsx` (2), `client/src/components/membership/ManageMembershipModal.tsx` (2), `client/src/pages/SubscriptionPlans.tsx` (1) |
@@ -264,10 +265,10 @@ Total **394** `@app.route` registrations, grouped below for readability.
 | `/api/admin/add_user` | POST | `admin_add_user` | 9524 | admin add user | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Users.tsx` (1) |
 | `/api/admin/add_user_to_community` | POST | `admin_add_user_to_community_api` | 9658 | admin add user to community api | — |
 | `/api/admin/all_blocked_users` | GET | `admin_get_all_blocked_users` | 21438 | admin get all blocked users | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Blocked.tsx` (1) |
-| `/api/admin/communities` | GET | `admin_communities_api` | 9057 | admin communities api | `admin-web/src/pages/Broadcast.tsx` (1), `admin-web/src/pages/ContentGeneration.tsx` (1), `admin-web/src/pages/Invites.tsx` (1), `admin-web/src/pages/Subscriptions.tsx` (1), `admin-web/src/pages/Tenants.tsx` (1) |
+| `/api/admin/communities` | GET | `admin_communities_api` | 9057 | admin communities api | `admin-web/src/pages/CommunitiesDirectory.tsx` (2), `admin-web/src/pages/Broadcast.tsx` (1), `admin-web/src/pages/ContentGeneration.tsx` (1), `admin-web/src/pages/Invites.tsx` (1), `admin-web/src/pages/Subscriptions.tsx` (1) |
 | `/api/admin/communities_list` | GET | `admin_communities_list_api` | 8823 | admin communities list api | `admin-web/src/pages/ContentGeneration.tsx` (1) |
 | `/api/admin/compress_images` | POST | `admin_compress_images` | 9566 | admin compress images | — |
-| `/api/admin/dashboard` | GET | `admin_dashboard_api` | 9275 | admin dashboard api | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Communities.tsx` (1) |
+| `/api/admin/dashboard` | GET | `admin_dashboard_api` | 9275 | admin dashboard api | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/NetworkInsights.tsx` (1) |
 | `/api/admin/delete_reported_post` | POST | `admin_delete_reported_post` | 21194 | admin delete reported post | `client/src/pages/AdminDashboard.tsx` (1), `admin-web/src/pages/Reports.tsx` (1) |
 | `/api/admin/embeddings/backfill` | POST | `admin_embeddings_backfill` | 33169 | admin embeddings backfill | `client/src/pages/AdminDashboard.tsx` (2) |
 | `/api/admin/embeddings/status` | GET | `admin_embeddings_status` | 33225 | admin embeddings status | `client/src/pages/AdminDashboard.tsx` (1) |
@@ -1033,7 +1034,7 @@ Total **394** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/communities` | GET | `communities` | 24086 | communities | `client/src/pages/CommunityFeed.tsx` (3), `client/src/pages/EditCommunity.tsx` (3), `client/src/pages/PremiumDashboard.tsx` (3), `admin-web/src/pages/Subscriptions.tsx` (2), `admin-web/src/pages/Tenants.tsx` (2) |
+| `/communities` | GET | `communities` | 24086 | communities | `client/src/pages/CommunityFeed.tsx` (3), `client/src/pages/EditCommunity.tsx` (3), `client/src/pages/PremiumDashboard.tsx` (3), `admin-web/src/pages/CommunitiesDirectory.tsx` (2), `admin-web/src/pages/Subscriptions.tsx` (2) |
 
 ### `/community`
 

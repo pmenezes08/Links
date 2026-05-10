@@ -5,6 +5,7 @@ import { api, apiJson } from '../utils/api'
 const navItems = [
   { to: '/', icon: 'fa-chart-line', label: 'Overview' },
   { to: '/users', icon: 'fa-users', label: 'Users' },
+  { to: '/network-insights', icon: 'fa-diagram-project', label: 'Network Insights' },
   { to: '/communities', icon: 'fa-people-group', label: 'Communities' },
   { to: '/profiles', icon: 'fa-brain', label: 'AI Profiles' },
   { to: '/metrics', icon: 'fa-chart-bar', label: 'Metrics' },

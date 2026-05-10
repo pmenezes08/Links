@@ -221,6 +221,17 @@ CREATE TABLE IF NOT EXISTS user_communities (
 )
 """
 
+_COMMUNITY_ADMINS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS community_admins (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    community_id INT NOT NULL,
+    username VARCHAR(191) NOT NULL,
+    appointed_by VARCHAR(191) NOT NULL DEFAULT 'system',
+    appointed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_community_admin (community_id, username)
+)
+"""
+
 _NOTIFICATIONS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS notifications (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -283,12 +294,14 @@ def _bootstrap_schema() -> None:
             ("accent_color", "VARCHAR(32) DEFAULT '#4db6ac'"),
             ("card_color", "VARCHAR(32) DEFAULT '#1a2526'"),
             ("notify_on_new_member", "TINYINT(1) DEFAULT 0"),
+            ("tenant_id", "INT NULL"),
         ):
             try:
                 c.execute(f"ALTER TABLE communities ADD COLUMN {column} {col_def}")
             except Exception:
                 pass
         c.execute(_USER_COMMUNITIES_TABLE_SQL)
+        c.execute(_COMMUNITY_ADMINS_TABLE_SQL)
         c.execute(_POSTS_TABLE_SQL)
         c.execute(_POST_VIEWS_TABLE_SQL)
         c.execute(_REPLIES_TABLE_SQL)
@@ -331,6 +344,7 @@ _TRUNCATE_TABLES: List[str] = [
     "users",
     "communities",
     "user_communities",
+    "community_admins",
     "post_views",
     "posts",
     "replies",

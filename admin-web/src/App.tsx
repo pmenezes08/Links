@@ -4,7 +4,8 @@ import AuthGuard from './components/AuthGuard'
 import Login from './pages/Login'
 import Overview from './pages/Overview'
 import Users from './pages/Users'
-import Communities from './pages/Communities'
+import NetworkInsights from './pages/NetworkInsights'
+import CommunitiesDirectory from './pages/CommunitiesDirectory'
 import Metrics from './pages/Metrics'
 import Reports from './pages/Reports'
 import Blocked from './pages/Blocked'
@@ -28,7 +29,8 @@ export default function App() {
       <Route element={<AuthGuard><Layout /></AuthGuard>}>
         <Route index element={<Overview />} />
         <Route path="users" element={<Users />} />
-        <Route path="communities" element={<Communities />} />
+        <Route path="network-insights" element={<NetworkInsights />} />
+        <Route path="communities" element={<CommunitiesDirectory />} />
         <Route path="profiles" element={<UserProfiles />} />
         <Route path="metrics" element={<Metrics />} />
         <Route path="reports" element={<Reports />} />

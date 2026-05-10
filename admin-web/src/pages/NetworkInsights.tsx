@@ -1,13 +1,38 @@
 import { useEffect, useState } from 'react'
 import { apiJson, apiPost } from '../utils/api'
 
-interface Community {
+interface DashCommunity {
+  id: number
+  name: string
+  creator_username?: string | null
+  member_count?: number
+  type?: string
+  children?: DashCommunity[]
+}
+
+interface CommunityRow {
   id: number
   name: string
   creator?: string
   member_count?: number
-  created_at?: string
   network_type?: string
+}
+
+function flattenDashboardCommunities(nodes: DashCommunity[]): CommunityRow[] {
+  const out: CommunityRow[] = []
+  const walk = (n: DashCommunity) => {
+    out.push({
+      id: n.id,
+      name: n.name,
+      creator: n.creator_username ?? undefined,
+      member_count: n.member_count,
+      network_type: n.type ?? undefined,
+    })
+    for (const ch of n.children ?? []) walk(ch)
+  }
+  for (const n of nodes) walk(n)
+  out.sort((a, b) => a.name.localeCompare(b.name))
+  return out
 }
 
 interface NetworkInsights {
@@ -28,38 +53,45 @@ interface NetworkInsights {
   networkType?: string
 }
 
-export default function Communities() {
-  const [communities, setCommunities] = useState<Community[]>([])
+export default function NetworkInsights() {
+  const [communities, setCommunities] = useState<CommunityRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [loadError, setLoadError] = useState('')
+  const [insightError, setInsightError] = useState('')
   const [actionMsg, setActionMsg] = useState('')
-  const [selectedCommunity, setSelectedCommunity] = useState<Community | null>(null)
+  const [selectedCommunity, setSelectedCommunity] = useState<CommunityRow | null>(null)
   const [insights, setInsights] = useState<NetworkInsights | null>(null)
   const [insightsLoading, setInsightsLoading] = useState(false)
 
   const fetchCommunities = () => {
     setLoading(true)
-    apiJson<{ communities?: Community[] }>('/api/admin/dashboard')
-      .then(d => setCommunities(d.communities ?? []))
-      .catch(() => setError('Failed to load communities'))
+    setLoadError('')
+    apiJson<{ communities?: DashCommunity[] }>('/api/admin/dashboard')
+      .then(d => setCommunities(flattenDashboardCommunities(d.communities ?? [])))
+      .catch(() => setLoadError('Failed to load communities'))
       .finally(() => setLoading(false))
   }
 
-  const generateInsights = async (community: Community) => {
+  const generateInsights = async (community: CommunityRow) => {
     setSelectedCommunity(community)
     setInsightsLoading(true)
-    setError('')  // Clear previous errors
+    setInsightError('')
     try {
       const result = await apiPost(`/api/admin/knowledge_base/network/${community.id}/insights`, {})
       if (result.success && result.insights) {
         setInsights(result.insights)
       } else {
-        setError(result.error || 'Failed to generate insights')
+        setInsightError(result.error || 'Failed to generate insights')
         setInsights(null)
       }
-    } catch (err: any) {
-      const errorMsg = err?.message || err?.error || 'Failed to generate insights'
-      setError(errorMsg)
+    } catch (err: unknown) {
+      const errorMsg =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message?: string }).message)
+          : err && typeof err === 'object' && 'error' in err
+            ? String((err as { error?: string }).error)
+            : 'Failed to generate insights'
+      setInsightError(errorMsg)
       setInsights(null)
     } finally {
       setInsightsLoading(false)
@@ -81,11 +113,10 @@ export default function Communities() {
   }
 
   if (loading) return <div className="text-muted text-center py-20">Loading communities...</div>
-  if (error) return <div className="text-red-400 text-center py-20">{error}</div>
+  if (loadError) return <div className="text-red-400 text-center py-20">{loadError}</div>
 
   return (
     <div className="flex h-[calc(100vh-4rem)]">
-      {/* Left: Community List */}
       <div className="w-1/3 border-r border-white/10 overflow-auto p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold">Network Communities</h1>
@@ -118,18 +149,25 @@ export default function Communities() {
                   )}
                 </div>
                 <button
-                  onClick={(e) => { e.stopPropagation(); handleDelete(c.id, c.name) }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDelete(c.id, c.name)
+                  }}
                   className="text-red-400 hover:text-red-300 text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                   title="Delete"
+                  type="button"
                 >
                   <i className="fa-solid fa-trash" />
                 </button>
               </div>
               <div className="flex items-center justify-between text-xs text-muted mb-4">
-                <span><i className="fa-solid fa-users mr-1" />{c.member_count ?? 0} members</span>
-                {c.created_at && <span>{new Date(c.created_at).toLocaleDateString()}</span>}
+                <span>
+                  <i className="fa-solid fa-users mr-1" />
+                  {c.member_count ?? 0} members
+                </span>
               </div>
               <button
+                type="button"
                 onClick={() => generateInsights(c)}
                 className="w-full py-2 text-sm bg-[#4db6ac] hover:bg-[#3da89a] text-black font-medium rounded-xl transition-colors"
               >
@@ -144,22 +182,25 @@ export default function Communities() {
         )}
       </div>
 
-      {/* Right: Insights Panel */}
       <div className="flex-1 p-6 overflow-auto">
         {!selectedCommunity ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <div className="text-6xl mb-6 opacity-30">🌐</div>
             <h3 className="text-xl font-medium text-white/70 mb-2">Network Insights</h3>
-            <p className="text-muted max-w-xs">Select a network on the left to generate strategic insights, group recommendations, and content ideas from Steve's Knowledge Base.</p>
+            <p className="text-muted max-w-xs">
+              Select a network on the left to generate strategic insights, group recommendations, and content ideas from
+              Steve&apos;s Knowledge Base.
+            </p>
           </div>
         ) : (
           <div className="space-y-8">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-semibold">{selectedCommunity.name}</h2>
-                <p className="text-muted">Network Insights • Generated by Steve's Reasoning Layer</p>
+                <p className="text-muted">Network Insights • Generated by Steve&apos;s Reasoning Layer</p>
               </div>
               <button
+                type="button"
                 onClick={() => generateInsights(selectedCommunity)}
                 disabled={insightsLoading}
                 className="px-6 py-2 bg-[#4db6ac] hover:bg-[#3da89a] disabled:opacity-50 text-black font-medium rounded-lg flex items-center gap-2"
@@ -167,6 +208,10 @@ export default function Communities() {
                 {insightsLoading ? 'Generating...' : 'Generate Fresh Insights'}
               </button>
             </div>
+
+            {insightError && (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{insightError}</div>
+            )}
 
             {insightsLoading && (
               <div className="bg-surface-2 border border-white/10 rounded-2xl p-12 text-center">
@@ -177,33 +222,28 @@ export default function Communities() {
 
             {insights && !insightsLoading && (
               <div className="space-y-8">
-                {/* KB Coverage */}
-                <div className="bg-surface-2 border border-white/10 rounded-2xl p-4 flex items-center gap-6 text-sm">
+                <div className="bg-surface-2 border border-white/10 rounded-2xl p-4 flex flex-wrap items-center gap-6 text-sm">
                   <div className="flex items-center gap-2">
                     <span className="text-[#4db6ac]">📊</span>
                     <span className="text-muted">Data Coverage:</span>
                   </div>
-                  <div className="flex gap-4">
+                  <div className="flex gap-4 flex-wrap">
                     <span className="text-white/80">
-                      <strong className="text-white">{insights.membersWithKB ?? '?'}</strong>/{insights.memberCount ?? '?'} members with KB
+                      <strong className="text-white">{insights.membersWithKB ?? '?'}</strong>/{insights.memberCount ?? '?'}{' '}
+                      members with KB
                     </span>
                     <span className="text-white/80">
                       <strong className="text-white">{insights.kbDimensions ?? '?'}</strong>/6 dimensions
                     </span>
                     {insights.networkType && (
-                      <span className="px-2 py-0.5 bg-[#4db6ac]/10 text-[#4db6ac] rounded text-xs">
-                        {insights.networkType}
-                      </span>
+                      <span className="px-2 py-0.5 bg-[#4db6ac]/10 text-[#4db6ac] rounded text-xs">{insights.networkType}</span>
                     )}
                   </div>
                   {insights.generatedAt && (
-                    <span className="text-muted ml-auto text-xs">
-                      {new Date(insights.generatedAt).toLocaleString()}
-                    </span>
+                    <span className="text-muted ml-auto text-xs">{new Date(insights.generatedAt).toLocaleString()}</span>
                   )}
                 </div>
 
-                {/* Summary */}
                 <div className="bg-surface-2 border border-white/10 rounded-2xl p-6">
                   <h3 className="font-medium mb-3 flex items-center gap-2">
                     <span className="text-[#4db6ac]">📋</span> Executive Summary
@@ -211,7 +251,6 @@ export default function Communities() {
                   <p className="text-white/80 leading-relaxed">{insights.summary}</p>
                 </div>
 
-                {/* Group Recommendations */}
                 <div>
                   <h3 className="font-medium mb-4 flex items-center gap-2">
                     <span className="text-[#4db6ac]">👥</span> Recommended Groups
@@ -222,21 +261,26 @@ export default function Communities() {
                         <div className="flex justify-between items-start mb-3">
                           <div>
                             <div className="font-semibold text-lg">{rec.title}</div>
-                            <div className="text-[#4db6ac] text-sm">{rec.memberCount} members • {Math.round(rec.confidence * 100)}% confidence</div>
+                            <div className="text-[#4db6ac] text-sm">
+                              {rec.memberCount} members • {Math.round(rec.confidence * 100)}% confidence
+                            </div>
                           </div>
                           <div className="px-3 py-1 bg-emerald-500/10 text-emerald-400 text-xs rounded-full">Recommended</div>
                         </div>
                         <p className="text-white/70 text-sm mb-4">{rec.rationale}</p>
                         <div className="flex gap-3">
-                          <button className="px-5 py-2 bg-white text-black text-sm font-medium rounded-xl hover:bg-white/90">Create Group</button>
-                          <button className="px-5 py-2 border border-white/30 text-sm rounded-xl hover:bg-white/5">Dismiss</button>
+                          <button type="button" className="px-5 py-2 bg-white text-black text-sm font-medium rounded-xl hover:bg-white/90">
+                            Create Group
+                          </button>
+                          <button type="button" className="px-5 py-2 border border-white/30 text-sm rounded-xl hover:bg-white/5">
+                            Dismiss
+                          </button>
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Content Ideas */}
                 <div>
                   <h3 className="font-medium mb-4 flex items-center gap-2">
                     <span className="text-[#4db6ac]">📅</span> Content Ideas
@@ -244,14 +288,15 @@ export default function Communities() {
                   <div className="bg-surface-2 border border-white/10 rounded-2xl p-6 space-y-3">
                     {insights.contentIdeas.map((idea, i) => (
                       <div key={i} className="flex items-start gap-3 p-3 bg-black/30 rounded-xl">
-                        <div className="w-6 h-6 rounded-full bg-[#4db6ac]/10 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">#{i+1}</div>
+                        <div className="w-6 h-6 rounded-full bg-[#4db6ac]/10 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">
+                          #{i + 1}
+                        </div>
                         <div className="text-white/80">{idea}</div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Talent Signals */}
                 <div>
                   <h3 className="font-medium mb-4 flex items-center gap-2">
                     <span className="text-[#4db6ac]">⭐</span> Notable Talent Signals

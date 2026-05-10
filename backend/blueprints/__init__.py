@@ -24,6 +24,7 @@ def register_blueprints(app: Flask) -> None:
     from .subscription_webhooks import subscription_webhooks_bp
     from .subscriptions import subscriptions_bp
     from .admin_subscriptions import admin_subscriptions_bp
+    from .admin_communities import admin_communities_bp
     from .billing_return import billing_return_bp
     from .dm_chats import dm_chats_bp
     from .steve_feedback import steve_feedback_bp
@@ -53,6 +54,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(subscription_webhooks_bp)
     app.register_blueprint(subscriptions_bp)
     app.register_blueprint(admin_subscriptions_bp)
+    app.register_blueprint(admin_communities_bp)
     app.register_blueprint(billing_return_bp)
     app.register_blueprint(dm_chats_bp)
     app.register_blueprint(steve_feedback_bp)
