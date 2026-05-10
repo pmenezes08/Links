@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 
 from flask import Blueprint, jsonify, session
 
-from backend.services import admin_tenant_scope
+from backend.services import admin_tenant_scope, ai_usage, community_billing, knowledge_base
 from backend.services.community import is_app_admin
 from backend.services.database import get_db_connection
 
@@ -44,6 +44,46 @@ def _row_dict(row: Any, keys: List[str]) -> Dict[str, Any]:
     for i, k in enumerate(keys):
         out[k] = row[i] if isinstance(row, (list, tuple)) and len(row) > i else None
     return out
+
+
+def _steve_pool_cap_from_kb() -> int:
+    try:
+        page = knowledge_base.get_page("community-tiers") or {}
+        for field in page.get("fields") or []:
+            if field.get("name") == "paid_steve_package_monthly_credit_pool":
+                return max(0, int(field.get("value") or 0))
+    except Exception:
+        logger.exception("admin communities: failed to load Steve pool cap")
+    return 0
+
+
+def _steve_pool_snapshot(community_id: int, pool_cap: int) -> Dict[str, Any]:
+    try:
+        root_id, _ = community_billing.resolve_root_community_id(int(community_id))
+    except Exception:
+        logger.exception("admin communities: failed to resolve root community for %s", community_id)
+        root_id = community_id
+    try:
+        state = community_billing.get_billing_state(community_id) or {}
+    except Exception:
+        logger.exception("admin communities: failed to load billing state for %s", community_id)
+        state = {}
+    active = bool(state.get("steve_package_subscription_active"))
+    used = 0
+    if active and pool_cap > 0:
+        try:
+            used = ai_usage.community_monthly_steve_pool_usage(int(root_id))
+        except Exception:
+            logger.exception("admin communities: failed to load Steve pool usage for %s", root_id)
+            used = 0
+    return {
+        "steve_package_subscription_active": active,
+        "steve_package_subscription_status": state.get("steve_package_subscription_status"),
+        "steve_package_current_period_end": state.get("steve_package_current_period_end"),
+        "steve_pool_cap": pool_cap if active else 0,
+        "steve_pool_used": int(used or 0),
+        "steve_pool_remaining": max(0, pool_cap - int(used or 0)) if active and pool_cap > 0 else None,
+    }
 
 
 @admin_communities_bp.route("/api/admin/communities/directory", methods=["GET"])
@@ -121,6 +161,7 @@ def api_admin_communities_directory():
             "member_count",
             "direct_child_count",
         ]
+        pool_cap = _steve_pool_cap_from_kb()
         communities: List[Dict[str, Any]] = []
         for row in rows_main:
             d = _row_dict(row, keys)
@@ -136,6 +177,7 @@ def api_admin_communities_directory():
             if cat is not None:
                 d["canceled_at"] = str(cat)
             d["admin_usernames"] = admins_by_cid.get(cid, [])
+            d.update(_steve_pool_snapshot(cid, pool_cap))
             communities.append(d)
 
         return jsonify({"success": True, "communities": communities})

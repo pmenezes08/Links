@@ -4,7 +4,7 @@ import pytest
 from flask import Flask
 
 from backend.blueprints import admin_communities as ac_mod
-from backend.services import community_billing
+from backend.services import ai_usage, community_billing
 from backend.services.database import get_db_connection, get_sql_placeholder
 from tests.fixtures import fill_community_members, make_community, make_user
 
@@ -72,3 +72,58 @@ def test_directory_returns_rows_and_admins(client):
     sub = rows[sub_id]
     assert sub["parent_community_id"] == root_id
     assert sub["direct_child_count"] == 0
+
+
+def test_directory_returns_steve_pool_usage_for_active_package(client, monkeypatch):
+    make_user("boss", is_admin=True)
+    make_user("pool_owner")
+    root_id = make_community("PoolRoot", creator_username="pool_owner")
+    sub_id = make_community("PoolSub", creator_username="pool_owner", parent_community_id=root_id)
+    community_billing.mark_steve_package_subscription(
+        root_id,
+        subscription_id="sub_steve_admin_dir",
+        status="active",
+    )
+    monkeypatch.setattr(ac_mod, "_steve_pool_cap_from_kb", lambda: 300)
+    ai_usage.log_usage(
+        "pool_owner",
+        surface=ai_usage.SURFACE_FEED,
+        request_type="steve_post_reply",
+        community_id=root_id,
+    )
+
+    _login(client, "boss")
+    resp = client.get("/api/admin/communities/directory")
+    assert resp.status_code == 200
+    rows = {r["id"]: r for r in resp.get_json()["communities"]}
+
+    root = rows[root_id]
+    assert root["steve_package_subscription_active"] is True
+    assert root["steve_package_subscription_status"] == "active"
+    assert root["steve_pool_cap"] == 300
+    assert root["steve_pool_used"] == 1
+    assert root["steve_pool_remaining"] == 299
+
+    sub = rows[sub_id]
+    assert sub["steve_package_subscription_active"] is True
+    assert sub["steve_pool_used"] == 1
+
+
+def test_steve_pool_snapshot_counts_against_root_for_subcommunity(monkeypatch):
+    monkeypatch.setattr(ac_mod.community_billing, "resolve_root_community_id", lambda cid: (10, None))
+    monkeypatch.setattr(
+        ac_mod.community_billing,
+        "get_billing_state",
+        lambda cid: {
+            "steve_package_subscription_active": True,
+            "steve_package_subscription_status": "active",
+        },
+    )
+    monkeypatch.setattr(ac_mod.ai_usage, "community_monthly_steve_pool_usage", lambda cid: 7 if cid == 10 else 0)
+
+    snapshot = ac_mod._steve_pool_snapshot(99, 300)
+
+    assert snapshot["steve_package_subscription_active"] is True
+    assert snapshot["steve_pool_cap"] == 300
+    assert snapshot["steve_pool_used"] == 7
+    assert snapshot["steve_pool_remaining"] == 293

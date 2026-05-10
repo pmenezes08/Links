@@ -18,6 +18,12 @@ interface CommunityDirectoryRow {
   current_period_end?: string | null
   cancel_at_period_end?: boolean
   canceled_at?: string | null
+  steve_package_subscription_active?: boolean
+  steve_package_subscription_status?: string | null
+  steve_package_current_period_end?: string | null
+  steve_pool_cap?: number
+  steve_pool_used?: number
+  steve_pool_remaining?: number | null
 }
 
 interface PricingDiagRow {
@@ -408,8 +414,43 @@ export default function CommunitiesDirectory() {
               <div className="border-t border-white/10 pt-4">
                 <h3 className="font-medium text-white/70 mb-2">Add-ons</h3>
                 <div className="rounded-lg border border-white/10 bg-white/5 p-3 text-xs text-white/60">
-                  <p className="font-medium text-white/80">Steve Community Package</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="font-medium text-white/80">Steve Community Package</p>
+                    {billingRoot.steve_package_subscription_active && (
+                      <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent">
+                        Active
+                      </span>
+                    )}
+                  </div>
                   <p className="mt-1">When enabled, pooled Steve usage is configured at the root network and applies across sub-communities.</p>
+                  {billingRoot.steve_package_subscription_active ? (
+                    <div className="mt-3 space-y-1.5 text-white/80">
+                      <div className="flex justify-between gap-2">
+                        <span className="text-white/50">Package status</span>
+                        <span>{billingRoot.steve_package_subscription_status || 'active'}</span>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span className="text-white/50">Steve pool used</span>
+                        <span>
+                          {billingRoot.steve_pool_used ?? 0}
+                          {billingRoot.steve_pool_cap ? ` of ${billingRoot.steve_pool_cap}` : ''}
+                        </span>
+                      </div>
+                      {billingRoot.steve_pool_remaining != null && (
+                        <div className="flex justify-between gap-2">
+                          <span className="text-white/50">Remaining</span>
+                          <span>{billingRoot.steve_pool_remaining}</span>
+                        </div>
+                      )}
+                      {selected.id !== billingRoot.id && (
+                        <p className="text-[11px] text-white/45">
+                          Showing root network pool usage for {billingRoot.name}; sub-communities inherit this pool.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-white/45">No active Steve package on this root network.</p>
+                  )}
                   {stevePriceMissing === true && (
                     <p className="mt-2 text-amber-200/90">Stripe price ID missing in KB for current mode — configure in Knowledge Base.</p>
                   )}
