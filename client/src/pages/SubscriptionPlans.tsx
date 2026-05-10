@@ -143,6 +143,7 @@ interface ActiveCommunitySubscription {
 
 interface ActiveSubscriptionsPayload {
   success: boolean
+  error?: string
   personal: ActivePersonalSubscription
   communities: ActiveCommunitySubscription[]
 }
