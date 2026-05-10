@@ -574,51 +574,10 @@ _TIER_LABELS: Dict[str, str] = {
 def _resolve_root_community_id(community_id: int) -> Tuple[int, bool]:
     """Walk the parent chain and return ``(root_id, is_root)``.
 
-    Billing and tier enforcement live on the root (parent) community
-    exclusively — sub-communities / groups inherit everything from their
-    root (see ``backend/services/community.py:208`` free-tier helper and
-    ``:411`` paid-tier helper; both short-circuit on
-    ``parent_community_id``). Both the checkout preflight and the
-    billing snapshot endpoint use this helper to reject sub-community
-    IDs with a pointer to the right community id so the client can
-    auto-redirect the user.
-
-    Returns ``(community_id, True)`` on any DB failure so production
-    errs open rather than blocking owners out of their own billing
-    screen during a transient glitch. The cycle guard (16 hops) matches
-    ``community_svc.get_community_ancestors``.
+    Implemented in :mod:`backend.services.community` — billing and tier
+    enforcement live on the root exclusively.
     """
-    ph = get_sql_placeholder()
-    current = int(community_id)
-    original = current
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            for _ in range(16):
-                c.execute(
-                    f"SELECT parent_community_id FROM communities WHERE id = {ph}",
-                    (current,),
-                )
-                row = c.fetchone()
-                if not row:
-                    break
-                if hasattr(row, "keys"):
-                    parent = row.get("parent_community_id")
-                elif isinstance(row, (list, tuple)):
-                    parent = row[0] if row else None
-                else:
-                    parent = row
-                if parent is None or parent == "":
-                    break
-                try:
-                    current = int(parent)
-                except (TypeError, ValueError):
-                    break
-    except Exception:
-        logger.exception("_resolve_root_community_id: DB read failed for %s",
-                         community_id)
-        return original, True
-    return current, current == original
+    return community_svc.resolve_root_community_id(community_id)
 
 
 def _preflight_premium(username: str) -> Optional[Tuple[Dict[str, Any], int]]:

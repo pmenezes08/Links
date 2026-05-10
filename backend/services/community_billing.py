@@ -23,7 +23,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from backend.services.community import _normalize_tier
+from backend.services.community import _normalize_tier, resolve_root_community_id
 from backend.services.database import get_db_connection, get_sql_placeholder
 
 
@@ -66,12 +66,17 @@ def ensure_tables() -> None:
 def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
     """Return the billing snapshot for a community, or ``None`` if missing.
 
+    Billing rows are stored on the **root** network only; sub-community ids
+    resolve to their root so Stripe tier / Steve pool behaviour matches
+    the network owner checkout.
+
     Swallows column-not-found errors so callers running against a
     pre-migration schema don't crash — they receive ``{}``-shaped
     defaults instead.
     """
     if not community_id:
         return None
+    root_id, _ = resolve_root_community_id(int(community_id))
     ph = get_sql_placeholder()
     with get_db_connection() as conn:
         c = conn.cursor()
@@ -83,12 +88,12 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
                        cancel_at_period_end, canceled_at
                 FROM communities WHERE id = {ph}
                 """,
-                (community_id,),
+                (root_id,),
             )
         except Exception:
             # Pre-migration: only the tier column exists.
             try:
-                c.execute(f"SELECT tier FROM communities WHERE id = {ph}", (community_id,))
+                c.execute(f"SELECT tier FROM communities WHERE id = {ph}", (root_id,))
                 row = c.fetchone()
             except Exception:
                 return None

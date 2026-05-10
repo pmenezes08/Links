@@ -107,6 +107,45 @@ _COMMUNITY_TIERS = {
     COMMUNITY_TIER_ENTERPRISE,
 }
 
+
+def resolve_root_community_id(community_id: int) -> Tuple[int, bool]:
+    """Walk ``parent_community_id`` to the billing / tier root.
+
+    Sub-communities inherit Stripe subscription, tier caps, and pooled
+    Steve semantics from their root network. Returns ``(root_id, is_root)``
+    where ``is_root`` means the original ``community_id`` was already the
+    root.
+
+    On transient DB failure returns ``(community_id, True)`` so callers
+    fail open to the requested id (matches legacy subscriptions behaviour).
+    """
+    ph = get_sql_placeholder()
+    current = int(community_id)
+    original = current
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            for _ in range(16):
+                c.execute(
+                    f"SELECT parent_community_id FROM communities WHERE id = {ph}",
+                    (current,),
+                )
+                row = c.fetchone()
+                if not row:
+                    break
+                parent = row["parent_community_id"] if hasattr(row, "keys") else row[0]
+                if parent is None or parent == "":
+                    break
+                try:
+                    current = int(parent)
+                except (TypeError, ValueError):
+                    break
+    except Exception:
+        logger.exception("resolve_root_community_id failed for %s", community_id)
+        return original, True
+    return current, current == original
+
+
 # KB field names that hold the member cap per tier. Free communities are
 # handled by ``ensure_free_parent_member_capacity`` via the owner's user
 # tier, so we deliberately don't map ``free`` here — the tier helper
