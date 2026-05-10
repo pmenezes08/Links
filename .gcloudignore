@@ -33,8 +33,9 @@ env/
 *.swo
 
 # Client source is needed for Dockerfile build (builds client in image)
-# Only ignore node_modules to speed upload (reinstalled in container)
+# Ignore generated/install artifacts; Dockerfile rebuilds client from source.
 client/node_modules/
+client/dist/
 client/.env*
 
 # Landing: full source is uploaded for Dockerfile.landing (npm ci + vite build in image).
@@ -42,6 +43,9 @@ client/.env*
 landing/node_modules/
 landing/dist/
 landing/.env*
+
+# Repo-root package installs (never upload)
+node_modules/
 
 # Ignore test and debug files
 test_*.py

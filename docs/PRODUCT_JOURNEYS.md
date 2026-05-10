@@ -57,6 +57,12 @@ From **Manage Community → Manage Subscription** (paid/customer state on the bi
 - **Steve Community Package:** `/subscription_plans?mode=choose&open=community_addons&community_id=<id>` (Paid L1–L3 roots only in UI)
 - **Cancel / payment methods:** `POST /api/me/billing/portal?community_id=<id>` with JSON `{ "return_path": "/community/<id>/edit" }` (same handler as other portal scopes — **`backend/blueprints/me.py`**)
 
+### Steve Community Package pool display + gating
+
+- Feed/group Steve calls must pass the current `community_id` into **`entitlements_gate.check_steve_access`** / **`gate_or_reason`** so free members can spend an active root community pool before seeing Premium CTAs.
+- **Manage Community** reads `/api/communities/<id>/billing` and shows `steve_pool_cap`, `steve_pool_used`, and `steve_pool_remaining` when `steve_package_subscription_active` is true. Pool usage comes from **`ai_usage_log.community_id`**, normalized to the billing root by **`ai_usage.log_usage`** for Steve surfaces.
+- Burger-menu visits to `/subscription_plans` stay generic. Focused single-community copy/actions only appear when Manage Community links include `community_id=<id>`.
+
 ### Stripe renewal repair (offline)
 
 - **Audit:** `python scripts/sync_community_stripe_renewals.py --audit-only` — lists roots with a Stripe subscription id and `active`/`trialing` status but renewal classification not **`valid`** (missing/expired `current_period_end`).

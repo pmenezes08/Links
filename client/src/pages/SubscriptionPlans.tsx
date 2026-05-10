@@ -1618,11 +1618,9 @@ function SteveAddonPickerModal({
         )}
         {fullRows !== null && showRadioList && eligibleList.length === 0 && (
           <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm text-white/60">
-            No eligible communities right now. Fix Paid tier billing (active subscription + renewal date),{' '}
-            or open{' '}
-            <span className="text-white/80">Manage Subscription</span>{' '}
-            from your community settings. You can also upgrade a community under{' '}
-            <span className="text-white/80">Community plans</span>.
+            No eligible Paid communities right now. Add-ons require an active Paid tier
+            subscription with a confirmed renewal date. You can upgrade an owned
+            community under <span className="text-white/80">Community plans</span>.
           </div>
         )}
         {showRadioList && eligibleList.map((c) => (

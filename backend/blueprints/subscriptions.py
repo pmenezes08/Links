@@ -36,6 +36,7 @@ from flask import Blueprint, jsonify, request, session
 
 from backend.services import community as community_svc
 from backend.services import (
+    ai_usage,
     auth_session,
     community_admin_notifications,
     community_billing,
@@ -141,6 +142,25 @@ def _kb_truthy(fields: Dict[str, Any], key: str, default: bool = True) -> bool:
     if s in ("1", "true", "yes", "on"):
         return True
     return bool(raw)
+
+
+def _steve_pool_snapshot(root_community_id: int, state: Dict[str, Any]) -> Dict[str, Any]:
+    """Shared Steve package pool counters for Manage Community surfaces."""
+    active = bool(state.get("steve_package_subscription_active"))
+    fields = _kb_field_map("community-tiers")
+    try:
+        cap = int(fields.get("paid_steve_package_monthly_credit_pool") or 0)
+    except (TypeError, ValueError):
+        cap = 0
+    cap = max(0, cap)
+    used = ai_usage.community_monthly_steve_pool_usage(root_community_id) if active and cap > 0 else 0
+    return {
+        "steve_package_subscription_active": active,
+        "steve_package_current_period_end": state.get("steve_package_current_period_end"),
+        "steve_pool_cap": cap,
+        "steve_pool_used": used,
+        "steve_pool_remaining": max(0, cap - used) if cap > 0 else None,
+    }
 
 
 def _price_id_from_kb(slug: str, base_field: str) -> str:
@@ -857,6 +877,7 @@ def api_community_billing(community_id: int):
         logger.exception("api_community_billing: media usage read failed for %s", root_id)
         media_usage = {"active_bytes": 0, "tracked_bytes": 0, "asset_count": 0}
     media_limit_bytes = int(media_limit_gb * 1024 * 1024 * 1024) if media_limit_gb else None
+    steve_pool = _steve_pool_snapshot(root_id, state)
 
     return jsonify({
         "success": True,
@@ -890,6 +911,7 @@ def api_community_billing(community_id: int):
         "media_limit_gb": media_limit_gb,
         "media_limit_bytes": media_limit_bytes,
         "media_usage": media_usage,
+        **steve_pool,
     })
 
 

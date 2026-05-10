@@ -4,7 +4,7 @@ import pytest
 from flask import Flask
 
 from backend.blueprints.subscriptions import subscriptions_bp
-from backend.services import community_billing, user_billing
+from backend.services import ai_usage, community_billing, knowledge_base, user_billing
 from tests.fixtures import make_community, make_user
 
 
@@ -99,3 +99,34 @@ def test_me_subscriptions_personal_past_due_needs_attention(client):
     assert data["personal"]["active"] is False
     assert data["personal"]["subscription_active"] is False
     assert data["personal"]["needs_attention"] is True
+
+
+def test_community_billing_returns_steve_pool_usage(client):
+    knowledge_base.seed_default_pages(force=True)
+    ai_usage.ensure_tables()
+    make_user("pool_billing_owner", subscription="free")
+    community_id = make_community(
+        "Pool Billing",
+        tier="paid_l1",
+        creator_username="pool_billing_owner",
+    )
+    community_billing.mark_steve_package_subscription(
+        community_id,
+        subscription_id="sub_steve_billing",
+        status="active",
+    )
+    ai_usage.log_usage(
+        "pool_billing_owner",
+        surface=ai_usage.SURFACE_FEED,
+        request_type="steve_post_reply",
+        community_id=community_id,
+    )
+
+    _login(client, "pool_billing_owner")
+    resp = client.get(f"/api/communities/{community_id}/billing")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["steve_package_subscription_active"] is True
+    assert data["steve_pool_cap"] == 300
+    assert data["steve_pool_used"] == 1
+    assert data["steve_pool_remaining"] == 299

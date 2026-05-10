@@ -22621,7 +22621,11 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
         from backend.services.entitlements_gate import gate_or_reason as _gate
         from backend.services.feature_flags import entitlements_enforcement_enabled as _enforce
         _enforcement_on = _enforce()
-        _allowed, _reason, _ent = _gate(author_username, _ai_usage.SURFACE_FEED)
+        _allowed, _reason, _ent = _gate(
+            author_username,
+            _ai_usage.SURFACE_FEED,
+            community_id=community_id,
+        )
         if not _allowed and _enforcement_on:
             logger.info(
                 "Steve post-reply blocked by entitlements: user=%s reason=%s",

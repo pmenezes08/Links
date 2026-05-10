@@ -7,9 +7,9 @@ polls, comments, reactions, and a calendar event for the travel community.
 Communities:
     Summer Travelers   — 10 members (Free), holiday planning content + calendar event
     Future Thinkers    — 25 members (Free), investment/AI/space/education topics
-    Growth Network     — 75 members (L1 tier)
-    Scale Community    — 150 members (L2 tier)
-    Enterprise Hub     — 250 members (L3 tier) + 3 sub-communities
+    Growth Network     — 75 members (demo/free; no fake Stripe tier)
+    Scale Community    — 150 members (demo/free; no fake Stripe tier)
+    Enterprise Hub     — 250 members (demo/free; no fake Stripe tier) + 3 sub-communities
 
 All demo users have emails like ``staging_test_<name>@c-point.co`` for easy
 identification and cleanup.
@@ -122,19 +122,19 @@ COMMUNITIES = [
     {
         "name": "Growth Network",
         "members": 75,
-        "tier": "paid_l1",
+        "tier": "free",
         "description": "For ambitious professionals focused on personal and career growth. Share insights, find mentors, and level up together.",
     },
     {
         "name": "Scale Community",
         "members": 150,
-        "tier": "paid_l2",
+        "tier": "free",
         "description": "Connecting entrepreneurs and leaders who are actively scaling their ventures. Real talk about growth challenges and wins.",
     },
     {
         "name": "Enterprise Hub",
         "members": 250,
-        "tier": "paid_l3",
+        "tier": "free",
         "description": "The premier community for enterprise leaders and decision makers. Strategic discussions, industry insights, and high-level networking.",
         "sub_communities": [
             {

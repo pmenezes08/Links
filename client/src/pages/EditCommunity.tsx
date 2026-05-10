@@ -34,6 +34,11 @@ interface CommunityBilling {
     tracked_bytes: number
     asset_count: number
   }
+  steve_package_subscription_active: boolean
+  steve_package_current_period_end: string | null
+  steve_pool_cap: number | null
+  steve_pool_used: number
+  steve_pool_remaining: number | null
 }
 
 const TIER_LABEL: Record<string, string> = {
@@ -194,6 +199,15 @@ export default function EditCommunity(){
               tracked_bytes: Number(j.media_usage?.tracked_bytes || 0),
               asset_count: Number(j.media_usage?.asset_count || 0),
             },
+            steve_package_subscription_active: !!j.steve_package_subscription_active,
+            steve_package_current_period_end: j.steve_package_current_period_end || null,
+            steve_pool_cap: j.steve_pool_cap === null || j.steve_pool_cap === undefined
+              ? null
+              : Number(j.steve_pool_cap),
+            steve_pool_used: Number(j.steve_pool_used || 0),
+            steve_pool_remaining: j.steve_pool_remaining === null || j.steve_pool_remaining === undefined
+              ? null
+              : Number(j.steve_pool_remaining),
           })
         }
       } catch {
@@ -359,6 +373,15 @@ export default function EditCommunity(){
                 : 'inherited from parent community'}
             </span>
           </div>
+          {billing.steve_package_subscription_active && billing.steve_pool_cap !== null && billing.steve_pool_cap > 0 && (
+            <div className="mt-4 rounded-lg border border-[#00CEC8]/25 bg-[#00CEC8]/5 p-3 text-xs text-white/70">
+              <div className="font-medium text-[#00CEC8]">Steve community calls</div>
+              <div className="mt-1">
+                {billing.steve_pool_remaining ?? 0} of {billing.steve_pool_cap} available this month
+                <span className="text-white/35"> ({billing.steve_pool_used} used)</span>
+              </div>
+            </div>
+          )}
         </div>
       )
     }
@@ -451,6 +474,34 @@ export default function EditCommunity(){
             Storage is tracked for visibility first. Uploads are not blocked while we validate usage accounting.
           </div>
         </div>
+
+        {billing.steve_package_subscription_active && billing.steve_pool_cap !== null && billing.steve_pool_cap > 0 && (
+          <div className="rounded-lg border border-[#00CEC8]/25 bg-[#00CEC8]/5 p-3">
+            <div className="flex items-baseline justify-between gap-3 text-xs">
+              <span className="font-medium text-[#00CEC8]">Steve community calls</span>
+              <span className="text-white/70">
+                {billing.steve_pool_remaining ?? 0} / {billing.steve_pool_cap} available
+              </span>
+            </div>
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full bg-[#00CEC8]"
+                style={{
+                  width: `${Math.min(
+                    100,
+                    ((billing.steve_pool_remaining ?? 0) / billing.steve_pool_cap) * 100,
+                  )}%`,
+                }}
+              />
+            </div>
+            <div className="mt-1 text-[11px] text-white/40">
+              {billing.steve_pool_used} used this month
+              {billing.steve_package_current_period_end
+                ? ` · Renews ${formatBillingDate(billing.steve_package_current_period_end)}`
+                : ''}
+            </div>
+          </div>
+        )}
 
         <button
           type="button"
