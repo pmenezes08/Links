@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { apiJson, apiPost } from '../utils/api'
+import { apiJson, apiPost, formatApiErrorMessage } from '../utils/api'
 
 type EffectiveTier = 'special' | 'premium' | 'trial' | 'free' | 'anonymous' | 'unknown' | string
 
@@ -198,7 +198,9 @@ export default function Users() {
       flash(`Trial ended for @${u.username}`)
       fetchUsers(page, search)
       if (manageUser?.username === u.username) openManage(u)
-    } catch { flash('Failed to end trial') }
+    } catch (e) {
+      flash(formatApiErrorMessage(e, 'Failed to end trial'))
+    }
   }
 
   const openManage = async (u: User) => {

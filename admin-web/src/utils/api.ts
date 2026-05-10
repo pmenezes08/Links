@@ -24,3 +24,19 @@ export async function apiPost(path: string, body: any) {
     body: JSON.stringify(body),
   })
 }
+
+/** Turn apiJson/apiPost failures into a short operator-visible message (parses JSON `error` from body). */
+export function formatApiErrorMessage(err: unknown, fallback: string): string {
+  if (!(err instanceof Error)) return fallback
+  const raw = err.message
+  const brace = raw.indexOf('{')
+  if (brace >= 0) {
+    try {
+      const j = JSON.parse(raw.slice(brace)) as { error?: string }
+      if (typeof j?.error === 'string' && j.error.trim()) return j.error.trim()
+    } catch {
+      /* ignore */
+    }
+  }
+  return raw.length > 360 ? `${fallback}: ${raw.slice(0, 360)}…` : `${fallback}: ${raw}`
+}
