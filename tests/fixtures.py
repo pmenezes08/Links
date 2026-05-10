@@ -47,6 +47,7 @@ def make_user(
     created_at: Optional[datetime] = None,
     email: Optional[str] = None,
     is_admin: bool = False,
+    trial_revoked_at: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     """Insert a minimal user row.
 
@@ -70,16 +71,26 @@ def make_user(
             conn.commit()
         except Exception:
             pass
-    return {
+        if trial_revoked_at is not None:
+            tr_s = _fmt(trial_revoked_at)
+            c.execute(
+                f"UPDATE users SET trial_revoked_at = {ph} WHERE username = {ph}",
+                (tr_s, username),
+            )
+            try:
+                conn.commit()
+            except Exception:
+                pass
+    out = {
         "username": username,
         "email": email,
         "subscription": subscription,
         "is_special": bool(is_special),
         "created_at": created_str,
     }
-
-
-# ── ai_usage_log ────────────────────────────────────────────────────────
+    if trial_revoked_at is not None:
+        out["trial_revoked_at"] = _fmt(trial_revoked_at)
+    return out
 
 
 def log_row(

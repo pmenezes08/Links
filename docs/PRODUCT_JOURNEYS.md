@@ -28,11 +28,13 @@ Short narratives for **how behaviour spans** Flask, Stripe, MySQL, Firestore, cr
 
 `resolve_entitlements()` overlays:
 
-1. `users` row (subscription, `is_special`, account age).
+1. `users` row (subscription, `is_special`, account age, optional **`trial_revoked_at`**).
 2. **Knowledge Base** pages (e.g. `user-tiers`, `credits-entitlements`, `hard-limits`, `special-users`) — editable in **admin-web** without redeploy.
 3. **Enterprise seat** row in `user_enterprise_seats` when active.
 
 **UI:** `ManageMembershipModal` / `useEntitlements` / limit modals — **`AGENTS.md`** — should stay consistent with server truth.
+
+**Operator — end signup trial early:** From **admin-web → Users → Manage**, when the resolved tier is **trial**, an admin can **End trial** (requires a reason). That sets **`users.trial_revoked_at`** and writes **`subscription_audit_log`** with action **`trial_revoked_by_admin`**; **`resolve_entitlements`** then treats the account as **free** for tier purposes (Steve access follows free caps unless Premium / Special / Enterprise seat applies).
 
 ---
 

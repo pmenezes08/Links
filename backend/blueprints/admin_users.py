@@ -6,6 +6,7 @@ the pieces Wave 2 needs:
 
     POST   /api/admin/users/<username>/special/grant
     POST   /api/admin/users/<username>/special/revoke
+    POST   /api/admin/users/<username>/trial/revoke
     GET    /api/admin/users/<username>/manage
 
 Grant/revoke write through :mod:`backend.services.special_access` so they go
@@ -24,7 +25,7 @@ from typing import Any, Dict
 
 from flask import Blueprint, jsonify, request, session
 
-from backend.services import ai_usage, special_access
+from backend.services import ai_usage, special_access, user_trial
 from backend.services.account_deletion import AccountDeletionMode, delete_user_in_connection
 from backend.services.content_generation.permissions import is_app_admin
 from backend.services.database import get_db_connection
@@ -104,6 +105,29 @@ def revoke_special(target_username: str):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@admin_users_bp.route(
+    "/api/admin/users/<string:target_username>/trial/revoke", methods=["POST"]
+)
+@_admin_required
+def revoke_trial(target_username: str):
+    """Set ``users.trial_revoked_at`` so entitlements no longer grant trial tier."""
+    data = _body_json()
+    reason = str(data.get("reason") or "").strip()
+    if not reason:
+        return jsonify({"success": False, "error": "Reason is required"}), 400
+    actor = session.get("username") or "unknown"
+    code, msg = user_trial.revoke_trial_admin(
+        target_username,
+        actor_username=actor,
+        reason=reason,
+    )
+    if code == "ok":
+        return jsonify({"success": True, "username": target_username})
+    if code == "not_found":
+        return jsonify({"success": False, "error": msg or "Not found"}), 404
+    return jsonify({"success": False, "error": msg or "Bad request"}), 400
+
+
 @admin_users_bp.route("/api/admin/users/<string:target_username>/manage", methods=["GET"])
 @_admin_required
 def manage_user(target_username: str):
@@ -161,9 +185,16 @@ def manage_user(target_username: str):
     except Exception:
         audit = []
 
+    try:
+        user_trial.ensure_trial_columns()
+        tr_at = user_trial.trial_revoked_at(target_username)
+    except Exception:
+        tr_at = None
+
     return jsonify({
         "success": True,
         "username": target_username,
+        "trial_revoked_at": tr_at,
         "entitlements": ent,
         "usage": {
             "steve_month": int(steve_month or 0),

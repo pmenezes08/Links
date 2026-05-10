@@ -74,6 +74,7 @@ ACTIONS = {
     # Admin overrides
     "admin_seat_end_override",
     "admin_grace_extended",
+    "trial_revoked_by_admin",
     # Usage cycle notifications (queued by cron, delivered by push/email layer)
     "usage_cycle_warning_80",
     "usage_cycle_warning_95",

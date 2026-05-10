@@ -22,6 +22,8 @@ Plus two cross-cutting invariants:
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from backend.services.entitlements import (
     TIER_FREE,
     TIER_PREMIUM,
@@ -58,6 +60,18 @@ class TestTierResolution:
         assert ent["tier"] == TIER_TRIAL
         assert ent["can_use_steve"] is True
         assert ent["steve_uses_per_month"] > 0
+
+    def test_trial_revoked_early_is_free(self, mysql_dsn):
+        """Admin ``trial_revoked_at`` forces FREE even inside the signup window."""
+        make_user(
+            "trial_cut",
+            subscription="free",
+            created_at=days_ago(7),
+            trial_revoked_at=datetime.utcnow(),
+        )
+        ent = resolve_entitlements("trial_cut")
+        assert ent["tier"] == TIER_FREE
+        assert ent["can_use_steve"] is False
 
     def test_trial_expired_falls_back_to_free(self, mysql_dsn):
         """30-day trial cutoff — at day 31 user must be FREE again."""
