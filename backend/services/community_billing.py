@@ -35,13 +35,10 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from backend.services.community import (
-    COMMUNITY_TIER_ENTERPRISE,
-    COMMUNITY_TIER_PAID_L1,
-    COMMUNITY_TIER_PAID_L2,
-    COMMUNITY_TIER_PAID_L3,
     _normalize_tier,
     resolve_root_community_id,
 )
+from backend.services.subscription_health import derive_community_subscription_health
 from backend.services.database import get_db_connection, get_sql_placeholder
 
 
@@ -170,7 +167,8 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
     steve_period_end_str = (
         str(steve_period_end) if steve_period_end else None
     )
-    steve_active = bool(steve_sub_id) and str(steve_status or "").lower() == "active"
+    steve_st = str(steve_status or "").strip().lower()
+    steve_active = bool(steve_sub_id) and steve_st in ("active", "trialing")
 
     days_remaining = _days_until(current_period_end)
     return {
@@ -209,59 +207,36 @@ def has_active_subscription(community_id: int) -> bool:
     return bool(sub_id) and status == "active"
 
 
-def tier_subscription_is_live(state: Optional[Dict[str, Any]]) -> bool:
-    """True when the Paid tier Stripe subscription is usable for add-ons and UX.
+def tier_subscription_is_live(
+    state: Optional[Dict[str, Any]],
+    *,
+    enterprise_steve_package_included: bool = False,
+) -> bool:
+    """Backward-compatible alias for :func:`subscription_health.derive_community_subscription_health`.
 
-    Requires ``stripe_subscription_id``, Stripe-like ``subscription_status`` of
-    ``active`` or ``trialing``, and a ``current_period_end`` that parses and is
-    still in the future (renewal boundary not elapsed).
-
-    Rows missing ``current_period_end`` while claiming ``active`` are treated as
-    not live — Stripe webhooks should always populate the renewal boundary when
-    the tier subscription moves to ``active``/``trialing``.
+    ``enterprise_steve_package_included`` defaults False so callers that don't
+    pass KB context still get correct Paid-tier activation without accidentally
+    treating Enterprise Steve messaging as tier activation.
     """
-    if not state:
-        return False
-    sub_id = state.get("stripe_subscription_id")
-    if not sub_id or not str(sub_id).strip():
-        return False
-    status = str(state.get("subscription_status") or "").strip().lower()
-    if status not in ("active", "trialing"):
-        return False
-    raw = state.get("current_period_end")
-    if raw in (None, "", 0):
-        logger.warning(
-            "tier_subscription_is_live: missing current_period_end for tier subscription "
-            "(subscription_status=%s)",
-            status,
-        )
-        return False
-    end = _parse_datetime(raw)
-    if not end:
-        logger.warning(
-            "tier_subscription_is_live: unparseable current_period_end=%r",
-            raw,
-        )
-        return False
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    return end > now
+    health = derive_community_subscription_health(
+        state or {},
+        enterprise_steve_package_included=enterprise_steve_package_included,
+    )
+    return bool(health.get("tier_subscription_active"))
 
 
-def community_eligible_for_steve_addon(community_id: int) -> bool:
-    """Paid tier root billing row eligible for Steve-package checkout (API/list)."""
+def community_eligible_for_steve_addon(
+    community_id: int,
+    *,
+    enterprise_steve_package_included: bool = True,
+) -> bool:
+    """True when Steve-package checkout is allowed (mirrors subscription health)."""
     state = get_billing_state(community_id) or {}
-    tier = str(state.get("tier") or "").strip().lower()
-    if tier == COMMUNITY_TIER_ENTERPRISE:
-        return False
-    if tier not in (
-        COMMUNITY_TIER_PAID_L1,
-        COMMUNITY_TIER_PAID_L2,
-        COMMUNITY_TIER_PAID_L3,
-    ):
-        return False
-    if state.get("steve_package_subscription_active"):
-        return False
-    return tier_subscription_is_live(state)
+    health = derive_community_subscription_health(
+        state,
+        enterprise_steve_package_included=enterprise_steve_package_included,
+    )
+    return bool(health.get("steve_addon_eligible"))
 
 
 # ── Write helpers ───────────────────────────────────────────────────────

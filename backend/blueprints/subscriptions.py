@@ -48,6 +48,11 @@ from backend.services import (
     user_billing,
 )
 from backend.services.database import get_db_connection, get_sql_placeholder
+from backend.services.stripe_subscription_sync import sync_community_tier_subscription_from_stripe
+from backend.services.subscription_health import (
+    derive_community_subscription_health,
+    derive_personal_subscription_health,
+)
 
 
 subscriptions_bp = Blueprint("subscriptions", __name__)
@@ -209,11 +214,12 @@ def api_me_subscriptions():
     user_row = _fetch_user_subscription_row(username)
     subscription_value = str(user_row.get("subscription") or personal_state.get("subscription") or "free").lower()
     is_special = bool(user_row.get("is_special"))
-    personal_active = (
-        subscription_value in {"premium", "special", "pro", "paid"}
-        or str(personal_state.get("subscription_status") or "").lower() in {"active", "trialing", "past_due"}
-        or is_special
+    personal_health = derive_personal_subscription_health(
+        personal_state,
+        subscription_value=subscription_value,
+        is_special=is_special,
     )
+    personal_active = bool(is_special or personal_health["subscription_active"])
     communities = _fetch_user_billed_communities(username)
     return jsonify({
         "success": True,
@@ -222,6 +228,9 @@ def api_me_subscriptions():
             "subscription": subscription_value,
             "is_special": is_special,
             "active": personal_active,
+            "subscription_active": personal_health["subscription_active"],
+            "needs_attention": personal_health["needs_attention"],
+            "renewal_date_status": personal_health["renewal_date_status"],
         },
         "communities": communities,
     })
@@ -549,24 +558,33 @@ def _fetch_user_billed_communities(username: str) -> List[Dict[str, Any]]:
         logger.exception("_fetch_user_billed_communities failed for %s", username)
         return []
 
+    kb_fields = _kb_field_map("community-tiers")
+    enterprise_steve_included = _kb_truthy(kb_fields, "enterprise_steve_package_included", True)
+
     items: List[Dict[str, Any]] = []
     for row in rows:
         community_id = int(_row_value(row, "id", 0) or 0)
         if not community_id:
             continue
         state = community_billing.get_billing_state(community_id) or {}
-        tier_subscription_live = community_billing.tier_subscription_is_live(state)
-        steve_addon_eligible = community_billing.community_eligible_for_steve_addon(
-            community_id,
+        health = derive_community_subscription_health(
+            state,
+            enterprise_steve_package_included=enterprise_steve_included,
         )
+        tier_live = bool(health.get("tier_subscription_active"))
         items.append({
             "id": community_id,
             "name": _row_value(row, "name", 1) or "",
             "owner": _row_value(row, "creator_username", 2) or "",
             "tier": state.get("tier") or _row_value(row, "tier", 3) or "free",
-            "tier_subscription_live": tier_subscription_live,
-            "steve_addon_eligible": steve_addon_eligible,
             **state,
+            "tier_subscription_active": tier_live,
+            "tier_subscription_live": tier_live,
+            "needs_attention": bool(health.get("needs_attention")),
+            "renewal_date_status": health.get("renewal_date_status"),
+            "steve_addon_eligible": bool(health.get("steve_addon_eligible")),
+            "steve_addon_reason": health.get("steve_addon_reason"),
+            "steve_addon_message": health.get("steve_addon_message"),
         })
     return items
 
@@ -688,11 +706,24 @@ def _preflight_community_tier(
     return None
 
 
+def _steve_preflight_http_reason(health_reason: str) -> str:
+    """Map stable health codes to legacy checkout error ``reason`` strings."""
+    return {
+        "eligible": "eligible",
+        "tier_not_paid": "paid_tier_required",
+        "enterprise_included": "steve_package_redundant",
+        "tier_subscription_inactive": "community_subscription_inactive",
+        "renewal_date_missing": "renewal_date_missing",
+        "renewal_date_expired": "renewal_date_expired",
+        "steve_already_active": "steve_package_already_active",
+    }.get(health_reason, "community_subscription_inactive")
+
+
 def _preflight_steve_package(
     username: str,
     community_id: int,
 ) -> Optional[Tuple[Dict[str, Any], int]]:
-    """Owner + paid-tier + single Steve-sub checks for Steve-package checkout."""
+    """Owner + paid-tier + Steve eligibility derived from subscription health."""
     if not community_svc.is_community_owner(username, community_id):
         return (
             {
@@ -717,69 +748,30 @@ def _preflight_steve_package(
             409,
         )
     state = community_billing.get_billing_state(root_id) or {}
-    tier = str(state.get("tier") or community_svc.COMMUNITY_TIER_FREE).strip().lower()
+    kb_fields = _kb_field_map("community-tiers")
+    ent_incl = _kb_truthy(kb_fields, "enterprise_steve_package_included", True)
+    health = derive_community_subscription_health(
+        state,
+        enterprise_steve_package_included=ent_incl,
+    )
+    if health.get("steve_addon_eligible"):
+        return None
 
-    if tier == community_svc.COMMUNITY_TIER_FREE:
-        return (
-            {
-                "success": False,
-                "error": (
-                    "Upgrade this community to a Paid tier before adding "
-                    "the Steve package."
-                ),
-                "reason": "paid_tier_required",
-            },
-            409,
-        )
-
-    if tier == community_svc.COMMUNITY_TIER_ENTERPRISE:
-        kb_fields = _kb_field_map("community-tiers")
-        if _kb_truthy(kb_fields, "enterprise_steve_package_included", True):
-            return (
-                {
-                    "success": False,
-                    "error": (
-                        "Enterprise communities already include Steve capabilities."
-                    ),
-                    "reason": "steve_package_redundant",
-                },
-                409,
-            )
-
-    if tier in (
-        community_svc.COMMUNITY_TIER_PAID_L1,
-        community_svc.COMMUNITY_TIER_PAID_L2,
-        community_svc.COMMUNITY_TIER_PAID_L3,
-    ):
-        if not community_billing.tier_subscription_is_live(state):
-            return (
-                {
-                    "success": False,
-                    "error": (
-                        "Your community Paid tier must be active with a valid renewal "
-                        "date before adding Steve. Update billing if renewal details "
-                        "are missing."
-                    ),
-                    "reason": "community_subscription_inactive",
-                },
-                409,
-            )
-
-    if community_billing.has_active_steve_package(root_id):
-        return (
-            {
-                "success": False,
-                "error": (
-                    "This community already has an active Steve package subscription."
-                ),
-                "reason": "steve_package_already_active",
-                "community_id": root_id,
-                "portal_required": True,
-            },
-            409,
-        )
-
-    return None
+    health_reason = str(health.get("steve_addon_reason") or "")
+    http_reason = _steve_preflight_http_reason(health_reason)
+    payload: Dict[str, Any] = {
+        "success": False,
+        "error": str(
+            health.get("steve_addon_message")
+            or "Unable to purchase the Steve Community Package for this community.",
+        ),
+        "reason": http_reason,
+        "steve_addon_reason": health.get("steve_addon_reason"),
+        "community_id": root_id,
+    }
+    if http_reason == "steve_package_already_active":
+        payload["portal_required"] = True
+    return payload, 409
 
 
 @subscriptions_bp.route("/api/communities/<int:community_id>/billing", methods=["GET"])
@@ -1094,6 +1086,40 @@ def api_admin_community_billing_change_tier(community_id: int):
         "success": True,
         **result,
     })
+
+
+@subscriptions_bp.route(
+    "/api/admin/communities/<int:community_id>/billing/sync-stripe-renewal",
+    methods=["POST"],
+)
+def api_admin_community_billing_sync_stripe_renewal(community_id: int):
+    """Admin-only: ``Subscription.retrieve`` → persist tier renewal fields."""
+    username = _session_username()
+    if not username:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+    if not community_svc.is_app_admin(username):
+        return jsonify({"success": False, "error": "Admin access required"}), 403
+
+    payload = request.get_json(silent=True) or {}
+    dry_run = bool(payload.get("dry_run"))
+
+    root_id, _ = _resolve_root_community_id(community_id)
+    target_id = int(root_id)
+
+    if dry_run:
+        state = community_billing.get_billing_state(target_id) or {}
+        return jsonify({
+            "success": True,
+            "dry_run": True,
+            "community_id": target_id,
+            "stripe_subscription_id": state.get("stripe_subscription_id"),
+            "subscription_status": state.get("subscription_status"),
+            "current_period_end": state.get("current_period_end"),
+        })
+
+    result = sync_community_tier_subscription_from_stripe(target_id)
+    status = 200 if result.get("success") else 502
+    return jsonify({"success": bool(result.get("success")), **result}), status
 
 
 @subscriptions_bp.route("/api/stripe/checkout_status", methods=["GET"])

@@ -53,4 +53,49 @@ def test_me_subscriptions_returns_personal_and_owned_community(client):
     assert data["communities"][0]["id"] == community_id
     assert data["communities"][0]["current_period_end"]
     assert data["communities"][0]["tier_subscription_live"] is True
+    assert data["communities"][0]["tier_subscription_active"] is True
     assert data["communities"][0]["steve_addon_eligible"] is True
+    assert data["personal"]["subscription_active"] is True
+    assert data["personal"]["needs_attention"] is False
+
+
+def test_me_subscriptions_community_missing_renewal_not_eligible_for_steve(client):
+    make_user("owner2", subscription="free")
+    community_id = make_community("Broken Renewal", tier="paid_l1", creator_username="owner2")
+    community_billing.mark_subscription(
+        community_id,
+        tier_code="paid_l1",
+        subscription_id="sub_comm_br",
+        customer_id="cus_comm_br",
+        status="active",
+    )
+
+    _login(client, "owner2")
+    resp = client.get("/api/me/subscriptions")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    row = next((c for c in data["communities"] if c["id"] == community_id), None)
+    assert row is not None
+    assert row["tier_subscription_active"] is False
+    assert row["needs_attention"] is True
+    assert row["steve_addon_eligible"] is False
+    assert row.get("steve_addon_reason") == "renewal_date_missing"
+
+
+def test_me_subscriptions_personal_past_due_needs_attention(client):
+    make_user("pastdue_u", subscription="premium")
+    user_billing.mark_subscription(
+        "pastdue_u",
+        subscription="premium",
+        subscription_id="sub_pd",
+        customer_id="cus_pd",
+        status="past_due",
+        current_period_end=1_999_999_999,
+    )
+    _login(client, "pastdue_u")
+    resp = client.get("/api/me/subscriptions")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["personal"]["active"] is False
+    assert data["personal"]["subscription_active"] is False
+    assert data["personal"]["needs_attention"] is True

@@ -42,6 +42,34 @@ Short narratives for **how behaviour spans** Flask, Stripe, MySQL, Firestore, cr
 
 Communities can have **Stripe-backed** billing separate from the user’s personal subscription. Paid tiers use one Stripe subscription on the community row (`stripe_subscription_id`); owners may add a **Steve Community Package**, stored as a **second** subscription (`steve_package_*` columns) so tier webhooks and Steve-package webhooks never overwrite each other. **Steve Community Package** usage in feed/group contexts can draw from a **shared monthly pool** on the billing root (`ai_usage_log.community_id` normalized to the root for Steve surfaces); see **`entitlements_gate.check_steve_access`** with `community_id` and **`docs/STEVE_AND_VOICE_NOTES.md`**. Flows live under **`backend/blueprints/subscriptions.py`**, **`subscription_webhooks.py`**, and related services.
 
+### Subscription hub API (`GET /api/me/subscriptions`)
+
+Single JSON contract for **Manage Membership**, **SubscriptionPlans**, and Steve checkout preflight alignment:
+
+- **Personal:** `subscription_active`, `needs_attention`, `renewal_date_status`. Legacy field **`active`** is **healthy Premium / special only** — e.g. `past_due` Stripe status no longer counts as active for UI grouping.
+- **Communities (billing roots the user owns):** `tier_subscription_active` (alias **`tier_subscription_live`**), `needs_attention`, `renewal_date_status`, **`steve_addon_eligible`**, **`steve_addon_reason`**, **`steve_addon_message`** (machine + human-readable Steve gate). Paid **tier label** alone is not “active subscription” without Stripe id + `active`/`trialing` + valid future renewal boundary (see **`backend/services/subscription_health.py`**).
+
+### Manage Community → SubscriptionPlans deep links
+
+From **Manage Community → Manage Subscription** (paid/customer state on the billing root):
+
+- **Upgrade Community Tier:** `/subscription_plans?mode=choose&open=community_plans&community_id=<root_or_managed_id>`
+- **Steve Community Package:** `/subscription_plans?mode=choose&open=community_addons&community_id=<id>` (Paid L1–L3 roots only in UI)
+- **Cancel / payment methods:** `POST /api/me/billing/portal?community_id=<id>` with JSON `{ "return_path": "/community/<id>/edit" }` (same handler as other portal scopes — **`backend/blueprints/me.py`**)
+
+### Stripe renewal repair (offline)
+
+- **Audit:** `python scripts/sync_community_stripe_renewals.py --audit-only` — lists roots with a Stripe subscription id and `active`/`trialing` status but renewal classification not **`valid`** (missing/expired `current_period_end`).
+- **Repair:** same script `--community-id <root_id>` or **`POST /api/admin/communities/<id>/billing/sync-stripe-renewal`** (optional `{ "dry_run": true }`) — calls Stripe **`Subscription.retrieve`** and writes through **`community_billing.mark_subscription`** (not invoked on hot reads).
+
+### Staging QA — subscription billing repair
+
+1. Paid community with **future renewal** → **Community — Active** on SubscriptionPlans “Active” tab; Steve picker enables checkout.
+2. Paid tier row with **`current_period_end` missing** (but Stripe claims active) → **Needs Attention** only; Steve checkout blocked with reason **`renewal_date_missing`** and matching **`steve_addon_message`**.
+3. Focused deep link with **`community_id`** + Steve flow shows **community name** and **exact backend reason** when ineligible.
+4. Steve pool already active → **`steve_package_already_active`** / aligned copy.
+5. Manage Community **Manage Subscription** modal buttons navigate with the query params above; portal opens for cancel when **`has_stripe_customer`** is true.
+
 ---
 
 ## 5. Enterprise seats

@@ -77,6 +77,7 @@ export default function EditCommunity(){
   const [isFrozen, setIsFrozen] = useState(false)
   const [freezeLoading, setFreezeLoading] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [showManageSubscriptionModal, setShowManageSubscriptionModal] = useState(false)
   const formRef = useRef<HTMLFormElement|null>(null)
 
   useEffect(() => {
@@ -318,6 +319,27 @@ export default function EditCommunity(){
     }
   }
 
+  async function openCommunityBillingPortal() {
+    if (!community_id) return
+    try {
+      const returnPath = `/community/${community_id}/edit`
+      const res = await fetch(`/api/me/billing/portal?community_id=${community_id}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ return_path: returnPath }),
+      })
+      const data = await res.json().catch(() => null)
+      if (res.ok && data?.success && data?.url) {
+        window.location.assign(data.url)
+        return
+      }
+      alert(data?.error || 'Unable to open billing portal')
+    } catch {
+      alert('Unable to open billing portal')
+    }
+  }
+
   const renderBillingCard = () => {
     if (!isOwner || !billing) return null
 
@@ -342,12 +364,7 @@ export default function EditCommunity(){
     }
 
     const hasPaidTier = billing.tier !== 'free' && billing.tier !== ''
-    const actionLabel = billing.has_stripe_customer
-      ? billing.is_canceling
-        ? 'Renew subscription'
-        : 'Upgrade Community Tier'
-      : 'Choose paid tier'
-    const action = () => navigate(`/subscription_plans?mode=choose&open=community_plans&community_id=${community_id}`)
+    const showManageSubscription = hasPaidTier || billing.has_stripe_customer
     const mediaLimitBytes = billing.media_limit_bytes
     const activeMediaBytes = billing.media_usage.active_bytes
     const mediaPercent = mediaLimitBytes && mediaLimitBytes > 0
@@ -437,10 +454,16 @@ export default function EditCommunity(){
 
         <button
           type="button"
-          onClick={action}
+          onClick={() => {
+            if (showManageSubscription) {
+              setShowManageSubscriptionModal(true)
+            } else {
+              navigate(`/subscription_plans?mode=choose&open=community_plans&community_id=${community_id}`)
+            }
+          }}
           className="inline-flex w-full items-center justify-center rounded-full bg-cpoint-turquoise px-5 py-2.5 text-xs font-semibold text-black hover:bg-cpoint-turquoise/90 transition disabled:opacity-50"
         >
-          {actionLabel}
+          {showManageSubscription ? 'Manage Subscription' : 'Choose paid tier'}
         </button>
 
         {hasPaidTier && !billing.has_stripe_customer && (
@@ -792,6 +815,80 @@ export default function EditCommunity(){
           </div>
         )}
       </div>
+      {billing && showManageSubscriptionModal && !billing.is_inherited && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Manage subscription"
+          onClick={() => setShowManageSubscriptionModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border-2 border-[#00CEC8] bg-black p-6 text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-[#00CEC8]">Billing</p>
+                <h3 className="mt-2 text-lg font-semibold">Manage Subscription</h3>
+                <p className="mt-1 text-sm text-white/55">
+                  Change tier, add Steve pool billing, or open Stripe to cancel / payment methods.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                className="rounded-full p-1 text-white/50 hover:bg-white/10 hover:text-white"
+                onClick={() => setShowManageSubscriptionModal(false)}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <div className="mt-6 flex flex-col gap-2">
+              <button
+                type="button"
+                className="rounded-full bg-[#00CEC8] px-4 py-2.5 text-xs font-semibold text-black hover:bg-[#00CEC8]/90"
+                onClick={() => {
+                  setShowManageSubscriptionModal(false)
+                  navigate(`/subscription_plans?mode=choose&open=community_plans&community_id=${community_id}`)
+                }}
+              >
+                Upgrade Community Tier
+              </button>
+              {['paid_l1', 'paid_l2', 'paid_l3'].includes(String(billing.tier || '').toLowerCase()) && (
+                <button
+                  type="button"
+                  className="rounded-full border border-[#00CEC8]/50 px-4 py-2.5 text-xs font-semibold text-[#00CEC8] hover:bg-[#00CEC8]/10"
+                  onClick={() => {
+                    setShowManageSubscriptionModal(false)
+                    navigate(`/subscription_plans?mode=choose&open=community_addons&community_id=${community_id}`)
+                  }}
+                >
+                  Subscribe to a Community Add-On
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={!billing.has_stripe_customer}
+                className="rounded-full border border-white/20 px-4 py-2.5 text-xs font-semibold text-white hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => {
+                  void openCommunityBillingPortal()
+                }}
+              >
+                Cancel Community Tier Subscription
+              </button>
+              <button
+                type="button"
+                className="mt-1 text-xs text-white/40 hover:text-white/70"
+                onClick={() => setShowManageSubscriptionModal(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <ContentGenerationModal
         communityId={String(community_id || '')}
         open={showContentGeneration}

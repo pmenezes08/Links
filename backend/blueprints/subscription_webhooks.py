@@ -233,6 +233,14 @@ def _handle_community_tier_event(
 
     if event_type == "checkout.session.completed":
         subscription_snapshot = _retrieve_subscription_snapshot(subscription_id)
+        if not subscription_snapshot.get("current_period_end"):
+            logger.warning(
+                "stripe_webhook: community_tier checkout.session.completed missing "
+                "current_period_end after Stripe retrieve (sub=%s community=%s) — "
+                "sync billing manually if this persists",
+                subscription_id,
+                community_id,
+            )
         community_billing.mark_subscription(
             community_id,
             tier_code=tier_code,
@@ -382,6 +390,13 @@ def _handle_steve_package_event(
             )
             return
         subscription_snapshot = _retrieve_subscription_snapshot(subscription_id)
+        if not subscription_snapshot.get("current_period_end"):
+            logger.warning(
+                "stripe_webhook: steve_package checkout.session.completed missing "
+                "current_period_end after Stripe retrieve (sub=%s community=%s)",
+                subscription_id,
+                community_id,
+            )
         community_billing.mark_steve_package_subscription(
             community_id,
             subscription_id=str(subscription_id or ""),

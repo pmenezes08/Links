@@ -117,6 +117,9 @@ interface Community {
 
 interface ActivePersonalSubscription {
   active: boolean
+  subscription_active?: boolean
+  needs_attention?: boolean
+  renewal_date_status?: string
   subscription?: string
   subscription_status?: string | null
   current_period_end?: string | null
@@ -135,10 +138,14 @@ interface ActiveCommunitySubscription {
   cancel_at_period_end?: boolean
   benefits_end_at?: string | null
   steve_package_subscription_active?: boolean
+  needs_attention?: boolean
+  renewal_date_status?: string
   /** Paid tier subscription active/trialing with future renewal boundary (API-derived). */
+  tier_subscription_active?: boolean
   tier_subscription_live?: boolean
-  /** Paid tier + live renewal + no Steve package yet (server-derived Steve picker list). */
   steve_addon_eligible?: boolean
+  steve_addon_reason?: string
+  steve_addon_message?: string
 }
 
 interface ActiveSubscriptionsPayload {
@@ -202,7 +209,7 @@ function maybeConfirmPendingCheckout(active: ActiveSubscriptionsPayload) {
       sessionStorage.removeItem(PENDING_CHECKOUT_KEY)
       return
     }
-    if (pending.plan_id === 'premium' && active.personal?.active) {
+    if (pending.plan_id === 'premium' && (active.personal?.subscription_active ?? active.personal?.active)) {
       sessionStorage.removeItem(PENDING_CHECKOUT_KEY)
       return 'Premium is active.'
     }
@@ -237,6 +244,21 @@ function tierLabel(tier?: string | null) {
   if (value === 'paid_l3') return 'Paid L3'
   if (value === 'free') return 'Free'
   return tier || 'active'
+}
+
+/** Paid ladder rank for upgrade vs downgrade copy (Enterprise ranks above L3). */
+function paidTierRank(tier?: string | null): number {
+  const value = String(tier || '').toLowerCase()
+  if (value === 'paid_l1') return 1
+  if (value === 'paid_l2') return 2
+  if (value === 'paid_l3') return 3
+  if (value === 'enterprise') return 4
+  return 0
+}
+
+function communityStripeHealthy(c: ActiveCommunitySubscription): boolean {
+  if (c.tier_subscription_active === true) return true
+  return c.tier_subscription_live === true
 }
 
 // ---------------------------------------------------------------------------
@@ -599,6 +621,7 @@ export default function SubscriptionPlans() {
               <ActiveSubscriptionsSection
                 active={activeSubscriptions}
                 onManageCommunity={(id) => navigate(`/community/${id}/edit`)}
+                onManagePersonalBilling={() => navigate('/account_settings')}
               />
             )}
           </div>
@@ -651,6 +674,7 @@ export default function SubscriptionPlans() {
 
       {view === 'steve_picker' && (
         <SteveAddonPickerModal
+          activeSubscriptions={activeSubscriptions}
           preselectedCommunityId={preselectedCommunityId}
           onCancel={() => {
             setModalError(null)
@@ -899,54 +923,104 @@ function CommunityCard({
 function ActiveSubscriptionsSection({
   active,
   onManageCommunity,
+  onManagePersonalBilling,
 }: {
   active: ActiveSubscriptionsPayload | null
   onManageCommunity: (communityId: number) => void
+  onManagePersonalBilling?: () => void
 }) {
   const personal = active?.personal
   const communities = active?.communities || []
-  const hasPersonal = !!personal?.active
-  const hasCommunities = communities.length > 0
+
+  const personalSpecial = !!personal?.is_special
+  const personalSubscriptionHealthy =
+    personalSpecial || !!(personal?.subscription_active ?? personal?.active)
+  const personalNeedsAttention =
+    !!personal?.needs_attention && !personalSpecial
+
+  const healthyCommunities = communities.filter((c) => communityStripeHealthy(c))
+  const needsCommunities = communities.filter((c) => !communityStripeHealthy(c))
+
+  const loading = !active
+  const emptyAll =
+    !loading && !personalSubscriptionHealthy && !personalNeedsAttention
+      && healthyCommunities.length === 0 && needsCommunities.length === 0
+
   return (
     <section aria-labelledby="active-subscriptions-heading">
       <div className="mb-4">
-        <h2 id="active-subscriptions-heading" className="text-xl font-semibold">Active Subscriptions</h2>
-        <p className="mt-1 text-sm text-white/55">Review your current personal and community billing state.</p>
+        <h2 id="active-subscriptions-heading" className="text-xl font-semibold">
+          Active Subscriptions
+        </h2>
+        <p className="mt-1 text-sm text-white/55">
+          Healthy subscriptions below include a confirmed renewal window. Items under Needs Attention still bill as Paid tier labels until Stripe state is repaired.
+        </p>
       </div>
-      {!active ? (
+
+      {loading ? (
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/55">
           Loading active subscriptions…
         </div>
-      ) : !hasPersonal && !hasCommunities ? (
+      ) : emptyAll ? (
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/55">
-          No active subscriptions yet.
+          No subscriptions recorded yet.
         </div>
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-10">
           <div>
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-cpoint-turquoise">
-              User
+              Personal — Active
             </h3>
-            {hasPersonal ? (
+            {personalSubscriptionHealthy ? (
               <ActiveRow
                 title={personal?.is_special ? 'Special Premium entitlement' : 'User Premium Membership'}
-                subtitle={personal?.cancel_at_period_end ? benefitsCopy(personal.benefits_end_at || personal.current_period_end) : renewalCopy(personal?.current_period_end)}
+                subtitle={
+                  personal?.cancel_at_period_end
+                    ? benefitsCopy(personal.benefits_end_at || personal.current_period_end)
+                    : renewalCopy(personal?.current_period_end)
+                }
                 status={personal?.is_special ? 'special' : personal?.subscription_status || personal?.subscription || 'active'}
               />
             ) : (
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/50">
-                No active user subscription.
+                No active personal subscription with a valid renewal window.
+              </div>
+            )}
+          </div>
+
+          <div>
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-amber-200/90">
+              Personal — Needs Attention
+            </h3>
+            {personalNeedsAttention ? (
+              <ActiveRow
+                title="User Premium Membership"
+                subtitle={
+                  personal?.subscription_status === 'past_due'
+                    ? 'Payment is past due — open the billing portal to fix autopay.'
+                    : 'Billing details need attention before Premium counts as active.'
+                }
+                status={personal?.subscription_status || personal?.subscription || 'attention'}
+                actionLabel="Manage"
+                onAction={() => {
+                  if (onManagePersonalBilling) onManagePersonalBilling()
+                  else window.location.assign('/account_settings')
+                }}
+              />
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/45">
+                No personal billing issues detected.
               </div>
             )}
           </div>
 
           <div>
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-cpoint-turquoise">
-              Community
+              Community — Active
             </h3>
-            {hasCommunities ? (
+            {healthyCommunities.length ? (
               <div className="space-y-3">
-                {communities.map((community) => (
+                {healthyCommunities.map((community) => (
                   <ActiveRow
                     key={community.id}
                     title={community.name}
@@ -959,7 +1033,35 @@ function ActiveSubscriptionsSection({
               </div>
             ) : (
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/50">
-                No active community subscriptions.
+                No community subscriptions with a confirmed renewal window.
+              </div>
+            )}
+          </div>
+
+          <div>
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-amber-200/90">
+              Community — Needs Attention
+            </h3>
+            {needsCommunities.length ? (
+              <div className="space-y-3">
+                {needsCommunities.map((community) => (
+                  <ActiveRow
+                    key={`need-${community.id}`}
+                    title={community.name}
+                    subtitle={
+                      community.steve_addon_message
+                        ? community.steve_addon_message
+                        : communitySubtitleCommunity(community)
+                    }
+                    status={tierLabel(community.tier || community.subscription_status)}
+                    actionLabel="Manage"
+                    onAction={() => onManageCommunity(community.id)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/45">
+                No community billing issues detected.
               </div>
             )}
           </div>
@@ -1023,13 +1125,7 @@ function communitySubtitleCommunity(c: ActiveCommunitySubscription): string {
   const renewalLine = c.cancel_at_period_end
     ? benefitsCopy(c.benefits_end_at || c.current_period_end)
     : renewalCopy(c.current_period_end)
-  const tier = String(c.tier || '').toLowerCase()
-  const paidCommunity =
-    tier === 'paid_l1' || tier === 'paid_l2' || tier === 'paid_l3'
-  if (!paidCommunity || c.tier_subscription_live !== false) {
-    return renewalLine
-  }
-  return `${renewalLine} We cannot confirm an active renewal window — open Manage, then billing portal if payment details need updating.`
+  return renewalLine
 }
 
 function currentTierLabel(community: Community, active: ActiveSubscriptionsPayload | null) {
@@ -1396,6 +1492,7 @@ function NetworkingAddonCard({
 // ---------------------------------------------------------------------------
 
 function SteveAddonPickerModal({
+  activeSubscriptions,
   preselectedCommunityId,
   onCancel,
   onChoose,
@@ -1403,6 +1500,7 @@ function SteveAddonPickerModal({
   error,
   loading,
 }: {
+  activeSubscriptions: ActiveSubscriptionsPayload | null
   preselectedCommunityId: string
   onCancel: () => void
   onChoose: (communityId: number) => void
@@ -1410,9 +1508,7 @@ function SteveAddonPickerModal({
   error?: string | null
   loading?: boolean
 }) {
-  const [communities, setCommunities] = useState<
-    { id: number; name: string; tier?: string }[] | null
-  >(null)
+  const [fullRows, setFullRows] = useState<ActiveCommunitySubscription[] | null>(null)
   const [loadErr, setLoadErr] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
 
@@ -1425,6 +1521,13 @@ function SteveAddonPickerModal({
   useEffect(() => {
     let cancelled = false
     async function load() {
+      if (activeSubscriptions?.success && Array.isArray(activeSubscriptions.communities)) {
+        if (!cancelled) {
+          setFullRows(activeSubscriptions.communities)
+          setLoadErr(null)
+        }
+        return
+      }
       try {
         const res = await fetch('/api/me/subscriptions', {
           credentials: 'include',
@@ -1435,10 +1538,7 @@ function SteveAddonPickerModal({
         if (!res.ok || !data?.success) {
           throw new Error(data?.error || 'Failed to load subscriptions')
         }
-        const eligible = (data.communities || []).filter((c) => c.steve_addon_eligible)
-        setCommunities(
-          eligible.map((c) => ({ id: c.id, name: c.name, tier: c.tier })),
-        )
+        setFullRows(data.communities || [])
       } catch (err) {
         if (!cancelled) setLoadErr(err instanceof Error ? err.message : 'Failed to load')
       }
@@ -1447,26 +1547,31 @@ function SteveAddonPickerModal({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [activeSubscriptions])
+
+  const focusRow = useMemo(() => {
+    if (!focusId || !fullRows) return null
+    return fullRows.find((c) => c.id === focusId) ?? null
+  }, [focusId, fullRows])
+
+  const eligibleList = useMemo(
+    () => (fullRows || []).filter((c) => c.steve_addon_eligible),
+    [fullRows],
+  )
 
   useEffect(() => {
-    if (!focusId) {
-      setSelectedId(null)
-      return
+    if (focusRow) {
+      setSelectedId(focusRow.steve_addon_eligible ? focusRow.id : null)
     }
-    if (!communities) return
-    if (communities.some((c) => c.id === focusId)) setSelectedId(focusId)
-    else setSelectedId(null)
-  }, [focusId, communities])
+  }, [focusRow])
 
-  const focusCommunity =
-    focusId != null && communities?.some((c) => c.id === focusId)
-      ? communities?.find((c) => c.id === focusId)
-      : null
-
-  const heading = focusCommunity
-    ? `Steve Community Package for ${focusCommunity.name}`
+  const heading = focusRow
+    ? focusRow.steve_addon_eligible
+      ? `Subscribe to Steve Community Package for ${focusRow.name}`
+      : focusRow.name
     : 'Pick a community'
+
+  const showRadioList = !focusRow
 
   return (
     <ModalShell onClose={onCancel} ariaLabel="Pick a community for Steve package">
@@ -1477,8 +1582,7 @@ function SteveAddonPickerModal({
           </p>
           <h2 className="mt-2 text-lg font-semibold">{heading}</h2>
           <p className="mt-1 text-sm text-white/60">
-            Only Paid tier communities with an active subscription and a future renewal
-            date can add this package. Enterprise networks already include Steve.
+            Eligibility is computed on the server — use the reason below if checkout is blocked.
           </p>
         </div>
         <button
@@ -1502,29 +1606,26 @@ function SteveAddonPickerModal({
         </div>
       )}
 
+      {focusRow && !focusRow.steve_addon_eligible && (
+        <div className="mt-4 rounded-lg border border-amber-400/25 bg-amber-400/10 p-3 text-sm text-amber-50">
+          {focusRow.steve_addon_message || 'This community cannot add the Steve Community Package yet.'}
+        </div>
+      )}
+
       <div className="mt-5 max-h-64 space-y-2 overflow-y-auto pr-1">
-        {communities === null && !loadErr && (
+        {fullRows === null && !loadErr && (
           <div className="text-sm text-white/50">Loading your subscriptions…</div>
         )}
-        {communities !== null && communities.length === 0 && (
+        {fullRows !== null && showRadioList && eligibleList.length === 0 && (
           <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm text-white/60">
-            {focusId != null ? (
-              <>
-                This community is not eligible yet — your Paid tier must show{' '}
-                <span className="text-white/80">active</span> with a renewal date in billing,
-                or the Steve package may already be active. Open{' '}
-                <span className="text-white/80">Manage</span> on that community to confirm billing,
-                or use the billing portal to refresh payment details.
-              </>
-            ) : (
-              <>
-                No eligible communities. Your Paid tier must be active with a future renewal
-                date, or this add-on may already be active.
-              </>
-            )}
+            No eligible communities right now. Fix Paid tier billing (active subscription + renewal date),{' '}
+            or open{' '}
+            <span className="text-white/80">Manage Subscription</span>{' '}
+            from your community settings. You can also upgrade a community under{' '}
+            <span className="text-white/80">Community plans</span>.
           </div>
         )}
-        {communities?.map((c) => (
+        {showRadioList && eligibleList.map((c) => (
           <label
             key={c.id}
             className={
@@ -1567,7 +1668,7 @@ function SteveAddonPickerModal({
         >
           {loading ? 'Starting checkout…' : 'Continue to checkout'}
         </button>
-        {communities !== null && communities.length === 0 && (
+        {focusId == null && fullRows !== null && eligibleList.length === 0 && (
           <button
             type="button"
             onClick={onCreate}
@@ -1617,6 +1718,11 @@ function CommunityPickerModal({
     preselectedCommunityId ? Number(preselectedCommunityId) : null,
   )
 
+  const activeByCommunity = useMemo(
+    () => new Map((activeSubscriptions?.communities || []).map((item) => [item.id, item])),
+    [activeSubscriptions],
+  )
+
   useEffect(() => {
     let cancelled = false
     async function load() {
@@ -1649,7 +1755,7 @@ function CommunityPickerModal({
         const me = typeof data.username === 'string'
           ? data.username.trim().toLowerCase()
           : null
-        const activeByCommunity = new Map(
+        const activeByCommunityLocal = new Map(
           (activeSubscriptions?.communities || []).map((item) => [item.id, item]),
         )
         const owned = flat.filter((c) => {
@@ -1659,7 +1765,7 @@ function CommunityPickerModal({
           if (c.role && c.role.toLowerCase() === 'owner') return true
           return false
         }).filter((c) => {
-          const active = activeByCommunity.get(c.id)
+          const active = activeByCommunityLocal.get(c.id)
           return String(active?.tier || c.tier || '').toLowerCase() !== tier.tier_code
         })
         setCommunities(owned)
@@ -1673,17 +1779,36 @@ function CommunityPickerModal({
     }
   }, [activeSubscriptions, tier.tier_code])
 
+  const downgradeFlow = useMemo(() => {
+    if (!communities?.length) return false
+    const targetR = paidTierRank(tier.tier_code)
+    return communities.some((c) => {
+      const row = activeByCommunity.get(c.id)
+      return paidTierRank(row?.tier || c.tier) > targetR
+    })
+  }, [communities, activeByCommunity, tier.tier_code])
+
   return (
     <ModalShell onClose={onCancel} ariaLabel={`Pick a community for Paid ${tier.level_label}`}>
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
-            Upgrade to Paid {tier.level_label}
+            {downgradeFlow ? `Change to Paid ${tier.level_label}` : `Upgrade to Paid ${tier.level_label}`}
           </p>
           <h2 className="mt-2 text-lg font-semibold">Pick a community</h2>
           <p className="mt-1 text-sm text-white/60">
-            You can only upgrade communities you own. The new tier unlocks up to{' '}
-            {tier.max_members ?? '?'} members at {formatEur(tier.price_eur)} / month.
+            {downgradeFlow
+              ? (
+                  <>
+                    Some selections may lower your tier cap — Stripe bills adjustments on your existing subscription.
+                  </>
+                )
+              : (
+                  <>
+                    You can only upgrade communities you own. The new tier unlocks up to{' '}
+                    {tier.max_members ?? '?'} members at {formatEur(tier.price_eur)} / month.
+                  </>
+                )}
           </p>
         </div>
         <button
@@ -1716,12 +1841,19 @@ function CommunityPickerModal({
             No eligible owned communities for {tierLabel(tier.tier_code)}. Communities already on this tier are hidden.
           </div>
         )}
-        {communities?.map((c) => (
+        {communities?.map((c) => {
+          const row = activeByCommunity.get(c.id)
+          const curRank = paidTierRank(row?.tier || c.tier)
+          const targetRank = paidTierRank(tier.tier_code)
+          const blockedHigher = curRank > targetRank && targetRank >= 1
+          return (
           <label
             key={c.id}
             className={
               'flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm transition ' +
-              (selectedId === c.id
+              (blockedHigher
+                ? 'cursor-not-allowed border-white/5 bg-white/[0.02] opacity-55'
+                : selectedId === c.id
                 ? 'border-cpoint-turquoise/60 bg-cpoint-turquoise/10'
                 : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.06]')
             }
@@ -1731,6 +1863,7 @@ function CommunityPickerModal({
               name="community"
               className="mt-0.5 h-4 w-4 shrink-0 accent-[#00CEC8]"
               checked={selectedId === c.id}
+              disabled={blockedHigher}
               onChange={() => setSelectedId(c.id)}
             />
             <span className="min-w-0 flex-1 break-words leading-5">
@@ -1740,9 +1873,15 @@ function CommunityPickerModal({
                   {currentTierLabel(c, activeSubscriptions)}
                 </span>
               )}
+              {blockedHigher && (
+                <span className="mt-1 block text-[11px] text-amber-200/80">
+                  Already on a higher Paid tier — pick a lower tier card to change your plan.
+                </span>
+              )}
             </span>
           </label>
-        ))}
+          )
+        })}
       </div>
 
       <div className="mt-6 flex flex-col gap-2">

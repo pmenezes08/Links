@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, Dict
+
 import pytest
 from flask import Flask
 
@@ -139,8 +141,30 @@ class TestSteveCheckout:
         body = resp.get_json() or {}
         assert body.get("reason") == "steve_package_already_active"
 
+    def test_blocks_when_renewal_date_missing(self, checkout_client):
+        make_user("mr_owner", subscription="free")
+        cid = make_community(
+            "mr-steve-net",
+            tier="paid_l1",
+            creator_username="mr_owner",
+        )
+        community_billing.mark_subscription(
+            cid,
+            tier_code="paid_l1",
+            subscription_id="sub_tier_mr",
+            customer_id="cus_mr",
+            status="active",
+        )
+        _seed_steve_price()
+        _login(checkout_client, "mr_owner")
 
-class TestSteveWebhook:
+        resp = checkout_client.post(
+            "/api/stripe/create_checkout_session",
+            json={"plan_id": "steve_package", "community_id": cid},
+        )
+        assert resp.status_code == 409
+        body = resp.get_json() or {}
+        assert body.get("reason") == "renewal_date_missing"
     def test_checkout_completed_writes_steve_columns(self, webhook_client, monkeypatch):
         make_user("wh_owner", subscription="free")
         cid = make_community(
