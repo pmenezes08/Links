@@ -92,6 +92,7 @@ class TestSteveCheckout:
             subscription_id="sub_tier_co",
             customer_id="cus_co_owner",
             status="active",
+            current_period_end=2_000_000_000,
         )
         _seed_steve_price()
         _login(checkout_client, "steve_co_owner")
@@ -120,6 +121,7 @@ class TestSteveCheckout:
             subscription_id="sub_tier_dup",
             customer_id="cus_dup",
             status="active",
+            current_period_end=2_000_000_000,
         )
         community_billing.mark_steve_package_subscription(
             cid,

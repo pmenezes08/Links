@@ -130,10 +130,15 @@ interface ActiveCommunitySubscription {
   name: string
   tier?: string
   subscription_status?: string | null
+  stripe_subscription_id?: string | null
   current_period_end?: string | null
   cancel_at_period_end?: boolean
   benefits_end_at?: string | null
   steve_package_subscription_active?: boolean
+  /** Paid tier subscription active/trialing with future renewal boundary (API-derived). */
+  tier_subscription_live?: boolean
+  /** Paid tier + live renewal + no Steve package yet (server-derived Steve picker list). */
+  steve_addon_eligible?: boolean
 }
 
 interface ActiveSubscriptionsPayload {
@@ -289,6 +294,11 @@ export default function SubscriptionPlans() {
     if (requestedOpen === 'community_plans') {
       setModalError(null)
       setView('community')
+      resetSubscriptionPageScroll()
+    }
+    if (requestedOpen === 'community_addons') {
+      setModalError(null)
+      setView('steve_picker')
       resetSubscriptionPageScroll()
     }
   }, [queryParams])
@@ -641,7 +651,6 @@ export default function SubscriptionPlans() {
       {view === 'steve_picker' && (
         <SteveAddonPickerModal
           preselectedCommunityId={preselectedCommunityId}
-          activeSubscriptions={activeSubscriptions}
           onCancel={() => {
             setModalError(null)
             setView('addons')
@@ -940,7 +949,7 @@ function ActiveSubscriptionsSection({
                   <ActiveRow
                     key={community.id}
                     title={community.name}
-                    subtitle={community.cancel_at_period_end ? benefitsCopy(community.benefits_end_at || community.current_period_end) : renewalCopy(community.current_period_end)}
+                    subtitle={communitySubtitleCommunity(community)}
                     status={tierLabel(community.tier || community.subscription_status)}
                     actionLabel="Manage"
                     onAction={() => onManageCommunity(community.id)}
@@ -1007,6 +1016,19 @@ function renewalCopy(value?: string | null) {
 
 function benefitsCopy(value?: string | null) {
   return value ? `Benefits active until: ${formatDate(value)}` : 'Cancellation pending'
+}
+
+function communitySubtitleCommunity(c: ActiveCommunitySubscription): string {
+  const renewalLine = c.cancel_at_period_end
+    ? benefitsCopy(c.benefits_end_at || c.current_period_end)
+    : renewalCopy(c.current_period_end)
+  const tier = String(c.tier || '').toLowerCase()
+  const paidCommunity =
+    tier === 'paid_l1' || tier === 'paid_l2' || tier === 'paid_l3'
+  if (!paidCommunity || c.tier_subscription_live !== false) {
+    return renewalLine
+  }
+  return `${renewalLine} We cannot confirm an active renewal window — open Manage, then billing portal if payment details need updating.`
 }
 
 function currentTierLabel(community: Community, active: ActiveSubscriptionsPayload | null) {
@@ -1374,7 +1396,6 @@ function NetworkingAddonCard({
 
 function SteveAddonPickerModal({
   preselectedCommunityId,
-  activeSubscriptions,
   onCancel,
   onChoose,
   onCreate,
@@ -1382,67 +1403,41 @@ function SteveAddonPickerModal({
   loading,
 }: {
   preselectedCommunityId: string
-  activeSubscriptions: ActiveSubscriptionsPayload | null
   onCancel: () => void
   onChoose: (communityId: number) => void
   onCreate: () => void
   error?: string | null
   loading?: boolean
 }) {
-  const [communities, setCommunities] = useState<Community[] | null>(null)
+  const [communities, setCommunities] = useState<
+    { id: number; name: string; tier?: string }[] | null
+  >(null)
   const [loadErr, setLoadErr] = useState<string | null>(null)
-  const [selectedId, setSelectedId] = useState<number | null>(
-    preselectedCommunityId ? Number(preselectedCommunityId) : null,
-  )
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+
+  const focusId = useMemo(() => {
+    const raw = preselectedCommunityId.trim()
+    const n = raw ? Number(raw) : NaN
+    return Number.isFinite(n) && n > 0 ? n : null
+  }, [preselectedCommunityId])
 
   useEffect(() => {
     let cancelled = false
     async function load() {
       try {
-        const res = await fetch('/api/user_communities_hierarchical', {
+        const res = await fetch('/api/me/subscriptions', {
           credentials: 'include',
           headers: { Accept: 'application/json' },
         })
-        const data = await res.json()
+        const data: ActiveSubscriptionsPayload = await res.json()
         if (cancelled) return
-        if (!data?.success) {
-          throw new Error(data?.error || 'Failed to load communities')
+        if (!res.ok || !data?.success) {
+          throw new Error(data?.error || 'Failed to load subscriptions')
         }
-        const flat: Community[] = []
-        const walk = (list: unknown[]) => {
-          for (const raw of list || []) {
-            const item = raw as Community & {
-              children?: Community[]
-              parent_community_id?: number | null
-            }
-            if (item && typeof item.id === 'number') flat.push(item)
-            if (item && Array.isArray(item.children)) walk(item.children)
-          }
-        }
-        walk(data.communities || [])
-        const me = typeof data.username === 'string'
-          ? data.username.trim().toLowerCase()
-          : null
-        const activeByCommunity = new Map(
-          (activeSubscriptions?.communities || []).map((item) => [item.id, item]),
+        const eligible = (data.communities || []).filter((c) => c.steve_addon_eligible)
+        setCommunities(
+          eligible.map((c) => ({ id: c.id, name: c.name, tier: c.tier })),
         )
-        const owned = flat.filter((c) => {
-          const withParent = c as Community & { parent_community_id?: number | null }
-          if (withParent.parent_community_id) return false
-          if (me && c.creator_username && c.creator_username.trim().toLowerCase() === me) return true
-          if (c.role && c.role.toLowerCase() === 'owner') return true
-          return false
-        }).filter((c) => {
-          const active = activeByCommunity.get(c.id)
-          const tier = String(active?.tier || c.tier || '').toLowerCase()
-          if (tier === 'enterprise') return false
-          if (!['paid_l1', 'paid_l2', 'paid_l3'].includes(tier)) return false
-          const status = String(active?.subscription_status || '').toLowerCase()
-          if (status !== 'active' && status !== 'trialing') return false
-          if (active?.steve_package_subscription_active) return false
-          return true
-        })
-        setCommunities(owned)
       } catch (err) {
         if (!cancelled) setLoadErr(err instanceof Error ? err.message : 'Failed to load')
       }
@@ -1451,7 +1446,26 @@ function SteveAddonPickerModal({
     return () => {
       cancelled = true
     }
-  }, [activeSubscriptions])
+  }, [])
+
+  useEffect(() => {
+    if (!focusId) {
+      setSelectedId(null)
+      return
+    }
+    if (!communities) return
+    if (communities.some((c) => c.id === focusId)) setSelectedId(focusId)
+    else setSelectedId(null)
+  }, [focusId, communities])
+
+  const focusCommunity =
+    focusId != null && communities?.some((c) => c.id === focusId)
+      ? communities?.find((c) => c.id === focusId)
+      : null
+
+  const heading = focusCommunity
+    ? `Steve Community Package for ${focusCommunity.name}`
+    : 'Pick a community'
 
   return (
     <ModalShell onClose={onCancel} ariaLabel="Pick a community for Steve package">
@@ -1460,10 +1474,10 @@ function SteveAddonPickerModal({
           <p className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
             Steve Community Package
           </p>
-          <h2 className="mt-2 text-lg font-semibold">Pick a community</h2>
+          <h2 className="mt-2 text-lg font-semibold">{heading}</h2>
           <p className="mt-1 text-sm text-white/60">
-            Only Paid tier roots with an active Stripe subscription are eligible.
-            Enterprise networks already include Steve.
+            Only Paid tier communities with an active subscription and a future renewal
+            date can add this package. Enterprise networks already include Steve.
           </p>
         </div>
         <button
@@ -1489,11 +1503,24 @@ function SteveAddonPickerModal({
 
       <div className="mt-5 max-h-64 space-y-2 overflow-y-auto pr-1">
         {communities === null && !loadErr && (
-          <div className="text-sm text-white/50">Loading your communities…</div>
+          <div className="text-sm text-white/50">Loading your subscriptions…</div>
         )}
         {communities !== null && communities.length === 0 && (
           <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm text-white/60">
-            No eligible communities. Upgrade a root community to Paid first, or this add-on may already be active.
+            {focusId != null ? (
+              <>
+                This community is not eligible yet — your Paid tier must show{' '}
+                <span className="text-white/80">active</span> with a renewal date in billing,
+                or the Steve package may already be active. Open{' '}
+                <span className="text-white/80">Manage</span> on that community to confirm billing,
+                or use the billing portal to refresh payment details.
+              </>
+            ) : (
+              <>
+                No eligible communities. Your Paid tier must be active with a future renewal
+                date, or this add-on may already be active.
+              </>
+            )}
           </div>
         )}
         {communities?.map((c) => (
@@ -1515,9 +1542,9 @@ function SteveAddonPickerModal({
             />
             <span className="min-w-0 flex-1 break-words leading-5">
               {c.name}
-              {currentTierLabel(c, activeSubscriptions) && (
+              {c.tier && c.tier !== 'free' && (
                 <span className="ml-2 text-xs text-white/40">
-                  {currentTierLabel(c, activeSubscriptions)}
+                  Current: {tierLabel(c.tier)}
                 </span>
               )}
             </span>

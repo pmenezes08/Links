@@ -34,7 +34,14 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from backend.services.community import _normalize_tier, resolve_root_community_id
+from backend.services.community import (
+    COMMUNITY_TIER_ENTERPRISE,
+    COMMUNITY_TIER_PAID_L1,
+    COMMUNITY_TIER_PAID_L2,
+    COMMUNITY_TIER_PAID_L3,
+    _normalize_tier,
+    resolve_root_community_id,
+)
 from backend.services.database import get_db_connection, get_sql_placeholder
 
 
@@ -200,6 +207,61 @@ def has_active_subscription(community_id: int) -> bool:
     sub_id = state.get("stripe_subscription_id")
     status = (state.get("subscription_status") or "").lower()
     return bool(sub_id) and status == "active"
+
+
+def tier_subscription_is_live(state: Optional[Dict[str, Any]]) -> bool:
+    """True when the Paid tier Stripe subscription is usable for add-ons and UX.
+
+    Requires ``stripe_subscription_id``, Stripe-like ``subscription_status`` of
+    ``active`` or ``trialing``, and a ``current_period_end`` that parses and is
+    still in the future (renewal boundary not elapsed).
+
+    Rows missing ``current_period_end`` while claiming ``active`` are treated as
+    not live — Stripe webhooks should always populate the renewal boundary when
+    the tier subscription moves to ``active``/``trialing``.
+    """
+    if not state:
+        return False
+    sub_id = state.get("stripe_subscription_id")
+    if not sub_id or not str(sub_id).strip():
+        return False
+    status = str(state.get("subscription_status") or "").strip().lower()
+    if status not in ("active", "trialing"):
+        return False
+    raw = state.get("current_period_end")
+    if raw in (None, "", 0):
+        logger.warning(
+            "tier_subscription_is_live: missing current_period_end for tier subscription "
+            "(subscription_status=%s)",
+            status,
+        )
+        return False
+    end = _parse_datetime(raw)
+    if not end:
+        logger.warning(
+            "tier_subscription_is_live: unparseable current_period_end=%r",
+            raw,
+        )
+        return False
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    return end > now
+
+
+def community_eligible_for_steve_addon(community_id: int) -> bool:
+    """Paid tier root billing row eligible for Steve-package checkout (API/list)."""
+    state = get_billing_state(community_id) or {}
+    tier = str(state.get("tier") or "").strip().lower()
+    if tier == COMMUNITY_TIER_ENTERPRISE:
+        return False
+    if tier not in (
+        COMMUNITY_TIER_PAID_L1,
+        COMMUNITY_TIER_PAID_L2,
+        COMMUNITY_TIER_PAID_L3,
+    ):
+        return False
+    if state.get("steve_package_subscription_active"):
+        return False
+    return tier_subscription_is_live(state)
 
 
 # ── Write helpers ───────────────────────────────────────────────────────

@@ -555,11 +555,17 @@ def _fetch_user_billed_communities(username: str) -> List[Dict[str, Any]]:
         if not community_id:
             continue
         state = community_billing.get_billing_state(community_id) or {}
+        tier_subscription_live = community_billing.tier_subscription_is_live(state)
+        steve_addon_eligible = community_billing.community_eligible_for_steve_addon(
+            community_id,
+        )
         items.append({
             "id": community_id,
             "name": _row_value(row, "name", 1) or "",
             "owner": _row_value(row, "creator_username", 2) or "",
             "tier": state.get("tier") or _row_value(row, "tier", 3) or "free",
+            "tier_subscription_live": tier_subscription_live,
+            "steve_addon_eligible": steve_addon_eligible,
             **state,
         })
     return items
@@ -745,12 +751,14 @@ def _preflight_steve_package(
         community_svc.COMMUNITY_TIER_PAID_L2,
         community_svc.COMMUNITY_TIER_PAID_L3,
     ):
-        if not community_billing.has_active_subscription(root_id):
+        if not community_billing.tier_subscription_is_live(state):
             return (
                 {
                     "success": False,
                     "error": (
-                        "Your Paid tier subscription must be active before adding Steve."
+                        "Your community Paid tier must be active with a valid renewal "
+                        "date before adding Steve. Update billing if renewal details "
+                        "are missing."
                     ),
                     "reason": "community_subscription_inactive",
                 },

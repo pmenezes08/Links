@@ -41,7 +41,7 @@ def test_me_subscriptions_returns_personal_and_owned_community(client):
         subscription_id="sub_comm",
         customer_id="cus_comm",
         status="active",
-        current_period_end=1_767_225_600,
+        current_period_end=2_000_000_000,
     )
 
     _login(client, "owner")
@@ -52,3 +52,5 @@ def test_me_subscriptions_returns_personal_and_owned_community(client):
     assert data["personal"]["current_period_end"]
     assert data["communities"][0]["id"] == community_id
     assert data["communities"][0]["current_period_end"]
+    assert data["communities"][0]["tier_subscription_live"] is True
+    assert data["communities"][0]["steve_addon_eligible"] is True
