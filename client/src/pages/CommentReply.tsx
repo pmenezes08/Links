@@ -18,6 +18,7 @@ import { useAudioRecorder } from '../components/useAudioRecorder'
 import EditableAISummary from '../components/EditableAISummary'
 import { isVideoAttachmentPath } from '../utils/replyMedia'
 import { ENTITLEMENTS_REFRESH_EVENT } from '../hooks/useEntitlements'
+import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
 import { clearDeviceCache } from '../utils/deviceCache'
 
 function replyDisplayUrl(raw: string | null | undefined): string {
@@ -74,6 +75,7 @@ type ParentReply = {
 export default function CommentReply() {
   const { reply_id } = useParams<{ reply_id: string }>()
   const navigate = useNavigate()
+  const entitlementsHandler = useEntitlementsHandler()
   const mainReplyRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
   const [reply, setReply] = useState<Reply | null>(null)
@@ -153,17 +155,20 @@ export default function CommentReply() {
         })
       })
       
-      const data = await response.json()
+      const data = await entitlementsHandler.handleResponse<{ success?: boolean; reply?: Reply; error?: string }>(
+        response,
+      )
+      if (!data) return
       console.log('[Steve AI] API response:', data)
-      
+
       if (data.success && data.reply) {
+        const steveReply = data.reply
         console.log('[Steve AI] Success! Adding Steve reply')
-        // Add Steve's reply to the nested replies
         setReply((prev) => {
           if (!prev) return prev
           return {
             ...prev,
-            nested_replies: [...(prev.nested_replies || []), data.reply],
+            nested_replies: [...(prev.nested_replies || []), steveReply],
             reply_count: (prev.reply_count || 0) + 1,
           }
         })

@@ -13,6 +13,8 @@ import { useAudioRecorder } from '../components/useAudioRecorder'
 import { GroupMessageRow } from '../chat/GroupMessageRow'
 import { getDateKey, normalizeMediaPath } from '../chat'
 import { useUserProfile } from '../contexts/UserProfileContext'
+import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
+import { isEntitlementsError } from '../utils/entitlementsError'
 import ZoomableImage from '../components/ZoomableImage'
 import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
@@ -143,6 +145,7 @@ export default function GroupChatThread() {
   const currentUsername = (currentUserProfile as { username?: string })?.username 
     || localStorage.getItem('current_username') 
     || ''
+  const entitlementsHandler = useEntitlementsHandler()
   const [group, setGroup] = useState<GroupInfo | null>(null)
   const [serverMessages, setServerMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
@@ -1092,6 +1095,9 @@ export default function GroupChatThread() {
       .then(response => response.json())
       .then(data => {
         clearTimeout(sendTimeout)
+        if (data?.entitlements_error && isEntitlementsError(data.entitlements_error)) {
+          entitlementsHandler.showError(data.entitlements_error)
+        }
         if (data.success) {
           if (outboxId >= 0) removeFromOutbox(outboxId).catch(() => {})
 
@@ -1155,6 +1161,9 @@ export default function GroupChatThread() {
       .then(r => r.json())
       .then(data => {
         clearTimeout(retryTimeout)
+        if (data?.entitlements_error && isEntitlementsError(data.entitlements_error)) {
+          entitlementsHandler.showError(data.entitlements_error)
+        }
         if (data.success) {
           getOutboxEntries().then(entries => {
             const e = entries.find(x => x.clientKey === clientKey)

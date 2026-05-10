@@ -17,6 +17,8 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import { useBadges } from '../contexts/BadgeContext'
 import { useUserProfile } from '../contexts/UserProfileContext'
+import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
+import { isEntitlementsError } from '../utils/entitlementsError'
 import Avatar from '../components/Avatar'
 import ZoomableImage from '../components/ZoomableImage'
 // Encryption removed — not in use
@@ -64,6 +66,7 @@ export default function ChatThread(){
   const { setTitle } = useHeader()
   const { refreshBadges } = useBadges()
   const { profile: myProfile } = useUserProfile()
+  const entitlementsHandler = useEntitlementsHandler()
   const viewer = (myProfile as { username?: string } | null)?.username
   const { username } = useParams()
   const navigate = useNavigate()
@@ -1606,6 +1609,10 @@ export default function ChatThread(){
       .then(r => r.json())
       .then(j => {
         clearTimeout(sendTimeout)
+        if (j?.entitlements_error && isEntitlementsError(j.entitlements_error)) {
+          entitlementsHandler.showError(j.entitlements_error)
+          setSteveIsTyping(false)
+        }
         if (j?.success) {
           if (outboxId >= 0) removeFromOutbox(outboxId).catch(() => {})
 
@@ -1704,6 +1711,10 @@ export default function ChatThread(){
       .then(r => r.json())
       .then(j => {
         clearTimeout(retryTimeout)
+        if (j?.entitlements_error && isEntitlementsError(j.entitlements_error)) {
+          entitlementsHandler.showError(j.entitlements_error)
+          setSteveIsTyping(false)
+        }
         if (j?.success && j.message_id) {
           getOutboxEntries().then(entries => {
             const e = entries.find(x => x.clientKey === clientKey)

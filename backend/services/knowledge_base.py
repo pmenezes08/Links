@@ -1796,6 +1796,8 @@ def _seed_pages() -> List[Dict[str, Any]]:
                     "type": "list_of_objects",
                     "schema": [
                         {"name": "title", "type": "string", "label": "Title"},
+                        {"name": "area", "type": "string", "label": "Area",
+                         "help": "Roadmap grouping for filters (e.g. Subscriptions, iOS, Android)."},
                         {"name": "phase", "type": "enum", "label": "Phase",
                          "allowed_values": ["now", "next", "later", "exploring"]},
                         {"name": "status", "type": "enum", "label": "Status",
@@ -1822,6 +1824,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
                         {"title": "Monolith reduction — group_chat blueprint → services", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q4", "notes": "Repo: `docs/MONOLITH_REDUCTION_ROADMAP.md` § Group chat API. Cursor: `.cursor/rules/backend-monolith-boundaries.mdc`."},
                         {"title": "Monolith reduction — large KB / Steve / networking services", "phase": "later", "status": "not_started", "effort": "L", "target_quarter": "2027-Q1", "notes": "Split `knowledge_base.py`, `steve_knowledge_base.py`, `networking_retrieval.py` — see `docs/MONOLITH_REDUCTION_ROADMAP.md`."},
                         {"title": "Monolith reduction — Flask bodybuilding_app migration", "phase": "later", "status": "not_started", "effort": "XL", "target_quarter": "2027-Q1", "notes": "Move legacy `@app.route` to blueprints when touching an area. `docs/MONOLITH_REDUCTION_ROADMAP.md`."},
+                        {"title": "Steve conversation memory and recursive learning for chats", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q4", "notes": "Bounded summaries, episodic memory events, and RAG on top of existing steve_dm_reply.py bounded context and steve_knowledge_base synthesis. Related to chat surfaces. See docs/MONOLITH_REDUCTION_ROADMAP.md § Chat UI kernel and docs/STEVE_AND_VOICE_NOTES.md. Test with AI usage counters.", "test": "steve:chat-memory", "test_status": "not_run"},
                         {"title": "Usage / credit calculator (admin)", "phase": "now", "status": "ongoing", "effort": "M", "target_quarter": "2026-Q2", "notes": "Single-call, month sim, pricing what-if."},
                         {"title": "Entitlements service reads directly from KB", "phase": "now", "status": "ongoing", "effort": "M", "target_quarter": "2026-Q2", "notes": "resolve_entitlements(username). Whitelist of KB fields."},
                         {"title": "Special users table + audit log", "phase": "now", "status": "ongoing", "effort": "S", "target_quarter": "2026-Q2", "notes": "users.is_special + special_access_log."},
@@ -1837,7 +1840,9 @@ def _seed_pages() -> List[Dict[str, Any]]:
                         {"title": "Networking page (public directory)", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q3", "notes": "Included in Enterprise; add-on for Paid."},
                         {"title": "Content generation feature (paid community)", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q3", "notes": "Option A allowance + safety knobs + autopause."},
                         {"title": "Media quota enforcement (per-community, Slack-style)", "phase": "next", "status": "not_started", "effort": "M", "target_quarter": "2026-Q3", "notes": ""},
-                        {"title": "Apple IAP + Google Play integration", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q3", "notes": "Same public price across channels."},
+                        {"title": "Apple IAP + Google Play integration (backend)", "phase": "now", "status": "in_progress", "effort": "L", "target_quarter": "2026-Q3", "notes": "Server: receipt verification, `/api/webhooks/apple` + `/api/webhooks/google`, idempotent updates, `resolve_entitlements`. KB feature flag for production IAP grants (`iap_purchases_enabled`); sandbox / review exception so App Review can test. Shared with iOS + Android client work — see sibling roadmap rows. docs/PRODUCT_JOURNEYS.md.", "test": "iap:mobile-webhooks", "test_status": "not_run"},
+                        {"title": "iOS — App Store subscription launch", "phase": "now", "status": "in_progress", "effort": "L", "target_quarter": "2026-Q3", "notes": "ASC: Paid Apps agreement, subscription group + products, localizations, link IAPs to app version. Sandbox Apple IDs, TestFlight, purchase/restore/cancel QA. Capacitor/Xcode build; merge staging→main when backend+flag ready. App Review notes + sandbox unlock. Post-approval: enable production flag, phased release. Notion Product Roadmap **Area: iOS** rows.", "test": "iap:ios-subscriptions-review", "test_status": "not_run"},
+                        {"title": "Android — Google Play subscription launch", "phase": "now", "status": "not_started", "effort": "L", "target_quarter": "2026-Q3", "notes": "Play Console: merchant link, subscriptions + base plans/offers, policy declarations. License testers, internal/closed track AAB, purchase/restore QA, webhook parity with iOS. Staged rollout; same KB IAP flag + entitlements path. Notion Product Roadmap **Area: Android** rows.", "test": "iap:android-subscriptions-review", "test_status": "not_run"},
                         {"title": "max_tool_invocations hard cap", "phase": "next", "status": "not_started", "effort": "S", "target_quarter": "2026-Q3", "notes": "Prevents worst-case per-turn cost."},
                         {"title": "Per-user monthly spend circuit breaker", "phase": "next", "status": "not_started", "effort": "M", "target_quarter": "2026-Q3", "notes": ""},
                         {"title": "Device fingerprint + IP/ASN signup throttle", "phase": "next", "status": "not_started", "effort": "M", "target_quarter": "2026-Q3", "notes": "Activate only if free-trial abuse materializes."},
@@ -1851,6 +1856,9 @@ def _seed_pages() -> List[Dict[str, Any]]:
                         {"title": "Group 'catch me up' summaries (last 24h)", "phase": "exploring", "status": "not_started", "effort": "M", "target_quarter": "TBD", "notes": ""},
                         {"title": "Card authorization for trials (if abuse > 5%)", "phase": "exploring", "status": "not_started", "effort": "M", "target_quarter": "TBD", "notes": ""},
                         {"title": "Referral credits", "phase": "exploring", "status": "not_started", "effort": "M", "target_quarter": "TBD", "notes": ""},
+                        {"title": "Subscriptions — reconcile Stripe lifecycle with resolve_entitlements", "area": "Subscriptions", "phase": "now", "status": "ongoing", "effort": "M", "target_quarter": "2026-Q2", "notes": "Align users.subscription / subscription_status with tier (e.g. past_due vs premium access), verify ENTITLEMENTS_ENFORCEMENT_ENABLED in prod, close gaps where UI billing state diverges from Steve gates. docs/PRODUCT_JOURNEYS.md.", "test": "entitlements:stripe-lifecycle", "test_status": "not_run"},
+                        {"title": "Subscriptions — gate Networking Steve behind resolve_entitlements", "area": "Subscriptions", "phase": "now", "status": "not_started", "effort": "S", "target_quarter": "2026-Q2", "notes": "`/api/networking/steve_match` should enforce the same Premium/cap path as DM/group/feed so free users cannot bypass credits via weekly KB cap alone.", "test": "entitlements:networking-steve", "test_status": "not_run"},
+                        {"title": "Subscriptions — Steve blocked UX (modal CTA on DM, group, feed, replies)", "area": "Subscriptions", "phase": "now", "status": "ongoing", "effort": "S", "target_quarter": "2026-Q2", "notes": "When entitlements enforcement is on, DM + group send return embedded entitlements_error for immediate Manage membership / usage CTAs; feed + post replies already use LimitReachedModal via HTTP errors. Extend to any remaining Steve entry points.", "test": "entitlements:client-cta", "test_status": "not_run"},
                     ],
                 },
             ],
@@ -1860,7 +1868,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 "- **Next** — Phase 2, Q3\n"
                 "- **Later** — Phase 3, Q4+\n"
                 "- **Exploring** — not committed, evaluating\n\n"
-                "Each item has a phase, rough effort (S/M/L/XL), and target quarter."
+                "Each item has a phase, rough effort (S/M/L/XL), target quarter, and optional **Area** (e.g. Subscriptions) for filters."
             ),
         },
 

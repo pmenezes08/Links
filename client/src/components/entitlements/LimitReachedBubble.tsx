@@ -50,6 +50,27 @@ export default function LimitReachedBubble({ err, onClose, compact = false }: Pr
     }
   }
 
+  const titleForReason = (): string => {
+    switch (err.reason) {
+      case 'premium_required':
+        return 'Steve is a Premium feature'
+      case 'daily_cap':
+        return '24-hour limit reached'
+      case 'monthly_steve_cap':
+        return 'Monthly allowance reached'
+      case 'monthly_whisper_cap':
+        return 'Voice limit reached'
+      case 'community_pool_exhausted':
+        return 'Community Steve pool exhausted'
+      case 'community_suspended':
+        return 'Community temporarily paused'
+      case 'grace_expired':
+        return 'Enterprise seat ended'
+      default:
+        return 'Steve limit reached'
+    }
+  }
+
   return (
     <div
       role="status"
@@ -82,7 +103,7 @@ export default function LimitReachedBubble({ err, onClose, compact = false }: Pr
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
-          Steve limit reached
+          {titleForReason()}
         </div>
         <div style={{ fontSize: 13, lineHeight: 1.45, color: 'rgba(255,255,255,0.75)' }}>
           {err.message}

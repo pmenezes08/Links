@@ -16,7 +16,7 @@ from werkzeug.utils import secure_filename
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.media import save_uploaded_file
 from backend.services import ai_usage, auth_session, session_identity
-from backend.services.entitlements_gate import gate_or_reason
+from backend.services.entitlements_gate import gate_or_reason, check_steve_access
 from backend.services.feature_flags import entitlements_enforcement_enabled
 from backend.services.steve_dm_typing import clear_group_typing, is_group_typing, mark_group_typing
 from backend.services.networking_ai_config import MODEL_GROK_43
@@ -1649,24 +1649,19 @@ def send_group_message(group_id: int):
                 conn.commit()
             except Exception as notif_batch_err:
                 logger.warning(f"Failed to send group message notifications: {notif_batch_err}")
-            
-            # Check if @Steve is mentioned - trigger AI response in background
-            if message_text and re.search(r'@steve\b', message_text, re.IGNORECASE) and username != AI_USERNAME:
-                try:
-                    mark_group_typing(group_id)
-                    
-                    # Run Steve's response in a background thread to not block the request
-                    thread = threading.Thread(
-                        target=_trigger_steve_group_reply,
-                        args=(group_id, group_name, message_text, username, message_id)
-                    )
-                    thread.daemon = True
-                    thread.start()
-                    logger.info(f"Triggered Steve reply for group {group_id}")
-                except Exception as steve_err:
-                    logger.warning(f"Failed to trigger Steve reply: {steve_err}")
-            
-            return jsonify({
+
+            try:
+                c.execute(f"SELECT name FROM group_chats WHERE id = {ph}", (group_id,))
+                gn_row = c.fetchone()
+                steve_group_name = (
+                    (gn_row["name"] if hasattr(gn_row, "keys") else gn_row[0])
+                    if gn_row
+                    else "Group"
+                )
+            except Exception:
+                steve_group_name = "Group"
+
+            send_payload: dict = {
                 "success": True,
                 "message": {
                     "id": message_id,
@@ -1679,8 +1674,44 @@ def send_group_message(group_id: int):
                     "client_key": client_key,
                     "created_at": now,
                     "profile_picture": profile_picture,
-                }
-            })
+                },
+            }
+
+            # Check if @Steve is mentioned - trigger AI response in background
+            if message_text and re.search(r'@steve\b', message_text, re.IGNORECASE) and username != AI_USERNAME:
+                start_group_steve_thread = True
+                if entitlements_enforcement_enabled():
+                    try:
+                        _allowed_g, _g_ent_payload, _, _ = check_steve_access(
+                            username, ai_usage.SURFACE_GROUP
+                        )
+                        if not _allowed_g:
+                            send_payload["entitlements_error"] = _g_ent_payload
+                            start_group_steve_thread = False
+                            logger.info(
+                                "Steve group reply skipped (entitlements): user=%s group=%s reason=%s",
+                                username,
+                                group_id,
+                                (_g_ent_payload or {}).get("reason"),
+                            )
+                    except Exception as g_gate_err:
+                        logger.warning("Group Steve entitlement preflight failed (non-fatal): %s", g_gate_err)
+
+                if start_group_steve_thread:
+                    try:
+                        mark_group_typing(group_id)
+
+                        thread = threading.Thread(
+                            target=_trigger_steve_group_reply,
+                            args=(group_id, steve_group_name, message_text, username, message_id),
+                        )
+                        thread.daemon = True
+                        thread.start()
+                        logger.info(f"Triggered Steve reply for group {group_id}")
+                    except Exception as steve_err:
+                        logger.warning(f"Failed to trigger Steve reply: {steve_err}")
+
+            return jsonify(send_payload)
             
     except Exception as e:
         logger.error(f"Error sending message to group {group_id}: {e}")
