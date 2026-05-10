@@ -46,6 +46,7 @@ import {
   mentionsSteve,
   shouldClientBlockSteveIntent,
 } from '../utils/steveClientGate'
+import { preflightSteveMention } from '../utils/stevePreflight'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
@@ -5105,6 +5106,16 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                               if (!navigator.onLine) { alert('Go back online to reply'); return }
                               const messageText = childReplyText.trim()
                               if (blockSteveMentionReply(messageText)) return
+                              const preflight = await preflightSteveMention({
+                                text: messageText,
+                                communityId,
+                                postId: post.id,
+                                entitlementsHandler,
+                              })
+                              if (!preflight.ok) {
+                                if (preflight.error) alert(preflight.error)
+                                return
+                              }
                               try{
                                 setSendingChildReply(true)
                                 const fd = new FormData()
@@ -5235,6 +5246,16 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   if (!navigator.onLine) { alert('Go back online to reply'); return }
                   const messageText = replyText.trim()
                   if (blockSteveMentionReply(messageText)) return
+                  const preflight = await preflightSteveMention({
+                    text: messageText,
+                    communityId,
+                    postId: post.id,
+                    entitlementsHandler,
+                  })
+                  if (!preflight.ok) {
+                    if (preflight.error) alert(preflight.error)
+                    return
+                  }
                     try{
                       setSendingReply(true)
                       const fd = new FormData()

@@ -92,6 +92,53 @@ def test_premium_member_pool_gate_skips_personal_caps(monkeypatch):
     assert status is None
 
 
+def test_preflight_ignores_non_steve_text_even_when_enforced(monkeypatch):
+    from backend.services import entitlements_gate as gate
+
+    monkeypatch.setattr(gate, "entitlements_enforcement_enabled", lambda: True)
+    monkeypatch.setattr(
+        gate,
+        "check_steve_access",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("gate should not run")),
+    )
+
+    allowed, payload, status, _ent = gate.preflight_steve_mention(
+        "JohnDoe",
+        "hello everyone",
+        ai_usage.SURFACE_FEED,
+        community_id=123,
+    )
+
+    assert allowed is True
+    assert payload is None
+    assert status is None
+
+
+def test_preflight_delegates_steve_mentions_when_enforced(monkeypatch):
+    from backend.services import entitlements_gate as gate
+
+    calls = []
+
+    def fake_check(username, surface, *, community_id=None, **kwargs):
+        calls.append((username, surface, community_id))
+        return False, {"success": False, "error": "entitlements_error", "reason": "premium_required"}, 403, {}
+
+    monkeypatch.setattr(gate, "entitlements_enforcement_enabled", lambda: True)
+    monkeypatch.setattr(gate, "check_steve_access", fake_check)
+
+    allowed, payload, status, _ent = gate.preflight_steve_mention(
+        "JohnDoe",
+        "@Steve help",
+        ai_usage.SURFACE_FEED,
+        community_id=123,
+    )
+
+    assert allowed is False
+    assert status == 403
+    assert payload and payload.get("reason") == "premium_required"
+    assert calls == [("JohnDoe", ai_usage.SURFACE_FEED, 123)]
+
+
 def test_free_member_pool_gate_blocks_without_community_context(monkeypatch):
     from backend.services import entitlements_gate as gate
 

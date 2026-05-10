@@ -25,6 +25,7 @@ import {
   mentionsSteve,
   shouldClientBlockSteveIntent,
 } from '../utils/steveClientGate'
+import { preflightSteveMention } from '../utils/stevePreflight'
 
 function replyDisplayUrl(raw: string | null | undefined): string {
   const s = (raw ?? '').trim()
@@ -546,6 +547,16 @@ export default function CommentReply() {
     if (!replyText.trim() && !hasMedia) return
     const messageText = replyText.trim()
     if (blockSteveMentionReply(messageText, post?.community_id)) return
+    const preflight = await preflightSteveMention({
+      text: messageText,
+      communityId: post?.community_id,
+      postId: post.id,
+      entitlementsHandler,
+    })
+    if (!preflight.ok) {
+      if (preflight.error) alert(preflight.error)
+      return
+    }
     setSendingReply(true)
     try {
       const fd = new FormData()

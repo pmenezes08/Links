@@ -13,6 +13,7 @@ copy / HTTP-status decisions live in
 from __future__ import annotations
 
 import logging
+import re
 from functools import wraps
 from typing import Any, Dict, Optional, Tuple
 
@@ -29,6 +30,7 @@ from backend.services.feature_flags import entitlements_enforcement_enabled
 
 
 logger = logging.getLogger(__name__)
+STEVE_MENTION_RE = re.compile(r"@steve\b", re.IGNORECASE)
 
 
 def _community_tiers_field_map() -> Dict[str, Any]:
@@ -80,6 +82,10 @@ def _user_member_community(username: str, community_id: int) -> bool:
 
 
 # ─── Core check ─────────────────────────────────────────────────────────
+
+
+def mentions_steve(text: Optional[str]) -> bool:
+    return bool(text and STEVE_MENTION_RE.search(str(text)))
 
 
 def check_steve_access(
@@ -346,6 +352,26 @@ def check_steve_access(
             )
 
     return True, None, None, ent
+
+
+def preflight_steve_mention(
+    username: str,
+    text: Optional[str],
+    surface: str,
+    *,
+    community_id: Optional[Any] = None,
+) -> Tuple[bool, Optional[Dict[str, Any]], Optional[int], Dict[str, Any]]:
+    """Check whether a Steve mention may be persisted.
+
+    Save-time preflight and reply generation must share the same entitlement
+    decision, otherwise blocked Steve calls can leave user-authored mentions
+    behind without a Steve reply.
+    """
+    if not mentions_steve(text):
+        return True, None, None, {}
+    if not entitlements_enforcement_enabled():
+        return True, None, None, {}
+    return check_steve_access(username, surface, community_id=community_id)
 
 
 def _snapshot(username: str, ent: Dict[str, Any]) -> Dict[str, Any]:

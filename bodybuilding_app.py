@@ -17078,6 +17078,50 @@ def remove_logo():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+def _coerce_optional_int(raw):
+    if raw is None or raw == "":
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_post_community_id_for_steve(post_id):
+    post_id_int = _coerce_optional_int(post_id)
+    if not post_id_int:
+        return None
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT community_id FROM posts WHERE id = ?", (post_id_int,))
+            row = c.fetchone()
+            if not row:
+                return None
+            return row["community_id"] if hasattr(row, "keys") else row[0]
+    except Exception as exc:
+        logger.warning("Steve preflight could not resolve post community: %s", exc)
+        return None
+
+
+def _steve_preflight_response(username, text, community_id):
+    try:
+        from backend.services import ai_usage as _ai_usage
+        from backend.services.entitlements_gate import preflight_steve_mention
+
+        allowed, payload, status, _ent = preflight_steve_mention(
+            username,
+            text,
+            _ai_usage.SURFACE_FEED,
+            community_id=community_id,
+        )
+        if not allowed:
+            return jsonify(payload), status
+    except Exception as exc:
+        logger.warning("Steve mention preflight failed open: %s", exc)
+    return None
+
+
 @app.route('/post_status', methods=['POST'])
 @login_required
 def post_status():
@@ -17105,6 +17149,10 @@ def post_status():
     
     # Debug: Log all form data
     logger.info(f"All form data: {dict(request.form)}")
+
+    preflight_resp = _steve_preflight_response(username, content, community_id)
+    if preflight_resp is not None:
+        return preflight_resp
     
     # Handle file upload (image, video, or audio)
     # Supports both single file (legacy) and multiple files (new)
@@ -17546,6 +17594,14 @@ def post_reply():
 
     if not post_id:
         return jsonify({'success': False, 'error': 'Post ID is required!'}), 400
+
+    preflight_resp = _steve_preflight_response(
+        username,
+        content,
+        _resolve_post_community_id_for_steve(post_id),
+    )
+    if preflight_resp is not None:
+        return preflight_resp
 
     # Handle file upload for reply (image, video, or audio)
     image_path = None
@@ -22936,6 +22992,23 @@ def community_ai_personality(community_id: int):
     except Exception as e:
         logger.error(f"Error in community_ai_personality: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/api/ai/steve_preflight', methods=['POST'])
+@login_required
+def ai_steve_preflight():
+    """Preflight a pending @Steve community post/reply before it is saved."""
+    username = session.get('username')
+    data = request.get_json(silent=True) or {}
+    user_message = (data.get('user_message') or data.get('text') or '').strip()
+    community_id = _coerce_optional_int(data.get('community_id'))
+    if community_id is None:
+        community_id = _resolve_post_community_id_for_steve(data.get('post_id'))
+
+    preflight_resp = _steve_preflight_response(username, user_message, community_id)
+    if preflight_resp is not None:
+        return preflight_resp
+    return jsonify({'success': True})
+
 
 @app.route('/api/ai/steve_reply', methods=['POST'])
 @login_required

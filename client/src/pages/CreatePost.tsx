@@ -14,6 +14,8 @@ import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { fileIsPdf } from '../services/shareImport'
 import { takePendingShareFilesOnce, takePendingShareUrlsOnce, releaseShareHandoffKey, releaseShareUrlHandoffKey } from '../services/shareImportStore'
+import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
+import { preflightSteveMention } from '../utils/stevePreflight'
 
 export default function CreatePost(){
   const [params, setSearchParams] = useSearchParams()
@@ -29,6 +31,7 @@ export default function CreatePost(){
   const [selectedGif, setSelectedGif] = useState<GifSelection | null>(null)
   const [gifFile, setGifFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const entitlementsHandler = useEntitlementsHandler()
   const [mediaCarouselIndex, setMediaCarouselIndex] = useState(0)
   const { recording, preview, start, stop, clearPreview, ensurePreview, level, recordMs } = useAudioRecorder() as any
 
@@ -308,6 +311,18 @@ export default function CreatePost(){
     if (!canPost) {
       alert('Add text, media, links, or finish recording audio before posting')
       return
+    }
+
+    if (communityId && !groupId) {
+      const preflight = await preflightSteveMention({
+        text: captionStripped,
+        communityId,
+        entitlementsHandler,
+      })
+      if (!preflight.ok) {
+        if (preflight.error) alert(preflight.error)
+        return
+      }
     }
 
     setSubmitting(true)

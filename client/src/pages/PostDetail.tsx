@@ -29,6 +29,7 @@ import {
   mentionsSteve,
   shouldClientBlockSteveIntent,
 } from '../utils/steveClientGate'
+import { preflightSteveMention } from '../utils/stevePreflight'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, audio_path?: string|null, audio_summary?: string|null, reply_count?: number, view_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
@@ -920,7 +921,20 @@ export default function PostDetail(){
     if (submittingReply) return
 
     const messageText = content.trim()
-    if (blockSteveMentionReply(messageText, (post as { community_id?: number | string | null }).community_id)) return
+    const communityId = (post as { community_id?: number | string | null }).community_id
+    if (blockSteveMentionReply(messageText, communityId)) return
+    if (!isGroupPost) {
+      const preflight = await preflightSteveMention({
+        text: messageText,
+        communityId,
+        postId: post.id,
+        entitlementsHandler,
+      })
+      if (!preflight.ok) {
+        if (preflight.error) alert(preflight.error)
+        return
+      }
+    }
     
     setSubmittingReply(true)
     const fd = new FormData()
@@ -990,7 +1004,21 @@ export default function PostDetail(){
   async function submitInlineReply(parentId: number, text: string, file?: File, voiceDurationSec?: number){
     if (!post || (!text && !file)) return
     if (inlineSending[parentId]) return
-    if (blockSteveMentionReply((text || '').trim(), (post as { community_id?: number | string | null }).community_id)) return
+    const messageText = (text || '').trim()
+    const communityId = (post as { community_id?: number | string | null }).community_id
+    if (blockSteveMentionReply(messageText, communityId)) return
+    if (!isGroupPost) {
+      const preflight = await preflightSteveMention({
+        text: messageText,
+        communityId,
+        postId: post.id,
+        entitlementsHandler,
+      })
+      if (!preflight.ok) {
+        if (preflight.error) alert(preflight.error)
+        return
+      }
+    }
     setInlineSending(s => ({ ...s, [parentId]: true }))
     const fd = new FormData()
     if (isGroupPost) {
