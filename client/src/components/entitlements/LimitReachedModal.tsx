@@ -15,6 +15,15 @@ const PREMIUM_MODAL_FEATURE_BULLETS: readonly string[] = [
   'Priority support + early feature access',
 ]
 
+/** Confirms current plan for Steve upgrade prompts (aligned with `err.tier` from the API). */
+function planTierNotice(err: EntitlementsError): string | null {
+  if (err.reason !== 'premium_required') return null
+  const t = (err.tier || '').toLowerCase()
+  if (t === 'trial') return "You're on a Trial plan."
+  if (!t || t === 'free' || t === 'anonymous' || t === 'unknown') return "You're on the Free plan."
+  return null
+}
+
 function PremiumBenefitsList({ err }: { err: EntitlementsError }) {
   if (err.reason !== 'premium_required') return null
   return (
@@ -56,8 +65,8 @@ function PremiumBenefitsList({ err }: { err: EntitlementsError }) {
  * `LimitReachedBubble` used inside ongoing chats.
  *
  * Maps each `reason` to a title + icon. Body copy comes from the backend
- * (KB-editable) except `premium_required`, where only the subscription-aligned
- * bullet list is shown to avoid repeating the long default message.
+ * (KB-editable) except `premium_required`, where we show your plan line plus the
+ * subscription-aligned bullet list instead of the long default message.
  */
 export default function LimitReachedModal({ err, onClose }: Props) {
   const navigate = useNavigate()
@@ -200,6 +209,8 @@ export default function LimitReachedModal({ err, onClose }: Props) {
     )
   }
 
+  const tierLine = planTierNotice(err)
+
   return (
     <div
       style={{
@@ -258,6 +269,21 @@ export default function LimitReachedModal({ err, onClose }: Props) {
           </div>
           <h3 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>{titleForReason()}</h3>
         </div>
+
+        {tierLine ? (
+          <p
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: 'rgba(255,255,255,0.92)',
+              textAlign: 'center',
+              margin: '0 0 12px',
+              lineHeight: 1.45,
+            }}
+          >
+            {tierLine}
+          </p>
+        ) : null}
 
         {err.reason !== 'premium_required' ? (
           <p
