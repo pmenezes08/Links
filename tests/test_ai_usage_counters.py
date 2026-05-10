@@ -159,6 +159,15 @@ class TestDailyMonthlyConsistency:
         log_row("alice", surface=SURFACE_DM, created_at=hours_ago(25))
         assert daily_count("alice") == 1
 
+    def test_community_pool_rows_do_not_count_personal_daily_or_monthly(self, mysql_dsn):
+        make_user("alice")
+        log_row("alice", surface=SURFACE_FEED, community_id=123, created_at=hours_ago(1))
+        log_row("alice", surface=SURFACE_DM, created_at=hours_ago(1))
+
+        assert daily_count("alice") == 1
+        assert monthly_steve_count("alice") == 1
+        assert ai_usage.community_monthly_steve_pool_usage(123) == 1
+
     def test_monthly_scoped_to_calendar_month(self, mysql_dsn):
         make_user("alice")
         log_row("alice", surface=SURFACE_DM,
@@ -270,3 +279,16 @@ class TestCurrentMonthSummary:
         assert summary["whisper_minutes"] == pytest.approx(
             whisper_minutes_this_month("alice"), rel=1e-6
         )
+
+    def test_summary_excludes_community_pool_rows_from_personal_steve_count(self, mysql_dsn):
+        make_user("alice")
+        log_rows("alice", SURFACE_DM, 2)
+        log_row("alice", surface=SURFACE_FEED, community_id=123)
+
+        summary = ai_usage.current_month_summary("alice")
+
+        assert summary["by_surface"][SURFACE_DM] == 2
+        assert summary["by_surface"][SURFACE_FEED] == 0
+        assert summary["steve_call_count"] == 2
+        assert summary["steve_call_count"] == monthly_steve_count("alice")
+        assert ai_usage.community_monthly_steve_pool_usage(123) == 1

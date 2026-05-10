@@ -1,7 +1,7 @@
 /**
  * Client-side preflight before DM/group/feed sends that would invoke Steve.
- * Mirrors server rules: Free tier (`!can_use_steve`) cannot open Steve DM or
- * mention @Steve; enforcement follows `enforcement_enabled` from `/api/me/entitlements`.
+ * Mirrors server rules for personal Steve access, while community-scoped
+ * mentions defer to the backend so active community Steve pools can be used.
  */
 
 import type { EntitlementsError } from './entitlementsError'
@@ -52,6 +52,7 @@ export interface ShouldBlockSteveIntentArgs {
   loading: boolean
   entitlements: EntitlementsSnapshot | null
   isSteveDm: boolean
+  hasCommunityContext?: boolean
   text: string
 }
 
@@ -62,6 +63,7 @@ export function shouldClientBlockSteveIntent(args: ShouldBlockSteveIntentArgs): 
   if (!args.enforcement_enabled) return false
   const intent = args.isSteveDm || mentionsSteve(args.text)
   if (!intent) return false
+  if (!args.isSteveDm && args.hasCommunityContext) return false
   if (args.loading) return true
   if (!args.entitlements) return true
   return args.entitlements.can_use_steve !== true

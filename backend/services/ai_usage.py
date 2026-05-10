@@ -27,10 +27,11 @@ Schema additions (all nullable, so old rows keep working):
     model             VARCHAR(64)       (e.g. grok-4.3, grok-4.20-non-reasoning)
 
 Counter semantics:
-    * :func:`daily_count` — rows in the last 24h, used for ``ai_daily_limit``.
+    * :func:`daily_count` — personal Steve rows in the last 24h, used for
+      ``ai_daily_limit``.
     * :func:`monthly_steve_count` — rows this calendar month where
-      ``surface`` is one of the Steve surfaces and ``success=1``. Used for
-      ``steve_uses_per_month``.
+      ``surface`` is one of the Steve surfaces, ``success=1``, and no
+      community pool is attached. Used for ``steve_uses_per_month``.
     * :func:`whisper_minutes_this_month` — SUM(duration_seconds)/60 for
       ``surface='whisper'`` rows this month; used for
       ``whisper_minutes_per_month``.
@@ -348,7 +349,7 @@ def _fetch_count(cursor, sql: str, params: tuple) -> int:
 
 
 def daily_count(username: str) -> int:
-    """Successful Steve calls in the last 24 rolling hours for ``username``.
+    """Successful personal Steve calls in the last 24 rolling hours for ``username``.
 
     Used to enforce ``ai_daily_limit`` and powers the "Steve uses today"
     counter in the Manage Membership modal. Scoped to the same
@@ -375,6 +376,7 @@ def daily_count(username: str) -> int:
             WHERE username = {ph}
               AND surface IN ({placeholders})
               AND success = 1
+              AND community_id IS NULL
               AND created_at >= {ph}
             """,
             (username, *STEVE_SURFACES, _twenty_four_hours_ago()),
@@ -406,10 +408,11 @@ def daily_any_count(username: str) -> int:
 
 
 def monthly_steve_count(username: str) -> int:
-    """Steve calls (excluding Whisper / content-gen) this calendar month.
+    """Personal Steve calls (excluding Whisper / content-gen) this calendar month.
 
     Enforces ``steve_uses_per_month``. Whisper is not a Steve "call" — it's
-    a transcription minute, tracked separately.
+    a transcription minute, tracked separately. Community-attributed Steve
+    calls are counted by :func:`community_monthly_steve_pool_usage` instead.
     """
     if not username:
         return 0
@@ -425,6 +428,7 @@ def monthly_steve_count(username: str) -> int:
             WHERE username = {ph}
               AND surface IN ({placeholders})
               AND success = 1
+              AND community_id IS NULL
               AND created_at >= {ph}
             """,
             (username, *STEVE_SURFACES, _first_of_current_month_utc()),
@@ -597,6 +601,9 @@ def whisper_minutes_this_month(username: str) -> float:
 def current_month_summary(username: str) -> Dict[str, Any]:
     """Structured summary for the Manage Membership / AI Usage view.
 
+    Personal Steve counters exclude rows with ``community_id`` because those
+    calls spend the shared community pool, not the user's personal allowance.
+
     Shape::
 
         {
@@ -647,10 +654,14 @@ def current_month_summary(username: str) -> Dict[str, Any]:
                 FROM ai_usage_log
                 WHERE username = {ph}
                   AND success = 1
+                  AND (
+                    surface NOT IN ({",".join([ph] * len(STEVE_SURFACES))})
+                    OR community_id IS NULL
+                  )
                   AND created_at >= {ph}
                 GROUP BY surface
                 """,
-                (username, first_of_month),
+                (username, *STEVE_SURFACES, first_of_month),
             )
             rows = c.fetchall() or []
         except Exception as err:
@@ -721,6 +732,7 @@ def _oldest_steve_in_window_plus_24h(username: str) -> Optional[str]:
                 WHERE username = {ph}
                   AND surface IN ({placeholders})
                   AND success = 1
+                  AND community_id IS NULL
                   AND created_at >= {ph}
                 """,
                 (username, *STEVE_SURFACES, _twenty_four_hours_ago()),

@@ -72,7 +72,7 @@ export default function PostDetail(){
   const entitlementsHandler = useEntitlementsHandler()
   const { entitlements, enforcement_enabled, loading: entitlementsLoading } = useEntitlements()
   const blockSteveMentionReply = useCallback(
-    (text: string) => {
+    (text: string, communityId?: number | string | null) => {
       if (!mentionsSteve(text)) return false
       if (
         !shouldClientBlockSteveIntent({
@@ -80,6 +80,7 @@ export default function PostDetail(){
           loading: entitlementsLoading,
           entitlements,
           isSteveDm: false,
+          hasCommunityContext: communityId !== undefined && communityId !== null && communityId !== '',
           text,
         })
       ) {
@@ -131,12 +132,12 @@ export default function PostDetail(){
   // (see docs/STEVE_PRIVACY_GATE.md and backend steve_reply endpoint)
   const callSteveAI = async (userMessage: string, parentReplyId: number | null) => {
     if (!post || !containsSteveMention(userMessage)) return
-    if (blockSteveMentionReply(userMessage)) return
     const communityIdRaw = (post as { community_id?: number | string | null }).community_id
     const communityId =
       communityIdRaw !== undefined && communityIdRaw !== null && communityIdRaw !== ''
         ? Number(communityIdRaw)
         : null
+    if (blockSteveMentionReply(userMessage, communityId)) return
 
     try {
       setSteveIsTyping(true)
@@ -919,7 +920,7 @@ export default function PostDetail(){
     if (submittingReply) return
 
     const messageText = content.trim()
-    if (blockSteveMentionReply(messageText)) return
+    if (blockSteveMentionReply(messageText, (post as { community_id?: number | string | null }).community_id)) return
     
     setSubmittingReply(true)
     const fd = new FormData()
@@ -989,7 +990,7 @@ export default function PostDetail(){
   async function submitInlineReply(parentId: number, text: string, file?: File, voiceDurationSec?: number){
     if (!post || (!text && !file)) return
     if (inlineSending[parentId]) return
-    if (blockSteveMentionReply((text || '').trim())) return
+    if (blockSteveMentionReply((text || '').trim(), (post as { community_id?: number | string | null }).community_id)) return
     setInlineSending(s => ({ ...s, [parentId]: true }))
     const fd = new FormData()
     if (isGroupPost) {

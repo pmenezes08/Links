@@ -163,6 +163,19 @@ def check_steve_access(
 
     pool_has_room = pool_cap > 0 and pool_used < pool_cap
     pool_exhausted = pool_cap > 0 and pool_used >= pool_cap
+    uses_community_pool = (
+        surface in ai_usage.STEVE_SURFACES
+        and pool_active
+        and pool_has_room
+        and (
+            (bool(ent.get("can_use_steve")) and premium_priority)
+            or (
+                not ent.get("can_use_steve")
+                and free_member_pool_access
+                and member_ctx
+            )
+        )
+    )
 
     # 1. Tier gate — Premium/Special/Enterprise seat OR eligible pool member.
     if ent.get("can_use_steve"):
@@ -202,7 +215,7 @@ def check_steve_access(
 
     # 2. Daily cap (rolling 24h).
     daily_cap = ent.get("ai_daily_limit")
-    if isinstance(daily_cap, int) and daily_cap > 0:
+    if not uses_community_pool and isinstance(daily_cap, int) and daily_cap > 0:
         used = ai_usage.daily_count(username)
         if used >= daily_cap:
             usage_snapshot = _snapshot(username, ent)
@@ -220,11 +233,9 @@ def check_steve_access(
     # 3. Monthly Steve cap (personal allowance) vs shared community pool.
     monthly_cap = ent.get("steve_uses_per_month")
     if surface in ai_usage.STEVE_SURFACES and isinstance(monthly_cap, int) and monthly_cap > 0:
-        skip_personal_monthly = False
+        skip_personal_monthly = uses_community_pool
         if ent.get("can_use_steve"):
-            if pool_active and premium_priority and pool_has_room:
-                skip_personal_monthly = True
-            elif (
+            if (
                 pool_active
                 and premium_priority
                 and pool_exhausted

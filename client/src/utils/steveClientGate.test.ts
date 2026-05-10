@@ -95,6 +95,19 @@ describe('steveClientGate', () => {
     ).toBe(true)
   })
 
+  it('shouldClientBlockSteveIntent: community @Steve mention defers to backend pool gate', () => {
+    expect(
+      shouldClientBlockSteveIntent({
+        enforcement_enabled: true,
+        loading: false,
+        entitlements: ent({ can_use_steve: false }),
+        isSteveDm: false,
+        hasCommunityContext: true,
+        text: '@steve help',
+      }),
+    ).toBe(false)
+  })
+
   it('shouldClientBlockSteveIntent: premium allows Steve DM', () => {
     expect(
       shouldClientBlockSteveIntent({

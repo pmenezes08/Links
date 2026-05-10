@@ -83,7 +83,7 @@ export default function CommentReply() {
   const entitlementsHandler = useEntitlementsHandler()
   const { entitlements, enforcement_enabled, loading: entitlementsLoading } = useEntitlements()
   const blockSteveMentionReply = useCallback(
-    (text: string) => {
+    (text: string, communityId?: number | string | null) => {
       if (!mentionsSteve(text)) return false
       if (
         !shouldClientBlockSteveIntent({
@@ -91,6 +91,7 @@ export default function CommentReply() {
           loading: entitlementsLoading,
           entitlements,
           isSteveDm: false,
+          hasCommunityContext: communityId !== undefined && communityId !== null && communityId !== '',
           text,
         })
       ) {
@@ -164,7 +165,7 @@ export default function CommentReply() {
       console.log('[Steve AI] No @Steve mention found, skipping')
       return
     }
-    if (blockSteveMentionReply(userMessage)) return
+    if (blockSteveMentionReply(userMessage, post?.community_id)) return
     
     try {
       console.log('[Steve AI] Calling API...')
@@ -544,7 +545,7 @@ export default function CommentReply() {
     const hasMedia = !!(selectedGif || file || uploadFile || replyPreview?.blob)
     if (!replyText.trim() && !hasMedia) return
     const messageText = replyText.trim()
-    if (blockSteveMentionReply(messageText)) return
+    if (blockSteveMentionReply(messageText, post?.community_id)) return
     setSendingReply(true)
     try {
       const fd = new FormData()

@@ -16,6 +16,16 @@ def _free_entitlements() -> dict:
     }
 
 
+def _premium_entitlements() -> dict:
+    return {
+        "tier": "premium",
+        "can_use_steve": True,
+        "ai_daily_limit": 1,
+        "steve_uses_per_month": 1,
+        "monthly_spend_ceiling_eur": None,
+    }
+
+
 def test_free_member_pool_gate_allows_with_community_context(monkeypatch):
     from backend.services import entitlements_gate as gate
 
@@ -35,6 +45,44 @@ def test_free_member_pool_gate_allows_with_community_context(monkeypatch):
 
     allowed, payload, status, _ent = gate.check_steve_access(
         "JohnDoe",
+        ai_usage.SURFACE_FEED,
+        community_id=456,
+    )
+
+    assert allowed is True
+    assert payload is None
+    assert status is None
+
+
+def test_premium_member_pool_gate_skips_personal_caps(monkeypatch):
+    from backend.services import entitlements_gate as gate
+
+    monkeypatch.setattr(gate, "resolve_entitlements", lambda username: _premium_entitlements())
+    monkeypatch.setattr(
+        gate,
+        "_community_tiers_field_map",
+        lambda: {
+            "paid_steve_package_premium_priority": True,
+            "paid_steve_package_monthly_credit_pool": 300,
+        },
+    )
+    monkeypatch.setattr(gate, "_user_member_community", lambda username, community_id: True)
+    monkeypatch.setattr(gate.community_svc, "resolve_root_community_id", lambda cid: (123, True))
+    monkeypatch.setattr(gate.community_billing, "has_active_steve_package", lambda root_id: True)
+    monkeypatch.setattr(gate.ai_usage, "community_monthly_steve_pool_usage", lambda root_id: 42)
+    monkeypatch.setattr(
+        gate.ai_usage,
+        "daily_count",
+        lambda username: (_ for _ in ()).throw(AssertionError("personal daily cap checked")),
+    )
+    monkeypatch.setattr(
+        gate.ai_usage,
+        "monthly_steve_count",
+        lambda username: (_ for _ in ()).throw(AssertionError("personal monthly cap checked")),
+    )
+
+    allowed, payload, status, _ent = gate.check_steve_access(
+        "PremiumJane",
         ai_usage.SURFACE_FEED,
         community_id=456,
     )

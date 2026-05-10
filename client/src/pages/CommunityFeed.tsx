@@ -4033,6 +4033,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           loading: entitlementsLoading,
           entitlements,
           isSteveDm: false,
+          hasCommunityContext: Boolean(communityId),
           text,
         })
       ) {
@@ -4041,7 +4042,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
       entitlementsHandler.showError(buildClientPremiumRequiredError())
       return true
     },
-    [enforcement_enabled, entitlementsLoading, entitlements, entitlementsHandler],
+    [communityId, enforcement_enabled, entitlementsLoading, entitlements, entitlementsHandler],
   )
   const openExternalArticle = useCallback((url: string) => {
     void openExternalInApp(url)

@@ -59,8 +59,8 @@ From **Manage Community → Manage Subscription** (paid/customer state on the bi
 
 ### Steve Community Package pool display + gating
 
-- Feed/group Steve calls must pass the current `community_id` into **`entitlements_gate.check_steve_access`** / **`gate_or_reason`** so free members can spend an active root community pool before seeing Premium CTAs.
-- **Manage Community** reads `/api/communities/<id>/billing` and shows `steve_pool_cap`, `steve_pool_used`, and `steve_pool_remaining` when `steve_package_subscription_active` is true. Pool usage comes from **`ai_usage_log.community_id`**, normalized to the billing root by **`ai_usage.log_usage`** for Steve surfaces.
+- Feed/group Steve calls must pass the current `community_id` into **`entitlements_gate.check_steve_access`** / **`gate_or_reason`** so free members can spend an active root community pool before seeing Premium CTAs. Client-side Steve preflight must not show a local Premium modal for community-scoped feed/post mentions; it should let the backend pool gate decide.
+- **Manage Community** reads `/api/communities/<id>/billing` and shows `steve_pool_cap`, `steve_pool_used`, and `steve_pool_remaining` when `steve_package_subscription_active` is true. Pool usage comes from **`ai_usage_log.community_id`**, normalized to the billing root by **`ai_usage.log_usage`** for Steve surfaces. Personal Steve counters (`daily_count`, `monthly_steve_count`, and membership usage summaries) exclude community-attributed Steve rows so Premium members using a community pool do not spend personal allowance.
 - Burger-menu visits to `/subscription_plans` stay generic. Focused single-community copy/actions only appear when Manage Community links include `community_id=<id>`.
 
 ### Stripe renewal repair (offline)
