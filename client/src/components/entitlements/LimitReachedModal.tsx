@@ -7,27 +7,16 @@ interface Props {
   onClose: () => void
 }
 
-function planTierNotice(err: EntitlementsError): string | null {
-  if (err.reason !== 'premium_required') return null
-  const t = (err.tier || '').toLowerCase()
-  if (t === 'trial') return "You're on a Trial plan."
-  if (!t || t === 'free' || t === 'anonymous') return "You're on the Free plan."
-  return null
-}
+/** Keep aligned with `backend/blueprints/subscriptions.py` `_PREMIUM_FEATURE_BULLETS` / Personal card on Subscription Plans. */
+const PREMIUM_MODAL_FEATURE_BULLETS: readonly string[] = [
+  'Full Steve capabilities across posts, replies, and networking',
+  'Own up to 10 communities with member-cap scaling by tier',
+  'Voice and post summaries',
+  'Priority support + early feature access',
+]
 
 function PremiumBenefitsList({ err }: { err: EntitlementsError }) {
   if (err.reason !== 'premium_required') return null
-  const po = err.premium_offer
-  const steve = po?.steve_uses_per_month
-  const whisper = po?.whisper_minutes_per_month
-  const items: string[] = []
-  if (typeof steve === 'number' && steve > 0) {
-    items.push(`Up to ${steve} Steve conversations per month`)
-  }
-  if (typeof whisper === 'number' && whisper > 0) {
-    items.push(`Up to ${whisper} minutes of voice-note summaries per month`)
-  }
-  items.push('Steve in DM, feed, and group chats where your plan includes Steve')
   return (
     <div style={{ marginTop: 14, textAlign: 'left' }}>
       <div
@@ -50,7 +39,7 @@ function PremiumBenefitsList({ err }: { err: EntitlementsError }) {
           lineHeight: 1.55,
         }}
       >
-        {items.map((line, i) => (
+        {PREMIUM_MODAL_FEATURE_BULLETS.map((line, i) => (
           <li key={i} style={{ marginBottom: 6 }}>
             {line}
           </li>
@@ -66,9 +55,9 @@ function PremiumBenefitsList({ err }: { err: EntitlementsError }) {
  * due to entitlements. This is the "hard" surface — contrast with
  * `LimitReachedBubble` used inside ongoing chats.
  *
- * Maps each `reason` to a title + icon while the body text and CTA are
- * pulled straight from the backend so operators can edit them from the
- * Knowledge Base without a client deploy.
+ * Maps each `reason` to a title + icon. Body copy comes from the backend
+ * (KB-editable) except `premium_required`, where only the subscription-aligned
+ * bullet list is shown to avoid repeating the long default message.
  */
 export default function LimitReachedModal({ err, onClose }: Props) {
   const navigate = useNavigate()
@@ -211,8 +200,6 @@ export default function LimitReachedModal({ err, onClose }: Props) {
     )
   }
 
-  const tierLine = planTierNotice(err)
-
   return (
     <div
       style={{
@@ -272,32 +259,19 @@ export default function LimitReachedModal({ err, onClose }: Props) {
           <h3 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>{titleForReason()}</h3>
         </div>
 
-        {tierLine ? (
+        {err.reason !== 'premium_required' ? (
           <p
             style={{
               fontSize: 14,
-              fontWeight: 600,
-              color: 'rgba(255,255,255,0.92)',
+              color: 'rgba(255,255,255,0.78)',
               textAlign: 'center',
-              margin: '0 0 10px',
-              lineHeight: 1.45,
+              margin: '0 0 8px',
+              lineHeight: 1.55,
             }}
           >
-            {tierLine}
+            {err.message}
           </p>
         ) : null}
-
-        <p
-          style={{
-            fontSize: 14,
-            color: 'rgba(255,255,255,0.78)',
-            textAlign: 'center',
-            margin: '0 0 8px',
-            lineHeight: 1.55,
-          }}
-        >
-          {err.message}
-        </p>
 
         <PremiumBenefitsList err={err} />
 
