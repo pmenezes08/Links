@@ -1,0 +1,13 @@
+---
+description: Keep pages thin — composition, hooks, colocated components (monolith reduction).
+globs: client/src/pages/**/*.tsx, client/src/App.tsx, admin-web/src/pages/**/*.tsx
+alwaysApply: false
+---
+
+# Page components — avoid monoliths
+
+- **Page files** (`client/src/pages/*.tsx`, `admin-web/src/pages/*.tsx`) are for **routing, layout shell, and wiring**. Prefer **≤ ~400 lines** per file; if a page is already huge (`CommunityFeed`, `PostDetail`, `OnboardingChat`, …), **do not grow it** — extract first.
+- **New UI logic** goes in **`hooks/`** (e.g. `useCommunityFeed.ts`) or **`components/<feature>/`** colocated with the page, not inline in 2k+ lines.
+- **`App.tsx`**: new routes are fine; if the route table grows further, split **`AppRoutes`** into **`client/src/routes/*.tsx`** by domain (chat, community, account) when touching routing — see **`docs/MONOLITH_REDUCTION_ROADMAP.md`**.
+- **Reuse** `ManageMembershipModal`, `useEntitlements`, and existing chat pieces under **`client/src/chat/`** before duplicating.
+- After a **meaningful split**, update **`docs/MONOLITH_REDUCTION_ROADMAP.md`** line counts or notes if you changed a hotspot.

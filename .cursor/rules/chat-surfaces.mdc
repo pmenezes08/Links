@@ -1,0 +1,14 @@
+---
+description: DM + group chat — shared kernel under client/src/chat/, thin thread pages.
+globs: client/src/pages/ChatThread.tsx, client/src/pages/GroupChatThread.tsx, client/src/chat/**/*.tsx, client/src/chat/**/*.ts
+alwaysApply: false
+---
+
+# Chat thread surfaces
+
+- **`ChatThread.tsx`** and **`GroupChatThread.tsx`** must **not** duplicate large blocks of behaviour. Prefer:
+  - **Shared hooks** in `client/src/chat/` or `client/src/hooks/` (keyboard, composer, scroll-to-latest, media preview, outbox).
+  - **Shared presentational** pieces beside existing `MessageBubble`, `ChatHeader`, etc.
+- **New messaging features** (reactions, attachments, typing, media pipeline): implement once in **`client/src/chat/`**, wire from both pages.
+- **API paths** pair with **`backend/blueprints/group_chat.py`** and **`dm_chats`** / **`MYSQL_AND_FIRESTORE.md`** — confirm route inventory after backend changes (`python scripts/generate_route_inventory.py`).
+- See **`docs/MONOLITH_REDUCTION_ROADMAP.md`** § Chat UI kernel and **`AGENTS.md`** for AI/voice (Steve) invariants if the change touches summaries or usage.

@@ -1,0 +1,357 @@
+# C-Point application architecture
+
+Single reference for repository layout, HTTP surface, backend services, dependencies, external APIs, and supplier/cost mapping.  
+**Product policy / pricing truth** remains in the in-app Knowledge Base (`backend/services/knowledge_base.py`); this document is **engineering structure** only.  
+**Maintenance:** When you change integrations, major services, or doc inventory—update this file in the **same change**; see **`AGENTS.md` § Living engineering docs**.
+
+| Detailed doc | Contents |
+|--------------|----------|
+| [`BACKEND_ROUTES.md`](BACKEND_ROUTES.md) | **Every HTTP route** (28 blueprints + `bodybuilding_app.py` monolith): path, methods, Flask handler, source line, **best-effort** “where used” in `client/src` & `admin-web/src`. Regenerate: `python scripts/generate_route_inventory.py`. |
+| [`MYSQL_AND_FIRESTORE.md`](MYSQL_AND_FIRESTORE.md) | **Firestore** collections/doc IDs and **MySQL** table inventory (where DDL lives). Not a full `mysqldump`; use DB export for exact columns. |
+| [`DEPLOYMENT_INSTANCES.md`](DEPLOYMENT_INSTANCES.md) | **GCP** project, Cloud Run service names (`cpoint-app`, `cpoint-app-staging`, `cpoint-admin`, `cpoint-landing`), `run.app` URLs, how staging differs from prod, and what people mean by “cpoint-web” (client host, not a service name). |
+| [`PRODUCT_JOURNEYS.md`](PRODUCT_JOURNEYS.md) | Short **cross-system** narratives: Stripe → webhooks → entitlements, Steve/`ai_usage`, enterprise seats, crons, onboarding, DM/group storage paths. |
+| [`MONOLITH_REDUCTION_ROADMAP.md`](MONOLITH_REDUCTION_ROADMAP.md) | **Engineering** initiative: shrink oversized UI pages and backend modules; priority order, epics, Cursor rules; pairs with KB **Product Roadmap** “Monolith reduction” rows. |
+| [`AGENT_TASK_CHECKLIST.md`](AGENT_TASK_CHECKLIST.md) | Checklist for agents before merge: blueprints, `ai_usage`, KB, route/schema doc regen. |
+
+---
+
+## 1. Runtime overview
+
+| Layer | Technology | Location |
+|-------|------------|----------|
+| Web API | Flask 2.x | `bodybuilding_app.py` + `backend/blueprints/` |
+| Business logic | Python services | `backend/services/` |
+| Primary DB | MySQL (PyMySQL) | `backend/services/database.py`, migrations implicit in services |
+| Cache | Redis | `redis_cache.py` (repo root) |
+| Realtime / legacy mirror | Google Firestore | `firestore_reads.py`, `firestore_writes.py` |
+| Web + mobile shell | React (Vite) + Capacitor | `client/` |
+| Internal admin UI | React (Vite) | `admin-web/` |
+| Marketing site | separate Vite app | `landing/` |
+| Object storage | Cloudflare R2 (S3 API) | `backend/services/r2_storage.py` |
+| Container build / deploy | Docker + Cloud Build → Cloud Run | `Dockerfile`, `cloudbuild.yaml` |
+
+**Rule (from `AGENTS.md`):** New HTTP routes go in `backend/blueprints/`; new logic in `backend/services/`. Do not add new symbols to `bodybuilding_app.py` except maintenance of legacy paths.
+
+---
+
+## 2. Entry points
+
+| File | Role |
+|------|------|
+| `bodybuilding_app.py` | Flask app factory usage, ~100 legacy `@app.route` handlers, templates, Steve/DM hooks not yet migrated to blueprints. Very large; treat as legacy surface. |
+| `backend/__init__.py` | `init_app()` → `register_blueprints()`, CLI registration for Steve welcome backfill. |
+| `backend/blueprints/__init__.py` | Registers all blueprints; runs idempotent `ensure_tables()` for billing/community on startup. |
+| `client/src/main.tsx` | SPA bootstrap. |
+| `client/src/App` + `pages/*` | Route-level screens (React Router). |
+
+---
+
+## 3. Blueprints (`backend/blueprints/`)
+
+Flask blueprints are registered **without** a global URL prefix; each route declares a full path (typically under `/api/...`).
+
+| Module | Purpose |
+|--------|---------|
+| `public.py` | Unauthenticated routes (health, public config, push token registration, etc.). |
+| `auth.py` | Login, logout, session, OAuth/email verification flows. |
+| `onboarding.py` | Onboarding shell, stage APIs, debug helpers. |
+| `notifications.py` | Notification feeds, preferences, cron-style notification work. |
+| `communities.py` | Communities CRUD, dashboards, Stripe hooks for community billing, feeds. |
+| `post_views.py` | Post view / impression accounting. |
+| `content_generation.py` | Steve content-generation jobs (admin/community automation). |
+| `group_chat.py` | Group chat HTTP API. |
+| `admin_users.py` | Elevated admin user operations. |
+| `knowledge_base.py` | Admin API for internal KB (seeds, pages, tests metadata). |
+| `me.py` | `/api/me/*` profile, entitlements-related reads. |
+| `steve_chat.py` | Steve DM preflight (`/api/steve/chat/preflight`). |
+| `summaries.py` | Post/voice summaries (gated + logged). |
+| `enterprise.py` | Enterprise seat purchase/lifecycle. |
+| `subscription_webhooks.py` | **Stripe** webhooks (signature-verified). |
+| `subscriptions.py` | User-facing subscription APIs (Checkout, portal, status). |
+| `admin_subscriptions.py` | Admin reporting for subscriptions. |
+| `billing_return.py` | Browser return URLs after Stripe Checkout. |
+| `dm_chats.py` | DM thread list, unread, clear/delete. |
+| `steve_feedback.py` | Steve feedback queue. |
+| `community_stories.py` | Community stories feature API. |
+| `community_invites.py` | Invite links / email flows. |
+| `media_assets.py` | Media accounting / cleanup routes. |
+| `community_calendar.py` | Calendar & events API. |
+| `steve_reminders.py` | Steve Reminder Vault API. |
+| `platform_activity.py` | Aggregated activity digest (no private DMs). |
+| `about_tutorials.py` | Public About page tutorials + admin video URLs. |
+| `branding_assets.py` | Branding assets for onboarding surfaces. |
+
+---
+
+## 4. Backend services (`backend/services/`)
+
+Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and the monolith should call **services**, not embed SQL.
+
+### Auth, session, security
+
+| File | Role |
+|------|------|
+| `auth_session.py` | Session helpers, cache headers for auth responses. |
+| `auth_helpers.py` | Shared auth checks. |
+| `session_identity.py` | Identity resolution for requests. |
+| `security.py` | Hardening helpers. |
+| `remember_tokens.py` | Persistent login tokens table + validation. |
+| `oauth_email_verification.py` | OAuth / email verification flows. |
+| `email_normalization.py` | Canonical email forms. |
+| `disposable_email.py` | Block disposable domains where applicable. |
+
+### Database & platform
+
+| File | Role |
+|------|------|
+| `database.py` | MySQL connections, `USE_MYSQL`, SQL placeholder helper. |
+| `user_activity_tables.py` | Activity / visit logging tables. |
+| `post_views.py` | Server-side post view model. |
+| `platform_activity_digest.py` | Digest builder for `platform_activity` blueprint. |
+| `admin_metrics.py` | Admin dashboard metrics computation. |
+
+### Entitlements & AI usage (revenue-sensitive)
+
+| File | Role |
+|------|------|
+| `entitlements.py` | `resolve_entitlements(username)` — tier/KB/enterprise overlay. |
+| `entitlements_gate.py` | Gate expensive AI operations. |
+| `entitlements_errors.py` | Stable error payloads for UI. |
+| `ai_usage.py` | **`ai_usage_log` writes**, monthly/daily counters, `log_usage` / `log_block`. |
+| `feature_flags.py` | Feature toggles (e.g. entitlements enforcement). |
+| `special_access.py` | Special-case overrides. |
+| `whisper_service.py` | Gated Whisper wrapper; duration → usage logging. |
+
+### Billing & subscriptions
+
+| File | Role |
+|------|------|
+| `user_billing.py` | User-level Stripe/billing state. |
+| `community_billing.py` | Community paid features, Stripe coupling. |
+| `subscription_billing_ledger.py` | Ledger lines for audits. |
+| `subscription_audit.py` | Audit helpers. |
+| `community_subscription_changes.py` | Subscription change propagation. |
+| `enterprise_membership.py` | Enterprise membership rules. |
+| `enterprise_iap_nag.py` | In-app purchase / nag flows. |
+| `winback_promo.py` | Win-back promotions lifecycle. |
+
+### Community & social graph
+
+| File | Role |
+|------|------|
+| `community.py` | Core community model, roles, trees, invalidation. |
+| `community_lifecycle.py` | Grace/expiry and lifecycle crons support. |
+| `community_group_feed.py` | Group feed aggregation. |
+| `community_invites.py` | Invite business logic. |
+| `community_invite_emails.py` | Email sending for invites. |
+| `community_stories.py` | Stories. |
+| `community_calendar.py` | Calendar domain logic. |
+| `community_admin_notifications.py` | Admin-facing notifications. |
+| `reactions.py` | Post/reply reactions. |
+| `tasks.py` | Task list feature tables. |
+
+### DMs & messaging
+
+| File | Role |
+|------|------|
+| `dm_chats_tables.py` | SQL tables for DM metadata. |
+| `dm_chat_threads.py` | Thread operations. |
+| `dm_human_thread.py` | Canonical DM keys vs Firestore. |
+| `dm_unread.py` | Unread math. |
+| `steve_dm_reply.py` | Steve DM reply pipeline. |
+| `steve_dm_typing.py` | Typing indicators. |
+
+### Firestore
+
+| File | Role |
+|------|------|
+| `firestore_reads.py` | Read paths for DMs, group chat, posts, Steve profiles (dual-read). |
+| `firestore_writes.py` | Complementary writes when mirroring. |
+| `firebase_notifications.py` | FCM send helpers (with `firebase-admin`). |
+
+### Push notifications
+
+| File | Role |
+|------|------|
+| `notifications.py` | In-app notification rows, fan-out, preview text. |
+| `native_push.py` | **APNs** / native push registration, environment keys. |
+
+### Media & uploads
+
+| File | Role |
+|------|------|
+| `media.py` | Upload allow-list, optimization, local paths, `save_uploaded_file`. |
+| `media_processing.py` | Processing helpers. |
+| `media_assets.py` | Tracked media assets + cleanup. |
+| `r2_storage.py` | **Cloudflare R2** (S3) upload/delete; public URL mapping. |
+| `branding_assets.py` | Branded assets metadata. |
+
+### Knowledge & KB seeds
+
+| File | Role |
+|------|------|
+| `knowledge_base.py` | KB seeds, pages, merge policy for admin + system seeds. |
+| `steve_knowledge_base.py` | Steve-facing KB retrieval / merge. |
+| `steve_platform_manual.py` | Platform manual slug for Steve. |
+
+### Content generation & Steve automation
+
+| File | Role |
+|------|------|
+| `content_generation/__init__.py` | Package export. |
+| `content_generation/llm.py` | **Grok** via OpenAI-compatible client to `api.x.ai/v1`. |
+| `content_generation/registry.py` | Job type registry. |
+| `content_generation/job_schedule.py` | Scheduling windows. |
+| `content_generation/permissions.py` | Who can run jobs. |
+| `content_generation/storage.py` | Persisted outputs / state. |
+| `content_generation/delivery.py` | Deliver generated content to feed/DM. |
+| `content_generation/types.py` | Typed payloads. |
+| `content_generation/ideas/*.py` | Individual generators (daily motivation, news roundup, etc.). |
+
+### Steve product surfaces
+
+| File | Role |
+|------|------|
+| `steve_content_enrichment.py` | Enrich text for Steve / sources metadata. |
+| `steve_feedback.py` | Feedback queue backend. |
+| `steve_community_welcome.py` | Welcome post backfill + Firestore mirror. |
+| `steve_reminder_vault.py` | Vault storage. |
+| `steve_reminder_slots.py` | Slot generation. |
+| `steve_reminder_parse.py` | Natural-language reminder parsing. |
+| `steve_profiling_snapshot.py` | Profile snapshot for Steve. |
+| `steve_profiling_gates.py` | Gating logic for profiling. |
+| `onboarding_bootstrap.py` | Onboarding flow bootstrap. |
+| `onboarding_company_intel.py` | **Grok** company research during onboarding. |
+| `onboarding_session.py` | Firestore-backed onboarding session. |
+| `onboarding_reminders.py` | Scheduled onboarding nudges. |
+| `onboarding_tier_hints.py` | Tier hint strings. |
+
+### Networking (productized AI feature)
+
+| File | Role |
+|------|------|
+| `networking_ai_config.py` | Model/config for networking. |
+| `networking_prompting.py` | Prompt assembly. |
+| `networking_planner.py` | Planner step. |
+| `networking_retrieval.py` | Retrieval / context assembly. |
+| `networking_debug_trace.py` | Debug trace for support. |
+
+### Embeddings & search
+
+| File | Role |
+|------|------|
+| `embedding_service.py` | **OpenAI embeddings**, FAISS / numpy similarity, Firestore vector index. |
+| `profile_structured_fields.py` | Structured profile fields used in discovery. |
+
+### Misc
+
+| File | Role |
+|------|------|
+| `account_deletion.py` | GDPR-style deletion pipeline. |
+| `about_tutorials.py` | About/tutorial content service (mirrors `about_tutorials` blueprint). |
+
+`__init__.py` under `content_generation/` and `ideas/` are package markers.
+
+---
+
+## 5. Client (`client/`)
+
+- **`src/pages/`** — Route-level screens (timeline, communities, chat, onboarding, subscriptions, admin tooling, etc.).
+- **`src/components/`** — Reusable UI; **`membership/ManageMembershipModal.tsx`** is canonical billing/AI usage UI per `AGENTS.md`.
+- **`src/components/entitlements/`** — `useEntitlements` hook consumers, `LimitReachedBubble`, `LimitReachedModal`, `UsageWarningBanner`.
+- **`src/chat/`** — DM/group chat UI, media send queue, audio.
+- **`src/contexts/`** — `UserProfileContext`, badges, network state.
+- **`src/utils/`** — Caching, push payload parsing, offline DB, Google identity helpers.
+- **`src/services/`** — Client-side service modules (share import, etc.).
+- **`src/hooks/useEntitlements.ts`** — Central entitlements fetching.
+
+Capacitor native projects live under `client/ios` and `client/android` (see `.cursor/rules/ios-xcode-project.mdc` for iOS Xcode rules).
+
+---
+
+## 6. Admin (`admin-web/src/`)
+
+Small React app for KB reseed, tests metadata, subscription admin helpers — calls same Flask API with admin auth.
+
+---
+
+## 7. Python dependencies (from `requirements.txt`)
+
+| Package | Role |
+|---------|------|
+| Flask, Werkzeug | HTTP stack |
+| requests | Outbound HTTP |
+| stripe | Stripe SDK |
+| python-dotenv | Env files |
+| pywebpush | Web Push |
+| firebase-admin | FCM |
+| google-cloud-firestore | Firestore |
+| cryptography | JWT / VAPID |
+| redis | Cache client |
+| PyMySQL | MySQL driver |
+| Pillow | Images |
+| openai | OpenAI API + compatible xAI base URL |
+| numpy, faiss-cpu | Embeddings / ANN |
+| boto3 | S3 → R2 |
+| flask-compress | Compression |
+| gunicorn | WSGI server |
+| pypdf, trafilatura, youtube-transcript-api, dateparser | Ingest pipelines |
+
+---
+
+## 8. NPM dependencies (summary)
+
+- **client:** React 19, Vite, Capacitor ecosystem, react-query, react-router, tailwind, chart.js, testing libs — see `client/package.json`.
+- **admin-web:** React + Vite + router + tailwind — see `admin-web/package.json`.
+- **landing:** see `landing/package.json` if present for marketing.
+
+Exact versions: lockfiles in each package.
+
+---
+
+## 9. External APIs & providers
+
+| Direction | Provider | Usage |
+|-----------|-----------|--------|
+| Outbound | **xAI** (`api.x.ai`) | Grok — Steve, content gen, onboarding intel, networking (`XAI_API_KEY`) |
+| Outbound | **OpenAI** | Whisper (`whisper-1`), embeddings (`OPENAI_API_KEY`) |
+| Outbound | **Stripe** | Billing + webhooks |
+| Outbound | **Cloudflare R2** (S3) | Media (`boto3`, env `CLOUDFLARE_R2_*`) |
+| Outbound | **Google Firestore** | Social graph mirror |
+| Outbound | **Firebase (FCM)** | Mobile push |
+| Outbound | **Apple APNs** | Native iOS push |
+| Outbound | **Web Push** | Browser notifications |
+| Inbound | **Stripe webhooks** | Subscription events |
+| Inbound | **Cloud Scheduler → HTTP** | Lifecycle crons (`X-Cron-Secret`) |
+
+Environment variables are **not** listed here — check deployment secret store / `.env.example` if present.
+
+---
+
+## 10. Suppliers & cost structure (finance ops)
+
+| Supplier | Typical cost model | Maps to engineering |
+|----------|--------------------|---------------------|
+| Stripe | % + per transaction; dispute fees | `stripe`, webhooks |
+| OpenAI | Usage (audio minutes, tokens) | Whisper, embeddings |
+| xAI | Usage (tokens) | Grok calls |
+| Google Cloud | Cloud Run, GCR, Logging, Scheduler, Firestore | `cloudbuild.yaml`, Firestore SDK |
+| Cloudflare | R2 storage/egress | `r2_storage.py` |
+| Apple | Developer program; APNs included in ops overhead | `native_push.py` |
+| MySQL host | Instance + I/O | `database.py` |
+| Redis host | Instance | `redis_cache.py` |
+
+**Fill actual euro/dollar amounts** from monthly invoices in `Suppliers & cost structure` in Notion (or your finance tool); this file stays **structure-only**.
+
+---
+
+## 11. Related docs
+
+- `AGENTS.md` — agent + monetization rules.
+- `docs/STEVE_AND_VOICE_NOTES.md` — AI surfaces, usage logging.
+- `docs/cloud-scheduler-cron.md` — cron auth & endpoints.
+- `docs/QA_CHECKLIST.md` — manual QA after sensitive deploys.
+
+---
+
+*Generated for engineering onboarding; update when adding blueprints/services.*

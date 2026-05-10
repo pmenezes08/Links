@@ -1,0 +1,12 @@
+---
+description: Shrink blueprints/services — no new bodybuilding_app routes; thin HTTP layers.
+globs: bodybuilding_app.py, backend/blueprints/group_chat.py, backend/services/knowledge_base.py, backend/services/steve_knowledge_base.py, backend/services/networking_retrieval.py, backend/services/community.py
+alwaysApply: false
+---
+
+# Backend monolith boundaries
+
+- **Do not add new routes or handlers in `bodybuilding_app.py`.** New HTTP surface → **`backend/blueprints/*.py`** + register in **`backend/blueprints/__init__.py`** (**`AGENTS.md`**).
+- **`group_chat.py`**: keep **route handlers thin**; move new logic to **`backend/services/`** with clear names (`group_chat_messages`, `group_chat_media`, …). Aim to **reduce** file size over time, not add 200-line inline functions.
+- **`knowledge_base.py` / `steve_knowledge_base.py` / `networking_retrieval.py`**: add behaviour in **focused helper modules** in the same package if the file is already large; avoid circular imports.
+- After changing HTTP paths or architecture seams, regenerate **`docs/BACKEND_ROUTES.md`** and touch **`docs/C_POINT_ARCHITECTURE.md`** / **`docs/MONOLITH_REDUCTION_ROADMAP.md`** when completing a decomposition slice (**`AGENTS.md` § Living engineering docs**).
