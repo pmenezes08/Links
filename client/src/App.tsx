@@ -20,6 +20,7 @@ import { HeaderContext } from './contexts/HeaderContext'
 import { UserProfileContext, type UserProfile } from './contexts/UserProfileContext'
 import PushInit from './components/PushInit'
 import NotificationPrompt from './components/NotificationPrompt'
+import { EntitlementsProvider } from './contexts/EntitlementsContext'
 import { NetworkProvider } from './contexts/NetworkContext'
 import { BadgeProvider } from './contexts/BadgeContext'
 import OfflineBanner from './components/OfflineBanner'
@@ -834,12 +835,14 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <NetworkProvider>
         <BrowserRouter>
-          <OfflineBanner />
-          <OutboxDrainer />
-          <BrandAssetsInit />
-          <PushInit />
-          <NotificationPrompt />
-          <AppRoutes />
+          <EntitlementsProvider>
+            <OfflineBanner />
+            <OutboxDrainer />
+            <BrandAssetsInit />
+            <PushInit />
+            <NotificationPrompt />
+            <AppRoutes />
+          </EntitlementsProvider>
         </BrowserRouter>
       </NetworkProvider>
     </QueryClientProvider>

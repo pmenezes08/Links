@@ -67,6 +67,9 @@ flows.
   `UsageWarningBanner` are the only sanctioned gating primitives.
   New Steve surfaces must render one of them when a block payload
   comes back from the server.
+- Mount `<EntitlementsProvider>` inside `BrowserRouter` in `client/src/App.tsx`
+  so `useEntitlementsHandler().showError` / `handleResponse` open `LimitReachedModal`
+  (otherwise the context defaults are no-ops).
 
 ## Deployment
 
@@ -130,7 +133,8 @@ Full checkbox list: **[docs/AGENT_TASK_CHECKLIST.md](docs/AGENT_TASK_CHECKLIST.m
 ## Team documentation (Notion)
 
 - **Team hub:** [C-Point — team hub](https://www.notion.so/35c43dca8b6f811ea3efc440a3697c47) — canonical URL also in `.cursor/rules/notion-project-hub.mdc`. Agents maintain it from **Cursor** via the Notion MCP after substantive changes.
-- **Architecture & integrations:** [`docs/C_POINT_ARCHITECTURE.md`](docs/C_POINT_ARCHITECTURE.md) — structure, APIs, suppliers. **Monolith reduction (engineering roadmap):** [`docs/MONOLITH_REDUCTION_ROADMAP.md`](docs/MONOLITH_REDUCTION_ROADMAP.md) + KB **Product Roadmap** rows. **Deployment / instances:** [`docs/DEPLOYMENT_INSTANCES.md`](docs/DEPLOYMENT_INSTANCES.md) (Cloud Run names, URLs, staging vs prod — not the same as hostname “cpoint-web”). **Product journeys:** [`docs/PRODUCT_JOURNEYS.md`](docs/PRODUCT_JOURNEYS.md) (Stripe, AI usage, crons, onboarding, cross-store messaging). **Agent PR checklist:** [`docs/AGENT_TASK_CHECKLIST.md`](docs/AGENT_TASK_CHECKLIST.md). **Routes:** [`docs/BACKEND_ROUTES.md`](docs/BACKEND_ROUTES.md) (regenerate with `python scripts/generate_route_inventory.py`). **Data stores:** [`docs/MYSQL_AND_FIRESTORE.md`](docs/MYSQL_AND_FIRESTORE.md).
+- **Architecture & integrations:** [`docs/C_POINT_ARCHITECTURE.md`](docs/C_POINT_ARCHITECTURE.md) — structure, APIs, suppliers. **Monolith reduction (engineering roadmap):** [`docs/MONOLITH_REDUCTION_ROADMAP.md`](docs/MONOLITH_REDUCTION_ROADMAP.md) + KB **Product Roadmap** rows. **Deployment / instances:** [`docs/DEPLOYMENT_INSTANCES.md`](docs/DEPLOYMENT_INSTANCES.md) (Cloud Run names, URLs, staging vs prod — not the same as hostname “cpoint-web”). **Product journeys:** [`docs/PRODUCT_JOURNEYS.md`](docs/PRODUCT_JOURNEYS.md) (Stripe, AI usage, crons, onboarding, cross-store messaging). **Agent PR checklist:** [`docs/AGENT_TASK_CHECKLIST.md`](docs/AGENT_TASK_CHECKLIST.md) (includes **§ Product roadmap (KB ↔ Notion)**). **Routes:** [`docs/BACKEND_ROUTES.md`](docs/BACKEND_ROUTES.md) (regenerate with `python scripts/generate_route_inventory.py`). **Data stores:** [`docs/MYSQL_AND_FIRESTORE.md`](docs/MYSQL_AND_FIRESTORE.md).
+- **Product roadmap (team hub):** Notion **Product roadmap** database mirrors KB slug **`product-roadmap`** / **`roadmap_items`** — same row **titles** and **Area**; update both in one session when the list changes (**[`docs/AGENT_TASK_CHECKLIST.md`](docs/AGENT_TASK_CHECKLIST.md)**).
 - **In-app Knowledge Base** remains authoritative for **pricing, caps, policies, special-user lists, and seeded roadmap content** managed through admin / `knowledge_base.py` — Notion complements this for **people and engineering context**, not product policy truth.
 
 ## When in doubt
