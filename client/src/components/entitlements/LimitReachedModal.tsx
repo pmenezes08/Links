@@ -7,6 +7,59 @@ interface Props {
   onClose: () => void
 }
 
+function planTierNotice(err: EntitlementsError): string | null {
+  if (err.reason !== 'premium_required') return null
+  const t = (err.tier || '').toLowerCase()
+  if (t === 'trial') return "You're on a Trial plan."
+  if (!t || t === 'free' || t === 'anonymous') return "You're on the Free plan."
+  return null
+}
+
+function PremiumBenefitsList({ err }: { err: EntitlementsError }) {
+  if (err.reason !== 'premium_required') return null
+  const po = err.premium_offer
+  const steve = po?.steve_uses_per_month
+  const whisper = po?.whisper_minutes_per_month
+  const items: string[] = []
+  if (typeof steve === 'number' && steve > 0) {
+    items.push(`Up to ${steve} Steve conversations per month`)
+  }
+  if (typeof whisper === 'number' && whisper > 0) {
+    items.push(`Up to ${whisper} minutes of voice-note summaries per month`)
+  }
+  items.push('Steve in DM, feed, and group chats where your plan includes Steve')
+  return (
+    <div style={{ marginTop: 14, textAlign: 'left' }}>
+      <div
+        style={{
+          fontSize: 11,
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+          color: 'rgba(255,255,255,0.45)',
+          marginBottom: 8,
+        }}
+      >
+        With Premium
+      </div>
+      <ul
+        style={{
+          margin: 0,
+          paddingLeft: 18,
+          fontSize: 13,
+          color: 'rgba(255,255,255,0.82)',
+          lineHeight: 1.55,
+        }}
+      >
+        {items.map((line, i) => (
+          <li key={i} style={{ marginBottom: 6 }}>
+            {line}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 /**
  * Full-screen modal shown when a user triggers an action via a button
  * (feed reply, post summary, voice summary) and the backend denies it
@@ -88,6 +141,7 @@ export default function LimitReachedModal({ err, onClose }: Props) {
   }
 
   const renderUsage = () => {
+    if (err.reason === 'premium_required') return null
     const u = err.usage || {}
     const rows: { label: string; used: number | null; cap: number | null }[] = []
     if (u.monthly_steve_used != null || u.monthly_steve_cap != null) {
@@ -146,7 +200,7 @@ export default function LimitReachedModal({ err, onClose }: Props) {
                     width: `${pct}%`,
                     height: '100%',
                     borderRadius: 999,
-                    background: pct >= 100 ? '#e57373' : pct >= 80 ? '#ffb74d' : '#4db6ac',
+                    background: pct >= 100 ? '#e57373' : pct >= 80 ? '#ef5350' : '#4db6ac',
                   }}
                 />
               </div>
@@ -156,6 +210,8 @@ export default function LimitReachedModal({ err, onClose }: Props) {
       </div>
     )
   }
+
+  const tierLine = planTierNotice(err)
 
   return (
     <div
@@ -190,11 +246,11 @@ export default function LimitReachedModal({ err, onClose }: Props) {
           width: '100%',
           maxWidth: 400,
           borderRadius: 16,
-          border: '1px solid rgba(255,255,255,0.1)',
-          background: '#111',
+          border: '1px solid #4db6ac',
+          background: '#000',
           padding: 24,
           color: '#fff',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+          boxShadow: 'none',
         }}
         onClick={e => e.stopPropagation()}
       >
@@ -216,6 +272,21 @@ export default function LimitReachedModal({ err, onClose }: Props) {
           <h3 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>{titleForReason()}</h3>
         </div>
 
+        {tierLine ? (
+          <p
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: 'rgba(255,255,255,0.92)',
+              textAlign: 'center',
+              margin: '0 0 10px',
+              lineHeight: 1.45,
+            }}
+          >
+            {tierLine}
+          </p>
+        ) : null}
+
         <p
           style={{
             fontSize: 14,
@@ -228,11 +299,14 @@ export default function LimitReachedModal({ err, onClose }: Props) {
           {err.message}
         </p>
 
+        <PremiumBenefitsList err={err} />
+
         {renderUsage()}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 18 }}>
           {err.cta?.label ? (
             <button
+              type="button"
               onClick={handleCta}
               style={{
                 width: '100%',
@@ -250,6 +324,7 @@ export default function LimitReachedModal({ err, onClose }: Props) {
             </button>
           ) : null}
           <button
+            type="button"
             onClick={onClose}
             style={{
               width: '100%',

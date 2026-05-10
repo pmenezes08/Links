@@ -12,7 +12,7 @@ rather than a dozen surface-specific ones::
         "cta": {
             "type": "upgrade" | "wait" | "manage" | "open_url",
             "label": "Upgrade to Premium",
-            "url": "/settings/membership"
+            "url": "/subscription_plans?mode=choose"
         },
         "usage": {
             "monthly_steve_used": 100,
@@ -71,13 +71,15 @@ _DEFAULT_TEMPLATES: Dict[str, Dict[str, Any]] = {
     REASON_PREMIUM_REQUIRED: {
         "http_status": 402,
         "message": (
-            "Steve is a Premium feature. Upgrade to unlock "
-            "{steve_uses_per_month} Steve calls per month."
+            "Premium unlocks Steve in DM, feed, and eligible chats — up to "
+            "{steve_uses_per_month} Steve conversations per month and "
+            "{whisper_minutes_per_month} minutes of voice-note summaries "
+            "each billing cycle."
         ),
         "cta": {
             "type": "upgrade",
             "label": "Upgrade to Premium",
-            "url": "/settings/membership",
+            "url": "/subscription_plans?mode=choose",
         },
     },
     REASON_DAILY_CAP: {
@@ -125,7 +127,7 @@ _DEFAULT_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "cta": {
             "type": "upgrade",
             "label": "Upgrade to Premium",
-            "url": "/settings/membership",
+            "url": "/subscription_plans?mode=choose",
         },
     },
     REASON_RPM_EXCEEDED: {
@@ -179,10 +181,26 @@ _DEFAULT_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "cta": {
             "type": "upgrade",
             "label": "Subscribe to Premium",
-            "url": "/settings/membership",
+            "url": "/subscription_plans?mode=choose",
         },
     },
 }
+
+
+def _upgrade_offer_caps() -> Dict[str, int]:
+    """KB-facing Premium allowances for upgrade copy (not the user's current tier)."""
+    try:
+        from backend.services.entitlements import _load_kb_defaults
+
+        d = _load_kb_defaults()
+        steve = int(d.get("steve_uses_per_month") or 100)
+        whisper = int(d.get("whisper_minutes_per_month") or 100)
+        return {
+            "steve_uses_per_month": steve,
+            "whisper_minutes_per_month": whisper,
+        }
+    except Exception:
+        return {"steve_uses_per_month": 100, "whisper_minutes_per_month": 100}
 
 
 def _kb_templates() -> Dict[str, Dict[str, Any]]:
@@ -256,7 +274,12 @@ def build_error(
     base.update(kb_override)
     base.update(overrides)
 
+    offer_caps: Optional[Dict[str, int]] = None
     context: Dict[str, Any] = {**ent, **usage}
+    if reason == REASON_PREMIUM_REQUIRED:
+        offer_caps = _upgrade_offer_caps()
+        context.update(offer_caps)
+
     message = _format_template(str(base.get("message") or ""), context)
 
     cta = base.get("cta") or {}
@@ -274,13 +297,20 @@ def build_error(
     except Exception:
         status = 429
 
-    payload: Dict[str, Any] = {
-        "success": False,
-        "error": "entitlements_error",
-        "reason": reason,
-        "message": message,
-        "cta": cta,
-        "usage": {
+    empty_usage: Dict[str, Any] = {
+        "monthly_steve_used": None,
+        "monthly_steve_cap": None,
+        "daily_used": None,
+        "daily_cap": None,
+        "whisper_minutes_used": None,
+        "whisper_minutes_cap": None,
+        "resets_at_monthly": None,
+        "resets_at_daily": None,
+    }
+    if reason == REASON_PREMIUM_REQUIRED:
+        usage_payload = dict(empty_usage)
+    else:
+        usage_payload = {
             "monthly_steve_used": usage.get("monthly_steve_used"),
             "monthly_steve_cap": usage.get("monthly_steve_cap") if usage else ent.get("steve_uses_per_month"),
             "daily_used": usage.get("daily_used"),
@@ -289,9 +319,19 @@ def build_error(
             "whisper_minutes_cap": usage.get("whisper_minutes_cap") if usage else ent.get("whisper_minutes_per_month"),
             "resets_at_monthly": usage.get("resets_at_monthly"),
             "resets_at_daily": usage.get("resets_at_daily"),
-        },
+        }
+
+    payload: Dict[str, Any] = {
+        "success": False,
+        "error": "entitlements_error",
+        "reason": reason,
+        "message": message,
+        "cta": cta,
+        "usage": usage_payload,
         "tier": ent.get("tier"),
     }
+    if offer_caps is not None:
+        payload["premium_offer"] = offer_caps
     return payload, status
 
 
