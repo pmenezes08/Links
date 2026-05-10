@@ -21,8 +21,8 @@ Design rules enforced in this file:
   owner, the community must not already have an active Stripe
   subscription, and the target tier's member cap must fit the current
   member count. Stripe would happily take the money otherwise.
-* Checkout metadata includes ``sku`` (``premium`` or ``community_tier``)
-  so the webhook handler can dispatch correctly.
+* Checkout metadata includes ``sku`` (``premium``, ``community_tier``, or
+  ``steve_package``) so the webhook handler can dispatch correctly.
 """
 
 from __future__ import annotations
@@ -122,6 +122,20 @@ def _kb_field_map(slug: str) -> Dict[str, Any]:
         if name:
             out[str(name)] = f.get("value")
     return out
+
+
+def _kb_truthy(fields: Dict[str, Any], key: str, default: bool = True) -> bool:
+    raw = fields.get(key)
+    if raw is None:
+        return default
+    if isinstance(raw, bool):
+        return raw
+    s = str(raw).strip().lower()
+    if s in ("0", "false", "no", "off", ""):
+        return False
+    if s in ("1", "true", "yes", "on"):
+        return True
+    return bool(raw)
 
 
 def _price_id_from_kb(slug: str, base_field: str) -> str:
@@ -301,6 +315,7 @@ def _steve_package_payload(fields: Dict[str, Any]) -> Dict[str, Any]:
     price_eur = fields.get("paid_steve_package_price_eur_monthly")
     pool = fields.get("paid_steve_package_monthly_credit_pool")
     price_id = _price_id_from_kb("community-tiers", "paid_steve_package_stripe_price_id")
+    purchasable = bool(price_id)
     return {
         "sku": "steve_package",
         "name": "Steve Community Package",
@@ -310,8 +325,8 @@ def _steve_package_payload(fields: Dict[str, Any]) -> Dict[str, Any]:
         "currency": "EUR",
         "credit_pool": pool,
         "features": list(_STEVE_PACKAGE_FEATURE_BULLETS),
-        "purchasable": False,  # deferred: live checkout ships in a later step
-        "coming_soon": True,
+        "purchasable": purchasable,
+        "coming_soon": not purchasable,
         "stripe_mode": _stripe_mode(),
         "stripe_price_id": price_id,
     }
@@ -667,6 +682,98 @@ def _preflight_community_tier(
     return None
 
 
+def _preflight_steve_package(
+    username: str,
+    community_id: int,
+) -> Optional[Tuple[Dict[str, Any], int]]:
+    """Owner + paid-tier + single Steve-sub checks for Steve-package checkout."""
+    if not community_svc.is_community_owner(username, community_id):
+        return (
+            {
+                "success": False,
+                "error": "Only the community owner can purchase add-ons.",
+                "reason": "not_owner",
+            },
+            403,
+        )
+    root_id, is_root = _resolve_root_community_id(community_id)
+    if not is_root:
+        return (
+            {
+                "success": False,
+                "error": (
+                    "Add-ons are purchased on the root community. "
+                    "Open the parent network to continue."
+                ),
+                "reason": "not_root_community",
+                "root_community_id": root_id,
+            },
+            409,
+        )
+    state = community_billing.get_billing_state(root_id) or {}
+    tier = str(state.get("tier") or community_svc.COMMUNITY_TIER_FREE).strip().lower()
+
+    if tier == community_svc.COMMUNITY_TIER_FREE:
+        return (
+            {
+                "success": False,
+                "error": (
+                    "Upgrade this community to a Paid tier before adding "
+                    "the Steve package."
+                ),
+                "reason": "paid_tier_required",
+            },
+            409,
+        )
+
+    if tier == community_svc.COMMUNITY_TIER_ENTERPRISE:
+        kb_fields = _kb_field_map("community-tiers")
+        if _kb_truthy(kb_fields, "enterprise_steve_package_included", True):
+            return (
+                {
+                    "success": False,
+                    "error": (
+                        "Enterprise communities already include Steve capabilities."
+                    ),
+                    "reason": "steve_package_redundant",
+                },
+                409,
+            )
+
+    if tier in (
+        community_svc.COMMUNITY_TIER_PAID_L1,
+        community_svc.COMMUNITY_TIER_PAID_L2,
+        community_svc.COMMUNITY_TIER_PAID_L3,
+    ):
+        if not community_billing.has_active_subscription(root_id):
+            return (
+                {
+                    "success": False,
+                    "error": (
+                        "Your Paid tier subscription must be active before adding Steve."
+                    ),
+                    "reason": "community_subscription_inactive",
+                },
+                409,
+            )
+
+    if community_billing.has_active_steve_package(root_id):
+        return (
+            {
+                "success": False,
+                "error": (
+                    "This community already has an active Steve package subscription."
+                ),
+                "reason": "steve_package_already_active",
+                "community_id": root_id,
+                "portal_required": True,
+            },
+            409,
+        )
+
+    return None
+
+
 @subscriptions_bp.route("/api/communities/<int:community_id>/billing", methods=["GET"])
 def api_community_billing(community_id: int):
     """Return the billing snapshot the EditCommunity Billing panel renders.
@@ -1004,7 +1111,7 @@ def api_stripe_checkout_status():
 
     metadata = checkout_session.get("metadata") or {}
     sku = str(metadata.get("sku") or metadata.get("plan_id") or "premium").strip().lower()
-    if sku not in ("premium", "community_tier"):
+    if sku not in ("premium", "community_tier", "steve_package"):
         sku = "premium"
 
     status = "pending"
@@ -1026,6 +1133,22 @@ def api_stripe_checkout_status():
             billing_state = community_billing.get_billing_state(community_id)
             community_name = _fetch_community_name(community_id)
             if billing_state and (billing_state.get("subscription_status") or "").lower() in {"active", "trialing"}:
+                status = "active"
+            elif (checkout_session.get("payment_status") or "").lower() == "paid":
+                status = "pending"
+    elif sku == "steve_package":
+        try:
+            community_id = int(metadata.get("community_id") or 0) or None
+        except (TypeError, ValueError):
+            community_id = None
+        if community_id:
+            owner = _fetch_community_owner(community_id)
+            if owner and owner.lower() != username.lower() and not community_svc.is_app_admin(username):
+                return jsonify({"success": False, "error": "Not allowed"}), 403
+            billing_state = community_billing.get_billing_state(community_id)
+            community_name = _fetch_community_name(community_id)
+            st_pkg = (billing_state.get("steve_package_subscription_status") or "").lower()
+            if st_pkg in {"active", "trialing"}:
                 status = "active"
             elif (checkout_session.get("payment_status") or "").lower() == "paid":
                 status = "pending"
@@ -1062,11 +1185,12 @@ def api_stripe_checkout_status():
 def api_stripe_create_checkout_session():
     """Create a Checkout session for the signed-in user.
 
-    Accepts two ``plan_id`` shapes:
+    Accepts ``plan_id``:
 
         plan_id='premium'           — personal monthly / yearly
         plan_id='community_tier'    — requires community_id + tier_code
                                        (paid_l1|paid_l2|paid_l3)
+        plan_id='steve_package'     — requires community_id (billing root)
     """
     username = _session_username()
     if not username:
@@ -1078,7 +1202,7 @@ def api_stripe_create_checkout_session():
 
     payload = request.get_json(silent=True) or {}
     plan_id = str(payload.get("plan_id") or "").strip().lower()
-    if plan_id not in ("premium", "community_tier"):
+    if plan_id not in ("premium", "community_tier", "steve_package"):
         return jsonify({"success": False, "error": "Unsupported plan"}), 400
 
     metadata: Dict[str, str] = {
@@ -1104,7 +1228,7 @@ def api_stripe_create_checkout_session():
                             "error": "Pricing is not configured",
                             "reason": "price_missing"}), 400
         metadata["billing_cycle"] = billing_cycle
-    else:  # community_tier
+    elif plan_id == "community_tier":
         try:
             community_id = int(payload.get("community_id") or 0)
         except (TypeError, ValueError):
@@ -1133,6 +1257,33 @@ def api_stripe_create_checkout_session():
                 f'Community "{community_name}" - {_TIER_LABELS.get(tier_code, tier_code)}'
             )
         client_reference_id = f"community:{community_id}"
+    else:
+        try:
+            community_id = int(payload.get("community_id") or 0)
+        except (TypeError, ValueError):
+            community_id = 0
+        if not community_id:
+            return jsonify({"success": False,
+                            "error": "community_id is required",
+                            "reason": "missing_params"}), 400
+        block = _preflight_steve_package(username, community_id)
+        if block:
+            body, status = block
+            return jsonify(body), status
+        root_id, _ = _resolve_root_community_id(community_id)
+        price_id = _price_id_from_kb("community-tiers", "paid_steve_package_stripe_price_id")
+        if not price_id:
+            return jsonify({"success": False,
+                            "error": "Pricing is not configured for the Steve package yet",
+                            "reason": "price_missing"}), 400
+        community_name = _fetch_community_name(root_id)
+        metadata["community_id"] = str(root_id)
+        if community_name:
+            metadata["community_name"] = _stripe_metadata_value(community_name)
+            subscription_description = (
+                f'Steve Community Package — "{community_name}"'
+            )
+        client_reference_id = f"community:{root_id}"
 
     email_value = _user_email(username)
 
@@ -1142,6 +1293,11 @@ def api_stripe_create_checkout_session():
         cancel_path = (
             f"subscription_plans?status=cancelled&community_id="
             f"{metadata['community_id']}"
+        )
+    elif plan_id == "steve_package" and metadata.get("community_id"):
+        cancel_path = (
+            f"subscription_plans?status=cancelled&community_id="
+            f"{metadata['community_id']}&checkout=steve_package"
         )
     cancel_url = urljoin(request.host_url, cancel_path)
 
@@ -1165,6 +1321,18 @@ def api_stripe_create_checkout_session():
         session_args["customer_email"] = email_value
     if client_reference_id:
         session_args["client_reference_id"] = client_reference_id
+    if plan_id == "steve_package":
+        try:
+            rid = int(metadata.get("community_id") or 0)
+        except (TypeError, ValueError):
+            rid = 0
+        if rid:
+            cust_id = (community_billing.get_billing_state(rid) or {}).get(
+                "stripe_customer_id"
+            )
+            if cust_id:
+                session_args["customer"] = str(cust_id)
+                session_args.pop("customer_email", None)
 
     try:
         checkout_session = stripe_mod.checkout.Session.create(**session_args)

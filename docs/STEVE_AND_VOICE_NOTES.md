@@ -1,7 +1,7 @@
 # Steve & Voice Notes — Architecture Guide
 
 **Status:** Required reading before you build or touch anything Steve- or
-voice-note related. Last updated 2026-04-19.
+voice-note related. Last updated 2026-05-10.
 
 This document is the single source of truth for how Steve (the LLM
 assistant) and Whisper (audio transcription) are wired into C-Point. If
@@ -35,6 +35,10 @@ and then write the code. Do **not** silently diverge.
 5. **Gate before you spend.** Run the entitlements gate *before* calling
    the paid API, not after. `entitlements_gate.check_steve_access(...)`
    / the `require_steve_access` decorator are the only sanctioned gates.
+   When Steve runs in an **in-community** context (feed replies, group chats
+   tied to a community), pass **`community_id`** into `check_steve_access` /
+   `gate_or_reason` so eligible members can consume the **Steve Community
+   Package** monthly pool per KB flags (`community-tiers` page).
 
 Skip any of the above and the user's "Steve uses this month" counter
 will silently lie to them. We've already fixed that bug once, don't

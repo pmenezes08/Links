@@ -1661,6 +1661,21 @@ def send_group_message(group_id: int):
             except Exception:
                 steve_group_name = "Group"
 
+            group_community_id = None
+            try:
+                c.execute(f"SELECT community_id FROM group_chats WHERE id = {ph}", (group_id,))
+                gid_row = c.fetchone()
+                if gid_row:
+                    gc_raw = (
+                        gid_row["community_id"]
+                        if hasattr(gid_row, "keys")
+                        else gid_row[0]
+                    )
+                    if gc_raw is not None:
+                        group_community_id = int(gc_raw)
+            except Exception:
+                group_community_id = None
+
             send_payload: dict = {
                 "success": True,
                 "message": {
@@ -1683,7 +1698,9 @@ def send_group_message(group_id: int):
                 if entitlements_enforcement_enabled():
                     try:
                         _allowed_g, _g_ent_payload, _, _ = check_steve_access(
-                            username, ai_usage.SURFACE_GROUP
+                            username,
+                            ai_usage.SURFACE_GROUP,
+                            community_id=group_community_id,
                         )
                         if not _allowed_g:
                             send_payload["entitlements_error"] = _g_ent_payload
@@ -2892,10 +2909,32 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         except Exception as remember_err:
             logger.error(f"Error unsuppressing topic for Steve: {remember_err}")
     
+    steve_ctx_community_id = None
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT community_id FROM group_chats WHERE id = {ph}", (group_id,))
+            cg_row = c.fetchone()
+            if cg_row:
+                rawcid = (
+                    cg_row["community_id"]
+                    if hasattr(cg_row, "keys")
+                    else cg_row[0]
+                )
+                if rawcid is not None:
+                    steve_ctx_community_id = int(rawcid)
+    except Exception:
+        steve_ctx_community_id = None
+
     # ── Entitlements gate: before any LLM spend, check the caller's caps. ──
     # Always resolves so we capture the metric; only blocks when enforcement
     # is flipped on in the environment.
-    _ent_allowed, _ent_reason, _ent = gate_or_reason(sender_username, ai_usage.SURFACE_GROUP)
+    _ent_allowed, _ent_reason, _ent = gate_or_reason(
+        sender_username,
+        ai_usage.SURFACE_GROUP,
+        community_id=steve_ctx_community_id,
+    )
     if not _ent_allowed and entitlements_enforcement_enabled():
         try:
             from backend.services import entitlements_errors as _errs
@@ -2905,6 +2944,11 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
                 blocked_text = (
                     f"@{sender_username} Steve is a Premium feature. "
                     "Upgrade in Settings → Manage Membership to keep chatting with me here."
+                )
+            elif _ent_reason == _errs.REASON_COMMUNITY_POOL_EXHAUSTED:
+                blocked_text = (
+                    f"@{sender_username} this community's shared Steve pool is "
+                    "empty for this month."
                 )
             elif _ent_reason == _errs.REASON_DAILY_CAP:
                 blocked_text = (
@@ -3416,7 +3460,7 @@ RESPONSE FORMAT:
                 surface=ai_usage.SURFACE_GROUP,
                 request_type='steve_group_reply',
                 model=MODEL_GROK_43,
-                community_id=None,
+                community_id=steve_ctx_community_id,
             )
         except Exception:
             pass

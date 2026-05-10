@@ -19,12 +19,64 @@ from typing import Any, Dict, Optional, Tuple
 from flask import g, jsonify, request, session
 
 from backend.services import ai_usage
+from backend.services import community_billing
 from backend.services import entitlements_errors as errs
+from backend.services import knowledge_base as kb
+from backend.services import community as community_svc
+from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.entitlements import resolve_entitlements
 from backend.services.feature_flags import entitlements_enforcement_enabled
 
 
 logger = logging.getLogger(__name__)
+
+
+def _community_tiers_field_map() -> Dict[str, Any]:
+    try:
+        page = kb.get_page("community-tiers") or {}
+    except Exception:
+        return {}
+    out: Dict[str, Any] = {}
+    for f in page.get("fields") or []:
+        name = f.get("name")
+        if name:
+            out[str(name)] = f.get("value")
+    return out
+
+
+def _truthy_kb(raw: Any, default: bool = True) -> bool:
+    if raw is None:
+        return default
+    if isinstance(raw, bool):
+        return raw
+    s = str(raw).strip().lower()
+    if s in ("0", "false", "no", "off", ""):
+        return False
+    if s in ("1", "true", "yes", "on"):
+        return True
+    return bool(raw)
+
+
+def _user_member_community(username: str, community_id: int) -> bool:
+    if not username or not community_id:
+        return False
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"""
+                SELECT 1 FROM user_communities uc
+                INNER JOIN users u ON u.id = uc.user_id
+                WHERE LOWER(u.username) = LOWER({ph})
+                  AND uc.community_id = {ph}
+                LIMIT 1
+                """,
+                (username, int(community_id)),
+            )
+            return c.fetchone() is not None
+    except Exception:
+        return False
 
 
 # ─── Core check ─────────────────────────────────────────────────────────
@@ -35,6 +87,7 @@ def check_steve_access(
     surface: str,
     *,
     duration_seconds: Optional[float] = None,
+    community_id: Optional[Any] = None,
 ) -> Tuple[bool, Optional[Dict[str, Any]], Optional[int], Dict[str, Any]]:
     """Decide whether ``username`` can invoke Steve on ``surface`` right now.
 
@@ -50,6 +103,11 @@ def check_steve_access(
 
     ``duration_seconds`` is only meaningful for ``whisper`` / ``voice_summary``
     where a single call can consume multiple "minutes" against the Whisper cap.
+
+    ``community_id`` scopes Steve calls that occur inside a community
+    (feed replies, group @Steve). When an active Steve Community Package exists on
+    the billing root, the Knowledge Base toggles decide whether members consume the
+    shared monthly pool vs personal allowances.
     """
     try:
         ent = resolve_entitlements(username)
@@ -63,11 +121,84 @@ def check_steve_access(
         )
         return False, payload, status, {}
 
-    # 1. Tier gate.
-    if not ent.get("can_use_steve"):
-        payload, status = errs.build_error(errs.REASON_PREMIUM_REQUIRED, ent=ent)
-        ai_usage.log_block(username, surface=surface, reason=errs.REASON_PREMIUM_REQUIRED)
-        return False, payload, status, ent
+    kb_fields = _community_tiers_field_map()
+    premium_priority = _truthy_kb(
+        kb_fields.get("paid_steve_package_premium_priority"), True
+    )
+    fallback_when_empty = _truthy_kb(
+        kb_fields.get("paid_steve_package_fallback_when_empty"), True
+    )
+    free_blocked_when_empty = _truthy_kb(
+        kb_fields.get("paid_steve_package_free_members_blocked_when_empty"), True
+    )
+    free_member_pool_access = _truthy_kb(
+        kb_fields.get("paid_steve_package_free_member_access"), True
+    )
+
+    root_id: Optional[int] = None
+    cid_ctx: Optional[int] = None
+    pool_active = False
+    pool_cap = 0
+    pool_used = 0
+    member_ctx = False
+
+    if community_id is not None and surface in ai_usage.STEVE_SURFACES:
+        try:
+            cid_ctx = int(community_id)
+        except (TypeError, ValueError):
+            cid_ctx = None
+        if cid_ctx:
+            member_ctx = _user_member_community(username, cid_ctx)
+            root_id, _ = community_svc.resolve_root_community_id(cid_ctx)
+            pool_active = community_billing.has_active_steve_package(root_id)
+            if pool_active:
+                raw_cap = kb_fields.get("paid_steve_package_monthly_credit_pool")
+                try:
+                    pool_cap = int(raw_cap) if raw_cap is not None else 0
+                except (TypeError, ValueError):
+                    pool_cap = 0
+                pool_cap = max(0, pool_cap)
+                if pool_cap > 0:
+                    pool_used = ai_usage.community_monthly_steve_pool_usage(root_id)
+
+    pool_has_room = pool_cap > 0 and pool_used < pool_cap
+    pool_exhausted = pool_cap > 0 and pool_used >= pool_cap
+
+    # 1. Tier gate — Premium/Special/Enterprise seat OR eligible pool member.
+    if ent.get("can_use_steve"):
+        pass
+    else:
+        if pool_active and free_member_pool_access and member_ctx and pool_has_room:
+            pass
+        elif (
+            pool_active
+            and free_member_pool_access
+            and member_ctx
+            and pool_exhausted
+            and free_blocked_when_empty
+        ):
+            usage_snapshot = _snapshot(username, ent)
+            payload, status = errs.build_error(
+                errs.REASON_COMMUNITY_POOL_EXHAUSTED,
+                ent=ent,
+                usage=usage_snapshot,
+            )
+            ai_usage.log_block(
+                username,
+                surface=surface,
+                reason=errs.REASON_COMMUNITY_POOL_EXHAUSTED,
+                community_id=root_id,
+            )
+            return False, payload, status, ent
+        else:
+            payload, status = errs.build_error(errs.REASON_PREMIUM_REQUIRED, ent=ent)
+            ai_usage.log_block(
+                username,
+                surface=surface,
+                reason=errs.REASON_PREMIUM_REQUIRED,
+                community_id=root_id,
+            )
+            return False, payload, status, ent
 
     # 2. Daily cap (rolling 24h).
     daily_cap = ent.get("ai_daily_limit")
@@ -78,21 +209,63 @@ def check_steve_access(
             payload, status = errs.build_error(
                 errs.REASON_DAILY_CAP, ent=ent, usage=usage_snapshot
             )
-            ai_usage.log_block(username, surface=surface, reason=errs.REASON_DAILY_CAP)
+            ai_usage.log_block(
+                username,
+                surface=surface,
+                reason=errs.REASON_DAILY_CAP,
+                community_id=root_id,
+            )
             return False, payload, status, ent
 
-    # 3. Monthly Steve cap (personal allowance). Only applies to Steve surfaces
-    # and only when the cap is a positive integer (None = unlimited).
+    # 3. Monthly Steve cap (personal allowance) vs shared community pool.
     monthly_cap = ent.get("steve_uses_per_month")
     if surface in ai_usage.STEVE_SURFACES and isinstance(monthly_cap, int) and monthly_cap > 0:
-        used = ai_usage.monthly_steve_count(username)
-        if used >= monthly_cap:
-            usage_snapshot = _snapshot(username, ent)
-            payload, status = errs.build_error(
-                errs.REASON_MONTHLY_STEVE_CAP, ent=ent, usage=usage_snapshot
-            )
-            ai_usage.log_block(username, surface=surface, reason=errs.REASON_MONTHLY_STEVE_CAP)
-            return False, payload, status, ent
+        skip_personal_monthly = False
+        if ent.get("can_use_steve"):
+            if pool_active and premium_priority and pool_has_room:
+                skip_personal_monthly = True
+            elif (
+                pool_active
+                and premium_priority
+                and pool_exhausted
+                and not fallback_when_empty
+            ):
+                usage_snapshot = _snapshot(username, ent)
+                payload, status = errs.build_error(
+                    errs.REASON_COMMUNITY_POOL_EXHAUSTED,
+                    ent=ent,
+                    usage=usage_snapshot,
+                )
+                ai_usage.log_block(
+                    username,
+                    surface=surface,
+                    reason=errs.REASON_COMMUNITY_POOL_EXHAUSTED,
+                    community_id=root_id,
+                )
+                return False, payload, status, ent
+        elif (
+            not ent.get("can_use_steve")
+            and pool_active
+            and free_member_pool_access
+            and member_ctx
+            and pool_has_room
+        ):
+            skip_personal_monthly = True
+
+        if not skip_personal_monthly:
+            used_m = ai_usage.monthly_steve_count(username)
+            if used_m >= monthly_cap:
+                usage_snapshot = _snapshot(username, ent)
+                payload, status = errs.build_error(
+                    errs.REASON_MONTHLY_STEVE_CAP, ent=ent, usage=usage_snapshot
+                )
+                ai_usage.log_block(
+                    username,
+                    surface=surface,
+                    reason=errs.REASON_MONTHLY_STEVE_CAP,
+                    community_id=root_id,
+                )
+                return False, payload, status, ent
 
     # 4. Whisper cap — only for whisper / voice_summary surfaces.
     if surface in (ai_usage.SURFACE_WHISPER, ai_usage.SURFACE_VOICE_SUMMARY):
@@ -240,6 +413,7 @@ def gate_or_reason(
     *,
     duration_seconds: Optional[float] = None,
     enforce_override: Optional[bool] = None,
+    community_id: Optional[Any] = None,
 ) -> Tuple[bool, Optional[str], Dict[str, Any]]:
     """Non-Flask version of the gate.
 
@@ -251,7 +425,10 @@ def gate_or_reason(
     """
     enforce = enforce_override if enforce_override is not None else entitlements_enforcement_enabled()
     allowed, payload, _status, ent = check_steve_access(
-        username, surface, duration_seconds=duration_seconds
+        username,
+        surface,
+        duration_seconds=duration_seconds,
+        community_id=community_id,
     )
     if allowed:
         return True, None, ent

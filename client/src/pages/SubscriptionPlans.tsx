@@ -21,9 +21,9 @@ import { useHeader } from '../contexts/HeaderContext'
  * Live SKUs:
  *   - ``premium``         — Personal card → Stripe Checkout
  *   - ``community_tier``  — Community modal → CommunityPickerModal → Checkout
- * Coming-soon SKUs (no checkout, mailto only):
- *   - ``steve_package``
- *   - ``networking``
+ *   - ``steve_package``   — Community Add-ons → Steve picker → Checkout (Paid tier roots only)
+ * Coming-soon SKUs:
+ *   - ``networking`` — mailto / notify flow until live Stripe wiring lands
  * Enterprise tier is a sales-driven mailto — not a Stripe SKU.
  */
 
@@ -66,8 +66,22 @@ interface CommunityTierPayload {
   stripe_mode: 'test' | 'live'
 }
 
-interface ComingSoonPayload {
-  sku: 'steve_package' | 'networking_package'
+interface NetworkingComingSoonPayload {
+  sku: 'networking_package'
+  name: string
+  tagline: string
+  price_eur: number | string | null
+  billing_cycle: string
+  currency: string
+  features: string[]
+  purchasable: false
+  coming_soon: true
+  stripe_mode: 'test' | 'live'
+  stripe_price_id: string
+}
+
+interface StevePackagePayload {
+  sku: 'steve_package'
   name: string
   tagline: string
   price_eur: number | string | null
@@ -75,10 +89,10 @@ interface ComingSoonPayload {
   currency: string
   features?: string[]
   credit_pool?: number | null
-  purchasable: false
-  coming_soon: true
+  purchasable: boolean
+  coming_soon?: boolean
   stripe_mode: 'test' | 'live'
-  stripe_price_id?: string
+  stripe_price_id: string
 }
 
 interface PricingPayload {
@@ -88,8 +102,8 @@ interface PricingPayload {
   sku: {
     premium: PremiumPayload
     community_tier: CommunityTierPayload
-    steve_package: ComingSoonPayload
-    networking: ComingSoonPayload
+    steve_package: StevePackagePayload
+    networking: NetworkingComingSoonPayload
   }
 }
 
@@ -119,6 +133,7 @@ interface ActiveCommunitySubscription {
   current_period_end?: string | null
   cancel_at_period_end?: boolean
   benefits_end_at?: string | null
+  steve_package_subscription_active?: boolean
 }
 
 interface ActiveSubscriptionsPayload {
@@ -194,6 +209,15 @@ function maybeConfirmPendingCheckout(active: ActiveSubscriptionsPayload) {
       sessionStorage.removeItem(PENDING_CHECKOUT_KEY)
       return `${match.name} is active on ${tierLabel(match.tier)}.`
     }
+    if (pending.plan_id === 'steve_package') {
+      const steveMatch = active.communities?.find((c) => (
+        c.id === communityId && c.steve_package_subscription_active
+      ))
+      if (steveMatch) {
+        sessionStorage.removeItem(PENDING_CHECKOUT_KEY)
+        return `${steveMatch.name} — Steve Community Package is active.`
+      }
+    }
   } catch {
     try { sessionStorage.removeItem(PENDING_CHECKOUT_KEY) } catch {}
   }
@@ -213,7 +237,7 @@ function tierLabel(tier?: string | null) {
 // Component
 // ---------------------------------------------------------------------------
 
-type ModalView = 'community' | 'addons' | 'picker' | null
+type ModalView = 'community' | 'addons' | 'picker' | 'steve_picker' | null
 type PageMode = 'choose' | 'active' | null
 
 const PENDING_CHECKOUT_KEY = 'cpoint_pending_subscription_checkout'
@@ -366,7 +390,9 @@ export default function SubscriptionPlans() {
         const data = await res.json()
         if (!res.ok || !data?.success) {
           const communityId = Number(data?.community_id || body.community_id || 0)
-          if (data?.reason === 'already_subscribed' && communityId > 0) {
+          const portalReason = data?.reason === 'already_subscribed'
+            || data?.reason === 'steve_package_already_active'
+          if (portalReason && communityId > 0) {
             const portalRes = await fetch(`/api/me/billing/portal?community_id=${communityId}`, {
               method: 'POST',
               credentials: 'include',
@@ -467,6 +493,22 @@ export default function SubscriptionPlans() {
       )
     },
     [activeSubscriptions, loadActiveSubscriptions, pendingTier, startCheckout],
+  )
+
+  const onSteveCommunityChosen = useCallback(
+    async (communityId: number) => {
+      startCheckout(
+        { plan_id: 'steve_package', community_id: communityId },
+        `steve_package:${communityId}`,
+        {
+          onError: setModalError,
+          onBeforeRedirect: () => {
+            setView(null)
+          },
+        },
+      )
+    },
+    [startCheckout],
   )
 
   return (
@@ -586,6 +628,34 @@ export default function SubscriptionPlans() {
           networking={pricing.sku.networking}
           onBack={() => setView('community')}
           onClose={() => setView(null)}
+          onOpenStevePicker={() => {
+            setModalError(null)
+            setView('steve_picker')
+          }}
+          steveCheckoutLoading={
+            checkoutLoading != null && checkoutLoading.startsWith('steve_package')
+          }
+        />
+      )}
+
+      {view === 'steve_picker' && (
+        <SteveAddonPickerModal
+          preselectedCommunityId={preselectedCommunityId}
+          activeSubscriptions={activeSubscriptions}
+          onCancel={() => {
+            setModalError(null)
+            setView('addons')
+          }}
+          onChoose={onSteveCommunityChosen}
+          error={modalError}
+          loading={
+            checkoutLoading != null && checkoutLoading.startsWith('steve_package')
+          }
+          onCreate={() => {
+            setView(null)
+            setModalError(null)
+            navigate('/premium_dashboard?open_create=1')
+          }}
         />
       )}
 
@@ -1140,11 +1210,15 @@ function AddonsModal({
   networking,
   onBack,
   onClose,
+  onOpenStevePicker,
+  steveCheckoutLoading,
 }: {
-  steve: ComingSoonPayload
-  networking: ComingSoonPayload
+  steve: StevePackagePayload
+  networking: NetworkingComingSoonPayload
   onBack: () => void
   onClose: () => void
+  onOpenStevePicker: () => void
+  steveCheckoutLoading: boolean
 }) {
   return (
     <ModalShell onClose={onClose} ariaLabel="Community Add-ons">
@@ -1176,11 +1250,12 @@ function AddonsModal({
       </div>
 
       <div className="mt-6 space-y-4">
-        <AddonCard
+        <SteveAddonCard
           payload={steve}
-          subjectLabel="Steve Package"
+          loading={steveCheckoutLoading}
+          onSubscribe={onOpenStevePicker}
         />
-        <AddonCard
+        <NetworkingAddonCard
           payload={networking}
           subjectLabel="Networking Package"
         />
@@ -1189,11 +1264,79 @@ function AddonsModal({
   )
 }
 
-function AddonCard({
+function SteveAddonCard({
+  payload,
+  loading,
+  onSubscribe,
+}: {
+  payload: StevePackagePayload
+  loading: boolean
+  onSubscribe: () => void
+}) {
+  const badgeComingSoon = !payload.purchasable || payload.coming_soon
+  return (
+    <section className="rounded-xl border border-white/10 bg-white/[0.03] p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-white">{payload.name}</h3>
+          <p className="mt-1 text-xs text-white/60">{payload.tagline}</p>
+        </div>
+        <span
+          className={
+            'shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wider ' +
+            (badgeComingSoon
+              ? 'border-white/15 text-white/50'
+              : 'border-cpoint-turquoise/40 text-cpoint-turquoise')
+          }
+        >
+          {badgeComingSoon ? 'Coming soon' : 'Live'}
+        </span>
+      </div>
+
+      <div className="mt-4 flex items-baseline gap-2">
+        <span className="text-2xl font-semibold text-white">
+          {formatEur(payload.price_eur)}
+        </span>
+        <span className="text-xs text-white/50">/ month</span>
+      </div>
+
+      {payload.credit_pool != null && Number(payload.credit_pool) > 0 && (
+        <p className="mt-2 text-xs text-white/45">
+          ~{payload.credit_pool} shared Steve credits / month (pool caps follow KB weights).
+        </p>
+      )}
+
+      {badgeComingSoon ? (
+        <a
+          href={`mailto:${SALES_EMAIL}?subject=${encodeURIComponent('Notify me - Steve Package')}`}
+          className="mt-4 inline-flex w-full items-center justify-center rounded-full border border-white/20 px-4 py-2 text-xs font-semibold text-white transition hover:border-cpoint-turquoise/60 hover:text-cpoint-turquoise"
+        >
+          Notify me
+        </a>
+      ) : (
+        <button
+          type="button"
+          disabled={loading}
+          onClick={onSubscribe}
+          className={
+            'mt-4 inline-flex w-full items-center justify-center rounded-full px-4 py-2 text-xs font-semibold transition ' +
+            (loading
+              ? 'bg-cpoint-turquoise/60 text-black cursor-wait'
+              : 'bg-cpoint-turquoise text-black hover:bg-cpoint-turquoise/90')
+          }
+        >
+          {loading ? 'Starting checkout…' : 'Subscribe'}
+        </button>
+      )}
+    </section>
+  )
+}
+
+function NetworkingAddonCard({
   payload,
   subjectLabel,
 }: {
-  payload: ComingSoonPayload
+  payload: NetworkingComingSoonPayload
   subjectLabel: string
 }) {
   return (
@@ -1222,6 +1365,198 @@ function AddonCard({
         Notify me
       </a>
     </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Steve package community picker (Paid tier roots without Steve yet)
+// ---------------------------------------------------------------------------
+
+function SteveAddonPickerModal({
+  preselectedCommunityId,
+  activeSubscriptions,
+  onCancel,
+  onChoose,
+  onCreate,
+  error,
+  loading,
+}: {
+  preselectedCommunityId: string
+  activeSubscriptions: ActiveSubscriptionsPayload | null
+  onCancel: () => void
+  onChoose: (communityId: number) => void
+  onCreate: () => void
+  error?: string | null
+  loading?: boolean
+}) {
+  const [communities, setCommunities] = useState<Community[] | null>(null)
+  const [loadErr, setLoadErr] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<number | null>(
+    preselectedCommunityId ? Number(preselectedCommunityId) : null,
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const res = await fetch('/api/user_communities_hierarchical', {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+        })
+        const data = await res.json()
+        if (cancelled) return
+        if (!data?.success) {
+          throw new Error(data?.error || 'Failed to load communities')
+        }
+        const flat: Community[] = []
+        const walk = (list: unknown[]) => {
+          for (const raw of list || []) {
+            const item = raw as Community & {
+              children?: Community[]
+              parent_community_id?: number | null
+            }
+            if (item && typeof item.id === 'number') flat.push(item)
+            if (item && Array.isArray(item.children)) walk(item.children)
+          }
+        }
+        walk(data.communities || [])
+        const me = typeof data.username === 'string'
+          ? data.username.trim().toLowerCase()
+          : null
+        const activeByCommunity = new Map(
+          (activeSubscriptions?.communities || []).map((item) => [item.id, item]),
+        )
+        const owned = flat.filter((c) => {
+          const withParent = c as Community & { parent_community_id?: number | null }
+          if (withParent.parent_community_id) return false
+          if (me && c.creator_username && c.creator_username.trim().toLowerCase() === me) return true
+          if (c.role && c.role.toLowerCase() === 'owner') return true
+          return false
+        }).filter((c) => {
+          const active = activeByCommunity.get(c.id)
+          const tier = String(active?.tier || c.tier || '').toLowerCase()
+          if (tier === 'enterprise') return false
+          if (!['paid_l1', 'paid_l2', 'paid_l3'].includes(tier)) return false
+          const status = String(active?.subscription_status || '').toLowerCase()
+          if (status !== 'active' && status !== 'trialing') return false
+          if (active?.steve_package_subscription_active) return false
+          return true
+        })
+        setCommunities(owned)
+      } catch (err) {
+        if (!cancelled) setLoadErr(err instanceof Error ? err.message : 'Failed to load')
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [activeSubscriptions])
+
+  return (
+    <ModalShell onClose={onCancel} ariaLabel="Pick a community for Steve package">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
+            Steve Community Package
+          </p>
+          <h2 className="mt-2 text-lg font-semibold">Pick a community</h2>
+          <p className="mt-1 text-sm text-white/60">
+            Only Paid tier roots with an active Stripe subscription are eligible.
+            Enterprise networks already include Steve.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          aria-label="Close"
+          className="-mr-1 -mt-1 inline-flex h-8 w-8 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white"
+        >
+          <i className="fa-solid fa-xmark" />
+        </button>
+      </div>
+
+      {loadErr && (
+        <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+          {loadErr}
+        </div>
+      )}
+      {error && (
+        <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+          {error}
+        </div>
+      )}
+
+      <div className="mt-5 max-h-64 space-y-2 overflow-y-auto pr-1">
+        {communities === null && !loadErr && (
+          <div className="text-sm text-white/50">Loading your communities…</div>
+        )}
+        {communities !== null && communities.length === 0 && (
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm text-white/60">
+            No eligible communities. Upgrade a root community to Paid first, or this add-on may already be active.
+          </div>
+        )}
+        {communities?.map((c) => (
+          <label
+            key={c.id}
+            className={
+              'flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm transition ' +
+              (selectedId === c.id
+                ? 'border-cpoint-turquoise/60 bg-cpoint-turquoise/10'
+                : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.06]')
+            }
+          >
+            <input
+              type="radio"
+              name="steve-community"
+              className="mt-0.5 h-4 w-4 shrink-0 accent-[#00CEC8]"
+              checked={selectedId === c.id}
+              onChange={() => setSelectedId(c.id)}
+            />
+            <span className="min-w-0 flex-1 break-words leading-5">
+              {c.name}
+              {currentTierLabel(c, activeSubscriptions) && (
+                <span className="ml-2 text-xs text-white/40">
+                  {currentTierLabel(c, activeSubscriptions)}
+                </span>
+              )}
+            </span>
+          </label>
+        ))}
+      </div>
+
+      <div className="mt-6 flex flex-col gap-2">
+        <button
+          type="button"
+          disabled={!selectedId || loading}
+          onClick={() => selectedId && onChoose(selectedId)}
+          className={
+            'inline-flex w-full items-center justify-center rounded-full px-5 py-3 text-sm font-semibold transition ' +
+            (selectedId && !loading
+              ? 'bg-cpoint-turquoise text-black hover:bg-cpoint-turquoise/90'
+              : 'border border-white/15 bg-white/5 text-white/40 cursor-not-allowed')
+          }
+        >
+          {loading ? 'Starting checkout…' : 'Continue to checkout'}
+        </button>
+        {communities !== null && communities.length === 0 && (
+          <button
+            type="button"
+            onClick={onCreate}
+            className="inline-flex w-full items-center justify-center rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white hover:bg-white/5"
+          >
+            Create a community
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onCancel}
+          className="mt-1 text-xs text-white/40 hover:text-white/70"
+        >
+          Back
+        </button>
+      </div>
+    </ModalShell>
   )
 }
 

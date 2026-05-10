@@ -231,6 +231,16 @@ def log_usage(
 
     ensure_tables()
 
+    cid_norm = community_id
+    if community_id is not None and surface in STEVE_SURFACES:
+        try:
+            from backend.services.community import resolve_root_community_id
+
+            rid, _ = resolve_root_community_id(int(community_id))
+            cid_norm = int(rid)
+        except Exception:
+            cid_norm = community_id
+
     rtype = (request_type or surface)[:50]
     ph = get_sql_placeholder()
     now = _utc_now_str()
@@ -258,7 +268,7 @@ def log_usage(
                     1 if success else 0,
                     reason_blocked,
                     response_time_ms,
-                    community_id,
+                    cid_norm,
                     model,
                     now,
                 ),
@@ -418,6 +428,32 @@ def monthly_steve_count(username: str) -> int:
               AND created_at >= {ph}
             """,
             (username, *STEVE_SURFACES, _first_of_current_month_utc()),
+        )
+
+
+def community_monthly_steve_pool_usage(root_community_id: int) -> int:
+    """Steve calls this month attributed to ``root_community_id`` (shared pool).
+
+    Rows must use the **billing root** id on ``ai_usage_log.community_id``
+    (``log_usage`` normalizes subgroup ids for :data:`STEVE_SURFACES`).
+    """
+    if not root_community_id:
+        return 0
+    ensure_tables()
+    ph = get_sql_placeholder()
+    placeholders = ",".join([ph] * len(STEVE_SURFACES))
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        return _fetch_count(
+            c,
+            f"""
+            SELECT COUNT(*) AS cnt FROM ai_usage_log
+            WHERE community_id = {ph}
+              AND surface IN ({placeholders})
+              AND success = 1
+              AND created_at >= {ph}
+            """,
+            (int(root_community_id), *STEVE_SURFACES, _first_of_current_month_utc()),
         )
 
 

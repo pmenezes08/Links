@@ -22971,8 +22971,14 @@ def ai_steve_reply():
             from backend.services.entitlements_gate import check_steve_access
             from backend.services.feature_flags import entitlements_enforcement_enabled as _enforce
             _enforcement_on = _enforce()
+            _cid_int = None
+            if community_id is not None:
+                try:
+                    _cid_int = int(community_id)
+                except (TypeError, ValueError):
+                    _cid_int = None
             _allowed, _err_payload, _err_status, _ent = check_steve_access(
-                username, _ai_usage.SURFACE_FEED
+                username, _ai_usage.SURFACE_FEED, community_id=_cid_int
             )
             if not _allowed and _enforcement_on:
                 return jsonify(_err_payload), _err_status

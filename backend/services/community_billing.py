@@ -10,8 +10,19 @@ Stripe subscription:
     communities.subscription_status      — active / past_due / cancelled
     communities.current_period_end       — next renewal boundary
 
-The columns are added idempotently via ``ensure_tables()`` — safe to call
-on every boot (follows the same pattern as ``enterprise_membership`` and
+The tier Stripe subscription lives in ``stripe_subscription_id``. The
+optional **Steve Community Package** is a **second** Stripe subscription
+tracked in separate columns so tier lifecycle webhooks never overwrite
+Steve state and vice versa:
+
+    steve_package_stripe_subscription_id
+    steve_package_subscription_status
+    steve_package_current_period_end
+    steve_package_cancel_at_period_end
+    steve_package_canceled_at
+
+Columns are added idempotently via ``ensure_tables()`` — safe to call on
+every boot (follows the same pattern as ``enterprise_membership`` and
 ``community_lifecycle``). Keep the write helpers here, not inside the
 webhook blueprint, so the blueprint stays thin and the DB column layout
 has a single owner.
@@ -49,6 +60,11 @@ def ensure_tables() -> None:
             ("current_period_end", "DATETIME NULL"),
             ("cancel_at_period_end", "TINYINT(1) NOT NULL DEFAULT 0"),
             ("canceled_at", "DATETIME NULL"),
+            ("steve_package_stripe_subscription_id", "VARCHAR(64) NULL"),
+            ("steve_package_subscription_status", "VARCHAR(32) NULL"),
+            ("steve_package_current_period_end", "DATETIME NULL"),
+            ("steve_package_cancel_at_period_end", "TINYINT(1) NOT NULL DEFAULT 0"),
+            ("steve_package_canceled_at", "DATETIME NULL"),
         ):
             try:
                 c.execute(f"ALTER TABLE communities ADD COLUMN {column} {col_def}")
@@ -85,7 +101,12 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
                 f"""
                 SELECT tier, stripe_subscription_id, stripe_customer_id,
                        subscription_status, current_period_end,
-                       cancel_at_period_end, canceled_at
+                       cancel_at_period_end, canceled_at,
+                       steve_package_stripe_subscription_id,
+                       steve_package_subscription_status,
+                       steve_package_current_period_end,
+                       steve_package_cancel_at_period_end,
+                       steve_package_canceled_at
                 FROM communities WHERE id = {ph}
                 """,
                 (root_id,),
@@ -111,6 +132,13 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
                 "is_canceling": False,
                 "days_remaining": None,
                 "benefits_end_at": None,
+                "steve_package_stripe_subscription_id": None,
+                "steve_package_subscription_status": None,
+                "steve_package_current_period_end": None,
+                "steve_package_cancel_at_period_end": False,
+                "steve_package_canceled_at": None,
+                "steve_package_subscription_active": False,
+                "steve_package_is_canceling": False,
             }
         row = c.fetchone()
     if not row:
@@ -125,6 +153,18 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
     current_period_end_str = str(current_period_end) if current_period_end else None
     cancel_at_period_end = bool(_g("cancel_at_period_end", 5))
     canceled_at = _g("canceled_at", 6)
+
+    steve_sub_id = _g("steve_package_stripe_subscription_id", 7)
+    steve_status = _g("steve_package_subscription_status", 8)
+    steve_period_end = _g("steve_package_current_period_end", 9)
+    steve_cancel_end = bool(_g("steve_package_cancel_at_period_end", 10))
+    steve_canceled_at = _g("steve_package_canceled_at", 11)
+
+    steve_period_end_str = (
+        str(steve_period_end) if steve_period_end else None
+    )
+    steve_active = bool(steve_sub_id) and str(steve_status or "").lower() == "active"
+
     days_remaining = _days_until(current_period_end)
     return {
         "tier": _normalize_tier(_g("tier", 0)),
@@ -137,6 +177,15 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
         "is_canceling": cancel_at_period_end,
         "days_remaining": days_remaining,
         "benefits_end_at": current_period_end_str if cancel_at_period_end else None,
+        "steve_package_stripe_subscription_id": steve_sub_id,
+        "steve_package_subscription_status": steve_status,
+        "steve_package_current_period_end": steve_period_end_str,
+        "steve_package_cancel_at_period_end": steve_cancel_end,
+        "steve_package_canceled_at": (
+            str(steve_canceled_at) if steve_canceled_at else None
+        ),
+        "steve_package_subscription_active": steve_active,
+        "steve_package_is_canceling": steve_cancel_end,
     }
 
 
@@ -293,6 +342,94 @@ def find_by_subscription_id(subscription_id: str) -> Optional[int]:
         try:
             c.execute(
                 f"SELECT id FROM communities WHERE stripe_subscription_id = {ph} LIMIT 1",
+                (subscription_id,),
+            )
+            row = c.fetchone()
+        except Exception:
+            return None
+    if not row:
+        return None
+    return int(row["id"] if hasattr(row, "keys") else row[0])
+
+
+def has_active_steve_package(community_id: int) -> bool:
+    """Return True when the root community has an active Steve-package Stripe sub."""
+    state = get_billing_state(community_id) or {}
+    return bool(state.get("steve_package_subscription_active"))
+
+
+def mark_steve_package_subscription(
+    community_id: int,
+    *,
+    subscription_id: Optional[str] = None,
+    status: Optional[str] = None,
+    current_period_end: Any = None,
+    cancel_at_period_end: Optional[bool] = None,
+    canceled_at: Any = None,
+) -> bool:
+    """Persist Steve-package Stripe columns only (never tier subscription fields)."""
+    if not community_id:
+        return False
+
+    sets: list[str] = []
+    params: list[Any] = []
+    ph = get_sql_placeholder()
+
+    if subscription_id is not None:
+        sets.append(f"steve_package_stripe_subscription_id = {ph}")
+        params.append(subscription_id or None)
+    if status is not None:
+        sets.append(f"steve_package_subscription_status = {ph}")
+        params.append((status or "").strip().lower() or None)
+    if current_period_end is not None:
+        sets.append(f"steve_package_current_period_end = {ph}")
+        params.append(_coerce_period_end(current_period_end))
+    if cancel_at_period_end is not None:
+        sets.append(f"steve_package_cancel_at_period_end = {ph}")
+        params.append(1 if cancel_at_period_end else 0)
+    if canceled_at is not None:
+        sets.append(f"steve_package_canceled_at = {ph}")
+        params.append(_coerce_period_end(canceled_at))
+
+    if not sets:
+        return True
+
+    params.append(community_id)
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute(
+                f"UPDATE communities SET {', '.join(sets)} WHERE id = {ph}",
+                tuple(params),
+            )
+        except Exception:
+            logger.exception(
+                "community_billing.mark_steve_package_subscription: UPDATE failed for %s",
+                community_id,
+            )
+            return False
+        try:
+            conn.commit()
+        except Exception:
+            pass
+    return True
+
+
+def find_by_steve_package_subscription_id(subscription_id: str) -> Optional[int]:
+    """Resolve community root id from a Steve-package Stripe subscription id."""
+    if not subscription_id:
+        return None
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute(
+                f"""
+                SELECT id FROM communities
+                WHERE steve_package_stripe_subscription_id = {ph}
+                LIMIT 1
+                """,
                 (subscription_id,),
             )
             row = c.fetchone()

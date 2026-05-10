@@ -40,7 +40,7 @@ Short narratives for **how behaviour spans** Flask, Stripe, MySQL, Firestore, cr
 
 ## 4. Community billing (paid tier per community)
 
-Communities can have **Stripe-backed** billing separate from the user’s personal subscription. Flows live under **`backend/blueprints/communities.py`** and related services (Checkout, webhooks, dashboard). Treat **community** entitlements as their own Product journey when debugging “why can’t this coach enable feature X” — often **`stripe_account` / billing state**, not personal `users.subscription`.
+Communities can have **Stripe-backed** billing separate from the user’s personal subscription. Paid tiers use one Stripe subscription on the community row (`stripe_subscription_id`); owners may add a **Steve Community Package**, stored as a **second** subscription (`steve_package_*` columns) so tier webhooks and Steve-package webhooks never overwrite each other. **Steve Community Package** usage in feed/group contexts can draw from a **shared monthly pool** on the billing root (`ai_usage_log.community_id` normalized to the root for Steve surfaces); see **`entitlements_gate.check_steve_access`** with `community_id` and **`docs/STEVE_AND_VOICE_NOTES.md`**. Flows live under **`backend/blueprints/subscriptions.py`**, **`subscription_webhooks.py`**, and related services.
 
 ---
 

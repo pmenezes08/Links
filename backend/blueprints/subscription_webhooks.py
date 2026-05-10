@@ -86,6 +86,8 @@ def stripe_webhook():
             _handle_invoice_paid(obj)
         elif sku == "community_tier":
             _handle_community_tier_event(event_type, obj, username)
+        elif sku == "steve_package":
+            _handle_steve_package_event(event_type, obj, username)
         else:
             _handle_premium_event(event_type, obj, username)
     except Exception:
@@ -343,6 +345,116 @@ def _handle_community_tier_event(
         logger.info("stripe_webhook: unhandled community_tier event %s", event_type)
 
 
+def _handle_steve_package_event(
+    event_type: str,
+    obj: Dict[str, Any],
+    username: Optional[str],
+) -> None:
+    """Steve Community Package — second Stripe subscription on ``communities``."""
+
+    community_id = _extract_community_id(obj)
+    subscription_id = (
+        obj.get("subscription")
+        if event_type == "checkout.session.completed"
+        else obj.get("id")
+    )
+    customer_id = obj.get("customer")
+
+    if not community_id and subscription_id:
+        community_id = community_billing.find_by_steve_package_subscription_id(
+            str(subscription_id)
+        )
+
+    if not community_id:
+        logger.warning(
+            "stripe_webhook: steve_package event %s missing community_id (sub=%s)",
+            event_type,
+            subscription_id,
+        )
+        return
+
+    if event_type == "checkout.session.completed":
+        if not subscription_id:
+            logger.warning(
+                "stripe_webhook: steve_package checkout.session.completed missing "
+                "subscription (community=%s)",
+                community_id,
+            )
+            return
+        subscription_snapshot = _retrieve_subscription_snapshot(subscription_id)
+        community_billing.mark_steve_package_subscription(
+            community_id,
+            subscription_id=str(subscription_id or ""),
+            status="active",
+            current_period_end=subscription_snapshot.get("current_period_end"),
+            cancel_at_period_end=False,
+        )
+        subscription_audit.log(
+            username=username or "",
+            action="steve_package_purchased",
+            source="stripe",
+            metadata={"event_type": event_type,
+                      "community_id": community_id,
+                      "subscription_id": subscription_id,
+                      "customer": customer_id},
+        )
+    elif event_type == "customer.subscription.deleted":
+        community_billing.mark_steve_package_subscription(
+            community_id,
+            status="cancelled",
+            current_period_end=obj.get("current_period_end"),
+            cancel_at_period_end=False,
+            canceled_at=obj.get("canceled_at") or obj.get("ended_at"),
+        )
+        subscription_audit.log(
+            username=username or "",
+            action="steve_package_cancelled",
+            source="stripe",
+            metadata={"event_type": event_type,
+                      "community_id": community_id,
+                      "subscription_id": subscription_id,
+                      "customer": customer_id},
+        )
+    elif event_type in ("customer.subscription.updated", "customer.subscription.created"):
+        status = (obj.get("status") or "").lower() or None
+        cancel_at_period_end = bool(obj.get("cancel_at_period_end"))
+        community_billing.mark_steve_package_subscription(
+            community_id,
+            subscription_id=str(subscription_id or ""),
+            status=status,
+            current_period_end=obj.get("current_period_end"),
+            cancel_at_period_end=cancel_at_period_end,
+            canceled_at=obj.get("canceled_at"),
+        )
+        subscription_audit.log(
+            username=username or "",
+            action="steve_package_renewed" if status == "active" and not cancel_at_period_end
+                   else "steve_package_updated",
+            source="stripe",
+            metadata={"event_type": event_type,
+                      "community_id": community_id,
+                      "subscription_id": subscription_id,
+                      "status": status,
+                      "cancel_at_period_end": cancel_at_period_end},
+        )
+    elif event_type == "invoice.payment_failed":
+        community_billing.mark_steve_package_subscription(
+            community_id,
+            status="past_due",
+        )
+        subscription_audit.log(
+            username=username or "",
+            action="steve_package_past_due",
+            source="stripe",
+            reason="invoice_payment_failed",
+            metadata={"event_type": event_type,
+                      "community_id": community_id,
+                      "invoice": obj.get("id")},
+        )
+    else:
+        logger.info("stripe_webhook: unhandled steve_package event %s", event_type)
+
+
 def _handle_invoice_paid(obj: Dict[str, Any]) -> None:
     inserted = subscription_billing_ledger.record_invoice_payment(obj)
     logger.info("stripe_webhook: invoice payment ledger insert=%s invoice=%s",
@@ -427,18 +539,19 @@ def _extract_username_from_stripe(obj: Dict[str, Any]) -> Optional[str]:
 def _extract_sku(obj: Dict[str, Any]) -> str:
     """Return the SKU stored in Checkout / Subscription metadata.
 
-    We set ``metadata.sku = 'premium' | 'community_tier'`` in
-    :mod:`backend.blueprints.subscriptions` at Checkout creation. Missing
-    or unknown values default to ``'premium'`` so legacy Checkouts (from
-    pre-Step-E) still route to the personal-Premium handler.
+    We set ``metadata.sku`` in :mod:`backend.blueprints.subscriptions` at
+    Checkout creation. Missing or unknown values default to ``'premium'``
+    so legacy Checkouts still route to the personal-Premium handler.
     """
     metadata = obj.get("metadata") or {}
     sku = str(metadata.get("sku") or "").strip().lower()
-    if sku in ("premium", "community_tier"):
+    if sku in ("premium", "community_tier", "steve_package"):
         return sku
     plan_id = str(metadata.get("plan_id") or "").strip().lower()
     if plan_id == "community_tier":
         return "community_tier"
+    if plan_id == "steve_package":
+        return "steve_package"
     return "premium"
 
 
