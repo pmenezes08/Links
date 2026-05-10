@@ -14,7 +14,12 @@ import { GroupMessageRow } from '../chat/GroupMessageRow'
 import { getDateKey, normalizeMediaPath } from '../chat'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
+import { useEntitlements } from '../hooks/useEntitlements'
 import { isEntitlementsError } from '../utils/entitlementsError'
+import {
+  buildClientPremiumRequiredError,
+  shouldClientBlockSteveIntent,
+} from '../utils/steveClientGate'
 import ZoomableImage from '../components/ZoomableImage'
 import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
@@ -146,6 +151,25 @@ export default function GroupChatThread() {
     || localStorage.getItem('current_username') 
     || ''
   const entitlementsHandler = useEntitlementsHandler()
+  const { entitlements, enforcement_enabled, loading: entitlementsLoading } = useEntitlements()
+  const tryBlockSteveIntentSend = useCallback(
+    (text: string) => {
+      if (
+        !shouldClientBlockSteveIntent({
+          enforcement_enabled,
+          loading: entitlementsLoading,
+          entitlements,
+          isSteveDm: false,
+          text,
+        })
+      ) {
+        return false
+      }
+      entitlementsHandler.showError(buildClientPremiumRequiredError())
+      return true
+    },
+    [enforcement_enabled, entitlementsLoading, entitlements, entitlementsHandler],
+  )
   const [group, setGroup] = useState<GroupInfo | null>(null)
   const [serverMessages, setServerMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
@@ -985,18 +1009,38 @@ export default function GroupChatThread() {
   const handleSend = useCallback(() => {
     // Get text directly from textarea (uncontrolled)
     const text = (textareaRef.current?.value || '').trim()
-    
+
     // Use ref for synchronous check to prevent double-sends
     if (!text || sendingLockRef.current) return
+
+    // Capture reply state before clearing — compute outbound payload for Steve gate
+    const replySnapshot = replyTo
+    let formattedMessage = text
+    if (replySnapshot) {
+      let replySnippet: string
+      if (replySnapshot.image) {
+        replySnippet = `📷|${replySnapshot.image}|${(replySnapshot.text || 'Photo').slice(0, 60)}`
+      } else if (replySnapshot.video) {
+        const caption = replySnapshot.text || 'Video'
+        replySnippet = `🎥|${replySnapshot.video}|${caption.slice(0, 60)}`
+      } else if (replySnapshot.voice) {
+        const summarySnippet = replySnapshot.audio_summary ? replySnapshot.audio_summary.slice(0, 80) : ''
+        replySnippet = summarySnippet ? `🎤|${summarySnippet}` : '🎤|Voice message'
+      } else {
+        replySnippet = replySnapshot.text.length > 90 ? replySnapshot.text.slice(0, 90) + '…' : replySnapshot.text
+      }
+      formattedMessage = `[REPLY:${replySnapshot.sender}:${replySnippet}]\n${text}`
+    }
+
+    if (tryBlockSteveIntentSend(formattedMessage)) return
 
     // Lock immediately (synchronous) to prevent double-clicks
     sendingLockRef.current = true
     justSentRef.current = true
     skipNextPollsUntil.current = Date.now() + 800
-    setTimeout(() => { justSentRef.current = false }, 400)
-    
-    // Capture reply state before clearing
-    const replySnapshot = replyTo
+    setTimeout(() => {
+      justSentRef.current = false
+    }, 400)
 
     // Cancel any pending draft save timer FIRST to prevent race condition
     if (draftSaveTimeoutRef.current) {
@@ -1018,9 +1062,7 @@ export default function GroupChatThread() {
     }
 
     setReplyTo(null)
-    
-    // Format message with reply if needed
-    let formattedMessage = text
+
     let replySnippet: string | undefined
     if (replySnapshot) {
       if (replySnapshot.image) {
@@ -1034,9 +1076,8 @@ export default function GroupChatThread() {
       } else {
         replySnippet = replySnapshot.text.length > 90 ? replySnapshot.text.slice(0, 90) + '…' : replySnapshot.text
       }
-      formattedMessage = `[REPLY:${replySnapshot.sender}:${replySnippet}]\n${text}`
     }
-    
+
     const now = new Date().toISOString()
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`
     const optimisticMessage: Message & { clientKey: string; replySnippet?: string; replySender?: string; isOptimistic: boolean; sendFailed?: boolean; _originalMessage?: string } = {
@@ -1130,12 +1171,13 @@ export default function GroupChatThread() {
       .finally(() => {
         sendingLockRef.current = false
       })
-  }, [group_id, currentUsername, loadMessages, replyTo])
+  }, [group_id, currentUsername, loadMessages, replyTo, tryBlockSteveIntentSend])
 
   const retryFailedMessage = useCallback((clientKey: string) => {
     const msg = serverMessages.find(m => (m as any).clientKey === clientKey)
     if (!msg) return
     const originalMessage = (msg as any)._originalMessage || msg.text || ''
+    if (tryBlockSteveIntentSend(originalMessage)) return
     setServerMessages(prev => prev.map(m =>
       (m as any).clientKey === clientKey ? { ...m, sendFailed: false, isOptimistic: true } : m
     ))
@@ -1190,7 +1232,7 @@ export default function GroupChatThread() {
         clearTimeout(retryTimeout)
         markRetryFailed()
       })
-  }, [group_id, serverMessages])
+  }, [group_id, serverMessages, tryBlockSteveIntentSend, entitlementsHandler])
 
   // Handle @mention selection
   const handleMentionSelect = useCallback((username: string) => {

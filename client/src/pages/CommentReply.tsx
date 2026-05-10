@@ -17,9 +17,14 @@ import { openExternalInApp } from '../utils/openExternalInApp'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import EditableAISummary from '../components/EditableAISummary'
 import { isVideoAttachmentPath } from '../utils/replyMedia'
-import { ENTITLEMENTS_REFRESH_EVENT } from '../hooks/useEntitlements'
+import { ENTITLEMENTS_REFRESH_EVENT, useEntitlements } from '../hooks/useEntitlements'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
 import { clearDeviceCache } from '../utils/deviceCache'
+import {
+  buildClientPremiumRequiredError,
+  mentionsSteve,
+  shouldClientBlockSteveIntent,
+} from '../utils/steveClientGate'
 
 function replyDisplayUrl(raw: string | null | undefined): string {
   const s = (raw ?? '').trim()
@@ -76,6 +81,26 @@ export default function CommentReply() {
   const { reply_id } = useParams<{ reply_id: string }>()
   const navigate = useNavigate()
   const entitlementsHandler = useEntitlementsHandler()
+  const { entitlements, enforcement_enabled, loading: entitlementsLoading } = useEntitlements()
+  const blockSteveMentionReply = useCallback(
+    (text: string) => {
+      if (!mentionsSteve(text)) return false
+      if (
+        !shouldClientBlockSteveIntent({
+          enforcement_enabled,
+          loading: entitlementsLoading,
+          entitlements,
+          isSteveDm: false,
+          text,
+        })
+      ) {
+        return false
+      }
+      entitlementsHandler.showError(buildClientPremiumRequiredError())
+      return true
+    },
+    [enforcement_enabled, entitlementsLoading, entitlements, entitlementsHandler],
+  )
   const mainReplyRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
   const [reply, setReply] = useState<Reply | null>(null)
@@ -139,6 +164,7 @@ export default function CommentReply() {
       console.log('[Steve AI] No @Steve mention found, skipping')
       return
     }
+    if (blockSteveMentionReply(userMessage)) return
     
     try {
       console.log('[Steve AI] Calling API...')
@@ -517,6 +543,8 @@ export default function CommentReply() {
     if (!reply || !post) return
     const hasMedia = !!(selectedGif || file || uploadFile || replyPreview?.blob)
     if (!replyText.trim() && !hasMedia) return
+    const messageText = replyText.trim()
+    if (blockSteveMentionReply(messageText)) return
     setSendingReply(true)
     try {
       const fd = new FormData()

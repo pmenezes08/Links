@@ -8,6 +8,11 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
+import { useEntitlements } from '../hooks/useEntitlements'
+import {
+  buildClientPremiumRequiredError,
+  shouldClientBlockSteveIntent,
+} from '../utils/steveClientGate'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
@@ -67,12 +72,31 @@ export default function ChatThread(){
   const { refreshBadges } = useBadges()
   const { profile: myProfile } = useUserProfile()
   const entitlementsHandler = useEntitlementsHandler()
-  const viewer = (myProfile as { username?: string } | null)?.username
   const { username } = useParams()
+  const { entitlements, enforcement_enabled, loading: entitlementsLoading } = useEntitlements()
+  const isSteveDm = (username || '').toLowerCase() === 'steve'
+  const tryBlockSteveIntentSend = useCallback(
+    (text: string) => {
+      if (
+        !shouldClientBlockSteveIntent({
+          enforcement_enabled,
+          loading: entitlementsLoading,
+          entitlements,
+          isSteveDm,
+          text,
+        })
+      ) {
+        return false
+      }
+      entitlementsHandler.showError(buildClientPremiumRequiredError())
+      return true
+    },
+    [enforcement_enabled, entitlementsLoading, entitlements, isSteveDm, entitlementsHandler],
+  )
+  const viewer = (myProfile as { username?: string } | null)?.username
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const profilePath = username ? `/profile/${encodeURIComponent(username)}` : null
-  const isSteveDm = (username || '').toLowerCase() === 'steve'
   const mentionToProfile = useCallback((u: string) => {
     navigate(`/profile/${encodeURIComponent(u)}`)
   }, [navigate])
@@ -1466,7 +1490,9 @@ export default function ChatThread(){
   async function send(){
     const messageText = (textareaRef.current?.value || '').trim()
     if (!messageText || sendingLockRef.current) return
-    
+
+    if (tryBlockSteveIntentSend(messageText)) return
+
     sendingLockRef.current = true
     justSentRef.current = true
     setTimeout(() => { justSentRef.current = false }, 400)
@@ -1679,6 +1705,7 @@ export default function ChatThread(){
     const msg = messages.find(m => (m.clientKey || m.id) === clientKey)
     if (!msg) return
     const originalMessage = msg._originalMessage || msg.text || ''
+    if (tryBlockSteveIntentSend(originalMessage)) return
     const resolvedId = otherUserId
     if (!resolvedId) return
 
@@ -1817,6 +1844,7 @@ export default function ChatThread(){
 
   async function confirmSendMedia() {
     if (pendingMedia.length === 0 || !otherUserId) return
+    if (tryBlockSteveIntentSend('')) return
     const mediaToSend = [...pendingMedia]
     const audios = mediaToSend.filter(i => i.type === 'audio')
     const imagesAndVideos = mediaToSend.filter(i => i.type === 'image' || i.type === 'video')
@@ -1897,6 +1925,7 @@ export default function ChatThread(){
 
   async function handleGifSelection(gif: GifSelection) {
     if (!otherUserId) return
+    if (tryBlockSteveIntentSend('')) return
     try {
       const file = await gifSelectionToFile(gif, 'chat-gif')
       handleImageFile(file, 'gif')
@@ -1907,6 +1936,7 @@ export default function ChatThread(){
   }
 
   function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo', cleanup?: () => void) {
+    if (tryBlockSteveIntentSend('')) return
     sendImageMessage({
       file,
       kind,
@@ -1923,6 +1953,7 @@ export default function ChatThread(){
   }
 
   function handleVideoFile(file: File, cleanup?: () => void) {
+    if (tryBlockSteveIntentSend('')) return
     sendVideoMessage({
       file,
       otherUserId,
@@ -2003,6 +2034,7 @@ export default function ChatThread(){
 
   async function uploadSharedAudioFile(file: File) {
     if (!otherUserId) return
+    if (tryBlockSteveIntentSend('')) return
     setSending(true)
     skipNextPollsUntil.current = Date.now() + 5000
     const tempId = `temp_audio_${Date.now()}_${Math.random().toString(36).slice(2)}`
@@ -2093,6 +2125,8 @@ export default function ChatThread(){
     if (!blob || blob.size === 0) {
       return
     }
+
+    if (tryBlockSteveIntentSend('')) return
     
     setSending(true)
     // Pause polling longer for audio uploads (they take more time than text)
@@ -2241,6 +2275,8 @@ export default function ChatThread(){
     if (!blob || blob.size === 0) {
       return
     }
+
+    if (tryBlockSteveIntentSend('')) return
     
     setSending(true)
     // Pause polling for audio uploads

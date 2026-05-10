@@ -19,7 +19,7 @@ import ImageLoader from '../components/ImageLoader'
 import ZoomableImage from '../components/ZoomableImage'
 import { useHeader } from '../contexts/HeaderContext'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
-import { ENTITLEMENTS_REFRESH_EVENT } from '../hooks/useEntitlements'
+import { ENTITLEMENTS_REFRESH_EVENT, useEntitlements } from '../hooks/useEntitlements'
 import VideoEmbed from '../components/VideoEmbed'
 import LinkPreview, { feedPostLinkPreviewUrls } from '../components/LinkPreview'
 import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
@@ -41,6 +41,11 @@ import { useUserProfile } from '../contexts/UserProfileContext'
 import { useBadges } from '../contexts/BadgeContext'
 import { useLogoutRequest } from '../contexts/LogoutPromptContext'
 import { openExternalInApp } from '../utils/openExternalInApp'
+import {
+  buildClientPremiumRequiredError,
+  mentionsSteve,
+  shouldClientBlockSteveIntent,
+} from '../utils/steveClientGate'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
@@ -4018,6 +4023,26 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     navigate?.(`/profile/${encodeURIComponent(u)}`)
   }, [navigate])
   const entitlementsHandler = useEntitlementsHandler()
+  const { entitlements, enforcement_enabled, loading: entitlementsLoading } = useEntitlements()
+  const blockSteveMentionReply = useCallback(
+    (text: string) => {
+      if (!mentionsSteve(text)) return false
+      if (
+        !shouldClientBlockSteveIntent({
+          enforcement_enabled,
+          loading: entitlementsLoading,
+          entitlements,
+          isSteveDm: false,
+          text,
+        })
+      ) {
+        return false
+      }
+      entitlementsHandler.showError(buildClientPremiumRequiredError())
+      return true
+    },
+    [enforcement_enabled, entitlementsLoading, entitlements, entitlementsHandler],
+  )
   const openExternalArticle = useCallback((url: string) => {
     void openExternalInApp(url)
   }, [])
@@ -4119,7 +4144,10 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
       console.log('[Steve AI] No @Steve mention found, skipping')
       return
     }
-    
+    if (blockSteveMentionReply(userMessage)) {
+      return
+    }
+
     try {
       console.log('[Steve AI] Calling API...')
       setSteveIsTyping(true)
@@ -5074,6 +5102,8 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                               ev.stopPropagation()
                               if (sendingChildReply || (!childReplyText.trim() && !childReplyGif)) return
                               if (!navigator.onLine) { alert('Go back online to reply'); return }
+                              const messageText = childReplyText.trim()
+                              if (blockSteveMentionReply(messageText)) return
                               try{
                                 setSendingChildReply(true)
                                 const fd = new FormData()
@@ -5202,6 +5232,8 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                 onClick={async ()=>{
                   if (sendingReply || (!replyText.trim() && !replyGif)) return
                   if (!navigator.onLine) { alert('Go back online to reply'); return }
+                  const messageText = replyText.trim()
+                  if (blockSteveMentionReply(messageText)) return
                     try{
                       setSendingReply(true)
                       const fd = new FormData()

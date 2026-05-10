@@ -23,7 +23,12 @@ import { renderRichText } from '../utils/linkUtils'
 import { isVideoAttachmentPath } from '../utils/replyMedia'
 import { openExternalInApp } from '../utils/openExternalInApp'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
-import { ENTITLEMENTS_REFRESH_EVENT } from '../hooks/useEntitlements'
+import { ENTITLEMENTS_REFRESH_EVENT, useEntitlements } from '../hooks/useEntitlements'
+import {
+  buildClientPremiumRequiredError,
+  mentionsSteve,
+  shouldClientBlockSteveIntent,
+} from '../utils/steveClientGate'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, audio_path?: string|null, audio_summary?: string|null, reply_count?: number, view_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
@@ -65,6 +70,26 @@ export default function PostDetail(){
   const navigate = useNavigate()
   const location = useLocation()
   const entitlementsHandler = useEntitlementsHandler()
+  const { entitlements, enforcement_enabled, loading: entitlementsLoading } = useEntitlements()
+  const blockSteveMentionReply = useCallback(
+    (text: string) => {
+      if (!mentionsSteve(text)) return false
+      if (
+        !shouldClientBlockSteveIntent({
+          enforcement_enabled,
+          loading: entitlementsLoading,
+          entitlements,
+          isSteveDm: false,
+          text,
+        })
+      ) {
+        return false
+      }
+      entitlementsHandler.showError(buildClientPremiumRequiredError())
+      return true
+    },
+    [enforcement_enabled, entitlementsLoading, entitlements, entitlementsHandler],
+  )
   const [post, setPost] = useState<Post|null>(null)
   const [isGroupPost, setIsGroupPost] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -106,6 +131,7 @@ export default function PostDetail(){
   // (see docs/STEVE_PRIVACY_GATE.md and backend steve_reply endpoint)
   const callSteveAI = async (userMessage: string, parentReplyId: number | null) => {
     if (!post || !containsSteveMention(userMessage)) return
+    if (blockSteveMentionReply(userMessage)) return
     const communityIdRaw = (post as { community_id?: number | string | null }).community_id
     const communityId =
       communityIdRaw !== undefined && communityIdRaw !== null && communityIdRaw !== ''
@@ -891,6 +917,9 @@ export default function PostDetail(){
   async function submitReply(parentReplyId?: number){
     if (!post || (!content && !file && !replyPreview?.blob && !replyGif)) return
     if (submittingReply) return
+
+    const messageText = content.trim()
+    if (blockSteveMentionReply(messageText)) return
     
     setSubmittingReply(true)
     const fd = new FormData()
@@ -960,6 +989,7 @@ export default function PostDetail(){
   async function submitInlineReply(parentId: number, text: string, file?: File, voiceDurationSec?: number){
     if (!post || (!text && !file)) return
     if (inlineSending[parentId]) return
+    if (blockSteveMentionReply((text || '').trim())) return
     setInlineSending(s => ({ ...s, [parentId]: true }))
     const fd = new FormData()
     if (isGroupPost) {
