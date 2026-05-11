@@ -123,6 +123,7 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | `whisper_service.py` | Gated Whisper wrapper; duration → usage logging. |
 | `steve_model_config.py` | Official xAI Grok 4.3 pricing, KB-backed token caps, response usage extraction, and shared cost estimation for Steve surfaces. |
 | `steve_prompt_policy.py` | Shared adaptive prompt policy for Steve: casual vs substantive modes, structured Markdown/bullets, internal reasoning guidance, and context-use heuristics. |
+| `steve_tool_policy.py` | When community-feed Steve passes `web_search` / `x_search` into Grok: phrase-based live-info signals plus KB (`paid_steve_package_*` explicit-only and default-search flags). |
 
 ### Billing & subscriptions
 

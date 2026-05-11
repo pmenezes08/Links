@@ -7,6 +7,7 @@ import json
 import re
 import os
 import threading
+import time
 from datetime import datetime
 from functools import wraps
 
@@ -19,6 +20,7 @@ from backend.services import ai_usage, auth_session, session_identity
 from backend.services.entitlements_gate import gate_or_reason, check_steve_access
 from backend.services.feature_flags import entitlements_enforcement_enabled
 from backend.services.steve_dm_typing import clear_group_typing, is_group_typing, mark_group_typing
+from backend.services.steve_tool_policy import steve_tool_names_for_log
 
 # Allowed extensions for chat uploads
 # Include HEIC/HEIF for iOS devices
@@ -3368,12 +3370,20 @@ RESPONSE FORMAT:
         
         ai_response = None
         
-        logger.info(f"Steve using Grok reasoning with web+X search for group {group_id}")
+        _group_tools = [] if (platform_question or professional_advice_question) else [
+            {"type": "web_search"},
+            {"type": "x_search"},
+        ]
+        logger.info(
+            "Steve Grok group %s tools=%s",
+            group_id,
+            steve_tool_names_for_log(_group_tools),
+        )
         client = OpenAI(
             api_key=XAI_API_KEY,
-            base_url="https://api.x.ai/v1"
+            base_url="https://api.x.ai/v1",
         )
-        
+
         try:
             # Apply entitlement caps resolved earlier in this function.
             _max_out = model_config.max_output_tokens_group
@@ -3406,10 +3416,7 @@ RESPONSE FORMAT:
                     {"role": "system", "content": effective_system},
                     {"role": "user", "content": user_content}
                 ],
-                tools=[] if (platform_question or professional_advice_question) else [
-                    {"type": "web_search"},
-                    {"type": "x_search"}
-                ],
+                tools=_group_tools,
                 max_output_tokens=_max_out
             )
             response_time_ms = int((time.perf_counter() - started) * 1000)

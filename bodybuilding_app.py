@@ -101,6 +101,11 @@ from backend.services.reactions import (
     get_post_reaction_summary,
     get_reply_reaction_summary,
 )
+from backend.services.steve_tool_policy import (
+    steve_tool_names_for_log as _steve_tool_names_for_log,
+    steve_tools_for_message as _steve_tools_for_message,
+)
+
 try:
     from PIL import Image
     PIL_AVAILABLE = True
@@ -117,8 +122,7 @@ except ImportError as e:
     print(f"ERROR OpenAI not available: {e}")
     print("   Run: pip install openai")
 
-# Note: xAI SDK with web_search requires specific setup that doesn't work via OpenAI-compatible API
-# For now, Steve uses xAI/Grok without live web search
+# Hosted Grok Responses API attaches web_search / x_search per steve_tool_policy + KB flags.
 XAI_SDK_AVAILABLE = False
 
 # Founder awareness is now handled at the network synthesis level in steve_knowledge_base.py
@@ -22698,48 +22702,6 @@ def _needs_community_analysis(message: str) -> bool:
     return False
 
 
-def _steve_external_search_requested(message: str) -> bool:
-    """True only when the user explicitly asks Steve for external/current info."""
-    if not message:
-        return False
-    text = message.lower()
-    explicit_phrases = (
-        "search the web",
-        "web search",
-        "look up",
-        "google",
-        "latest news",
-        "current news",
-        "what's happening now",
-        "what is happening now",
-        "check x",
-        "check twitter",
-        "on x",
-        "on twitter",
-    )
-    return any(phrase in text for phrase in explicit_phrases)
-
-
-def _steve_tools_for_message(message: str, *, platform_question: bool = False, professional_advice_question: bool = False, config=None):
-    """KB policy: external tools are opt-in for community Steve."""
-    if platform_question or professional_advice_question:
-        return []
-    explicit = _steve_external_search_requested(message)
-    if config and not getattr(config, "external_search_explicit_only", True):
-        explicit = explicit or bool(
-            getattr(config, "web_search_default_enabled", False)
-            or getattr(config, "x_search_default_enabled", False)
-        )
-    if not explicit:
-        return []
-    tools = []
-    if not config or getattr(config, "web_search_default_enabled", False) or getattr(config, "external_search_explicit_only", True):
-        tools.append({"type": "web_search"})
-    if not config or getattr(config, "x_search_default_enabled", False) or getattr(config, "external_search_explicit_only", True):
-        tools.append({"type": "x_search"})
-    return tools
-
-
 def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username: str, community_id: int,
                                  image_path: str = None, video_path: str = None, media_paths: str = None):
     """
@@ -22947,7 +22909,17 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             
             ai_response = None
             try:
-                logger.info(f"Steve post reply using Grok reasoning with web+X search ({ai_personality} mode)")
+                _feed_tools = _steve_tools_for_message(
+                    post_content,
+                    platform_question=platform_question,
+                    professional_advice_question=professional_advice_question,
+                    config=steve_config,
+                )
+                logger.info(
+                    "Steve post reply Grok call tools=%s (%s mode)",
+                    _steve_tool_names_for_log(_feed_tools),
+                    ai_personality,
+                )
                 client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
                 
                 # Build user content - include images if present (Grok supports vision)
@@ -22979,19 +22951,14 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                         {"role": "system", "content": effective_system},
                         {"role": "user", "content": user_content}
                     ],
-                    tools=_steve_tools_for_message(
-                        post_content,
-                        platform_question=platform_question,
-                        professional_advice_question=professional_advice_question,
-                        config=steve_config,
-                    ),
+                    tools=_feed_tools,
                     max_output_tokens=max_output_tokens
                 )
                 response_time_ms = int((time.perf_counter() - started) * 1000)
                 
                 ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
                 if ai_response:
-                    logger.info("Steve post reply Grok reasoning successful")
+                    logger.info("Steve post reply Grok succeeded tools=%s", _steve_tool_names_for_log(_feed_tools))
                     
             except Exception as ai_err:
                 logger.error(f"AI error in Steve post reply: {ai_err}")
@@ -23451,7 +23418,13 @@ def ai_steve_reply():
             logger.info(f"Steve routing: community feed model {model_to_use} for: {user_message[:60]}...")
             
             try:
-                logger.info(f"Steve using {model_to_use} with web+X search ({ai_personality} mode)")
+                _reply_tools = _steve_tools_for_message(user_message, config=steve_config)
+                logger.info(
+                    "Steve reply Grok model=%s tools=%s (%s mode)",
+                    model_to_use,
+                    _steve_tool_names_for_log(_reply_tools),
+                    ai_personality,
+                )
                 client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
                 
                 # Build user content - include images if present (Grok supports vision)
@@ -23483,14 +23456,14 @@ def ai_steve_reply():
                         {"role": "system", "content": effective_system},
                         {"role": "user", "content": user_content}
                     ],
-                    tools=_steve_tools_for_message(user_message, config=steve_config),
+                    tools=_reply_tools,
                     max_output_tokens=max_output_tokens
                 )
                 response_time_ms = int((time.perf_counter() - started) * 1000)
                 
                 ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
                 if ai_response:
-                    logger.info("Steve Grok reasoning with web+X search successful")
+                    logger.info("Steve reply Grok call completed tools=%s", _steve_tool_names_for_log(_reply_tools))
                 
                 if ai_response is None:
                     logger.error("Grok reasoning returned empty response")
