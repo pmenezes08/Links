@@ -27,6 +27,7 @@ from backend.services import community as community_svc
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.entitlements import resolve_entitlements
 from backend.services.feature_flags import entitlements_enforcement_enabled
+from backend.services.steve_community_config import get_paid_steve_package_config
 
 
 logger = logging.getLogger(__name__)
@@ -128,6 +129,7 @@ def check_steve_access(
         return False, payload, status, {}
 
     kb_fields = _community_tiers_field_map()
+    steve_pkg_config = get_paid_steve_package_config(kb_fields)
     premium_priority = _truthy_kb(
         kb_fields.get("paid_steve_package_premium_priority"), True
     )
@@ -146,6 +148,7 @@ def check_steve_access(
     pool_active = False
     pool_cap = 0
     pool_used = 0
+    provider_cost_exhausted = False
     member_ctx = False
 
     if community_id is not None and surface in ai_usage.STEVE_SURFACES:
@@ -158,17 +161,24 @@ def check_steve_access(
             root_id, _ = community_svc.resolve_root_community_id(cid_ctx)
             pool_active = community_billing.has_active_steve_package(root_id)
             if pool_active:
-                raw_cap = kb_fields.get("paid_steve_package_monthly_credit_pool")
-                try:
-                    pool_cap = int(raw_cap) if raw_cap is not None else 0
-                except (TypeError, ValueError):
-                    pool_cap = 0
-                pool_cap = max(0, pool_cap)
+                pool_cap = max(0, int(steve_pkg_config.monthly_credit_pool or 0))
                 if pool_cap > 0:
                     pool_used = ai_usage.community_monthly_steve_pool_usage(root_id)
+                ceiling = float(steve_pkg_config.monthly_provider_cost_ceiling_usd or 0)
+                reservation = float(steve_pkg_config.provider_cost_reservation_usd or 0)
+                if ceiling > 0 and reservation > 0:
+                    try:
+                        spent = ai_usage.monthly_community_spend_usd(root_id)
+                        provider_cost_exhausted = (spent + reservation) > ceiling
+                    except Exception as err:
+                        logger.warning(
+                            "community provider spend check failed (failing open): community=%s err=%s",
+                            root_id,
+                            err,
+                        )
 
-    pool_has_room = pool_cap > 0 and pool_used < pool_cap
-    pool_exhausted = pool_cap > 0 and pool_used >= pool_cap
+    pool_has_room = pool_cap > 0 and pool_used < pool_cap and not provider_cost_exhausted
+    pool_exhausted = (pool_cap > 0 and pool_used >= pool_cap) or provider_cost_exhausted
     uses_community_pool = (
         surface in ai_usage.STEVE_SURFACES
         and pool_active
@@ -182,6 +192,9 @@ def check_steve_access(
             )
         )
     )
+    ent["steve_billing_source"] = "community_pool" if uses_community_pool else "personal"
+    ent["steve_billing_root_community_id"] = root_id if uses_community_pool else None
+    ent["steve_community_provider_cost_exhausted"] = provider_cost_exhausted
 
     # 1. Tier gate — Premium/Special/Enterprise seat OR eligible pool member.
     if ent.get("can_use_steve"):

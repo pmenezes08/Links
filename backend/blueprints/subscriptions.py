@@ -49,6 +49,7 @@ from backend.services import (
     user_billing,
 )
 from backend.services.database import get_db_connection, get_sql_placeholder
+from backend.services.steve_community_config import get_paid_steve_package_config
 from backend.services.stripe_subscription_sync import sync_community_tier_subscription_from_stripe
 from backend.services.subscription_health import (
     derive_community_subscription_health,
@@ -148,11 +149,7 @@ def _steve_pool_snapshot(root_community_id: int, state: Dict[str, Any]) -> Dict[
     """Shared Steve package pool counters for Manage Community surfaces."""
     active = bool(state.get("steve_package_subscription_active"))
     fields = _kb_field_map("community-tiers")
-    try:
-        cap = int(fields.get("paid_steve_package_monthly_credit_pool") or 0)
-    except (TypeError, ValueError):
-        cap = 0
-    cap = max(0, cap)
+    cap = max(0, get_paid_steve_package_config(fields).monthly_credit_pool)
     used = ai_usage.community_monthly_steve_pool_usage(root_community_id) if active and cap > 0 else 0
     return {
         "steve_package_subscription_active": active,
@@ -267,7 +264,7 @@ _PREMIUM_FEATURE_BULLETS: Tuple[str, ...] = (
 )
 
 _STEVE_PACKAGE_FEATURE_BULLETS: Tuple[str, ...] = (
-    "Shared community Steve credit pool (~300 / month)",
+    "Shared community Steve call pool (200 / month)",
     "Premium members spend the pool before their personal credits",
     "Free members can join the pool while it lasts",
     "Opt-in add-on for Paid communities — included on Enterprise",
@@ -341,8 +338,8 @@ def _community_tier_payload(fields: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _steve_package_payload(fields: Dict[str, Any]) -> Dict[str, Any]:
+    config = get_paid_steve_package_config(fields)
     price_eur = fields.get("paid_steve_package_price_eur_monthly")
-    pool = fields.get("paid_steve_package_monthly_credit_pool")
     price_id = _price_id_from_kb("community-tiers", "paid_steve_package_stripe_price_id")
     purchasable = bool(price_id)
     return {
@@ -350,9 +347,10 @@ def _steve_package_payload(fields: Dict[str, Any]) -> Dict[str, Any]:
         "name": "Steve Community Package",
         "tagline": "Give your whole community a shared Steve credit pool.",
         "price_eur": price_eur,
+        "price_usd": config.price_usd_monthly,
         "billing_cycle": "monthly",
         "currency": "EUR",
-        "credit_pool": pool,
+        "credit_pool": config.monthly_credit_pool,
         "features": list(_STEVE_PACKAGE_FEATURE_BULLETS),
         "purchasable": purchasable,
         "coming_soon": not purchasable,

@@ -515,7 +515,7 @@ def networking_prompts_last_7_days(username: str) -> int:
 
 
 def monthly_spend_usd(username: str) -> float:
-    """Return SUM(``cost_usd``) for successful calls this calendar month.
+    """Return SUM(``cost_usd``) for successful personal calls this month.
 
     Drives the internal ``monthly_spend_ceiling_eur`` gate in
     :mod:`backend.services.entitlements_gate`. Deliberately **never**
@@ -539,6 +539,7 @@ def monthly_spend_usd(username: str) -> float:
                 FROM ai_usage_log
                 WHERE username = {ph}
                   AND success = 1
+                  AND community_id IS NULL
                   AND created_at >= {ph}
                 """,
                 (username, _first_of_current_month_utc()),
@@ -546,6 +547,38 @@ def monthly_spend_usd(username: str) -> float:
             row = c.fetchone()
         except Exception as err:
             logger.debug("monthly_spend_usd query failed for %s: %s", username, err)
+            return 0.0
+    if not row:
+        return 0.0
+    raw = row["total_cost"] if hasattr(row, "keys") else row[0]
+    try:
+        return float(raw or 0)
+    except Exception:
+        return 0.0
+
+
+def monthly_community_spend_usd(root_community_id: int) -> float:
+    """Return provider spend attributed to a root community this month."""
+    if not root_community_id:
+        return 0.0
+    ensure_tables()
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute(
+                f"""
+                SELECT COALESCE(SUM(cost_usd), 0) AS total_cost
+                FROM ai_usage_log
+                WHERE community_id = {ph}
+                  AND success = 1
+                  AND created_at >= {ph}
+                """,
+                (int(root_community_id), _first_of_current_month_utc()),
+            )
+            row = c.fetchone()
+        except Exception as err:
+            logger.debug("monthly_community_spend_usd query failed for %s: %s", root_community_id, err)
             return 0.0
     if not row:
         return 0.0

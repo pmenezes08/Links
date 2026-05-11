@@ -213,6 +213,8 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | File | Role |
 |------|------|
 | `steve_content_enrichment.py` | Enrich text for Steve / sources metadata. |
+| `steve_community_config.py` | KB-backed Steve Community package config, model/cost defaults, token cost estimation. |
+| `steve_community_memory.py` | Firestore compact community memory reader for community-feed Steve prompts. |
 | `steve_feedback.py` | Feedback queue backend. |
 | `steve_community_welcome.py` | Welcome post backfill + Firestore mirror. |
 | `steve_reminder_vault.py` | Vault storage. |

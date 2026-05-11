@@ -24,6 +24,7 @@ interface CommunityDirectoryRow {
   steve_pool_cap?: number
   steve_pool_used?: number
   steve_pool_remaining?: number | null
+  steve_provider_cost_used_usd?: number
 }
 
 interface PricingDiagRow {
@@ -440,6 +441,12 @@ export default function CommunitiesDirectory() {
                         <div className="flex justify-between gap-2">
                           <span className="text-white/50">Remaining</span>
                           <span>{billingRoot.steve_pool_remaining}</span>
+                        </div>
+                      )}
+                      {billingRoot.steve_provider_cost_used_usd != null && (
+                        <div className="flex justify-between gap-2">
+                          <span className="text-white/50">Provider spend</span>
+                          <span>${Number(billingRoot.steve_provider_cost_used_usd || 0).toFixed(2)}</span>
                         </div>
                       )}
                       {selected.id !== billingRoot.id && (

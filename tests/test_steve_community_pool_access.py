@@ -42,8 +42,9 @@ def test_free_member_pool_gate_allows_with_community_context(monkeypatch):
     monkeypatch.setattr(gate.community_svc, "resolve_root_community_id", lambda cid: (123, True))
     monkeypatch.setattr(gate.community_billing, "has_active_steve_package", lambda root_id: True)
     monkeypatch.setattr(gate.ai_usage, "community_monthly_steve_pool_usage", lambda root_id: 42)
+    monkeypatch.setattr(gate.ai_usage, "monthly_community_spend_usd", lambda root_id: 0.0)
 
-    allowed, payload, status, _ent = gate.check_steve_access(
+    allowed, payload, status, ent = gate.check_steve_access(
         "JohnDoe",
         ai_usage.SURFACE_FEED,
         community_id=456,
@@ -52,6 +53,7 @@ def test_free_member_pool_gate_allows_with_community_context(monkeypatch):
     assert allowed is True
     assert payload is None
     assert status is None
+    assert ent["steve_billing_source"] == "community_pool"
 
 
 def test_premium_member_pool_gate_skips_personal_caps(monkeypatch):
@@ -70,6 +72,7 @@ def test_premium_member_pool_gate_skips_personal_caps(monkeypatch):
     monkeypatch.setattr(gate.community_svc, "resolve_root_community_id", lambda cid: (123, True))
     monkeypatch.setattr(gate.community_billing, "has_active_steve_package", lambda root_id: True)
     monkeypatch.setattr(gate.ai_usage, "community_monthly_steve_pool_usage", lambda root_id: 42)
+    monkeypatch.setattr(gate.ai_usage, "monthly_community_spend_usd", lambda root_id: 0.0)
     monkeypatch.setattr(
         gate.ai_usage,
         "daily_count",
@@ -81,7 +84,7 @@ def test_premium_member_pool_gate_skips_personal_caps(monkeypatch):
         lambda username: (_ for _ in ()).throw(AssertionError("personal monthly cap checked")),
     )
 
-    allowed, payload, status, _ent = gate.check_steve_access(
+    allowed, payload, status, ent = gate.check_steve_access(
         "PremiumJane",
         ai_usage.SURFACE_FEED,
         community_id=456,
@@ -90,6 +93,77 @@ def test_premium_member_pool_gate_skips_personal_caps(monkeypatch):
     assert allowed is True
     assert payload is None
     assert status is None
+    assert ent["steve_billing_source"] == "community_pool"
+
+
+def test_premium_member_falls_back_to_personal_when_provider_cap_exhausted(monkeypatch):
+    from backend.services import entitlements_gate as gate
+
+    monkeypatch.setattr(gate, "resolve_entitlements", lambda username: _premium_entitlements())
+    monkeypatch.setattr(
+        gate,
+        "_community_tiers_field_map",
+        lambda: {
+            "paid_steve_package_premium_priority": True,
+            "paid_steve_package_fallback_when_empty": True,
+            "paid_steve_package_monthly_credit_pool": 300,
+            "paid_steve_package_monthly_provider_cost_ceiling_usd": 5.00,
+            "paid_steve_package_provider_cost_reservation_usd": 0.03,
+        },
+    )
+    monkeypatch.setattr(gate, "_user_member_community", lambda username, community_id: True)
+    monkeypatch.setattr(gate.community_svc, "resolve_root_community_id", lambda cid: (123, True))
+    monkeypatch.setattr(gate.community_billing, "has_active_steve_package", lambda root_id: True)
+    monkeypatch.setattr(gate.ai_usage, "community_monthly_steve_pool_usage", lambda root_id: 42)
+    monkeypatch.setattr(gate.ai_usage, "monthly_community_spend_usd", lambda root_id: 4.99)
+    monkeypatch.setattr(gate.ai_usage, "daily_count", lambda username: 0)
+    monkeypatch.setattr(gate.ai_usage, "monthly_steve_count", lambda username: 0)
+
+    allowed, payload, status, ent = gate.check_steve_access(
+        "PremiumJane",
+        ai_usage.SURFACE_FEED,
+        community_id=456,
+    )
+
+    assert allowed is True
+    assert payload is None
+    assert status is None
+    assert ent["steve_billing_source"] == "personal"
+    assert ent["steve_community_provider_cost_exhausted"] is True
+
+
+def test_free_member_blocks_when_provider_cap_exhausted(monkeypatch):
+    from backend.services import entitlements_gate as gate
+
+    monkeypatch.setattr(gate, "resolve_entitlements", lambda username: _free_entitlements())
+    monkeypatch.setattr(
+        gate,
+        "_community_tiers_field_map",
+        lambda: {
+            "paid_steve_package_free_member_access": True,
+            "paid_steve_package_free_members_blocked_when_empty": True,
+            "paid_steve_package_monthly_credit_pool": 300,
+            "paid_steve_package_monthly_provider_cost_ceiling_usd": 5.00,
+            "paid_steve_package_provider_cost_reservation_usd": 0.03,
+        },
+    )
+    monkeypatch.setattr(gate, "_user_member_community", lambda username, community_id: True)
+    monkeypatch.setattr(gate.community_svc, "resolve_root_community_id", lambda cid: (123, True))
+    monkeypatch.setattr(gate.community_billing, "has_active_steve_package", lambda root_id: True)
+    monkeypatch.setattr(gate.ai_usage, "community_monthly_steve_pool_usage", lambda root_id: 42)
+    monkeypatch.setattr(gate.ai_usage, "monthly_community_spend_usd", lambda root_id: 4.99)
+    monkeypatch.setattr(gate.ai_usage, "log_block", lambda *args, **kwargs: None)
+
+    allowed, payload, status, ent = gate.check_steve_access(
+        "JohnDoe",
+        ai_usage.SURFACE_FEED,
+        community_id=456,
+    )
+
+    assert allowed is False
+    assert status is not None
+    assert payload and payload.get("reason") == "community_pool_exhausted"
+    assert ent["steve_community_provider_cost_exhausted"] is True
 
 
 def test_preflight_ignores_non_steve_text_even_when_enforced(monkeypatch):

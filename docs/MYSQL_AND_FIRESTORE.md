@@ -21,6 +21,8 @@ Database name: env `FIRESTORE_DATABASE` (default **`cpoint`**).
 | **`posts`** | Community post: numeric `post_id`; group post: **`gp_{post_id}`** | **`replies`**, **`reactions`** (reactor username doc id) | Feed/group posts, nested replies, reaction tallies. Dual-write from community/group APIs. |
 | **`steve_user_profiles`** | `username` | — | Steve analysis, profiling blobs (`profilingPlatformActivity`, etc.), onboarding merge (`onboardingIdentity`), `recentRecommendations`, embeddings-related fields. Written by `firestore_writes`, read for networking/admin. |
 | **`steve_knowledge_base`** | Chunked docs per user (e.g. `{username}_Index`, `{username}_Identity`, dimension shards) | — | Retrieved knowledge for Steve RAG (`steve_knowledge_base.py`). |
+| **`steve_community_memory`** | root community id as string | optional **`episodes`** | Compact community memory for feed Steve (`currentSummary`, topics, important docs/links, active decisions). MySQL remains canonical for posts/docs/events/polls; Firestore is synthesized prompt memory only. |
+| **`steve_community_memory`** | root community id as string | optional **`episodes`** | Compact community memory for feed Steve (`currentSummary`, topics, important docs/links, active decisions). MySQL remains canonical for posts/docs/events/polls; Firestore is synthesized prompt memory only. |
 | **`steve_onboarding`** | `username` | — | Onboarding state: `stage`, `collected`, conversation messages (`onboarding_session.py`, `onboarding.py` blueprint). Reminder sweeps read collection. |
 
 **Environment:** `GOOGLE_CLOUD_PROJECT` / `GCP_PROJECT`; toggles `USE_FIRESTORE_READS`, `USE_FIRESTORE_WRITES`.

@@ -22545,17 +22545,42 @@ def extract_pdf_text_for_steve(file_path: str, max_chars: int = 4000):
         return None
 
 
-def _build_steve_community_context(c, community_id, placeholder, max_doc_chars_total=12000):
+def _build_steve_community_context(
+    c,
+    community_id,
+    placeholder,
+    max_doc_chars_total=2000,
+    *,
+    events_limit=10,
+    links_limit=10,
+    docs_limit=10,
+    polls_limit=5,
+):
     """Build community context string: calendar + links/docs + polls."""
     from backend.services.database import USE_MYSQL
     parts = []
+    events_limit = max(0, int(events_limit or 0))
+    links_limit = max(0, int(links_limit or 0))
+    docs_limit = max(0, int(docs_limit or 0))
+    polls_limit = max(0, int(polls_limit or 0))
+
+    try:
+        from backend.services.steve_community_memory import get_compact_community_memory
+
+        memory = get_compact_community_memory(int(community_id))
+        if memory:
+            parts.append("Compact community memory:\n" + memory)
+    except Exception as e:
+        logger.debug("Steve community memory context failed: %s", e)
     
     # Calendar events
     try:
+        if events_limit <= 0:
+            raise ValueError("events disabled by context budget")
         if USE_MYSQL:
-            c.execute(f"SELECT title, date, start_time, end_time, description FROM calendar_events WHERE community_id = {placeholder} AND date >= CURDATE() ORDER BY date ASC LIMIT 15", (community_id,))
+            c.execute(f"SELECT title, date, start_time, end_time, description FROM calendar_events WHERE community_id = {placeholder} AND date >= CURDATE() ORDER BY date ASC LIMIT {events_limit}", (community_id,))
         else:
-            c.execute(f"SELECT title, date, start_time, end_time, description FROM calendar_events WHERE community_id = {placeholder} AND date >= date('now') ORDER BY date ASC LIMIT 15", (community_id,))
+            c.execute(f"SELECT title, date, start_time, end_time, description FROM calendar_events WHERE community_id = {placeholder} AND date >= date('now') ORDER BY date ASC LIMIT {events_limit}", (community_id,))
         events = c.fetchall()
         if events:
             lines = []
@@ -22566,12 +22591,16 @@ def _build_steve_community_context(c, community_id, placeholder, max_doc_chars_t
                 desc = (evt['description'] if hasattr(evt, 'keys') else evt[4]) or ''
                 lines.append(f"- {t} | Date: {d}" + (f" | Time: {st}" if st else "") + (f" | {desc[:100]}" if desc else ""))
             parts.append("Upcoming events in this community:\n" + "\n".join(lines))
+    except ValueError:
+        pass
     except Exception as e:
         logger.warning(f"Steve calendar context failed: {e}")
     
     # Useful links
     try:
-        c.execute(f"SELECT url, description FROM useful_links WHERE community_id = {placeholder} ORDER BY created_at DESC LIMIT 20", (community_id,))
+        if links_limit <= 0:
+            raise ValueError("links disabled by context budget")
+        c.execute(f"SELECT url, description FROM useful_links WHERE community_id = {placeholder} ORDER BY created_at DESC LIMIT {links_limit}", (community_id,))
         links = c.fetchall()
         if links:
             lines = []
@@ -22580,12 +22609,16 @@ def _build_steve_community_context(c, community_id, placeholder, max_doc_chars_t
                 desc = (lnk['description'] if hasattr(lnk, 'keys') else lnk[1]) or url
                 lines.append(f"- {desc} ({url})")
             parts.append("Useful links in this community:\n" + "\n".join(lines))
+    except ValueError:
+        pass
     except Exception as e:
         logger.warning(f"Steve links context failed: {e}")
     
     # Documents with PDF text
     try:
-        c.execute(f"SELECT file_path, description FROM useful_docs WHERE community_id = {placeholder} ORDER BY created_at DESC LIMIT 10", (community_id,))
+        if docs_limit <= 0 or max_doc_chars_total <= 0:
+            raise ValueError("documents disabled by context budget")
+        c.execute(f"SELECT file_path, description FROM useful_docs WHERE community_id = {placeholder} ORDER BY created_at DESC LIMIT {docs_limit}", (community_id,))
         docs = c.fetchall()
         if docs:
             doc_lines = []
@@ -22601,15 +22634,19 @@ def _build_steve_community_context(c, community_id, placeholder, max_doc_chars_t
                 if chars_remaining <= 0:
                     break
             parts.append("Community documents:\n" + "\n\n---\n\n".join(doc_lines))
+    except ValueError:
+        pass
     except Exception as e:
         logger.warning(f"Steve docs context failed: {e}")
     
     # Active polls
     try:
+        if polls_limit <= 0:
+            raise ValueError("polls disabled by context budget")
         if USE_MYSQL:
-            c.execute(f"SELECT p.id, p.question FROM polls p JOIN posts po ON p.post_id = po.id WHERE po.community_id = {placeholder} AND p.is_active = 1 ORDER BY po.timestamp DESC LIMIT 10", (community_id,))
+            c.execute(f"SELECT p.id, p.question FROM polls p JOIN posts po ON p.post_id = po.id WHERE po.community_id = {placeholder} AND p.is_active = 1 ORDER BY po.timestamp DESC LIMIT {polls_limit}", (community_id,))
         else:
-            c.execute(f"SELECT p.id, p.question FROM polls p JOIN posts po ON p.post_id = po.id WHERE po.community_id = {placeholder} AND p.is_active = 1 ORDER BY po.timestamp DESC LIMIT 10", (community_id,))
+            c.execute(f"SELECT p.id, p.question FROM polls p JOIN posts po ON p.post_id = po.id WHERE po.community_id = {placeholder} AND p.is_active = 1 ORDER BY po.timestamp DESC LIMIT {polls_limit}", (community_id,))
         polls = c.fetchall()
         if polls:
             poll_lines = []
@@ -22624,6 +22661,8 @@ def _build_steve_community_context(c, community_id, placeholder, max_doc_chars_t
                 except Exception:
                     poll_lines.append(f"- Poll: {q}")
             parts.append("Active polls in this community:\n" + "\n".join(poll_lines))
+    except ValueError:
+        pass
     except Exception as e:
         logger.warning(f"Steve polls context failed: {e}")
     
@@ -22659,6 +22698,48 @@ def _needs_community_analysis(message: str) -> bool:
     return False
 
 
+def _steve_external_search_requested(message: str) -> bool:
+    """True only when the user explicitly asks Steve for external/current info."""
+    if not message:
+        return False
+    text = message.lower()
+    explicit_phrases = (
+        "search the web",
+        "web search",
+        "look up",
+        "google",
+        "latest news",
+        "current news",
+        "what's happening now",
+        "what is happening now",
+        "check x",
+        "check twitter",
+        "on x",
+        "on twitter",
+    )
+    return any(phrase in text for phrase in explicit_phrases)
+
+
+def _steve_tools_for_message(message: str, *, platform_question: bool = False, professional_advice_question: bool = False, config=None):
+    """KB policy: external tools are opt-in for community Steve."""
+    if platform_question or professional_advice_question:
+        return []
+    explicit = _steve_external_search_requested(message)
+    if config and not getattr(config, "external_search_explicit_only", True):
+        explicit = explicit or bool(
+            getattr(config, "web_search_default_enabled", False)
+            or getattr(config, "x_search_default_enabled", False)
+        )
+    if not explicit:
+        return []
+    tools = []
+    if not config or getattr(config, "web_search_default_enabled", False) or getattr(config, "external_search_explicit_only", True):
+        tools.append({"type": "web_search"})
+    if not config or getattr(config, "x_search_default_enabled", False) or getattr(config, "external_search_explicit_only", True):
+        tools.append({"type": "x_search"})
+    return tools
+
+
 def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username: str, community_id: int,
                                  image_path: str = None, video_path: str = None, media_paths: str = None):
     """
@@ -22668,11 +22749,18 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
     """
     from datetime import datetime
     import json
+    from backend.services.steve_community_config import (
+        estimate_call_cost_usd,
+        get_paid_steve_package_config,
+        response_usage_tokens,
+    )
     
     logger.info(f"Steve replying to post {post_id} in community {community_id}")
     
     # ── Entitlements gate ──
     _enforcement_on = False
+    _ent = {}
+    steve_config = get_paid_steve_package_config()
     try:
         from backend.services.entitlements_gate import gate_or_reason as _gate
         from backend.services.feature_flags import entitlements_enforcement_enabled as _enforce
@@ -22784,7 +22872,16 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             
             # Community context: calendar, links, documents (with PDF content), polls
             try:
-                community_context = _build_steve_community_context(c, community_id, placeholder)
+                community_context = _build_steve_community_context(
+                    c,
+                    community_id,
+                    placeholder,
+                    max_doc_chars_total=steve_config.doc_excerpt_chars_default,
+                    events_limit=steve_config.events_limit,
+                    links_limit=steve_config.links_limit,
+                    docs_limit=steve_config.docs_limit,
+                    polls_limit=steve_config.polls_limit,
+                )
                 if community_context and community_context.strip():
                     context_parts.append(
                         "Community context (use this to answer questions about events, links, documents, and polls):\n"
@@ -22795,7 +22892,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
 
             # Privacy gate BEFORE KB fetch (per docs/STEVE_PRIVACY_GATE.md and community rule)
             from backend.services.steve_profiling_gates import user_can_access_steve_kb
-            if not user_can_access_steve_kb(username, author_username, {"community_id": community_id}):
+            if not user_can_access_steve_kb(author_username, author_username, {"community_id": community_id}):
                 author_profile_ctx = ""
             else:
                 author_profile_ctx = get_steve_context_for_user(author_username)
@@ -22848,7 +22945,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 # Build user content - include images if present (Grok supports vision)
                 if has_images:
                     user_content = [{"type": "input_text", "text": context}]
-                    for img_url in post_image_urls[:4]:
+                    for img_url in post_image_urls[:steve_config.images_limit]:
                         user_content.append({"type": "input_image", "image_url": img_url})
                     if has_video:
                         user_content[0]["text"] += "\n\n[Note: This post also contains a video that you cannot view, but you can see the images above.]"
@@ -22858,18 +22955,22 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                     user_content = context
                     effective_system = system_prompt
                 
+                started = time.perf_counter()
                 response = client.responses.create(
-                    model=GROK_MODEL_REASONING,
+                    model=steve_config.model,
                     input=[
                         {"role": "system", "content": effective_system},
                         {"role": "user", "content": user_content}
                     ],
-                    tools=[] if (platform_question or professional_advice_question) else [
-                        {"type": "web_search"},
-                        {"type": "x_search"}
-                    ],
-                    max_output_tokens=600
+                    tools=_steve_tools_for_message(
+                        post_content,
+                        platform_question=platform_question,
+                        professional_advice_question=professional_advice_question,
+                        config=steve_config,
+                    ),
+                    max_output_tokens=steve_config.max_output_tokens
                 )
+                response_time_ms = int((time.perf_counter() - started) * 1000)
                 
                 ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
                 if ai_response:
@@ -22906,12 +23007,22 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             
             # MIGRATED to backend/services/ai_usage.py — safe to delete when monolith-split runs
             try:
+                tokens_in, tokens_out = response_usage_tokens(response)
+                billing_community_id = (
+                    community_id
+                    if (_ent or {}).get("steve_billing_source") == "community_pool"
+                    else None
+                )
                 _ai_usage.log_usage(
                     author_username,
                     surface=_ai_usage.SURFACE_FEED,
                     request_type='steve_post_reply',
-                    community_id=community_id,
-                    model=GROK_MODEL_REASONING,
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    cost_usd=estimate_call_cost_usd(tokens_in, tokens_out, steve_config),
+                    response_time_ms=response_time_ms if "response_time_ms" in locals() else None,
+                    community_id=billing_community_id,
+                    model=steve_config.model,
                 )
             except Exception:
                 pass
@@ -23024,6 +23135,13 @@ def ai_steve_reply():
         return jsonify({'success': False, 'error': 'AI cannot reply to itself'}), 400
     
     try:
+        from backend.services.steve_community_config import (
+            estimate_call_cost_usd,
+            get_paid_steve_package_config,
+            response_usage_tokens,
+        )
+
+        steve_config = get_paid_steve_package_config()
         data = request.get_json() or {}
         post_id = data.get('post_id')
         parent_reply_id = data.get('parent_reply_id')  # The comment being replied to
@@ -23044,6 +23162,7 @@ def ai_steve_reply():
 
         # ── Entitlements gate (flag-aware) ──
         _enforcement_on = False
+        _ent = {}
         try:
             from backend.services.entitlements_gate import check_steve_access
             from backend.services.feature_flags import entitlements_enforcement_enabled as _enforce
@@ -23226,7 +23345,7 @@ def ai_steve_reply():
                 c.execute(f"""
                     SELECT username, content, id, parent_reply_id, timestamp FROM replies 
                     WHERE post_id = {placeholder} 
-                    ORDER BY timestamp ASC LIMIT 20
+                    ORDER BY timestamp ASC LIMIT {max(0, int(steve_config.recent_comments_limit or 0))}
                 """, (post_id,))
                 all_comments = c.fetchall()
                 
@@ -23259,7 +23378,16 @@ def ai_steve_reply():
             # Community context: same as post @Steve — calendar, links, PDF excerpts, polls
             if community_id:
                 try:
-                    community_context = _build_steve_community_context(c, community_id, placeholder)
+                    community_context = _build_steve_community_context(
+                        c,
+                        community_id,
+                        placeholder,
+                        max_doc_chars_total=steve_config.doc_excerpt_chars_default,
+                        events_limit=steve_config.events_limit,
+                        links_limit=steve_config.links_limit,
+                        docs_limit=steve_config.docs_limit,
+                        polls_limit=steve_config.polls_limit,
+                    )
                     if community_context and community_context.strip():
                         context_parts.append(
                             "Community context (use this to answer questions about events, links, documents, and polls):\n"
@@ -23291,11 +23419,11 @@ def ai_steve_reply():
                 system_prompt += f"\n\nWHAT YOU KNOW ABOUT @{username}:\n{commenter_profile_ctx}\nUse this knowledge naturally — don't announce it, but let it guide your tone and relevance."
             ai_response = None
             
-            # Intelligent routing: use multi-agent only for community analysis queries
-            needs_analysis = _needs_community_analysis(user_message)
-            model_to_use = GROK_MODEL_MULTI_AGENT if needs_analysis else GROK_MODEL_REASONING
+            # Community feed Steve uses the KB-configured package model. Multi-agent
+            # is intentionally disabled here so the add-on has predictable economics.
+            model_to_use = steve_config.model
             
-            logger.info(f"Steve routing: {'MULTI-AGENT' if needs_analysis else 'REASONING'} model for: {user_message[:60]}...")
+            logger.info(f"Steve routing: community feed model {model_to_use} for: {user_message[:60]}...")
             
             try:
                 logger.info(f"Steve using {model_to_use} with web+X search ({ai_personality} mode)")
@@ -23304,7 +23432,7 @@ def ai_steve_reply():
                 # Build user content - include images if present (Grok supports vision)
                 if has_images:
                     user_content = [{"type": "input_text", "text": context}]
-                    for img_url in post_image_urls[:4]:
+                    for img_url in post_image_urls[:steve_config.images_limit]:
                         user_content.append({"type": "input_image", "image_url": img_url})
                     if has_video:
                         user_content[0]["text"] += "\n\n[Note: This post also contains a video that you cannot view, but you can see the images above.]"
@@ -23314,18 +23442,17 @@ def ai_steve_reply():
                     user_content = context
                     effective_system = system_prompt
                 
+                started = time.perf_counter()
                 response = client.responses.create(
                     model=model_to_use,
                     input=[
                         {"role": "system", "content": effective_system},
                         {"role": "user", "content": user_content}
                     ],
-                    tools=[
-                        {"type": "web_search"},
-                        {"type": "x_search"}
-                    ],
-                    max_output_tokens=600
+                    tools=_steve_tools_for_message(user_message, config=steve_config),
+                    max_output_tokens=steve_config.max_output_tokens
                 )
+                response_time_ms = int((time.perf_counter() - started) * 1000)
                 
                 ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
                 if ai_response:
@@ -23367,11 +23494,21 @@ def ai_steve_reply():
             
             # MIGRATED to backend/services/ai_usage.py — safe to delete when monolith-split runs
             try:
+                tokens_in, tokens_out = response_usage_tokens(response)
+                billing_community_id = (
+                    community_id
+                    if (_ent or {}).get("steve_billing_source") == "community_pool"
+                    else None
+                )
                 _ai_usage.log_usage(
                     username,
                     surface=_ai_usage.SURFACE_FEED,
                     request_type='steve_reply',
-                    community_id=community_id if community_id else None,
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    cost_usd=estimate_call_cost_usd(tokens_in, tokens_out, steve_config),
+                    response_time_ms=response_time_ms if "response_time_ms" in locals() else None,
+                    community_id=billing_community_id,
                     model=model_to_use,
                 )
             except Exception as log_err:

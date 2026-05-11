@@ -11,6 +11,7 @@ from flask import Blueprint, jsonify, session
 from backend.services import admin_tenant_scope, ai_usage, community_billing, knowledge_base
 from backend.services.community import is_app_admin
 from backend.services.database import get_db_connection
+from backend.services.steve_community_config import get_paid_steve_package_config
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +50,12 @@ def _row_dict(row: Any, keys: List[str]) -> Dict[str, Any]:
 def _steve_pool_cap_from_kb() -> int:
     try:
         page = knowledge_base.get_page("community-tiers") or {}
-        for field in page.get("fields") or []:
-            if field.get("name") == "paid_steve_package_monthly_credit_pool":
-                return max(0, int(field.get("value") or 0))
+        fields = {
+            str(field.get("name")): field.get("value")
+            for field in (page.get("fields") or [])
+            if field.get("name")
+        }
+        return max(0, get_paid_steve_package_config(fields).monthly_credit_pool)
     except Exception:
         logger.exception("admin communities: failed to load Steve pool cap")
     return 0
@@ -83,6 +87,7 @@ def _steve_pool_snapshot(community_id: int, pool_cap: int) -> Dict[str, Any]:
         "steve_pool_cap": pool_cap if active else 0,
         "steve_pool_used": int(used or 0),
         "steve_pool_remaining": max(0, pool_cap - int(used or 0)) if active and pool_cap > 0 else None,
+        "steve_provider_cost_used_usd": ai_usage.monthly_community_spend_usd(int(root_id)) if active else 0.0,
     }
 
 

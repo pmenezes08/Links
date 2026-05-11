@@ -161,12 +161,14 @@ class TestDailyMonthlyConsistency:
 
     def test_community_pool_rows_do_not_count_personal_daily_or_monthly(self, mysql_dsn):
         make_user("alice")
-        log_row("alice", surface=SURFACE_FEED, community_id=123, created_at=hours_ago(1))
-        log_row("alice", surface=SURFACE_DM, created_at=hours_ago(1))
+        log_row("alice", surface=SURFACE_FEED, community_id=123, cost_usd=0.10, created_at=hours_ago(1))
+        log_row("alice", surface=SURFACE_DM, cost_usd=0.20, created_at=hours_ago(1))
 
         assert daily_count("alice") == 1
         assert monthly_steve_count("alice") == 1
         assert ai_usage.community_monthly_steve_pool_usage(123) == 1
+        assert ai_usage.monthly_spend_usd("alice") == pytest.approx(0.20)
+        assert ai_usage.monthly_community_spend_usd(123) == pytest.approx(0.10)
 
     def test_monthly_scoped_to_calendar_month(self, mysql_dsn):
         make_user("alice")
