@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple
+from typing import Any, Optional
 
 from backend.services import knowledge_base
+from backend.services.steve_model_config import (
+    estimate_call_cost_usd as _estimate_call_cost_usd,
+    response_usage_tokens,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +27,7 @@ class SteveCommunityConfig:
     web_search_default_enabled: bool = False
     x_search_default_enabled: bool = False
     external_search_explicit_only: bool = True
-    max_output_tokens: int = 600
+    max_output_tokens: int = 1400
     recent_comments_limit: int = 8
     doc_excerpt_chars_default: int = 2000
     doc_excerpt_chars_deep: int = 4000
@@ -164,56 +168,6 @@ def estimate_call_cost_usd(
     tokens_out: Optional[int],
     config: Optional[SteveCommunityConfig] = None,
 ) -> float:
-    cfg = config or get_paid_steve_package_config()
-    tin = max(0, int(tokens_in or 0))
-    tout = max(0, int(tokens_out or 0))
-    return round(
-        (tin / 1_000_000.0) * cfg.model_input_usd_per_million
-        + (tout / 1_000_000.0) * cfg.model_output_usd_per_million,
-        6,
-    )
+    """Backward-compatible wrapper around the shared Steve pricing helper."""
 
-
-def response_usage_tokens(response: Any) -> Tuple[Optional[int], Optional[int]]:
-    """Best-effort extraction for OpenAI-compatible Responses/Chat objects."""
-    usage = _get(response, "usage")
-    if not usage:
-        return None, None
-    tokens_in = (
-        _get(usage, "input_tokens")
-        or _get(usage, "prompt_tokens")
-        or _get(usage, "input_tokens_details", "total_tokens")
-    )
-    tokens_out = (
-        _get(usage, "output_tokens")
-        or _get(usage, "completion_tokens")
-        or _get(usage, "output_tokens_details", "total_tokens")
-    )
-    total = _get(usage, "total_tokens")
-    if tokens_out is None and total is not None and tokens_in is not None:
-        try:
-            tokens_out = int(total) - int(tokens_in)
-        except Exception:
-            tokens_out = None
-    return _optional_int(tokens_in), _optional_int(tokens_out)
-
-
-def _get(obj: Any, *path: str) -> Any:
-    cur = obj
-    for key in path:
-        if cur is None:
-            return None
-        if isinstance(cur, dict):
-            cur = cur.get(key)
-        else:
-            cur = getattr(cur, key, None)
-    return cur
-
-
-def _optional_int(raw: Any) -> Optional[int]:
-    if raw is None:
-        return None
-    try:
-        return max(0, int(raw))
-    except (TypeError, ValueError):
-        return None
+    return _estimate_call_cost_usd(tokens_in, tokens_out, config or get_paid_steve_package_config())

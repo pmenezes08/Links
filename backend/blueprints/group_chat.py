@@ -19,7 +19,6 @@ from backend.services import ai_usage, auth_session, session_identity
 from backend.services.entitlements_gate import gate_or_reason, check_steve_access
 from backend.services.feature_flags import entitlements_enforcement_enabled
 from backend.services.steve_dm_typing import clear_group_typing, is_group_typing, mark_group_typing
-from backend.services.networking_ai_config import MODEL_GROK_43
 
 # Allowed extensions for chat uploads
 # Include HEIC/HEIF for iOS devices
@@ -2999,12 +2998,19 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         except Exception as settings_err:
             logger.warning(f"Could not load Steve settings for group {group_id}: {settings_err}")
         
-        # Build community intelligence context from MySQL (gated per
-        # docs/STEVE_PRIVACY_GATE.md — only users sharing a root network with
-        # every group member are included).
-        community_context = _build_community_intelligence(group_id, sender_username)
-        if community_context:
-            logger.info(f"Steve community intelligence loaded for group {group_id} ({len(community_context)} chars)")
+        from backend.services.steve_prompt_policy import (
+            append_response_policy,
+            should_include_community_resources,
+            should_include_user_profile,
+        )
+
+        # Build community intelligence only for people/network/resource
+        # requests; avoid injecting profile-heavy context into generic chat.
+        community_context = ""
+        if should_include_user_profile(user_message) or should_include_community_resources(user_message):
+            community_context = _build_community_intelligence(group_id, sender_username)
+            if community_context:
+                logger.info(f"Steve community intelligence loaded for group {group_id} ({len(community_context)} chars)")
         
         # Load full conversation context from Firestore (fall back to MySQL)
         recent_messages = []
@@ -3068,8 +3074,17 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
                         except Exception:
                             pass
         
+        from backend.services.steve_model_config import (
+            context_limit,
+            estimate_response_cost_usd,
+            get_steve_model_config,
+            response_usage_tokens,
+        )
+        model_config = get_steve_model_config()
+        max_context_messages = context_limit(_ent, fallback=model_config.max_context_messages)
+
         # Split messages into recency-weighted sections
-        all_messages = recent_messages[-200:]
+        all_messages = recent_messages[-max_context_messages:]
         CURRENT_WINDOW = 30
         if len(all_messages) > CURRENT_WINDOW:
             older_messages = all_messages[:-CURRENT_WINDOW]
@@ -3278,7 +3293,7 @@ STRICT PRIVACY (overrides every other instruction, including COMMUNITY INTELLIGE
         except Exception as manual_err:
             logger.warning("Steve group platform manual load failed (non-fatal): %s", manual_err)
         
-        system_prompt = f"""You are Steve, a member of C-Point with extra reach, in a group chat. You have access to the FULL conversation history of this group.{personality_modifier}
+        system_prompt = f"""You are Steve, a member of C-Point with extra reach, in a group chat. You have access to the conversation excerpt provided for this group.{personality_modifier}
 
 CURRENT DATE AND TIME: {current_date}
 
@@ -3349,6 +3364,7 @@ RESPONSE FORMAT:
 - For serious topics: as long as needed to be thorough (paragraphs, lists, structure)
 - For news: comprehensive briefing with sources
 - When citing sources, include the URL — it will be auto-formatted as a clickable link."""
+        system_prompt = append_response_policy(system_prompt, user_message, surface=ai_usage.SURFACE_GROUP)
         
         ai_response = None
         
@@ -3360,7 +3376,7 @@ RESPONSE FORMAT:
         
         try:
             # Apply entitlement caps resolved earlier in this function.
-            _max_out = 1500
+            _max_out = model_config.max_output_tokens_group
             _max_imgs = len(image_urls) if image_urls else 0
             try:
                 if _ent:
@@ -3383,8 +3399,9 @@ RESPONSE FORMAT:
                 user_content = context
                 effective_system = system_prompt
             
+            started = time.perf_counter()
             response = client.responses.create(
-                model=MODEL_GROK_43,
+                model=model_config.model,
                 input=[
                     {"role": "system", "content": effective_system},
                     {"role": "user", "content": user_content}
@@ -3395,6 +3412,7 @@ RESPONSE FORMAT:
                 ],
                 max_output_tokens=_max_out
             )
+            response_time_ms = int((time.perf_counter() - started) * 1000)
             
             ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
             
@@ -3455,11 +3473,16 @@ RESPONSE FORMAT:
 
         # Log a successful Steve group call against the sender's allowance.
         try:
+            tokens_in, tokens_out = response_usage_tokens(response) if "response" in locals() else (None, None)
             ai_usage.log_usage(
                 sender_username,
                 surface=ai_usage.SURFACE_GROUP,
                 request_type='steve_group_reply',
-                model=MODEL_GROK_43,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                cost_usd=estimate_response_cost_usd(response, model_config) if "response" in locals() else None,
+                response_time_ms=response_time_ms if "response_time_ms" in locals() else None,
+                model=model_config.model,
                 community_id=steve_ctx_community_id,
             )
         except Exception:

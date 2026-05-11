@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 from typing import List, Optional
 
-from backend.services.content_generation.llm import GROK_MODEL_FAST, XAI_API_KEY
+from backend.services.content_generation.llm import XAI_API_KEY
 from backend.services.database import USE_MYSQL, get_db_connection
 from backend.services.dm_human_thread import (
     ensure_human_dm_thread_column,
@@ -191,6 +191,7 @@ def run_steve_dm_reply(
             sender_username=sender_username,
             user_message=user_message,
             other_username=other_username,
+            entitlements=_ent,
         )
     except Exception as e:
         logger.error("Error in Steve DM reply: %s", e, exc_info=True)
@@ -279,8 +280,20 @@ def _run_grok_dm_turn(
     sender_username: str,
     user_message: str,
     other_username: Optional[str],
+    entitlements: Optional[dict] = None,
 ) -> None:
     from backend.services.community import is_app_admin
+    from backend.services.steve_model_config import (
+        context_limit,
+        estimate_response_cost_usd,
+        get_steve_model_config,
+        output_cap_for_surface,
+        response_usage_tokens,
+    )
+    from backend.services.steve_prompt_policy import (
+        append_response_policy,
+        should_include_user_profile,
+    )
     from backend.services.steve_profiling_gates import user_can_access_steve_kb
     from openai import OpenAI
 
@@ -385,7 +398,8 @@ def _run_grok_dm_turn(
 
     from bodybuilding_app import get_steve_context_for_user
 
-    if user_can_access_steve_kb(sender_username, sender_username):
+    include_own_profile = should_include_user_profile(user_message)
+    if include_own_profile and user_can_access_steve_kb(sender_username, sender_username):
         user_profile_ctx = get_steve_context_for_user(sender_username)
     else:
         user_profile_ctx = ""
@@ -403,12 +417,13 @@ def _run_grok_dm_turn(
                 mentioned_profiles.append((mentioned_user, profile_ctx))
 
     is_peer = bool(other_username)
+    max_context = context_limit(entitlements, fallback=200)
     if is_peer:
-        all_messages = recent_messages[-PEER_DM_CONTEXT_LINES:]
+        all_messages = recent_messages[-min(PEER_DM_CONTEXT_LINES, max_context):]
         older_messages: List[str] = []
         current_messages = all_messages
     else:
-        all_messages = recent_messages[-200:]
+        all_messages = recent_messages[-max_context:]
         if len(all_messages) > 30:
             older_messages = all_messages[:-30]
             current_messages = all_messages[-30:]
@@ -516,6 +531,8 @@ RESPONSE STYLE:
 - If you cannot answer, be transparent about it
 - NEVER hallucinate or make up information about users — only use the profile data provided below"""
 
+    system_prompt = append_response_policy(system_prompt, user_message, surface=SURFACE_DM)
+
     if user_profile_ctx:
         system_prompt += f"""
 
@@ -533,21 +550,31 @@ Only share this information if asked. Be factual — do not embellish or invent 
 
     context_for_grok = context
 
+    model_config = get_steve_model_config()
+    model_to_use = model_config.model
+    max_output_tokens = output_cap_for_surface(
+        entitlements,
+        ai_usage.SURFACE_DM,
+        model_config.max_output_tokens_dm,
+    )
+
     client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": context_for_grok},
     ]
 
+    started = time.perf_counter()
     response = client.responses.create(
-        model=GROK_MODEL_FAST,
+        model=model_to_use,
         input=messages,
         tools=[]
         if (platform_question or professional_advice_question)
         else [{"type": "web_search"}, {"type": "x_search"}],
-        max_output_tokens=600,
+        max_output_tokens=max_output_tokens,
         temperature=0.7,
     )
+    response_time_ms = int((time.perf_counter() - started) * 1000)
 
     ai_response = response.output_text.strip() if hasattr(response, "output_text") and response.output_text else None
 
@@ -575,11 +602,16 @@ Only share this information if asked. Be factual — do not embellish or invent 
     )
 
     try:
+        tokens_in, tokens_out = response_usage_tokens(response)
         ai_usage.log_usage(
             sender_username,
             surface=ai_usage.SURFACE_DM,
             request_type="steve_dm_reply",
-            model=GROK_MODEL_FAST,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_usd=estimate_response_cost_usd(response, model_config),
+            response_time_ms=response_time_ms,
+            model=model_to_use,
         )
     except Exception:
         pass

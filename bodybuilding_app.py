@@ -22750,9 +22750,14 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
     from datetime import datetime
     import json
     from backend.services.steve_community_config import (
-        estimate_call_cost_usd,
         get_paid_steve_package_config,
         response_usage_tokens,
+    )
+    from backend.services.steve_model_config import estimate_response_cost_usd, output_cap_for_surface
+    from backend.services.steve_prompt_policy import (
+        append_response_policy,
+        should_include_community_resources,
+        should_include_user_profile,
     )
     
     logger.info(f"Steve replying to post {post_id} in community {community_id}")
@@ -22870,29 +22875,31 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]"
             ]
             
-            # Community context: calendar, links, documents (with PDF content), polls
-            try:
-                community_context = _build_steve_community_context(
-                    c,
-                    community_id,
-                    placeholder,
-                    max_doc_chars_total=steve_config.doc_excerpt_chars_default,
-                    events_limit=steve_config.events_limit,
-                    links_limit=steve_config.links_limit,
-                    docs_limit=steve_config.docs_limit,
-                    polls_limit=steve_config.polls_limit,
-                )
-                if community_context and community_context.strip():
-                    context_parts.append(
-                        "Community context (use this to answer questions about events, links, documents, and polls):\n"
-                        + community_context
+            if should_include_community_resources(post_content):
+                try:
+                    community_context = _build_steve_community_context(
+                        c,
+                        community_id,
+                        placeholder,
+                        max_doc_chars_total=steve_config.doc_excerpt_chars_default,
+                        events_limit=steve_config.events_limit,
+                        links_limit=steve_config.links_limit,
+                        docs_limit=steve_config.docs_limit,
+                        polls_limit=steve_config.polls_limit,
                     )
-            except Exception as ctx_err:
-                logger.warning("Steve community context failed: %s", ctx_err)
+                    if community_context and community_context.strip():
+                        context_parts.append(
+                            "Community context (use this to answer questions about events, links, documents, and polls):\n"
+                            + community_context
+                        )
+                except Exception as ctx_err:
+                    logger.warning("Steve community context failed: %s", ctx_err)
 
             # Privacy gate BEFORE KB fetch (per docs/STEVE_PRIVACY_GATE.md and community rule)
             from backend.services.steve_profiling_gates import user_can_access_steve_kb
-            if not user_can_access_steve_kb(author_username, author_username, {"community_id": community_id}):
+            if not should_include_user_profile(post_content):
+                author_profile_ctx = ""
+            elif not user_can_access_steve_kb(author_username, author_username, {"community_id": community_id}):
                 author_profile_ctx = ""
             else:
                 author_profile_ctx = get_steve_context_for_user(author_username)
@@ -22911,6 +22918,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             )
             if author_profile_ctx:
                 system_prompt += f"\n\nWHAT YOU KNOW ABOUT @{author_username}:\n{author_profile_ctx}\nUse this knowledge naturally — don't announce it, but let it guide your tone and relevance."
+            system_prompt = append_response_policy(system_prompt, post_content, surface=_ai_usage.SURFACE_FEED)
 
             platform_question = False
             professional_advice_question = False
@@ -22956,6 +22964,15 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                     effective_system = system_prompt
                 
                 started = time.perf_counter()
+                entitlement_cap = output_cap_for_surface(
+                    _ent,
+                    _ai_usage.SURFACE_FEED,
+                    steve_config.max_output_tokens,
+                )
+                if (_ent or {}).get("steve_billing_source") == "community_pool":
+                    max_output_tokens = min(entitlement_cap, int(steve_config.max_output_tokens or entitlement_cap))
+                else:
+                    max_output_tokens = entitlement_cap
                 response = client.responses.create(
                     model=steve_config.model,
                     input=[
@@ -22968,7 +22985,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                         professional_advice_question=professional_advice_question,
                         config=steve_config,
                     ),
-                    max_output_tokens=steve_config.max_output_tokens
+                    max_output_tokens=max_output_tokens
                 )
                 response_time_ms = int((time.perf_counter() - started) * 1000)
                 
@@ -23019,7 +23036,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                     request_type='steve_post_reply',
                     tokens_in=tokens_in,
                     tokens_out=tokens_out,
-                    cost_usd=estimate_call_cost_usd(tokens_in, tokens_out, steve_config),
+                    cost_usd=estimate_response_cost_usd(response, steve_config),
                     response_time_ms=response_time_ms if "response_time_ms" in locals() else None,
                     community_id=billing_community_id,
                     model=steve_config.model,
@@ -23136,9 +23153,14 @@ def ai_steve_reply():
     
     try:
         from backend.services.steve_community_config import (
-            estimate_call_cost_usd,
             get_paid_steve_package_config,
             response_usage_tokens,
+        )
+        from backend.services.steve_model_config import estimate_response_cost_usd, output_cap_for_surface
+        from backend.services.steve_prompt_policy import (
+            append_response_policy,
+            should_include_community_resources,
+            should_include_user_profile,
         )
 
         steve_config = get_paid_steve_package_config()
@@ -23376,7 +23398,7 @@ def ai_steve_reply():
             context_parts.append("\nNote: If the user asks you to respond to or help another user, look through the comments above to find that user's question or message and address it directly.")
             
             # Community context: same as post @Steve — calendar, links, PDF excerpts, polls
-            if community_id:
+            if community_id and should_include_community_resources(user_message):
                 try:
                     community_context = _build_steve_community_context(
                         c,
@@ -23398,7 +23420,9 @@ def ai_steve_reply():
             
             # Privacy gate BEFORE KB fetch (per docs/STEVE_PRIVACY_GATE.md and community rule)
             from backend.services.steve_profiling_gates import user_can_access_steve_kb
-            if not user_can_access_steve_kb(username, username, {"community_id": community_id}):
+            if not should_include_user_profile(user_message):
+                commenter_profile_ctx = ""
+            elif not user_can_access_steve_kb(username, username, {"community_id": community_id}):
                 commenter_profile_ctx = ""
             else:
                 commenter_profile_ctx = get_steve_context_for_user(username)
@@ -23417,6 +23441,7 @@ def ai_steve_reply():
                 )
             if commenter_profile_ctx:
                 system_prompt += f"\n\nWHAT YOU KNOW ABOUT @{username}:\n{commenter_profile_ctx}\nUse this knowledge naturally — don't announce it, but let it guide your tone and relevance."
+            system_prompt = append_response_policy(system_prompt, user_message, surface=_ai_usage.SURFACE_FEED)
             ai_response = None
             
             # Community feed Steve uses the KB-configured package model. Multi-agent
@@ -23443,6 +23468,15 @@ def ai_steve_reply():
                     effective_system = system_prompt
                 
                 started = time.perf_counter()
+                entitlement_cap = output_cap_for_surface(
+                    _ent,
+                    _ai_usage.SURFACE_FEED,
+                    steve_config.max_output_tokens,
+                )
+                if (_ent or {}).get("steve_billing_source") == "community_pool":
+                    max_output_tokens = min(entitlement_cap, int(steve_config.max_output_tokens or entitlement_cap))
+                else:
+                    max_output_tokens = entitlement_cap
                 response = client.responses.create(
                     model=model_to_use,
                     input=[
@@ -23450,7 +23484,7 @@ def ai_steve_reply():
                         {"role": "user", "content": user_content}
                     ],
                     tools=_steve_tools_for_message(user_message, config=steve_config),
-                    max_output_tokens=steve_config.max_output_tokens
+                    max_output_tokens=max_output_tokens
                 )
                 response_time_ms = int((time.perf_counter() - started) * 1000)
                 
@@ -23506,7 +23540,7 @@ def ai_steve_reply():
                     request_type='steve_reply',
                     tokens_in=tokens_in,
                     tokens_out=tokens_out,
-                    cost_usd=estimate_call_cost_usd(tokens_in, tokens_out, steve_config),
+                    cost_usd=estimate_response_cost_usd(response, steve_config),
                     response_time_ms=response_time_ms if "response_time_ms" in locals() else None,
                     community_id=billing_community_id,
                     model=model_to_use,

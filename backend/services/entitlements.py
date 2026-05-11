@@ -68,8 +68,8 @@ _DEFAULTS: Dict[str, Any] = {
     "internal_weights": {"dm": 1, "group": 3, "feed": 3, "post_summary": 2, "voice_minute": 1},
     # Hard Limits (Premium defaults)
     "ai_daily_limit": 10,
-    "max_output_tokens_dm": 600,
-    "max_output_tokens_feed": 600,
+    "max_output_tokens_dm": 1400,
+    "max_output_tokens_feed": 1400,
     "max_output_tokens_group": 1500,
     "max_tool_invocations_per_turn": 3,
     "max_context_messages": 200,

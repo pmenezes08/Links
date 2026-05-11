@@ -121,6 +121,8 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | `feature_flags.py` | Feature toggles (e.g. entitlements enforcement). |
 | `special_access.py` | Special-case overrides. |
 | `whisper_service.py` | Gated Whisper wrapper; duration → usage logging. |
+| `steve_model_config.py` | Official xAI Grok 4.3 pricing, KB-backed token caps, response usage extraction, and shared cost estimation for Steve surfaces. |
+| `steve_prompt_policy.py` | Shared adaptive prompt policy for Steve: casual vs substantive modes, structured Markdown/bullets, internal reasoning guidance, and context-use heuristics. |
 
 ### Billing & subscriptions
 
@@ -213,7 +215,7 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | File | Role |
 |------|------|
 | `steve_content_enrichment.py` | Enrich text for Steve / sources metadata. |
-| `steve_community_config.py` | KB-backed Steve Community package config, model/cost defaults, token cost estimation. |
+| `steve_community_config.py` | KB-backed Steve Community package config: shared pool, provider ceiling, model overrides, context budgets, and package output cap. Model pricing delegates to `steve_model_config`. |
 | `steve_community_memory.py` | Firestore compact community memory reader for community-feed Steve prompts. |
 | `steve_feedback.py` | Feedback queue backend. |
 | `steve_community_welcome.py` | Welcome post backfill + Firestore mirror. |

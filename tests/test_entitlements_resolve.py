@@ -199,6 +199,29 @@ class TestKBDrivenConfiguration:
         ent = resolve_entitlements("paying")
         assert ent["ai_daily_limit"] == 25
 
+    def test_output_token_caps_come_from_kb(self, mysql_dsn):
+        from tests.fixtures import seed_kb
+        seed_kb([
+            {
+                "slug": "hard-limits",
+                "title": "Hard Limits",
+                "category": "policy",
+                "fields": [
+                    {"name": "max_output_tokens_dm", "type": "integer",
+                     "label": "max_output_tokens_dm", "value": 1234},
+                    {"name": "max_output_tokens_feed", "type": "integer",
+                     "label": "max_output_tokens_feed", "value": 1345},
+                    {"name": "max_output_tokens_group", "type": "integer",
+                     "label": "max_output_tokens_group", "value": 1456},
+                ],
+            },
+        ])
+        make_user("token_paying", subscription="premium", created_at=days_ago(30))
+        ent = resolve_entitlements("token_paying")
+        assert ent["max_output_tokens_dm"] == 1234
+        assert ent["max_output_tokens_feed"] == 1345
+        assert ent["max_output_tokens_group"] == 1456
+
     def test_special_daily_limit_is_distinct_from_premium(self, mysql_dsn):
         """Special users get ``ai_daily_limit_special`` (technical cap, still > Premium)."""
         kb_override_field("hard-limits", "ai_daily_limit", 10)

@@ -784,7 +784,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "paid_steve_package_x_search_default_enabled", "label": "X search on by default", "type": "boolean", "value": False, "group": "paid_steve_package"},
                 {"name": "paid_steve_package_external_search_explicit_only", "label": "External search explicit only", "type": "boolean", "value": True,
                  "help": "Enable web/X only when the user explicitly asks for current external information.", "group": "paid_steve_package"},
-                {"name": "paid_steve_package_max_output_tokens", "label": "Max output tokens", "type": "integer", "value": 600, "group": "paid_steve_package"},
+                {"name": "paid_steve_package_max_output_tokens", "label": "Max output tokens", "type": "integer", "value": 1400, "group": "paid_steve_package"},
                 {"name": "paid_steve_package_recent_comments_limit", "label": "Recent comments in context", "type": "integer", "value": 8, "group": "paid_steve_package"},
                 {"name": "paid_steve_package_doc_excerpt_chars_default", "label": "Default document excerpt chars", "type": "integer", "value": 2000, "group": "paid_steve_package"},
                 {"name": "paid_steve_package_doc_excerpt_chars_deep", "label": "Deep document excerpt chars", "type": "integer", "value": 4000, "group": "paid_steve_package"},
@@ -1267,8 +1267,9 @@ def _seed_pages() -> List[Dict[str, Any]]:
 
                 # Model costs — single source of truth
                 {"name": "model_primary", "label": "Primary model", "type": "string", "value": "grok-4.3", "group": "model_costs"},
-                {"name": "model_primary_input_per_m_usd", "label": "Primary model — input $/1M tokens", "type": "decimal", "prefix": "$", "value": 0.20, "group": "model_costs"},
-                {"name": "model_primary_output_per_m_usd", "label": "Primary model — output $/1M tokens", "type": "decimal", "prefix": "$", "value": 0.50, "group": "model_costs"},
+                {"name": "model_primary_input_per_m_usd", "label": "Primary model — input $/1M tokens", "type": "decimal", "prefix": "$", "value": 1.25, "group": "model_costs"},
+                {"name": "model_primary_cached_input_per_m_usd", "label": "Primary model — cached input $/1M tokens", "type": "decimal", "prefix": "$", "value": 0.20, "group": "model_costs"},
+                {"name": "model_primary_output_per_m_usd", "label": "Primary model — output $/1M tokens", "type": "decimal", "prefix": "$", "value": 2.50, "group": "model_costs"},
                 {"name": "model_heavy", "label": "Heavy model (reasoning)", "type": "string", "value": "grok-4.20-reasoning", "group": "model_costs"},
                 {"name": "model_heavy_input_per_m_usd", "label": "Heavy model — input $/1M", "type": "decimal", "prefix": "$", "value": 2.00, "group": "model_costs"},
                 {"name": "model_heavy_output_per_m_usd", "label": "Heavy model — output $/1M", "type": "decimal", "prefix": "$", "value": 6.00, "group": "model_costs"},
@@ -1276,9 +1277,9 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "tool_call_per_1000_usd", "label": "Web / X / code-exec tool calls ($/1000 calls)", "type": "decimal", "prefix": "$", "value": 5.00, "group": "model_costs"},
                 {"name": "usd_to_eur_rate", "label": "USD → EUR rate", "type": "decimal", "value": 0.92, "group": "model_costs",
                  "help": "Used by the calculator to convert xAI/OpenAI bills to €."},
-                {"name": "model_costs_last_checked", "label": "Model costs last checked", "type": "date", "value": "2026-05-06", "group": "model_costs"},
+                {"name": "model_costs_last_checked", "label": "Model costs last checked", "type": "date", "value": "2026-05-11", "group": "model_costs"},
                 {"name": "model_costs_source", "label": "Source of pricing", "type": "string",
-                 "value": "x.ai/pricing + openai.com/pricing — re-verify monthly.", "group": "model_costs"},
+                 "value": "https://docs.x.ai/developers/models/grok-4.3 + https://docs.x.ai/developers/pricing — re-verify monthly.", "group": "model_costs"},
             ],
             "body": (
                 "**What the user sees**: ~`steve_uses_per_month_user_facing` Steve uses per month, "
@@ -1354,8 +1355,8 @@ def _seed_pages() -> List[Dict[str, Any]]:
             ],
             "fields": [
                 # Per-turn
-                {"name": "max_output_tokens_dm", "label": "Max output tokens — DM", "type": "integer", "value": 600, "group": "per_turn"},
-                {"name": "max_output_tokens_feed", "label": "Max output tokens — community feed", "type": "integer", "value": 600, "group": "per_turn"},
+                {"name": "max_output_tokens_dm", "label": "Max output tokens — DM", "type": "integer", "value": 1400, "group": "per_turn"},
+                {"name": "max_output_tokens_feed", "label": "Max output tokens — community feed", "type": "integer", "value": 1400, "group": "per_turn"},
                 {"name": "max_output_tokens_group", "label": "Max output tokens — group chat", "type": "integer", "value": 1500, "group": "per_turn"},
                 {"name": "max_tool_invocations_per_turn", "label": "Max tool invocations per turn", "type": "integer", "value": 3,
                  "help": "Hard cap on web/X/code-exec calls per single Steve turn. Caps worst-case spend.", "group": "per_turn"},
@@ -1389,7 +1390,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 "runaway loops, and outright abuse from bankrupting us.\n\n"
                 "**Per-turn worst-case envelope**: group reply + 200 message context + 5 "
                 "images + reasoning + 1500 output + 3 tool calls. Recompute € cost via the "
-                "Calculator with current Grok 4.1 pricing before every pricing change.\n\n"
+                "Calculator with official Grok 4.3 pricing before every pricing change.\n\n"
                 "**Circuit breaker**: if a user's rolling 30-day AI cost crosses "
                 "`monthly_spend_ceiling_eur` (Premium) or `monthly_spend_ceiling_eur_special` "
                 "(Special), AI is frozen for the remainder of the period. UI shows: "

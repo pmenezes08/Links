@@ -147,8 +147,17 @@ the user receives only a markdown **subscription CTA** pointing at **`/account_s
      ```
 3. **Respect the caps in `ent`.** Plumb `ent["max_output_tokens_*"]`,
    `ent["max_context_messages"]`, `ent["max_images_per_turn"]`,
-   `ent["max_tool_invocations_per_turn"]` into your LLM call.
-4. **Log on success.** Exactly one row per upstream API call:
+   `ent["max_tool_invocations_per_turn"]` into your LLM call. For
+   community-pool feed calls, use the stricter of the user's resolved
+   feed cap and the KB-backed Steve Community Package output cap.
+   Shared helpers live in `backend.services.steve_model_config`.
+4. **Use the shared prompt policy.** Add
+   `backend.services.steve_prompt_policy.append_response_policy(...)`
+   to interactive Steve prompts. Casual replies stay short; substantive
+   answers use Markdown headings and bullets (`Short Answer`, `Analysis`,
+   `Recommendation`, `Pitfalls`, `Next Steps`) and instruct the model to
+   reason internally without exposing hidden chain-of-thought.
+5. **Log on success.** Exactly one row per upstream API call:
    ```python
    from backend.services import ai_usage
    ai_usage.log_usage(
@@ -163,9 +172,15 @@ the user receives only a markdown **subscription CTA** pointing at **`/account_s
        response_time_ms=int((t1 - t0) * 1000),
    )
    ```
-5. **Log on failure.** Use `ai_usage.log_usage(..., success=False,
+6. **Log on failure.** Use `ai_usage.log_usage(..., success=False,
    reason_blocked="api_error")` for upstream errors so we can spot
    regressions in the admin dashboard.
+
+**Pricing source:** Steve token-cost math must come from official xAI
+documentation only. For Grok 4.3, `steve_model_config` defaults to
+input `$1.25 / 1M`, cached input `$0.20 / 1M`, output `$2.50 / 1M`,
+and xAI server-side tool invocations `$5 / 1k` calls. KB fields mirror
+those values so operators can re-verify and update without code drift.
 
 ---
 
@@ -270,6 +285,12 @@ We had a live bug because `daily_count` was unscoped and
 | `max_images_per_turn` | Drop images past this count before the call. |
 | `max_tool_invocations_per_turn` | Cap tool calls per turn (web / X). |
 | `monthly_spend_ceiling_eur` | Soft-budget for the user, informational. |
+
+`credits-entitlements` stores Grok 4.3 pricing fields and
+`hard-limits` stores output/context caps. `resolve_entitlements(...)`
+projects the per-turn caps into `ent`; `steve_model_config` reads the
+pricing fields and provides shared cost helpers for DM, feed, and group
+surfaces.
 
 ---
 
