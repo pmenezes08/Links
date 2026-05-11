@@ -98,11 +98,11 @@ function makePricingPayload() {
       steve_package: {
         sku: 'steve_package' as const,
         name: 'Steve Community Package',
-        tagline: 'Give your whole community a shared Steve credit pool.',
-        price_eur: 20,
+        tagline: 'Give your whole community a shared Steve call pool.',
+        price_eur: 49,
         billing_cycle: 'monthly',
         currency: 'EUR',
-        credit_pool: 300,
+        credit_pool: 200,
         features: ['Shared pool'],
         purchasable: false as const,
         coming_soon: true as const,
@@ -258,8 +258,8 @@ describe('SubscriptionPlans (Personal + Community redesign)', () => {
     await chooseActiveView()
 
     expect(await screen.findByText('Jola de Domingo')).toBeInTheDocument()
-    expect(screen.getByText('User')).toBeInTheDocument()
-    expect(screen.getByText('Community')).toBeInTheDocument()
+    expect(screen.getByText(/Personal.*Active/)).toBeInTheDocument()
+    expect(screen.getByText(/Community.*Needs Attention/)).toBeInTheDocument()
     expect(screen.getAllByText(/Next renewal:/).length).toBeGreaterThan(0)
     expect(screen.queryByText(/Change tier/i)).toBeNull()
     expect(screen.queryByText('Community Paid Tier')).toBeNull()

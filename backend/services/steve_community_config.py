@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class SteveCommunityConfig:
-    price_usd_monthly: float = 29.99
     monthly_credit_pool: int = 200
     monthly_provider_cost_ceiling_usd: float = 5.0
     provider_cost_reservation_usd: float = 0.03
@@ -28,7 +27,6 @@ class SteveCommunityConfig:
     recent_comments_limit: int = 8
     doc_excerpt_chars_default: int = 2000
     doc_excerpt_chars_deep: int = 4000
-    docs_limit: int = 10
     docs_limit: int = 10
     links_limit: int = 10
     events_limit: int = 10
@@ -98,7 +96,6 @@ def get_paid_steve_package_config(fields: Optional[dict[str, Any]] = None) -> St
     f = fields if fields is not None else _field_map()
     defaults = SteveCommunityConfig()
     return SteveCommunityConfig(
-        price_usd_monthly=_float(f.get("paid_steve_package_price_usd_monthly"), defaults.price_usd_monthly, minimum=0),
         monthly_credit_pool=_int(f.get("paid_steve_package_monthly_credit_pool"), defaults.monthly_credit_pool, minimum=0),
         monthly_provider_cost_ceiling_usd=_float(
             f.get("paid_steve_package_monthly_provider_cost_ceiling_usd"),

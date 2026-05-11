@@ -766,10 +766,8 @@ def _seed_pages() -> List[Dict[str, Any]]:
                  "group": "trial"},
 
                 # Paid · Steve package (add-on)
-                {"name": "paid_steve_package_price_usd_monthly", "label": "Package price / month", "type": "decimal", "prefix": "$", "value": 29.99,
-                 "help": "Customer-facing package price. Store fees apply outside the product copy.", "group": "paid_steve_package"},
-                {"name": "paid_steve_package_price_eur_monthly", "label": "Legacy package price / month", "type": "decimal", "prefix": "€", "value": 20, "tbd": True,
-                 "help": "Legacy field kept for old admin surfaces until Stripe prices are migrated.", "group": "paid_steve_package"},
+                {"name": "paid_steve_package_price_eur_monthly", "label": "Package price / month", "type": "decimal", "prefix": "€", "value": 49,
+                 "help": "Canonical customer-facing Steve Community add-on price. Provider cost controls below remain in USD because xAI/OpenAI bills are USD-based.", "group": "paid_steve_package"},
                 {"name": "paid_steve_package_monthly_credit_pool", "label": "Community Steve calls / month", "type": "integer", "value": 200,
                  "help": "Customer-facing shared call pool across all members.", "group": "paid_steve_package"},
                 {"name": "paid_steve_package_monthly_provider_cost_ceiling_usd", "label": "Provider cost ceiling / month", "type": "decimal", "prefix": "$", "value": 5.00,
@@ -1932,7 +1930,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
                         {"term": "Free community", "definition": "≤50 members, no content creation, not listed on networking, low media quota."},
                         {"term": "Paid community", "definition": "Subscription-based. No hard member limit. Content creation opt-in with free allowance. Networking page + Steve package sold as add-ons."},
                         {"term": "Enterprise community", "definition": "Custom subscription. Members get Premium Steve. Steve package + networking page + content generation all bundled."},
-                        {"term": "Steve package", "definition": "Paid-community add-on (~€20/month). Gives the community a shared Steve credit pool that members use before their personal credits."},
+                        {"term": "Steve package", "definition": "Paid-community add-on (€49/month). Gives the community a shared Steve call pool that members use before their personal credits."},
                         {"term": "Networking page", "definition": "Public directory of C-Point communities. Appears for communities with ≥50 members. Included in Enterprise; €15/month add-on for Paid."},
                         {"term": "Premium user", "definition": "Subscriber of €4.99 (early-adoption, first 3 months) / €7.99 (standard). Steve + voice/post summaries + 10 owned communities."},
                         {"term": "Free trial", "definition": "30-day Premium-equivalent access on signup. Community ownership capped at 5 (not Premium's 10)."},

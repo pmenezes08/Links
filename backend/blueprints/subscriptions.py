@@ -345,9 +345,8 @@ def _steve_package_payload(fields: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "sku": "steve_package",
         "name": "Steve Community Package",
-        "tagline": "Give your whole community a shared Steve credit pool.",
+        "tagline": "Give your whole community a shared Steve call pool.",
         "price_eur": price_eur,
-        "price_usd": config.price_usd_monthly,
         "billing_cycle": "monthly",
         "currency": "EUR",
         "credit_pool": config.monthly_credit_pool,

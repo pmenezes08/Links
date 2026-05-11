@@ -1421,7 +1421,7 @@ function SteveAddonCard({
 
       {payload.credit_pool != null && Number(payload.credit_pool) > 0 && (
         <p className="mt-2 text-xs text-white/45">
-          ~{payload.credit_pool} shared Steve credits / month (pool caps follow KB weights).
+          {payload.credit_pool} shared Steve calls / month.
         </p>
       )}
 
