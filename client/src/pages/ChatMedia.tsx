@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
 import ZoomableImage from '../components/ZoomableImage'
-import MessageImage from '../components/MessageImage'
 import { normalizeMediaPath } from '../chat'
 import { Network } from '@capacitor/network'
 import { Filesystem, Directory } from '@capacitor/filesystem'
@@ -138,11 +137,7 @@ export default function ChatMedia() {
                             <div className="absolute inset-0 flex items-center justify-center"><div className="w-10 h-10 rounded-full bg-black/60 flex items-center justify-center"><i className="fa-solid fa-play text-white text-sm ml-0.5" /></div></div>
                           </>
                         ) : (
-                          <MessageImage
-                            src={normalizeMediaPath(m.url)}
-                            alt="Media preview"
-                            className="w-full h-full object-cover rounded-lg border border-white/10"
-                          />
+                          <img src={normalizeMediaPath(m.url)} alt="" className="w-full h-full object-cover rounded-lg border border-white/10" />
                         )}
                         <div className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 rounded bg-black/70 border border-white/10 text-white/80">{formatSmartTime(m.created_at)}</div>
                       </div>

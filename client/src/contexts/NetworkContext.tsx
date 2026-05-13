@@ -5,11 +5,9 @@ interface NetworkState {
   isOnline: boolean
   /** True after we transition from offline → online (resets after 5 s) */
   justReconnected: boolean
-  /** Prevents false offline banner on cold online start (set after first getStatus/listener) */
-  isInitialized: boolean
 }
 
-const NetworkContext = createContext<NetworkState>({ isOnline: true, justReconnected: false, isInitialized: true })
+const NetworkContext = createContext<NetworkState>({ isOnline: true, justReconnected: false })
 
 export function NetworkProvider({ children }: { children: ReactNode }) {
   const [isOnline, setIsOnline] = useState(() => {
@@ -20,13 +18,11 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
     return true;
   })
   const [justReconnected, setJustReconnected] = useState(false)
-  const [isInitialized, setIsInitialized] = useState(false)
   const wasOffline = useRef(false)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const goOnline = useCallback(() => {
     setIsOnline(true)
-    setIsInitialized(true)
     if (wasOffline.current) {
       wasOffline.current = false
       setJustReconnected(true)
@@ -37,7 +33,6 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
 
   const goOffline = useCallback(() => {
     setIsOnline(false)
-    setIsInitialized(true)
     wasOffline.current = true
   }, [])
 
@@ -45,29 +40,20 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
     window.addEventListener('online', goOnline)
     window.addEventListener('offline', goOffline)
 
-    // Capacitor Network plugin (more reliable on native). Symmetric goOnline/goOffline + isInitialized prevents false "offline" banner on cold online start.
+    // Capacitor Network plugin (more reliable on native)
     let cleanup: (() => void) | undefined
     if (Capacitor.isNativePlatform()) {
       import('@capacitor/network').then(({ Network }) => {
         Network.getStatus().then(s => {
-          if (s.connected) goOnline()
-          else goOffline()
-          setIsInitialized(true)
-        }).catch(() => {
-          setIsInitialized(true)
-        })
+          if (!s.connected) goOffline()
+        }).catch(() => {})
         Network.addListener('networkStatusChange', (status) => {
           if (status.connected) goOnline()
           else goOffline()
-          setIsInitialized(true)
         }).then(handle => {
           cleanup = () => handle.remove()
-        }).catch(() => {
-          setIsInitialized(true)
-        })
-      }).catch(() => {
-        setIsInitialized(true)
-      })
+        }).catch(() => {})
+      }).catch(() => {})
     }
 
     return () => {
@@ -79,7 +65,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
   }, [goOnline, goOffline])
 
   return (
-    <NetworkContext.Provider value={{ isOnline, justReconnected, isInitialized }}>
+    <NetworkContext.Provider value={{ isOnline, justReconnected }}>
       {children}
     </NetworkContext.Provider>
   )
