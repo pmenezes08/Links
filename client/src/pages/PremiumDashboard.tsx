@@ -17,7 +17,6 @@ import { triggerDashboardServerPull } from '../utils/serverPull'
 import { useLogoutRequest } from '../contexts/LogoutPromptContext'
 import OnboardingChat from './OnboardingChat'
 import OnboardingIntroGate from '../components/onboarding/OnboardingIntroGate'
-import { invalidateDashboardCache } from '../utils/dashboardCache'
 import DashboardBottomNav, { isPremiumDashboardPath } from '../components/DashboardBottomNav'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
