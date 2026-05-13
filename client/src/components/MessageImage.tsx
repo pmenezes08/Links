@@ -12,14 +12,15 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [retryWithOriginal, setRetryWithOriginal] = useState(false)
+  const [errorCount, setErrorCount] = useState(0)
   const normalizedSrc = useMemo(() => src?.split('?')[0]?.toLowerCase() || '', [src])
   const isGif = normalizedSrc.endsWith('.gif')
   
-  // Apply Cloudflare optimization (skip for GIFs to preserve animation). Retry with original src on error for preview "Unavailable" fix (high ROI, safe fallback).
+  // Apply Cloudflare optimization (skip for GIFs to preserve animation). Retry with original src on error for preview "Unavailable" fix (high ROI, safe fallback). errorCount forces re-render on repeated failures (iOS broken icon case).
   const displaySrc = useMemo(() => {
     if (isGif || retryWithOriginal) return src
     return optimizeMessagePhoto(src)
-  }, [src, isGif, retryWithOriginal])
+  }, [src, isGif, retryWithOriginal, errorCount])
 
   const handleLoad = () => {
     setLoading(false)
@@ -30,6 +31,7 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
     if (!retryWithOriginal) {
       setRetryWithOriginal(true) // Safe retry: original R2 URL often succeeds where CF transform fails for thumbnails
     } else {
+      setErrorCount(prev => prev + 1)
       setError(true)
     }
   }
@@ -46,9 +48,9 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
         </div>
       )}
 
-      {/* Error state */}
+      {/* Error state - absolute overlay to fully suppress broken image icon in iOS webview */}
       {error && (
-        <div className="flex items-center justify-center bg-white/5 min-h-[100px] min-w-[100px] p-4">
+        <div className="absolute inset-0 flex items-center justify-center bg-white/5 min-h-[100px] min-w-[100px] p-4 z-10">
           <div className="flex flex-col items-center gap-1 text-white/40">
             <i className="fa-solid fa-image text-lg"></i>
             <div className="text-[10px]">Unavailable</div>
@@ -56,8 +58,9 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
         </div>
       )}
 
-      {/* Actual image */}
+      {/* Actual image - key with errorCount forces React remount on repeated failures to clear broken image icon in iOS */}
       <img
+        key={`preview-${normalizedSrc}-${errorCount}`}
         src={displaySrc}
         alt={alt}
         crossOrigin="anonymous"
