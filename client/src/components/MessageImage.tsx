@@ -55,6 +55,7 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
       <img
         src={displaySrc}
         alt={alt}
+        crossOrigin="anonymous"
         className={`max-w-full transition-opacity duration-300 ${
           loading ? 'opacity-0' : 'opacity-100'
         }`}

@@ -13,6 +13,7 @@ Reference docs are **part of the implementation**. If the code you ship makes a 
 | Deploy or infra naming/URLs/env (Cloud Build, Run services, domains, CSRF admin pairing) | Edit **`docs/DEPLOYMENT_INSTANCES.md`** (+ **`docs/cloud-scheduler-cron.md`** if cron base URL or auth story changes). |
 | User-visible **journey** changes materially (billing, AI pipeline steps, seat lifecycle, onboarding flow, chat persistence) | Edit **`docs/PRODUCT_JOURNEYS.md`**. |
 | Monolith reduction **epic** (priority, acceptance, or hotspot list) shifts | Edit **`docs/MONOLITH_REDUCTION_ROADMAP.md`**; align **KB → Product Roadmap** row if status changes. |
+| **Product Roadmap** row added, renamed, merged, dropped, or materially retargeted (`knowledge_base.py` → **`product-roadmap` → roadmap_items**) | Update **both** KB seeds **and** the Notion hub **Product roadmap** database (**same Names / titles**, **Area**, status). Prefer editing KB first, then mirror to Notion (or Notion MCP from Cursor). Details: § **Product roadmap (KB ↔ Notion)** below. |
 | New integration, blueprint, or architectural seam worth documenting | Edit **`docs/C_POINT_ARCHITECTURE.md`**. |
 
 Skips are only OK when the change **cannot** affect the doc (e.g. typo-only, pure test fixture rename with no route/schema/journey impact).
@@ -54,7 +55,22 @@ Skips are only OK when the change **cannot** affect the doc (e.g. typo-only, pur
 - [ ] **Cross-system product flow changed materially:** update **`docs/PRODUCT_JOURNEYS.md`**.
 - [ ] **Monolith epic** (decomposition shipped, priorities shifted): update **`docs/MONOLITH_REDUCTION_ROADMAP.md`** and **KB → Product Roadmap** row status if applicable.
 - [ ] **Top-level architecture / integrations changed:** update **`docs/C_POINT_ARCHITECTURE.md`** as needed.
+- [ ] **Product Roadmap list or row metadata changed** (`product-roadmap` / `roadmap_items`): mirror to **Notion → Product roadmap** per **§ Product roadmap (KB ↔ Notion)**.
 - [ ] **Substantive ship** (new service, cron, AI surface, deploy): optional **Notion team hub** sync per **`.cursor/rules/notion-project-hub.mdc`** (repo docs are still mandatory when triggers apply).
+
+## Product roadmap (KB ↔ Notion)
+
+**Canonical list:** `backend/services/knowledge_base.py` → page slug **`product-roadmap`** → field **`roadmap_items`**. Each row has `title`, `area` (same vocabulary as Notion Area: client, admin, backend, infra, AI, iOS, Android, Steve, Subscriptions), `phase`, `status`, `effort`, `target_quarter`, optional `test` / `test_status`, and `notes`.
+
+**Notion mirror:** [C-Point — team hub](https://www.notion.so/35c43dca8b6f811ea3efc440a3697c47) → **Product roadmap** database. **Name** in Notion must match **title** in KB (single set of rows; no duplicate summaries). Use **Summary** for a one-line parity line: `Phase: … | Effort: … | Target: … | KB test: …` when a test ref exists.
+
+**Status mapping (KB → Notion):** `completed` → **Done**; `ongoing` → **In progress**; `not_started` with `phase` **exploring** → **Idea**; other `not_started` → **Planned**.
+
+**Workflow (same PR / session):**
+
+1. Edit **`roadmap_items`** in **`knowledge_base.py`** (and reseed staging when you ship the change, or admin **Reseed** for that page as appropriate).
+2. Create/update/delete the matching Notion database rows (Cursor Notion MCP or manual) so **every KB title has a Notion row and vice versa**.
+3. After substantive roadmap edits, optional: add a short **Notion Project memory** ADR only if the change reflects a product decision, not just scheduling.
 
 ## Crons
 

@@ -5,7 +5,7 @@ alwaysApply: true
 
 # C-Point Notion team hub (Cursor-only maintenance)
 
-The **Notion** space documents onboarding, architecture, roadmap narrative, and glossary for **humans**. It does **not** replace the in-app Knowledge Base (MySQL seeds, `backend/services/knowledge_base.py`) for **pricing, caps, policies, or authoritative product roadmap rows** — see `AGENTS.md`.
+The **Notion** space documents onboarding, architecture, roadmap narrative, and glossary for **humans**. **Product roadmap** rows are **paired** with the in-app KB: same **title/Name** as `knowledge_base.py` → slug **`product-roadmap`** → **`roadmap_items`** (see **`docs/AGENT_TASK_CHECKLIST.md` § Product roadmap (KB ↔ Notion)**). Notion does **not** replace the KB for **pricing, caps, or policy** text — see `AGENTS.md`.
 
 ## Hub URL (project owner — set once)
 
@@ -28,7 +28,7 @@ Standard sections to maintain under that hub (pages or DB views): **Onboarding c
 
 After **substantive** work in this repo (new routes/services, schema/migration, deploy/infra change, new AI surface, or product-shipping feature), **before ending the turn**:
 
-1. **Roadmap** — Add or update an item: what shipped or changed, status, links to PR/issue/commit if available.
+1. **Roadmap** — When **`product-roadmap`** / **`roadmap_items`** changes in the repo, **update Notion Product roadmap in the same session** (matching **Name** = KB `title`, **Area**, **Status** per status mapping in **`docs/AGENT_TASK_CHECKLIST.md`**). For non-roadmap shipped work, still add or update a row with PR/issue/commit if useful.
 2. **Architecture (repo docs first)** — Keep **`AGENTS.md` § Living engineering docs** in sync with the code in the **same change**:
    - Topology, services, **Cloud Run / Cloud Build / domains / CSRF pairing:** **`docs/DEPLOYMENT_INSTANCES.md`** (and **`docs/cloud-scheduler-cron.md`** if Scheduler URLs or secrets change).
    - **Material cross-system flows** (Stripe path, AI usage, seats, onboarding, chat persistence): **`docs/PRODUCT_JOURNEYS.md`**.

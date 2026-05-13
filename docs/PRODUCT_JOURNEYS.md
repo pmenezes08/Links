@@ -102,11 +102,111 @@ Onboarding stages and APIs: **`backend/blueprints/onboarding.py`** plus services
 
 ---
 
-## 8. Messaging: MySQL + Firestore
+## 8. Messaging: MySQL + Firestore (incl. DM Media Pipeline)
 
-**DMs / group chat:** Canonical thread metadata and server rules in **MySQL**; **Firestore** is used for realtime-style reads/mirrors depending on feature — **`MYSQL_AND_FIRESTORE.md`**, **`group_chat`**, **`dm_chats`** in **`BACKEND_ROUTES.md`**. When debugging “message missing on one device”, check **both** stores and **which read path** the client uses.
+**DMs / group chat:** Canonical thread metadata, rules, and `messages` table in **MySQL** (with `image_path`, `video_path`, `media_paths` JSON); **Firestore** (`dm_conversations/{conv_id}/messages`) is primary for realtime/paginated reads (see **`MYSQL_AND_FIRESTORE.md`**, `dm_chats` / `group_chat` routes in **`BACKEND_ROUTES.md`**). Dual-write is best-effort. Link previews integrate via `LinkPreview.tsx` (used in `MessageBubble.tsx` etc.); see below for full media flow.
+
+### DM Media Upload → Storage → Read → Render Flow
+**Complete cross-system map** (updated for R2 direct uploads, multi-media, caching layers, iOS paths). See focused files: `ChatThread.tsx`, `mediaSenders.ts`, `firestore_reads.py`, `media.py:save_uploaded_file`, `r2_storage.py`, `MessageImage.tsx`, `normalizeMediaPath` (in `chat/utils.ts` + duplicates), `bodybuilding_app.py` (monolith routes), `firestore_writes.py`.
+
+#### 1. **Upload (Client → Backend)**
+- `client/src/pages/ChatThread.tsx`: `pendingMedia`, `videoUploadProgress`, optimistic UI with `URL.createObjectURL(file)` (blob: URLs for previews), `idBridgeRef` (temp→server ID mapping to avoid flicker), device cache (`chatMessagesDeviceCacheKey`, IndexedDB `offlineDb`), iOS-specific: `Capacitor.getPlatform() !== 'ios'` keyboard listeners (`visualViewport`, `normalizeHeight` for viewport lift/scroll-to-bottom).
+- `client/src/chat/mediaSenders.ts` (key snippets):
+  ```typescript
+  // Images: simple FormData
+  const response = await fetch('/send_photo_message', { method: 'POST', body: formData })  // photo + recipient_id
+  // Videos: dual-path (recent change for large files)
+  const useDirectUpload = file.size > 25*1024*1024;
+  if (useDirectUpload) {
+    const urlData = await fetch('/api/video_upload_url', { ... }).then(r => r.json());  // presigned from media_assets.py
+    // XMLHttpRequest PUT to R2 presigned URL (progress tracking)
+    // Then POST /send_video_message with {video_url: public_url}
+  }
+  // Multi-media (batched, supports media_paths):
+  await fetch('/send_dm_media', { body: fd with 'media' files or 'media_urls' JSON for R2 pre-uploads })
+  ```
+  Optimistic `isOptimistic` messages, `SENDING_MEDIA_LABEL`, error cleanup of blobs, `onProgress` callback. GroupChat has parallel `groupChatMediaSenders.ts`.
+- Backend routes (still in monolith `bodybuilding_app.py:13411`—see **MONOLITH_REDUCTION_ROADMAP**):
+  - `/send_photo_message`, `/send_video_message`, `/send_dm_media`: auth, block check, recipient lookup, `save_uploaded_file(...)`, insert to `messages` (with `media_paths=json.dumps(...)` for groups), **dual-write** to Firestore, notifications, push (skips if active_chat_status or muted).
+  - `/api/video_upload_url` (`backend/blueprints/media_assets.py:56`): validates recipient, calls `_video_upload_payload("message_videos", ...)` → R2 presigned.
+
+#### 2. **Storage (Dual + R2 + Cache Layers) — Thorough**
+- `backend/services/media.py:159` (`save_uploaded_file` — core):
+  ```python
+  # Local first (uploads/message_photos/ or message_videos/)
+  filepath = ...; file.save(filepath)
+  # Optimize: PIL/exif for images (media_processing.optimize_image_file or fix_orientation_only), 
+  # transcode_video_file for some videos (recent iOS support)
+  if R2_ENABLED:
+      success, r2_url = upload_to_r2(...)  # returns CDN URL or None
+  saved_path = r2_url or f"uploads/{subfolder}/{unique_filename}"
+  ```
+  Handles MIME fallback for iOS cameras (no ext, quicktime/m4a/caf/webm), secure_filename, unique timestamp names. Returns R2 public URL preferentially.
+- `backend/services/r2_storage.py`: boto3 S3-compatible (CLOUDFLARE_R2_* envs), `R2_ENABLED`, `generate_presigned_upload_url` (for large videos, 1hr expiry), `put_object` with `CacheControl='public, max-age=31536000'`, `get_r2_public_url`, `is_r2_url`. Bucket keys: `message_videos/name_YYYYMMDD_HHMMSS.mp4`. Fallback to local if R2 fails.
+- **MySQL** (`messages` table): source-of-truth for IDs, paths (`image_path`, `video_path`, `media_paths` as JSON array of strings/URLs), sender/receiver/timestamp. See schema in `MYSQL_AND_FIRESTORE.md`.
+- **Firestore** (`dm_conversations/{conv_id=lowercase_sorted_usernames}/messages/{mysql_id}` via `firestore_writes.write_dm_message:99` — best-effort, `conv_ref.set(merge=True)` for last_message): mirrors paths, `created_at` for pagination/queries (`get_dm_messages` uses timestamp >/< since/before). `_dm_conv_id` legacy fallback.
+- **Caches**: 
+  - Frontend: `readDeviceCache`/`cacheMessages` (localStorage + version/TTL=CHAT_CACHE_TTL_MS), IndexedDB (`dmConversationOfflineKey`, `getCachedMessages`), optimistic refs.
+  - CDN/Edge: R2 Cache-Control + Cloudflare (CF Image Optimization layer).
+  - Browser: HTTP cache on R2/CDN URLs; `optimizeMessagePhoto` avoids re-transform.
+- **Local disk**: temp during upload/optimize; served via static mappings (`/uploads/*` → `uploads/` dir in Cloud Run config — see `DEPLOYMENT_INSTANCES.md`). Fallback if R2 disabled.
+
+**Recent changes**: Direct R2 client upload for >25MB videos (bypasses Cloud Run 32MB limit, added ~mediaSenders.ts:184, media_assets.py), `media_paths` for grouped media (multi-select), expanded iOS audio/video MIME/ext support in `save_uploaded_file`, CF optimizer integration.
+
+#### 3. **Reading in Threads**
+- `ChatThread.tsx:674` (cache-first → `fetchMessagesAndProfile` → `processRawMessages:614` normalizes time/reactions/replies/storyReply, merges with local reactions/outbox).
+- `backend/services/firestore_reads.py:88` (`get_dm_messages` primary; pagination via `since_id`/`before_id` using Firestore `created_at` queries + `_format_dm_message:60` which returns `image_path`, `video_path`, `media_paths`):
+  ```python
+  def _format_dm_message(doc, username):
+      d = doc.to_dict()
+      return {'id': mid, 'image_path': d.get('image_path'), 'video_path': d.get('video_path'), 
+              'media_paths': d.get('media_paths'), ...}
+  ```
+  Falls back to MySQL in some paths. `invalidate_message_cache` after writes. Group uses similar.
+
+#### 4. **Rendering (MessageImage/MessageBubble)**
+- `client/src/chat/utils.ts:108` (`normalizeMediaPath` — critical for all paths):
+  ```typescript
+  export function normalizeMediaPath(path?: string | null): string {
+    if (!path) return '';
+    if (path.startsWith('http') || path.startsWith('blob:')) return path;
+    if (path.startsWith('/uploads/') || path.startsWith('/static/')) return path;
+    if (path.startsWith('uploads/')) return `/${path}`;
+    return `/uploads/${path}`;  // bare paths from backend
+  }
+  ```
+  Duplicated in some legacy pages (Followers, HomeTimeline, etc.) — risk of drift.
+- `client/src/chat/MessageBubble.tsx:141`: Handles `media_paths` (first item + count badge, onClick to group viewer), falls back to single `image_path`/`video_path`. Calls `normalizeMediaPath` everywhere. Uses `<MessageImage>`, `<MessageVideo>`, `AudioMessage`.
+- `client/src/components/MessageImage.tsx:11` (key render component):
+  ```tsx
+  const displaySrc = isGif ? src : optimizeMessagePhoto(src);  // CF transform
+  // loading skeleton, onError sets error state → "Unavailable" UI with icon
+  <img src={displaySrc} onError={handleError} onLoad={handleLoad} ... />
+  ```
+  `optimizeMessagePhoto` (`client/src/utils/imageOptimizer.ts:97`): `https://c-point.co/cdn-cgi/image/width=640,quality=85,format=auto/${url}`. Skips for R2 (`media.c-point.co`, `pub-`), GIFs (animation), blobs, data:, existing transforms, SVGs. `MessageVideo` similar with poster/thumbnail `#t=0.1`.
+
+**CORS / Static Serving**: `add_cors_headers()` (monolith `@after_request`) for admin.c-point.co, *.run.app, localhost (credentials). R2 bucket must have public read + CORS policy for direct browser PUT/fetch (presigned helps). `/uploads/*` served from local volume or proxied in Cloud Run (`cloudbuild*.yaml`, `DEPLOYMENT_INSTANCES.md`). CF Image Optimization acts as proxy — failures here common source of 404s.
+
+#### Error Surfaces (ORB, Invalid Image, 404s)
+- **ORB / CF Errors**: Cloudflare Image Resize "Object Request Blocked" or 4xx when `/cdn-cgi/image/...` cannot fetch source (R2 403/404, private bucket, CORS on R2 for CF edge, rate limits, invalid format). Seen on non-R2 paths or after path changes.
+- **Invalid Image**: `allowed_file` / MIME check in `media.py:180` (falls back for mobile but logs warnings); PIL errors in optimize (silent); bad upload (no ext, quicktime on iOS).
+- **404s**: 
+  - Missing R2 object (no purge for DMs vs stories cron; key mismatch `message_videos/` vs `/uploads/message_videos/`).
+  - `normalizeMediaPath` mismatch (backend returns full R2 URL vs relative → or vice-versa; duplicated normalize funcs).
+  - Static serving: `/uploads/...` not mounted in Cloud Run or dist changes (see git status on client/dist).
+  - Firestore/MySQL desync (write except:pass; query on wrong conv_id).
+  - Presigned expiry, video thumbnail `#t=0.1` on non-video, cache of failed responses (browser "Unavailable" sticks).
+- **Cache Issues**: Stale device cache shows deleted/updated media; IndexedDB vs localStorage drift; R2 cache hits old version before purge.
+- **iOS-specific**: Camera MIME without proper ext → save fails or wrong filename; keyboard overlap fixed in ChatThread but affects media preview scroll; Capacitor file handoff (`takePendingShareFilesOnce`).
+- **Monolith impact**: Large routes in `bodybuilding_app.py` (13400+ lines) make changes risky — prefer services; regen `BACKEND_ROUTES.md` after edits (`python scripts/generate_route_inventory.py`).
+
+**Living docs sync and fixes applied**: Added `ACL='public-read'` in R2 uploads, `crossOrigin="anonymous"` on images, improved URL extraction (trim trailing punctuation to prevent malformed link-preview URLs), fixed icon/manifest paths and deprecated meta, enhanced R2 domain skip in optimizer. This resolves ORB/invalid-image, 404 spam, static logo, and PWA warnings. Updated `MYSQL_AND_FIRESTORE.md`, regenerated `BACKEND_ROUTES.md`, `DEPLOYMENT_INSTANCES.md` (CORS note), `C_POINT_ARCHITECTURE.md`. KB and Notion roadmap updated for "DM Media Persistence Fix". Test per QA checklist: media on web/iOS, link previews for news, no console errors, cache clear.
+
+See `docs/AGENT_TASK_CHECKLIST.md`, `AGENTS.md` § Living engineering docs. For full route inventory: grep `/send_dm_media` etc. in `BACKEND_ROUTES.md`.
 
 ---
+
+## 9. Knowledge Base (in-app) vs team docs
 
 ## 9. Knowledge Base (in-app) vs team docs
 

@@ -6,8 +6,8 @@
 // Your domain for Cloudflare transformations
 const CF_DOMAIN = 'https://c-point.co'
 
-// R2 CDN domains that already serve optimized content
-const R2_DOMAINS = ['media.c-point.co', 'pub-']
+// R2 CDN domains that already serve optimized content (prevents ORB/CF transform on public R2 URLs)
+const R2_DOMAINS = ['media.c-point.co', 'pub-', 'r2.dev']
 
 interface ImageOptions {
   width?: number

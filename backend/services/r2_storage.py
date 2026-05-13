@@ -129,7 +129,8 @@ def upload_to_r2(
             Key=key,
             Body=file_data,
             ContentType=content_type,
-            CacheControl='public, max-age=31536000'  # 1 year cache
+            CacheControl='public, max-age=31536000',  # 1 year cache
+            ACL='public-read'
         )
         
         # Build public URL
