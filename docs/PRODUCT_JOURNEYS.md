@@ -151,18 +151,19 @@ Onboarding stages and APIs: **`backend/blueprints/onboarding.py`** plus services
   - Browser: HTTP cache on R2/CDN URLs; `optimizeMessagePhoto` avoids re-transform.
 - **Local disk**: temp during upload/optimize; served via static mappings (`/uploads/*` → `uploads/` dir in Cloud Run config — see `DEPLOYMENT_INSTANCES.md`). Fallback if R2 disabled.
 
-**Recent changes**: Direct R2 client upload for >25MB videos (bypasses Cloud Run 32MB limit, added ~mediaSenders.ts:184, media_assets.py), `media_paths` for grouped media (multi-select), expanded iOS audio/video MIME/ext support in `save_uploaded_file`, CF optimizer integration.
+**Recent changes**: Direct R2 client upload for >25MB videos (bypasses Cloud Run 32MB limit, added ~mediaSenders.ts:184, media_assets.py), `media_paths` for grouped media (multi-select; now fully persisted in DMs via Firestore), expanded iOS MIME support, CF optimizer + ACL/crossOrigin fixes. **This change**: Fixed DM multi-media persistence by adding `media_paths` to `write_dm_message`/`_format_dm_message` (with JSON parse guard), normalizing in `processRawMessages` (string/array fallback to image_path), ensuring cache/reload survival. Matches group/post paths.
 
 #### 3. **Reading in Threads**
-- `ChatThread.tsx:674` (cache-first → `fetchMessagesAndProfile` → `processRawMessages:614` normalizes time/reactions/replies/storyReply, merges with local reactions/outbox).
-- `backend/services/firestore_reads.py:88` (`get_dm_messages` primary; pagination via `since_id`/`before_id` using Firestore `created_at` queries + `_format_dm_message:60` which returns `image_path`, `video_path`, `media_paths`):
+- `ChatThread.tsx:674` (cache-first → `fetchMessagesAndProfile` → `processRawMessages:614` now normalizes `media_paths` (JSON.parse if string, array fallback), time/reactions/replies/storyReply; merges with local reactions/outbox and `media_paths: m.media_paths ?? existing?.media_paths` at ~1358).
+- `backend/services/firestore_reads.py:88` (`get_dm_messages` primary; pagination via `since_id`/`before_id` using Firestore `created_at` queries + updated `_format_dm_message:60` which returns `media_paths` (with parse for robustness)):
   ```python
   def _format_dm_message(doc, username):
       d = doc.to_dict()
-      return {'id': mid, 'image_path': d.get('image_path'), 'video_path': d.get('video_path'), 
-              'media_paths': d.get('media_paths'), ...}
+      media_paths = d.get('media_paths')
+      if (typeof media_paths === 'string') ... # parse + list guard
+      return { ..., 'media_paths': media_paths if Array.isArray... }
   ```
-  Falls back to MySQL in some paths. `invalidate_message_cache` after writes. Group uses similar.
+  Falls back to MySQL in some paths. `invalidate_message_cache` after writes (now includes multi-media). Group uses similar (full parity achieved).
 
 #### 4. **Rendering (MessageImage/MessageBubble)**
 - `client/src/chat/utils.ts:108` (`normalizeMediaPath` — critical for all paths):
@@ -200,7 +201,7 @@ Onboarding stages and APIs: **`backend/blueprints/onboarding.py`** plus services
 - **iOS-specific**: Camera MIME without proper ext → save fails or wrong filename; keyboard overlap fixed in ChatThread but affects media preview scroll; Capacitor file handoff (`takePendingShareFilesOnce`).
 - **Monolith impact**: Large routes in `bodybuilding_app.py` (13400+ lines) make changes risky — prefer services; regen `BACKEND_ROUTES.md` after edits (`python scripts/generate_route_inventory.py`).
 
-**Living docs sync and fixes applied**: Added `ACL='public-read'` in R2 uploads, `crossOrigin="anonymous"` on images, improved URL extraction (trim trailing punctuation to prevent malformed link-preview URLs), fixed icon/manifest paths and deprecated meta, enhanced R2 domain skip in optimizer. This resolves ORB/invalid-image, 404 spam, static logo, and PWA warnings. Updated `MYSQL_AND_FIRESTORE.md`, regenerated `BACKEND_ROUTES.md`, `DEPLOYMENT_INSTANCES.md` (CORS note), `C_POINT_ARCHITECTURE.md`. KB and Notion roadmap updated for "DM Media Persistence Fix". Test per QA checklist: media on web/iOS, link previews for news, no console errors, cache clear.
+**Living docs sync and fixes applied**: Added `media_paths` support to DM Firestore write/read (`write_dm_message`, `_format_dm_message` with JSON parse), normalization/parsing in `processRawMessages` (ChatThread.tsx). This fixes multi-media persistence on reload (single worked; grouped now survives cache/Firestore/MySQL dual-store). Updated media pipeline section with accurate formatter + recent changes. Regenerated `BACKEND_ROUTES.md`. Updated `MYSQL_AND_FIRESTORE.md` (schema), `C_POINT_ARCHITECTURE.md` if needed. KB and Notion roadmap updated for "DM Multi-Media Persistence". Test per QA checklist: send 2+ media in DM (web/iOS), reload thread, verify all images render + gallery opens via count badge, no console errors, clear cache.
 
 See `docs/AGENT_TASK_CHECKLIST.md`, `AGENTS.md` § Living engineering docs. For full route inventory: grep `/send_dm_media` etc. in `BACKEND_ROUTES.md`.
 

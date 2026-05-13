@@ -641,6 +641,21 @@ export default function ChatThread(){
         }
       }
 
+      // Normalize media_paths for multi-media DMs (handles stringified JSON from MySQL,
+      // missing field from prior Firestore formatter, or single image_path fallback).
+      // This ensures persistence on reload/cache (fixes the multi-media bug).
+      let mediaPaths = m.media_paths
+      if (typeof mediaPaths === 'string' && mediaPaths) {
+        try {
+          mediaPaths = JSON.parse(mediaPaths)
+        } catch (e) {
+          mediaPaths = null
+        }
+      }
+      if (!Array.isArray(mediaPaths)) {
+        mediaPaths = m.image_path ? [m.image_path] : []
+      }
+
       const normalizedTime = ensureNormalizedTime(m.time)
       const meta = readMessageMeta(metaRef.current, normalizedTime, messageText, Boolean(m.sent))
       
@@ -653,6 +668,7 @@ export default function ChatThread(){
         text: messageText,
         time: normalizedTime,
         video_path: m.video_path,
+        media_paths: mediaPaths,
         reaction: serverReaction || idBasedReaction || meta.reaction,
         replySnippet: replySnippet || meta.replySnippet,
         storyReply,

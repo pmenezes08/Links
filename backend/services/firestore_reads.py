@@ -8,6 +8,7 @@ so the API response is identical regardless of source.
 Feature flag: set USE_FIRESTORE_READS=true in environment.
 """
 
+import json
 import os
 import logging
 from datetime import datetime
@@ -58,9 +59,18 @@ def _find_dm_conv_id(fs, username: str, peer: str):
 
 
 def _format_dm_message(doc, username: str) -> dict:
-    """Convert a Firestore message doc to the /get_messages response format."""
+    """Convert a Firestore message doc to the /get_messages response format.
+    Now includes media_paths (array or None) for grouped media from send_dm_media.
+    Matches get_group_chat_messages and fixes the previous DM read gap (see
+    write_dm_message update and PRODUCT_JOURNEYS.md)."""
     d = doc.to_dict()
     mid = int(doc.id) if doc.id.isdigit() else d.get('mysql_id', 0)
+    media_paths = d.get('media_paths')
+    if isinstance(media_paths, str):
+        try:
+            media_paths = json.loads(media_paths)
+        except (json.JSONDecodeError, TypeError):
+            media_paths = None
     return {
         'id': mid,
         'text': d.get('text') or '',
@@ -70,6 +80,7 @@ def _format_dm_message(doc, username: str) -> dict:
         'audio_duration_seconds': d.get('audio_duration_seconds'),
         'audio_mime': d.get('audio_mime'),
         'audio_summary': d.get('audio_summary'),
+        'media_paths': media_paths if isinstance(media_paths, list) else None,
         'sent': d.get('sender') == username,
         'time': _ts_to_str(d.get('created_at')),
         'edited_at': _ts_to_str(d.get('edited_at')),

@@ -100,8 +100,10 @@ def write_dm_message(sender: str, receiver: str, message_id: int, text: str = ''
                      image_path: str = None, video_path: str = None,
                      audio_path: str = None, audio_duration_seconds=None,
                      audio_mime: str = None, audio_summary: str = None,
-                     is_encrypted: bool = False, timestamp=None):
-    """Write a DM message to Firestore after MySQL insert."""
+                     media_paths=None, is_encrypted: bool = False, timestamp=None):
+    """Write a DM message to Firestore after MySQL insert.
+    Now includes media_paths array for grouped/multi-media (matches write_group_chat_message
+    and write_post; fixes DM Firestore read gap for send_dm_media calls)."""
     if not USE_FIRESTORE_WRITES:
         return
     try:
@@ -129,6 +131,7 @@ def write_dm_message(sender: str, receiver: str, message_id: int, text: str = ''
             'audio_duration_seconds': audio_duration_seconds,
             'audio_mime': audio_mime,
             'audio_summary': audio_summary,
+            'media_paths': media_paths,
             'is_encrypted': is_encrypted,
             'created_at': ts,
             'edited_at': None,
