@@ -10,9 +10,13 @@ interface NetworkState {
 const NetworkContext = createContext<NetworkState>({ isOnline: true, justReconnected: false })
 
 export function NetworkProvider({ children }: { children: ReactNode }) {
-  const [isOnline, setIsOnline] = useState(() =>
-    typeof navigator !== 'undefined' ? navigator.onLine : true,
-  )
+  const [isOnline, setIsOnline] = useState(() => {
+    if (typeof navigator !== 'undefined') {
+      if (Capacitor.isNativePlatform()) return false; // Safe default for iPhone cold start in airplane mode (prevents blank screen; listener updates)
+      return navigator.onLine;
+    }
+    return true;
+  })
   const [justReconnected, setJustReconnected] = useState(false)
   const wasOffline = useRef(false)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)

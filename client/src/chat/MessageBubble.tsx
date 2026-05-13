@@ -169,6 +169,7 @@ function MessageBubbleInner({
                   </div>
                 ) : (
                   <MessageImage
+                    key={normalizeMediaPath(m.media_paths[0])} // Ensures retry state resets on src change for "Unavailable" preview fix
                     src={normalizeMediaPath(m.media_paths[0])}
                     alt="Media"
                     className="w-full rounded-lg"
