@@ -111,21 +111,12 @@ Onboarding stages and APIs: **`backend/blueprints/onboarding.py`** plus services
 
 #### 1. **Upload (Client → Backend)**
 - `client/src/pages/ChatThread.tsx`: `pendingMedia`, `videoUploadProgress`, optimistic UI with `URL.createObjectURL(file)` (blob: URLs for previews), `idBridgeRef` (temp→server ID mapping to avoid flicker), device cache (`chatMessagesDeviceCacheKey`, IndexedDB `offlineDb`), iOS-specific: `Capacitor.getPlatform() !== 'ios'` keyboard listeners (`visualViewport`, `normalizeHeight` for viewport lift/scroll-to-bottom).
-- `client/src/chat/mediaSenders.ts` (key snippets):
-  ```typescript
-  // Images: simple FormData
-  const response = await fetch('/send_photo_message', { method: 'POST', body: formData })  // photo + recipient_id
-  // Videos: dual-path (recent change for large files)
-  const useDirectUpload = file.size > 25*1024*1024;
-  if (useDirectUpload) {
-    const urlData = await fetch('/api/video_upload_url', { ... }).then(r => r.json());  // presigned from media_assets.py
-    // XMLHttpRequest PUT to R2 presigned URL (progress tracking)
-    // Then POST /send_video_message with {video_url: public_url}
-  }
-  // Multi-media (batched, supports media_paths):
-  await fetch('/send_dm_media', { body: fd with 'media' files or 'media_urls' JSON for R2 pre-uploads })
-  ```
-  Optimistic `isOptimistic` messages, `SENDING_MEDIA_LABEL`, error cleanup of blobs, `onProgress` callback. GroupChat has parallel `groupChatMediaSenders.ts`.
+- `client/src/chat/mediaSenders.ts`:
+  - Single-image GIF/photo still uses `POST /send_photo_message` (multipart).
+  - Large single videos: presigned `PUT` via `/api/video_upload_url`, then `POST /send_video_message` with `video_url`.
+  - **Multi-media:** parallel client uploads — images scaled via `compressImageForUpload` then `POST /api/message_image_upload_url` + presigned `PUT`; each video uses `/api/video_upload_url` + `PUT`; **`POST /send_dm_media`** sends ordered JSON `media_urls` only (no multipart blobs through Cloud Run), preserving collage order.
+  - Sender-only **remove one attachment** from a collage (requires ≥2 server-side paths): `POST /api/chat/dm/remove_message_media` JSON `{ message_id, media_url }`.
+  - Group multi-media mirrors DM using `/api/group_chat/:id/image_upload_url`, `/api/group_chat/:id/video_upload_url`, then `POST .../send_media` with `media_urls`; removal: `POST /api/group_chat/:id/remove_message_media`.
 - Backend routes (still in monolith `bodybuilding_app.py:13411`—see **MONOLITH_REDUCTION_ROADMAP**):
   - `/send_photo_message`, `/send_video_message`, `/send_dm_media`: auth, block check, recipient lookup, `save_uploaded_file(...)`, insert to `messages` (with `media_paths=json.dumps(...)` for groups), **dual-write** to Firestore, notifications, push (skips if active_chat_status or muted).
   - `/api/video_upload_url` (`backend/blueprints/media_assets.py:56`): validates recipient, calls `_video_upload_payload("message_videos", ...)` → R2 presigned.

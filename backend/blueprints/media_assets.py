@@ -53,6 +53,48 @@ def _video_upload_payload(prefix: str, filename: str, content_type: str):
     return jsonify({"success": True, "upload_url": upload_url, "key": key, "public_url": public_url})
 
 
+def _image_upload_payload(prefix: str, filename: str, content_type: str):
+    if not R2_ENABLED or not R2_PUBLIC_URL:
+        return jsonify({"success": False, "error": "Direct upload not available"}), 503
+    if not content_type.startswith("image/"):
+        return jsonify({"success": False, "error": "Invalid image type"}), 400
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+    if ext not in ("png", "jpg", "jpeg", "webp", "gif"):
+        ext = "jpg"
+    name = (filename.rsplit(".", 1)[0] if "." in filename else "photo")[:50]
+    key = f"{prefix}/{name}_{ts}.{ext}"
+    upload_url = generate_presigned_upload_url(key, content_type)
+    if not upload_url:
+        return jsonify({"success": False, "error": "Failed to generate upload URL"}), 500
+    public_url = f"{R2_PUBLIC_URL.rstrip('/')}/{key}"
+    return jsonify({"success": True, "upload_url": upload_url, "key": key, "public_url": public_url})
+
+
+@media_assets_bp.route("/api/message_image_upload_url", methods=["POST"])
+def api_message_image_upload_url():
+    """Presigned PUT for DM chat photos — bypasses Cloud Run body size / CPU."""
+    if not _session_username():
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+    data = request.get_json() or {}
+    recipient_id = data.get("recipient_id")
+    filename = (data.get("filename") or "photo.jpg").strip()
+    content_type = (data.get("content_type") or get_content_type(filename)).strip()
+    if not recipient_id:
+        return jsonify({"success": False, "error": "recipient_id required"}), 400
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            ph = get_sql_placeholder()
+            cursor.execute(f"SELECT username FROM users WHERE id = {ph}", (recipient_id,))
+            if not cursor.fetchone():
+                return jsonify({"success": False, "error": "Recipient not found"}), 404
+    except Exception as exc:
+        logger.error("message_image_upload_url recipient check: %s", exc)
+        return jsonify({"success": False, "error": "Server error"}), 500
+    return _image_upload_payload("message_photos", filename, content_type)
+
+
 @media_assets_bp.route("/api/video_upload_url", methods=["POST"])
 def api_video_upload_url():
     """Get a presigned URL for direct DM video upload to R2."""

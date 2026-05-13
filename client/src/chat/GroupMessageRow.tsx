@@ -76,6 +76,7 @@ export type GroupMessageRowProps = {
   onOpenImage: (path: string) => void
   onOpenVideo: (path: string) => void
   onRetry?: () => void
+  onRemoveMediaItem?: (messageId: number, mediaUrl: string) => void
 }
 
 function GroupMessageRowInner(props: GroupMessageRowProps) {
@@ -116,6 +117,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
     onOpenImage,
     onOpenVideo,
     onRetry,
+    onRemoveMediaItem,
   } = props
 
   const { videoEmbed, bubbleTextWithoutUrls, linkPreviewUrls, replySnippet, replySender } = useMemo(() => {
@@ -137,6 +139,25 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
       urls.length > 0 && textAfterVideo ? stripExtractedUrlsFromText(textAfterVideo, urls) : textAfterVideo
     return { videoEmbed: ve, bubbleTextWithoutUrls: bubbleText, linkPreviewUrls: urls, replySnippet: rs, replySender: rsend }
   }, [msg.text, msg.replySnippet, msg.replySender])
+
+  const removableMedia =
+    isSentByMe &&
+    !isOptimistic &&
+    !sendFailed &&
+    msg.media_paths &&
+    msg.media_paths.length >= 2
+      ? msg.media_paths
+      : []
+
+  const longPressOptionalActions =
+    onRemoveMediaItem && removableMedia.length > 0
+      ? removableMedia.map((url, i) => ({
+          label: removableMedia.length > 1 ? `Remove item ${i + 1}` : 'Remove attachment',
+          danger: true as const,
+          iconClass: 'fa-regular fa-image',
+          onClick: () => onRemoveMediaItem(msg.id, url),
+        }))
+      : undefined
 
   return (
     <div>
@@ -179,6 +200,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
               onDelete={onDelete}
               onEdit={onEdit}
               onSelect={onEnterSelectMode}
+              optionalActions={longPressOptionalActions}
               disabled={(isOptimistic && !sendFailed) || isEditing || selectionMode}
             >
               <div className={`relative ${messageReaction ? 'mb-5' : ''}`}>
@@ -519,7 +541,8 @@ function rowPropsAreEqual(a: GroupMessageRowProps, b: GroupMessageRowProps) {
     a.currentUsername === b.currentUsername &&
     a.translationForMessage === b.translationForMessage &&
     a.translatingThis === b.translatingThis &&
-    a.canEditSummary === b.canEditSummary
+    a.canEditSummary === b.canEditSummary &&
+    a.onRemoveMediaItem === b.onRemoveMediaItem
   )
 }
 

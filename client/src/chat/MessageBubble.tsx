@@ -57,6 +57,8 @@ export interface MessageBubbleProps {
   onEdit?: () => void
   /** Handler to enter multi-select mode */
   onSelect?: () => void
+  /** Remove one attachment from a multi-media message (sender only; requires ≥2 items server-side). */
+  onRemoveMediaItem?: (mediaUrl: string) => void
   /** Handler to retry a failed message */
   onRetry?: () => void
   /** Handler to update edit text */
@@ -97,6 +99,7 @@ function MessageBubbleInner({
   onCopy,
   onEdit,
   onSelect,
+  onRemoveMediaItem,
   onEditTextChange,
   onCommitEdit,
   onCancelEdit,
@@ -119,6 +122,20 @@ function MessageBubbleInner({
     previewUrls.length > 0 ? stripExtractedUrlsFromText(textAfterVideo, previewUrls) : textAfterVideo
   const showLinkPreviews = previewUrls.length > 0
   const showLinkifiedBody = textWithoutPreviewUrls.trim().length > 0
+
+  const removableMedia =
+    m.sent && !m.isOptimistic && !m.sendFailed && m.media_paths && m.media_paths.length >= 2 ? m.media_paths : []
+
+  const longPressOptionalActions =
+    onRemoveMediaItem && removableMedia.length > 0
+      ? removableMedia.map((url, i) => ({
+          label: removableMedia.length > 1 ? `Remove item ${i + 1}` : 'Remove attachment',
+          danger: true as const,
+          iconClass: 'fa-regular fa-image',
+          onClick: () => onRemoveMediaItem(url),
+        }))
+      : undefined
+
   // Only render the "bubble" (liquid-glass background) when there is actual text,
   // a reply/story to quote, inline video, or an active editor. Media and link previews are
   // rendered as siblings of the bubble so they appear with their own thin
@@ -133,6 +150,7 @@ function MessageBubbleInner({
       onCopy={onCopy}
       onEdit={onEdit}
       onSelect={onSelect}
+      optionalActions={longPressOptionalActions}
       disabled={isEditing || (!!m.isOptimistic && !m.sendFailed)}
     >
       <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
@@ -567,7 +585,21 @@ const MessageBubble = memo(MessageBubbleInner, (prevProps, nextProps) => {
   if (prevMsg.sendFailed !== nextMsg.sendFailed) return false
   if (prevMsg.edited_at !== nextMsg.edited_at) return false
   if (prevMsg.decryption_error !== nextMsg.decryption_error) return false
-  
+  if (prevMsg.image_path !== nextMsg.image_path) return false
+  if (prevMsg.video_path !== nextMsg.video_path) return false
+  const pm = prevMsg.media_paths
+  const nm = nextMsg.media_paths
+  if (pm === nm) {
+    // same ref or both undefined
+  } else if (!pm || !nm || pm.length !== nm.length) {
+    return false
+  } else {
+    for (let i = 0; i < pm.length; i++) {
+      if (pm[i] !== nm[i]) return false
+    }
+  }
+  if (prevProps.onRemoveMediaItem !== nextProps.onRemoveMediaItem) return false
+
   // Check editing state
   if (prevProps.isEditing !== nextProps.isEditing) return false
   if (prevProps.editText !== nextProps.editText) return false

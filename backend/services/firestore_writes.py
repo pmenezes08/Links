@@ -233,28 +233,55 @@ def edit_group_chat_message(group_id: int, message_id: int, new_text: str):
         logger.warning(f"Firestore group chat edit failed (non-fatal): {e}")
 
 
-def delete_group_chat_message(group_id: int, message_id: int):
-    """Delete a group chat message from Firestore."""
+def update_dm_message_media(sender: str, receiver: str, message_id: int,
+                            media_paths: list | None, image_path: str | None,
+                            video_path: str | None):
+    """Patch grouped media fields on a DM message doc."""
     if not USE_FIRESTORE_WRITES:
         return
     try:
         fs = _get_client()
-        fs.collection('group_chats').document(str(group_id)).collection('messages').document(str(message_id)).delete()
+        conv_id = _dm_conv_id(sender, receiver)
+        msg_ref = fs.collection('dm_conversations').document(conv_id).collection('messages').document(str(message_id))
+        msg_ref.update({
+            'media_paths': media_paths if media_paths else None,
+            'image_path': image_path,
+            'video_path': video_path,
+        })
+        logger.debug("Firestore DM media update: msg %s in %s", message_id, conv_id)
     except Exception as e:
-        logger.warning(f"Firestore group msg delete failed (non-fatal): {e}")
+        logger.warning("Firestore DM media update failed (non-fatal): %s", e)
 
 
-def edit_group_chat_message(group_id: int, message_id: int, new_text: str):
-    """Update a group chat message text in Firestore."""
+def delete_dm_message(sender: str, receiver: str, message_id: int):
+    """Remove DM message doc from Firestore (MySQL row deleted separately)."""
+    if not USE_FIRESTORE_WRITES:
+        return
+    try:
+        fs = _get_client()
+        conv_id = _dm_conv_id(sender, receiver)
+        fs.collection('dm_conversations').document(conv_id).collection('messages').document(str(message_id)).delete()
+        logger.debug("Firestore DM delete: msg %s in %s", message_id, conv_id)
+    except Exception as e:
+        logger.warning("Firestore DM delete failed (non-fatal): %s", e)
+
+
+def update_group_chat_media(group_id: int, message_id: int,
+                            media_paths: list | None, image_path: str | None,
+                            video_path: str | None):
+    """Patch grouped media on a group message doc."""
     if not USE_FIRESTORE_WRITES:
         return
     try:
         fs = _get_client()
         fs.collection('group_chats').document(str(group_id)).collection('messages').document(str(message_id)).update({
-            'text': new_text,
+            'media_paths': media_paths if media_paths else None,
+            'image_path': image_path,
+            'video_path': video_path,
         })
+        logger.debug("Firestore group media update: msg %s in group %s", message_id, group_id)
     except Exception as e:
-        logger.warning(f"Firestore group msg edit failed (non-fatal): {e}")
+        logger.warning("Firestore group media update failed (non-fatal): %s", e)
 
 
 def write_post(post_id: int, username: str, content: str = '', community_id=None,

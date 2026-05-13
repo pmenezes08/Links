@@ -2541,6 +2541,48 @@ export default function ChatThread(){
     })
   }
 
+  async function handleRemoveDmMediaItem(messageId: number | string, mediaUrl: string) {
+    const hasPersistedServerId =
+      (typeof messageId === 'number' && messageId > 0) ||
+      (typeof messageId === 'string' && /^\d+$/.test(messageId) && Number(messageId) > 0)
+    if (!hasPersistedServerId) return
+    if (!confirm('Remove this attachment from the message?')) return
+    try {
+      const res = await fetch('/api/chat/dm/remove_message_media', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message_id: messageId, media_url: mediaUrl }),
+      })
+      const j = await res.json().catch(() => null)
+      if (!j?.success) {
+        alert(j?.error || 'Could not remove attachment')
+        return
+      }
+      if (j.deleted_message) {
+        setMessages(prev => prev.filter(x => x.id !== messageId))
+        return
+      }
+      const mp = (j.media_paths as string[] | undefined) || []
+      const pickFirst = (re: RegExp) => mp.find(p => re.test(p.split('?')[0].toLowerCase()))
+      const firstImg = pickFirst(/\.(png|jpg|jpeg|gif|webp)$/i)
+      const firstVid = pickFirst(/\.(mp4|mov|webm|m4v|avi)$/i)
+      setMessages(prev =>
+        prev.map(x => {
+          if (x.id !== messageId) return x
+          return {
+            ...x,
+            media_paths: mp.length ? mp : undefined,
+            image_path: firstImg ?? undefined,
+            video_path: firstVid ?? undefined,
+          }
+        })
+      )
+    } catch {
+      alert('Network error. Could not remove attachment.')
+    }
+  }
+
   // Toggle message selection in multi-select mode
   function toggleMessageSelection(messageId: number | string) {
     setSelectedMessages(prev => {
@@ -2947,6 +2989,13 @@ export default function ChatThread(){
                     setEditText(m.text)
                   } : undefined}
                   onSelect={isMultiSelectMode ? undefined : () => enterMultiSelectMode(m.id)}
+                  onRemoveMediaItem={
+                    isMultiSelectMode
+                      ? undefined
+                      : (mediaUrl: string) => {
+                          void handleRemoveDmMediaItem(m.id, mediaUrl)
+                        }
+                  }
                   onEditTextChange={setEditText}
                   onCommitEdit={commitEdit}
                   onCancelEdit={() => {

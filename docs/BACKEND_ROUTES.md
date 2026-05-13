@@ -112,6 +112,7 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/check_unread_messages` | GET | `check_unread_messages` | `backend/blueprints/dm_chats.py:51` | check unread messages | `client/src/contexts/BadgeContext.tsx` (1), `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
 | `/api/chat/clear_history` | POST | `clear_chat_history` | `backend/blueprints/dm_chats.py:105` | clear chat history | `client/src/pages/Messages.tsx` (1) |
 | `/delete_chat_thread` | POST | `delete_chat_thread` | `backend/blueprints/dm_chats.py:144` | delete chat thread | `client/src/pages/Messages.tsx` (2) |
+| `/api/chat/dm/remove_message_media` | POST | `remove_dm_message_media` | `backend/blueprints/dm_chats.py:190` | remove dm message media | `client/src/pages/ChatThread.tsx` (1) |
 | `/api/me/enterprise-seats` | GET | `me_seats` | `backend/blueprints/enterprise.py:89` | me seats | *(no exact string match — may use helpers)* |
 | `/api/me/iap-nag` | GET | `me_iap_nag` | `backend/blueprints/enterprise.py:97` | me iap nag | *(no exact string match — may use helpers)* |
 | `/api/me/iap-nag/ack` | POST | `me_iap_nag_ack` | `backend/blueprints/enterprise.py:115` | me iap nag ack | *(no exact string match — may use helpers)* |
@@ -146,15 +147,17 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/group_chat/<int:group_id>/remove_member` | POST | `remove_group_member` | `backend/blueprints/group_chat.py:1974` | remove group member | *(no exact string match — may use helpers)* |
 | `/api/group_chat/<int:group_id>/rename` | POST | `rename_group_chat` | `backend/blueprints/group_chat.py:2024` | rename group chat | *(no exact string match — may use helpers)* |
 | `/api/group_chat/<int:group_id>/video_upload_url` | POST | `group_video_upload_url` | `backend/blueprints/group_chat.py:2061` | group video upload url | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/steve_personality` | GET, POST | `group_steve_personality` | `backend/blueprints/group_chat.py:2109` | group steve personality | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/steve_reset_context` | POST | `reset_steve_context` | `backend/blueprints/group_chat.py:2150` | reset steve context | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/message/<int:message_id>/delete` | POST | `delete_group_message` | `backend/blueprints/group_chat.py:2180` | delete group message | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/message/<int:message_id>/update_summary` | POST | `update_group_audio_summary` | `backend/blueprints/group_chat.py:2234` | update group audio summary | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/messages/bulk_delete` | POST | `bulk_delete_group_messages` | `backend/blueprints/group_chat.py:2273` | bulk delete group messages | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/message/<int:message_id>/edit` | POST | `edit_group_message` | `backend/blueprints/group_chat.py:2337` | edit group message | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/message/<int:message_id>/react` | POST | `react_to_group_message` | `backend/blueprints/group_chat.py:2392` | react to group message | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/available_members` | GET | `get_available_members` | `backend/blueprints/group_chat.py:2457` | get available members | *(no exact string match — may use helpers)* |
-| `/api/group_chat/<int:group_id>/add_members` | POST | `add_members_to_group` | `backend/blueprints/group_chat.py:2522` | add members to group | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/image_upload_url` | POST | `group_image_upload_url` | `backend/blueprints/group_chat.py:2109` | group image upload url | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/steve_personality` | GET, POST | `group_steve_personality` | `backend/blueprints/group_chat.py:2157` | group steve personality | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/steve_reset_context` | POST | `reset_steve_context` | `backend/blueprints/group_chat.py:2198` | reset steve context | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/message/<int:message_id>/delete` | POST | `delete_group_message` | `backend/blueprints/group_chat.py:2228` | delete group message | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/remove_message_media` | POST | `remove_group_message_media` | `backend/blueprints/group_chat.py:2282` | remove group message media | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/message/<int:message_id>/update_summary` | POST | `update_group_audio_summary` | `backend/blueprints/group_chat.py:2395` | update group audio summary | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/messages/bulk_delete` | POST | `bulk_delete_group_messages` | `backend/blueprints/group_chat.py:2434` | bulk delete group messages | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/message/<int:message_id>/edit` | POST | `edit_group_message` | `backend/blueprints/group_chat.py:2498` | edit group message | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/message/<int:message_id>/react` | POST | `react_to_group_message` | `backend/blueprints/group_chat.py:2553` | react to group message | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/available_members` | GET | `get_available_members` | `backend/blueprints/group_chat.py:2618` | get available members | *(no exact string match — may use helpers)* |
+| `/api/group_chat/<int:group_id>/add_members` | POST | `add_members_to_group` | `backend/blueprints/group_chat.py:2683` | add members to group | *(no exact string match — may use helpers)* |
 | `/api/admin/kb/pages` | GET | `kb_list_pages` | `backend/blueprints/knowledge_base.py:67` | kb list pages | `admin-web/src/pages/KnowledgeBase.tsx` (3), `admin-web/src/pages/Calculator.tsx` (2) |
 | `/api/admin/kb/pages/<slug>` | GET | `kb_get_page` | `backend/blueprints/knowledge_base.py:102` | kb get page | *(no exact string match — may use helpers)* |
 | `/api/admin/kb/pages/<slug>` | PUT | `kb_save_page` | `backend/blueprints/knowledge_base.py:117` | kb save page | *(no exact string match — may use helpers)* |
@@ -167,9 +170,10 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/me/ai-usage` | GET | `me_ai_usage` | `backend/blueprints/me.py:169` | me ai usage | `client/src/pages/MembershipAIUsage.tsx` (2), `client/src/components/membership/ManageMembershipModal.tsx` (1) |
 | `/api/me/billing` | GET | `me_billing` | `backend/blueprints/me.py:301` | me billing | `client/src/components/membership/ManageMembershipModal.tsx` (4), `client/src/pages/Success.tsx` (2), `client/src/pages/EditCommunity.tsx` (1), `client/src/pages/SubscriptionPlans.tsx` (1) |
 | `/api/me/billing/portal` | POST | `me_billing_portal` | `backend/blueprints/me.py:352` | me billing portal | `client/src/pages/Success.tsx` (2), `client/src/components/membership/ManageMembershipModal.tsx` (2), `client/src/pages/EditCommunity.tsx` (1), `client/src/pages/SubscriptionPlans.tsx` (1) |
-| `/api/video_upload_url` | POST | `api_video_upload_url` | `backend/blueprints/media_assets.py:56` | api video upload url | `client/src/chat/mediaSenders.ts` (2) |
-| `/api/post_video_upload_url` | POST | `api_post_video_upload_url` | `backend/blueprints/media_assets.py:80` | api post video upload url | `client/src/pages/CreatePost.tsx` (1) |
-| `/api/cron/media/purge-retained-stories` | POST | `cron_purge_retained_story_media` | `backend/blueprints/media_assets.py:91` | cron purge retained story media | *(no exact string match — may use helpers)* |
+| `/api/message_image_upload_url` | POST | `api_message_image_upload_url` | `backend/blueprints/media_assets.py:74` | api message image upload url | `client/src/chat/mediaSenders.ts` (1) |
+| `/api/video_upload_url` | POST | `api_video_upload_url` | `backend/blueprints/media_assets.py:98` | api video upload url | `client/src/chat/mediaSenders.ts` (2) |
+| `/api/post_video_upload_url` | POST | `api_post_video_upload_url` | `backend/blueprints/media_assets.py:122` | api post video upload url | `client/src/pages/CreatePost.tsx` (1) |
+| `/api/cron/media/purge-retained-stories` | POST | `cron_purge_retained_story_media` | `backend/blueprints/media_assets.py:133` | cron purge retained story media | *(no exact string match — may use helpers)* |
 | `/notifications` | GET (default) | `notifications_page` | `backend/blueprints/notifications.py:87` | notifications page | `client/src/pages/Notifications.tsx` (8), `client/src/components/NativePushInit.tsx` (5), `client/src/utils/pushNotificationPayload.test.ts` (4), `client/src/contexts/BadgeContext.tsx` (3), `client/src/pages/CommunityFeed.tsx` (3), `client/src/components/HeaderBar.tsx` (2), `client/src/components/StayLiquidBridge.tsx` (2), `client/src/pages/PostDetail.tsx` (2) |
 | `/api/notifications/check` | GET (default) | `check_new_notifications` | `backend/blueprints/notifications.py:106` | check new notifications | *(no exact string match — may use helpers)* |
 | `/api/notifications/debug` | GET (default) | `debug_notifications` | `backend/blueprints/notifications.py:188` | debug notifications | *(no exact string match — may use helpers)* |
@@ -1705,7 +1709,7 @@ Total **395** `@app.route` registrations, grouped below for readability.
 
 | Path | Method(s) | Handler | Line | Purpose (short) | Where used (TS/TSX) |
 |------|-----------|---------|------|-----------------|----------------------|
-| `/send_dm_media` | POST | `send_dm_media` | 13596 | send dm media | `client/src/chat/mediaSenders.ts` (3), `client/src/chat/uploadQueue.ts` (1) |
+| `/send_dm_media` | POST | `send_dm_media` | 13596 | send dm media | `client/src/chat/mediaSenders.ts` (1), `client/src/chat/uploadQueue.ts` (1) |
 
 ### `/send_message`
 

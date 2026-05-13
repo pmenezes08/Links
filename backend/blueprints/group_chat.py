@@ -2106,6 +2106,54 @@ def group_video_upload_url(group_id: int):
     return jsonify({"success": True, "upload_url": upload_url, "key": key, "public_url": public_url})
 
 
+@group_chat_bp.route("/api/group_chat/<int:group_id>/image_upload_url", methods=["POST"])
+@_login_required
+def group_image_upload_url(group_id: int):
+    """Presigned PUT for group chat images — same pattern as video_upload_url."""
+    username = session["username"]
+
+    try:
+        from backend.services.r2_storage import R2_ENABLED, R2_PUBLIC_URL, generate_presigned_upload_url, get_content_type
+    except ImportError:
+        return jsonify({"success": False, "error": "Direct upload not available"}), 503
+
+    if not R2_ENABLED or not R2_PUBLIC_URL:
+        return jsonify({"success": False, "error": "Direct upload not available"}), 503
+
+    data = request.get_json() or {}
+    filename = (data.get("filename") or "photo.jpg").strip()
+    content_type = (data.get("content_type") or get_content_type(filename)).strip()
+
+    if not content_type.startswith("image/"):
+        return jsonify({"success": False, "error": "Invalid image type"}), 400
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT 1 FROM group_chat_members WHERE group_id = {ph} AND username = {ph}", (group_id, username))
+            if not c.fetchone():
+                return jsonify({"success": False, "error": "Access denied"}), 403
+    except Exception as e:
+        logger.error(f"group_image_upload_url membership check: {e}")
+        return jsonify({"success": False, "error": "Server error"}), 500
+
+    from datetime import datetime as _dt
+    ts = _dt.now().strftime("%Y%m%d_%H%M%S")
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+    if ext not in ("png", "jpg", "jpeg", "webp", "gif"):
+        ext = "jpg"
+    name = (filename.rsplit(".", 1)[0] if "." in filename else "photo")[:50]
+    key = f"message_photos/{name}_{ts}.{ext}"
+
+    upload_url = generate_presigned_upload_url(key, content_type)
+    if not upload_url:
+        return jsonify({"success": False, "error": "Failed to generate upload URL"}), 500
+
+    public_url = f"{R2_PUBLIC_URL.rstrip('/')}/{key}"
+    return jsonify({"success": True, "upload_url": upload_url, "key": key, "public_url": public_url})
+
+
 @group_chat_bp.route("/api/group_chat/<int:group_id>/steve_personality", methods=["GET", "POST"])
 @_login_required
 def group_steve_personality(group_id: int):
@@ -2229,6 +2277,119 @@ def delete_group_message(group_id: int, message_id: int):
     except Exception as e:
         logger.error(f"Error deleting message {message_id} in group {group_id}: {e}")
         return jsonify({"success": False, "error": "Failed to delete message"}), 500
+
+
+@group_chat_bp.route("/api/group_chat/<int:group_id>/remove_message_media", methods=["POST"])
+@_login_required
+def remove_group_message_media(group_id: int):
+    """Remove one URL from a grouped media message (sender only)."""
+    username = session["username"]
+    data = request.get_json() or {}
+    message_id = data.get("message_id")
+    media_url = (data.get("media_url") or "").strip()
+    if message_id is None or not media_url:
+        return jsonify({"success": False, "error": "message_id and media_url required"}), 400
+    try:
+        mid = int(message_id)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "Invalid message_id"}), 400
+
+    from backend.services.message_media_utils import (
+        parse_media_paths,
+        find_media_index,
+        first_image_and_video,
+        media_paths_json,
+    )
+    from backend.services.firestore_writes import delete_group_chat_message, update_group_chat_media
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            _ensure_group_chat_tables(c)
+
+            c.execute(
+                f"SELECT 1 FROM group_chat_members WHERE group_id = {ph} AND username = {ph}",
+                (group_id, username),
+            )
+            if not c.fetchone():
+                return jsonify({"success": False, "error": "Access denied"}), 403
+
+            c.execute(
+                f"""
+                SELECT sender_username, message_text, media_paths
+                FROM group_chat_messages
+                WHERE id = {ph} AND group_id = {ph} AND is_deleted = 0
+                """,
+                (mid, group_id),
+            )
+            row = c.fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Message not found"}), 404
+
+            sender = row["sender_username"] if hasattr(row, "keys") else row[0]
+            msg_text = row["message_text"] if hasattr(row, "keys") else row[1]
+            media_raw = row["media_paths"] if hasattr(row, "keys") else row[2]
+
+            if sender != username:
+                return jsonify({"success": False, "error": "You can only edit your own attachments"}), 403
+
+            paths = parse_media_paths(media_raw)
+            if len(paths) < 2:
+                return jsonify({"success": False, "error": "Nothing to remove"}), 400
+
+            idx = find_media_index(paths, media_url)
+            if idx < 0:
+                return jsonify({"success": False, "error": "Attachment not found"}), 404
+
+            paths.pop(idx)
+            text_empty = not (msg_text or "").strip()
+
+            if not paths:
+                if text_empty:
+                    c.execute(f"UPDATE group_chat_messages SET is_deleted = 1 WHERE id = {ph}", (mid,))
+                    conn.commit()
+                    try:
+                        delete_group_chat_message(group_id, mid)
+                    except Exception:
+                        pass
+                    return jsonify({"success": True, "deleted_message": True, "media_paths": []})
+
+                c.execute(
+                    f"""
+                    UPDATE group_chat_messages
+                    SET media_paths = NULL, image_path = NULL, video_path = NULL
+                    WHERE id = {ph}
+                    """,
+                    (mid,),
+                )
+                conn.commit()
+                try:
+                    update_group_chat_media(group_id, mid, None, None, None)
+                except Exception:
+                    pass
+                return jsonify({"success": True, "deleted_message": False, "media_paths": []})
+
+            mp_json = media_paths_json(paths)
+            first_img, first_vid = first_image_and_video(paths)
+            c.execute(
+                f"""
+                UPDATE group_chat_messages
+                SET media_paths = {ph}, image_path = {ph}, video_path = {ph}
+                WHERE id = {ph}
+                """,
+                (mp_json, first_img, first_vid, mid),
+            )
+            conn.commit()
+            try:
+                update_group_chat_media(group_id, mid, paths, first_img, first_vid)
+            except Exception:
+                pass
+            return jsonify({"success": True, "deleted_message": False, "media_paths": paths})
+
+    except Exception as e:
+        logger.error("remove_group_message_media: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": "Failed to update message"}), 500
 
 
 @group_chat_bp.route("/api/group_chat/<int:group_id>/message/<int:message_id>/update_summary", methods=["POST"])

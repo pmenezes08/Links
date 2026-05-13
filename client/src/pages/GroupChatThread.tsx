@@ -1860,6 +1860,50 @@ export default function GroupChatThread() {
     }
   }
 
+  const handleRemoveGroupMediaItem = useCallback(
+    async (messageId: number, mediaUrl: string) => {
+      if (!group_id) return
+      const gid = Number(group_id)
+      if (!Number.isFinite(gid)) return
+      if (!confirm('Remove this attachment from the message?')) return
+      try {
+        const res = await fetch(`/api/group_chat/${gid}/remove_message_media`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message_id: messageId, media_url: mediaUrl }),
+        })
+        const j = await res.json().catch(() => null)
+        if (!j?.success) {
+          alert(j?.error || 'Could not remove attachment')
+          return
+        }
+        if (j.deleted_message) {
+          setServerMessages(prev => prev.filter(m => m.id !== messageId))
+          return
+        }
+        const mp = (j.media_paths as string[]) || []
+        const pickFirst = (re: RegExp) => mp.find(p => re.test(p.split('?')[0].toLowerCase()))
+        const firstImg = pickFirst(/\.(png|jpg|jpeg|gif|webp)$/i)
+        const firstVid = pickFirst(/\.(mp4|mov|webm|m4v|avi)$/i)
+        setServerMessages(prev =>
+          prev.map(m => {
+            if (m.id !== messageId) return m
+            return {
+              ...m,
+              media_paths: mp.length ? mp : null,
+              image: firstImg ?? null,
+              video: firstVid ?? null,
+            }
+          }),
+        )
+      } catch {
+        alert('Network error. Could not remove attachment.')
+      }
+    },
+    [group_id],
+  )
+
   const handleDeleteMessage = async (messageId: number, messageData: Message) => {
     if (!confirm('Are you sure you want to delete this message?')) return
 
@@ -2472,6 +2516,7 @@ export default function GroupChatThread() {
                       onRetry={
                         msgWithKey.clientKey ? () => retryFailedMessage(msgWithKey.clientKey!) : undefined
                       }
+                      onRemoveMediaItem={selectionMode ? undefined : handleRemoveGroupMediaItem}
                     />
                   )
                 })}

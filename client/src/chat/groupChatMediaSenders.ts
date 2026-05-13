@@ -5,6 +5,7 @@
 
 import type { Dispatch, SetStateAction } from 'react'
 import { SENDING_MEDIA_LABEL } from './mediaSenders'
+import { compressImageForUpload } from '../utils/compressImageForUpload'
 
 export interface GroupMessage {
   id: number
@@ -237,6 +238,65 @@ export async function sendGroupVideoMessage(options: VideoMediaOptions): Promise
   }
 }
 
+async function putBlobToPresignedGroup(uploadUrl: string, blob: Blob, contentType: string): Promise<void> {
+  const res = await fetch(uploadUrl, { method: 'PUT', body: blob, headers: { 'Content-Type': contentType } })
+  if (!res.ok) throw new Error(`Upload failed (${res.status})`)
+}
+
+async function uploadGroupImageDirect(file: File, groupId: number | string): Promise<string> {
+  const prepared = await compressImageForUpload(file)
+  const contentType = prepared.type || 'image/jpeg'
+  const urlRes = await fetch(`/api/group_chat/${groupId}/image_upload_url`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      filename: prepared.name || 'photo.jpg',
+      content_type: contentType,
+    }),
+  })
+  const urlData = await urlRes.json().catch(() => null)
+  if (!urlRes.ok || !urlData?.success || !urlData.upload_url || !urlData.public_url) {
+    throw new Error(urlData?.error || 'Failed to get image upload URL')
+  }
+  await putBlobToPresignedGroup(urlData.upload_url, prepared, contentType)
+  return urlData.public_url as string
+}
+
+function uploadGroupVideoDirect(
+  file: File,
+  groupId: number | string,
+  onSliceProgress?: (loaded: number, total: number) => void,
+): Promise<string> {
+  return (async () => {
+    const urlRes = await fetch(`/api/group_chat/${groupId}/video_upload_url`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: file.name, content_type: file.type || 'video/mp4' }),
+    })
+    const urlData = await urlRes.json().catch(() => null)
+    if (!urlRes.ok || !urlData?.success || !urlData.upload_url || !urlData.public_url) {
+      throw new Error(urlData?.error || 'Failed to get video upload URL')
+    }
+    const ok = await new Promise<boolean>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onSliceProgress?.(e.loaded, e.total)
+      }
+      xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300)
+      xhr.onerror = () => reject(new Error('Video upload failed'))
+      xhr.ontimeout = () => reject(new Error('Video upload timeout'))
+      xhr.open('PUT', urlData.upload_url)
+      xhr.setRequestHeader('Content-Type', file.type || 'video/mp4')
+      xhr.timeout = 600000
+      xhr.send(file)
+    })
+    if (!ok) throw new Error('Video upload failed')
+    return urlData.public_url as string
+  })()
+}
+
 /**
  * Send multiple media files as a grouped message
  */
@@ -277,143 +337,55 @@ export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<b
 
   try {
     onProgress?.({ stage: 'uploading', progress: 5, message: `Uploading ${files.length} items...` })
-    
-    const LARGE_VIDEO_THRESHOLD = 25 * 1024 * 1024 // 25MB - Cloud Run limit is 32MB
-    
-    // Separate large videos that need R2 direct upload
-    const directUploadFiles: Array<{ file: File; type: 'image' | 'video' }> = []
-    const formUploadFiles: Array<{ file: File; type: 'image' | 'video' }> = []
-    
-    for (const item of files) {
-      if (item.type === 'video' && item.file.size > LARGE_VIDEO_THRESHOLD) {
-        directUploadFiles.push(item)
-      } else {
-        formUploadFiles.push(item)
-      }
-    }
-    
-    // Step 1: Upload large videos directly to R2 via presigned URLs
-    const preUploadedUrls: string[] = []
-    for (let i = 0; i < directUploadFiles.length; i++) {
-      const item = directUploadFiles[i]
-      console.log(`[GroupMedia] Direct R2 upload for large video: ${item.file.name} (${(item.file.size / 1024 / 1024).toFixed(1)}MB)`)
-      
-      onProgress?.({ stage: 'uploading', progress: 5 + (i / files.length) * 40, message: SENDING_MEDIA_LABEL })
-      
-      // Get presigned URL
-      const urlRes = await fetch(`/api/group_chat/${groupId}/video_upload_url`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: item.file.name, content_type: item.file.type || 'video/mp4' }),
-      })
-      const urlData = await urlRes.json().catch(() => null)
-      if (!urlData?.success || !urlData.upload_url || !urlData.public_url) {
-        throw new Error(urlData?.error || 'Failed to get upload URL for video')
-      }
-      
-      // Upload directly to R2
-      const putOk = await new Promise<boolean>((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            const base = 5 + (i / files.length) * 40
-            const pct = base + (e.loaded / e.total) * (40 / files.length)
-            onProgress?.({ stage: 'uploading', progress: pct, message: SENDING_MEDIA_LABEL })
-          }
-        }
-        xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300)
-        xhr.onerror = () => reject(new Error('Video upload failed'))
-        xhr.ontimeout = () => reject(new Error('Video upload timeout'))
-        xhr.open('PUT', urlData.upload_url)
-        xhr.setRequestHeader('Content-Type', item.file.type || 'video/mp4')
-        xhr.timeout = 600000 // 10 min
-        xhr.send(item.file)
-      })
-      
-      if (!putOk) throw new Error('Failed to upload video to storage')
-      preUploadedUrls.push(urlData.public_url)
-    }
-    
-    // Step 2: Upload form-uploadable files in sequential batches (max 3 files / ~15MB per batch)
-    const MAX_BATCH_FILES = 3
-    const MAX_BATCH_BYTES = 15 * 1024 * 1024
-    const allUploadedUrls: string[] = [...preUploadedUrls]
 
-    const batches: Array<Array<{ file: File; type: 'image' | 'video' }>> = []
-    let currentBatch: Array<{ file: File; type: 'image' | 'video' }> = []
-    let currentBatchSize = 0
-
-    for (const item of formUploadFiles) {
-      if (currentBatch.length >= MAX_BATCH_FILES || (currentBatch.length > 0 && currentBatchSize + item.file.size > MAX_BATCH_BYTES)) {
-        batches.push(currentBatch)
-        currentBatch = []
-        currentBatchSize = 0
-      }
-      currentBatch.push(item)
-      currentBatchSize += item.file.size
-    }
-    if (currentBatch.length > 0) batches.push(currentBatch)
-
-    const progressBase = 50
-    const progressRange = 45
-    for (let bi = 0; bi < batches.length; bi++) {
-      const batch = batches[bi]
-      const isLastBatch = bi === batches.length - 1
-      const batchProgress = progressBase + (bi / Math.max(batches.length, 1)) * progressRange
-      onProgress?.({ stage: 'uploading', progress: batchProgress, message: SENDING_MEDIA_LABEL })
-
-      const fd = new FormData()
-      for (const item of batch) {
-        fd.append('media', item.file)
-      }
-
-      if (isLastBatch && allUploadedUrls.length > 0) {
-        fd.append('media_urls', JSON.stringify(allUploadedUrls))
-      }
-      if (!isLastBatch) {
-        fd.append('upload_only', '1')
-      }
-
-      console.log(`[GroupMedia] Batch ${bi + 1}/${batches.length}: ${batch.length} files${isLastBatch && allUploadedUrls.length > 0 ? ` + ${allUploadedUrls.length} pre-uploaded URLs` : ''}${!isLastBatch ? ' (upload_only)' : ''}`)
-
-      const res = await fetch(`/api/group_chat/${groupId}/send_media`, {
-        method: 'POST',
-        credentials: 'include',
-        body: fd,
-      })
-
-      const batchPayload = await res.json().catch(() => null)
-      if (!batchPayload?.success) {
-        throw new Error(batchPayload?.error || `Batch ${bi + 1} failed`)
-      }
-
-      if (!isLastBatch) {
-        const batchUrls: string[] = batchPayload.media_paths || []
-        allUploadedUrls.push(...batchUrls)
-      }
+    const n = files.length
+    const sliceFrac = new Array<number>(n).fill(0)
+    const report = () => {
+      const avg = sliceFrac.reduce((a, b) => a + b, 0) / n
+      onProgress?.({ stage: 'uploading', progress: 5 + avg * 90, message: SENDING_MEDIA_LABEL })
     }
 
-    if (batches.length === 0 && allUploadedUrls.length > 0) {
-      const fd = new FormData()
-      fd.append('media_urls', JSON.stringify(allUploadedUrls))
-      const res = await fetch(`/api/group_chat/${groupId}/send_media`, {
-        method: 'POST',
-        credentials: 'include',
-        body: fd,
-      })
-      const payload = await res.json().catch(() => null)
-      if (!payload?.success) throw new Error(payload?.error || 'Failed to send media')
+    const gid = groupId
+    const tasks = files.map((item, i) =>
+      item.type === 'image'
+        ? uploadGroupImageDirect(item.file, gid).then((url) => {
+            sliceFrac[i] = 1
+            report()
+            return url
+          })
+        : uploadGroupVideoDirect(item.file, gid, (loaded, total) => {
+            sliceFrac[i] = total ? loaded / total : 0
+            report()
+          }).then((url) => {
+            sliceFrac[i] = 1
+            report()
+            return url
+          }),
+    )
+
+    const orderedUrls = await Promise.all(tasks)
+
+    onProgress?.({ stage: 'uploading', progress: 96, message: SENDING_MEDIA_LABEL })
+    const fd = new FormData()
+    fd.append('media_urls', JSON.stringify(orderedUrls))
+
+    const res = await fetch(`/api/group_chat/${groupId}/send_media`, {
+      method: 'POST',
+      credentials: 'include',
+      body: fd,
+    })
+    const payload = await res.json().catch(() => null)
+    if (!payload?.success) {
+      throw new Error(payload?.error || 'Failed to send media')
     }
 
     onProgress?.({ stage: 'done', progress: 100, message: 'Sent!' })
 
-    // Remove optimistic message — polling will pick up the real one
     setServerMessages(prev => prev.filter(m => (m as any).clientKey !== tempId))
-    
+
     loadMessages(true)
     setTimeout(() => loadMessages(true), 2000)
-    
+
     return true
   } catch (error) {
     console.error('[GroupMedia] Multi-media send failed:', error)

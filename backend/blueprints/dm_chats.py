@@ -185,3 +185,121 @@ def delete_chat_thread():
     except Exception as e:
         logger.error("delete_chat_thread error for %s with %s: %s", username, other_username, e)
         return jsonify({"success": False, "error": "Failed to delete chat"}), 500
+
+
+@dm_chats_bp.route("/api/chat/dm/remove_message_media", methods=["POST"])
+@_login_required
+def remove_dm_message_media():
+    """Remove one attachment from a grouped DM media message (sender only)."""
+    username = session.get("username")
+    data = request.get_json() or {}
+    message_id = data.get("message_id")
+    media_url = (data.get("media_url") or "").strip()
+    if message_id is None or not media_url:
+        return jsonify({"success": False, "error": "message_id and media_url required"}), 400
+    try:
+        mid = int(message_id)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "Invalid message_id"}), 400
+
+    from backend.services.message_media_utils import (
+        parse_media_paths,
+        find_media_index,
+        first_image_and_video,
+        media_paths_json,
+    )
+    from backend.services.firestore_writes import delete_dm_message, update_dm_message_media
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            c.execute(
+                f"""
+                SELECT sender, receiver, message, media_paths
+                FROM messages
+                WHERE id = {ph} AND (sender = {ph} OR receiver = {ph})
+                """,
+                (mid, username, username),
+            )
+            row = c.fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Message not found"}), 404
+
+            sender = row["sender"] if hasattr(row, "keys") else row[0]
+            receiver = row["receiver"] if hasattr(row, "keys") else row[1]
+            msg_body = row["message"] if hasattr(row, "keys") else row[2]
+            media_raw = row["media_paths"] if hasattr(row, "keys") else row[3]
+
+            if sender != username:
+                return jsonify({"success": False, "error": "You can only edit your own attachments"}), 403
+
+            paths = parse_media_paths(media_raw)
+            if len(paths) < 2:
+                return jsonify({"success": False, "error": "Nothing to remove"}), 400
+
+            idx = find_media_index(paths, media_url)
+            if idx < 0:
+                return jsonify({"success": False, "error": "Attachment not found"}), 404
+
+            paths.pop(idx)
+            text_empty = not (msg_body or "").strip()
+
+            if not paths:
+                if text_empty:
+                    c.execute(f"DELETE FROM messages WHERE id = {ph}", (mid,))
+                    conn.commit()
+                    try:
+                        invalidate_message_cache(sender, receiver)
+                    except Exception:
+                        pass
+                    try:
+                        delete_dm_message(sender, receiver, mid)
+                    except Exception:
+                        pass
+                    return jsonify({"success": True, "deleted_message": True, "media_paths": []})
+
+                c.execute(
+                    f"""
+                    UPDATE messages
+                    SET media_paths = NULL, image_path = NULL, video_path = NULL
+                    WHERE id = {ph}
+                    """,
+                    (mid,),
+                )
+                conn.commit()
+                try:
+                    invalidate_message_cache(sender, receiver)
+                except Exception:
+                    pass
+                try:
+                    update_dm_message_media(sender, receiver, mid, None, None, None)
+                except Exception:
+                    pass
+                return jsonify({"success": True, "deleted_message": False, "media_paths": []})
+
+            mp_json = media_paths_json(paths)
+            first_img, first_vid = first_image_and_video(paths)
+            c.execute(
+                f"""
+                UPDATE messages
+                SET media_paths = {ph}, image_path = {ph}, video_path = {ph}
+                WHERE id = {ph}
+                """,
+                (mp_json, first_img, first_vid, mid),
+            )
+            conn.commit()
+            try:
+                invalidate_message_cache(sender, receiver)
+            except Exception:
+                pass
+            try:
+                update_dm_message_media(sender, receiver, mid, paths, first_img, first_vid)
+            except Exception:
+                pass
+            return jsonify({"success": True, "deleted_message": False, "media_paths": paths})
+
+    except Exception as e:
+        logger.error("remove_dm_message_media: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": "Failed to update message"}), 500

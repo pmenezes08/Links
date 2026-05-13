@@ -1,5 +1,12 @@
 import { useRef, useState, useCallback } from 'react'
 
+export interface LongPressOptionalAction {
+  label: string
+  iconClass?: string
+  onClick: () => void
+  danger?: boolean
+}
+
 interface LongPressActionableProps {
   children: React.ReactNode
   onDelete: () => void
@@ -8,6 +15,8 @@ interface LongPressActionableProps {
   onCopy: () => void
   onEdit?: () => void
   onSelect?: () => void
+  /** Extra rows above Delete (e.g. remove one collage attachment). */
+  optionalActions?: LongPressOptionalAction[]
   disabled?: boolean
 }
 
@@ -55,6 +64,7 @@ export default function LongPressActionable({
   onCopy, 
   onEdit,
   onSelect,
+  optionalActions,
   disabled 
 }: LongPressActionableProps) {
   const [showMenu, setShowMenu] = useState(false)
@@ -247,6 +257,29 @@ export default function LongPressActionable({
                   Select
                 </button>
               )}
+              {optionalActions?.map((a, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  className={`text-left px-2 py-1 text-sm hover:bg-white/5 rounded ${
+                    a.danger ? 'text-orange-300' : ''
+                  }`}
+                  onClick={() =>
+                    safeAction(() => {
+                      setShowMenu(false)
+                      setShowEmojiPicker(false)
+                      a.onClick()
+                    })
+                  }
+                >
+                  {a.iconClass ? (
+                    <i className={`${a.iconClass} mr-2 text-xs opacity-60`} />
+                  ) : (
+                    <i className="fa-regular fa-file-lines mr-2 text-xs opacity-60" />
+                  )}
+                  {a.label}
+                </button>
+              ))}
               <button 
                 className="text-left px-2 py-1 text-sm text-red-400 hover:bg-white/5 rounded" 
                 onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onDelete() })}
