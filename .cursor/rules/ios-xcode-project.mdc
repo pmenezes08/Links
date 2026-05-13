@@ -23,4 +23,3 @@ When creating or referencing any new `.swift` file under `client/ios/App/App/`:
 ## After any iOS native changes
 
 - Always tell the user to open Xcode and verify the file appears in Build Phases > Compile Sources before building.
-- For welcome page images and assets from client/dist/assets, ensure they are included in the Xcode target's Copy Bundle Resources build phase (new builds can miss them if not synced properly). Verify in the project navigator under the App target.

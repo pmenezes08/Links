@@ -14,7 +14,8 @@ const NetworkContext = createContext<NetworkState>({ isOnline: true, justReconne
 export function NetworkProvider({ children }: { children: ReactNode }) {
   const [isOnline, setIsOnline] = useState(() => {
     if (typeof navigator !== 'undefined') {
-      return navigator.onLine; // Always use navigator.onLine initial (plugin overrides if truly offline). Fixes "seems offline" on new build cold start without banner.
+      if (Capacitor.isNativePlatform()) return false; // Safe default for iPhone cold start in airplane mode (prevents blank screen; listener updates)
+      return navigator.onLine;
     }
     return true;
   })

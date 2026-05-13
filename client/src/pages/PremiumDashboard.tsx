@@ -17,7 +17,6 @@ import { triggerDashboardServerPull } from '../utils/serverPull'
 import { useLogoutRequest } from '../contexts/LogoutPromptContext'
 import OnboardingChat from './OnboardingChat'
 import OnboardingIntroGate from '../components/onboarding/OnboardingIntroGate'
-import { invalidateDashboardCache } from '../utils/dashboardCache'
 import DashboardBottomNav, { isPremiumDashboardPath } from '../components/DashboardBottomNav'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
@@ -386,7 +385,6 @@ export default function PremiumDashboard() {
   }
 
   const loadUserData = useCallback(async (forceRefresh = false) => {
-    invalidateDashboardCache() // Clear for new build/login to prevent ghost account from stale profile (ties to firestore_reads.py Steve profiles)
     let profileSnapshot: DashboardCachePayload['profile'] | null = null
     let cachedCommunities: Array<{ id: number; name: string; type: string }> = []
     let hasGymAccessFlag = false

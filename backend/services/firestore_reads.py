@@ -348,16 +348,16 @@ def get_group_post_detail(post_id: int, username: str):
 
 
 def get_steve_user_profile(username: str):
-    """Get Steve user profile from Firestore. Returns defaults to avoid 'ghost' account on login/new build if not found."""
+    """Get Steve user profile from Firestore."""
     try:
         fs = _get_client()
         doc = fs.collection('steve_user_profiles').document(username).get()
         if not doc.exists:
-            return {'username': username, 'analysis': {}, 'lastUpdated': None}
+            return None
         return doc.to_dict()
     except Exception as e:
         logger.warning(f"Firestore get_steve_user_profile failed for {username}: {e}")
-        return {'username': username, 'analysis': {}, 'lastUpdated': None}
+        return None
 
 
 def batch_get_steve_user_profiles(usernames: list) -> dict:
