@@ -151,7 +151,7 @@ Onboarding stages and APIs: **`backend/blueprints/onboarding.py`** plus services
   - Browser: HTTP cache on R2/CDN URLs; `optimizeMessagePhoto` avoids re-transform.
 - **Local disk**: temp during upload/optimize; served via static mappings (`/uploads/*` → `uploads/` dir in Cloud Run config — see `DEPLOYMENT_INSTANCES.md`). Fallback if R2 disabled.
 
-**Recent changes**: Multi-media `media_paths` persistence, R2 uploads for large videos, iOS MIME/ACL/CF optimizer, MessageImage preview retry, Capacitor Network for offline. **Rollback**: Reverted latest preview/banner (errorCount/absolute overlay, isInitialized), server connection/profile defaults, and related changes to restore stable cold-start (pre-NetworkContext races and ghost profile issues). KB roadmap "ongoing". New iOS build + test required.
+**Recent changes**: Multi-media `media_paths` persistence, R2 uploads for large videos, iOS MIME/ACL/CF optimizer, MessageImage preview retry, Capacitor Network for offline. **Final fix**: Restored isInitialized + navigator.onLine default + symmetric goOnline in NetworkContext (prevents cold-start ghost/offline banner); safe default in get_steve_user_profile + dashboard cache clear (eliminates ghost account/empty dashboard/profile load failure). Updated OfflineBanner, KB to completed, living docs. Stable on simulator/Xcode new builds. Matches AGENTS.md and PRODUCT_JOURNEYS native flow.
 
 #### 3. **Reading in Threads**
 - `ChatThread.tsx:674` (cache-first → `fetchMessagesAndProfile` → `processRawMessages:614` now normalizes `media_paths` (JSON.parse if string, array fallback), time/reactions/replies/storyReply; merges with local reactions/outbox and `media_paths: m.media_paths ?? existing?.media_paths` at ~1358).

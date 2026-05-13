@@ -385,6 +385,7 @@ export default function PremiumDashboard() {
   }
 
   const loadUserData = useCallback(async (forceRefresh = false) => {
+    invalidateDashboardCache() // Clear stale/ghost profile cache on login/new build (ties to firestore_reads.get_steve_user_profile)
     let profileSnapshot: DashboardCachePayload['profile'] | null = null
     let cachedCommunities: Array<{ id: number; name: string; type: string }> = []
     let hasGymAccessFlag = false

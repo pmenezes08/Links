@@ -1,9 +1,10 @@
 import { useNetwork } from '../contexts/NetworkContext'
 
 export default function OfflineBanner() {
-  const { isOnline, justReconnected } = useNetwork()
+  const { isOnline, justReconnected, isInitialized } = useNetwork()
 
-  if (isOnline && !justReconnected) return null
+  // Only show after initialization to prevent false "You're offline" / ghost mode on cold start
+  if (!isInitialized || (isOnline && !justReconnected)) return null
 
   return (
     <div
