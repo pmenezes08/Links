@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
 import ZoomableImage from '../components/ZoomableImage'
+import MessageImage from '../components/MessageImage'
 import { normalizeMediaPath } from '../chat'
 
 type MediaItem = {
@@ -183,10 +184,11 @@ export default function GroupChatMedia() {
                             </div>
                           </>
                         ) : (
-                          <img
+                          <MessageImage
+                            tile
                             src={normalizeMediaPath(m.url)}
                             alt="Shared media"
-                            className="w-full h-full object-cover rounded-lg border border-white/10 hover:border-white/20 transition-colors"
+                            className="rounded-lg border border-white/10 hover:border-white/20 transition-colors"
                           />
                         )}
                         <div className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 rounded bg-black/70 border border-white/10 text-white/80">
