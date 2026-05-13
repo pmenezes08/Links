@@ -4,6 +4,8 @@ import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
 import ZoomableImage from '../components/ZoomableImage'
 import { normalizeMediaPath } from '../chat'
+import { Network } from '@capacitor/network'
+import { Filesystem, Directory } from '@capacitor/filesystem'
 
 type MediaItem = {
   id: number
@@ -64,6 +66,36 @@ export default function ChatMedia() {
     return { keys: formatted, map, originalKeys: keys }
   }, [items])
 
+  // Safest high-ROI Filesystem + Network: Network for offline detection, Filesystem for local save to phone memory (Documents dir). Manual button to avoid surprises/permissions issues. High native feel with minimal server reliance.
+  const saveMediaToDevice = async (url: string, type: 'image' | 'video') => {
+    try {
+      const status = await Network.getStatus()
+      if (!status.connected) {
+        alert('Offline - media already cached locally via IndexedDB')
+        return
+      }
+      const response = await fetch(url)
+      if (!response.ok) throw new Error('Download failed')
+      const blob = await response.blob()
+      const reader = new FileReader()
+      const base64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string)
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+      const extension = type === 'video' ? 'mp4' : 'jpg'
+      const path = `cpoint-media-${Date.now()}.${extension}`
+      await Filesystem.writeFile({
+        path,
+        data: base64,
+        directory: Directory.Documents,
+      })
+      alert(`Saved to device Documents folder as ${path}. Use Files app to view (native phone memory win).`)
+    } catch (err) {
+      alert('Save failed: ' + (err as Error).message)
+    }
+  }
+
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading...</div>
   if (error) return <div className="p-4 text-red-400">{error}</div>
 
@@ -123,7 +155,13 @@ export default function ChatMedia() {
           <div className="flex items-center justify-between px-4 py-3 bg-black/80" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}>
             <button onClick={() => setViewingMedia(null)} className="text-white p-2 -ml-2"><i className="fa-solid fa-xmark text-xl" /></button>
             <span className="text-white font-medium">{viewingMedia.type === 'video' ? 'Video' : 'Photo'}</span>
-            <div className="w-8" />
+            <button 
+              onClick={() => saveMediaToDevice(viewingMedia.url, viewingMedia.type)}
+              className="text-white p-2 hover:bg-white/10 rounded-full"
+              title="Save to device (Filesystem + phone memory)"
+            >
+              <i className="fa-solid fa-download" />
+            </button>
           </div>
           <div className="flex-1 flex items-center justify-center overflow-hidden" onClick={e => e.stopPropagation()}>
             {viewingMedia.type === 'video' ? (

@@ -34,6 +34,8 @@ const config: CapacitorConfig = {
       scopes: ['profile', 'email'],
       forceCodeForRefreshToken: false,
     },
+    Network: {},
+    Filesystem: {},
   },
 };
 

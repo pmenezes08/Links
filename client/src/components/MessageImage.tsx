@@ -11,14 +11,15 @@ interface MessageImageProps {
 export default function MessageImage({ src, alt, onClick, className = '' }: MessageImageProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [retryWithOriginal, setRetryWithOriginal] = useState(false)
   const normalizedSrc = useMemo(() => src?.split('?')[0]?.toLowerCase() || '', [src])
   const isGif = normalizedSrc.endsWith('.gif')
   
-  // Apply Cloudflare optimization (skip for GIFs to preserve animation)
+  // Apply Cloudflare optimization (skip for GIFs to preserve animation). Retry with original src on error for preview "Unavailable" fix (high ROI, safe fallback).
   const displaySrc = useMemo(() => {
-    if (isGif) return src
+    if (isGif || retryWithOriginal) return src
     return optimizeMessagePhoto(src)
-  }, [src, isGif])
+  }, [src, isGif, retryWithOriginal])
 
   const handleLoad = () => {
     setLoading(false)
@@ -26,7 +27,11 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
 
   const handleError = () => {
     setLoading(false)
-    setError(true)
+    if (!retryWithOriginal) {
+      setRetryWithOriginal(true) // Safe retry: original R2 URL often succeeds where CF transform fails for thumbnails
+    } else {
+      setError(true)
+    }
   }
 
   return (
