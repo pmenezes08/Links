@@ -7,7 +7,8 @@ const config: CapacitorConfig = {
   appName: 'C-Point',
   webDir: 'dist',
   server: {
-    // url: 'https://cpoint-app-staging-739552904126.europe-west1.run.app',
+    /** Load the SPA from staging so relative `/api` requests hit Cloud Run (bundled capacitor:// origin breaks fetch). */
+    url: 'https://cpoint-app-staging-739552904126.europe-west1.run.app',
     cleartext: false,
     allowNavigation: ['cpoint-app-staging-739552904126.europe-west1.run.app', 'app.c-point.co', '*.c-point.co'],
   },
@@ -27,8 +28,8 @@ const config: CapacitorConfig = {
       style: 'dark',
     },
     GoogleAuth: {
-      clientId: '739552904126-mvkhoasgt3kt25uejlple989m3ph6dd4.apps.googleusercontent.com',
-      androidClientId: '739552904126-mvkhoasgt3kt25uejlple989m3ph6dd4.apps.googleusercontent.com',
+      clientId: '739552904126-ini3ms8voub380vij0cgq79k1dreul5h.apps.googleusercontent.com',
+      androidClientId: '739552904126-ini3ms8voub380vij0cgq79k1dreul5h.apps.googleusercontent.com',
       iosClientId: '739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com',
       serverClientId: '739552904126-ini3ms8voub380vij0cgq79k1dreul5h.apps.googleusercontent.com',
       scopes: ['profile', 'email'],
