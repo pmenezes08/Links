@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from backend.services.steve_prompt_policy import (
+    MODE_NEWS_CURRENT_EVENTS,
     MODE_QUICK_ANSWER,
     MODE_RECOMMENDATION,
     MODE_REVIEW_CRITIQUE,
@@ -18,6 +19,16 @@ def test_prompt_policy_keeps_casual_replies_lightweight():
     prompt = render_response_policy_prompt("thanks!", surface="dm")
     assert "For casual replies, stay conversational" in prompt
     assert "Do not add headings unless they help" in prompt
+
+
+def test_prompt_policy_news_current_events_mode():
+    assert classify_response_mode("Give me today's news") == MODE_NEWS_CURRENT_EVENTS
+    assert classify_response_mode("What's the weather in Lisbon?") == MODE_NEWS_CURRENT_EVENTS
+
+    prompt = render_response_policy_prompt("Latest headlines please", surface="feed")
+    assert "news_current_events" in prompt
+    assert "## Key developments" in prompt
+    assert "RTP Notícias" in prompt or "RTP" in prompt
 
 
 def test_prompt_policy_detects_substantive_requests():

@@ -22398,13 +22398,15 @@ def inject_member_mentions(text: str, member_names: list) -> str:
 
 def format_steve_response_links(response_text: str) -> str:
     """
-    Clean up URLs in Steve's responses for proper frontend rendering.
-    
-    Grok's web_search returns real URLs, but in citation format like:
-      [[1]](https://rtp.pt/article)[[2]](https://bbc.com/news)
-    
-    The double brackets and lack of spacing breaks standard markdown parsers.
-    This function normalizes everything into clean [domain](url) format.
+    Normalise URLs in Steve replies for client Markdown rendering.
+
+    - Citation-style ``[[1]](https://...)`` from hosted search is rewritten to
+      ``[hostname](https://...)`` so parsers accept it (prompts discourage this for sources).
+    - Standard ``[visible text](url)`` is preserved when ``visible text`` looks intentional:
+      article headlines, words, etc. Only purely numeric labels or labels starting with
+      ``source`` are replaced with the URL hostname for readability.
+    - Bare ``https://...`` URLs become ``[hostname](url)`` so they become tappable; prefer
+      prompting Steve to emit ``[Headline](url)`` first so headlines are not stripped here.
     """
     import re
     from urllib.parse import urlparse
@@ -22423,8 +22425,7 @@ def format_steve_response_links(response_text: str) -> str:
         except Exception:
             return "link"
     
-    # Step 1: Convert citation-style [[N]](url) to [domain](url)
-    # Matches [[1]], [[2]], etc. followed by (url)
+    # Step 1: Convert citation-style [[N]](url) to [domain](url). Prefer model output of [Headline](url) instead.
     citation_pattern = r'\[\[(\d+)\]\]\((https?://[^)]+)\)'
     def replace_citation(match):
         url = match.group(2).rstrip('.,;:!?')
@@ -22433,8 +22434,7 @@ def format_steve_response_links(response_text: str) -> str:
     
     formatted = re.sub(citation_pattern, replace_citation, response_text)
     
-    # Step 2: Convert standard markdown links [text](url) — keep URL, use domain as display
-    # Only replace if display text is a number or generic (keeps intentional display text)
+    # Step 2: Normalize [text](url) when text is only a citation label; keep real headlines & labels.
     std_md_pattern = r'\[([^\]]+)\]\((https?://[^)]+)\)'
     def clean_markdown_link(match):
         display = match.group(1)
@@ -22484,15 +22484,16 @@ IMPORTANT LANGUAGE RULE: You MUST reply in the SAME language the user writes in.
 
 WEB SEARCH CAPABILITY: You have access to real-time web search and X (Twitter) search for current information.
 
-When users ask about news, weather, or current events:
-- You CAN search the web for real, current information
-- Include source URLs when available — they will be auto-formatted as clickable links
-- Include dates when the information was published if available
-- If search returns no results, be honest about it
+When users ask about news, weather, sports, politics, markets, or current events:
+- Search the web (and X only when the user explicitly cares about X/Twitter) for real, current information.
+- Follow STEVE RESPONSE POLICY **news_current_events** when that mode applies: opening paragraph, ## Key developments, ## Why it matters, ## Sources.
+- In ## Sources, each line must be `[Exact article headline](URL)` Markdown — no bare URLs, no [[n]](url) citation style in the final reply.
+- Prefer reputable outlets (wires and established nationals). For Portugal / PT-PT topics, prioritise RTP Notícias, Público, Expresso, Observador, ECO, and official .gov.pt where relevant; avoid thin aggregators unless cross-checked against a tier-one source.
+- Include publication dates when sources provide them. If search returns nothing useful, say so honestly.
 
 CONVERSATION INTELLIGENCE:
 Read the full post and comment thread carefully. Adapt your response based on what's happening:
-1. If someone is asking about news, weather, sports, or current events — search the web and provide real, up-to-date information with source links.
+1. If someone is asking about news, weather, sports, or current events — search as needed and deliver a substantive briefing per STEVE RESPONSE POLICY news_current_events; sources as `[Headline](URL)` Markdown in ## Sources.
 2. If the conversation is casual banter or fun — join in naturally. Be witty, keep it light.
 3. If a problem or challenge is being discussed and NO solution has been proposed — proactively suggest practical, actionable solutions with brief reasoning.
 4. If a solution IS already being discussed — briefly analyze it: what's good about it, any risks or blind spots, and suggest improvements or alternatives if relevant.

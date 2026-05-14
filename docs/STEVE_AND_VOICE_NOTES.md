@@ -40,6 +40,7 @@ and then write the code. Do **not** silently diverge.
    `gate_or_reason` so eligible members can consume the **Steve Community
    Package** monthly pool per KB flags (`community-tiers` page).
    **Feed replies** always offer hosted **`web_search` / `x_search`** (same as DM and group @Steve), except KB **`paid_steve_package_feed_attach_*`** toggles that disable a channel without deploy. Platform manual prompts still tell the model when not to call tools for C‑Point-only questions.
+   **News and current-events** replies use **`steve_prompt_policy` `news_current_events`** mode: structured sections (Key developments, Why it matters, Sources), substantive bullets, reputable-source guidance, and **`[Article headline](URL)`** Markdown for sources where possible; bare URLs and numeric citations are normalised in **`format_steve_response_links`**. The canonical **“what Steve can do”** inventory is KB **`steve-platform-manual`** card **`steve.what_can_i_do`** (seeded from **`docs/STEVE_PLATFORM_KB.md`**).
 
 Skip any of the above and the user's "Steve uses this month" counter
 will silently lie to them. We've already fixed that bug once, don't

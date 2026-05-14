@@ -459,8 +459,6 @@ def _run_grok_dm_turn(
 
     from backend.services.steve_platform_manual import (
         SURFACE_DM,
-        is_professional_advice_intent,
-        is_platform_question,
         render_global_steve_safety_prompt,
         render_platform_manual_prompt,
         select_platform_manual_cards,
@@ -468,11 +466,7 @@ def _run_grok_dm_turn(
 
     platform_manual_prompt = ""
     safety_prompt = ""
-    platform_question = False
-    professional_advice_question = False
     try:
-        platform_question = is_platform_question(user_message)
-        professional_advice_question = is_professional_advice_intent(user_message)
         platform_manual_prompt = render_platform_manual_prompt(
             select_platform_manual_cards(user_message, surface=SURFACE_DM)
         )
@@ -526,7 +520,7 @@ COMMUNITY & PRIVACY RULES:
 - If you don't have information about a mentioned user, say so honestly.
 
 RESPONSE STYLE:
-- Be helpful and concise (2-5 sentences for casual, longer for detailed questions)
+- Be helpful and concise for casual chat (2-5 sentences). For news, weather, sports, politics, markets, and current-events briefings, ignore the short casual limit and follow STEVE RESPONSE POLICY **news_current_events** (structured sections, substantive bullets, headline Markdown sources).
 - Use emojis occasionally
 - If you cannot answer, be transparent about it
 - NEVER hallucinate or make up information about users — only use the profile data provided below"""
@@ -568,9 +562,9 @@ Only share this information if asked. Be factual — do not embellish or invent 
     response = client.responses.create(
         model=model_to_use,
         input=messages,
-        tools=[]
-        if (platform_question or professional_advice_question)
-        else [{"type": "web_search"}, {"type": "x_search"}],
+        # DM Steve: always offer hosted web + X tools (cost borne by Premium/package caps).
+        # Prompt/manual cards still instruct when not to use them for C‑Point-only questions.
+        tools=[{"type": "web_search"}, {"type": "x_search"}],
         max_output_tokens=max_output_tokens,
         temperature=0.7,
     )

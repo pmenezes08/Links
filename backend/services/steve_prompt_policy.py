@@ -5,11 +5,23 @@ from __future__ import annotations
 import re
 from typing import Optional
 
+from backend.services.steve_tool_policy import (
+    normalize_message_for_live_search_signals,
+    steve_external_search_requested,
+)
+
 MODE_QUICK_ANSWER = "quick_answer"
 MODE_SUBSTANTIVE_ANALYSIS = "substantive_analysis"
 MODE_RECOMMENDATION = "recommendation"
 MODE_REVIEW_CRITIQUE = "review_critique"
 MODE_MENTORSHIP = "mentorship"
+MODE_NEWS_CURRENT_EVENTS = "news_current_events"
+
+_NEWS_TOPIC_HINT = re.compile(
+    r"\b(news|headlines|briefing|weather|forecast|markets?|stocks?|nasdaq|election|politics|"
+    r"sports?|football|scores?|breaking)\b",
+    re.IGNORECASE,
+)
 
 _RECOMMENDATION_RE = re.compile(
     r"\b(should i|should we|what should|recommend|recommendation|what would you do|next step|best option|which option)\b",
@@ -37,12 +49,24 @@ _PROFILE_RE = re.compile(
 )
 
 
+def news_current_events_requested(message: str | None) -> bool:
+    """True when the user is asking for news, weather, markets, sports, or similar live briefing."""
+    if steve_external_search_requested(message or ""):
+        return True
+    text = normalize_message_for_live_search_signals(message or "")
+    if not text:
+        return False
+    return bool(_NEWS_TOPIC_HINT.search(text))
+
+
 def classify_response_mode(user_message: str, *, mentorship_enabled: bool = False) -> str:
     text = (user_message or "").strip()
     if mentorship_enabled:
         return MODE_MENTORSHIP
     if not text or _CASUAL_RE.search(text):
         return MODE_QUICK_ANSWER
+    if news_current_events_requested(text):
+        return MODE_NEWS_CURRENT_EVENTS
     if _RECOMMENDATION_RE.search(text):
         return MODE_RECOMMENDATION
     if _REVIEW_RE.search(text):
@@ -69,17 +93,25 @@ def render_response_policy_prompt(user_message: str, *, surface: str, mentorship
 
 RESPONSE MODES:
 - quick_answer: Use for casual chat, acknowledgements, and simple questions. Reply naturally in 2-5 sentences. Do not add headings unless they help.
+- news_current_events: Use for news headlines, weather, sports results, politics, markets, breaking stories, and “what happened today” briefings. Use web_search / x_search when needed. Be substantive — not a one-liner.
 - substantive_analysis: Use for strategy, business, product, technical, career, health, finance, community decisions, or why/how questions. Use Markdown headings and bullet points.
 - recommendation: State the recommendation clearly, explain why, include tradeoffs, and finish with practical next steps.
 - review_critique: Evaluate what works, risks, blind spots, and improvements.
 - mentorship: Be practical, direct, supportive, and specific. Ask at most one useful follow-up question only if needed.
 
+NEWS / CURRENT EVENTS (news_current_events mode) — REQUIRED SHAPE:
+- Open with a short paragraph (2-4 sentences) framing the story or day’s theme.
+- ## Key developments — 3-6 bullets with concrete facts: who, what, when, where; include dates and figures when the sources provide them.
+- ## Why it matters — 2-4 bullets on implications or context (avoid fluff).
+- ## Sources — 2-4 lines; each line MUST be a Markdown link using the article headline as link text: [Exact headline from the source](https://full-url). Do NOT use bare URLs. Do NOT use [[1]](url) citation-style links in the final reply.
+- SOURCE HYGIENE: Prefer reputable outlets — major wires and nationals (e.g. Reuters, AP, BBC, FT, NPR, Guardian where appropriate). For Portugal or when the user writes European Portuguese / asks about Portugal, prioritise RTP Notícias, Público, Expresso, Observador, ECO (economy/business), and official Portuguese government sites (.gov.pt) for policy; cross-check thin aggregators against a tier-one outlet before relying on them.
+
 FORMAT RULES:
-- Avoid long walls of text.
-- For substantive answers, prefer this structure: ## Short Answer, ## Analysis, ## Recommendation, ## Pitfalls, ## Next Steps.
-- Use bullet points by default in substantive sections, usually 3-6 bullets per section.
+- Avoid long walls of unbroken prose outside the opening paragraph.
+- For substantive_analysis (non-news), prefer: ## Short Answer, ## Analysis, ## Recommendation, ## Pitfalls, ## Next Steps.
+- Use bullet points by default in substantive and news sections, usually 3-6 bullets per section where applicable.
 - Use numbered steps only for sequences or action plans.
-- Bold the key recommendation when helpful.
+- Bold the key recommendation when helpful (substantive/recommendation modes).
 - For casual replies, stay conversational and do not over-format.
 
 CONTEXT USE:

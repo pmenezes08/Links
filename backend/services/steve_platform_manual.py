@@ -184,17 +184,65 @@ DEFAULT_CARDS: tuple[PlatformManualCard, ...] = (
         id="steve.what_can_i_do",
         title="What Steve Can Do",
         priority="retrieved",
-        intents=("what can you do", "what can steve do", "help me", "capabilities"),
+        intents=(
+            "what can you do",
+            "what can steve do",
+            "what do you do",
+            "help me",
+            "capabilities",
+            "features",
+            "what are you able",
+            "list capabilities",
+            "what else can you",
+            "how can you help",
+        ),
         surfaces=ALL_STEVE_SURFACES,
         answer=(
-            "Steve can explain how C-Point works, answer platform questions, help users "
-            "understand communities and DMs, brainstorm, summarise when the app exposes a "
-            "summary action, give an opinion when tagged, collect product feedback, receive "
-            "bug reports, help with member discovery flows, and handle general banter. Users "
-            "can DM Steve directly. In posts, comments, and group contexts, users can tag "
-            "@Steve when they want him to join the conversation."
+            "Steve is C-Point’s intelligent member. Here is what he can do across the product "
+            "(exact availability may depend on your plan, community Steve package, and gates):\n\n"
+            "**Where you find Steve**\n"
+            "- **DMs:** Chat with Steve 1:1.\n"
+            "- **Community feed:** Mention **@Steve** on posts or replies so he joins the thread.\n"
+            "- **Group chats:** Mention **@Steve** for group-aware answers.\n\n"
+            "**Answers and reasoning**\n"
+            "- Explain how C-Point works and answer product/onboarding/discovery questions using the "
+            "Platform Manual (no web search for those).\n"
+            "- Brainstorm, analyse, and discuss substantive topics with structured replies when appropriate.\n"
+            "- Use **hosted web search** and **X (Twitter) search** for live world news and current events "
+            "when relevant — not for pure C-Point product questions.\n"
+            "- In feed/group contexts with permission, use **community context** you are given: events, "
+            "links, document excerpts, polls, and recent posts.\n\n"
+            "**Summaries and audio**\n"
+            "- **Voice notes:** transcription (Whisper) and short summaries so users can scan before listening.\n"
+            "- **Long posts / threads:** condensed summaries where the app exposes a summarise action.\n\n"
+            "**Community and growth**\n"
+            "- **Steve Community Package:** eligible members can spend a shared monthly pool for @Steve in that root "
+            "community’s feed (see membership / billing UI for limits).\n"
+            "- **Content generation (community pool):** scheduled or operator-triggered ideas (e.g. discussion posts, "
+            "roundups) where the product enables them — Steve does not invent unpublished roadmap features.\n\n"
+            "**Networking and onboarding**\n"
+            "- Guided flows that call **networking Steve** or **onboarding AI** when the app invokes them "
+            "(company intel, prompts, etc.).\n\n"
+            "**Keeping the network warm**\n"
+            "- Optional **platform activity digest** DMs summarising recent feed/group activity when the user "
+            "opts in and the pipeline runs.\n\n"
+            "**Feedback**\n"
+            "- Collect **bugs, confusion, and product ideas** into the admin feedback queue when the backend "
+            "confirms submission — Steve does not claim something was filed until it was.\n\n"
+            "**Hard limits (do not overpromise)**\n"
+            "- **Reminder Vault:** Steve cannot save, cancel, or confirm reminders from casual chat; only the "
+            "dedicated vault / phrasing flows can.\n"
+            "- **Pricing and caps:** point users to in-app membership/pricing; do not quote numbers from memory.\n"
+            "- **Privacy:** only share member knowledge when the server-side privacy gate allows; otherwise say "
+            "you don’t recognise that user.\n"
+            "- **Professional advice:** no medical/legal/financial advice — general context only with disclaimers "
+            "when needed."
         ),
-        rules=("Do not overpromise actions that are not implemented yet.", "Mention member discovery only as a guided, privacy-gated flow."),
+        rules=(
+            "Do not promise features or surfaces that are not described above or not shipped.",
+            "If a capability needs a specific user action (e.g. tap Summarise, mention @Steve), say that plainly.",
+            "Mention member discovery and networking only as privacy-gated flows the app controls.",
+        ),
     ),
     PlatformManualCard(
         id="privacy.core_rules",

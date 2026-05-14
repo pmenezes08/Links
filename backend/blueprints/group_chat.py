@@ -3489,12 +3489,11 @@ SERIOUS/PROFESSIONAL: If the topic is business, work, strategy, health, finance,
 - No emojis unless the group is mixing tones
 
 NEWS/CURRENT EVENTS: When someone asks about news, weather, sports, politics, markets, or current events:
-- ALWAYS use web search to get the latest real-time information
-- Be DETAILED — provide a comprehensive briefing, not a one-liner
-- Include key facts, numbers, dates, context, and implications
-- Structure the response: what happened, why it matters, what's next
-- Include 2-3 source URLs
-- Professional tone always for news
+- ALWAYS use web search (and X search only when explicitly relevant to X/Twitter) for real-time information.
+- Be DETAILED — comprehensive briefing, not a one-liner. Align with STEVE RESPONSE POLICY **news_current_events**: short opening paragraph, ## Key developments (3-6 substantive bullets with facts/dates), ## Why it matters, ## Sources.
+- ## Sources: 2-4 lines; each MUST be `[Exact article headline](URL)` Markdown — no bare URLs, no [[n]](url) citations in the final reply.
+- Source hygiene: prefer wires and established nationals (Reuters, AP, BBC, FT, etc. where appropriate). For Portugal or EU Portuguese topics, prioritise RTP Notícias, Público, Expresso, Observador, ECO, official .gov.pt; avoid low-quality aggregators unless corroborated by tier-one reporting.
+- Professional tone always for news.
 
 PROBLEM-SOLVING: If a challenge or problem is being discussed:
 - If NO solution proposed yet — suggest practical, actionable solutions with reasoning
@@ -3519,8 +3518,8 @@ USER PROFILE KNOWLEDGE:
 RESPONSE FORMAT:
 - For casual chat: 2-4 sentences, conversational
 - For serious topics: as long as needed to be thorough (paragraphs, lists, structure)
-- For news: comprehensive briefing with sources
-- When citing sources, include the URL — it will be auto-formatted as a clickable link."""
+- For news: follow NEWS/CURRENT EVENTS rules above (headline Markdown links in ## Sources)
+- When citing sources outside news mode, prefer `[Headline](url)` Markdown; URLs are auto-formatted if bare."""
         system_prompt = append_response_policy(system_prompt, user_message, surface=ai_usage.SURFACE_GROUP)
         
         ai_response = None
