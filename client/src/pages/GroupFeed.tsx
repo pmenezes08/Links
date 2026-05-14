@@ -21,7 +21,7 @@ type PostPoll = {
   id: number
   question: string
   is_active?: number
-  single_vote?: boolean
+  single_vote?: boolean | number | string
   expires_at?: string | null
   options: PollOption[]
   user_vote?: number | null
