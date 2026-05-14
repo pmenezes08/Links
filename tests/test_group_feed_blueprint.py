@@ -29,6 +29,25 @@ def _insert_group(community_id: int, name: str, created_by: str) -> int:
     return int(gid)
 
 
+def _insert_group_post(group_id: int, username: str, content: str = "hello") -> int:
+    from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
+
+    gp_t = "`group_posts`" if USE_MYSQL else "group_posts"
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"INSERT INTO {gp_t} (group_id, username, content, image_path) VALUES ({ph}, {ph}, {ph}, NULL)",
+            (group_id, username, content),
+        )
+        pid = c.lastrowid
+        try:
+            conn.commit()
+        except Exception:
+            pass
+    return int(pid)
+
+
 def _add_group_member(group_id: int, username: str) -> None:
     from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 
@@ -97,3 +116,35 @@ def test_group_replies_delete_requires_login():
     client = bodybuilding_app.app.test_client()
     r = client.post("/api/group_replies/delete", data={"reply_id": 1})
     assert r.status_code == 401
+
+
+def test_group_feed_200_when_poll_loader_raises(mysql_dsn, monkeypatch):
+    """Missing or broken poll tables must not 500 the whole feed."""
+    import bodybuilding_app
+
+    def _boom(*_a, **_kw):
+        raise Exception('(1146, "Table \'cpoint.group_polls\' doesn\'t exist")')
+
+    monkeypatch.setattr(
+        "backend.services.group_feed_detail.load_polls_for_group_posts",
+        _boom,
+    )
+
+    make_user("gf_pe_owner", subscription="premium")
+    make_user("gf_pe_mem", subscription="free")
+    cid = make_community("gf-poll-res", tier="free", creator_username="gf_pe_owner")
+    gid = _insert_group(cid, "GRes", "gf_pe_owner")
+    _add_group_member(gid, "gf_pe_owner")
+    _add_group_member(gid, "gf_pe_mem")
+    _insert_group_post(gid, "gf_pe_owner", "one post so poll loader runs")
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "gf_pe_mem")
+    r = client.get(f"/api/group_feed?group_id={gid}")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body is not None
+    assert body.get("success") is True
+    posts = body.get("posts") or []
+    assert len(posts) >= 1
+    assert posts[0].get("poll") is None

@@ -4216,6 +4216,15 @@ def _deferred_startup_init():
                 logger.info("Background: add_missing_tables completed")
             except Exception as e:
                 logger.warning(f"Background: add_missing_tables failed: {e}")
+            else:
+                try:
+                    from backend.services.group_polls_data import ensure_group_poll_tables
+
+                    with get_db_connection() as _gp_conn:
+                        ensure_group_poll_tables(_gp_conn.cursor())
+                    logger.info("Background: ensure_group_poll_tables completed")
+                except Exception:
+                    logger.exception("Background: ensure_group_poll_tables failed")
         
         # 3. Phase 2: ensure tenants table
         try:

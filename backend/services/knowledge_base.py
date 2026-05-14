@@ -30,7 +30,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
+from backend.services.database import db_backend_is_mysql, get_db_connection, get_sql_placeholder
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ def _utc_now_str() -> str:
 
 
 def _ensure_index(cursor, table_name: str, index_name: str, columns_sql: str) -> None:
-    if USE_MYSQL:
+    if db_backend_is_mysql():
         cursor.execute(
             """
             SELECT 1 FROM information_schema.statistics

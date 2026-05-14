@@ -47,7 +47,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
+from backend.services.database import USE_MYSQL, db_backend_is_mysql, get_db_connection, get_sql_placeholder
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ def _ensure_column(cursor, column: str, column_def_sql: str) -> None:
 
 def _ensure_index(cursor, index_name: str, column_sql: str) -> None:
     try:
-        if USE_MYSQL:
+        if db_backend_is_mysql():
             cursor.execute(
                 f"ALTER TABLE ai_usage_log ADD INDEX {index_name} ({column_sql})"
             )

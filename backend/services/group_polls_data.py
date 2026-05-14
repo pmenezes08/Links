@@ -33,8 +33,8 @@ def ensure_group_poll_tables(cursor) -> None:
                 )
                 """
             )
-        except Exception as e:
-            logger.warning("group_polls ensure: %s", e)
+        except Exception:
+            logger.exception("group_polls CREATE TABLE failed")
         try:
             cursor.execute(
                 """
@@ -48,8 +48,8 @@ def ensure_group_poll_tables(cursor) -> None:
                 )
                 """
             )
-        except Exception as e:
-            logger.warning("group_poll_options ensure: %s", e)
+        except Exception:
+            logger.exception("group_poll_options CREATE TABLE failed")
         try:
             cursor.execute(
                 """
@@ -66,8 +66,8 @@ def ensure_group_poll_tables(cursor) -> None:
                 )
                 """
             )
-        except Exception as e:
-            logger.warning("group_poll_votes ensure: %s", e)
+        except Exception:
+            logger.exception("group_poll_votes CREATE TABLE failed")
     else:
         cursor.execute(
             """

@@ -107,7 +107,18 @@ def build_group_feed_response(username: str, group_id: int) -> tuple[dict[str, A
             ensure_group_poll_tables(c)
             if not USE_MYSQL:
                 conn.commit()
-            poll_map = load_polls_for_group_posts(c, ph, username, post_ids) if post_ids else {}
+            try:
+                poll_map = load_polls_for_group_posts(c, ph, username, post_ids) if post_ids else {}
+            except Exception as e:
+                err_s = str(e).lower()
+                if "1146" in str(e) or "doesn't exist" in err_s:
+                    logger.error(
+                        "group_feed_detail: poll tables missing or unreadable; continuing without polls: %s",
+                        e,
+                    )
+                else:
+                    logger.exception("group_feed_detail: load_polls_for_group_posts failed")
+                poll_map = {}
             gr_t = "`group_replies`" if USE_MYSQL else "group_replies"
             gpr_t = "`group_post_reactions`" if USE_MYSQL else "group_post_reactions"
             grr_t = "`group_reply_reactions`" if USE_MYSQL else "group_reply_reactions"

@@ -100,8 +100,20 @@ def _require_client() -> OpenAI:
     return OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
 
-def _extract_json(raw_text: str) -> Dict[str, Any]:
+def _strip_markdown_json_fence(raw_text: str) -> str:
+    """If the model wrapped JSON in a markdown fence, extract the inner body."""
     text = (raw_text or "").strip()
+    if not text or "```" not in text:
+        return text
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    return text
+
+
+def _extract_json(raw_text: str) -> Dict[str, Any]:
+    text = _strip_markdown_json_fence(raw_text)
+    text = text.strip()
     if not text:
         raise ValueError("Empty model response")
     try:
@@ -111,8 +123,23 @@ def _extract_json(raw_text: str) -> Dict[str, Any]:
     start = text.find("{")
     end = text.rfind("}")
     if start == -1 or end == -1 or end <= start:
+        _log_bad_json_payload(raw_text)
         raise ValueError("No JSON object found in model response")
-    return json.loads(text[start : end + 1])
+    try:
+        return json.loads(text[start : end + 1])
+    except Exception:
+        _log_bad_json_payload(raw_text)
+        raise ValueError("No JSON object found in model response") from None
+
+
+def _log_bad_json_payload(raw_text: str) -> None:
+    raw = raw_text or ""
+    prefix = raw[:240].replace("\n", "\\n")
+    logger.warning(
+        "content_generation_llm: could not parse JSON (len=%s prefix=%r)",
+        len(raw),
+        prefix,
+    )
 
 
 def _clean_url(url: str) -> str:
@@ -271,7 +298,19 @@ def generate_web_search_json(
         temperature=temperature,
     )
     raw = (response.output_text or "").strip() if hasattr(response, "output_text") else ""
-    return _extract_json(raw)
+    if not raw:
+        logger.warning("generate_web_search_json: empty output_text from responses API")
+        return {}
+    try:
+        return _extract_json(raw)
+    except ValueError as exc:
+        logger.warning(
+            "generate_web_search_json: %s (len=%s prefix=%r)",
+            exc,
+            len(raw),
+            raw[:240].replace("\n", "\\n"),
+        )
+        return {}
 
 
 def trim_messages(messages: List[Dict[str, Any]], caps: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:

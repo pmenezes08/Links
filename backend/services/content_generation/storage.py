@@ -11,7 +11,7 @@ from backend.services.content_generation.job_schedule import (
     next_run_after,
     parse_utc_naive,
 )
-from backend.services.database import USE_MYSQL, get_db_connection
+from backend.services.database import USE_MYSQL, db_backend_is_mysql, get_db_connection
 
 
 def _utc_now_str() -> str:
@@ -35,7 +35,7 @@ def _json_load(raw: Any, fallback: Any) -> Any:
 
 def _ensure_index(cursor, table_name: str, index_name: str, columns_sql: str) -> None:
     """Create an index if missing across SQLite and MySQL."""
-    if USE_MYSQL:
+    if db_backend_is_mysql():
         cursor.execute(
             """
             SELECT 1
