@@ -11,6 +11,7 @@ export default function KeyPosts(){
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const groupId = searchParams.get('group_id')
+  const groupScope = Boolean(groupId)
   const goBack = () => navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)
   const [activeTab, setActiveTab] = useState<'community'|'yours'>('community')
   const [communityPosts, setCommunityPosts] = useState<Post[]>([])
@@ -74,7 +75,7 @@ export default function KeyPosts(){
           </button>
           <div className="flex-1 h-full flex">
             <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='community' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('community')}>
-              <div className="pt-2">Community</div>
+              <div className="pt-2">{groupScope ? 'Group' : 'Community'}</div>
               <div className={`h-0.5 rounded-full w-20 mx-auto mt-1 ${activeTab==='community' ? 'bg-[#ffd54f]' : 'bg-transparent'}`} />
             </button>
             <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='yours' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('yours')}>
@@ -97,7 +98,7 @@ export default function KeyPosts(){
         </div>
         {activeTab === 'community' ? (
           communityPosts.length === 0 ? (
-            <div className="text-sm text-[#9fb0b5]">No community key posts yet.</div>
+            <div className="text-sm text-[#9fb0b5]">{groupScope ? 'No group key posts yet.' : 'No community key posts yet.'}</div>
           ) : (
             <div className="space-y-3">
               {communityPosts.map(p => (

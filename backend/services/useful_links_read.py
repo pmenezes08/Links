@@ -33,7 +33,7 @@ def fetch_useful_links_payload(
                 f"""
                 SELECT id, username, url, description, created_at
                 FROM useful_links
-                WHERE community_id = {ph} AND (group_id IS NULL OR group_id = {ph})
+                WHERE community_id = {ph} AND group_id = {ph}
                 ORDER BY created_at DESC
                 """,
                 (community_id, group_id),
@@ -81,7 +81,7 @@ def fetch_useful_links_payload(
                     f"""
                     SELECT id, username, file_path, description, created_at
                     FROM useful_docs
-                    WHERE community_id = {ph} AND (group_id IS NULL OR group_id = {ph})
+                    WHERE community_id = {ph} AND group_id = {ph}
                     ORDER BY created_at DESC
                     """,
                     (community_id, group_id),

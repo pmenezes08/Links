@@ -83,11 +83,6 @@ export default function GroupFeed(){
   const [editingId, setEditingId] = useState<number|null>(null)
   const [editText, setEditText] = useState<string>('')
   const [detectedLinks, setDetectedLinks] = useState<ReturnType<typeof detectLinks>>([])
-  const [pollModalPostId, setPollModalPostId] = useState<number | null>(null)
-  const [pollQuestion, setPollQuestion] = useState('')
-  const [pollOptions, setPollOptions] = useState<string[]>(['', ''])
-  const [pollSingle, setPollSingle] = useState(true)
-  const [pollSaving, setPollSaving] = useState(false)
 
   // More menu + badges
   const [moreOpen, setMoreOpen] = useState(false)
@@ -125,7 +120,7 @@ export default function GroupFeed(){
 
   useEffect(() => {
     let mounted = true
-    const poll = async () => {
+    const refreshUnreadBadges = async () => {
       if (!mounted) return
       try {
         const m = await fetch('/check_unread_messages', { credentials: 'include' })
@@ -143,8 +138,8 @@ export default function GroupFeed(){
         }
       } catch {}
     }
-    poll()
-    const interval = setInterval(poll, 10000)
+    refreshUnreadBadges()
+    const interval = setInterval(refreshUnreadBadges, 10000)
     return () => {
       mounted = false
       clearInterval(interval)
@@ -176,40 +171,6 @@ export default function GroupFeed(){
   useEffect(() => {
     void loadFeed()
   }, [loadFeed])
-
-  async function submitGroupPoll() {
-    if (!group_id || pollModalPostId == null) return
-    const opts = pollOptions.map((s) => s.trim()).filter(Boolean)
-    if (!pollQuestion.trim() || opts.length < 2) {
-      alert('Add a question and at least two options')
-      return
-    }
-    setPollSaving(true)
-    try {
-      const gid = parseInt(String(group_id), 10)
-      const r = await fetch('/api/group_polls/create', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({
-          group_id: gid,
-          group_post_id: pollModalPostId,
-          question: pollQuestion.trim(),
-          options: opts,
-          single_vote: pollSingle,
-        }),
-      })
-      const j = await r.json().catch(() => null)
-      if (!j?.success) {
-        alert(j?.error || 'Could not create poll')
-        return
-      }
-      setPollModalPostId(null)
-      await loadFeed()
-    } finally {
-      setPollSaving(false)
-    }
-  }
 
   async function runSearch() {
     const term = (q || '').trim().replace(/^#+/, '')
@@ -701,7 +662,7 @@ export default function GroupFeed(){
                       <button
                         type="button"
                         className="p-1.5 rounded-full hover:bg-white/10"
-                        aria-label={p.is_community_starred ? 'Remove community key post' : 'Pin as community key post'}
+                        aria-label={p.is_community_starred ? 'Remove group key post' : 'Mark as group key post'}
                         onClick={async (e) => {
                           e.stopPropagation()
                           try {
@@ -715,8 +676,8 @@ export default function GroupFeed(){
                         }}
                       >
                         <i
-                          className="fa-solid fa-thumbtack"
-                          style={{ color: p.is_community_starred ? '#4db6ac' : '#6c757d', fontSize: '0.85rem' }}
+                          className={p.is_community_starred ? 'fa-solid fa-star' : 'fa-regular fa-star'}
+                          style={{ color: p.is_community_starred ? '#ffd54f' : '#6c757d', fontSize: '0.85rem' }}
                         />
                       </button>
                     ) : null}
@@ -735,22 +696,6 @@ export default function GroupFeed(){
                           }}
                         >
                           <i className="fa-regular fa-pen-to-square" />
-                        </button>
-                      ) : null}
-                      {p.can_edit && !p.poll ? (
-                        <button
-                          className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
-                          aria-label="Add poll to post"
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setPollQuestion('')
-                            setPollOptions(['', ''])
-                            setPollSingle(true)
-                            setPollModalPostId(p.id)
-                          }}
-                        >
-                          <i className="fa-solid fa-chart-bar" />
                         </button>
                       ) : null}
                       {p.can_delete ? (
@@ -1218,62 +1163,6 @@ export default function GroupFeed(){
               className="mt-3 w-full py-2.5 rounded-lg border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/10 transition-colors"
             >
               <i className="fa-solid fa-right-from-bracket mr-2" />Leave Group
-            </button>
-          </div>
-        </div>
-      )}
-
-      {pollModalPostId != null && (
-        <div
-          className="fixed inset-0 z-[125] bg-black/70 flex items-end sm:items-center justify-center p-3"
-          onClick={(e) => e.currentTarget === e.target && setPollModalPostId(null)}
-        >
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0a0a0a] p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-base font-semibold text-white">Add poll</div>
-              <button type="button" className="p-2 rounded-full hover:bg-white/10 text-[#9fb0b5]" aria-label="Close" onClick={()=> setPollModalPostId(null)}>
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-            <label className="block text-xs text-[#9fb0b5] mb-1">Question</label>
-            <input
-              value={pollQuestion}
-              onChange={(e)=> setPollQuestion(e.target.value)}
-              className="w-full rounded-lg bg-black border border-white/10 px-3 py-2 text-sm text-white mb-3"
-              placeholder="What do you want to ask?"
-            />
-            <div className="text-xs text-[#9fb0b5] mb-1">Options (at least 2)</div>
-            <div className="space-y-2 mb-3">
-              {pollOptions.map((opt, idx) => (
-                <input
-                  key={idx}
-                  value={opt}
-                  onChange={(e)=> setPollOptions((prev)=> { const n = [...prev]; n[idx] = e.target.value; return n })}
-                  className="w-full rounded-lg bg-black border border-white/10 px-3 py-2 text-sm text-white"
-                  placeholder={`Option ${idx + 1}`}
-                />
-              ))}
-            </div>
-            {pollOptions.length < 6 && (
-              <button
-                type="button"
-                className="text-xs text-[#4db6ac] mb-3 hover:underline"
-                onClick={()=> setPollOptions((prev)=> [...prev, ''])}
-              >
-                + Add option
-              </button>
-            )}
-            <label className="flex items-center gap-2 text-sm text-white/90 mb-4 cursor-pointer">
-              <input type="checkbox" checked={pollSingle} onChange={(e)=> setPollSingle(e.target.checked)} />
-              Single choice only
-            </label>
-            <button
-              type="button"
-              disabled={pollSaving}
-              className="w-full py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
-              onClick={()=> void submitGroupPoll()}
-            >
-              {pollSaving ? 'Saving…' : 'Create poll'}
             </button>
           </div>
         </div>

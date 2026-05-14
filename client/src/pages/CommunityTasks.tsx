@@ -35,6 +35,9 @@ export default function CommunityTasks(){
 
   useEffect(() => { setTitle('Tasks') }, [setTitle])
 
+  const sharedTasksLabel = groupIdOk ? 'Group Tasks' : 'Community Tasks'
+  const noSharedTasksMsg = groupIdOk ? 'No group tasks.' : 'No community tasks.'
+
   useEffect(() => {
     let mounted = true
     async function load(){
@@ -158,7 +161,7 @@ export default function CommunityTasks(){
           </button>
           <div className="flex-1 h-full flex">
             <button type="button" className={`flex-1 text-center text-sm font-medium ${tab==='community' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setTab('community')}>
-              <div className="pt-2">Community Tasks</div>
+              <div className="pt-2">{sharedTasksLabel}</div>
               <div className={`h-0.5 rounded-full w-20 mx-auto mt-1 ${tab==='community' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
             </button>
             <button type="button" className={`flex-1 text-center text-sm font-medium ${tab==='mine' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setTab('mine')}>
@@ -187,7 +190,7 @@ export default function CommunityTasks(){
             {tab === 'community' && (
               <div className="space-y-3">
                 {communityTasks.length === 0 ? (
-                  <div className="text-[#9fb0b5]">No community tasks.</div>
+                  <div className="text-[#9fb0b5]">{noSharedTasksMsg}</div>
                 ) : communityTasks.map(t => (
                   <div key={t.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
                     <div className="flex items-center gap-2">

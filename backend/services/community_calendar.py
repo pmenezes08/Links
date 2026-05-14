@@ -237,6 +237,7 @@ def list_group_events(username: str | None, group_id: int) -> list[dict[str, Any
 
     events = list_visible_events(username)
     out: list[dict[str, Any]] = []
+    gid = int(group_id)
     for event in events:
         if str(event.get("community_id") or "") != str(community_id or ""):
             continue
@@ -245,9 +246,7 @@ def list_group_events(username: str | None, group_id: int) -> list[dict[str, Any
             egid_int = int(egid) if egid is not None and str(egid).strip() not in {"", "none"} else None
         except (TypeError, ValueError):
             egid_int = None
-        if egid_int is None or egid_int == 0:
-            out.append(event)
-        elif egid_int == int(group_id):
+        if egid_int == gid:
             out.append(event)
     return out
 

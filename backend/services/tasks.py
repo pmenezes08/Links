@@ -86,7 +86,7 @@ def is_community_admin_or_owner(username: str, community_id: int) -> bool:
 
 
 def tasks_group_scope_sql(ph: str, group_id: int | None) -> tuple[str, tuple]:
-    """SQL fragment + params: community feed (no group) vs group page (include community-wide rows for that group)."""
+    """SQL fragment + params: community-wide tasks vs tasks scoped to a single group."""
     if group_id is not None:
-        return f" AND (group_id IS NULL OR group_id = {ph})", (group_id,)
+        return f" AND group_id = {ph}", (group_id,)
     return " AND (group_id IS NULL OR COALESCE(group_id, 0) = 0)", tuple()

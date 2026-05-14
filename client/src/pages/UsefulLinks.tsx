@@ -76,6 +76,7 @@ export default function UsefulLinks(){
     if (!u || !d) { alert('URL and description are required'); return }
     const body = new URLSearchParams({ url:u, description:d })
     if (community_id) body.append('community_id', String(community_id))
+    if (groupId) body.append('group_id', groupId)
     const r = await fetch('/add_link', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body })
     const j = await r.json().catch(()=>null)
     if (j?.success){ 
