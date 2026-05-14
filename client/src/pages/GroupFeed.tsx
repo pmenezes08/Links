@@ -45,7 +45,6 @@ export default function GroupFeed(){
 
   // More menu + badges
   const [moreOpen, setMoreOpen] = useState(false)
-  const [hasUnansweredPolls, setHasUnansweredPolls] = useState(false)
   const [hasUnseenDocs, setHasUnseenDocs] = useState(false)
   const [hasPendingRsvps, setHasPendingRsvps] = useState(false)
 
@@ -100,14 +99,6 @@ export default function GroupFeed(){
     }
     load(); return ()=> { ok = false }
   }, [group_id])
-
-  // Check for unanswered polls
-  useEffect(() => {
-    try{
-      const hasUnanswered = posts.some((p:any) => p?.poll && (p.poll.user_vote == null))
-      setHasUnansweredPolls(hasUnanswered)
-    }catch{ setHasUnansweredPolls(false) }
-  }, [posts])
 
   // Check for unseen docs
   useEffect(() => {
@@ -273,11 +264,39 @@ export default function GroupFeed(){
     setInviteSending(false)
   }
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
-  if (error) return <div className="p-4 text-red-400">{error}</div>
+  const groupFeedBackBar = (
+    <div style={{ paddingTop: 'env(safe-area-inset-top, 0px)', background: '#000' }}>
+      <div className="h-12 flex items-center px-3 max-w-2xl mx-auto">
+        <button className="p-2 rounded-full hover:bg-white/10" onClick={() => navigate(-1)} aria-label="Back">
+          <i className="fa-solid fa-arrow-left text-white" />
+        </button>
+        <span className="ml-2 text-white font-semibold truncate">
+          {communityMeta?.name ? `${groupName} · ${communityMeta.name}` : groupName}
+        </span>
+      </div>
+    </div>
+  )
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black text-white flex flex-col pb-safe">
+        {groupFeedBackBar}
+        <div className="flex-1 flex items-center justify-center text-[#9fb0b5]">Loading…</div>
+      </div>
+    )
+  }
+  if (error) {
+    return (
+      <div className="min-h-screen bg-black text-white flex flex-col pb-safe">
+        {groupFeedBackBar}
+        <div className="flex-1 flex items-center justify-center px-4 text-red-400 text-center">{error}</div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-black text-white pb-safe">
+      {groupFeedBackBar}
       {/* Scrollable content area */}
       <div
         ref={scrollRef}
@@ -287,21 +306,21 @@ export default function GroupFeed(){
           overflowY: 'auto',
           overscrollBehaviorY: 'auto',
           touchAction: 'pan-y',
-          paddingTop: '12px',
+          paddingTop: '8px',
         }}
       >
         <div className="space-y-3">
-          {/* Back to communities (parent) */}
           <div className="flex items-center gap-2">
             <button
-              className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10"
+              type="button"
+              className="text-xs text-[#9fb0b5] hover:text-white underline-offset-2 hover:underline"
               onClick={()=> {
                 const cid = communityMeta?.id
                 if (cid) navigate(`/communities?parent_id=${cid}`)
                 else navigate('/premium_dashboard')
               }}
             >
-              ← Back to Communities
+              All communities
             </button>
           </div>
           {posts.length === 0 ? (
@@ -476,7 +495,7 @@ export default function GroupFeed(){
             <button className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="More" onClick={()=> setMoreOpen(true)}>
               <span className="relative inline-block">
                 <i className="fa-solid fa-ellipsis text-lg" />
-                {(hasUnansweredPolls || hasUnseenDocs || hasPendingRsvps) && (
+                {(hasUnseenDocs || hasPendingRsvps) && (
                   <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />
                 )}
               </span>
@@ -491,10 +510,6 @@ export default function GroupFeed(){
           <div className="w-[75%] max-w-sm mr-2 bg-black/95 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0" style={{ marginBottom: 'calc(70px + env(safe-area-inset-bottom))' }}>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/key_posts?group_id=${group_id}`) }}>
               Key Posts
-            </button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/polls_react?group_id=${group_id}`) }}>
-              Polls
-              {hasUnansweredPolls && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
             </button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/calendar_react?group_id=${group_id}`) }}>
               Calendar

@@ -31,6 +31,12 @@ export default function CommunityPolls(){
   useEffect(() => { setTitle(editingPollId ? 'Edit Poll' : 'Polls') }, [setTitle, editingPollId])
 
   async function load(){
+    if (groupId) {
+      setPolls([])
+      setArchivedPolls([])
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try{
       const r = await fetch(`/get_active_polls?community_id=${community_id}`, { credentials:'include' })
@@ -53,7 +59,7 @@ export default function CommunityPolls(){
       }
     }finally{ setLoading(false) }
   }
-  useEffect(()=>{ load() }, [community_id])
+  useEffect(()=>{ load() }, [community_id, groupId])
 
   // Check for edit query parameter and load poll data
   useEffect(() => {
@@ -224,6 +230,36 @@ export default function CommunityPolls(){
         setVotersData(j.options || [])
       }
     }finally{ setLoadingVoters(false) }
+  }
+
+  if (groupId) {
+    return (
+      <div className="min-h-screen bg-black text-white">
+        <div
+          className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+          style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
+        >
+          <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
+            <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(`/group_feed_react/${groupId}`)} aria-label="Back">
+              <i className="fa-solid fa-arrow-left" />
+            </button>
+            <div className="flex-1 font-medium">Polls</div>
+          </div>
+        </div>
+        <div
+          className="app-subnav-offset max-w-2xl mx-auto pb-20 px-3 overflow-y-auto no-scrollbar"
+          style={{
+            WebkitOverflowScrolling: 'touch' as any,
+            minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))',
+            '--app-subnav-height': '40px',
+          } as CSSProperties}
+        >
+          <p className="text-sm text-[#9fb0b5] py-8 leading-relaxed">
+            Polls run on the main community feed. Open the community without the group filter to create or vote on polls.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (

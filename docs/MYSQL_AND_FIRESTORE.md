@@ -52,7 +52,7 @@ Database name: env `FIRESTORE_DATABASE` (default **`cpoint`**).
 |-------|------|
 | `group_chats`, `group_chat_members`, `group_chat_messages`, `group_message_reactions`, `group_chat_read_receipts`, `group_chat_presence`, `steve_suppressed_topics` | Group chat + Steve-in-group (`group_chat` blueprint + monolith). |
 
-Also: **`groups`**, **`group_*`** legacy product tables in monolith (see `CREATE TABLE` in `bodybuilding_app.py`).
+Also: **`groups`**, **`group_members`**, **`group_posts`**, **`group_replies`**, reaction tables, **`group_community_key_posts`**, **`group_user_key_posts`** (created/ensured from `backend/blueprints/group_feed.py` + monolith `ensure_tables` in `bodybuilding_app.py`). HTTP: **`group_feed`** blueprint (photos, key posts, reply delete — not group chat).
 
 ### Billing & subscriptions
 

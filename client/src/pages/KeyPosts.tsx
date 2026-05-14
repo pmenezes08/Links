@@ -23,23 +23,32 @@ export default function KeyPosts(){
     async function load(){
       setLoading(true)
       try{
-        const communityUrl = groupId
-          ? `/api/group_key_posts/${groupId}`
-          : `/api/community_key_posts?community_id=${community_id}`
-        const yourUrl = groupId
-          ? `/api/group_key_posts/${groupId}`
-          : `/api/key_posts?community_id=${community_id}`
+        if (groupId) {
+          const tab = activeTab === 'yours' ? 'yours' : 'community'
+          const r = await fetch(`/api/group_key_posts/${groupId}?tab=${tab}`, { credentials:'include' })
+          const j = await r.json().catch(()=>null)
+          if (!ok) return
+          if (j?.success) {
+            setError(null)
+            if (tab === 'community') setCommunityPosts(j.posts || [])
+            else setYourPosts(j.posts || [])
+          } else {
+            setError(j?.error || 'Error')
+          }
+          return
+        }
+        const communityUrl = `/api/community_key_posts?community_id=${community_id}`
+        const yourUrl = `/api/key_posts?community_id=${community_id}`
         const [rc, ry] = await Promise.all([
           fetch(communityUrl, { credentials:'include' }),
-          groupId ? Promise.resolve(null) : fetch(yourUrl, { credentials:'include' })
+          fetch(yourUrl, { credentials:'include' }),
         ])
         const jc = await rc.json().catch(()=>null)
-        const jy = ry ? await ry.json().catch(()=>null) : null
+        const jy = await ry.json().catch(()=>null)
         if (!ok) return
         if (jc?.success) setCommunityPosts(jc.posts || [])
         if (jy?.success) setYourPosts(jy.posts || [])
-        else if (groupId) setYourPosts([])
-        if (!jc?.success && !jy?.success && !groupId) setError(jc?.error || jy?.error || 'Error')
+        if (!jc?.success && !jy?.success) setError(jc?.error || jy?.error || 'Error')
       }catch{
         if (ok) setError('Error loading key posts')
       } finally {
@@ -48,7 +57,7 @@ export default function KeyPosts(){
     }
     load()
     return ()=> { ok = false }
-  }, [community_id])
+  }, [community_id, groupId, activeTab])
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error) return <div className="p-4 text-red-400">{error}</div>

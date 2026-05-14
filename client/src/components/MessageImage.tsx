@@ -68,7 +68,6 @@ export default function MessageImage({ src, alt, onClick, className = '', tile =
         key={`preview-${normalizedSrc}-${errorCount}`}
         src={displaySrc}
         alt={alt}
-        crossOrigin="anonymous"
         className={`max-w-full transition-opacity duration-300 ${tile ? 'h-full w-full object-cover' : ''} ${
           loading ? 'opacity-0' : 'opacity-100'
         }`}

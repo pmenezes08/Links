@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
@@ -109,17 +109,17 @@ export default function CommunityPhotos(){
     return { keys: formattedKeys, map, originalKeys: keys }
   }, [items])
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
-  if (error) return <div className="p-4 text-red-400">{error}</div>
+  const backToFeed = () =>
+    navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)
 
-  return (
+  const photosChrome = (body: ReactNode) => (
     <div className="min-h-screen bg-black text-white">
       <div
         className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
       >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label="Back">
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={backToFeed} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 font-medium">Media</div>
@@ -133,12 +133,24 @@ export default function CommunityPhotos(){
           '--app-subnav-height': '40px',
         } as CSSProperties}
       >
+        {body}
+      </div>
+    </div>
+  )
+
+  if (loading) return photosChrome(<div className="text-[#9fb0b5] py-8">Loading…</div>)
+  if (error) return photosChrome(<div className="text-red-400 py-8">{error}</div>)
+
+  return photosChrome(
+        <>
         {items.length === 0 ? (
           <div className="text-center py-12">
             <div className="text-[#9fb0b5] mb-4">
               <i className="fa-solid fa-photo-film text-4xl mb-3 block opacity-50"></i>
               <p className="text-lg font-medium">No media yet</p>
-              <p className="text-sm">Photos and videos from community posts will appear here</p>
+              <p className="text-sm">
+                Photos and videos from {groupId ? 'group' : 'community'} posts will appear here
+              </p>
             </div>
           </div>
         ) : (
@@ -201,7 +213,6 @@ export default function CommunityPhotos(){
             })}
           </div>
         )}
-      </div>
-    </div>
+        </>
   )
 }

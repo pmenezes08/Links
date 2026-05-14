@@ -15,6 +15,7 @@ def register_blueprints(app: Flask) -> None:
     from .post_views import post_views_bp
     from .content_generation import content_generation_bp
     from .group_chat import group_chat_bp
+    from .group_feed import group_feed_bp
     from .admin_users import admin_users_bp
     from .knowledge_base import knowledge_base_bp
     from .me import me_bp
@@ -45,6 +46,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(post_views_bp)
     app.register_blueprint(content_generation_bp)
     app.register_blueprint(group_chat_bp)
+    app.register_blueprint(group_feed_bp)
     app.register_blueprint(admin_users_bp)
     app.register_blueprint(knowledge_base_bp)
     app.register_blueprint(me_bp)

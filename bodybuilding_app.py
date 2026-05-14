@@ -63,6 +63,12 @@ from backend.services.community import (
     is_community_admin,
     is_community_owner,
 )
+from backend.services.group_feed_access import (
+    check_group_feed_access,
+    check_group_feed_access_for_group_post,
+    fetch_group_id_for_group_post,
+    fetch_group_id_for_group_reply,
+)
 from backend.services.post_views import (
     ensure_post_views_table,
     upsert_post_view,
@@ -23106,6 +23112,272 @@ def ai_steve_preflight():
     return jsonify({'success': True})
 
 
+def _steve_ai_reply_for_group_post(
+    conn,
+    c,
+    placeholder,
+    username: str,
+    group_post_id: int,
+    parent_reply_id,
+    user_message: str,
+    community_id,
+    steve_config,
+    is_unlimited: bool,
+    usage_count: int,
+    _enforcement_on: bool,
+    _ent: dict,
+):
+    """Handle @Steve in group feed: LLM reply persisted as a group_replies row."""
+    from backend.services.steve_community_config import response_usage_tokens
+    from backend.services.steve_model_config import estimate_response_cost_usd, output_cap_for_surface
+    from backend.services.steve_prompt_policy import (
+        append_response_policy,
+        should_include_community_resources,
+        should_include_user_profile,
+    )
+    from backend.services.steve_profiling_gates import user_can_access_steve_kb
+
+    gp_t = '`group_posts`' if USE_MYSQL else 'group_posts'
+    gr_t = '`group_replies`' if USE_MYSQL else 'group_replies'
+    c.execute(
+        f"SELECT content, username, image_path FROM {gp_t} WHERE id = {placeholder}",
+        (group_post_id,),
+    )
+    prow = c.fetchone()
+    if not prow:
+        return jsonify({'success': False, 'error': 'Post not found'}), 404
+    post_content = prow['content'] if hasattr(prow, 'keys') else prow[0]
+    post_author = prow['username'] if hasattr(prow, 'keys') else prow[1]
+    post_image_path = prow['image_path'] if hasattr(prow, 'keys') else prow[2]
+
+    base_url = os.environ.get('PUBLIC_BASE_URL', 'https://app.c-point.co')
+    media_base = os.environ.get('CLOUDFLARE_R2_PUBLIC_URL', '')
+
+    def _media_url(path):
+        if not path:
+            return None
+        path = str(path).strip()
+        if path.startswith('http'):
+            return path
+        if media_base and not path.startswith('/'):
+            return f"{media_base}/{path}"
+        if path.startswith('/uploads') or path.startswith('/static'):
+            return f"{base_url}{path}"
+        return f"{base_url}/uploads/{path}"
+
+    post_image_urls = []
+    if post_image_path:
+        u = _media_url(post_image_path)
+        if u:
+            post_image_urls.append(u)
+    has_images = len(post_image_urls) > 0
+
+    parent_content = None
+    parent_author = None
+    pr_raw = parent_reply_id
+    pr_int = None
+    if pr_raw is not None and pr_raw != "":
+        try:
+            pr_int = int(pr_raw)
+        except (TypeError, ValueError):
+            pr_int = None
+    if pr_int is not None:
+        c.execute(
+            f"SELECT content, username FROM {gr_t} WHERE id = {placeholder}",
+            (pr_int,),
+        )
+        pr = c.fetchone()
+        if pr:
+            parent_content = pr['content'] if hasattr(pr, 'keys') else pr[0]
+            parent_author = pr['username'] if hasattr(pr, 'keys') else pr[1]
+
+    ai_personality = 'friendly'
+    if community_id:
+        try:
+            c.execute(f"SELECT ai_personality FROM communities WHERE id = {placeholder}", (int(community_id),))
+            comm_row = c.fetchone()
+            if comm_row:
+                ai_personality = (
+                    comm_row['ai_personality'] if hasattr(comm_row, 'keys') else comm_row[0]
+                ) or 'friendly'
+        except Exception:
+            pass
+
+    limit_n = max(1, min(50, int(steve_config.recent_comments_limit or 20)))
+    c.execute(
+        f"""
+        SELECT username, content, id, parent_reply_id, created_at FROM {gr_t}
+        WHERE group_post_id = {placeholder}
+        ORDER BY id ASC LIMIT {limit_n}
+        """,
+        (group_post_id,),
+    )
+    all_comments = c.fetchall() or []
+    context_parts = []
+    desc = f"Original group post by {post_author}: {post_content}"
+    if has_images:
+        desc += f"\n[This post includes {len(post_image_urls)} image(s)]"
+    context_parts.append(desc)
+    if all_comments:
+        context_parts.append("\n--- All comments on this group post ---")
+        for comment in all_comments:
+            cu = comment['username'] if hasattr(comment, 'keys') else comment[0]
+            cc = comment['content'] if hasattr(comment, 'keys') else comment[1]
+            if cc:
+                if str(cu).lower() == 'steve':
+                    context_parts.append(f"[Steve (AI) replied]: {cc}")
+                else:
+                    context_parts.append(f"{cu}: {cc}")
+        context_parts.append("--- End of comments ---\n")
+    context_parts.append(f"User {username} now says: {user_message}")
+    current_datetime = datetime.utcnow()
+    context_parts.append(
+        f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]"
+    )
+
+    if community_id and should_include_community_resources(user_message):
+        try:
+            community_context = _build_steve_community_context(
+                c,
+                int(community_id),
+                placeholder,
+                steve_config.doc_excerpt_chars_default,
+                events_limit=steve_config.events_limit,
+                links_limit=steve_config.links_limit,
+                docs_limit=steve_config.docs_limit,
+                polls_limit=steve_config.polls_limit,
+            )
+            if community_context and community_context.strip():
+                context_parts.append(
+                    "Community context (use this to answer questions about events, links, documents, and polls):\n"
+                    + community_context
+                )
+        except Exception as ctx_err:
+            logger.warning("Steve community context (group post) failed: %s", ctx_err)
+
+    if not should_include_user_profile(user_message):
+        commenter_profile_ctx = ""
+    elif not user_can_access_steve_kb(username, username, {"community_id": community_id}):
+        commenter_profile_ctx = ""
+    else:
+        commenter_profile_ctx = get_steve_context_for_user(username)
+
+    context = "\n\n".join(context_parts)
+    system_prompt = get_ai_personality_prompt(ai_personality)
+    if community_id:
+        system_prompt += (
+            "\nYou have access to this community's upcoming events, useful links, "
+            "document excerpts, and active polls. Use them when answering questions about community resources. "
+            "If the user asks about an uploaded document, base your answer only on the document excerpts in the context; "
+            "if there is no excerpt or it says the document could not be read, say so instead of inventing content."
+        )
+    if commenter_profile_ctx:
+        system_prompt += (
+            f"\n\nWHAT YOU KNOW ABOUT @{username}:\n{commenter_profile_ctx}\n"
+            "Use this knowledge naturally — don't announce it, but let it guide your tone and relevance."
+        )
+    system_prompt = append_response_policy(system_prompt, user_message, surface=_ai_usage.SURFACE_GROUP)
+    model_to_use = steve_config.model
+    client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+    if has_images:
+        user_content = [{"type": "input_text", "text": context}]
+        for img_url in post_image_urls[: steve_config.images_limit]:
+            user_content.append({"type": "input_image", "image_url": img_url})
+        effective_system = (
+            system_prompt
+            + "\n\nYou can see images attached to this post. Describe what you see and respond accordingly."
+        )
+    else:
+        user_content = context
+        effective_system = system_prompt
+    started = time.perf_counter()
+    entitlement_cap = output_cap_for_surface(
+        _ent,
+        _ai_usage.SURFACE_GROUP,
+        steve_config.max_output_tokens,
+    )
+    if (_ent or {}).get("steve_billing_source") == "community_pool":
+        max_output_tokens = min(entitlement_cap, int(steve_config.max_output_tokens or entitlement_cap))
+    else:
+        max_output_tokens = entitlement_cap
+    _reply_tools = _steve_tools_for_message(user_message, config=steve_config)
+    response = client.responses.create(
+        model=model_to_use,
+        input=[
+            {"role": "system", "content": effective_system},
+            {"role": "user", "content": user_content},
+        ],
+        tools=_reply_tools,
+        max_output_tokens=max_output_tokens,
+    )
+    response_time_ms = int((time.perf_counter() - started) * 1000)
+    ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
+    if not ai_response:
+        return jsonify({'success': False, 'error': 'AI service returned empty response'}), 503
+    ai_response = format_steve_response_links(ai_response)
+    now = datetime.utcnow()
+    timestamp_db = now.strftime('%Y-%m-%d %H:%M:%S')
+    steve_parent = int(parent_reply_id) if parent_reply_id else None
+    c.execute(
+        f"""
+        INSERT INTO {gr_t} (group_post_id, parent_reply_id, username, content, created_at)
+        VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+        """,
+        (group_post_id, steve_parent, AI_USERNAME, ai_response, timestamp_db),
+    )
+    steve_reply_id = c.lastrowid
+    try:
+        tokens_in, tokens_out = response_usage_tokens(response)
+        billing_community_id = (
+            int(community_id)
+            if (_ent or {}).get("steve_billing_source") == "community_pool" and community_id
+            else None
+        )
+        _ai_usage.log_usage(
+            username,
+            surface=_ai_usage.SURFACE_GROUP,
+            request_type='steve_group_reply',
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_usd=estimate_response_cost_usd(response, steve_config),
+            response_time_ms=response_time_ms,
+            community_id=billing_community_id,
+            model=model_to_use,
+        )
+    except Exception as log_err:
+        logger.warning("Could not log AI usage (group steve): %s", log_err)
+    conn.commit()
+    steve_profile_pic = None
+    try:
+        c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {placeholder}", (AI_USERNAME,))
+        steve_pp_row = c.fetchone()
+        steve_profile_pic = (
+            steve_pp_row['profile_picture']
+            if steve_pp_row and hasattr(steve_pp_row, 'keys')
+            else (steve_pp_row[0] if steve_pp_row else None)
+        )
+    except Exception:
+        pass
+    return jsonify(
+        {
+            'success': True,
+            'reply': {
+                'id': steve_reply_id,
+                'username': AI_USERNAME,
+                'content': ai_response,
+                'timestamp': timestamp_db,
+                'parent_reply_id': steve_parent,
+                'reactions': {},
+                'user_reaction': None,
+                'profile_picture': steve_profile_pic,
+                'reply_count': 0,
+                'children': [],
+            },
+            'remaining_today': 'unlimited' if is_unlimited else AI_DAILY_LIMIT - usage_count - 1,
+        }
+    )
+
+
 @app.route('/api/ai/steve_reply', methods=['POST'])
 @login_required
 def ai_steve_reply():
@@ -23137,12 +23409,37 @@ def ai_steve_reply():
         parent_reply_id = data.get('parent_reply_id')  # The comment being replied to
         user_message = (data.get('user_message') or '').strip()
         community_id = data.get('community_id')
-        
-        logger.info(f"[Steve AI] Request from {username}: post_id={post_id}, parent_reply_id={parent_reply_id}, community_id={community_id}, message_len={len(user_message) if user_message else 0}")
+        is_group_post = bool(data.get('is_group_post'))
+
+        logger.info(
+            f"[Steve AI] Request from {username}: post_id={post_id}, parent_reply_id={parent_reply_id}, "
+            f"community_id={community_id}, is_group_post={is_group_post}, message_len={len(user_message) if user_message else 0}"
+        )
         
         if not post_id:
             return jsonify({'success': False, 'error': 'Post ID is required'}), 400
-        
+
+        try:
+            post_id = int(post_id)
+        except Exception:
+            return jsonify({'success': False, 'error': 'Invalid post_id'}), 400
+
+        if is_group_post:
+            with get_db_connection() as _rconn:
+                _rc = _rconn.cursor()
+                _rph = get_sql_placeholder()
+                okg, errg, _gid = check_group_feed_access_for_group_post(_rc, _rph, username, post_id)
+                if not okg:
+                    code = 404 if errg and 'not found' in (errg or '').lower() else 403
+                    return jsonify({'success': False, 'error': errg or 'Forbidden'}), code
+                _rc.execute(
+                    f"SELECT g.community_id FROM {'`group_posts`' if USE_MYSQL else 'group_posts'} gp "
+                    f"JOIN {'`groups`' if USE_MYSQL else 'groups'} g ON g.id = gp.group_id WHERE gp.id = {_rph}",
+                    (post_id,),
+                )
+                cr = _rc.fetchone()
+                community_id = cr['community_id'] if cr and hasattr(cr, 'keys') else (cr[0] if cr else None)
+
         if not user_message:
             return jsonify({'success': False, 'error': 'Message is required'}), 400
         
@@ -23164,7 +23461,9 @@ def ai_steve_reply():
                 except (TypeError, ValueError):
                     _cid_int = None
             _allowed, _err_payload, _err_status, _ent = check_steve_access(
-                username, _ai_usage.SURFACE_FEED, community_id=_cid_int
+                username,
+                _ai_usage.SURFACE_GROUP if is_group_post else _ai_usage.SURFACE_FEED,
+                community_id=_cid_int,
             )
             if not _allowed and _enforcement_on:
                 return jsonify(_err_payload), _err_status
@@ -23230,6 +23529,23 @@ def ai_steve_reply():
                     except Exception as create_err:
                         logger.warning(f"Could not create ai_usage_log table: {create_err}")
             
+            if is_group_post:
+                return _steve_ai_reply_for_group_post(
+                    conn,
+                    c,
+                    placeholder,
+                    username,
+                    post_id,
+                    parent_reply_id,
+                    user_message,
+                    community_id,
+                    steve_config,
+                    is_unlimited,
+                    usage_count,
+                    _enforcement_on,
+                    _ent,
+                )
+
             # Get post content for context (including media)
             c.execute(f"SELECT content, username, image_path, video_path, media_paths FROM posts WHERE id = {placeholder}", (post_id,))
             post_row = c.fetchone()
@@ -28592,19 +28908,12 @@ def api_group_feed():
             community_name = cm['name'] if hasattr(cm, 'keys') else (cm[0] if cm else None)
             community_type = cm['type'] if hasattr(cm, 'keys') else (cm[1] if cm else None)
 
-            # Verify user is member of community (or parent)
+            # Exclusive group membership (plus moderation bypasses in helper)
             ph = get_sql_placeholder()
-            c.execute(f"SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE u.username={ph} AND uc.community_id={ph}", (username, community_id))
-            if not c.fetchone():
-                # allow if member of parent
-                c.execute("SELECT parent_community_id FROM communities WHERE id=?", (community_id,))
-                row = c.fetchone()
-                pid = (row['parent_community_id'] if hasattr(row, 'keys') else row[0]) if row else None
-                if not pid:
-                    return jsonify({'success': False, 'error': 'Not a member'}), 403
-                c.execute(f"SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE u.username={ph} AND uc.community_id={ph}", (username, pid))
-                if not c.fetchone():
-                    return jsonify({'success': False, 'error': 'Not a member'}), 403
+            ok, err = check_group_feed_access(c, ph, username, group_id)
+            if not ok:
+                code = 404 if (err or "").lower().find("not found") >= 0 else 403
+                return jsonify({"success": False, "error": err or "Forbidden"}), code
 
             # Permission baseline for group managers
             is_manager = (
@@ -28695,18 +29004,6 @@ def api_group_post():
     except Exception:
         return jsonify({'success': False, 'error': 'Invalid post_id'})
 
-    # --- Firestore dual-read ---
-    try:
-        from backend.services.firestore_reads import USE_FIRESTORE_READS
-        if USE_FIRESTORE_READS:
-            from backend.services.firestore_reads import get_group_post_detail as fs_get_gp
-            post = fs_get_gp(post_id, username)
-            if post:
-                logger.info(f"Firestore group post read: post {post_id}")
-                return jsonify({'success': True, 'post': post, 'group': {'id': post.get('group_id'), 'name': ''}, 'community_id': None})
-    except Exception as fs_err:
-        logger.warning(f"Firestore group post read failed, falling back to MySQL: {fs_err}")
-
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -28725,17 +29022,11 @@ def api_group_post():
             community_id = row['community_id'] if hasattr(row, 'keys') else row[7]
             group_owner = row['created_by'] if hasattr(row, 'keys') else (row[8] if len(row) > 8 else None)
 
-            # Membership check
             ph = get_sql_placeholder()
-            c.execute(f"SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE u.username={ph} AND uc.community_id={ph}", (username, community_id))
-            if not c.fetchone():
-                c.execute("SELECT parent_community_id FROM communities WHERE id=?", (community_id,))
-                r = c.fetchone(); pid = r['parent_community_id'] if hasattr(r, 'keys') else (r[0] if r else None)
-                if not pid:
-                    return jsonify({'success': False, 'error': 'Not a member'}), 403
-                c.execute(f"SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE u.username={ph} AND uc.community_id={ph}", (username, pid))
-                if not c.fetchone():
-                    return jsonify({'success': False, 'error': 'Not a member'}), 403
+            ok_access, err_access = check_group_feed_access(c, ph, username, int(group_id))
+            if not ok_access:
+                code = 404 if (err_access or "").lower().find("not found") >= 0 else 403
+                return jsonify({'success': False, 'error': err_access or 'Forbidden'}), code
 
             # Build post
             pid = row['id'] if hasattr(row, 'keys') else row[0]
@@ -28850,7 +29141,34 @@ def api_group_post():
                 'can_delete': bool(is_manager or (uname == username)),
                 'is_group_post': True,
                 'group_id': group_id,
+                'community_id': community_id,
             }
+            can_toggle_community_key = bool(is_app_admin(username))
+            if community_id is not None:
+                can_toggle_community_key = can_toggle_community_key or is_community_owner(
+                    username, int(community_id)
+                ) or is_community_admin(username, int(community_id))
+            if group_owner is not None and username == group_owner:
+                can_toggle_community_key = True
+            post['can_toggle_community_key'] = can_toggle_community_key
+
+            post['is_starred'] = False
+            post['is_community_starred'] = False
+            try:
+                gck_tbl = "`group_community_key_posts`" if USE_MYSQL else "group_community_key_posts"
+                guk_tbl = "`group_user_key_posts`" if USE_MYSQL else "group_user_key_posts"
+                c.execute(
+                    f"SELECT id FROM {gck_tbl} WHERE group_id = {get_sql_placeholder()} AND group_post_id = {get_sql_placeholder()}",
+                    (int(group_id), int(pid)),
+                )
+                post["is_community_starred"] = c.fetchone() is not None
+                c.execute(
+                    f"SELECT id FROM {guk_tbl} WHERE username = {get_sql_placeholder()} AND group_id = {get_sql_placeholder()} AND group_post_id = {get_sql_placeholder()}",
+                    (username, int(group_id), int(pid)),
+                )
+                post["is_starred"] = c.fetchone() is not None
+            except Exception:
+                pass
             allow_nsfw_imagine = False
             if community_id:
                 try:
@@ -28879,21 +29197,14 @@ def api_group_posts_create():
         return jsonify({'success': False, 'error': 'Invalid group_id'})
     if not content and 'image' not in request.files:
         return jsonify({'success': False, 'error': 'Content or image is required'})
-    # Check membership
+    # Exclusive: must be a member of the group (helper includes moderation bypasses)
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
-            c.execute(f"SELECT 1 FROM group_members WHERE group_id={ph} AND username={ph}", (group_id, username))
-            if not c.fetchone():
-                # Also allow community-level members
-                c.execute(f"SELECT community_id FROM {'`groups`' if USE_MYSQL else 'groups'} WHERE id={ph}", (group_id,))
-                gr = c.fetchone(); comm_id = gr['community_id'] if hasattr(gr, 'keys') else (gr[0] if gr else None)
-                if not comm_id:
-                    return jsonify({'success': False, 'error': 'Group not found'}), 404
-                c.execute(f"SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE u.username={ph} AND uc.community_id={ph}", (username, comm_id))
-                if not c.fetchone():
-                    return jsonify({'success': False, 'error': 'Not a member'}), 403
+            ok, err = check_group_feed_access(c, ph, username, group_id)
+            if not ok:
+                return jsonify({'success': False, 'error': err or 'Forbidden'}), 403
             # Save file if any
             image_path = None
             if 'image' in request.files and request.files['image'].filename:
@@ -28934,6 +29245,16 @@ def api_group_posts_react():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
+            gp_t = '`group_posts`' if USE_MYSQL else 'group_posts'
+            c.execute(f"SELECT group_id FROM {gp_t} WHERE id = {ph}", (post_id,))
+            gr = c.fetchone()
+            if not gr:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            gid = gr['group_id'] if hasattr(gr, 'keys') else gr[0]
+            ok, err = check_group_feed_access(c, ph, username, int(gid))
+            if not ok:
+                return jsonify({'success': False, 'error': err or 'Forbidden'}), 403
             # Insert/Toggle
             try:
                 c.execute(f"INSERT INTO {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} (group_post_id, username, reaction) VALUES ({get_sql_placeholder()}, {get_sql_placeholder()}, {get_sql_placeholder()})",
@@ -28992,6 +29313,9 @@ def api_group_posts_edit():
                 or is_community_admin(username, community_id)
                 or (username == group_owner)
             )
+            ok_access, err_access = check_group_feed_access(c, ph, username, int(group_id))
+            if not ok_access:
+                return jsonify({'success': False, 'error': err_access or 'Forbidden'}), 403
             if not allowed:
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
 
@@ -29029,6 +29353,7 @@ def api_group_posts_delete():
             if not row:
                 return jsonify({'success': False, 'error': 'Post not found'}), 404
             author = row['username'] if hasattr(row, 'keys') else row[0]
+            group_id = row['group_id'] if hasattr(row, 'keys') else row[1]
             community_id = row['community_id'] if hasattr(row, 'keys') else row[2]
             group_owner = row['created_by'] if hasattr(row, 'keys') else row[3]
             allowed = (
@@ -29038,6 +29363,9 @@ def api_group_posts_delete():
                 or is_community_admin(username, community_id)
                 or (username == group_owner)
             )
+            ok_access, err_access = check_group_feed_access(c, ph, username, int(group_id))
+            if not ok_access:
+                return jsonify({'success': False, 'error': err_access or 'Forbidden'}), 403
             if not allowed:
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
             c.execute(f"DELETE FROM {'`group_posts`' if USE_MYSQL else 'group_posts'} WHERE id={ph}", (post_id,))
@@ -29077,6 +29405,9 @@ def api_group_replies_create():
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
+            ok_feed, err_feed, _ = check_group_feed_access_for_group_post(c, ph, username, post_id)
+            if not ok_feed:
+                return jsonify({'success': False, 'error': err_feed or 'Forbidden'}), 403
             image_path = None
             video_path = None
             audio_path = None
@@ -29203,6 +29534,13 @@ def api_group_replies_react():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
+            gid = fetch_group_id_for_group_reply(c, ph, reply_id)
+            if gid is None:
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
+            ok_feed, err_feed = check_group_feed_access(c, ph, username, gid)
+            if not ok_feed:
+                return jsonify({'success': False, 'error': err_feed or 'Forbidden'}), 403
             try:
                 c.execute(f"INSERT INTO {'`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'} (group_reply_id, username, reaction) VALUES ({get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()})",
                           (reply_id, username, reaction))

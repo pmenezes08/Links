@@ -151,6 +151,7 @@ export default function PostDetail(){
           parent_reply_id: parentReplyId,
           user_message: userMessage,
           community_id: Number.isFinite(communityId as number) ? communityId : null,
+          is_group_post: isGroupPost,
         })
       })
       
@@ -1074,11 +1075,19 @@ export default function PostDetail(){
     const ok = window.confirm('Delete this reply?')
     if (!ok) return
     try{
-      const fd = new FormData()
-      fd.append('reply_id', String(replyId))
-      const r = await fetch('/delete_reply', { method:'POST', credentials:'include', body: fd })
-      const j = await r.json().catch(()=>null)
-      if (!j?.success) return
+      if (isGroupPost) {
+        const fd = new FormData()
+        fd.append('reply_id', String(replyId))
+        const r = await fetch('/api/group_replies/delete', { method: 'POST', credentials: 'include', body: fd })
+        const j = await r.json().catch(()=>null)
+        if (!j?.success) return
+      } else {
+        const fd = new FormData()
+        fd.append('reply_id', String(replyId))
+        const r = await fetch('/delete_reply', { method: 'POST', credentials: 'include', body: fd })
+        const j = await r.json().catch(()=>null)
+        if (!j?.success) return
+      }
       setPost(p => {
         if (!p) return p
         function removeById(list: Reply[]): Reply[] {
@@ -1135,6 +1144,39 @@ export default function PostDetail(){
 
   async function saveEditPost() {
     if (!post) return
+    if (isGroupPost) {
+      try {
+        if (removeMedia) {
+          alert('Removing media from group posts is not supported yet.')
+          return
+        }
+        const fd = new FormData()
+        fd.append('post_id', String(post.id))
+        fd.append('content', editPostText)
+        if (editMediaFile) {
+          fd.append('image', editMediaFile)
+        }
+        const r = await fetch('/api/group_posts/edit', { method: 'POST', credentials: 'include', body: fd })
+        const j = await r.json().catch(() => null)
+        if (j?.success) {
+          await refreshPost()
+          clearEditMedia()
+          setRemoveMedia(false)
+          setIsEditingPost(false)
+          clearDeviceCache('home-timeline')
+          try {
+            const invalidateFn = (window as any).__invalidateParentTimelineCache
+            if (typeof invalidateFn === 'function') invalidateFn()
+          } catch {}
+        } else {
+          alert(j?.error || 'Failed to update post')
+        }
+      } catch {
+        alert('Failed to update post')
+      }
+      return
+    }
+
     const fd = new FormData()
     fd.append('post_id', String(post.id))
     fd.append('content', editPostText)
@@ -1186,7 +1228,8 @@ export default function PostDetail(){
     try {
       const fd = new FormData()
       fd.append('post_id', String(post.id))
-      const r = await fetch('/delete_post', { method: 'POST', credentials: 'include', body: fd })
+      const url = isGroupPost ? '/api/group_posts/delete' : '/delete_post'
+      const r = await fetch(url, { method: 'POST', credentials: 'include', body: fd })
       const j = await r.json().catch(() => null)
       if (j?.success) {
         navigate(-1)
@@ -1288,6 +1331,34 @@ export default function PostDetail(){
   // Toggle personal star
   async function toggleStar() {
     if (!post || starring) return
+    const gid = (post as any).group_id
+    if (isGroupPost && gid != null) {
+      setStarring(true)
+      try {
+        const prev = !!(post as any).is_starred
+        setPost((p: any) => (p ? { ...p, is_starred: !prev } : p))
+        const fd = new URLSearchParams({
+          group_id: String(gid),
+          group_post_id: String(post.id),
+        })
+        const r = await fetch('/api/toggle_group_key_post', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: fd,
+        })
+        const j = await r.json().catch(() => null)
+        if (!j?.success) {
+          setPost((p: any) => (p ? { ...p, is_starred: prev } : p))
+          alert(j?.error || 'Failed to update')
+        } else {
+          setPost((p: any) => (p ? { ...p, is_starred: !!j.starred } : p))
+        }
+      } finally {
+        setStarring(false)
+      }
+      return
+    }
     setStarring(true)
     try {
       const prev = (post as any).is_starred
@@ -1309,6 +1380,34 @@ export default function PostDetail(){
   // Toggle community star (for admins)
   async function toggleCommunityStar() {
     if (!post || starring) return
+    const gid = (post as any).group_id
+    if (isGroupPost && gid != null) {
+      setStarring(true)
+      try {
+        const prev = !!(post as any).is_community_starred
+        setPost((p: any) => (p ? { ...p, is_community_starred: !prev } : p))
+        const fd = new URLSearchParams({
+          group_id: String(gid),
+          group_post_id: String(post.id),
+        })
+        const r = await fetch('/api/toggle_group_community_key_post', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: fd,
+        })
+        const j = await r.json().catch(() => null)
+        if (!j?.success) {
+          setPost((p: any) => (p ? { ...p, is_community_starred: prev } : p))
+          alert(j?.error || 'Failed to update')
+        } else {
+          setPost((p: any) => (p ? { ...p, is_community_starred: !!j.starred } : p))
+        }
+      } finally {
+        setStarring(false)
+      }
+      return
+    }
     setStarring(true)
     try {
       const prev = (post as any).is_community_starred
@@ -1548,7 +1647,9 @@ export default function PostDetail(){
                 <i className={`${(post as any).is_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: (post as any).is_starred ? '#4db6ac' : '#6c757d' }} />
               </button>
               {/* Community star (yellow) for owner/admins */}
-              {(currentUser?.username === 'admin' || (post as any).is_community_admin) && (
+              {(currentUser?.username === 'admin' ||
+                (post as any).is_community_admin ||
+                (isGroupPost && (post as any).can_toggle_community_key)) && (
                 <button 
                   className="px-2 py-1 rounded-full" 
                   title={(post as any).is_community_starred ? 'Unfeature (community)' : 'Feature (community)'} 
@@ -1600,6 +1701,8 @@ export default function PostDetail(){
                         <i className="fa-solid fa-wand-magic-sparkles text-teal-400 w-4" />
                         Summary
                       </button>
+                      {!isGroupPost && (
+                      <>
                       <button
                         className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
                         onClick={() => {
@@ -1620,6 +1723,8 @@ export default function PostDetail(){
                         <i className="fa-solid fa-flag text-red-400 w-4" />
                         Report post
                       </button>
+                      </>
+                      )}
                       <button
                         className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3 border-t border-white/10"
                         onClick={() => {
