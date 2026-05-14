@@ -1,4 +1,4 @@
-"""Tests for feed Steve web/X tool gating."""
+"""Tests for feed Steve web/X tool attachment."""
 
 from dataclasses import replace
 
@@ -38,23 +38,28 @@ def test_tool_log_summary():
     )
 
 
-def test_explicit_request_yields_web_and_x_with_default_kb_config():
+def test_default_kb_always_attaches_web_and_x():
     cfg = SteveCommunityConfig()
-    msg = "@admin @Steve what's the latest news"
-    tools = steve_tools_for_message(msg, config=cfg)
-    assert tools == [{"type": "web_search"}, {"type": "x_search"}]
+    assert steve_tools_for_message("@admin @Steve what's the latest news", config=cfg) == [
+        {"type": "web_search"},
+        {"type": "x_search"},
+    ]
+    assert steve_tools_for_message("@Steve hello thanks", config=cfg) == [
+        {"type": "web_search"},
+        {"type": "x_search"},
+    ]
 
 
-def test_platform_question_strips_tools():
+def test_platform_question_does_not_strip_tools():
     cfg = SteveCommunityConfig()
-    assert (
-        steve_tools_for_message("today's news", platform_question=True, config=cfg)
-        == []
-    )
+    assert steve_tools_for_message("today's news", platform_question=True, config=cfg) == [
+        {"type": "web_search"},
+        {"type": "x_search"},
+    ]
 
 
-def test_explicit_only_off_and_defaults_off_still_attaches_tools_on_phrase():
-    """Regression: phrase widens explicit but defaults/explicit-only must not strip tools."""
+def test_legacy_kb_flags_do_not_change_which_tools_are_attached():
+    """Former phrase/default/explicit-only gates no longer apply; both tools attach when allowed."""
     cfg = replace(
         SteveCommunityConfig(),
         external_search_explicit_only=False,
@@ -63,6 +68,28 @@ def test_explicit_only_off_and_defaults_off_still_attaches_tools_on_phrase():
     )
     tools = steve_tools_for_message("@Steve what's the latest news", config=cfg)
     assert tools == [{"type": "web_search"}, {"type": "x_search"}]
+
+    cfg2 = replace(
+        SteveCommunityConfig(),
+        external_search_explicit_only=False,
+        web_search_default_enabled=True,
+        x_search_default_enabled=False,
+    )
+    assert steve_tools_for_message("@Steve hello thanks", config=cfg2) == [
+        {"type": "web_search"},
+        {"type": "x_search"},
+    ]
+
+    cfg3 = replace(
+        SteveCommunityConfig(),
+        external_search_explicit_only=False,
+        web_search_default_enabled=False,
+        x_search_default_enabled=True,
+    )
+    assert steve_tools_for_message("quick ping", config=cfg3) == [
+        {"type": "web_search"},
+        {"type": "x_search"},
+    ]
 
 
 def test_kb_can_disable_web_tool_only():
@@ -75,25 +102,3 @@ def test_kb_can_disable_x_tool_only():
     cfg = replace(SteveCommunityConfig(), feed_attach_x_search_tool=False)
     tools = steve_tools_for_message("latest headlines please", config=cfg)
     assert tools == [{"type": "web_search"}]
-
-
-def test_web_default_only_attaches_web_not_x_when_explicit_only_off():
-    cfg = replace(
-        SteveCommunityConfig(),
-        external_search_explicit_only=False,
-        web_search_default_enabled=True,
-        x_search_default_enabled=False,
-    )
-    tools = steve_tools_for_message("@Steve hello thanks", config=cfg)
-    assert tools == [{"type": "web_search"}]
-
-
-def test_x_default_only_attaches_x_not_web_when_explicit_only_off():
-    cfg = replace(
-        SteveCommunityConfig(),
-        external_search_explicit_only=False,
-        web_search_default_enabled=False,
-        x_search_default_enabled=True,
-    )
-    tools = steve_tools_for_message("quick ping", config=cfg)
-    assert tools == [{"type": "x_search"}]

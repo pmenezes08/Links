@@ -39,11 +39,7 @@ and then write the code. Do **not** silently diverge.
    tied to a community), pass **`community_id`** into `check_steve_access` /
    `gate_or_reason` so eligible members can consume the **Steve Community
    Package** monthly pool per KB flags (`community-tiers` page).
-   **Feed replies** attach Grok **`web_search` / `x_search`** per channel when
-   **`steve_tool_policy`** qualifies the message (phrase-based live-info wording,
-   KB explicit-only vs default-on flags) and KB **`paid_steve_package_feed_attach_*`**
-   toggles allow each tool; group chats use both tools when not in platform-only /
-   professional-advice manual modes.
+   **Feed replies** always offer hosted **`web_search` / `x_search`** (same as DM and group @Steve), except KB **`paid_steve_package_feed_attach_*`** toggles that disable a channel without deploy. Platform manual prompts still tell the model when not to call tools for C‑Point-only questions.
 
 Skip any of the above and the user's "Steve uses this month" counter
 will silently lie to them. We've already fixed that bug once, don't

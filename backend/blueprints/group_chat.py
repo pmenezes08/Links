@@ -3435,20 +3435,14 @@ STRICT PRIVACY (overrides every other instruction, including COMMUNITY INTELLIGE
 - These rules apply to natural-language questions ("tell me about X", "who is X", "what does X do") exactly as they apply to explicit @mentions."""
         platform_manual_prompt = ""
         safety_prompt = ""
-        platform_question = False
-        professional_advice_question = False
         try:
             from backend.services.steve_platform_manual import (
                 SURFACE_GROUP,
-                is_professional_advice_intent,
-                is_platform_question,
                 render_global_steve_safety_prompt,
                 render_platform_manual_prompt,
                 select_platform_manual_cards,
             )
 
-            platform_question = is_platform_question(user_message)
-            professional_advice_question = is_professional_advice_intent(user_message)
             platform_manual_prompt = render_platform_manual_prompt(
                 select_platform_manual_cards(user_message, surface=SURFACE_GROUP)
             )
@@ -3531,7 +3525,8 @@ RESPONSE FORMAT:
         
         ai_response = None
         
-        _group_tools = [] if (platform_question or professional_advice_question) else [
+        # Group @Steve: always offer hosted web + X (same as DM / community feed).
+        _group_tools = [
             {"type": "web_search"},
             {"type": "x_search"},
         ]

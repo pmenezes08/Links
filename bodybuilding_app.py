@@ -122,7 +122,7 @@ except ImportError as e:
     print(f"ERROR OpenAI not available: {e}")
     print("   Run: pip install openai")
 
-# Hosted Grok Responses API attaches web_search / x_search per steve_tool_policy + KB flags.
+# Hosted Grok Responses API: feed attaches web_search / x_search via steve_tool_policy (KB feed_attach_* kill-switches only).
 XAI_SDK_AVAILABLE = False
 
 # Founder awareness is now handled at the network synthesis level in steve_knowledge_base.py

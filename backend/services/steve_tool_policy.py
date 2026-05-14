@@ -1,4 +1,4 @@
-"""Community-feed Steve: when Grok receives web_search / x_search tools (KB policy)."""
+"""Community-feed Steve: hosted web_search / x_search tools (KB kill-switches only)."""
 
 from __future__ import annotations
 
@@ -109,46 +109,20 @@ def steve_tools_for_message(
     professional_advice_question: bool = False,
     config: Any = None,
 ) -> list[dict[str, str]]:
-    """KB policy: when may Grok see hosted web_search / x_search on community feed.
+    """Always attach hosted web_search + x_search on community feed (same as DM / group @Steve).
 
-    * ``explicit`` — message qualifies for external lookup: live-search phrases and/or
-      (when ``external_search_explicit_only`` is false) web/X default-on flags.
-    * Per-tool attachment follows KB defaults (phrase + explicit-only widens both channels;
-      default-on flags widen only their channel). ``feed_attach_*`` toggles disable a
-      channel without redeploying code.
+    Platform manual prompts still tell the model when not to call tools for C‑Point-only questions.
+    KB ``paid_steve_package_feed_attach_web_search_tool`` / ``paid_steve_package_feed_attach_x_search_tool``
+    disable a channel without redeploying.
+
+    ``message``, ``platform_question``, and ``professional_advice_question`` are kept for existing
+    call sites; they do not suppress tools.
     """
-    if platform_question or professional_advice_question:
-        return []
-    phrase_explicit = steve_external_search_requested(message)
-    explicit = phrase_explicit
-    if config and not getattr(config, "external_search_explicit_only", True):
-        explicit = explicit or bool(
-            getattr(config, "web_search_default_enabled", False)
-            or getattr(config, "x_search_default_enabled", False)
-        )
-    if not explicit:
-        return []
-
-    explicit_only = getattr(config, "external_search_explicit_only", True) if config else True
-    web_default = getattr(config, "web_search_default_enabled", False) if config else False
-    x_default = getattr(config, "x_search_default_enabled", False) if config else False
-
-    attach_web = (
-        not config
-        or web_default
-        or explicit_only
-        or phrase_explicit
-    )
-    attach_x = (
-        not config
-        or x_default
-        or explicit_only
-        or phrase_explicit
-    )
+    del message, platform_question, professional_advice_question
 
     tools: list[dict[str, str]] = []
-    if attach_web and (not config or getattr(config, "feed_attach_web_search_tool", True)):
+    if not config or getattr(config, "feed_attach_web_search_tool", True):
         tools.append({"type": "web_search"})
-    if attach_x and (not config or getattr(config, "feed_attach_x_search_tool", True)):
+    if not config or getattr(config, "feed_attach_x_search_tool", True):
         tools.append({"type": "x_search"})
     return tools
