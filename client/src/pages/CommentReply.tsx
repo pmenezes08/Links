@@ -730,13 +730,11 @@ export default function CommentReply() {
         // Invalidate caches so PostDetail and feeds don't resurrect the deleted reply
         try {
           if (post?.id) clearDeviceCache(`post-${post.id}`)
-          const cid = post?.community_id
-          if (cid !== undefined && cid !== null && cid !== '') {
-            clearDeviceCache(`community-feed:${cid}`)
+          if (post?.community_id != null) {
+            clearDeviceCache(`community-feed:${post.community_id}`)
           }
-          const gid = post?.group_id
-          if (gid !== undefined && gid !== null && gid !== '') {
-            clearDeviceCache(`group-feed:${gid}`)
+          if (post?.group_id != null) {
+            clearDeviceCache(`group-feed:${post.group_id}`)
           }
           clearDeviceCache('home-timeline')
         } catch {}
