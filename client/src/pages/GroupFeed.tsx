@@ -27,7 +27,7 @@ type PostPoll = {
   user_vote?: number | null
   total_votes?: number
 }
-type Post = { id:number; username:string; content:string; image_path?:string|null; video_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null, replies: Reply[], can_edit?: boolean, can_delete?: boolean, link_urls?: unknown, is_starred?: boolean, is_community_starred?: boolean, can_toggle_community_key?: boolean, poll?: PostPoll | null }
+type Post = { id:number; username:string; content:string; image_path?:string|null; video_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null, replies: Reply[], can_edit?: boolean, can_delete?: boolean, link_urls?: unknown, is_starred?: boolean, is_community_starred?: boolean, can_toggle_community_key?: boolean, poll?: PostPoll | null, reply_count?: number, view_count?: number }
 
 function ManageGroupButton({ groupId, onClose }:{ groupId: string, onClose: ()=>void }){
   const navigate = useNavigate()
@@ -615,24 +615,11 @@ export default function GroupFeed(){
         }}
       >
         <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="text-xs text-[#9fb0b5] hover:text-white underline-offset-2 hover:underline"
-              onClick={()=> {
-                const cid = communityMeta?.id
-                if (cid) navigate(`/communities?parent_id=${cid}`)
-                else navigate('/premium_dashboard')
-              }}
-            >
-              All communities
-            </button>
-          </div>
           {posts.length === 0 ? (
             <div className="text-sm text-[#9fb0b5]">No posts yet.</div>
           ) : (
             posts.map(p => (
-              <div key={p.id} id={`group-post-${p.id}`} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={()=> navigate(`/post/${p.id}`)}>
+              <div key={p.id} id={`group-post-${p.id}`} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={()=> navigate(`/post/${p.id}`, { state: { groupId: group_id } })}>
                 <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
                   <Avatar username={p.username} url={p.profile_picture || undefined} size={28} linkToProfile />
                   <div className="font-medium">{p.username}</div>
@@ -947,6 +934,16 @@ export default function GroupFeed(){
                         <span className="ml-1" style={{ color: p.user_reaction===rname ? '#cfe9e7' : '#9fb0b5' }}>{(p.reactions?.[rname])||0}</span>
                       </button>
                     ))}
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-[#9fb0b5] pt-1">
+                    <span className="inline-flex items-center gap-1 tabular-nums" title="Views">
+                      <i className="fa-regular fa-eye text-[11px]" aria-hidden />
+                      {p.view_count ?? 0}
+                    </span>
+                    <span className="inline-flex items-center gap-1 tabular-nums" title="Comments">
+                      <i className="fa-regular fa-comment text-[11px]" aria-hidden />
+                      {p.reply_count ?? 0}
+                    </span>
                   </div>
                 </div>
               </div>

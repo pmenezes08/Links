@@ -33,7 +33,7 @@ import { preflightSteveMention } from '../utils/stevePreflight'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, audio_path?: string|null, audio_summary?: string|null, reply_count?: number, view_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
-type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}>; view_count?: number; media_paths?: MediaItem[] | string | null }
+type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}>; view_count?: number; reply_count?: number; media_paths?: MediaItem[] | string | null }
 
 const POST_DETAIL_CACHE_VERSION = 'post-detail-v2'
 const POST_DETAIL_CACHE_TTL_MS = 30 * 1000
@@ -554,21 +554,32 @@ export default function PostDetail(){
   }, [activeInlineReplyFor])
   
   useEffect(() => {
-    if (!post_id) return
+    viewRecordedRef.current = false
+  }, [post_id, isGroupPost])
+
+  useEffect(() => {
+    if (!post_id || loading || !post) return
     if (viewRecordedRef.current) return
     viewRecordedRef.current = true
     let cancelled = false
-    async function recordView(){
-      try{
-        const res = await fetch('/api/post_view', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ post_id: Number(post_id) })
-        })
+    async function recordView() {
+      try {
+        const res = await fetch(
+          isGroupPost ? '/api/group_post_view' : '/api/post_view',
+          {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(
+              isGroupPost
+                ? { group_post_id: Number(post_id) }
+                : { post_id: Number(post_id) },
+            ),
+          },
+        )
         const j = await res.json().catch(() => null)
-        if (!cancelled && j?.success && typeof j.view_count === 'number'){
-          setPost(prev => {
+        if (!cancelled && j?.success && typeof j.view_count === 'number') {
+          setPost((prev) => {
             if (!prev) return prev
             if (Number(prev.id) !== Number(post_id)) return prev
             return { ...prev, view_count: j.view_count }
@@ -578,16 +589,16 @@ export default function PostDetail(){
         viewRecordedRef.current = false
       }
     }
-    recordView()
+    void recordView()
     return () => { cancelled = true }
-  }, [post_id])
+  }, [post_id, isGroupPost, loading, post])
 
-  // Fetch accurate view count + reaction counts from MySQL after post loads
+  // Fetch accurate view count + reaction counts from MySQL after post loads (community posts only)
   useEffect(() => {
-    if (!post) return
+    if (!post || isGroupPost) return
     let cancelled = false
     const postId = post.id
-    async function fetchCounts(){
+    async function fetchCounts() {
       try {
         const r = await fetch(`/get_post_reactors/${postId}`, { credentials: 'include' })
         const j = await r.json().catch(() => null)
@@ -611,7 +622,7 @@ export default function PostDetail(){
     }
     fetchCounts()
     return () => { cancelled = true }
-  }, [post?.id])
+  }, [post?.id, isGroupPost])
 
   async function compressImageFile(input: File, maxEdge = 1600, quality = 0.82): Promise<File> {
     try {
@@ -1559,16 +1570,22 @@ export default function PostDetail(){
           <button
             className="p-2 rounded-full hover:bg-white/10 transition-colors"
             onClick={() => {
-              const state = location.state || {}
+              const state = (location.state || {}) as { communityId?: string | number; groupId?: string | number }
+              const gidRaw =
+                (isGroupPost && (post as any)?.group_id != null && (post as any).group_id !== '')
+                  ? (post as any).group_id
+                  : state.groupId
+              if (isGroupPost && gidRaw != null && gidRaw !== '') {
+                navigate(`/group_feed_react/${String(gidRaw)}`)
+                return
+              }
+
               const communityId = (post as any)?.community_id || state.communityId
 
-              // Smart context detection: go to community feed when we have community context
-              // This covers: notifications, community feed navigation, and posts with community_id
               if (communityId) {
                 console.log('🧭 Smart context: returning to community feed', communityId)
                 navigate(`/community_feed_react/${communityId}`)
               } else {
-                // No community context - use normal back behavior
                 console.log('🧭 No community context - using browser history')
                 navigate(-1)
               }

@@ -69,6 +69,7 @@ from backend.services.group_feed_access import (
     fetch_group_id_for_group_post,
     fetch_group_id_for_group_reply,
 )
+from backend.services.group_post_views import count_group_post_views_excluding_admin
 from backend.services.post_views import (
     ensure_post_views_table,
     upsert_post_view,
@@ -29322,6 +29323,8 @@ def api_group_post():
                 except Exception as allow_err:
                     logger.warning(f"Failed to fetch allow_nsfw_imagine for community {community_id}: {allow_err}")
             post['allow_nsfw_imagine'] = allow_nsfw_imagine
+            post['reply_count'] = len(all_replies)
+            post['view_count'] = count_group_post_views_excluding_admin(c, ph, int(pid))
             return jsonify({'success': True, 'post': post, 'group': { 'id': group_id, 'name': group_name }, 'community_id': community_id})
     except Exception as e:
         logger.error(f"api_group_post error: {e}")

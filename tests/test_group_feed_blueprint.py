@@ -218,3 +218,42 @@ def test_group_reply_thread_non_member_forbidden(mysql_dsn):
     body = r.get_json()
     assert body is not None
     assert body.get("success") is False
+
+
+def test_group_feed_post_metrics_and_group_post_view_auth(mysql_dsn):
+    import bodybuilding_app
+
+    make_user("gf_m_owner", subscription="premium")
+    make_user("gf_m_mem", subscription="free")
+    cid = make_community("gf-m-a", tier="free", creator_username="gf_m_owner")
+    gid = _insert_group(cid, "GMet", "gf_m_owner")
+    _add_group_member(gid, "gf_m_owner")
+    _add_group_member(gid, "gf_m_mem")
+    pid = _insert_group_post(gid, "gf_m_owner", "post body")
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "gf_m_mem")
+    r = client.get(f"/api/group_feed?group_id={gid}")
+    assert r.status_code == 200
+    j = r.get_json()
+    assert j and j.get("success")
+    posts = j.get("posts") or []
+    assert len(posts) >= 1
+    row = next((p for p in posts if p.get("id") == pid), None)
+    assert row is not None
+    assert "reply_count" in row and "view_count" in row
+    assert row["reply_count"] == 0
+    assert row["view_count"] == 0
+
+    _insert_group_reply(pid, "gf_m_mem", "c1")
+    r2 = client.get(f"/api/group_feed?group_id={gid}")
+    assert r2.status_code == 200
+    j2 = r2.get_json()
+    posts2 = (j2 or {}).get("posts") or []
+    row2 = next((p for p in posts2 if p.get("id") == pid), None)
+    assert row2 is not None
+    assert row2["reply_count"] == 1
+
+    unauth = bodybuilding_app.app.test_client()
+    r401 = unauth.post("/api/group_post_view", json={"group_post_id": pid})
+    assert r401.status_code == 401

@@ -14,8 +14,10 @@ from backend.services import auth_session, session_identity
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.group_feed_access import (
     check_group_feed_access,
+    check_group_feed_access_for_group_post,
     fetch_group_id_for_group_reply,
 )
+from backend.services.group_post_views import upsert_group_post_view
 from backend.services.group_reply_thread import (
     assemble_group_reply_thread,
     count_group_reply_views_excluding_admin,
@@ -189,6 +191,35 @@ def api_group_feed():
         return jsonify({"success": False, "error": "Invalid group_id"}), 400
     payload, code = build_group_feed_response(username, group_id)
     return jsonify(payload), code
+
+
+@group_feed_bp.route("/api/group_post_view", methods=["POST"])
+@_login_required
+def api_group_post_view():
+    """Record a unique view for a group post (not community ``post_views``)."""
+    username = session["username"]
+    payload = request.get_json(silent=True) or {}
+    gpid = payload.get("group_post_id")
+    if gpid is None:
+        gpid = request.form.get("group_post_id", type=int)
+    try:
+        gpid = int(gpid)
+    except Exception:
+        return jsonify({"success": False, "error": "group_post_id required"}), 400
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ok, err, _ = check_group_feed_access_for_group_post(c, ph, username, gpid)
+            if not ok:
+                code = 404 if err and "not found" in (err or "").lower() else 403
+                return jsonify({"success": False, "error": err or "Forbidden"}), code
+            view_count = upsert_group_post_view(c, ph, gpid, username)
+            conn.commit()
+            return jsonify({"success": True, "view_count": view_count})
+    except Exception as e:
+        logger.error("api_group_post_view error: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": "Server error"}), 500
 
 
 @group_feed_bp.route("/api/group_announcements/<int:group_id>", methods=["GET"])

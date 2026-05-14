@@ -104,6 +104,11 @@ def _purge_group_content(c, ph: str, username: str, mode: AccountDeletionMode) -
         c.execute(f"DELETE FROM {grv} WHERE username={ph}", (username,))
     except Exception as e:
         logger.debug("group_reply_views delete: %s", e)
+    gpv = _gtable("group_post_views")
+    try:
+        c.execute(f"DELETE FROM {gpv} WHERE username={ph}", (username,))
+    except Exception as e:
+        logger.debug("group_post_views delete: %s", e)
     grr = _gtable("group_reply_reactions")
     gr = _gtable("group_replies")
     gpr = _gtable("group_post_reactions")

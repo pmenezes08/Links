@@ -10,6 +10,7 @@ from backend.services.community import is_app_admin, is_community_admin, is_comm
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.group_feed_access import check_group_feed_access
 from backend.services.group_polls_data import ensure_group_poll_tables, load_polls_for_group_posts
+from backend.services.group_post_views import batch_group_post_view_counts_excluding_admin
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +123,29 @@ def build_group_feed_response(username: str, group_id: int) -> tuple[dict[str, A
             gr_t = "`group_replies`" if USE_MYSQL else "group_replies"
             gpr_t = "`group_post_reactions`" if USE_MYSQL else "group_post_reactions"
             grr_t = "`group_reply_reactions`" if USE_MYSQL else "group_reply_reactions"
+
+            reply_count_map: dict[int, int] = {int(p): 0 for p in post_ids}
+            if post_ids:
+                placeholders = ",".join([ph] * len(post_ids))
+                try:
+                    c.execute(
+                        f"""
+                        SELECT group_post_id, COUNT(*) as cnt FROM {gr_t}
+                        WHERE group_post_id IN ({placeholders})
+                        GROUP BY group_post_id
+                        """,
+                        tuple(post_ids),
+                    )
+                    for row in c.fetchall() or []:
+                        gpid = row["group_post_id"] if hasattr(row, "keys") else row[0]
+                        cnt = row["cnt"] if hasattr(row, "keys") else row[1]
+                        if gpid is not None:
+                            reply_count_map[int(gpid)] = int(cnt or 0)
+                except Exception as ex:
+                    logger.warning("group feed reply_count batch: %s", ex)
+
+            view_count_map = batch_group_post_view_counts_excluding_admin(c, ph, post_ids)
+
             posts: list[dict[str, Any]] = []
             for r in rows:
                 pid = r["id"] if hasattr(r, "keys") else r[0]
@@ -231,6 +255,8 @@ def build_group_feed_response(username: str, group_id: int) -> tuple[dict[str, A
                         "is_community_starred": int(pid) in comm_starred,
                         "can_toggle_community_key": can_toggle_community_key,
                         "poll": poll_map.get(int(pid)),
+                        "reply_count": reply_count_map.get(int(pid), 0),
+                        "view_count": view_count_map.get(int(pid), 0),
                     }
                 )
             return (
