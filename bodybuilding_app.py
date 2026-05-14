@@ -29216,8 +29216,32 @@ def api_group_posts_create():
         group_id = int(group_id_raw)
     except Exception:
         return jsonify({'success': False, 'error': 'Invalid group_id'})
-    if not content and 'image' not in request.files:
-        return jsonify({'success': False, 'error': 'Content or image is required'})
+
+    def _group_post_request_has_attachments() -> bool:
+        files = request.files
+        if files.get('image') and files['image'].filename:
+            return True
+        if files.get('video') and files['video'].filename:
+            return True
+        if files.get('audio') and files['audio'].filename:
+            return True
+        for key in ('images', 'videos'):
+            if key in files:
+                for f in files.getlist(key):
+                    if f and f.filename:
+                        return True
+        raw = (request.form.get('video_urls') or '').strip()
+        if raw:
+            try:
+                urls = json.loads(raw)
+                if isinstance(urls, list) and any(isinstance(u, str) and u.startswith('http') for u in urls):
+                    return True
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return False
+
+    if not content and not _group_post_request_has_attachments():
+        return jsonify({'success': False, 'error': 'Content, image, video, or audio is required'})
     # Exclusive: must be a member of the group (helper includes moderation bypasses)
     try:
         with get_db_connection() as conn:
@@ -29226,10 +29250,151 @@ def api_group_posts_create():
             ok, err = check_group_feed_access(c, ph, username, group_id)
             if not ok:
                 return jsonify({'success': False, 'error': err or 'Forbidden'}), 403
-            # Save file if any
+
+            gp_t = '`group_posts`' if USE_MYSQL else 'group_posts'
+            for alter in (
+                f"ALTER TABLE {gp_t} ADD COLUMN video_path TEXT",
+                f"ALTER TABLE {gp_t} ADD COLUMN media_paths TEXT",
+                f"ALTER TABLE {gp_t} ADD COLUMN link_urls TEXT",
+                f"ALTER TABLE {gp_t} ADD COLUMN audio_path TEXT",
+                f"ALTER TABLE {gp_t} ADD COLUMN audio_summary TEXT",
+            ):
+                try:
+                    c.execute(alter)
+                except Exception:
+                    pass
+
+            community_id_for_audio = None
+            try:
+                gr_tbl = '`groups`' if USE_MYSQL else 'groups'
+                c.execute(f"SELECT community_id FROM {gr_tbl} WHERE id = {ph} LIMIT 1", (group_id,))
+                grow = c.fetchone()
+                if grow:
+                    community_id_for_audio = int(
+                        grow['community_id'] if hasattr(grow, 'keys') else grow[0]
+                    )
+            except Exception:
+                pass
+
+            files = request.files
             image_path = None
-            if 'image' in request.files and request.files['image'].filename:
-                image_path = save_uploaded_file(request.files['image'])
+            audio_path = None
+            video_path = None
+            media_paths: list[dict] = []
+            media_asset_candidates: list[dict] = []
+            MAX_MEDIA_PER_POST = 5
+
+            if 'images' in files:
+                for img_file in files.getlist('images'):
+                    if img_file and img_file.filename:
+                        saved_info = save_uploaded_file(
+                            img_file, optimize_profile='feed', return_file_info=True
+                        )
+                        saved_path = saved_info.get('path') if isinstance(saved_info, dict) else saved_info
+                        if saved_path:
+                            media_paths.append({'type': 'image', 'path': saved_path})
+                            media_asset_candidates.append({
+                                'type': 'image',
+                                'path': saved_path,
+                                'stored_bytes': saved_info.get('stored_bytes', 0) if isinstance(saved_info, dict) else 0,
+                            })
+
+            if 'videos' in files:
+                for vid_file in files.getlist('videos'):
+                    if vid_file and vid_file.filename:
+                        saved_info = save_uploaded_file(
+                            vid_file,
+                            subfolder='video',
+                            optimize_profile='feed',
+                            transcode_video=True,
+                            return_file_info=True,
+                        )
+                        saved_path = saved_info.get('path') if isinstance(saved_info, dict) else saved_info
+                        if saved_path:
+                            media_paths.append({'type': 'video', 'path': saved_path})
+                            media_asset_candidates.append({
+                                'type': 'video',
+                                'path': saved_path,
+                                'stored_bytes': saved_info.get('stored_bytes', 0) if isinstance(saved_info, dict) else 0,
+                            })
+
+            video_urls_raw = request.form.get('video_urls', '')
+            if video_urls_raw:
+                try:
+                    video_urls = json.loads(video_urls_raw)
+                    if isinstance(video_urls, list):
+                        for vurl in video_urls:
+                            if isinstance(vurl, str) and vurl.startswith('http'):
+                                media_paths.append({'type': 'video', 'path': vurl})
+                                media_asset_candidates.append({'type': 'video', 'path': vurl, 'stored_bytes': 0})
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            if len(media_paths) > MAX_MEDIA_PER_POST:
+                media_paths = media_paths[:MAX_MEDIA_PER_POST]
+                media_asset_candidates = media_asset_candidates[:MAX_MEDIA_PER_POST]
+
+            if not media_paths and files.get('image') and files['image'].filename:
+                file = files['image']
+                saved_info = save_uploaded_file(file, optimize_profile='feed', return_file_info=True)
+                image_path = saved_info.get('path') if isinstance(saved_info, dict) else saved_info
+                if image_path:
+                    media_asset_candidates.append({
+                        'type': 'image',
+                        'path': image_path,
+                        'stored_bytes': saved_info.get('stored_bytes', 0) if isinstance(saved_info, dict) else 0,
+                    })
+
+            if files.get('audio') and files['audio'].filename:
+                afile = files['audio']
+                audio_path = save_uploaded_file(afile, subfolder='audio')
+
+            if not media_paths and files.get('video') and files['video'].filename:
+                vfile = files['video']
+                saved_info = save_uploaded_file(
+                    vfile,
+                    subfolder='video',
+                    optimize_profile='feed',
+                    transcode_video=True,
+                    return_file_info=True,
+                )
+                video_path = saved_info.get('path') if isinstance(saved_info, dict) else saved_info
+                if video_path:
+                    media_asset_candidates.append({
+                        'type': 'video',
+                        'path': video_path,
+                        'stored_bytes': saved_info.get('stored_bytes', 0) if isinstance(saved_info, dict) else 0,
+                    })
+
+            if media_paths:
+                for m in media_paths:
+                    if m['type'] == 'image' and not image_path:
+                        image_path = m['path']
+                    elif m['type'] == 'video' and not video_path:
+                        video_path = m['path']
+
+            if (
+                not content
+                and not image_path
+                and not audio_path
+                and not video_path
+                and not media_paths
+            ):
+                return jsonify({'success': False, 'error': 'Content, image, video, or audio is required'})
+
+            audio_summary = None
+            if audio_path and community_id_for_audio is not None:
+                try:
+                    audio_summary = process_audio_for_summary(
+                        audio_path,
+                        username=username,
+                        community_id=community_id_for_audio,
+                    )
+                except Exception as audio_exc:
+                    logger.warning("group post audio summary failed: %s", audio_exc)
+            media_paths_json = json.dumps(media_paths) if media_paths else None
+            ts = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+
             # Dedupe (best effort)
             if dedupe_token:
                 try:
@@ -29241,10 +29406,41 @@ def api_group_posts_create():
                     c.execute("INSERT INTO recent_group_post_tokens (token, username, created_at) VALUES (?, ?, ?)", (dedupe_token, username, datetime.now().isoformat()))
                 except Exception:
                     pass
-            # Insert
-            c.execute(f"INSERT INTO {'`group_posts`' if USE_MYSQL else 'group_posts'} (group_id, username, content, image_path, created_at) VALUES ({ph}, {ph}, {ph}, {ph}, {ph})",
-                      (group_id, username, content, image_path, datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')))
-            if not USE_MYSQL: conn.commit()
+            c.execute(
+                f"INSERT INTO {gp_t} (group_id, username, content, image_path, video_path, audio_path, audio_summary, created_at, media_paths, link_urls) "
+                f"VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})",
+                (
+                    group_id,
+                    username,
+                    content,
+                    image_path,
+                    video_path,
+                    audio_path,
+                    audio_summary,
+                    ts,
+                    media_paths_json,
+                    None,
+                ),
+            )
+            post_id = c.lastrowid
+            if community_id_for_audio is not None and post_id:
+                try:
+                    from backend.services import media_assets
+
+                    for asset in media_asset_candidates[:MAX_MEDIA_PER_POST]:
+                        media_assets.register_asset(
+                            c,
+                            community_id=community_id_for_audio,
+                            source_type='group_post',
+                            source_id=int(post_id),
+                            media_type=asset.get('type'),
+                            path=asset.get('path'),
+                            original_bytes=asset.get('stored_bytes') or 0,
+                            stored_bytes=asset.get('stored_bytes') or 0,
+                        )
+                except Exception as asset_err:
+                    logger.warning(f"group post media asset registration failed: {asset_err}")
+            conn.commit()
             return jsonify({'success': True})
     except Exception as e:
         logger.error(f"api_group_posts_create error: {e}")
