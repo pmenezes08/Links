@@ -40,12 +40,11 @@ export default function UsefulLinks(){
 
   useEffect(() => { 
     setTitle('Useful Links & Docs')
-    // Mark docs as seen for this community
     if (community_id) {
-      const key = `docs_last_seen_${community_id}`
+      const key = groupId ? `docs_last_seen_group_${groupId}` : `docs_last_seen_${community_id}`
       localStorage.setItem(key, new Date().toISOString())
     }
-  }, [setTitle, community_id])
+  }, [setTitle, community_id, groupId])
 
   function showToast(message: string, type: 'success' | 'error' = 'success') {
     setToast({ message, type })
@@ -55,7 +54,11 @@ export default function UsefulLinks(){
   async function load(){
     setLoading(true)
     try{
-      const qs = community_id ? `?community_id=${community_id}` : ''
+      let qs = ''
+      if (community_id) {
+        qs = `?community_id=${community_id}`
+        if (groupId) qs += `&group_id=${encodeURIComponent(groupId)}`
+      }
       const r = await fetch(`/get_links${qs}`, { credentials:'include' })
       const j = await r.json()
       if (j?.success){
@@ -65,7 +68,7 @@ export default function UsefulLinks(){
     }finally{ setLoading(false) }
   }
   
-  useEffect(()=>{ load() }, [community_id])
+  useEffect(()=>{ load() }, [community_id, groupId])
 
   async function addLink(){
     const u = urlRef.current?.value.trim() || ''
@@ -94,6 +97,7 @@ export default function UsefulLinks(){
     fd.append('file', file)
     if (d) fd.append('description', d)
     if (community_id) fd.append('community_id', String(community_id))
+    if (groupId) fd.append('group_id', groupId)
     const r = await fetch('/upload_doc', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
     if (j?.success){ 

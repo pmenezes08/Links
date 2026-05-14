@@ -102,6 +102,7 @@ from backend.services.media import (
 from backend.services.tasks import (
     ensure_tasks_table as ensure_tasks_table_service,
     is_community_admin_or_owner as service_is_community_admin_or_owner,
+    tasks_group_scope_sql,
 )
 from backend.services.reactions import (
     get_post_reaction_summary,
@@ -2847,6 +2848,69 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure useful_docs table: {e}")
 
+            # Optional group_id on useful_links / useful_docs / posts / calendar_events / tasks
+            try:
+                for table_name, col_name, col_def in (
+                    ("useful_links", "group_id", "INTEGER NULL"),
+                    ("useful_docs", "group_id", "INTEGER NULL"),
+                    ("posts", "group_id", "INTEGER NULL"),
+                    ("calendar_events", "group_id", "INTEGER NULL"),
+                    ("tasks", "group_id", "INTEGER NULL"),
+                ):
+                    try:
+                        if USE_MYSQL:
+                            c.execute(f"SHOW COLUMNS FROM {table_name} LIKE '{col_name}'")
+                            if not c.fetchone():
+                                c.execute(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def}")
+                                logger.info("Added %s.%s", table_name, col_name)
+                        else:
+                            c.execute(f"PRAGMA table_info({table_name})")
+                            existing = {
+                                (row["name"] if hasattr(row, "keys") else row[1])
+                                for row in (c.fetchall() or [])
+                            }
+                            if col_name not in existing:
+                                c.execute(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def}")
+                                logger.info("Added %s.%s (SQLite)", table_name, col_name)
+                    except Exception as col_err:
+                        logger.warning("Column ensure %s.%s: %s", table_name, col_name, col_err)
+                conn.commit()
+            except Exception as ge:
+                logger.warning("group_id column ensure block: %s", ge)
+
+            # Group announcements (text-only; separate from community_announcements)
+            try:
+                if USE_MYSQL:
+                    c.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS group_announcements (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            group_id INT NOT NULL,
+                            content TEXT NOT NULL,
+                            created_by VARCHAR(191) NOT NULL,
+                            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                            KEY idx_g_ann_group (group_id),
+                            CONSTRAINT fk_g_ann_group FOREIGN KEY (group_id) REFERENCES `groups`(id) ON DELETE CASCADE
+                        )
+                        """
+                    )
+                else:
+                    c.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS group_announcements (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            group_id INTEGER NOT NULL,
+                            content TEXT NOT NULL,
+                            created_by TEXT NOT NULL,
+                            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                            FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+                        )
+                        """
+                    )
+                conn.commit()
+            except Exception as ae:
+                logger.warning("group_announcements ensure: %s", ae)
+
             # notifications.preview_text — required by create_notification() and fan-out; MySQL production
             # skips init_db() where this column was originally added, so add it here for all backends.
             try:
@@ -3933,6 +3997,7 @@ def init_db():
                 'time': 'TEXT',
                 'created_at': 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP',
                 'community_id': 'INTEGER',
+                'group_id': 'INTEGER',
                 'timezone': 'VARCHAR(100)',
                 'notification_preferences': "VARCHAR(50) DEFAULT 'all'"
             }
@@ -16435,21 +16500,29 @@ def is_community_admin_or_owner(username: str, community_id: int) -> bool:
 @login_required
 def api_community_tasks():
     """List community-wide tasks (assigned to entire community)."""
+    username = session.get('username')
     community_id = request.args.get('community_id', type=int)
+    group_id_param = request.args.get('group_id', type=int)
     if not community_id:
         return jsonify({'success': False, 'error': 'community_id required'}), 400
     try:
         ensure_tasks_table()
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
+            if group_id_param is not None:
+                ok, err = check_group_feed_access(c, ph, username, group_id_param)
+                if not ok:
+                    return jsonify({'success': False, 'error': err or 'Forbidden'}), 403
+            scope_sql, scope_params = tasks_group_scope_sql(ph, group_id_param)
             c.execute(
-                """
-                SELECT id, community_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status
+                f"""
+                SELECT id, community_id, group_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status
                 FROM tasks
-                WHERE community_id = ? AND (assigned_to_username IS NULL OR assigned_to_username = '')
+                WHERE community_id = {ph} AND (assigned_to_username IS NULL OR assigned_to_username = '') {scope_sql}
                 ORDER BY (CASE WHEN due_date IS NULL THEN 1 ELSE 0 END), due_date ASC, id DESC
                 """,
-                (community_id,)
+                (community_id,) + scope_params,
             )
             tasks = [dict(row) for row in c.fetchall()]
         return jsonify({'success': True, 'tasks': tasks})
@@ -16464,20 +16537,27 @@ def api_my_tasks():
     """List tasks assigned to the current user for a community."""
     username = session['username']
     community_id = request.args.get('community_id', type=int)
+    group_id_param = request.args.get('group_id', type=int)
     if not community_id:
         return jsonify({'success': False, 'error': 'community_id required'}), 400
     try:
         ensure_tasks_table()
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
+            if group_id_param is not None:
+                ok, err = check_group_feed_access(c, ph, username, group_id_param)
+                if not ok:
+                    return jsonify({'success': False, 'error': err or 'Forbidden'}), 403
+            scope_sql, scope_params = tasks_group_scope_sql(ph, group_id_param)
             c.execute(
-                """
-                SELECT id, community_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status
+                f"""
+                SELECT id, community_id, group_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status
                 FROM tasks
-                WHERE community_id = ? AND assigned_to_username = ?
+                WHERE community_id = {ph} AND assigned_to_username = {ph} {scope_sql}
                 ORDER BY (CASE WHEN due_date IS NULL THEN 1 ELSE 0 END), due_date ASC, id DESC
                 """,
-                (community_id, username)
+                (community_id, username) + scope_params,
             )
             tasks = [dict(row) for row in c.fetchall()]
         return jsonify({'success': True, 'tasks': tasks})
@@ -16518,6 +16598,7 @@ def api_all_my_tasks():
                 WHERE community_id IN ({placeholders}) 
                   AND assigned_to_username = {ph}
                   AND (completed = 0 OR completed IS NULL)
+                  AND (group_id IS NULL OR COALESCE(group_id, 0) = 0)
                 ORDER BY (CASE WHEN due_date IS NULL THEN 1 ELSE 0 END), due_date ASC, id DESC
             """, (*communities.keys(), username))
             tasks = []
@@ -16616,6 +16697,7 @@ def api_create_task():
     description = (request.form.get('description') or '').strip()
     due_date = (request.form.get('due_date') or '').strip()  # 'YYYY-MM-DD' or empty
     community_id = request.form.get('community_id', type=int)
+    group_id = request.form.get('group_id', type=int)
     assign_all = (request.form.get('assign_all') or '').strip().lower() == 'true'
     assigned_members = request.form.getlist('assigned_members[]') or []
     status = (request.form.get('status') or 'not_started').strip().lower()
@@ -16664,7 +16746,23 @@ def api_create_task():
 
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
+            if group_id:
+                okg, errg = check_group_feed_access(c, ph, username, group_id)
+                if not okg:
+                    return jsonify({'success': False, 'error': errg or 'Forbidden'}), 403
+                g_tbl = '`groups`' if USE_MYSQL else 'groups'
+                c.execute(f"SELECT community_id FROM {g_tbl} WHERE id = {ph}", (group_id,))
+                gr = c.fetchone()
+                if not gr:
+                    return jsonify({'success': False, 'error': 'Group not found'}), 404
+                gcomm = gr['community_id'] if hasattr(gr, 'keys') else gr[0]
+                if gcomm is None or int(gcomm) != int(community_id):
+                    return jsonify({'success': False, 'error': 'Group does not belong to this community'}), 400
             created_at_sql = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            tasks_deep_link = f"/community/{community_id}/tasks_react"
+            if group_id:
+                tasks_deep_link = f"{tasks_deep_link}?group_id={group_id}"
 
             # Create tasks
             created_ids = []
@@ -16674,18 +16772,18 @@ def api_create_task():
                     if 'USE_MYSQL' in globals() and USE_MYSQL:
                         c.execute(
                             """
-                            INSERT INTO tasks (community_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
-                            VALUES (?, ?, ?, NULLIF(?, ''), NULL, ?, NOW(), 0, ?)
+                            INSERT INTO tasks (community_id, group_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
+                            VALUES (?, ?, ?, ?, NULLIF(?, ''), NULL, ?, NOW(), 0, ?)
                             """,
-                            (community_id, title, description, due_date, username, status)
+                            (community_id, group_id, title, description, due_date, username, status)
                         )
                     else:
                         c.execute(
                             """
-                            INSERT INTO tasks (community_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
-                            VALUES (?, ?, ?, NULLIF(?, ''), NULL, ?, ?, 0, ?)
+                            INSERT INTO tasks (community_id, group_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
+                            VALUES (?, ?, ?, ?, NULLIF(?, ''), NULL, ?, ?, 0, ?)
                             """,
-                            (community_id, title, description, due_date, username, created_at_sql, status)
+                            (community_id, group_id, title, description, due_date, username, created_at_sql, status)
                         )
                     task_id = c.lastrowid
                     created_ids.append(task_id)
@@ -16693,15 +16791,26 @@ def api_create_task():
                     logger.error(f"insert community task error: {ie}")
                 # Notify all members except creator
                 try:
-                    c.execute(
-                        """
-                        SELECT u.username FROM users u
-                        JOIN user_communities uc ON u.id = uc.user_id
-                        WHERE uc.community_id = ? AND u.username != ?
-                        """,
-                        (community_id, username)
-                    )
-                    members = [r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
+                    if group_id:
+                        gm_tbl = '`group_members`' if USE_MYSQL else 'group_members'
+                        c.execute(
+                            f"""
+                            SELECT username FROM {gm_tbl}
+                            WHERE group_id = {ph} AND status = {ph} AND username != {ph}
+                            """,
+                            (group_id, 'member', username),
+                        )
+                        members = [r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
+                    else:
+                        c.execute(
+                            """
+                            SELECT u.username FROM users u
+                            JOIN user_communities uc ON u.id = uc.user_id
+                            WHERE uc.community_id = ? AND u.username != ?
+                            """,
+                            (community_id, username)
+                        )
+                        members = [r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
                     # community name
                     community_name = None
                     try:
@@ -16712,7 +16821,7 @@ def api_create_task():
                     except Exception:
                         pass
                     message = f"New community task in {community_name}: {title}" if community_name else f"New community task: {title}"
-                    link = f"/community/{community_id}/tasks_react"
+                    link = tasks_deep_link
                     for m in members:
                         try:
                             if 'USE_MYSQL' in globals() and USE_MYSQL:
@@ -16754,23 +16863,23 @@ def api_create_task():
                         if 'USE_MYSQL' in globals() and USE_MYSQL:
                             c.execute(
                                 """
-                                INSERT INTO tasks (community_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
-                                VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, NOW(), 0, ?)
+                                INSERT INTO tasks (community_id, group_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
+                                VALUES (?, ?, ?, ?, NULLIF(?, ''), ?, ?, NOW(), 0, ?)
                                 """,
-                                (community_id, title, description, due_date, assignee, username, status)
+                                (community_id, group_id, title, description, due_date, assignee, username, status)
                             )
                         else:
                             c.execute(
                                 """
-                                INSERT INTO tasks (community_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
-                                VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, ?, 0, ?)
+                                INSERT INTO tasks (community_id, group_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
+                                VALUES (?, ?, ?, ?, NULLIF(?, ''), ?, ?, ?, 0, ?)
                                 """,
-                                (community_id, title, description, due_date, assignee, username, created_at_sql, status)
+                                (community_id, group_id, title, description, due_date, assignee, username, created_at_sql, status)
                             )
                         task_id = c.lastrowid
                         created_ids.append(task_id)
                         # Notify assignee (skip self-notification)
-                        link = f"/community/{community_id}/tasks_react"
+                        link = tasks_deep_link
                         # Get community name for notification
                         task_comm_name = None
                         try:
@@ -16837,11 +16946,24 @@ def api_complete_task():
         ensure_tasks_table()
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT assigned_to_username FROM tasks WHERE id = ? AND community_id = ?", (task_id, community_id))
+            ph = get_sql_placeholder()
+            c.execute(
+                f"SELECT assigned_to_username, group_id FROM tasks WHERE id = {ph} AND community_id = {ph}",
+                (task_id, community_id),
+            )
             row = c.fetchone()
             if not row:
                 return jsonify({'success': False, 'error': 'Task not found'}), 404
-            assignee = row['assigned_to_username'] if hasattr(row, 'keys') else row[0]
+            if hasattr(row, 'keys'):
+                assignee = row['assigned_to_username']
+                task_gid = row.get('group_id')
+            else:
+                assignee = row[0]
+                task_gid = row[1] if len(row) > 1 else None
+            if task_gid:
+                okt, errt = check_group_feed_access(c, ph, username, int(task_gid))
+                if not okt:
+                    return jsonify({'success': False, 'error': errt or 'Forbidden'}), 403
             admin_ok = is_community_admin_or_owner(username, community_id)
             if assignee and assignee != username and not admin_ok:
                 return jsonify({'success': False, 'error': 'Not allowed'}), 403
@@ -16876,11 +16998,24 @@ def api_edit_task():
         ensure_tasks_table()
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT created_by_username FROM tasks WHERE id=? AND community_id=?", (task_id, community_id))
+            ph = get_sql_placeholder()
+            c.execute(
+                f"SELECT created_by_username, group_id FROM tasks WHERE id={ph} AND community_id={ph}",
+                (task_id, community_id),
+            )
             row = c.fetchone()
             if not row:
                 return jsonify({'success': False, 'error': 'Task not found'}), 404
-            creator = row['created_by_username'] if hasattr(row, 'keys') else row[0]
+            if hasattr(row, 'keys'):
+                creator = row['created_by_username']
+                task_gid = row.get('group_id')
+            else:
+                creator = row[0]
+                task_gid = row[1] if len(row) > 1 else None
+            if task_gid:
+                okt, errt = check_group_feed_access(c, ph, username, int(task_gid))
+                if not okt:
+                    return jsonify({'success': False, 'error': errt or 'Forbidden'}), 403
             admin_ok = is_community_admin_or_owner(username, community_id)
             if username != creator and not admin_ok:
                 return jsonify({'success': False, 'error': 'Not allowed'}), 403
@@ -16921,11 +17056,24 @@ def api_delete_task():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT created_by_username FROM tasks WHERE id=? AND community_id=?", (task_id, community_id))
+            ph = get_sql_placeholder()
+            c.execute(
+                f"SELECT created_by_username, group_id FROM tasks WHERE id={ph} AND community_id={ph}",
+                (task_id, community_id),
+            )
             row = c.fetchone()
             if not row:
                 return jsonify({'success': False, 'error': 'Task not found'}), 404
-            creator = row['created_by_username'] if hasattr(row, 'keys') else row[0]
+            if hasattr(row, 'keys'):
+                creator = row['created_by_username']
+                task_gid = row.get('group_id')
+            else:
+                creator = row[0]
+                task_gid = row[1] if len(row) > 1 else None
+            if task_gid:
+                okt, errt = check_group_feed_access(c, ph, username, int(task_gid))
+                if not okt:
+                    return jsonify({'success': False, 'error': errt or 'Forbidden'}), 403
             admin_ok = is_community_admin_or_owner(username, community_id)
             if username != creator and not admin_ok:
                 return jsonify({'success': False, 'error': 'Not allowed'}), 403
@@ -20370,73 +20518,23 @@ def admin_ads_overview():
 @app.route('/get_links')
 @login_required
 def get_links():
-    """Get all links for a community or main feed"""
+    """Get all links for a community or main feed (optional group scope)."""
     try:
+        from backend.services.useful_links_read import fetch_useful_links_payload
+
         username = session['username']
         community_id = request.args.get('community_id')
-        
+        group_id_param = request.args.get('group_id')
+
         with get_db_connection() as conn:
             c = conn.cursor()
-            
-            if community_id:
-                # Get links for specific community
-                c.execute("""
-                    SELECT id, username, url, description, created_at
-                    FROM useful_links
-                    WHERE community_id = ?
-                    ORDER BY created_at DESC
-                """, (community_id,))
-            else:
-                # Get links for main feed (community_id is NULL)
-                c.execute("""
-                    SELECT id, username, url, description, created_at
-                    FROM useful_links
-                    WHERE community_id IS NULL
-                    ORDER BY created_at DESC
-                """)
-            
-            links_raw = c.fetchall()
-            links = []
-            
-            for link in links_raw:
-                links.append({
-                    'id': link['id'],
-                    'username': link['username'],
-                    'url': link['url'],
-                    'description': link['description'],
-                    'created_at': link['created_at'],
-                    'can_delete': link['username'] == username or is_app_admin(username)
-                })
-            
-            # Also return docs (PDFs)
-            docs = []
-            try:
-                if community_id:
-                    c.execute("""
-                        SELECT id, username, file_path, description, created_at
-                        FROM useful_docs
-                        WHERE community_id = ?
-                        ORDER BY created_at DESC
-                    """, (community_id,))
-                else:
-                    c.execute("""
-                        SELECT id, username, file_path, description, created_at
-                        FROM useful_docs
-                        WHERE community_id IS NULL
-                        ORDER BY created_at DESC
-                    """)
-                for d in c.fetchall() or []:
-                    docs.append({
-                        'id': d['id'] if hasattr(d,'keys') else d[0],
-                        'username': d['username'] if hasattr(d,'keys') else d[1],
-                        'file_path': d['file_path'] if hasattr(d,'keys') else d[2],
-                        'description': d['description'] if hasattr(d,'keys') else d[3],
-                        'created_at': d['created_at'] if hasattr(d,'keys') else d[4]
-                    })
-            except Exception as de:
-                logger.warning(f"get_docs error: {de}")
-            return jsonify({'success': True, 'links': links, 'docs': docs})
-            
+            ph = get_sql_placeholder()
+            payload = fetch_useful_links_payload(c, username, community_id, group_id_param, ph)
+            if not payload.get("success"):
+                code = 400 if (payload.get("error") or "") == "Invalid group_id" else 403
+                return jsonify(payload), code
+            return jsonify(payload)
+
     except Exception as e:
         logger.error(f"Error getting links: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
@@ -20516,6 +20614,13 @@ def add_link():
         url = request.form.get('url', '').strip()
         description = request.form.get('description', '').strip()
         community_id = request.form.get('community_id')
+        group_id_raw = (request.form.get('group_id') or '').strip()
+        group_id_int = None
+        if group_id_raw:
+            try:
+                group_id_int = int(group_id_raw)
+            except Exception:
+                return jsonify({'success': False, 'message': 'Invalid group_id'})
         
         if not url or not description:
             return jsonify({'success': False, 'message': 'URL and description are required'})
@@ -20526,15 +20631,20 @@ def add_link():
         
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
+            if group_id_int is not None:
+                ok, err = check_group_feed_access(c, ph, username, group_id_int)
+                if not ok:
+                    return jsonify({'success': False, 'error': err or 'Forbidden'}), 403
             
-            c.execute("""
-                INSERT INTO useful_links (community_id, username, url, description, created_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (community_id if community_id else None, username, url, description, 
+            c.execute(f"""
+                INSERT INTO useful_links (community_id, group_id, username, url, description, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """, (community_id if community_id else None, group_id_int, username, url, description, 
                   datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             
-            # Send notifications to community members
-            if community_id:
+            # Send notifications to community members (community-wide resources only)
+            if community_id and group_id_int is None:
                 notify_community_new_resource(community_id, username, 'link', description, conn)
             
             conn.commit()
@@ -20554,6 +20664,13 @@ def upload_doc():
         
         username = session['username']
         community_id = request.form.get('community_id')
+        group_id_raw = (request.form.get('group_id') or '').strip()
+        group_id_int = None
+        if group_id_raw:
+            try:
+                group_id_int = int(group_id_raw)
+            except Exception:
+                return jsonify({'success': False, 'error': 'Invalid group_id'})
         description = (request.form.get('description') or '').strip()
         if 'file' not in request.files:
             return jsonify({'success': False, 'error': 'No file provided'})
@@ -20602,13 +20719,18 @@ def upload_doc():
         
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("""
-                INSERT INTO useful_docs (community_id, username, file_path, description, created_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (community_id if community_id else None, username, file_path, description, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            ph = get_sql_placeholder()
+            if group_id_int is not None:
+                ok, err = check_group_feed_access(c, ph, username, group_id_int)
+                if not ok:
+                    return jsonify({'success': False, 'error': err or 'Forbidden'}), 403
+            c.execute(f"""
+                INSERT INTO useful_docs (community_id, group_id, username, file_path, description, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """, (community_id if community_id else None, group_id_int, username, file_path, description, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             
-            # Send notifications to community members
-            if community_id:
+            # Send notifications to community members (community-wide resources only)
+            if community_id and group_id_int is None:
                 doc_description = description or orig  # Use filename if no description
                 notify_community_new_resource(community_id, username, 'doc', doc_description, conn)
             
@@ -28882,117 +29004,7 @@ def api_groups_my():
         logger.error(f"api_groups_my error: {e}")
         return jsonify({'success': False, 'error': 'Failed to load groups'})
 
-# Group feed API: returns posts scoped to group membership
-@app.route('/api/group_feed')
-@login_required
-def api_group_feed():
-    username = session.get('username')
-    try:
-        group_id = int(request.args.get('group_id', '0'))
-    except Exception:
-        return jsonify({'success': False, 'error': 'Invalid group_id'})
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            # Load group and owning community
-            c.execute(f"SELECT g.id, g.name, g.community_id, g.created_by FROM {'`groups`' if USE_MYSQL else 'groups'} g WHERE g.id = {get_sql_placeholder()}", (group_id,))
-            g = c.fetchone()
-            if not g:
-                return jsonify({'success': False, 'error': 'Group not found'}), 404
-            community_id = g['community_id'] if hasattr(g, 'keys') else g[2]
-            group_name = g['name'] if hasattr(g, 'keys') else g[1]
-            group_owner = g['created_by'] if hasattr(g, 'keys') else (g[3] if len(g) > 3 else None)
-            # Community meta
-            c.execute("SELECT name, type FROM communities WHERE id = ?", (community_id,))
-            cm = c.fetchone() or {}
-            community_name = cm['name'] if hasattr(cm, 'keys') else (cm[0] if cm else None)
-            community_type = cm['type'] if hasattr(cm, 'keys') else (cm[1] if cm else None)
-
-            # Exclusive group membership (plus moderation bypasses in helper)
-            ph = get_sql_placeholder()
-            ok, err = check_group_feed_access(c, ph, username, group_id)
-            if not ok:
-                code = 404 if (err or "").lower().find("not found") >= 0 else 403
-                return jsonify({"success": False, "error": err or "Forbidden"}), code
-
-            # Permission baseline for group managers
-            is_manager = (
-                is_app_admin(username)
-                or is_community_owner(username, community_id)
-                or is_community_admin(username, community_id)
-                or (group_owner is not None and username == group_owner)
-            )
-
-            # Load latest group posts
-            c.execute(f"""
-                SELECT gp.id, gp.username, gp.content, gp.image_path, gp.created_at,
-                       up.profile_picture
-                FROM {'`group_posts`' if USE_MYSQL else 'group_posts'} gp
-                LEFT JOIN user_profiles up ON up.username = gp.username
-                WHERE gp.group_id = {get_sql_placeholder()}
-                ORDER BY gp.id DESC
-                LIMIT 50
-            """, (group_id,))
-            rows = c.fetchall() or []
-            posts = []
-            for r in rows:
-                pid = r['id'] if hasattr(r, 'keys') else r[0]
-                uname = r['username'] if hasattr(r, 'keys') else r[1]
-                # Reactions
-                c.execute(f"SELECT reaction, COUNT(*) as c FROM {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} WHERE group_post_id = {get_sql_placeholder()} GROUP BY reaction", (pid,))
-                rx = c.fetchall() or []
-                reactions = { (row['reaction'] if hasattr(row, 'keys') else row[0]): (row['c'] if hasattr(row, 'keys') else row[1]) for row in rx }
-                c.execute(f"SELECT reaction FROM {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} WHERE group_post_id = {get_sql_placeholder()} AND username = {get_sql_placeholder()}", (pid, username))
-                urr = c.fetchone()
-                user_reaction = urr['reaction'] if hasattr(urr, 'keys') else (urr[0] if urr else None)
-                # Replies (latest 25)
-                c.execute(f"""
-                    SELECT gr.id, gr.username, gr.content, gr.image_path, gr.created_at,
-                           up.profile_picture
-                    FROM {'`group_replies`' if USE_MYSQL else 'group_replies'} gr
-                    LEFT JOIN user_profiles up ON up.username = gr.username
-                    WHERE gr.group_post_id = {get_sql_placeholder()}
-                    ORDER BY gr.id DESC
-                    LIMIT 25
-                """, (pid,))
-                rep_rows = c.fetchall() or []
-                replies = []
-                for rr in rep_rows:
-                    rid = rr['id'] if hasattr(rr, 'keys') else rr[0]
-                    c.execute(f"SELECT reaction, COUNT(*) as c FROM {'`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'} WHERE group_reply_id = {get_sql_placeholder()} GROUP BY reaction", (rid,))
-                    rrx = c.fetchall() or []
-                    rreactions = { (row['reaction'] if hasattr(row, 'keys') else row[0]): (row['c'] if hasattr(row, 'keys') else row[1]) for row in rrx }
-                    c.execute(f"SELECT reaction FROM {'`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'} WHERE group_reply_id = {get_sql_placeholder()} AND username = {get_sql_placeholder()}", (rid, username))
-                    rur = c.fetchone()
-                    reply_user_reaction = rur['reaction'] if hasattr(rur, 'keys') else (rur[0] if rur else None)
-                    replies.append({
-                        'id': rid,
-                        'username': rr['username'] if hasattr(rr, 'keys') else rr[1],
-                        'content': rr['content'] if hasattr(rr, 'keys') else rr[2],
-                        'image_path': rr['image_path'] if hasattr(rr, 'keys') else rr[3],
-                        'timestamp': rr['created_at'] if hasattr(rr, 'keys') else rr[4],
-                        'profile_picture': rr['profile_picture'] if hasattr(rr, 'keys') else rr[5],
-                        'reactions': rreactions,
-                        'user_reaction': reply_user_reaction,
-                    })
-                can_manage = bool(is_manager or (uname == username))
-                posts.append({
-                    'id': pid,
-                    'username': uname,
-                    'content': r['content'] if hasattr(r, 'keys') else r[2],
-                    'image_path': r['image_path'] if hasattr(r, 'keys') else r[3],
-                    'timestamp': r['created_at'] if hasattr(r, 'keys') else r[4],
-                    'reactions': reactions,
-                    'user_reaction': user_reaction,
-                    'profile_picture': r['profile_picture'] if hasattr(r, 'keys') else r[5],
-                    'replies': replies,
-                    'can_edit': can_manage,
-                    'can_delete': can_manage,
-                })
-            return jsonify({'success': True, 'group': { 'id': group_id, 'name': group_name }, 'community': { 'id': community_id, 'name': community_name, 'type': community_type }, 'posts': posts})
-    except Exception as e:
-        logger.error(f"api_group_feed error: {e}")
-        return jsonify({'success': False, 'error': 'Server error'})
+# Group feed API: ``GET /api/group_feed`` is implemented in ``backend.blueprints.group_feed``.
 
 # Single group post API
 @app.route('/api/group_post')

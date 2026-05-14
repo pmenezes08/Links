@@ -16,6 +16,12 @@ from backend.services.group_feed_access import (
     check_group_feed_access,
 )
 from backend.services.community import is_app_admin, is_community_admin, is_community_owner
+from backend.services.group_feed_detail import build_group_feed_response
+from backend.services.group_polls_data import (
+    create_group_poll,
+    ensure_group_poll_tables,
+    vote_group_poll,
+)
 
 group_feed_bp = Blueprint("group_feed", __name__)
 logger = logging.getLogger(__name__)
@@ -116,6 +122,197 @@ def _normalize_media_url(path: str | None) -> str | None:
     if path.startswith("uploads/"):
         return "/" + path
     return f"/uploads/{path}"
+
+
+def _ensure_group_announcements_table(cursor):
+    if USE_MYSQL:
+        try:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS `group_announcements` (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    group_id INT NOT NULL,
+                    content TEXT NOT NULL,
+                    created_by VARCHAR(191) NOT NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    KEY idx_g_ann_group (group_id),
+                    CONSTRAINT fk_g_ann_group FOREIGN KEY (group_id) REFERENCES `groups`(id) ON DELETE CASCADE
+                )
+                """
+            )
+        except Exception as e:
+            logger.warning("group_announcements ensure: %s", e)
+    else:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS group_announcements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+            )
+            """
+        )
+
+
+def _can_manage_group_announcements(
+    _cursor, _ph: str, username: str, _group_id: int, community_id, group_owner
+) -> bool:
+    if is_app_admin(username):
+        return True
+    if group_owner and username == group_owner:
+        return True
+    if community_id is not None:
+        if is_community_owner(username, int(community_id)) or is_community_admin(
+            username, int(community_id)
+        ):
+            return True
+    return False
+
+
+@group_feed_bp.route("/api/group_feed", methods=["GET"])
+@_login_required
+def api_group_feed():
+    username = session["username"]
+    try:
+        group_id = int(request.args.get("group_id", "0"))
+    except Exception:
+        return jsonify({"success": False, "error": "Invalid group_id"}), 400
+    payload, code = build_group_feed_response(username, group_id)
+    return jsonify(payload), code
+
+
+@group_feed_bp.route("/api/group_announcements/<int:group_id>", methods=["GET"])
+@_login_required
+def api_group_announcements_list(group_id: int):
+    username = session["username"]
+    ph = get_sql_placeholder()
+    ga = "`group_announcements`" if USE_MYSQL else "group_announcements"
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            _ensure_group_announcements_table(c)
+            if not USE_MYSQL:
+                conn.commit()
+            ok, err = check_group_feed_access(c, ph, username, group_id)
+            if not ok:
+                return jsonify({"success": False, "error": err or "Forbidden"}), 403
+            c.execute(
+                f"""
+                SELECT id, content, created_by, created_at
+                FROM {ga}
+                WHERE group_id = {ph}
+                ORDER BY id DESC
+                LIMIT 50
+                """,
+                (group_id,),
+            )
+            rows = c.fetchall() or []
+            items = []
+            for r in rows:
+                items.append(
+                    {
+                        "id": r["id"] if hasattr(r, "keys") else r[0],
+                        "content": (r["content"] if hasattr(r, "keys") else r[1]) or "",
+                        "created_by": r["created_by"] if hasattr(r, "keys") else r[2],
+                        "created_at": r["created_at"] if hasattr(r, "keys") else r[3],
+                    }
+                )
+            return jsonify({"success": True, "announcements": items})
+    except Exception as e:
+        logger.error("api_group_announcements_list error: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": "Server error"}), 500
+
+
+@group_feed_bp.route("/api/group_announcements/<int:group_id>", methods=["POST"])
+@_login_required
+def api_group_announcements_create(group_id: int):
+    username = session["username"]
+    ph = get_sql_placeholder()
+    data = request.get_json(silent=True) or {}
+    content = (data.get("content") or request.form.get("content") or "").strip()
+    if not content:
+        return jsonify({"success": False, "error": "content required"}), 400
+    ga = "`group_announcements`" if USE_MYSQL else "group_announcements"
+    g_t = "`groups`" if USE_MYSQL else "groups"
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            _ensure_group_announcements_table(c)
+            ok, err = check_group_feed_access(c, ph, username, group_id)
+            if not ok:
+                return jsonify({"success": False, "error": err or "Forbidden"}), 403
+            c.execute(
+                f"SELECT community_id, created_by FROM {g_t} WHERE id = {ph}",
+                (group_id,),
+            )
+            gr = c.fetchone()
+            if not gr:
+                return jsonify({"success": False, "error": "Group not found"}), 404
+            community_id = gr["community_id"] if hasattr(gr, "keys") else gr[0]
+            created_by = gr["created_by"] if hasattr(gr, "keys") else gr[1]
+            if not _can_manage_group_announcements(c, ph, username, group_id, community_id, created_by):
+                return jsonify({"success": False, "error": "Forbidden"}), 403
+            now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            c.execute(
+                f"""
+                INSERT INTO {ga} (group_id, content, created_by, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph})
+                """,
+                (group_id, content, username, now),
+            )
+            conn.commit()
+            return jsonify({"success": True})
+    except Exception as e:
+        logger.error("api_group_announcements_create error: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": "Server error"}), 500
+
+
+@group_feed_bp.route("/api/group_posts_search", methods=["GET"])
+@_login_required
+def api_group_posts_search():
+    """Full-text-ish search within one group's posts (hashtag / substring)."""
+    username = session["username"]
+    group_id = request.args.get("group_id", type=int)
+    raw_q = (request.args.get("q") or "").strip().lstrip("#")
+    if not group_id or not raw_q:
+        return jsonify({"success": False, "error": "group_id and q required"}), 400
+    ph = get_sql_placeholder()
+    like = f"%{raw_q}%"
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ok, err = check_group_feed_access(c, ph, username, group_id)
+            if not ok:
+                return jsonify({"success": False, "error": err or "Forbidden"}), 403
+            gp_t = "`group_posts`" if USE_MYSQL else "group_posts"
+            c.execute(
+                f"""
+                SELECT id, username, content, created_at
+                FROM {gp_t}
+                WHERE group_id = {ph} AND LOWER(content) LIKE LOWER({ph})
+                ORDER BY id DESC
+                LIMIT 50
+                """,
+                (group_id, like),
+            )
+            rows = c.fetchall() or []
+            posts = []
+            for r in rows:
+                posts.append(
+                    {
+                        "id": r["id"] if hasattr(r, "keys") else r[0],
+                        "username": r["username"] if hasattr(r, "keys") else r[1],
+                        "content": (r["content"] if hasattr(r, "keys") else r[2]) or "",
+                        "timestamp": r["created_at"] if hasattr(r, "keys") else r[3],
+                    }
+                )
+            return jsonify({"success": True, "posts": posts})
+    except Exception as e:
+        logger.error("api_group_posts_search error: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": "Server error"}), 500
 
 
 @group_feed_bp.route("/api/group_photos/<int:group_id>", methods=["GET"])
@@ -488,6 +685,116 @@ def api_toggle_group_community_key_post():
     except Exception as e:
         logger.error("toggle_group_community_key_post error: %s", e, exc_info=True)
         return jsonify({"success": False, "error": "server error"}), 500
+
+
+@group_feed_bp.route("/api/group_poll_vote", methods=["POST"])
+@_login_required
+def api_group_poll_vote():
+    username = session["username"]
+    data = request.get_json(silent=True) or {}
+    group_poll_id = data.get("group_poll_id")
+    option_id = data.get("option_id")
+    try:
+        group_poll_id = int(group_poll_id)
+        option_id = int(option_id)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "group_poll_id and option_id required"}), 400
+    ph = get_sql_placeholder()
+    gp = "`group_polls`" if USE_MYSQL else "group_polls"
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(f"SELECT group_id FROM {gp} WHERE id = {ph}", (group_poll_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Poll not found"}), 404
+            gid = row["group_id"] if hasattr(row, "keys") else row[0]
+            ok, err = check_group_feed_access(c, ph, username, int(gid))
+            if not ok:
+                return jsonify({"success": False, "error": err or "Forbidden"}), 403
+            ok_vote, message, poll_results = vote_group_poll(c, ph, username, group_poll_id, option_id)
+            if not ok_vote:
+                return jsonify({"success": False, "error": message}), 400
+            conn.commit()
+        return jsonify({"success": True, "message": message, "poll_results": poll_results})
+    except Exception as e:
+        logger.error("api_group_poll_vote error: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": "Server error"}), 500
+
+
+@group_feed_bp.route("/api/group_polls/create", methods=["POST"])
+@_login_required
+def api_group_polls_create():
+    username = session["username"]
+    data = request.get_json(silent=True) or {}
+    try:
+        group_id = int(data.get("group_id") or request.form.get("group_id") or 0)
+        group_post_id = int(data.get("group_post_id") or request.form.get("group_post_id") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "group_id and group_post_id required"}), 400
+    question = (data.get("question") or request.form.get("question") or "").strip()
+    options_raw = data.get("options") or request.form.getlist("options[]")
+    if isinstance(options_raw, str):
+        options_raw = [options_raw]
+    options = [str(o).strip() for o in (options_raw or []) if str(o).strip()]
+    sv_raw = data.get("single_vote", True)
+    if isinstance(sv_raw, str):
+        single_vote = sv_raw.lower() not in ("false", "0", "no")
+    else:
+        single_vote = bool(sv_raw)
+    expires_at_sql = None
+    exp_raw = (data.get("expires_at") or request.form.get("expires_at") or "").strip()
+    if exp_raw:
+        try:
+            if "T" in exp_raw:
+                dt = datetime.strptime(exp_raw, "%Y-%m-%dT%H:%M")
+            else:
+                dt = datetime.strptime(exp_raw, "%Y-%m-%d")
+            if dt <= datetime.utcnow():
+                return jsonify({"success": False, "error": "Expiry must be in the future"}), 400
+            expires_at_sql = dt.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            expires_at_sql = None
+    if not question or len(options) < 2:
+        return jsonify({"success": False, "error": "Question and at least 2 options required"}), 400
+    if len(options) > 6:
+        return jsonify({"success": False, "error": "Maximum 6 options"}), 400
+    ph = get_sql_placeholder()
+    gp_t = "`group_posts`" if USE_MYSQL else "group_posts"
+    g_t = "`groups`" if USE_MYSQL else "groups"
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_group_poll_tables(c)
+            ok, err = check_group_feed_access(c, ph, username, group_id)
+            if not ok:
+                return jsonify({"success": False, "error": err or "Forbidden"}), 403
+            c.execute(
+                f"SELECT gp.username, g.community_id, g.created_by FROM {gp_t} gp "
+                f"JOIN {g_t} g ON g.id = gp.group_id WHERE gp.id = {ph} AND gp.group_id = {ph}",
+                (group_post_id, group_id),
+            )
+            row = c.fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Post not found"}), 404
+            post_username = row["username"] if hasattr(row, "keys") else row[0]
+            community_id = row["community_id"] if hasattr(row, "keys") else row[1]
+            group_owner = row["created_by"] if hasattr(row, "keys") else row[2]
+            can_create = post_username == username or _can_manage_group_announcements(
+                c, ph, username, group_id, community_id, group_owner
+            )
+            if not can_create:
+                return jsonify({"success": False, "error": "Forbidden"}), 403
+            poll_id, err_c = create_group_poll(
+                c, ph, username, group_id, group_post_id, question, options, single_vote, expires_at_sql
+            )
+            if err_c:
+                return jsonify({"success": False, "error": err_c}), 400
+            conn.commit()
+        return jsonify({"success": True, "group_poll_id": poll_id})
+    except Exception as e:
+        logger.error("api_group_polls_create error: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": "Server error"}), 500
 
 
 @group_feed_bp.route("/api/group_replies/delete", methods=["POST"])

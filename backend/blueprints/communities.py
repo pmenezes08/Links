@@ -508,6 +508,7 @@ def api_community_group_feed(parent_id: int):
                        p.audio_path, p.audio_summary
                 FROM posts p
                 WHERE p.community_id IN ({placeholders})
+                  AND (p.group_id IS NULL OR p.group_id = 0)
                   AND LOWER(p.username) <> LOWER({ph})
                   AND NOT EXISTS (
                     SELECT 1 FROM post_views pv
@@ -635,6 +636,7 @@ def api_dashboard_unread_feed():
                        p.audio_path, p.audio_summary
                 FROM posts p
                 WHERE p.community_id IN ({ph_in})
+                  AND (p.group_id IS NULL OR p.group_id = 0)
                   AND LOWER(p.username) <> LOWER({ph})
                   {unread_clause}
                   {time_clause}

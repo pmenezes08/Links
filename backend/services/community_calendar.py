@@ -9,6 +9,10 @@ import re
 from typing import Any
 
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
+from backend.services.group_feed_access import check_group_feed_access
+
+GROUPS_TBL_CAL = "`groups`" if USE_MYSQL else "groups"
+GROUP_MEMBERS_TBL = "`group_members`" if USE_MYSQL else "group_members"
 from backend.services.notifications import create_notification, send_push_to_user
 
 
@@ -156,18 +160,19 @@ def shape_event(row: Any, cursor, username: str | None, *, include_community_nam
         "time": row_value(row, "time", 7),
         "start_time": extract_time(row_value(row, "start_time", 5) or row_value(row, "time", 7)),
         "end_time": extract_time(row_value(row, "end_time", 6)),
-        "timezone": row_value(row, "timezone", 11),
+        "timezone": row_value(row, "timezone", 12),
         "description": row_value(row, "description", 8),
         "created_at": row_value(row, "created_at", 9),
         "community_id": row_value(row, "community_id", 10),
+        "group_id": row_value(row, "group_id", 11),
         "rsvp_counts": counts,
         "user_rsvp": user_rsvp,
         "total_rsvps": counts["going"] + counts["maybe"] + counts["not_going"],
         "is_creator": str(creator or "").strip().lower() == str(username or "").strip().lower(),
     }
     if include_community_name:
-        event["community_name"] = row_value(row, "community_name", 12)
-        event["background_color"] = row_value(row, "background_color", 13)
+        event["community_name"] = row_value(row, "community_name", 13)
+        event["background_color"] = row_value(row, "background_color", 14)
     return event
 
 
@@ -183,7 +188,7 @@ def list_visible_events(username: str | None, *, upcoming_only: bool = False) ->
                    COALESCE(ce.end_date, ce.date) as end_date,
                    COALESCE(ce.start_time, ce.time) as start_time,
                    ce.end_time, ce.time, ce.description, ce.created_at,
-                   ce.community_id, ce.timezone
+                   ce.community_id, ce.group_id, ce.timezone
             FROM calendar_events ce
             LEFT JOIN event_invitations ei ON ce.id = ei.event_id
             WHERE (ce.username = {ph} OR ei.invited_username = {ph})
@@ -221,16 +226,30 @@ def list_group_events(username: str | None, group_id: int) -> list[dict[str, Any
     with get_db_connection() as conn:
         cursor = conn.cursor()
         ph = get_sql_placeholder()
-        groups_table = "`groups`" if USE_MYSQL else "groups"
-        cursor.execute(f"SELECT community_id FROM {groups_table} WHERE id = {ph}", (group_id,))
+        cursor.execute(f"SELECT community_id FROM {GROUPS_TBL_CAL} WHERE id = {ph}", (group_id,))
         group_row = cursor.fetchone()
         if not group_row:
             raise CalendarError("Group not found", 404)
         community_id = row_value(group_row, "community_id", 0)
-    return [
-        event for event in list_visible_events(username)
-        if str(event.get("community_id") or "") == str(community_id or "")
-    ]
+        ok, err = check_group_feed_access(cursor, ph, username, group_id)
+        if not ok:
+            raise CalendarError(err or "Forbidden", 403)
+
+    events = list_visible_events(username)
+    out: list[dict[str, Any]] = []
+    for event in events:
+        if str(event.get("community_id") or "") != str(community_id or ""):
+            continue
+        egid = event.get("group_id")
+        try:
+            egid_int = int(egid) if egid is not None and str(egid).strip() not in {"", "none"} else None
+        except (TypeError, ValueError):
+            egid_int = None
+        if egid_int is None or egid_int == 0:
+            out.append(event)
+        elif egid_int == int(group_id):
+            out.append(event)
+    return out
 
 
 def ensure_user_can_view_event(event_id: int, username: str | None) -> None:
@@ -441,10 +460,19 @@ def _community_name(cursor, community_id: int | None) -> str:
 
 
 def _invite_users(cursor, data: EventInput, creator: str) -> list[str]:
-    if not data.community_id:
+    if not data.community_id and not data.group_id:
         return []
     ph = get_sql_placeholder()
     if data.invite_all:
+        if data.group_id:
+            cursor.execute(
+                f"""
+                SELECT username FROM {GROUP_MEMBERS_TBL}
+                WHERE group_id = {ph} AND status = {ph} AND LOWER(username) <> LOWER({ph})
+                """,
+                (data.group_id, "member", creator),
+            )
+            return [str(row_value(row, "username", 0)) for row in cursor.fetchall() or []]
         cursor.execute(
             f"""
             SELECT DISTINCT u.username
@@ -463,15 +491,31 @@ def create_event(username: str, data: EventInput) -> dict[str, Any]:
     end_date = data.end_date or None
     start_datetime = _datetime_value(data.date, data.start_time)
     end_datetime = _datetime_value(end_date or data.date, data.end_time)
+    effective_community_id = data.community_id
+    effective_group_id = data.group_id
     with get_db_connection() as conn:
         cursor = conn.cursor()
         ph = get_sql_placeholder()
+        if effective_group_id:
+            cursor.execute(
+                f"SELECT community_id FROM {GROUPS_TBL_CAL} WHERE id = {ph}",
+                (effective_group_id,),
+            )
+            grow = cursor.fetchone()
+            if not grow:
+                raise CalendarError("Group not found", 404)
+            gcomm = row_value(grow, "community_id", 0)
+            if effective_community_id and str(effective_community_id) != str(gcomm or ""):
+                raise CalendarError("Group does not belong to this community", 400)
+            effective_community_id = int(gcomm) if gcomm is not None else effective_community_id
+        if not effective_community_id:
+            raise CalendarError("community_id is required", 400)
         created_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute(
             f"""
             INSERT INTO calendar_events
-                (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id, timezone, notification_preferences)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id, timezone, notification_preferences, group_id)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
             """,
             (
                 username,
@@ -483,14 +527,29 @@ def create_event(username: str, data: EventInput) -> dict[str, Any]:
                 end_datetime,
                 data.description or None,
                 created_at,
-                data.community_id,
+                effective_community_id,
                 data.timezone or None,
                 data.notification_preferences or "all",
+                effective_group_id,
             ),
         )
         event_id = int(cursor.lastrowid)
-        invited_users = _invite_users(cursor, data, username)
-        community_name = _community_name(cursor, data.community_id)
+        data_with_comm = EventInput(
+            title=data.title,
+            date=data.date,
+            end_date=data.end_date,
+            start_time=data.start_time,
+            end_time=data.end_time,
+            timezone=data.timezone,
+            description=data.description,
+            notification_preferences=data.notification_preferences,
+            community_id=effective_community_id,
+            group_id=effective_group_id,
+            invite_all=data.invite_all,
+            invited_members=data.invited_members,
+        )
+        invited_users = _invite_users(cursor, data_with_comm, username)
+        community_name = _community_name(cursor, effective_community_id)
         for invited_user in invited_users:
             try:
                 cursor.execute(
@@ -510,7 +569,7 @@ def create_event(username: str, data: EventInput) -> dict[str, Any]:
                     INSERT INTO notifications (user_id, from_user, message, created_at, is_read, link, type, community_id)
                     VALUES ({ph}, {ph}, {ph}, {ph}, 0, {ph}, 'event_invitation', {ph})
                     """,
-                    (invited_user, username, message, datetime.utcnow().isoformat(), link, data.community_id),
+                    (invited_user, username, message, datetime.utcnow().isoformat(), link, effective_community_id),
                 )
                 try:
                     send_push_to_user(

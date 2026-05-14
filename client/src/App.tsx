@@ -667,6 +667,7 @@ function AppRoutes(){
     currentPathName.startsWith('/post/') ||
     currentPathName.startsWith('/reply/') ||
     currentPathName.startsWith('/community_feed_react/') ||
+    currentPathName.startsWith('/group_feed_react/') ||
     currentPathName.startsWith('/community/') && currentPathName.includes('/feed')
   const showHeader = authLoaded && !hideHeader && !headerHiddenOverride
   const headerHeightValue = showHeader ? 'calc(56px + env(safe-area-inset-top, 0px))' : 'env(safe-area-inset-top, 0px)'
