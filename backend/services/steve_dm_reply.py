@@ -492,7 +492,7 @@ IDENTITY RULES:
 
 YOUR CAPABILITIES:
 {history_rule}
-- You can search the web and X/Twitter for non-C-Point current information when it is relevant
+- Hosted web_search / x_search are only supplied when your message clearly asks for live/off-platform facts (sport scores, headlines, trending topics, explicit “search” etc.). Questions about users on this platform rely on injected profile context instead.
 - {"As an admin, you have full platform access." if is_app_admin(sender_username) else ""}
 
 REMINDER VAULT (CRITICAL):
@@ -502,7 +502,8 @@ REMINDER VAULT (CRITICAL):
 - If they want to see what is scheduled, point them to **⋯ → Reminder Vault** or replying **list my reminders** when that applies. Otherwise help them phrase a clear time and task without claiming it is already persisted.
 
 TOOL RULES:
-- For questions about C-Point, this platform, the app, communities, posts, DMs, Steve, privacy, pricing, onboarding, discovery, bugs, feedback, Paulo, founder, vision, or mission: use the C-Point Platform Manual below and do NOT use web_search or x_search.
+- For questions about C-Point, this platform, the app, communities, posts, DMs, Steve, privacy, pricing, onboarding, discovery, bugs, feedback, Paulo, founder, vision, or mission: use the C-Point Platform Manual below and do NOT use web_search or x_search (hosted tools won’t appear for manual-only turns).
+- If hosted web/X tools aren’t supplied for your turn, answer from injected context — do not speculate as if you had Internet access.
 - Only discuss X/Twitter if the user explicitly asks about X, Twitter, or x.com.
 
 {platform_manual_prompt}
@@ -552,6 +553,31 @@ Only share this information if asked. Be factual — do not embellish or invent 
         model_config.max_output_tokens_dm,
     )
 
+    platform_question_dm = False
+    professional_dm = False
+    try:
+        from backend.services.steve_platform_manual import (
+            is_professional_advice_intent,
+            is_platform_question,
+        )
+
+        platform_question_dm = bool(is_platform_question(user_message))
+        professional_dm = bool(is_professional_advice_intent(user_message))
+    except Exception as manual_gate_err:
+        logger.warning("Steve DM platform/manual gate failed (non-fatal): %s", manual_gate_err)
+
+    from backend.services.steve_community_config import get_paid_steve_package_config
+    from backend.services.steve_tool_policy import steve_tool_names_for_log, steve_tools_for_message
+
+    steve_pkg = get_paid_steve_package_config()
+    dm_tools = steve_tools_for_message(
+        user_message,
+        platform_question=platform_question_dm,
+        professional_advice_question=professional_dm,
+        config=steve_pkg,
+    )
+    logger.info("Steve DM Grok model=%s tools=%s", model_to_use, steve_tool_names_for_log(dm_tools))
+
     client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
     messages = [
         {"role": "system", "content": system_prompt},
@@ -562,9 +588,7 @@ Only share this information if asked. Be factual — do not embellish or invent 
     response = client.responses.create(
         model=model_to_use,
         input=messages,
-        # DM Steve: always offer hosted web + X tools (cost borne by Premium/package caps).
-        # Prompt/manual cards still instruct when not to use them for C‑Point-only questions.
-        tools=[{"type": "web_search"}, {"type": "x_search"}],
+        tools=dm_tools,
         max_output_tokens=max_output_tokens,
         temperature=0.7,
     )

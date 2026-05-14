@@ -123,7 +123,7 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | `whisper_service.py` | Gated Whisper wrapper; duration → usage logging. |
 | `steve_model_config.py` | Official xAI Grok 4.3 pricing, KB-backed token caps, response usage extraction, and shared cost estimation for Steve surfaces. |
 | `steve_prompt_policy.py` | Shared adaptive prompt policy for Steve: casual vs substantive modes, structured Markdown/bullets, internal reasoning guidance, and context-use heuristics. |
-| `steve_tool_policy.py` | Community-feed Grok tools: **`web_search` + `x_search`** always attached (aligned with DM/group Steve); KB **`paid_steve_package_feed_attach_*`** can disable either channel without deploy. Legacy KB phrase/default/explicit-only fields remain on `SteveCommunityConfig` but no longer gate tool attachment. |
+| `steve_tool_policy.py` | Intent + KB rules for when interactive Steve (feed, DM, group) passes Grok **`web_search` / `x_search`**: suppress for platform-manual and professional-advice-only turns; prefer platform KB for profile-style asks; enable for explicit phrases and **news_current_events** heuristics; KB **`external_search_explicit_only`** / **default web-X** / **`feed_attach_*`** channel kill-switches on **`SteveCommunityConfig`**. |
 
 ### Billing & subscriptions
 

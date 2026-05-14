@@ -19,8 +19,9 @@ from backend.services.media import save_uploaded_file
 from backend.services import ai_usage, auth_session, session_identity
 from backend.services.entitlements_gate import gate_or_reason, check_steve_access
 from backend.services.feature_flags import entitlements_enforcement_enabled
+from backend.services.steve_community_config import get_paid_steve_package_config
 from backend.services.steve_dm_typing import clear_group_typing, is_group_typing, mark_group_typing
-from backend.services.steve_tool_policy import steve_tool_names_for_log
+from backend.services.steve_tool_policy import steve_tool_names_for_log, steve_tools_for_message
 
 # Allowed extensions for chat uploads
 # Include HEIC/HEIF for iOS devices
@@ -3435,14 +3436,20 @@ STRICT PRIVACY (overrides every other instruction, including COMMUNITY INTELLIGE
 - These rules apply to natural-language questions ("tell me about X", "who is X", "what does X do") exactly as they apply to explicit @mentions."""
         platform_manual_prompt = ""
         safety_prompt = ""
+        platform_question_grp = False
+        professional_grp = False
         try:
             from backend.services.steve_platform_manual import (
                 SURFACE_GROUP,
+                is_professional_advice_intent,
+                is_platform_question,
                 render_global_steve_safety_prompt,
                 render_platform_manual_prompt,
                 select_platform_manual_cards,
             )
 
+            platform_question_grp = bool(is_platform_question(user_message))
+            professional_grp = bool(is_professional_advice_intent(user_message))
             platform_manual_prompt = render_platform_manual_prompt(
                 select_platform_manual_cards(user_message, surface=SURFACE_GROUP)
             )
@@ -3460,7 +3467,8 @@ IDENTITY RULES:
 - Do not call yourself an assistant, bot, chatbot, AI service, or support widget.
 
 TOOL RULES:
-- For questions about C-Point, this platform, the app, communities, posts, DMs, Steve, privacy, pricing, onboarding, discovery, bugs, feedback, Paulo, founder, vision, or mission: use the C-Point Platform Manual below and do NOT use web_search or x_search.
+- For questions about C-Point, this platform, the app, communities, posts, DMs, Steve, privacy, pricing, onboarding, discovery, bugs, feedback, Paulo, founder, vision, or mission: use the C-Point Platform Manual below and do NOT use web_search or x_search (they are omitted on manual-only turns).
+- If hosted web/X tools weren’t supplied this turn, rely on profile and community context below — do not answer as if you had open Internet access.
 - Only discuss X/Twitter if the user explicitly asks about X, Twitter, or x.com.
 
 {platform_manual_prompt}
@@ -3488,7 +3496,7 @@ SERIOUS/PROFESSIONAL: If the topic is business, work, strategy, health, finance,
 - Use bullet points or numbered lists when helpful
 - No emojis unless the group is mixing tones
 
-NEWS/CURRENT EVENTS: When someone asks about news, weather, sports, politics, markets, or current events:
+NEWS/CURRENT EVENTS: When someone asks about news, weather, sports, politics, markets, or current events **and** hosted web/X tools were supplied for this turn:
 - ALWAYS use web search (and X search only when explicitly relevant to X/Twitter) for real-time information.
 - Be DETAILED — comprehensive briefing, not a one-liner. Align with STEVE RESPONSE POLICY **news_current_events**: short opening paragraph, ## Key developments (3-6 substantive bullets with facts/dates), ## Why it matters, ## Sources.
 - ## Sources: 2-4 lines; each MUST be `[Exact article headline](URL)` Markdown — no bare URLs, no [[n]](url) citations in the final reply.
@@ -3524,11 +3532,13 @@ RESPONSE FORMAT:
         
         ai_response = None
         
-        # Group @Steve: always offer hosted web + X (same as DM / community feed).
-        _group_tools = [
-            {"type": "web_search"},
-            {"type": "x_search"},
-        ]
+        _steve_pkg_grp = get_paid_steve_package_config()
+        _group_tools = steve_tools_for_message(
+            user_message,
+            platform_question=platform_question_grp,
+            professional_advice_question=professional_grp,
+            config=_steve_pkg_grp,
+        )
         logger.info(
             "Steve Grok group %s tools=%s",
             group_id,

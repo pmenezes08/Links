@@ -44,7 +44,10 @@ _COMMUNITY_RESOURCE_RE = re.compile(
     re.IGNORECASE,
 )
 _PROFILE_RE = re.compile(
-    r"(@[A-Za-z0-9_]+|\bwho is\b|\btell me about\b|\bconnect me\b|\bintro(?:duce)?\b|\bmentor\b|\bcareer\b|\bbackground\b|\bexperience\b)",
+    r"(@[A-Za-z0-9_]+|\bwho is\b|\btell me about\b|\bconnect me\b|\bintro(?:duce)?\b|\bmentor\b|\bcareer\b|\bbackground\b|\bexperience\b"
+    r"|\bwhat\s+do\s+you\s+know\s+about\s+me\b|\babout\s+myself\b"
+    r"|\bmy\s+communities\b|\bcommunities\s+(that\s+i'm|that\s+i am|i'?m\s+in|am\s+i\s+in)\b"
+    r"|\blist\s+(my\s+|the\s+)?communities\b|\bwhich\s+communities\s+am\s+i\b|\bmembership(s)?\b)",
     re.IGNORECASE,
 )
 

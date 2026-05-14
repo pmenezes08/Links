@@ -51,6 +51,9 @@ def test_prompt_policy_detects_review_and_analysis_modes():
 def test_context_injection_heuristics_are_deliberate():
     assert should_include_user_profile("Can you introduce me to @mary?")
     assert should_include_user_profile("I need career mentoring")
+    assert should_include_user_profile("What communities am I in on C-Point?")
+    assert should_include_user_profile("What do you know about me?")
+    assert should_include_user_profile("List my communities")
     assert not should_include_user_profile("What is a good breakfast?")
 
     assert should_include_community_resources("Can you summarize the uploaded PDF?")

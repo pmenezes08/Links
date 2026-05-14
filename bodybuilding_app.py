@@ -8667,6 +8667,68 @@ def invalidate_steve_context_cache(username: str):
         pass
 
 
+def _extract_steve_mention_usernames_from_text(text: str) -> List[str]:
+    """Parse @handles from free text; skip '@steve'; preserve first-seen casing."""
+    if not text or not isinstance(text, str):
+        return []
+    out: List[str] = []
+    seen: Set[str] = set()
+    for m in re.findall(r"@(\w+)", text):
+        key = m.lower()
+        if key == "steve" or key in seen:
+            continue
+        seen.add(key)
+        out.append(m)
+    return out
+
+
+def build_steve_gated_mention_profile_appendix_for_feed(
+    viewer_username: str,
+    community_id: Optional[Any],
+    *text_segments: str,
+    exclude_usernames_lower: Optional[Iterable[str]] = None,
+) -> str:
+    """Gated Firestore profile blocks for @mentions (see docs/STEVE_PRIVACY_GATE.md)."""
+    from backend.services.steve_profiling_gates import user_can_access_steve_kb
+
+    excluded = {"steve"}
+    if exclude_usernames_lower:
+        for x in exclude_usernames_lower:
+            if x and isinstance(x, str):
+                excluded.add(x.strip().lower())
+
+    gate_ctx = None
+    if community_id is not None:
+        try:
+            gate_ctx = {"community_id": int(community_id)}
+        except (TypeError, ValueError):
+            gate_ctx = None
+
+    combined = "\n".join(s for s in text_segments if s)
+    candidates = _extract_steve_mention_usernames_from_text(combined)
+    allowed: List[str] = []
+    for raw in candidates:
+        if raw.lower() in excluded:
+            continue
+        if not user_can_access_steve_kb(viewer_username, raw, gate_ctx):
+            continue
+        if raw not in allowed:
+            allowed.append(raw)
+    if not allowed:
+        return ""
+    ctx_map = batch_get_steve_contexts(allowed, viewer_username=viewer_username)
+    parts: List[str] = []
+    for u in allowed:
+        body = (ctx_map or {}).get(u) or ""
+        if not isinstance(body, str) or not body.strip():
+            continue
+        parts.append(
+            f"\n\nWHAT YOU KNOW ABOUT @{u} (mentioned):\n{body}\n"
+            "Only share when the user asks about this member; do not invent beyond this text."
+        )
+    return "".join(parts)
+
+
 def batch_get_steve_contexts(
     usernames: list,
     viewer_username: str = None,
@@ -23018,6 +23080,14 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             )
             if author_profile_ctx:
                 system_prompt += f"\n\nWHAT YOU KNOW ABOUT @{author_username}:\n{author_profile_ctx}\nUse this knowledge naturally — don't announce it, but let it guide your tone and relevance."
+            _mention_apx = build_steve_gated_mention_profile_appendix_for_feed(
+                author_username,
+                community_id,
+                post_content,
+                exclude_usernames_lower={author_username.lower(), "steve"},
+            )
+            if _mention_apx:
+                system_prompt += _mention_apx
             system_prompt = append_response_policy(system_prompt, post_content, surface=_ai_usage.SURFACE_FEED)
 
             platform_question = False
@@ -23407,6 +23477,15 @@ def _steve_ai_reply_for_group_post(
             f"\n\nWHAT YOU KNOW ABOUT @{username}:\n{commenter_profile_ctx}\n"
             "Use this knowledge naturally — don't announce it, but let it guide your tone and relevance."
         )
+    mention_apx = build_steve_gated_mention_profile_appendix_for_feed(
+        username,
+        community_id,
+        post_content,
+        user_message,
+        exclude_usernames_lower={username.lower(), "steve"},
+    )
+    if mention_apx:
+        system_prompt += mention_apx
     system_prompt = append_response_policy(system_prompt, user_message, surface=_ai_usage.SURFACE_GROUP)
     model_to_use = steve_config.model
     client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
@@ -23431,7 +23510,24 @@ def _steve_ai_reply_for_group_post(
         max_output_tokens = min(entitlement_cap, int(steve_config.max_output_tokens or entitlement_cap))
     else:
         max_output_tokens = entitlement_cap
-    _reply_tools = _steve_tools_for_message(user_message, config=steve_config)
+    platform_question_grp = False
+    professional_grp = False
+    try:
+        from backend.services.steve_platform_manual import (
+            is_professional_advice_intent,
+            is_platform_question,
+        )
+
+        platform_question_grp = bool(is_platform_question(user_message))
+        professional_grp = bool(is_professional_advice_intent(user_message))
+    except Exception as _pf_err:
+        logger.warning("Steve group-post platform/manual gate failed: %s", _pf_err)
+    _reply_tools = _steve_tools_for_message(
+        user_message,
+        platform_question=platform_question_grp,
+        professional_advice_question=professional_grp,
+        config=steve_config,
+    )
     response = client.responses.create(
         model=model_to_use,
         input=[
@@ -23856,6 +23952,15 @@ def ai_steve_reply():
                 )
             if commenter_profile_ctx:
                 system_prompt += f"\n\nWHAT YOU KNOW ABOUT @{username}:\n{commenter_profile_ctx}\nUse this knowledge naturally — don't announce it, but let it guide your tone and relevance."
+            _mention_apx = build_steve_gated_mention_profile_appendix_for_feed(
+                username,
+                community_id,
+                post_content or "",
+                user_message or "",
+                exclude_usernames_lower={username.lower(), "steve"},
+            )
+            if _mention_apx:
+                system_prompt += _mention_apx
             system_prompt = append_response_policy(system_prompt, user_message, surface=_ai_usage.SURFACE_FEED)
             ai_response = None
             
@@ -23866,7 +23971,24 @@ def ai_steve_reply():
             logger.info(f"Steve routing: community feed model {model_to_use} for: {user_message[:60]}...")
             
             try:
-                _reply_tools = _steve_tools_for_message(user_message, config=steve_config)
+                platform_question_feed_r = False
+                professional_feed_r = False
+                try:
+                    from backend.services.steve_platform_manual import (
+                        is_professional_advice_intent,
+                        is_platform_question,
+                    )
+
+                    platform_question_feed_r = bool(is_platform_question(user_message))
+                    professional_feed_r = bool(is_professional_advice_intent(user_message))
+                except Exception as _pfr_err:
+                    logger.warning("Steve comment-reply platform gate failed (non-fatal): %s", _pfr_err)
+                _reply_tools = _steve_tools_for_message(
+                    user_message,
+                    platform_question=platform_question_feed_r,
+                    professional_advice_question=professional_feed_r,
+                    config=steve_config,
+                )
                 logger.info(
                     "Steve reply Grok model=%s tools=%s (%s mode)",
                     model_to_use,

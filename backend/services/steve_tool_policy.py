@@ -1,7 +1,8 @@
-"""Community-feed Steve: hosted web_search / x_search tools (KB kill-switches only)."""
+"""Intent-based attachment of Grok hosted web_search / x_search tools for Steve."""
 
 from __future__ import annotations
 
+import re
 from typing import Any, Iterable, Optional
 
 
@@ -109,20 +110,65 @@ def steve_tools_for_message(
     professional_advice_question: bool = False,
     config: Any = None,
 ) -> list[dict[str, str]]:
-    """Always attach hosted web_search + x_search on community feed (same as DM / group @Steve).
+    """Return hosted web_search/x_search tools only when intent + KB flags allow.
 
-    Platform manual prompts still tell the model when not to call tools for C‑Point-only questions.
-    KB ``paid_steve_package_feed_attach_web_search_tool`` / ``paid_steve_package_feed_attach_x_search_tool``
-    disable a channel without redeploying.
+    Order of checks:
 
-    ``message``, ``platform_question``, and ``professional_advice_question`` are kept for existing
-    call sites; they do not suppress tools.
+    1. No external tools for platform-manual-only or professional-advice-only paths.
+    2. Prefer on-platform KB: profile-style wording (mentions / career / introductions)
+       suppresses external tools unless the same message also requests live-news or explicit browse.
+    3. Eligible live intent: ``steve_external_search_requested``, ``news_current_events_requested``
+       from ``steve_prompt_policy``, or (when KB ``external_search_explicit_only`` is OFF) the
+       web/X default-enabled flags.
+
+    KB channel kill-switches: ``feed_attach_web_search_tool`` / ``feed_attach_x_search_tool``
+    apply only after eligibility resolves (operators can disable web or X without redeploy).
+
+    When ``config`` is None, behaviour matches explicit-only ON and defaults OFF (only explicit
+    phrase + news heuristics attach tools; kill-switches default to allowing each channel).
     """
-    del message, platform_question, professional_advice_question
+    if platform_question or professional_advice_question:
+        return []
+
+    from backend.services.steve_prompt_policy import (
+        news_current_events_requested,
+        should_include_user_profile,
+    )
+
+    text = message or ""
+    explicit = steve_external_search_requested(text)
+    news_live = news_current_events_requested(text)
+    _text_wo_steve_mention = re.sub(r"@steve\b", "", text, flags=re.IGNORECASE).strip()
+    profile_signal = bool(
+        should_include_user_profile(text)
+        and should_include_user_profile(_text_wo_steve_mention)
+    )
+
+    if profile_signal and not news_live and not explicit:
+        return []
+
+    explicit_only = True
+    web_default = False
+    x_default = False
+    if config is not None:
+        explicit_only = bool(getattr(config, "external_search_explicit_only", True))
+        web_default = bool(getattr(config, "web_search_default_enabled", False))
+        x_default = bool(getattr(config, "x_search_default_enabled", False))
+
+    eligible = False
+    if explicit or news_live:
+        eligible = True
+    elif not explicit_only:
+        eligible = bool(web_default or x_default)
+
+    if not eligible:
+        return []
 
     tools: list[dict[str, str]] = []
-    if not config or getattr(config, "feed_attach_web_search_tool", True):
+    attach_w = config is None or bool(getattr(config, "feed_attach_web_search_tool", True))
+    attach_x = config is None or bool(getattr(config, "feed_attach_x_search_tool", True))
+    if attach_w:
         tools.append({"type": "web_search"})
-    if not config or getattr(config, "feed_attach_x_search_tool", True):
+    if attach_x:
         tools.append({"type": "x_search"})
     return tools
