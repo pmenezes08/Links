@@ -20,6 +20,8 @@ def test_paid_steve_package_config_defaults_are_cost_safe():
     assert cfg.web_search_default_enabled is False
     assert cfg.x_search_default_enabled is False
     assert cfg.external_search_explicit_only is True
+    assert cfg.feed_attach_web_search_tool is True
+    assert cfg.feed_attach_x_search_tool is True
     assert cfg.max_output_tokens == 1400
 
 

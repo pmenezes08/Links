@@ -39,11 +39,11 @@ and then write the code. Do **not** silently diverge.
    tied to a community), pass **`community_id`** into `check_steve_access` /
    `gate_or_reason` so eligible members can consume the **Steve Community
    Package** monthly pool per KB flags (`community-tiers` page).
-   **Feed replies** attach Grok **`web_search` + `x_search`** when
-   **`steve_tool_policy`** detects live/current-info wording (including *today's
-   news*, *headlines*, *latest news*, trending/happening-today cues) or when KB
-   enables default web/X for the package; group chats use both tools when not
-   in platform-only / professional-advice manual modes.
+   **Feed replies** attach Grok **`web_search` / `x_search`** per channel when
+   **`steve_tool_policy`** qualifies the message (phrase-based live-info wording,
+   KB explicit-only vs default-on flags) and KB **`paid_steve_package_feed_attach_*`**
+   toggles allow each tool; group chats use both tools when not in platform-only /
+   professional-advice manual modes.
 
 Skip any of the above and the user's "Steve uses this month" counter
 will silently lie to them. We've already fixed that bug once, don't

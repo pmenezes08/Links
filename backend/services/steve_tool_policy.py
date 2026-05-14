@@ -109,10 +109,18 @@ def steve_tools_for_message(
     professional_advice_question: bool = False,
     config: Any = None,
 ) -> list[dict[str, str]]:
-    """KB policy: external tools are gated (explicit phrases or KB default flags)."""
+    """KB policy: when may Grok see hosted web_search / x_search on community feed.
+
+    * ``explicit`` — message qualifies for external lookup: live-search phrases and/or
+      (when ``external_search_explicit_only`` is false) web/X default-on flags.
+    * Per-tool attachment follows KB defaults (phrase + explicit-only widens both channels;
+      default-on flags widen only their channel). ``feed_attach_*`` toggles disable a
+      channel without redeploying code.
+    """
     if platform_question or professional_advice_question:
         return []
-    explicit = steve_external_search_requested(message)
+    phrase_explicit = steve_external_search_requested(message)
+    explicit = phrase_explicit
     if config and not getattr(config, "external_search_explicit_only", True):
         explicit = explicit or bool(
             getattr(config, "web_search_default_enabled", False)
@@ -120,13 +128,27 @@ def steve_tools_for_message(
         )
     if not explicit:
         return []
+
+    explicit_only = getattr(config, "external_search_explicit_only", True) if config else True
+    web_default = getattr(config, "web_search_default_enabled", False) if config else False
+    x_default = getattr(config, "x_search_default_enabled", False) if config else False
+
+    attach_web = (
+        not config
+        or web_default
+        or explicit_only
+        or phrase_explicit
+    )
+    attach_x = (
+        not config
+        or x_default
+        or explicit_only
+        or phrase_explicit
+    )
+
     tools: list[dict[str, str]] = []
-    if not config or getattr(config, "web_search_default_enabled", False) or getattr(
-        config, "external_search_explicit_only", True
-    ):
+    if attach_web and (not config or getattr(config, "feed_attach_web_search_tool", True)):
         tools.append({"type": "web_search"})
-    if not config or getattr(config, "x_search_default_enabled", False) or getattr(
-        config, "external_search_explicit_only", True
-    ):
+    if attach_x and (not config or getattr(config, "feed_attach_x_search_tool", True)):
         tools.append({"type": "x_search"})
     return tools

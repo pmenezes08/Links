@@ -27,6 +27,8 @@ class SteveCommunityConfig:
     web_search_default_enabled: bool = False
     x_search_default_enabled: bool = False
     external_search_explicit_only: bool = True
+    feed_attach_web_search_tool: bool = True
+    feed_attach_x_search_tool: bool = True
     max_output_tokens: int = 1400
     recent_comments_limit: int = 8
     doc_excerpt_chars_default: int = 2000
@@ -134,6 +136,14 @@ def get_paid_steve_package_config(fields: Optional[dict[str, Any]] = None) -> St
         external_search_explicit_only=_bool(
             f.get("paid_steve_package_external_search_explicit_only"),
             defaults.external_search_explicit_only,
+        ),
+        feed_attach_web_search_tool=_bool(
+            f.get("paid_steve_package_feed_attach_web_search_tool"),
+            defaults.feed_attach_web_search_tool,
+        ),
+        feed_attach_x_search_tool=_bool(
+            f.get("paid_steve_package_feed_attach_x_search_tool"),
+            defaults.feed_attach_x_search_tool,
         ),
         max_output_tokens=_int(f.get("paid_steve_package_max_output_tokens"), defaults.max_output_tokens, minimum=1),
         recent_comments_limit=_int(

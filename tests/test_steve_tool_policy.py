@@ -1,5 +1,7 @@
 """Tests for feed Steve web/X tool gating."""
 
+from dataclasses import replace
+
 from backend.services.steve_community_config import SteveCommunityConfig
 from backend.services.steve_tool_policy import (
     normalize_message_for_live_search_signals,
@@ -49,3 +51,49 @@ def test_platform_question_strips_tools():
         steve_tools_for_message("today's news", platform_question=True, config=cfg)
         == []
     )
+
+
+def test_explicit_only_off_and_defaults_off_still_attaches_tools_on_phrase():
+    """Regression: phrase widens explicit but defaults/explicit-only must not strip tools."""
+    cfg = replace(
+        SteveCommunityConfig(),
+        external_search_explicit_only=False,
+        web_search_default_enabled=False,
+        x_search_default_enabled=False,
+    )
+    tools = steve_tools_for_message("@Steve what's the latest news", config=cfg)
+    assert tools == [{"type": "web_search"}, {"type": "x_search"}]
+
+
+def test_kb_can_disable_web_tool_only():
+    cfg = replace(SteveCommunityConfig(), feed_attach_web_search_tool=False)
+    tools = steve_tools_for_message("latest headlines please", config=cfg)
+    assert tools == [{"type": "x_search"}]
+
+
+def test_kb_can_disable_x_tool_only():
+    cfg = replace(SteveCommunityConfig(), feed_attach_x_search_tool=False)
+    tools = steve_tools_for_message("latest headlines please", config=cfg)
+    assert tools == [{"type": "web_search"}]
+
+
+def test_web_default_only_attaches_web_not_x_when_explicit_only_off():
+    cfg = replace(
+        SteveCommunityConfig(),
+        external_search_explicit_only=False,
+        web_search_default_enabled=True,
+        x_search_default_enabled=False,
+    )
+    tools = steve_tools_for_message("@Steve hello thanks", config=cfg)
+    assert tools == [{"type": "web_search"}]
+
+
+def test_x_default_only_attaches_x_not_web_when_explicit_only_off():
+    cfg = replace(
+        SteveCommunityConfig(),
+        external_search_explicit_only=False,
+        web_search_default_enabled=False,
+        x_search_default_enabled=True,
+    )
+    tools = steve_tools_for_message("quick ping", config=cfg)
+    assert tools == [{"type": "x_search"}]
