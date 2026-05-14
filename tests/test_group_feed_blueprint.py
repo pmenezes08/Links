@@ -48,6 +48,32 @@ def _insert_group_post(group_id: int, username: str, content: str = "hello") -> 
     return int(pid)
 
 
+def _insert_group_reply(
+    group_post_id: int,
+    username: str,
+    content: str = "reply body",
+    parent_reply_id: int | None = None,
+) -> int:
+    from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
+
+    gr_t = "`group_replies`" if USE_MYSQL else "group_replies"
+    ph = get_sql_placeholder()
+    now = "2020-01-01 12:00:00"
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"INSERT INTO {gr_t} (group_post_id, parent_reply_id, username, content, image_path, created_at) "
+            f"VALUES ({ph},{ph},{ph},{ph}, NULL, {ph})",
+            (group_post_id, parent_reply_id, username, content, now),
+        )
+        rid = c.lastrowid
+        try:
+            conn.commit()
+        except Exception:
+            pass
+    return int(rid)
+
+
 def _add_group_member(group_id: int, username: str) -> None:
     from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 
@@ -148,3 +174,47 @@ def test_group_feed_200_when_poll_loader_raises(mysql_dsn, monkeypatch):
     posts = body.get("posts") or []
     assert len(posts) >= 1
     assert posts[0].get("poll") is None
+
+
+def test_group_reply_thread_get_member(mysql_dsn):
+    import bodybuilding_app
+
+    make_user("gf_tr_owner", subscription="premium")
+    make_user("gf_tr_membf", subscription="free")
+    cid = make_community("gf-tr-a", tier="free", creator_username="gf_tr_owner")
+    gid = _insert_group(cid, "GThr", "gf_tr_owner")
+    _add_group_member(gid, "gf_tr_owner")
+    _add_group_member(gid, "gf_tr_membf")
+    pid = _insert_group_post(gid, "gf_tr_owner", "post for thread")
+    rid = _insert_group_reply(pid, "gf_tr_owner", "top reply")
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "gf_tr_membf")
+    r = client.get(f"/api/group_reply/{rid}")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body is not None
+    assert body.get("success") is True
+    assert body.get("reply", {}).get("id") == rid
+    assert body.get("post", {}).get("id") == pid
+    assert body.get("post", {}).get("is_group_post") is True
+
+
+def test_group_reply_thread_non_member_forbidden(mysql_dsn):
+    import bodybuilding_app
+
+    make_user("gf_tr_owner2", subscription="premium")
+    make_user("gf_tr_str", subscription="free")
+    cid = make_community("gf-tr-b", tier="free", creator_username="gf_tr_owner2")
+    gid = _insert_group(cid, "GThrB", "gf_tr_owner2")
+    _add_group_member(gid, "gf_tr_owner2")
+    pid = _insert_group_post(gid, "gf_tr_owner2", "post")
+    rid = _insert_group_reply(pid, "gf_tr_owner2", "repl")
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "gf_tr_str")
+    r = client.get(f"/api/group_reply/{rid}")
+    assert r.status_code == 403
+    body = r.get_json()
+    assert body is not None
+    assert body.get("success") is False

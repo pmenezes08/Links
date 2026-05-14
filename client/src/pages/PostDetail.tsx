@@ -114,8 +114,8 @@ export default function PostDetail(){
   }, [])
 
   const onNavigateToReply = useCallback((id: number) => {
-    navigate(`/reply/${id}`)
-  }, [navigate])
+    navigate(isGroupPost ? `/group_reply/${id}` : `/reply/${id}`)
+  }, [navigate, isGroupPost])
   
   // Check if message contains @Steve mention (case insensitive)
   const containsSteveMention = (text: string) => {
@@ -3054,7 +3054,11 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
         <div className="px-3 pb-2">
           <button
             className="text-[12px] text-[#4db6ac] hover:underline flex items-center gap-1"
-            onClick={() => window.location.href = `/reply/${reply.id}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (onNavigateToReply) onNavigateToReply(reply.id)
+              else window.location.href = `/reply/${reply.id}`
+            }}
           >
             <i className="fa-regular fa-comment text-[11px]" />
             {(reply as any).reply_count || reply.children?.length || 0} {((reply as any).reply_count || reply.children?.length || 0) === 1 ? 'reply' : 'replies'}

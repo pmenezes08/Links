@@ -14,6 +14,13 @@ from backend.services import auth_session, session_identity
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.group_feed_access import (
     check_group_feed_access,
+    fetch_group_id_for_group_reply,
+)
+from backend.services.group_reply_thread import (
+    assemble_group_reply_thread,
+    count_group_reply_views_excluding_admin,
+    ensure_group_reply_views_table,
+    upsert_group_reply_view,
 )
 from backend.services.community import is_app_admin, is_community_admin, is_community_owner
 from backend.services.group_feed_detail import build_group_feed_response
@@ -794,6 +801,239 @@ def api_group_polls_create():
         return jsonify({"success": True, "group_poll_id": poll_id})
     except Exception as e:
         logger.error("api_group_polls_create error: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": "Server error"}), 500
+
+
+@group_feed_bp.route("/api/group_reply/<int:reply_id>")
+@_login_required
+def api_group_get_reply(reply_id: int):
+    """Thread payload for a group feed reply (do not use /api/reply — ID namespaces differ)."""
+    username = session["username"]
+    ph = get_sql_placeholder()
+    gr_t = "`group_replies`" if USE_MYSQL else "group_replies"
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(f"SELECT id FROM {gr_t} WHERE id = {ph}", (reply_id,))
+            if not c.fetchone():
+                return jsonify({"success": False, "error": "Reply not found"}), 404
+            gid = fetch_group_id_for_group_reply(c, ph, reply_id)
+            if gid is None:
+                return jsonify({"success": False, "error": "Reply not found"}), 404
+            ok, err = check_group_feed_access(c, ph, username, gid)
+            if not ok:
+                return jsonify({"success": False, "error": err or "Forbidden"}), 403
+            payload = assemble_group_reply_thread(c, ph, reply_id, username)
+            return jsonify(payload)
+    except Exception as e:
+        logger.error("api_group_get_reply error: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": "Server error"}), 500
+
+
+@group_feed_bp.route("/api/group_reply_view", methods=["POST"])
+@_login_required
+def api_group_reply_view():
+    """Record a unique view for a group reply (separate from community ``reply_views``)."""
+    username = session["username"]
+    payload = request.get_json(silent=True) or {}
+    reply_id = payload.get("reply_id")
+    if reply_id is None:
+        reply_id = request.form.get("reply_id", type=int)
+    try:
+        reply_id = int(reply_id)
+    except Exception:
+        return jsonify({"success": False, "error": "reply_id required"}), 400
+    ph = get_sql_placeholder()
+    gr_t = "`group_replies`" if USE_MYSQL else "group_replies"
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(f"SELECT id FROM {gr_t} WHERE id = {ph}", (reply_id,))
+            if not c.fetchone():
+                return jsonify({"success": False, "error": "Reply not found"}), 404
+            gid = fetch_group_id_for_group_reply(c, ph, reply_id)
+            if gid is None:
+                return jsonify({"success": False, "error": "Reply not found"}), 404
+            ok, err = check_group_feed_access(c, ph, username, gid)
+            if not ok:
+                return jsonify({"success": False, "error": err or "Forbidden"}), 403
+            view_count = upsert_group_reply_view(c, ph, reply_id, username)
+            conn.commit()
+            return jsonify({"success": True, "view_count": view_count})
+    except Exception as e:
+        logger.error("api_group_reply_view error: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": "Server error"}), 500
+
+
+@group_feed_bp.route("/api/group_reply_reactors/<int:reply_id>")
+@_login_required
+def api_group_reply_reactors(reply_id: int):
+    """Users who reacted to a group reply plus viewers (parity with ``get_reply_reactors``)."""
+    username = session["username"]
+    ph = get_sql_placeholder()
+    gr_t = "`group_replies`" if USE_MYSQL else "group_replies"
+    grr_t = "`group_reply_reactions`" if USE_MYSQL else "group_reply_reactions"
+    grv_t = "`group_reply_views`" if USE_MYSQL else "group_reply_views"
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(f"SELECT id FROM {gr_t} WHERE id = {ph}", (reply_id,))
+            if not c.fetchone():
+                return jsonify({"success": False, "error": "Reply not found"}), 404
+            gid = fetch_group_id_for_group_reply(c, ph, reply_id)
+            if gid is None:
+                return jsonify({"success": False, "error": "Reply not found"}), 404
+            ok, err = check_group_feed_access(c, ph, username, gid)
+            if not ok:
+                return jsonify({"success": False, "error": err or "Forbidden"}), 403
+
+            c.execute(
+                f"""
+                SELECT grr.reaction AS reaction_type, grr.username, up.profile_picture
+                FROM {grr_t} grr
+                LEFT JOIN user_profiles up ON up.username = grr.username
+                WHERE grr.group_reply_id = {ph}
+                ORDER BY grr.reaction, grr.username
+                """,
+                (reply_id,),
+            )
+            rows = c.fetchall() or []
+            by_type: dict = {}
+            for row in rows:
+                if hasattr(row, "keys"):
+                    rt = row["reaction_type"]
+                    uname = row["username"]
+                    pic = row.get("profile_picture") if "profile_picture" in row.keys() else None
+                else:
+                    rt, uname = row[0], row[1]
+                    pic = row[2] if len(row) > 2 else None
+                by_type.setdefault(rt, []).append({"username": uname, "profile_picture": pic})
+
+            groups = [{"reaction_type": k, "users": v} for k, v in by_type.items()]
+            order = {"heart": 0, "thumbs-up": 1, "thumbs-down": 2}
+            groups.sort(key=lambda g: order.get(g["reaction_type"], 99))
+
+            def _normalize_pic(value):
+                if not value:
+                    return None
+                s = str(value).strip()
+                if s.startswith(("http://", "https://", "/uploads", "/static")):
+                    return s
+                if s.startswith("uploads/"):
+                    return "/" + s
+                return f"/uploads/{s}"
+
+            for g in groups:
+                for u in g["users"]:
+                    u["profile_picture"] = _normalize_pic(u.get("profile_picture"))
+
+            ensure_group_reply_views_table(c)
+            view_count = count_group_reply_views_excluding_admin(c, ph, reply_id)
+            viewers: list = []
+            try:
+                c.execute(
+                    f"""
+                    SELECT rv.username, rv.viewed_at, up.profile_picture
+                    FROM {grv_t} rv
+                    LEFT JOIN user_profiles up ON up.username = rv.username
+                    WHERE rv.group_reply_id = {ph}
+                      AND LOWER(rv.username) <> LOWER({ph})
+                    ORDER BY rv.viewed_at DESC
+                    LIMIT 100
+                    """,
+                    (reply_id, "admin"),
+                )
+                viewer_rows = c.fetchall() or []
+            except Exception:
+                viewer_rows = []
+
+            for vr in viewer_rows:
+                if hasattr(vr, "keys"):
+                    uname = vr.get("username")
+                    viewed_at_raw = vr.get("viewed_at")
+                    pic = vr.get("profile_picture")
+                else:
+                    uname = vr[0] if len(vr) > 0 else None
+                    viewed_at_raw = vr[1] if len(vr) > 1 else None
+                    pic = vr[2] if len(vr) > 2 else None
+                if not uname:
+                    continue
+                viewed_at_str = (
+                    viewed_at_raw.isoformat()
+                    if isinstance(viewed_at_raw, datetime)
+                    else (str(viewed_at_raw).strip() if viewed_at_raw else None)
+                )
+                viewers.append(
+                    {
+                        "username": uname,
+                        "profile_picture": _normalize_pic(pic),
+                        "viewed_at": viewed_at_str,
+                    }
+                )
+
+            return jsonify(
+                {
+                    "success": True,
+                    "groups": groups,
+                    "view_count": int(view_count or 0),
+                    "viewers": viewers,
+                }
+            )
+    except Exception as e:
+        logger.error("api_group_reply_reactors error: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": "Server error"}), 500
+
+
+@group_feed_bp.route("/api/group_replies/edit", methods=["POST"])
+@_login_required
+def api_group_replies_edit():
+    username = session["username"]
+    reply_id = request.form.get("reply_id", type=int)
+    new_content = (request.form.get("content") or "").strip()
+    if not reply_id:
+        return jsonify({"success": False, "error": "reply_id required"}), 400
+    if new_content == "":
+        return jsonify({"success": False, "error": "content required"}), 400
+    ph = get_sql_placeholder()
+    gr_t = "`group_replies`" if USE_MYSQL else "group_replies"
+    gp_t = "`group_posts`" if USE_MYSQL else "group_posts"
+    g_t = "`groups`" if USE_MYSQL else "groups"
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"SELECT gr.username, gp.group_id, g.community_id, g.created_by "
+                f"FROM {gr_t} gr JOIN {gp_t} gp ON gp.id = gr.group_post_id "
+                f"JOIN {g_t} g ON g.id = gp.group_id WHERE gr.id = {ph}",
+                (reply_id,),
+            )
+            row = c.fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Reply not found"}), 404
+            owner = row["username"] if hasattr(row, "keys") else row[0]
+            group_id = row["group_id"] if hasattr(row, "keys") else row[1]
+            community_id = row["community_id"] if hasattr(row, "keys") else row[2]
+            group_creator = row["created_by"] if hasattr(row, "keys") else row[3]
+
+            ok, err = check_group_feed_access(c, ph, username, int(group_id))
+            if not ok:
+                return jsonify({"success": False, "error": err or "Forbidden"}), 403
+
+            can_edit = owner == username or is_app_admin(username)
+            if not can_edit and community_id is not None:
+                can_edit = is_community_owner(username, int(community_id)) or is_community_admin(
+                    username, int(community_id)
+                )
+            if not can_edit and group_creator == username:
+                can_edit = True
+            if not can_edit:
+                return jsonify({"success": False, "error": "Forbidden"}), 403
+
+            c.execute(f"UPDATE {gr_t} SET content={ph} WHERE id={ph}", (new_content, reply_id))
+            conn.commit()
+            return jsonify({"success": True, "reply": {"id": reply_id, "content": new_content}})
+    except Exception as e:
+        logger.error("api_group_replies_edit error: %s", e, exc_info=True)
         return jsonify({"success": False, "error": "Server error"}), 500
 
 

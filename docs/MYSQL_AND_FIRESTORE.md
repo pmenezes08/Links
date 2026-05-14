@@ -52,7 +52,7 @@ Database name: env `FIRESTORE_DATABASE` (default **`cpoint`**).
 |-------|------|
 | `group_chats`, `group_chat_members`, `group_chat_messages`, `group_message_reactions`, `group_chat_read_receipts`, `group_chat_presence`, `steve_suppressed_topics` | Group chat + Steve-in-group (`group_chat` blueprint + monolith). |
 
-Also: **`groups`**, **`group_members`**, **`group_posts`**, **`group_replies`**, reaction tables, **`group_community_key_posts`**, **`group_user_key_posts`** (created/ensured from `backend/blueprints/group_feed.py` + monolith `ensure_tables` in `bodybuilding_app.py`). HTTP: **`group_feed`** blueprint (photos, key posts, reply delete — not group chat).
+Also: **`groups`**, **`group_members`**, **`group_posts`**, **`group_replies`**, **`group_reply_views`** (per-viewer counts for thread UI; not the community `reply_views` table), reaction tables, **`group_community_key_posts`**, **`group_user_key_posts`** (created/ensured from `backend/blueprints/group_feed.py` + monolith `ensure_tables` in `bodybuilding_app.py`). HTTP: **`group_feed`** blueprint (photos, key posts, group reply thread APIs, reply delete — not group chat).
 
 **Group post polls (optional feed payloads):** **`group_polls`**, **`group_poll_options`**, **`group_poll_votes`** — DDL in `backend/services/group_polls_data.py` (`ensure_group_poll_tables`). On MySQL, the deferred startup thread runs this after `add_missing_tables()` in `bodybuilding_app.py` so staging/prod get tables without waiting for a feed hit. Manual repair (Cloud SQL): use the same three `CREATE TABLE` statements as in `ensure_group_poll_tables` (MySQL branch). The group feed treats missing poll tables as **no polls** (HTTP 200) and logs the error.
 

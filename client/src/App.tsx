@@ -666,6 +666,7 @@ function AppRoutes(){
     currentPathName.startsWith('/group_chat/') ||
     currentPathName.startsWith('/post/') ||
     currentPathName.startsWith('/reply/') ||
+    currentPathName.startsWith('/group_reply/') ||
     currentPathName.startsWith('/community_feed_react/') ||
     currentPathName.startsWith('/group_feed_react/') ||
     currentPathName.startsWith('/community/') && currentPathName.includes('/feed')
@@ -749,6 +750,7 @@ function AppRoutes(){
                 <Route path="/event/:event_id" element={<EventDetail />} />
                 <Route path="/post/:post_id" element={<PostDetail />} />
                 <Route path="/reply/:reply_id" element={<CommentReply />} />
+                <Route path="/group_reply/:reply_id" element={<CommentReply />} />
                 <Route path="/share/incoming" element={<ShareIncomingRouteRedirect />} />
                 <Route path="/compose" element={<CreatePost />} />
                 <Route path="/group_feed_react/:group_id" element={<GroupFeed />} />

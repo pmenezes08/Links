@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
 import ZoomableImage from '../components/ZoomableImage'
@@ -60,6 +60,8 @@ type PostInfo = {
   username: string
   content: string
   community_id?: number
+  group_id?: number | null
+  is_group_post?: boolean
   timestamp: string
   profile_picture?: string | null
   image_path?: string | null
@@ -80,7 +82,10 @@ type ParentReply = {
 
 export default function CommentReply() {
   const { reply_id } = useParams<{ reply_id: string }>()
+  const location = useLocation()
   const navigate = useNavigate()
+  const isGroupThread = location.pathname.startsWith('/group_reply/')
+  const threadPath = (id: number) => (isGroupThread ? `/group_reply/${id}` : `/reply/${id}`)
   const entitlementsHandler = useEntitlementsHandler()
   const { entitlements, enforcement_enabled, loading: entitlementsLoading } = useEntitlements()
   const blockSteveMentionReply = useCallback(
@@ -179,7 +184,8 @@ export default function CommentReply() {
           post_id: post?.id,
           parent_reply_id: parentReplyId,
           user_message: userMessage,
-          community_id: post?.community_id ? Number(post.community_id) : null
+          community_id: post?.community_id ? Number(post.community_id) : null,
+          is_group_post: isGroupThread,
         })
       })
       
@@ -375,7 +381,8 @@ export default function CommentReply() {
     if (!reply_id) return
     setLoading(true)
     try {
-      const res = await fetch(`/api/reply/${reply_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
+      const url = isGroupThread ? `/api/group_reply/${reply_id}` : `/api/reply/${reply_id}`
+      const res = await fetch(url, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const data = await res.json()
       if (data.success) {
         setReply(data.reply)
@@ -388,17 +395,22 @@ export default function CommentReply() {
     } finally {
       setLoading(false)
     }
-  }, [reply_id])
+  }, [reply_id, isGroupThread])
 
   useEffect(() => {
     fetchReply()
   }, [fetchReply])
 
+  useEffect(() => {
+    viewRecordedRef.current = false
+  }, [reply_id, isGroupThread])
+
   // Record reply view
   useEffect(() => {
     if (!reply_id || viewRecordedRef.current) return
     viewRecordedRef.current = true
-    fetch('/api/reply_view', {
+    const viewUrl = isGroupThread ? '/api/group_reply_view' : '/api/reply_view'
+    fetch(viewUrl, {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reply_id: Number(reply_id) })
@@ -410,7 +422,7 @@ export default function CommentReply() {
         }
       })
       .catch(() => { viewRecordedRef.current = false })
-  }, [reply_id])
+  }, [reply_id, isGroupThread])
 
   // Scroll to main reply on load
   useEffect(() => {
@@ -588,15 +600,25 @@ export default function CommentReply() {
         if (durSec > 0) fd.append('voice_duration_seconds', String(durSec))
       }
 
-      const res = await fetch('/post_reply', { method: 'POST', credentials: 'include', body: fd })
+      const submitUrl = isGroupThread ? '/api/group_replies' : '/post_reply'
+      if (isGroupThread) {
+        fd.delete('post_id')
+        fd.append('group_post_id', String(post.id))
+      }
+      const res = await fetch(submitUrl, { method: 'POST', credentials: 'include', body: fd })
       const data = await res.json()
 
       if (data.success && data.reply) {
+        const raw = data.reply as Reply & { children?: Reply[] }
+        const normalized: Reply = {
+          ...raw,
+          nested_replies: raw.nested_replies ?? raw.children ?? [],
+        }
         setReply((prev) => {
           if (!prev) return prev
           return {
             ...prev,
-            nested_replies: [...(prev.nested_replies || []), data.reply],
+            nested_replies: [...(prev.nested_replies || []), normalized],
             reply_count: (prev.reply_count || 0) + 1,
           }
         })
@@ -648,7 +670,10 @@ export default function CommentReply() {
     setReactorViewers([])
     setReactorViewCount(null)
     try {
-      const r = await fetch(`/get_reply_reactors/${replyId}`, { credentials: 'include' })
+      const r = await fetch(
+        isGroupThread ? `/api/group_reply_reactors/${replyId}` : `/get_reply_reactors/${replyId}`,
+        { credentials: 'include' },
+      )
       const j = await r.json().catch(() => null)
       if (j?.success) {
         setReactorGroups(Array.isArray(j.groups) ? j.groups : [])
@@ -670,7 +695,8 @@ export default function CommentReply() {
       const fd = new FormData()
       fd.append('reply_id', String(targetReplyId))
       fd.append('reaction', reactionType)
-      const res = await fetch('/add_reply_reaction', { method: 'POST', credentials: 'include', body: fd })
+      const endpoint = isGroupThread ? '/api/group_replies/react' : '/add_reply_reaction'
+      const res = await fetch(endpoint, { method: 'POST', credentials: 'include', body: fd })
       const data = await res.json()
       if (data.success) {
         setReply((prev) => {
@@ -697,15 +723,20 @@ export default function CommentReply() {
     try {
       const fd = new FormData()
       fd.append('reply_id', String(targetReplyId))
-      const res = await fetch('/delete_reply', { method: 'POST', credentials: 'include', body: fd })
+      const endpoint = isGroupThread ? '/api/group_replies/delete' : '/delete_reply'
+      const res = await fetch(endpoint, { method: 'POST', credentials: 'include', body: fd })
       const data = await res.json()
       if (data.success) {
         // Invalidate caches so PostDetail and feeds don't resurrect the deleted reply
         try {
           if (post?.id) clearDeviceCache(`post-${post.id}`)
-          const cid = (post as any)?.community_id
+          const cid = post?.community_id
           if (cid !== undefined && cid !== null && cid !== '') {
             clearDeviceCache(`community-feed:${cid}`)
+          }
+          const gid = post?.group_id
+          if (gid !== undefined && gid !== null && gid !== '') {
+            clearDeviceCache(`group-feed:${gid}`)
           }
           clearDeviceCache('home-timeline')
         } catch {}
@@ -740,7 +771,10 @@ export default function CommentReply() {
       const fd = new FormData()
       fd.append('reply_id', String(reply.id))
       fd.append('content', editMainText)
-      const res = await fetch('/edit_reply', { method: 'POST', credentials: 'include', body: fd })
+      const res = await fetch(
+        isGroupThread ? '/api/group_replies/edit' : '/edit_reply',
+        { method: 'POST', credentials: 'include', body: fd },
+      )
       const data = await res.json()
       if (data.success) {
         setReply((prev) => prev ? { ...prev, content: editMainText } : prev)
@@ -760,7 +794,10 @@ export default function CommentReply() {
       const fd = new FormData()
       fd.append('reply_id', String(nestedId))
       fd.append('content', editNestedText)
-      const res = await fetch('/edit_reply', { method: 'POST', credentials: 'include', body: fd })
+      const res = await fetch(
+        isGroupThread ? '/api/group_replies/edit' : '/edit_reply',
+        { method: 'POST', credentials: 'include', body: fd },
+      )
       const data = await res.json()
       if (data.success) {
         setReply((prev) => {
@@ -927,7 +964,7 @@ export default function CommentReply() {
             <div
               key={parent.id}
               className="px-4 py-3 border-b border-white/10 cursor-pointer hover:bg-white/[0.02]"
-              onClick={() => navigate(`/reply/${parent.id}`)}
+              onClick={() => navigate(threadPath(parent.id))}
             >
               <div className="flex gap-3">
                 <div className="flex flex-col items-center">
@@ -1198,7 +1235,7 @@ export default function CommentReply() {
                   <div
                     key={nr.id}
                     className="px-4 py-4 hover:bg-white/[0.02] cursor-pointer"
-                    onClick={() => !isEditingThis && navigate(`/reply/${nr.id}`)}
+                    onClick={() => !isEditingThis && navigate(threadPath(nr.id))}
                   >
                     <div className="flex gap-3">
                       <div onClick={(e) => e.stopPropagation()}>
