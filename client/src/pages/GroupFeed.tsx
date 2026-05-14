@@ -914,10 +914,14 @@ export default function GroupFeed(){
                       </div>
                     </div>
                   ) : null}
-                  {/* Reactions */}
-                  <div className="flex items-center gap-2 text-xs pt-1">
+                  {/* Reactions + views / comments (right-aligned, like CommunityFeed) */}
+                  <div
+                    className="flex items-center gap-2 text-xs pt-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     {['heart','thumbs-up','thumbs-down'].map((rname) => (
-                      <button key={rname} className="px-2 py-1 rounded transition-colors" onClick={async()=>{
+                      <button key={rname} type="button" className="px-2 py-1 rounded transition-colors" onClick={async (e)=>{
+                        e.stopPropagation()
                         try{
                           const form = new URLSearchParams({ post_id: String(p.id), reaction: rname })
                           const r = await fetch('/api/group_posts/react', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: form })
@@ -934,16 +938,22 @@ export default function GroupFeed(){
                         <span className="ml-1" style={{ color: p.user_reaction===rname ? '#cfe9e7' : '#9fb0b5' }}>{(p.reactions?.[rname])||0}</span>
                       </button>
                     ))}
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-[#9fb0b5] pt-1">
-                    <span className="inline-flex items-center gap-1 tabular-nums" title="Views">
-                      <i className="fa-regular fa-eye text-[11px]" aria-hidden />
-                      {p.view_count ?? 0}
-                    </span>
-                    <span className="inline-flex items-center gap-1 tabular-nums" title="Comments">
-                      <i className="fa-regular fa-comment text-[11px]" aria-hidden />
-                      {p.reply_count ?? 0}
-                    </span>
+                    <div className="ml-auto flex items-center gap-1 tabular-nums">
+                      <span
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[#cfd8dc]"
+                        title="Views"
+                      >
+                        <i className="fa-regular fa-eye text-[11px]" aria-hidden />
+                        <span>{p.view_count ?? 0}</span>
+                      </span>
+                      <span
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[#cfd8dc]"
+                        title="Comments"
+                      >
+                        <i className="fa-regular fa-comment text-[11px]" aria-hidden />
+                        <span>{p.reply_count ?? 0}</span>
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
