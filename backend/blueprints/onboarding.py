@@ -94,7 +94,7 @@ def _persist_user_cv_pdf(username: str, raw_pdf: bytes, original_filename: str) 
 
 
 XAI_API_KEY = os.getenv('XAI_API_KEY', '')
-GROK_MODEL_FAST = 'grok-4.20-non-reasoning'
+GROK_MODEL_FAST = 'grok-4.3'
 
 
 def _login_required(view_func):

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 XAI_API_KEY = os.getenv("XAI_API_KEY", "")
 # Keep in sync with onboarding blueprint compose_bio model.
-GROK_MODEL = os.getenv("ONBOARDING_GROK_MODEL", "grok-4.20-non-reasoning")
+GROK_MODEL = os.getenv("ONBOARDING_GROK_MODEL", "grok-4.3")
 
 
 def _extract_json(raw_text: str) -> Dict[str, Any]:
