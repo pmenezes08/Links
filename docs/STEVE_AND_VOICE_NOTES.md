@@ -1,7 +1,7 @@
 # Steve & Voice Notes — Architecture Guide
 
 **Status:** Required reading before you build or touch anything Steve- or
-voice-note related. Last updated 2026-05-10.
+voice-note related. Last updated 2026-05-14.
 
 This document is the single source of truth for how Steve (the LLM
 assistant) and Whisper (audio transcription) are wired into C-Point. If
@@ -45,6 +45,14 @@ and then write the code. Do **not** silently diverge.
 Skip any of the above and the user's "Steve uses this month" counter
 will silently lie to them. We've already fixed that bug once, don't
 reintroduce it.
+
+---
+
+## Exclusive group Steve agent (group feed)
+
+Preset **agents** on **`group_posts` / `group_replies`**: owners enable on **group create** (requires **Steve Community Package** on the billing root); members use **Ask Steve** on a post; optional **delayed** first reply via cron (**`/api/cron/group-steve-agent-due`**); **`@Steve`** cancels the pending job; **five** auto-budget replies per post then **static** cap notice; **`@Steve`** continues without consuming that budget. Same **`check_steve_access`** / **`log_usage`** / **`SURFACE_GROUP`** pool rules as other group Steve.
+
+**Spec and ops:** [`STEVE_GROUP_AGENT.md`](STEVE_GROUP_AGENT.md).
 
 ---
 

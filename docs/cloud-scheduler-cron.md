@@ -245,7 +245,8 @@ migration), run:
 for job in enterprise-grace-sweep enterprise-iap-nag enterprise-winback-expire \
            subscriptions-revoke-expired usage-cycle-notify \
            communities-lifecycle-dispatch media-purge-retained-stories \
-           event-reminder-dispatch kb-weekly-synthesis steve-reminder-vault-dispatch; do
+           event-reminder-dispatch kb-weekly-synthesis steve-reminder-vault-dispatch \
+           group-steve-agent-due; do
   gcloud scheduler jobs pause "$job" --location=europe-west1
 done
 ```
@@ -391,3 +392,15 @@ gcloud scheduler jobs update http steve-reminder-vault-dispatch \
 gcloud scheduler jobs update http staging-steve-reminder-vault-dispatch \
   --location=europe-west1 --schedule="*/1 * * * *" --time-zone=UTC
 ```
+
+## 9. Group Steve agent — delayed first replies
+
+| Field | Value |
+|-------|--------|
+| **URI** | `{BASE}/api/cron/group-steve-agent-due` |
+| **Method** | `POST` |
+| **Header** | `X-Cron-Secret` = same `CRON_SHARED_SECRET` as other crons |
+| **Suggested schedule** | Every **1–5 minutes** (`*/5 * * * *`, UTC) — processes due rows in `group_steve_agent_schedule` (randomized 15m–2h delay from post time). |
+| **Query** | `dry_run=1` — counts eligible due rows without deleting schedule rows or calling Steve. |
+
+Add `group-steve-agent-due` to the bulk-pause list in §6 when you register the job in GCP.

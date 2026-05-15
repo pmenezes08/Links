@@ -68,6 +68,34 @@ export default function CreatePost(){
   const viewportBaseRef = useRef<number | null>(null)
   const [viewportLift, setViewportLift] = useState(0)
   const [viewportHeight, setViewportHeight] = useState<number | null>(null)
+  const [groupFeedMeta, setGroupFeedMeta] = useState<{ steve_agent_enabled: boolean; steve_agent_preset: string | null } | null>(null)
+  const [askSteveOnPost, setAskSteveOnPost] = useState(false)
+
+  useEffect(() => {
+    if (!groupId) {
+      setGroupFeedMeta(null)
+      setAskSteveOnPost(false)
+      return
+    }
+    let alive = true
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/group_feed?group_id=${encodeURIComponent(groupId)}`, {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+        })
+        const j = await r.json().catch(() => null)
+        if (!alive || !j?.success || !j.group) return
+        setGroupFeedMeta({
+          steve_agent_enabled: !!j.group.steve_agent_enabled,
+          steve_agent_preset: j.group.steve_agent_preset != null ? String(j.group.steve_agent_preset) : null,
+        })
+      } catch {
+        if (alive) setGroupFeedMeta(null)
+      }
+    })()
+    return () => { alive = false }
+  }, [groupId])
 
   // Generate preview URLs for all media files
   const mediaPreviewUrls = useMemo(() => {
@@ -400,6 +428,9 @@ export default function CreatePost(){
       let postResult: { success?: boolean; error?: string } | null = null
       if (groupId){
         fd.append('group_id', groupId)
+        if (askSteveOnPost && groupFeedMeta?.steve_agent_enabled && groupFeedMeta?.steve_agent_preset === 'career_expert') {
+          fd.append('ask_steve', '1')
+        }
         const r = await fetch('/api/group_posts', { method: 'POST', credentials: 'include', body: fd })
         postResult = await r.json().catch(() => null)
       } else {
@@ -518,6 +549,23 @@ export default function CreatePost(){
           className="w-full min-h-[180px] p-3 rounded-xl bg-black border border-white/10 text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
           rows={8}
         />
+
+        {groupId && groupFeedMeta?.steve_agent_enabled && groupFeedMeta?.steve_agent_preset === 'career_expert' && (
+          <label className="flex items-start gap-3 px-1 py-2 rounded-lg border border-white/10 bg-white/5">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={askSteveOnPost}
+              onChange={(e) => setAskSteveOnPost(e.target.checked)}
+            />
+            <div>
+              <div className="text-sm text-white font-medium">Ask Steve on this post</div>
+              <div className="text-xs text-[#9fb0b5] mt-0.5">
+                Schedules a delayed Career Expert reply when your text is at least 80 characters or you attach media. Mention @Steve anytime to jump in sooner.
+              </div>
+            </div>
+          </label>
+        )}
         
         {/* Detected links */}
         {detectedLinks.length > 0 && (

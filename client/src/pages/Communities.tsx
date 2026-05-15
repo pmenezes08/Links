@@ -71,6 +71,27 @@ function collectDescendantIds(nodes?: Community[]): number[] {
   return ids
 }
 
+function findCommunityInTree(nodes: Community[] | undefined, id: number): Community | undefined {
+  if (!nodes?.length) return undefined
+  for (const n of nodes) {
+    if (n.id === id) return n
+    const c = findCommunityInTree(n.children, id)
+    if (c) return c
+  }
+  return undefined
+}
+
+/** Billing for Steve add-on is on the root network; walk up parent_chain from a node in `communities`. */
+function billingRootIdForTree(communities: Community[], communityId: number): number {
+  let cur = findCommunityInTree(communities, communityId)
+  while (cur?.parent_community_id) {
+    const p = findCommunityInTree(communities, cur.parent_community_id)
+    if (!p) break
+    cur = p
+  }
+  return cur?.id ?? communityId
+}
+
 function normalizeMediaPath(path?: string | null){
   const raw = String(path ?? '').trim()
   if (!raw) return ''
@@ -255,6 +276,8 @@ export default function Communities(){
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [approvalRequired, setApprovalRequired] = useState(false)
+  const [groupSteveAgentEnabled, setGroupSteveAgentEnabled] = useState(false)
+  const [stevePackageRootIds, setStevePackageRootIds] = useState<Set<number>>(new Set())
   const [selectedSubCommunityId, setSelectedSubCommunityId] = useState<number | 'none'>('none')
   const [isAdminOrPaulo, setIsAdminOrPaulo] = useState(false)
   const [showNested, setShowNested] = useState<boolean>(() => {
@@ -357,6 +380,25 @@ export default function Communities(){
       setExpandedDeepCommunityIds({})
     }
   }, [showNested])
+  useEffect(() => {
+    if (!showCreateGroup || !navigator.onLine) return
+    let alive = true
+    ;(async () => {
+      try {
+        const r = await fetch('/api/me/subscriptions', { credentials: 'include', headers: { Accept: 'application/json' } })
+        const j = await r.json().catch(() => null)
+        if (!alive || !j?.success) return
+        const roots = new Set<number>()
+        for (const row of j.communities || []) {
+          if (row?.id != null && row.steve_package_subscription_active) roots.add(Number(row.id))
+        }
+        setStevePackageRootIds(roots)
+      } catch {
+        if (alive) setStevePackageRootIds(new Set())
+      }
+    })()
+    return () => { alive = false }
+  }, [showCreateGroup])
   useEffect(() => {
     if (!expandedNestedParentId) return
     const exists = communities.some(parent => parent.children?.some(child => child.id === expandedNestedParentId))
@@ -1108,7 +1150,7 @@ export default function Communities(){
           <>
             <PlusActions
               onCreateSub={() => { setNewSubName(''); setNewSubType(parentTypeLabel); setShowCreateSubModal(true) }}
-              onCreateGroup={() => { if (!isAdminOrPaulo) { alert('Only admin or Paulo can create groups'); return } setShowCreateGroup(true); setNewGroupName(''); setApprovalRequired(false) }}
+              onCreateGroup={() => { if (!isAdminOrPaulo) { alert('Only admin or Paulo can create groups'); return } setShowCreateGroup(true); setNewGroupName(''); setApprovalRequired(false); setGroupSteveAgentEnabled(false) }}
             />
 
             {showCreateSubModal && (
@@ -1261,16 +1303,51 @@ export default function Communities(){
                         <option value="approval">Approval required</option>
                       </select>
                     </div>
+                    {(() => {
+                      const targetCommunityId = selectedSubCommunityId === 'none' ? parentIdNum : Number(selectedSubCommunityId)
+                      const billingRoot = billingRootIdForTree(communities, targetCommunityId)
+                      const canSteveAgent = stevePackageRootIds.has(billingRoot)
+                      return (
+                        <div>
+                          <label className="flex items-start gap-2 text-sm text-white cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="mt-1"
+                              disabled={!canSteveAgent}
+                              checked={groupSteveAgentEnabled && canSteveAgent}
+                              onChange={(e) => setGroupSteveAgentEnabled(e.target.checked)}
+                            />
+                            <span>
+                              <span className="font-medium">Career Expert agent</span>
+                              <span className="block text-xs text-[#9fb0b5] mt-0.5">
+                                Steve can participate on this group&apos;s feed (delayed first reply; mention @Steve anytime). Requires the Steve Community Package on this network.
+                              </span>
+                            </span>
+                          </label>
+                          {!canSteveAgent && (
+                            <div className="text-xs text-amber-200/90 mt-1">
+                              Add the Steve add-on under Manage Community for this network to enable the agent.
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
                     <div className="flex items-center justify-end gap-2">
                       <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowCreateGroup(false)}>Cancel</button>
                       <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=>{
                         if (!newGroupName.trim()) { alert('Please provide a group name'); return }
                         try{
                           const targetCommunityId = selectedSubCommunityId === 'none' ? parentIdNum : Number(selectedSubCommunityId)
+                          const billingRoot = billingRootIdForTree(communities, targetCommunityId)
+                          const steveOn = groupSteveAgentEnabled && stevePackageRootIds.has(billingRoot)
                           const fd = new URLSearchParams({ community_id: String(targetCommunityId), name: newGroupName.trim(), approval_required: approvalRequired ? '1' : '0' })
+                          if (steveOn) {
+                            fd.append('steve_agent_enabled', '1')
+                            fd.append('steve_agent_preset', 'career_expert')
+                          }
                           const r = await fetch('/api/groups/create', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                           const j = await r.json().catch(()=>null)
-                          if (j?.success){ setShowCreateGroup(false); setNewGroupName(''); alert('Group created') }
+                          if (j?.success){ setShowCreateGroup(false); setNewGroupName(''); setGroupSteveAgentEnabled(false); alert('Group created') }
                           else alert(j?.error || 'Failed to create group')
                         }catch{ alert('Network error') }
                       }}>Create</button>

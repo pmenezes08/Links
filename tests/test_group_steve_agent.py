@@ -1,0 +1,210 @@
+"""Steve group agent: package gate, schedule, @Steve cancel."""
+
+from __future__ import annotations
+
+from tests.fixtures import make_community, make_user
+from tests.test_group_feed_blueprint import _add_group_member, _insert_group
+
+
+def _login(client, username: str) -> None:
+    with client.session_transaction() as sess:
+        sess["username"] = username
+
+
+def test_groups_create_rejects_agent_without_steve_package(mysql_dsn):
+    import bodybuilding_app
+    from backend.services import community_billing
+
+    community_billing.ensure_tables()
+    make_user("gsa_admin", is_admin=True)
+    cid = make_community("gsa-net", tier="paid_l1", creator_username="gsa_admin")
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "gsa_admin")
+    r = client.post(
+        "/api/groups/create",
+        data={
+            "community_id": str(cid),
+            "name": "Agent Group",
+            "approval_required": "0",
+            "steve_agent_enabled": "1",
+            "steve_agent_preset": "career_expert",
+        },
+    )
+    assert r.status_code == 400
+    body = r.get_json()
+    assert body is not None
+    assert "Steve Community Package" in (body.get("error") or "")
+
+
+def test_groups_create_accepts_agent_with_steve_package(mysql_dsn):
+    import bodybuilding_app
+    from backend.services import community_billing
+
+    community_billing.ensure_tables()
+    make_user("gsa_admin2", is_admin=True)
+    cid = make_community("gsa-net2", tier="paid_l1", creator_username="gsa_admin2")
+    community_billing.mark_steve_package_subscription(
+        cid,
+        subscription_id="sub_gsa_test",
+        status="active",
+        current_period_end="2030-12-31",
+    )
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "gsa_admin2")
+    r = client.post(
+        "/api/groups/create",
+        data={
+            "community_id": str(cid),
+            "name": "Agent Group OK",
+            "approval_required": "0",
+            "steve_agent_enabled": "1",
+            "steve_agent_preset": "career_expert",
+        },
+    )
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body is not None
+    assert body.get("success") is True
+    assert isinstance(body.get("group_id"), int)
+
+
+def test_steve_mention_in_group_reply_cancels_schedule(mysql_dsn):
+    import bodybuilding_app
+    from backend.services import community_billing
+    from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
+
+    community_billing.ensure_tables()
+    make_user("gsa_owner", is_admin=True)
+    make_user("gsa_member", subscription="premium")
+    cid = make_community("gsa-net3", tier="paid_l1", creator_username="gsa_owner")
+    community_billing.mark_steve_package_subscription(
+        cid,
+        subscription_id="sub_gsa_3",
+        status="active",
+        current_period_end="2030-12-31",
+    )
+    gid = _insert_group(cid, "Gsched", "gsa_owner")
+    _add_group_member(gid, "gsa_owner")
+    _add_group_member(gid, "gsa_member")
+
+    ph = get_sql_placeholder()
+    gp_t = "`group_posts`" if USE_MYSQL else "group_posts"
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        from backend.services.group_steve_agent import ensure_group_steve_agent_schema
+
+        ensure_group_steve_agent_schema(c)
+        c.execute(
+            f"INSERT INTO {gp_t} (group_id, username, content, image_path, ask_steve) "
+            f"VALUES ({ph}, {ph}, {ph}, NULL, 1)",
+            (gid, "gsa_member", "x" * 100),
+        )
+        post_id = c.lastrowid
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+    from backend.services.group_steve_agent import ensure_group_steve_agent_schema, schedule_agent_first_reply
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        ensure_group_steve_agent_schema(c)
+        schedule_agent_first_reply(c, int(post_id), "gsa_member")
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+    sch = "`group_steve_agent_schedule`" if USE_MYSQL else "group_steve_agent_schedule"
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT COUNT(*) AS c FROM {sch} WHERE group_post_id = {ph} AND cancelled = 0", (int(post_id),))
+        row = c.fetchone()
+        pending = int(row["c"] if hasattr(row, "keys") else row[0])
+    assert pending == 1
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "gsa_member")
+    r = client.post(
+        "/api/group_replies",
+        data={
+            "group_post_id": str(post_id),
+            "content": "Hi @Steve quick question",
+        },
+    )
+    assert r.status_code == 200
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT cancelled FROM {sch} WHERE group_post_id = {ph}", (int(post_id),))
+        row2 = c.fetchone()
+        assert row2 is not None
+        cancelled = int(row2["cancelled"] if hasattr(row2, "keys") else row2[0])
+    assert cancelled == 1
+
+
+def test_short_ask_steve_post_does_not_create_schedule(mysql_dsn):
+    import bodybuilding_app
+    from backend.services import community_billing
+    from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
+
+    community_billing.ensure_tables()
+    make_user("gsa_admin4", is_admin=True)
+    cid = make_community("gsa-net4", tier="paid_l1", creator_username="gsa_admin4")
+    community_billing.mark_steve_package_subscription(
+        cid,
+        subscription_id="sub_gsa_4",
+        status="active",
+        current_period_end="2030-12-31",
+    )
+
+    ph = get_sql_placeholder()
+    g_t = "`groups`" if USE_MYSQL else "groups"
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        from backend.services.group_steve_agent import ensure_group_steve_agent_schema, PRESET_CAREER_EXPERT
+
+        ensure_group_steve_agent_schema(c)
+        c.execute(
+            f"""
+            INSERT INTO {g_t} (community_id, name, approval_required, created_by,
+                steve_agent_enabled, steve_agent_preset, steve_proactive_enabled)
+            VALUES ({ph}, {ph}, 0, {ph}, 1, {ph}, 0)
+            """,
+            (cid, "Shorty Group", "gsa_admin4", PRESET_CAREER_EXPERT),
+        )
+        gid = c.lastrowid
+        try:
+            conn.commit()
+        except Exception:
+            pass
+    gid = int(gid)
+    _add_group_member(gid, "gsa_admin4")
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "gsa_admin4")
+    r = client.post(
+        "/api/group_posts",
+        data={
+            "group_id": str(gid),
+            "content": "short",
+            "ask_steve": "1",
+        },
+    )
+    assert r.status_code == 200
+
+    gp_t = "`group_posts`" if USE_MYSQL else "group_posts"
+    sch = "`group_steve_agent_schedule`" if USE_MYSQL else "group_steve_agent_schedule"
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT id FROM {gp_t} WHERE group_id = {ph} ORDER BY id DESC LIMIT 1", (gid,))
+        pr = c.fetchone()
+        assert pr is not None
+        pid = int(pr["id"] if hasattr(pr, "keys") else pr[0])
+        c.execute(f"SELECT COUNT(*) AS c FROM {sch} WHERE group_post_id = {ph}", (pid,))
+        row = c.fetchone()
+        n = int(row["c"] if hasattr(row, "keys") else row[0])
+    assert n == 0

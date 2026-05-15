@@ -12,6 +12,7 @@ Single reference for repository layout, HTTP surface, backend services, dependen
 | [`PRODUCT_JOURNEYS.md`](PRODUCT_JOURNEYS.md) | Short **cross-system** narratives: Stripe → webhooks → entitlements, Steve/`ai_usage`, enterprise seats, crons, onboarding, DM/group storage paths. |
 | [`MONOLITH_REDUCTION_ROADMAP.md`](MONOLITH_REDUCTION_ROADMAP.md) | **Engineering** initiative: shrink oversized UI pages and backend modules; priority order, epics, Cursor rules; pairs with KB **Product Roadmap** “Monolith reduction” rows. |
 | [`AGENT_TASK_CHECKLIST.md`](AGENT_TASK_CHECKLIST.md) | Checklist for agents before merge: blueprints, `ai_usage`, KB, route/schema doc regen. |
+| [`STEVE_GROUP_AGENT.md`](STEVE_GROUP_AGENT.md) | **Group-feed Steve agent** (Career Expert v1): package gate, Ask Steve, delayed cron, auto budget, pool usage. |
 
 ---
 

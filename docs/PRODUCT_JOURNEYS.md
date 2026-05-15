@@ -108,6 +108,10 @@ Onboarding stages and APIs: **`backend/blueprints/onboarding.py`** plus services
 
 **Group feed (posts/replies, not chat):** **`group_posts`** / **`group_replies`** live in **MySQL** only for this product surface. Access is **`group_feed_access.check_group_feed_access`** (group member, community owner/admin, app admin, group creator). HTTP includes the monolith group post routes plus **`backend/blueprints/group_feed.py`** (photos, key posts, reply delete). **`POST /api/ai/steve_reply`** with **`is_group_post`** uses **`SURFACE_GROUP`** and writes **`group_replies`** as Steve. Group posts may **show polls** with voting on the feed; **poll creation** is from the group polls page, not the post row. When the client opens **Useful Links & Docs**, **Tasks**, or **group calendar** with **`group_id`**, list endpoints return **only resources scoped to that group** (not community-wide rows for the same community).
 
+### Steve group agent (exclusive group feed)
+
+Optional **preset agent** on a group (v1: **Career Expert**): enabled only when the **Steve Community Package** is active on the billing root; **`POST /api/group_posts`** accepts **`ask_steve`** and may enqueue a **delayed** first reply (**`group_steve_agent_schedule`**); **`POST /api/cron/group-steve-agent-due`** ( **`X-Cron-Secret`** ) processes due rows; **`@Steve`** cancels the schedule and bypasses delay; **five** auto-budget replies per post, then a cap notice; consumption uses the **same** `ai_usage` community pool as other group Steve. See **`docs/STEVE_GROUP_AGENT.md`**.
+
 ### DM Media Upload → Storage → Read → Render Flow
 **Complete cross-system map** (updated for R2 direct uploads, multi-media, caching layers, iOS paths). See focused files: `ChatThread.tsx`, `mediaSenders.ts`, `firestore_reads.py`, `media.py:save_uploaded_file`, `r2_storage.py`, `MessageImage.tsx`, `normalizeMediaPath` (in `chat/utils.ts` + duplicates), `bodybuilding_app.py` (monolith routes), `firestore_writes.py`.
 

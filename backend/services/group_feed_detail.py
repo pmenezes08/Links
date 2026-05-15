@@ -21,14 +21,30 @@ def build_group_feed_response(username: str, group_id: int) -> tuple[dict[str, A
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
+            from backend.services.group_steve_agent import ensure_group_steve_agent_schema
+
+            ensure_group_steve_agent_schema(c)
             g_tbl = "`groups`" if USE_MYSQL else "groups"
-            c.execute(f"SELECT g.id, g.name, g.community_id, g.created_by FROM {g_tbl} g WHERE g.id = {ph}", (group_id,))
+            c.execute(
+                f"""
+                SELECT g.id, g.name, g.community_id, g.created_by,
+                       g.steve_agent_enabled, g.steve_agent_preset
+                FROM {g_tbl} g WHERE g.id = {ph}
+                """,
+                (group_id,),
+            )
             g = c.fetchone()
             if not g:
                 return {"success": False, "error": "Group not found"}, 404
             community_id = g["community_id"] if hasattr(g, "keys") else g[2]
             group_name = g["name"] if hasattr(g, "keys") else g[1]
             group_owner = g["created_by"] if hasattr(g, "keys") else (g[3] if len(g) > 3 else None)
+            if hasattr(g, "keys"):
+                steve_agent_enabled = bool(g.get("steve_agent_enabled"))
+                steve_agent_preset = g.get("steve_agent_preset")
+            else:
+                steve_agent_enabled = bool(g[4] if len(g) > 4 else 0)
+                steve_agent_preset = g[5] if len(g) > 5 else None
 
             c.execute("SELECT name, type FROM communities WHERE id = ?", (community_id,))
             cm = c.fetchone() or {}
@@ -62,7 +78,7 @@ def build_group_feed_response(username: str, group_id: int) -> tuple[dict[str, A
             c.execute(
                 f"""
                 SELECT gp.id, gp.username, gp.content, gp.image_path, gp.created_at,
-                       up.profile_picture, gp.video_path, gp.media_paths, gp.link_urls
+                       up.profile_picture, gp.video_path, gp.media_paths, gp.link_urls, gp.ask_steve
                 FROM {gp_t} gp
                 LEFT JOIN user_profiles up ON up.username = gp.username
                 WHERE gp.group_id = {ph}
@@ -154,8 +170,14 @@ def build_group_feed_response(username: str, group_id: int) -> tuple[dict[str, A
                 image_path = r["image_path"] if hasattr(r, "keys") else r[3]
                 created_at = r["created_at"] if hasattr(r, "keys") else r[4]
                 profile_picture = r["profile_picture"] if hasattr(r, "keys") else r[5]
-                video_path = r["video_path"] if hasattr(r, "keys") else (r[6] if len(r) > 6 else None)
-                link_urls_raw = r["link_urls"] if hasattr(r, "keys") else (r[8] if len(r) > 8 else None)
+                if hasattr(r, "keys"):
+                    video_path = r.get("video_path")
+                    link_urls_raw = r.get("link_urls")
+                    ask_steve_flag = bool(r.get("ask_steve"))
+                else:
+                    video_path = r[6] if len(r) > 6 else None
+                    link_urls_raw = r[8] if len(r) > 8 else None
+                    ask_steve_flag = bool(r[9] if len(r) > 9 else 0)
 
                 link_urls_out = None
                 if link_urls_raw:
@@ -257,12 +279,18 @@ def build_group_feed_response(username: str, group_id: int) -> tuple[dict[str, A
                         "poll": poll_map.get(int(pid)),
                         "reply_count": reply_count_map.get(int(pid), 0),
                         "view_count": view_count_map.get(int(pid), 0),
+                        "ask_steve": ask_steve_flag,
                     }
                 )
             return (
                 {
                     "success": True,
-                    "group": {"id": group_id, "name": group_name},
+                    "group": {
+                        "id": group_id,
+                        "name": group_name,
+                        "steve_agent_enabled": steve_agent_enabled,
+                        "steve_agent_preset": steve_agent_preset,
+                    },
                     "community": {
                         "id": community_id,
                         "name": community_name,

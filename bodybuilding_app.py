@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response, g, make_response
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response, g, make_response, current_app
 from collections import deque, defaultdict
 # from flask_wtf.csrf import CSRFProtect, generate_csrf, validate_csrf as wtf_validate_csrf
 import errno
@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import sqlite3
 import random
+import threading
 import re
 import logging
 import uuid
@@ -3377,6 +3378,13 @@ def init_db():
                     )''')
             except Exception as e:
                 logger.warning(f"Could not ensure group post tables: {e}")
+
+            try:
+                from backend.services.group_steve_agent import ensure_group_steve_agent_schema
+
+                ensure_group_steve_agent_schema(c)
+            except Exception as e:
+                logger.warning(f"ensure_group_steve_agent_schema: {e}")
 
             
             # Create community_files table
@@ -23328,6 +23336,10 @@ def _steve_ai_reply_for_group_post(
     usage_count: int,
     _enforcement_on: bool,
     _ent: dict,
+    *,
+    agent_mode: str | None = None,
+    consume_auto_budget: bool = False,
+    log_request_type: str = "steve_group_reply",
 ):
     """Handle @Steve in group feed: LLM reply persisted as a group_replies row."""
     from backend.services.steve_community_config import response_usage_tokens
@@ -23338,6 +23350,7 @@ def _steve_ai_reply_for_group_post(
         should_include_user_profile,
     )
     from backend.services.steve_profiling_gates import user_can_access_steve_kb
+    from backend.services.group_steve_agent import CAREER_EXPERT_OUTPUT_CAP, PRESET_CAREER_EXPERT
 
     gp_t = '`group_posts`' if USE_MYSQL else 'group_posts'
     gr_t = '`group_replies`' if USE_MYSQL else 'group_replies'
@@ -23348,6 +23361,23 @@ def _steve_ai_reply_for_group_post(
     prow = c.fetchone()
     if not prow:
         return jsonify({'success': False, 'error': 'Post not found'}), 404
+    if consume_auto_budget:
+        try:
+            c.execute(
+                f"SELECT COALESCE(auto_steve_used_count, 0) FROM {gp_t} WHERE id = {placeholder}",
+                (group_post_id,),
+            )
+            _bc = c.fetchone()
+            _ac = int(_bc[0] if _bc and not hasattr(_bc, "keys") else (_bc.get("auto_steve_used_count", 0) if _bc else 0))
+            if _ac >= 5:
+                return jsonify(
+                    {
+                        'success': False,
+                        'error': 'Automatic reply cap reached for this post. Mention @Steve to continue.',
+                    }
+                ), 429
+        except Exception:
+            pass
     post_content = prow['content'] if hasattr(prow, 'keys') else prow[0]
     post_author = prow['username'] if hasattr(prow, 'keys') else prow[1]
     post_image_path = prow['image_path'] if hasattr(prow, 'keys') else prow[2]
@@ -23466,6 +23496,12 @@ def _steve_ai_reply_for_group_post(
 
     context = "\n\n".join(context_parts)
     system_prompt = get_ai_personality_prompt(ai_personality)
+    if agent_mode == PRESET_CAREER_EXPERT:
+        system_prompt += (
+            "\n\nYou are this group's Career Expert agent. Lead with empathy; use a short TL;DR when the answer is long. "
+            "Use clear headings and bullets; a brief illustrative story is welcome when it helps everyone reading the thread. "
+            "Invite others in the group to share lived experience when relevant."
+        )
     if community_id:
         system_prompt += (
             "\nYou have access to this community's upcoming events, useful links, "
@@ -23511,6 +23547,8 @@ def _steve_ai_reply_for_group_post(
         max_output_tokens = min(entitlement_cap, int(steve_config.max_output_tokens or entitlement_cap))
     else:
         max_output_tokens = entitlement_cap
+    if agent_mode == PRESET_CAREER_EXPERT:
+        max_output_tokens = min(max_output_tokens, CAREER_EXPERT_OUTPUT_CAP)
     platform_question_grp = False
     professional_grp = False
     try:
@@ -23564,7 +23602,7 @@ def _steve_ai_reply_for_group_post(
         _ai_usage.log_usage(
             username,
             surface=_ai_usage.SURFACE_GROUP,
-            request_type='steve_group_reply',
+            request_type=log_request_type,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
             cost_usd=estimate_response_cost_usd(response, steve_config),
@@ -23574,6 +23612,35 @@ def _steve_ai_reply_for_group_post(
         )
     except Exception as log_err:
         logger.warning("Could not log AI usage (group steve): %s", log_err)
+    if consume_auto_budget:
+        try:
+            c.execute(
+                f"UPDATE {gp_t} SET auto_steve_used_count = COALESCE(auto_steve_used_count, 0) + 1 WHERE id = {placeholder}",
+                (group_post_id,),
+            )
+            c.execute(
+                f"SELECT COALESCE(auto_steve_used_count, 0), COALESCE(agent_cap_notice_shown, 0) FROM {gp_t} WHERE id = {placeholder}",
+                (group_post_id,),
+            )
+            br = c.fetchone()
+            if br:
+                ac = int(br["auto_steve_used_count"] if hasattr(br, "keys") else br[0] or 0)
+                notice = int(br["agent_cap_notice_shown"] if hasattr(br, "keys") else br[1] or 0)
+                if ac >= 5 and not notice:
+                    cap_txt = "Cap reached for automatic replies on this post — mention @Steve to continue."
+                    c.execute(
+                        f"""
+                        INSERT INTO {gr_t} (group_post_id, parent_reply_id, username, content, created_at)
+                        VALUES ({placeholder}, NULL, {placeholder}, {placeholder}, {placeholder})
+                        """,
+                        (group_post_id, AI_USERNAME, cap_txt, timestamp_db),
+                    )
+                    c.execute(
+                        f"UPDATE {gp_t} SET agent_cap_notice_shown = 1 WHERE id = {placeholder}",
+                        (group_post_id,),
+                    )
+        except Exception as _cap_err:
+            logger.warning("agent auto budget update failed: %s", _cap_err)
     conn.commit()
     steve_profile_pic = None
     try:
@@ -23604,6 +23671,251 @@ def _steve_ai_reply_for_group_post(
             'remaining_today': 'unlimited' if is_unlimited else AI_DAILY_LIMIT - usage_count - 1,
         }
     )
+
+
+def _group_steve_agent_thread_runner(
+    app,
+    group_post_id: int,
+    parent_reply_id: int,
+    acting_username: str,
+    user_message: str,
+):
+    with app.app_context():
+        try:
+            _dispatch_group_steve_agent_turn(
+                group_post_id,
+                parent_reply_id,
+                acting_username,
+                user_message,
+                consume_auto_budget=True,
+                log_request_type="steve_group_agent_auto",
+            )
+        except Exception as exc:
+            logger.warning("group steve agent thread: %s", exc)
+
+
+def _dispatch_group_steve_agent_turn(
+    group_post_id: int,
+    parent_reply_id,
+    acting_username: str,
+    user_message: str,
+    *,
+    consume_auto_budget: bool,
+    log_request_type: str,
+):
+    """Background/cron entrypoint for gated Career Expert group agent replies."""
+    from backend.services.steve_community_config import get_paid_steve_package_config
+    from backend.services.group_steve_agent import (
+        PRESET_CAREER_EXPERT,
+        ensure_group_steve_agent_schema,
+        load_post_group_agent_state,
+    )
+
+    steve_config = get_paid_steve_package_config()
+    if not XAI_API_KEY:
+        logger.warning("group steve agent: XAI_API_KEY missing")
+        return None
+
+    _enforcement_on = False
+    _ent: dict = {}
+    try:
+        from backend.services.entitlements_gate import check_steve_access
+        from backend.services.feature_flags import entitlements_enforcement_enabled as _enforce
+
+        _enforcement_on = _enforce()
+    except Exception:
+        pass
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        placeholder = get_sql_placeholder()
+        ensure_group_steve_agent_schema(c)
+        ctx = load_post_group_agent_state(c, int(group_post_id))
+        if not ctx or ctx[0] is None:
+            return None
+        _community_id, _gid, agent_en, preset = ctx
+        if not agent_en or (preset or "").strip().lower() != PRESET_CAREER_EXPERT:
+            return None
+
+        cid_int = int(_community_id) if _community_id is not None else None
+        try:
+            _allowed, _err_payload, _err_status, _ent = check_steve_access(
+                acting_username,
+                _ai_usage.SURFACE_GROUP,
+                community_id=cid_int,
+            )
+            if not _allowed and _enforcement_on:
+                try:
+                    _ai_usage.log_block(
+                        acting_username,
+                        surface=_ai_usage.SURFACE_GROUP,
+                        request_type=log_request_type,
+                        reason_blocked=(_err_payload or {}).get("error") or "blocked",
+                        community_id=cid_int,
+                    )
+                except Exception:
+                    pass
+                return None
+        except Exception as gate_err:
+            logger.warning("group steve agent gate failed: %s", gate_err)
+
+        usage_count = 0
+        is_unlimited = acting_username.lower() in AI_UNLIMITED_USERS or is_app_admin(acting_username)
+
+        if not _enforcement_on and not is_unlimited:
+            try:
+                if USE_MYSQL:
+                    c.execute(
+                        f"""
+                        SELECT COUNT(*) as cnt FROM ai_usage_log
+                        WHERE username = {placeholder}
+                        AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                        """,
+                        (acting_username,),
+                    )
+                else:
+                    c.execute(
+                        f"""
+                        SELECT COUNT(*) as cnt FROM ai_usage_log
+                        WHERE username = {placeholder}
+                        AND datetime(created_at) > datetime('now', '-24 hours')
+                        """,
+                        (acting_username,),
+                    )
+                row = c.fetchone()
+                usage_count = row["cnt"] if row and hasattr(row, "keys") else (row[0] if row else 0)
+                if usage_count >= AI_DAILY_LIMIT:
+                    return None
+            except Exception:
+                usage_count = 0
+
+        return _steve_ai_reply_for_group_post(
+            conn,
+            c,
+            placeholder,
+            acting_username,
+            int(group_post_id),
+            parent_reply_id,
+            user_message,
+            _community_id,
+            steve_config,
+            is_unlimited,
+            usage_count,
+            _enforcement_on,
+            _ent,
+            agent_mode=PRESET_CAREER_EXPERT,
+            consume_auto_budget=consume_auto_budget,
+            log_request_type=log_request_type,
+        )
+
+
+def _group_steve_agent_cron_eligible(c, ph: str, group_post_id: int) -> bool:
+    from backend.services.group_steve_agent import (
+        PRESET_CAREER_EXPERT,
+        load_post_group_agent_state,
+        post_qualifies_for_ask_steve_schedule,
+        root_may_enable_agent,
+        steve_reply_count_for_post,
+    )
+
+    ctx = load_post_group_agent_state(c, int(group_post_id))
+    if not ctx or ctx[0] is None:
+        return False
+    community_id, _gid, agent_en, preset = ctx
+    if not agent_en or (preset or "").strip().lower() != PRESET_CAREER_EXPERT:
+        return False
+    if not root_may_enable_agent(int(community_id)):
+        return False
+    gp_t = "`group_posts`" if USE_MYSQL else "group_posts"
+    c.execute(
+        f"""
+        SELECT ask_steve, content, image_path, video_path, audio_path, media_paths,
+               COALESCE(auto_steve_used_count, 0) AS ac
+        FROM {gp_t} WHERE id = {ph} LIMIT 1
+        """,
+        (int(group_post_id),),
+    )
+    row = c.fetchone()
+    if not row:
+        return False
+    ask_on = row["ask_steve"] if hasattr(row, "keys") else row[0]
+    if not bool(ask_on):
+        return False
+    pcontent = row["content"] if hasattr(row, "keys") else row[1]
+    image_path = row["image_path"] if hasattr(row, "keys") else row[2]
+    video_path = row["video_path"] if hasattr(row, "keys") else row[3]
+    audio_path = row["audio_path"] if hasattr(row, "keys") else row[4]
+    media_paths_raw = row["media_paths"] if hasattr(row, "keys") else row[5]
+    ac = row["ac"] if hasattr(row, "keys") else row[6]
+    if int(ac or 0) >= 5:
+        return False
+    if steve_reply_count_for_post(c, int(group_post_id)) > 0:
+        return False
+    has_media = bool(image_path or video_path or audio_path)
+    if media_paths_raw:
+        try:
+            mp = json.loads(media_paths_raw) if isinstance(media_paths_raw, str) else media_paths_raw
+            if isinstance(mp, list) and len(mp) > 0:
+                has_media = True
+        except Exception:
+            pass
+    return post_qualifies_for_ask_steve_schedule(pcontent, has_media)
+
+
+@app.route("/api/cron/group-steve-agent-due", methods=["POST"])
+def cron_group_steve_agent_due():
+    """Claim and run delayed first-reply jobs for the group Steve agent."""
+    expected = os.environ.get("CRON_SHARED_SECRET") or ""
+    provided = request.headers.get("X-Cron-Secret") or ""
+    if not expected or provided != expected:
+        return jsonify({"success": False, "error": "forbidden"}), 403
+
+    dry_run = (request.args.get("dry_run") or "").strip().lower() in {"1", "true", "yes", "on"}
+    from backend.services.group_steve_agent import (
+        ensure_group_steve_agent_schema,
+        fetch_due_agent_schedules,
+        pop_group_steve_agent_schedule,
+    )
+
+    processed = 0
+    scanned = 0
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            ensure_group_steve_agent_schema(c)
+            rows = fetch_due_agent_schedules(c, limit=25)
+            for row in rows:
+                scanned += 1
+                sid = int(row["id"] if hasattr(row, "keys") else row[0])
+                gpid = int(row["group_post_id"] if hasattr(row, "keys") else row[1])
+                author = row["author_username"] if hasattr(row, "keys") else row[2]
+                eligible = _group_steve_agent_cron_eligible(c, ph, gpid)
+                if dry_run:
+                    if eligible:
+                        processed += 1
+                    continue
+                if not pop_group_steve_agent_schedule(c, sid):
+                    continue
+                if not eligible:
+                    continue
+                msg = (
+                    "The author enabled Ask Steve on this post. Share your Career Expert perspective "
+                    "in a helpful, scannable reply grounded in the thread above."
+                )
+                _dispatch_group_steve_agent_turn(
+                    gpid,
+                    None,
+                    author,
+                    msg,
+                    consume_auto_budget=True,
+                    log_request_type="steve_group_agent_auto",
+                )
+                processed += 1
+        return jsonify({"success": True, "scanned": scanned, "processed": processed, "dry_run": dry_run})
+    except Exception as exc:
+        logger.error("cron_group_steve_agent_due: %s", exc)
+        return jsonify({"success": False, "error": "server_error"}), 500
 
 
 @app.route('/api/ai/steve_reply', methods=['POST'])
@@ -23758,6 +24070,40 @@ def ai_steve_reply():
                         logger.warning(f"Could not create ai_usage_log table: {create_err}")
             
             if is_group_post:
+                from backend.services.group_steve_agent import (
+                    PRESET_CAREER_EXPERT,
+                    cancel_pending_agent_first_reply,
+                    ensure_group_steve_agent_schema,
+                    mentions_steve,
+                )
+
+                ensure_group_steve_agent_schema(c)
+                if mentions_steve(user_message):
+                    cancel_pending_agent_first_reply(c, post_id)
+                gp_t = '`group_posts`' if USE_MYSQL else 'group_posts'
+                g_t = '`groups`' if USE_MYSQL else 'groups'
+                c.execute(
+                    f"""
+                    SELECT g.steve_agent_enabled, g.steve_agent_preset
+                    FROM {gp_t} gp JOIN {g_t} g ON g.id = gp.group_id
+                    WHERE gp.id = {placeholder}
+                    LIMIT 1
+                    """,
+                    (post_id,),
+                )
+                ag_row = c.fetchone()
+                _agent_mode = None
+                if ag_row:
+                    _en = ag_row["steve_agent_enabled"] if hasattr(ag_row, "keys") else ag_row[0]
+                    _pr = ag_row["steve_agent_preset"] if hasattr(ag_row, "keys") else ag_row[1]
+                    _prs = str(_pr or "").strip().lower()
+                    if bool(_en) and _prs == PRESET_CAREER_EXPERT:
+                        _agent_mode = PRESET_CAREER_EXPERT
+                _log_rt = (
+                    "steve_group_agent_mention"
+                    if mentions_steve(user_message) and _agent_mode == PRESET_CAREER_EXPERT
+                    else "steve_group_reply"
+                )
                 return _steve_ai_reply_for_group_post(
                     conn,
                     c,
@@ -23772,6 +24118,9 @@ def ai_steve_reply():
                     usage_count,
                     _enforcement_on,
                     _ent,
+                    agent_mode=_agent_mode,
+                    consume_auto_budget=False,
+                    log_request_type=_log_rt,
                 )
 
             # Get post content for context (including media)
@@ -28797,18 +29146,75 @@ def api_groups_create():
                 subscription_value = fetch_user_subscription(c, top_creator) if top_creator else ''
                 if top_creator and not is_app_admin(top_creator) and is_free_subscription(subscription_value):
                     return jsonify({'success': False, 'error': 'Groups for free plan communities are only available at the parent community level.'}), 403
+            from backend.services.group_steve_agent import (
+                PRESET_CAREER_EXPERT,
+                ensure_group_steve_agent_schema,
+                root_may_enable_agent,
+            )
+
+            ensure_group_steve_agent_schema(c)
+            steve_agent_enabled = request.form.get('steve_agent_enabled', '').strip().lower() in (
+                '1', 'true', 'yes', 'on',
+            )
+            steve_agent_preset_raw = (request.form.get('steve_agent_preset') or '').strip().lower()
+            steve_proactive_enabled = request.form.get('steve_proactive_enabled', '').strip().lower() in (
+                '1', 'true', 'yes', 'on',
+            )
+            steve_agent_preset = steve_agent_preset_raw or None
+            if steve_agent_enabled:
+                if steve_agent_preset and steve_agent_preset != PRESET_CAREER_EXPERT:
+                    return jsonify({'success': False, 'error': 'Invalid agent type'}), 400
+                if not root_may_enable_agent(community_id):
+                    return (
+                        jsonify(
+                            {
+                                'success': False,
+                                'error': 'Steve Community Package required. Open Manage Community to add the Steve add-on.',
+                            }
+                        ),
+                        400,
+                    )
+                steve_agent_preset = steve_agent_preset or PRESET_CAREER_EXPERT
+            else:
+                steve_agent_preset = None
+                steve_proactive_enabled = False
             # Insert group
             if USE_MYSQL:
-                c.execute("""
-                    INSERT INTO `groups` (community_id, name, approval_required, created_by)
-                    VALUES (%s, %s, %s, %s)
-                """, (community_id, name, 1 if approval_required else 0, username))
+                c.execute(
+                    """
+                    INSERT INTO `groups` (community_id, name, approval_required, created_by,
+                        steve_agent_enabled, steve_agent_preset, steve_proactive_enabled)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        community_id,
+                        name,
+                        1 if approval_required else 0,
+                        username,
+                        1 if steve_agent_enabled else 0,
+                        steve_agent_preset,
+                        1 if steve_proactive_enabled else 0,
+                    ),
+                )
                 gid = c.lastrowid
             else:
-                c.execute("""
-                    INSERT INTO groups (community_id, name, approval_required, created_by, created_at)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (community_id, name, 1 if approval_required else 0, username, datetime.now().isoformat()))
+                c.execute(
+                    """
+                    INSERT INTO groups (community_id, name, approval_required, created_by, created_at,
+                        steve_agent_enabled, steve_agent_preset, steve_proactive_enabled)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        community_id,
+                        name,
+                        1 if approval_required else 0,
+                        username,
+                        datetime.now().isoformat(),
+                        1 if steve_agent_enabled else 0,
+                        steve_agent_preset,
+                        1 if steve_proactive_enabled else 0,
+                    ),
+                )
                 gid = c.lastrowid
             conn.commit()
             return jsonify({'success': True, 'group_id': int(gid)})
@@ -29009,6 +29415,111 @@ def api_groups_delete():
     except Exception as e:
         logger.error(f"api_groups_delete error: {e}")
         return jsonify({'success': False, 'error': 'Failed to delete group'})
+
+
+@app.route('/api/groups/<int:group_id>/steve_agent', methods=['PATCH'])
+@login_required
+def api_groups_steve_agent_patch(group_id: int):
+    """Update Steve group agent flags (owner / community admin / app admin)."""
+    username = session.get('username')
+    payload = request.get_json(silent=True) or {}
+    try:
+        from backend.services.group_steve_agent import (
+            PRESET_CAREER_EXPERT,
+            ensure_group_steve_agent_schema,
+            load_group_agent_flags,
+            root_may_enable_agent,
+        )
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            g_t = '`groups`' if USE_MYSQL else 'groups'
+            c.execute(
+                f"SELECT community_id, created_by FROM {g_t} WHERE id = {ph} LIMIT 1",
+                (int(group_id),),
+            )
+            grow = c.fetchone()
+            if not grow:
+                return jsonify({'success': False, 'error': 'Group not found'}), 404
+            community_id = grow['community_id'] if hasattr(grow, 'keys') else grow[0]
+            created_by = grow['created_by'] if hasattr(grow, 'keys') else grow[1]
+            cid_int = int(community_id) if community_id is not None else None
+            allowed = bool(
+                username == created_by
+                or is_app_admin(username)
+                or (cid_int is not None and is_community_owner(username, cid_int))
+                or (cid_int is not None and is_community_admin(username, cid_int))
+            )
+            if not allowed:
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            ensure_group_steve_agent_schema(c)
+            cur_en, cur_pr, cur_pro = load_group_agent_flags(c, int(group_id))
+            if 'steve_agent_enabled' in payload:
+                steve_agent_enabled = bool(payload.get('steve_agent_enabled'))
+            else:
+                steve_agent_enabled = cur_en
+            if 'steve_agent_preset' in payload:
+                raw_pr = payload.get('steve_agent_preset')
+                steve_agent_preset = str(raw_pr).strip().lower() if raw_pr else None
+            else:
+                steve_agent_preset = cur_pr
+            if 'steve_proactive_enabled' in payload:
+                steve_proactive_enabled = bool(payload.get('steve_proactive_enabled'))
+            else:
+                steve_proactive_enabled = cur_pro
+            if steve_agent_enabled:
+                if steve_agent_preset and steve_agent_preset != PRESET_CAREER_EXPERT:
+                    return jsonify({'success': False, 'error': 'Invalid agent type'}), 400
+                if cid_int is None or not root_may_enable_agent(cid_int):
+                    return (
+                        jsonify(
+                            {
+                                'success': False,
+                                'error': 'Steve Community Package required. Open Manage Community to add the Steve add-on.',
+                            }
+                        ),
+                        400,
+                    )
+                steve_agent_preset = steve_agent_preset or PRESET_CAREER_EXPERT
+            else:
+                steve_agent_preset = None
+                steve_proactive_enabled = False
+            if USE_MYSQL:
+                c.execute(
+                    f"""
+                    UPDATE {g_t}
+                    SET steve_agent_enabled = {ph}, steve_agent_preset = {ph}, steve_proactive_enabled = {ph}
+                    WHERE id = {ph}
+                    """,
+                    (
+                        1 if steve_agent_enabled else 0,
+                        steve_agent_preset,
+                        1 if steve_proactive_enabled else 0,
+                        int(group_id),
+                    ),
+                )
+            else:
+                c.execute(
+                    f"""
+                    UPDATE {g_t}
+                    SET steve_agent_enabled = {ph}, steve_agent_preset = {ph}, steve_proactive_enabled = {ph}
+                    WHERE id = {ph}
+                    """,
+                    (
+                        1 if steve_agent_enabled else 0,
+                        steve_agent_preset,
+                        1 if steve_proactive_enabled else 0,
+                        int(group_id),
+                    ),
+                )
+            if not USE_MYSQL:
+                conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"api_groups_steve_agent_patch error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to update agent settings'})
+
 
 @app.route('/api/groups/available_count', methods=['GET'])
 @login_required
@@ -29388,6 +29899,13 @@ def api_group_posts_create():
                     c.execute(alter)
                 except Exception:
                     pass
+            from backend.services.group_steve_agent import ensure_group_steve_agent_schema
+
+            ensure_group_steve_agent_schema(c)
+            ask_steve_flag = request.form.get('ask_steve', '').strip().lower() in (
+                '1', 'true', 'yes', 'on',
+            )
+            ask_steve_val = 1 if ask_steve_flag else 0
 
             community_id_for_audio = None
             try:
@@ -29532,8 +30050,8 @@ def api_group_posts_create():
                 except Exception:
                     pass
             c.execute(
-                f"INSERT INTO {gp_t} (group_id, username, content, image_path, video_path, audio_path, audio_summary, created_at, media_paths, link_urls) "
-                f"VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})",
+                f"INSERT INTO {gp_t} (group_id, username, content, image_path, video_path, audio_path, audio_summary, created_at, media_paths, link_urls, ask_steve) "
+                f"VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})",
                 (
                     group_id,
                     username,
@@ -29545,6 +30063,7 @@ def api_group_posts_create():
                     ts,
                     media_paths_json,
                     None,
+                    ask_steve_val,
                 ),
             )
             post_id = c.lastrowid
@@ -29565,6 +30084,28 @@ def api_group_posts_create():
                         )
                 except Exception as asset_err:
                     logger.warning(f"group post media asset registration failed: {asset_err}")
+            has_media = bool(
+                image_path or video_path or audio_path or (media_paths and len(media_paths) > 0)
+            )
+            if ask_steve_flag and community_id_for_audio is not None and post_id:
+                from backend.services.group_steve_agent import (
+                    PRESET_CAREER_EXPERT,
+                    load_group_agent_flags,
+                    post_qualifies_for_ask_steve_schedule,
+                    root_may_enable_agent,
+                    schedule_agent_first_reply,
+                    steve_reply_count_for_post,
+                )
+
+                ag_en, ag_pr, _ = load_group_agent_flags(c, int(group_id))
+                if (
+                    ag_en
+                    and (ag_pr or '').lower() == PRESET_CAREER_EXPERT
+                    and root_may_enable_agent(int(community_id_for_audio))
+                    and post_qualifies_for_ask_steve_schedule(content, has_media)
+                    and steve_reply_count_for_post(c, int(post_id)) == 0
+                ):
+                    schedule_agent_first_reply(c, int(post_id), username)
             conn.commit()
             return jsonify({'success': True})
     except Exception as e:
@@ -29743,6 +30284,7 @@ def api_group_replies_create():
     has_audio = 'audio' in request.files and bool(request.files['audio'].filename)
     if not content and not has_image and not has_audio:
         return jsonify({'success': False, 'error': 'Content, image, or audio is required'})
+    thread_payload = None
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -29750,6 +30292,18 @@ def api_group_replies_create():
             ok_feed, err_feed, _ = check_group_feed_access_for_group_post(c, ph, username, post_id)
             if not ok_feed:
                 return jsonify({'success': False, 'error': err_feed or 'Forbidden'}), 403
+            from backend.services.group_steve_agent import (
+                PRESET_CAREER_EXPERT,
+                cancel_pending_agent_first_reply,
+                ensure_group_steve_agent_schema,
+                load_group_agent_flags,
+                mentions_steve,
+                root_may_enable_agent,
+            )
+
+            ensure_group_steve_agent_schema(c)
+            if mentions_steve(content):
+                cancel_pending_agent_first_reply(c, post_id)
             image_path = None
             video_path = None
             audio_path = None
@@ -29806,6 +30360,40 @@ def api_group_replies_create():
                     logger.warning(f"group reply audio summary failed: {sum_err}")
                     audio_summary = None
 
+            reply_group_id = None
+            try:
+                gp_t_rid = '`group_posts`' if USE_MYSQL else 'group_posts'
+                c.execute(f"SELECT group_id FROM {gp_t_rid} WHERE id = {ph}", (post_id,))
+                prow_gid = c.fetchone()
+                if prow_gid:
+                    reply_group_id = int(
+                        prow_gid['group_id'] if hasattr(prow_gid, 'keys') else prow_gid[0]
+                    )
+            except Exception:
+                reply_group_id = None
+            parent_author = None
+            if parent_id:
+                c.execute(f"SELECT username FROM {gr_table} WHERE id = {ph}", (parent_id,))
+                pa = c.fetchone()
+                if pa:
+                    parent_author = pa['username'] if hasattr(pa, 'keys') else pa[0]
+            if (
+                parent_id
+                and parent_author
+                and str(parent_author).lower() == AI_USERNAME.lower()
+                and not mentions_steve(content)
+                and content.strip()
+                and reply_group_id is not None
+                and community_id is not None
+            ):
+                ag_en, ag_pr, _ = load_group_agent_flags(c, reply_group_id)
+                if (
+                    ag_en
+                    and (ag_pr or '').lower() == PRESET_CAREER_EXPERT
+                    and root_may_enable_agent(int(community_id))
+                ):
+                    thread_payload = (post_id, parent_id, username, content.strip())
+
             now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
             legacy_image_slot = image_path or video_path
             try:
@@ -29837,7 +30425,7 @@ def api_group_replies_create():
                 schedule_steve_profiling_snapshot_refresh(username)
             except Exception:
                 pass
-            return jsonify({
+            resp_body = {
                 'success': True,
                 'reply': {
                     'id': reply_id,
@@ -29855,7 +30443,21 @@ def api_group_replies_create():
                     'children': [],
                     'reply_count': 0,
                 },
-            })
+            }
+        if thread_payload:
+            app_obj = current_app._get_current_object()
+            threading.Thread(
+                target=_group_steve_agent_thread_runner,
+                args=(
+                    app_obj,
+                    thread_payload[0],
+                    thread_payload[1],
+                    thread_payload[2],
+                    thread_payload[3],
+                ),
+                daemon=True,
+            ).start()
+        return jsonify(resp_body)
     except Exception as e:
         logger.error(f"api_group_replies_create error: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
