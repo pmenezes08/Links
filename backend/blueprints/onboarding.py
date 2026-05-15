@@ -28,6 +28,12 @@ from flask import (
 from backend.services.database import get_db_connection, get_sql_placeholder
 from redis_cache import invalidate_user_cache
 from backend.services.firestore_writes import merge_onboarding_identity_to_steve_profile
+from backend.services.onboarding_llm import (
+    OPENAI_API_KEY as ONBOARDING_OPENAI_API_KEY,
+    XAI_API_KEY as ONBOARDING_XAI_API_KEY,
+    extract_json_object_from_llm_text,
+    run_onboarding_chat_completion,
+)
 
 onboarding_bp = Blueprint("onboarding", __name__)
 logger = logging.getLogger(__name__)
@@ -93,7 +99,6 @@ def _persist_user_cv_pdf(username: str, raw_pdf: bytes, original_filename: str) 
         return False
 
 
-XAI_API_KEY = os.getenv('XAI_API_KEY', '')
 GROK_MODEL_FAST = 'grok-4.3'
 
 
@@ -626,7 +631,7 @@ def onboarding_bootstrap_communities():
 @_login_required
 def onboarding_redirect_message():
     """Handle off-script user messages during onboarding. Returns a natural Steve redirect."""
-    if not XAI_API_KEY:
+    if not ONBOARDING_XAI_API_KEY and not ONBOARDING_OPENAI_API_KEY:
         return jsonify({"success": True, "message": "That's a great question! Let's finish setting up your profile first, then I can help with that."})
 
     data = request.get_json(silent=True) or {}
@@ -638,11 +643,8 @@ def onboarding_redirect_message():
         return jsonify({"success": True, "message": "Let's keep going!"})
 
     try:
-        from openai import OpenAI
-        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
-        response = client.chat.completions.create(
-            model=GROK_MODEL_FAST,
-            messages=[
+        response, _model_used = run_onboarding_chat_completion(
+            [
                 {"role": "system", "content": (
                     "You are Steve, a friendly AI assistant helping a new user set up their CPoint profile. "
                     f'The user is currently on the "{stage}" step where you asked: "{question}". '
@@ -654,6 +656,7 @@ def onboarding_redirect_message():
             ],
             max_tokens=150,
             temperature=0.7,
+            primary_model=GROK_MODEL_FAST,
         )
         msg = (response.choices[0].message.content or "").strip()
         if not msg:
@@ -673,15 +676,12 @@ def onboarding_resolve_role():
     if not text:
         return jsonify({"success": False, "error": "No text provided"}), 400
 
-    if not XAI_API_KEY:
+    if not ONBOARDING_XAI_API_KEY and not ONBOARDING_OPENAI_API_KEY:
         return jsonify({"success": True, "role": text, "company": ""})
 
     try:
-        from openai import OpenAI
-        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
-        response = client.chat.completions.create(
-            model=GROK_MODEL_FAST,
-            messages=[
+        response, _pu = run_onboarding_chat_completion(
+            [
                 {"role": "system", "content": (
                     "You are a job title parser. Given a free-text description of someone's professional role, "
                     "extract the job title/role and the company name (if mentioned). "
@@ -699,10 +699,10 @@ def onboarding_resolve_role():
             ],
             max_tokens=80,
             temperature=0,
+            primary_model=GROK_MODEL_FAST,
         )
         raw = (response.choices[0].message.content or "").strip()
-        import json as _json
-        parsed = _json.loads(raw)
+        parsed = extract_json_object_from_llm_text(raw)
         return jsonify({
             "success": True,
             "role": parsed.get("role", text),
@@ -747,16 +747,13 @@ def onboarding_resolve_location():
             "type": "country_only",
         })
 
-    if not XAI_API_KEY:
+    if not ONBOARDING_XAI_API_KEY and not ONBOARDING_OPENAI_API_KEY:
         return jsonify({"success": True, "city": text, "country": "", "type": "unrecognized"})
 
     try:
-        from openai import OpenAI
-        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
         country_hint = ", ".join(country_names[:30]) + "..." if country_names else ""
-        response = client.chat.completions.create(
-            model=GROK_MODEL_FAST,
-            messages=[
+        response, _pu = run_onboarding_chat_completion(
+            [
                 {"role": "system", "content": (
                     "You are a geography lookup tool. Given a location input, determine the city and country. "
                     "Return ONLY a JSON object with three keys: "
@@ -773,10 +770,10 @@ def onboarding_resolve_location():
             ],
             max_tokens=80,
             temperature=0,
+            primary_model=GROK_MODEL_FAST,
         )
         raw = (response.choices[0].message.content or "").strip()
-        import json as _json
-        parsed = _json.loads(raw)
+        parsed = extract_json_object_from_llm_text(raw)
         resolved_country = parsed.get("country", "")
         if resolved_country and country_names:
             best = next(
@@ -827,7 +824,7 @@ def onboarding_compose_bio():
     username = session["username"]
     reuse_company_intel = (data.get("reuse_company_intel") or "").strip()
 
-    if not XAI_API_KEY:
+    if not ONBOARDING_XAI_API_KEY and not ONBOARDING_OPENAI_API_KEY:
         parts = []
         if kind == "professional":
             if role:
@@ -857,12 +854,8 @@ def onboarding_compose_bio():
         return jsonify({"success": True, "bio": new_text, "company_intel": ""})
 
     try:
-        from openai import OpenAI
-
         from backend.services import ai_usage
         from backend.services import onboarding_company_intel as onboarding_ci
-
-        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
         location = f"{city}, {country}".strip(', ') if city else ""
         professional = ""
@@ -957,14 +950,14 @@ def onboarding_compose_bio():
             )
 
         bio_t0 = time.perf_counter()
-        response = client.chat.completions.create(
-            model=GROK_MODEL_FAST,
-            messages=[
+        response, bio_model_used = run_onboarding_chat_completion(
+            [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             max_tokens=200,
             temperature=0.7,
+            primary_model=GROK_MODEL_FAST,
         )
         bio_rt_ms = int((time.perf_counter() - bio_t0) * 1000)
         bt_in, bt_out = onboarding_ci.usage_from_chat_completion(response)
@@ -979,7 +972,7 @@ def onboarding_compose_bio():
                 success=False,
                 reason_blocked="empty_bio",
                 response_time_ms=bio_rt_ms,
-                model=GROK_MODEL_FAST,
+                model=bio_model_used,
             )
             return jsonify({"success": False, "error": "Empty response", "company_intel": ""}), 500
         ai_usage.log_usage(
@@ -990,7 +983,7 @@ def onboarding_compose_bio():
             tokens_out=bt_out,
             success=True,
             response_time_ms=bio_rt_ms,
-            model=GROK_MODEL_FAST,
+            model=bio_model_used,
         )
 
         company_intel = ""
@@ -1323,16 +1316,14 @@ def onboarding_save_field():
 def onboarding_parse_cv():
     """Extract text from a CV PDF and return structured role, company, work history via LLM."""
     username = session["username"]
-    if not XAI_API_KEY:
+    if not ONBOARDING_XAI_API_KEY and not ONBOARDING_OPENAI_API_KEY:
         return jsonify({"success": False, "error": "CV import is temporarily unavailable"}), 503
-
-    from openai import OpenAI
 
     from backend.services import ai_usage
     from backend.services.onboarding_company_intel import usage_from_chat_completion
     from backend.services.onboarding_cv_import import (
         extract_pdf_text_from_bytes,
-        parse_cv_text_with_chat_completion,
+        parse_cv_text_with_onboarding_fallback,
     )
 
     upload = request.files.get("file")
@@ -1363,10 +1354,11 @@ def onboarding_parse_cv():
     if not text.strip():
         return jsonify({"success": False, "error": "No text found in PDF (scanned documents are not supported yet)"}), 400
 
-    client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
     t0 = time.perf_counter()
     try:
-        normalized, response = parse_cv_text_with_chat_completion(text, client=client, model=GROK_MODEL_FAST)
+        normalized, response, cv_model_used = parse_cv_text_with_onboarding_fallback(
+            text, primary_model=GROK_MODEL_FAST
+        )
     except Exception as exc:
         logger.warning("onboarding_parse_cv LLM failed for %s: %s", username, exc)
         try:
@@ -1394,7 +1386,7 @@ def onboarding_parse_cv():
             success=False,
             reason_blocked="cv_parse_empty",
             response_time_ms=rt_ms,
-            model=GROK_MODEL_FAST,
+            model=cv_model_used,
         )
         return jsonify({
             "success": False,
@@ -1409,7 +1401,7 @@ def onboarding_parse_cv():
         tokens_out=tout,
         success=True,
         response_time_ms=rt_ms,
-        model=GROK_MODEL_FAST,
+        model=cv_model_used,
     )
 
     persist = _truthy_param(request.args.get("persist")) or _truthy_param(

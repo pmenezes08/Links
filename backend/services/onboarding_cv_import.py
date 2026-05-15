@@ -158,6 +158,36 @@ def normalize_llm_cv_payload(parsed: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def parse_cv_text_with_onboarding_fallback(
+    cv_text: str,
+    *,
+    primary_model: str,
+) -> Tuple[Dict[str, Any], Any, str]:
+    """Parse CV text via chat completions: xAI primary, OpenAI gpt-4o fallback."""
+    from backend.services.onboarding_llm import run_onboarding_chat_completion
+
+    trimmed = (cv_text or "").strip()
+    if not trimmed:
+        raise ValueError("empty_cv_text")
+
+    user_prompt = (
+        "CV / resume text follows. Extract JSON per instructions.\n\n---\n" + trimmed[:MAX_CV_TEXT_CHARS]
+    )
+    response, model_used = run_onboarding_chat_completion(
+        [
+            {"role": "system", "content": _CV_JSON_SYSTEM},
+            {"role": "user", "content": user_prompt},
+        ],
+        max_tokens=2000,
+        temperature=0.2,
+        primary_model=primary_model,
+    )
+    raw_msg = (response.choices[0].message.content or "").strip() if response.choices else ""
+    parsed = _extract_json_object(raw_msg)
+    normalized = normalize_llm_cv_payload(parsed)
+    return normalized, response, model_used
+
+
 def parse_cv_text_with_chat_completion(
     cv_text: str,
     *,

@@ -1,7 +1,7 @@
 # Steve & Voice Notes — Architecture Guide
 
 **Status:** Required reading before you build or touch anything Steve- or
-voice-note related. Last updated 2026-05-14.
+voice-note related. Last updated 2026-05-15.
 
 This document is the single source of truth for how Steve (the LLM
 assistant) and Whisper (audio transcription) are wired into C-Point. If
@@ -66,6 +66,12 @@ reintroduce it.
 Preset **agents** on **`group_posts` / `group_replies`**: owners enable on **group create** (requires **Steve Community Package** on the billing root); members use **Ask Steve** on a post; optional **delayed** first reply via cron (**`/api/cron/group-steve-agent-due`**); **`@Steve`** cancels the pending job; **five** auto-budget replies per post then **static** cap notice; **`@Steve`** continues without consuming that budget. Same **`check_steve_access`** / **`log_usage`** / **`SURFACE_GROUP`** pool rules as other group Steve.
 
 **Spec and ops:** [`STEVE_GROUP_AGENT.md`](STEVE_GROUP_AGENT.md).
+
+---
+
+## Onboarding profile helpers (non-Steve)
+
+**[`backend/services/onboarding_llm.py`](backend/services/onboarding_llm.py)** runs **chat.completions** for onboarding routes with **xAI** first (`grok-4.3` primary) and **OpenAI `gpt-4o`** as fallback when **`OPENAI_API_KEY`** is set and the primary call fails. Log with **`surface=onboarding_ai`** and the **`model`** column set to the provider model id that succeeded. **Company intel** ([`onboarding_company_intel.fetch_company_intel_blurb`](backend/services/onboarding_company_intel.py)) still uses xAI **responses** + **web_search** only (no OpenAI fallback in v1).
 
 ---
 
