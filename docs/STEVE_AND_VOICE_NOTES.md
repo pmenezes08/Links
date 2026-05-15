@@ -128,9 +128,11 @@ wrong surface is how counters desync.
 | `SURFACE_VOICE_SUMMARY` | GPT summary of a transcribed voice note |
 | `SURFACE_WHISPER` | Audio transcription (the Whisper API call itself). **Always** log `duration_seconds`. |
 | `SURFACE_CONTENT_GEN` | Community-pool content generation. Not counted in `STEVE_SURFACES`. |
+| `SURFACE_ONBOARDING_AI` | Onboarding helpers (e.g. `onboarding_compose_bio`, **`onboarding_parse_cv`**) — logs to `ai_usage_log` but **does not** increment `monthly_steve_count` / personal Steve caps (see `STEVE_SURFACES` in `ai_usage.py`). Uses xAI like other onboarding Grok calls; **no** separate `require_steve_access` gate today. |
 
 `STEVE_SURFACES = (DM, GROUP, FEED, POST_SUMMARY, VOICE_SUMMARY)` — this
 set is what counts against `steve_uses_per_month` and `ai_daily_limit`.
+(Onboarding AI is intentionally **out of** this set.)
 
 **Steve DM pipeline (`run_steve_dm_reply`).** `gate_or_reason(..., SURFACE_DM)` runs **before**
 feedback capture, Reminder Vault, platform digest, or Grok. Without `can_use_steve`,

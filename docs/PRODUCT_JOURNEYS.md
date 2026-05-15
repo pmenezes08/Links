@@ -98,7 +98,7 @@ Cloud Scheduler POSTs to **`/api/cron/*`** on **`cpoint-app`** (or staging) with
 
 ## 7. Onboarding (Steve-guided setup)
 
-Onboarding stages and APIs: **`backend/blueprints/onboarding.py`** plus services such as **`onboarding_bootstrap`**, **`onboarding_company_intel`**. **Firestore** collection **`steve_onboarding`** holds progressive state — see **`MYSQL_AND_FIRESTORE.md`**. Client navigates stages; backend enforces progression and ties into **Steve** where applicable.
+Onboarding stages and APIs: **`backend/blueprints/onboarding.py`** plus services such as **`onboarding_bootstrap`**, **`onboarding_company_intel`**, **`onboarding_cv_import`** (optional **PDF CV** upload: **`POST /api/onboarding/parse_cv`** extracts text locally, Grok returns structured current role / company / `current_role_start_ym` / prior roles; **`POST /api/onboarding/apply_professional_structured`** persists to **`users`** after the user confirms). **Firestore** collection **`steve_onboarding`** holds progressive state — see **`MYSQL_AND_FIRESTORE.md`**. Client navigates stages; backend enforces progression and ties into **Steve** where applicable.
 
 ---
 

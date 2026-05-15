@@ -30,6 +30,8 @@ PROFESSIONAL_STAGES = {
     "professional_strengths",
     "linkedin",
     "professional_bio_review",
+    "cv_upload",
+    "cv_review",
 }
 
 
@@ -212,6 +214,9 @@ def next_unanswered_profile_stage(
     saved_stage = str(stage or "").strip()
     if saved_stage == "complete":
         return "complete"
+
+    if saved_stage in ("cv_upload", "cv_review"):
+        return saved_stage
 
     if saved_stage in PERSONAL_STAGES:
         if data.get("personalSectionComplete"):

@@ -1242,6 +1242,164 @@ def onboarding_save_field():
         return jsonify({"success": False, "error": "Failed to save"}), 500
 
 
+@onboarding_bp.route("/api/onboarding/parse_cv", methods=["POST"])
+@_login_required
+def onboarding_parse_cv():
+    """Extract text from a CV PDF and return structured role, company, work history via LLM."""
+    username = session["username"]
+    if not XAI_API_KEY:
+        return jsonify({"success": False, "error": "CV import is temporarily unavailable"}), 503
+
+    from openai import OpenAI
+
+    from backend.services import ai_usage
+    from backend.services.onboarding_company_intel import usage_from_chat_completion
+    from backend.services.onboarding_cv_import import (
+        extract_pdf_text_from_bytes,
+        parse_cv_text_with_chat_completion,
+    )
+
+    upload = request.files.get("file")
+    if not upload or not getattr(upload, "filename", ""):
+        return jsonify({"success": False, "error": "No file uploaded"}), 400
+
+    filename = (upload.filename or "").lower()
+    if not filename.endswith(".pdf"):
+        return jsonify({"success": False, "error": "Please upload a PDF file"}), 400
+
+    try:
+        raw = upload.read()
+    except Exception as exc:
+        logger.warning("onboarding_parse_cv read failed for %s: %s", username, exc)
+        return jsonify({"success": False, "error": "Could not read file"}), 400
+
+    try:
+        text = extract_pdf_text_from_bytes(raw)
+    except ValueError as ve:
+        if str(ve) == "file_too_large":
+            return jsonify({"success": False, "error": "File is too large (max 10 MB)"}), 400
+        return jsonify({"success": False, "error": "Could not read PDF"}), 400
+    except Exception as exc:
+        logger.warning("onboarding_parse_cv extract failed for %s: %s", username, exc)
+        return jsonify({"success": False, "error": "Could not read PDF"}), 400
+
+    if not text.strip():
+        return jsonify({"success": False, "error": "No text found in PDF (scanned documents are not supported yet)"}), 400
+
+    client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+    t0 = time.perf_counter()
+    try:
+        normalized, response = parse_cv_text_with_chat_completion(text, client=client, model=GROK_MODEL_FAST)
+    except Exception as exc:
+        logger.warning("onboarding_parse_cv LLM failed for %s: %s", username, exc)
+        try:
+            ai_usage.log_usage(
+                username,
+                surface=ai_usage.SURFACE_ONBOARDING_AI,
+                request_type="onboarding_parse_cv",
+                success=False,
+                reason_blocked="cv_parse_error",
+                model=GROK_MODEL_FAST,
+            )
+        except Exception:
+            pass
+        return jsonify({"success": False, "error": "Could not parse CV. Try again or enter details manually."}), 500
+
+    rt_ms = int((time.perf_counter() - t0) * 1000)
+    tin, tout = usage_from_chat_completion(response)
+    if not (normalized.get("role") or "").strip() and not (normalized.get("company") or "").strip() and not normalized.get("work_history"):
+        ai_usage.log_usage(
+            username,
+            surface=ai_usage.SURFACE_ONBOARDING_AI,
+            request_type="onboarding_parse_cv",
+            tokens_in=tin,
+            tokens_out=tout,
+            success=False,
+            reason_blocked="cv_parse_empty",
+            response_time_ms=rt_ms,
+            model=GROK_MODEL_FAST,
+        )
+        return jsonify({
+            "success": False,
+            "error": "Could not detect a clear current role from the CV. You can still enter it manually.",
+        }), 422
+
+    ai_usage.log_usage(
+        username,
+        surface=ai_usage.SURFACE_ONBOARDING_AI,
+        request_type="onboarding_parse_cv",
+        tokens_in=tin,
+        tokens_out=tout,
+        success=True,
+        response_time_ms=rt_ms,
+        model=GROK_MODEL_FAST,
+    )
+
+    return jsonify({
+        "success": True,
+        "role": normalized.get("role") or "",
+        "company": normalized.get("company") or "",
+        "current_role_start_ym": normalized.get("current_role_start_ym") or "",
+        "work_history": normalized.get("work_history") or [],
+    })
+
+
+@onboarding_bp.route("/api/onboarding/apply_professional_structured", methods=["POST"])
+@_login_required
+def onboarding_apply_professional_structured():
+    """Persist role, company, role start, and work history from confirmed CV import."""
+    username = session["username"]
+    data = request.get_json(silent=True) or {}
+    role = (data.get("role") or "").strip()
+    company = (data.get("company") or "").strip()
+    current_role_start_ym = (data.get("current_role_start_ym") or "").strip()
+    raw_wh = data.get("work_history")
+
+    from backend.services.profile_structured_fields import normalize_yyyy_mm, parse_work_history_for_storage
+
+    if not role and not company:
+        if not isinstance(raw_wh, list) or not raw_wh:
+            return jsonify({"success": False, "error": "Role or company required"}), 400
+
+    ym = normalize_yyyy_mm(current_role_start_ym)
+    if raw_wh is None:
+        raw_wh = []
+    if not isinstance(raw_wh, list):
+        return jsonify({"success": False, "error": "work_history must be a list"}), 400
+    work_json, _ = parse_work_history_for_storage(json.dumps(raw_wh, ensure_ascii=False))
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(
+                f"""
+                UPDATE users SET
+                    role = {ph},
+                    company = {ph},
+                    current_role_start_ym = {ph},
+                    professional_work_history = {ph}
+                WHERE username = {ph}
+                """,
+                (role or None, company or None, ym or None, work_json, username),
+            )
+            conn.commit()
+        try:
+            invalidate_user_cache(username)
+        except Exception:
+            pass
+        try:
+            from bodybuilding_app import _trigger_background_profile_analysis
+
+            _trigger_background_profile_analysis(username)
+        except Exception as trig_err:
+            logger.warning("apply_professional_structured analysis trigger failed for %s: %s", username, trig_err)
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error("onboarding_apply_professional_structured error for %s: %s", username, e)
+        return jsonify({"success": False, "error": "Failed to save"}), 500
+
+
 @onboarding_bp.route("/api/onboarding/social_links", methods=["POST"])
 @_login_required
 def onboarding_save_social_links():

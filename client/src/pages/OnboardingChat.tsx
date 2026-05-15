@@ -28,6 +28,8 @@ type Stage =
   | 'reach_out'
   | 'personal_bio_review'
   | 'professional_section_intro'
+  | 'cv_upload'
+  | 'cv_review'
   | 'professional'
   | 'professional_confirm'
   | 'fix_role'
@@ -49,12 +51,22 @@ type Stage =
 type PbFieldKey = 'city' | 'country' | 'role' | 'company'
 type ProfileSection = 'personal' | 'professional'
 
+type WorkHistoryRow = {
+  title: string
+  company: string
+  location: string
+  start: string
+  end: string
+  description: string
+}
+
 interface ChatMessage {
   from: 'steve' | 'user'
   text: string
   options?: { label: string; value: string; icon?: string }[]
   cards?: EnrichmentCard[]
   photoUpload?: boolean
+  cvUpload?: boolean
   inputType?: 'text' | 'url' | 'textarea'
   inputPlaceholder?: string
   composedBio?: string
@@ -128,6 +140,10 @@ interface Collected {
   reachOut: string
   journey: string
   companyIntel?: string
+  /** YYYY-MM for current role from CV / profile structured fields */
+  currentRoleStartYm?: string
+  /** Prior roles from CV import (maps to users.professional_work_history) */
+  workHistory?: WorkHistoryRow[]
   personalSectionComplete?: boolean
   professionalSectionComplete?: boolean
   activeProfileSection?: ProfileSection
@@ -162,6 +178,7 @@ const PERSONAL_SECTION_STEPS = [
 ]
 
 const PROFESSIONAL_SECTION_STEPS = [
+  'Optional: import CV (PDF)',
   'Role or current work',
   'Collaboration signals',
   'Strengths',
@@ -272,6 +289,8 @@ function stageProgress(stage: Stage): number {
     optional_social: 5,
     personal_bio_review: 6,
     professional_section_intro: 6,
+    cv_upload: 6,
+    cv_review: 6,
     professional: 6,
     professional_confirm: 6,
     fix_role: 6,
@@ -340,7 +359,7 @@ function normalizeResumeStage(savedStage: Stage, c: Collected): Stage {
   if (savedStage === 'talk_all_day' || savedStage === 'reach_out' || savedStage === 'journey' || savedStage === 'recommend' || savedStage === 'optional_social' || savedStage === 'personal_bio_review') {
     return c.personalSectionComplete ? nextIncompleteProfileStage(c) : firstUnansweredStageForSection('personal', c)
   }
-  if (savedStage === 'professional' || savedStage === 'professional_confirm' || savedStage === 'fix_role' || savedStage === 'fix_company' || savedStage === 'professional_associations' || savedStage === 'professional_strengths' || savedStage === 'linkedin' || savedStage === 'professional_bio_review') {
+  if (savedStage === 'professional' || savedStage === 'professional_confirm' || savedStage === 'fix_role' || savedStage === 'fix_company' || savedStage === 'professional_associations' || savedStage === 'professional_strengths' || savedStage === 'linkedin' || savedStage === 'professional_bio_review' || savedStage === 'cv_upload' || savedStage === 'cv_review') {
     return c.professionalSectionComplete ? nextIncompleteProfileStage(c) : firstUnansweredStageForSection('professional', c)
   }
   if (savedStage === 'section_picker') {
@@ -504,6 +523,8 @@ export default function OnboardingChat({
   })
   const [isTyping, setIsTyping] = useState(false)
   const [picFile, setPicFile] = useState<File | null>(null)
+  const [cvFile, setCvFile] = useState<File | null>(null)
+  const [cvUploading, setCvUploading] = useState(false)
   const [picPreview, setPicPreview] = useState(existingProfilePic || '')
   const [uploadingPic, setUploadingPic] = useState(false)
   const [enrichmentCards, setEnrichmentCards] = useState<EnrichmentCard[]>([])
@@ -538,6 +559,7 @@ export default function OnboardingChat({
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const cvFileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const keyboardOffsetRef = useRef(0)
@@ -1081,7 +1103,7 @@ export default function OnboardingChat({
       }
       case 'professional_section_intro':
         addSteveMessage(
-          "Let's build your Professional Identity. This has 5 steps, including 3 dedicated questions, LinkedIn, and your professional bio draft. It takes about 2 minutes and helps make your work and collaboration context clear.",
+          "Let's build your Professional Identity. This has up to 6 steps, including an optional CV import, 3 dedicated questions, LinkedIn, and your professional bio draft. It takes about 2 minutes and helps make your work and collaboration context clear.",
           {
             sectionCard: {
               title: 'Professional Identity',
@@ -1089,11 +1111,26 @@ export default function OnboardingChat({
               steps: PROFESSIONAL_SECTION_STEPS,
             },
             options: [
+              { label: 'Import from CV (PDF)', value: 'start_cv_upload', icon: '📄' },
               { label: 'Start professional section', value: 'start_professional_section' },
               { label: 'Finish later', value: 'open_defer_modal' },
             ],
           },
         )
+        break
+      case 'cv_upload':
+        addSteveMessage(
+          'Upload your CV as a **PDF** (max 10 MB). I will read the text and fill your current role, company, and past experience. Your file is not stored — it is only processed in memory.',
+          {
+            cvUpload: true,
+            options: [
+              { label: 'Type manually instead', value: 'cv_skip_to_manual', icon: '✏️' },
+              { label: '← Go back', value: 'go_back', icon: '↩️' },
+            ],
+          },
+        )
+        break
+      case 'cv_review':
         break
       case 'professional_associations':
         addSteveMessage('What kinds of work, ideas, or opportunities should people associate you with?', {
@@ -1196,7 +1233,7 @@ export default function OnboardingChat({
     const mainStages: Stage[] = [
       'name', 'location', 'photo', 'section_picker', 'personal_section_intro', 'talk_all_day',
       'reach_out', 'journey', 'recommend', 'optional_social', 'personal_bio_review',
-      'professional_section_intro', 'professional', 'professional_associations',
+      'professional_section_intro', 'cv_upload', 'cv_review', 'professional', 'professional_associations',
       'professional_strengths', 'linkedin', 'professional_bio_review', 'profile_review',
     ]
     if (mainStages.includes(next)) {
@@ -1674,7 +1711,7 @@ export default function OnboardingChat({
         break
       }
       case 'choose_professional_section': {
-        addUserMessage('Professional Identity - about 2 minutes - 5 steps - 3 questions')
+        addUserMessage('Professional Identity - about 2 minutes - up to 6 steps - 3 questions')
         const order = collected.profileSectionOrder?.includes('professional')
           ? collected.profileSectionOrder
           : [...(collected.profileSectionOrder || []), 'professional' as ProfileSection]
@@ -1687,6 +1724,87 @@ export default function OnboardingChat({
         addUserMessage('Review profile')
         advanceTo('profile_review')
         break
+      case 'start_cv_upload':
+        addUserMessage('Import from CV (PDF)')
+        advanceTo('cv_upload', collected)
+        break
+      case 'cv_skip_to_manual':
+        addUserMessage('Type manually')
+        advanceTo('professional', { ...collected, workHistory: undefined, currentRoleStartYm: '' })
+        break
+      case 'confirm_cv_import': {
+        addUserMessage('Looks good — save and continue')
+        ;(async () => {
+          const c = collected
+          try {
+            const r = await fetch('/api/onboarding/apply_professional_structured', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                role: c.role || '',
+                company: c.company || '',
+                current_role_start_ym: c.currentRoleStartYm || '',
+                work_history: c.workHistory || [],
+              }),
+            })
+            const j = await r.json().catch(() => null)
+            if (r.ok && j?.success) {
+              if (c.role?.trim()) await saveField('role', c.role)
+              if (c.company?.trim()) await saveField('company', c.company)
+              advanceTo('professional_confirm', c)
+            } else {
+              addSteveMessage((j?.error as string) || 'Could not save your CV details. Try again or continue manually.', {
+                options: [
+                  { label: 'Try again', value: 'confirm_cv_import', icon: '↻' },
+                  { label: 'Type manually', value: 'reject_cv_import', icon: '✏️' },
+                ],
+              })
+            }
+          } catch {
+            addSteveMessage('Network issue saving your CV details. Try again in a moment.', {
+              options: [
+                { label: 'Try again', value: 'confirm_cv_import', icon: '↻' },
+                { label: 'Type manually', value: 'reject_cv_import', icon: '✏️' },
+              ],
+            })
+          }
+        })()
+        break
+      }
+      case 'reject_cv_import': {
+        addUserMessage("I'll type it instead")
+        const reset: Collected = {
+          ...collected,
+          role: '',
+          company: '',
+          currentRoleStartYm: '',
+          workHistory: undefined,
+        }
+        setCollected(reset)
+        advanceTo('professional', reset)
+        break
+      }
+      case 'cv_retry_pick': {
+        addUserMessage('Pick another file')
+        setCvFile(null)
+        try {
+          if (cvFileInputRef.current) cvFileInputRef.current.value = ''
+        } catch {}
+        setStage('cv_upload')
+        saveState('cv_upload', collected)
+        addSteveMessage(
+          'Upload your CV as a **PDF** (max 10 MB). I will read the text and fill your current role, company, and past experience. Your file is not stored — it is only processed in memory.',
+          {
+            cvUpload: true,
+            options: [
+              { label: 'Type manually instead', value: 'cv_skip_to_manual', icon: '✏️' },
+              { label: '← Go back', value: 'go_back', icon: '↩️' },
+            ],
+          },
+        )
+        break
+      }
       case 'start_personal_section':
         addUserMessage('Start personal section')
         advanceTo('talk_all_day')
@@ -2130,6 +2248,8 @@ export default function OnboardingChat({
         b2b_org_type: OCopy.ORG_TYPE_PROMPT,
         b2b_parent_name: 'What should we call this network?',
         b2b_sub_names: 'List sub-communities separated by commas, or use the skip button.',
+        cv_upload: 'Upload your CV as a PDF.',
+        cv_review: 'Review what we extracted from your CV.',
       }
       const r = await fetch('/api/onboarding/redirect', {
         method: 'POST',
@@ -2186,7 +2306,92 @@ export default function OnboardingChat({
     const f = e.target.files?.[0]
     if (f) {
       setPicFile(f)
-      try { setPicPreview(URL.createObjectURL(f)) } catch {}
+      try {
+        setPicPreview(URL.createObjectURL(f))
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  function handleCvFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if (f) setCvFile(f)
+  }
+
+  async function handleCvParseUpload() {
+    if (!cvFile) return
+    setCvUploading(true)
+    setIsTyping(true)
+    addSteveMessage('Reading your CV…')
+    try {
+      const fd = new FormData()
+      fd.append('file', cvFile)
+      const r = await fetch('/api/onboarding/parse_cv', { method: 'POST', credentials: 'include', body: fd })
+      const j = await r.json().catch(() => null)
+      setIsTyping(false)
+      if (r.ok && j?.success) {
+        const wh: WorkHistoryRow[] = Array.isArray(j.work_history)
+          ? j.work_history.map((row: Record<string, unknown>) => ({
+              title: String(row.title ?? ''),
+              company: String(row.company ?? ''),
+              location: String(row.location ?? ''),
+              start: String(row.start ?? ''),
+              end: String(row.end ?? ''),
+              description: String(row.description ?? ''),
+            }))
+          : []
+        const newCollected: Collected = {
+          ...collected,
+          role: String(j.role || ''),
+          company: String(j.company || ''),
+          currentRoleStartYm: String(j.current_role_start_ym || ''),
+          workHistory: wh,
+        }
+        setCollected(newCollected)
+        setCvFile(null)
+        try {
+          if (cvFileInputRef.current) cvFileInputRef.current.value = ''
+        } catch {}
+        const priorN = wh.length
+        const startLine = newCollected.currentRoleStartYm
+          ? `\nStarted (approx.): ${newCollected.currentRoleStartYm}`
+          : ''
+        const roleLine = newCollected.role?.trim() || '—'
+        const compLine = newCollected.company?.trim() || '—'
+        addSteveMessage(
+          `Here's what I pulled from your CV:\n\nCurrent role: ${roleLine}\nCompany: ${compLine}${startLine}\nPrior roles in work history: ${priorN}\n\nUse this for your profile?`,
+          {
+            options: [
+              { label: 'Looks good', value: 'confirm_cv_import', icon: '✅' },
+              { label: "I'll type it instead", value: 'reject_cv_import', icon: '✏️' },
+            ],
+          },
+        )
+        setStage('cv_review')
+        saveState('cv_review', newCollected)
+      } else {
+        const err = (j?.error as string) || 'Could not read that PDF.'
+        addSteveMessage(err, {
+          cvUpload: true,
+          options: [
+            { label: 'Try another file', value: 'cv_retry_pick', icon: '↻' },
+            { label: 'Type manually instead', value: 'cv_skip_to_manual', icon: '✏️' },
+            { label: '← Go back', value: 'go_back', icon: '↩️' },
+          ],
+        })
+      }
+    } catch {
+      setIsTyping(false)
+      addSteveMessage('Network issue — check your connection and try again.', {
+        cvUpload: true,
+        options: [
+          { label: 'Try again', value: 'cv_retry_pick', icon: '↻' },
+          { label: 'Type manually', value: 'cv_skip_to_manual', icon: '✏️' },
+        ],
+      })
+    } finally {
+      setCvUploading(false)
     }
   }
 
@@ -2195,11 +2400,18 @@ export default function OnboardingChat({
   }, [messages, isTyping, scrollToBottom])
 
   const lastSteveMsg = [...messages].reverse().find(m => m.from === 'steve')
-  const showInput = lastSteveMsg?.inputType && stage !== 'enriching' && stage !== 'review' && stage !== 'complete' && !composingBio
+  const showCvUpload = Boolean(lastSteveMsg?.cvUpload && stage === 'cv_upload')
+  const showInput =
+    Boolean(lastSteveMsg?.inputType) &&
+    stage !== 'enriching' &&
+    stage !== 'review' &&
+    stage !== 'complete' &&
+    !composingBio &&
+    !showCvUpload
   const showPhotoUpload = lastSteveMsg?.photoUpload && stage === 'photo'
   const keyboardLift = keyboardOffset > 0 ? Math.max(0, keyboardOffset - safeBottomPx) : 0
   const composerBottom = `${keyboardLift}px`
-  const composerClearance = showPhotoUpload ? 124 : showInput ? 112 : 24
+  const composerClearance = showPhotoUpload || showCvUpload ? 124 : showInput ? 112 : 24
   const composerPaddingBottom = keyboardLift > 0 ? '8px' : `calc(env(safe-area-inset-bottom, 0px) + 8px)`
 
   if (booting) {
@@ -2312,7 +2524,7 @@ export default function OnboardingChat({
                             className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-left transition hover:border-[#4db6ac]/35 hover:bg-[#4db6ac]/10"
                           >
                             <div className="text-[12px] font-semibold text-white">Professional Identity</div>
-                            <div className="mt-1 text-[11px] text-white/55">About 2 minutes · 5 steps · 3 questions · {msg.sectionPicker.professionalStatus}</div>
+                            <div className="mt-1 text-[11px] text-white/55">About 2 minutes · up to 6 steps · 3 questions · {msg.sectionPicker.professionalStatus}</div>
                           </button>
                         </div>
                       </div>
@@ -2544,6 +2756,63 @@ export default function OnboardingChat({
                     className="px-4 py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110 transition w-full disabled:opacity-50"
                   >
                     {uploadingPic ? 'Uploading...' : 'Upload photo'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCvUpload && (
+        <div
+          className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3"
+          style={{
+            bottom: composerBottom,
+            position: 'fixed',
+            left: '0',
+            right: '0',
+            zIndex: 1000,
+            paddingBottom: composerPaddingBottom,
+          }}
+        >
+          <div className="max-w-lg mx-auto">
+            <input
+              ref={cvFileInputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              onChange={handleCvFileSelect}
+              className="hidden"
+            />
+            <div className="flex items-center gap-3">
+              <div
+                onClick={() => !cvUploading && cvFileInputRef.current?.click()}
+                className="w-14 h-14 rounded-xl border-2 border-dashed border-white/20 flex items-center justify-center cursor-pointer hover:border-[#4db6ac]/50 transition shrink-0"
+                role="presentation"
+              >
+                <i className="fa-solid fa-file-pdf text-white/35 text-lg" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] text-white/50 truncate mb-1.5">
+                  {cvFile ? cvFile.name : 'No file selected'}
+                </div>
+                {!cvFile ? (
+                  <button
+                    type="button"
+                    onClick={() => cvFileInputRef.current?.click()}
+                    disabled={cvUploading}
+                    className="px-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white/70 hover:bg-white/[0.1] transition w-full disabled:opacity-50"
+                  >
+                    Choose PDF
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleCvParseUpload}
+                    disabled={cvUploading}
+                    className="px-4 py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110 transition w-full disabled:opacity-50"
+                  >
+                    {cvUploading ? 'Reading CV…' : 'Upload & extract'}
                   </button>
                 )}
               </div>

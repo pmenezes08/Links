@@ -210,7 +210,7 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/event_notification_check` | POST | `api_event_notification_check` | `backend/blueprints/notifications.py:1244` | api event notification check | *(no exact string match — may use helpers)* |
 | `/api/cron/events/reminders` | POST | `api_event_notification_check` | `backend/blueprints/notifications.py:1245` | api event notification check | *(no exact string match — may use helpers)* |
 | `/api/cron/steve/reminder-vault-dispatch` | POST | `api_cron_steve_reminder_vault_dispatch` | `backend/blueprints/notifications.py:1314` | api cron steve reminder vault dispatch | *(no exact string match — may use helpers)* |
-| `/onboarding` | GET (default) | `onboarding_react` | `backend/blueprints/onboarding.py:63` | onboarding react | `client/src/pages/OnboardingChat.tsx` (15), `client/src/App.tsx` (3), `client/src/pages/PremiumDashboard.tsx` (3), `client/src/components/onboarding/OnboardingIntroGate.test.tsx` (1), `client/src/components/onboarding/OnboardingIntroGate.tsx` (1) |
+| `/onboarding` | GET (default) | `onboarding_react` | `backend/blueprints/onboarding.py:63` | onboarding react | `client/src/pages/OnboardingChat.tsx` (17), `client/src/App.tsx` (3), `client/src/pages/PremiumDashboard.tsx` (3), `client/src/components/onboarding/OnboardingIntroGate.test.tsx` (1), `client/src/components/onboarding/OnboardingIntroGate.tsx` (1) |
 | `/debug_onboarding` | GET (default) | `debug_onboarding` | `backend/blueprints/onboarding.py:90` | debug onboarding | *(no exact string match — may use helpers)* |
 | `/clear_onboarding_storage` | GET, POST | `clear_onboarding_storage` | `backend/blueprints/onboarding.py:305` | clear onboarding storage | *(no exact string match — may use helpers)* |
 | `/onboarding/welcome` | GET (default) | `onboarding_welcome` | `backend/blueprints/onboarding.py:354` | onboarding welcome | *(no exact string match — may use helpers)* |
@@ -226,8 +226,10 @@ For **monolith** routes, many legacy HTML + JSON surfaces coexist — prefer new
 | `/api/onboarding/compose_bio` | POST | `onboarding_compose_bio` | `backend/blueprints/onboarding.py:737` | onboarding compose bio | `client/src/pages/OnboardingChat.tsx` (1) |
 | `/api/onboarding/enrich` | POST | `onboarding_enrich_profile` | `backend/blueprints/onboarding.py:998` | onboarding enrich profile | *(no exact string match — may use helpers)* |
 | `/api/onboarding/save_field` | POST | `onboarding_save_field` | `backend/blueprints/onboarding.py:1188` | onboarding save field | `client/src/pages/OnboardingChat.tsx` (1) |
-| `/api/onboarding/social_links` | POST | `onboarding_save_social_links` | `backend/blueprints/onboarding.py:1245` | onboarding save social links | `client/src/pages/OnboardingChat.tsx` (1) |
-| `/api/onboarding/complete` | POST | `onboarding_complete` | `backend/blueprints/onboarding.py:1262` | onboarding complete | `client/src/pages/OnboardingChat.tsx` (1) |
+| `/api/onboarding/parse_cv` | POST | `onboarding_parse_cv` | `backend/blueprints/onboarding.py:1245` | onboarding parse cv | `client/src/pages/OnboardingChat.tsx` (1) |
+| `/api/onboarding/apply_professional_structured` | POST | `onboarding_apply_professional_structured` | `backend/blueprints/onboarding.py:1347` | onboarding apply professional structured | `client/src/pages/OnboardingChat.tsx` (1) |
+| `/api/onboarding/social_links` | POST | `onboarding_save_social_links` | `backend/blueprints/onboarding.py:1403` | onboarding save social links | `client/src/pages/OnboardingChat.tsx` (1) |
+| `/api/onboarding/complete` | POST | `onboarding_complete` | `backend/blueprints/onboarding.py:1420` | onboarding complete | `client/src/pages/OnboardingChat.tsx` (1) |
 | `/api/me/platform-activity-digest` | GET | `api_platform_activity_digest` | `backend/blueprints/platform_activity.py:34` | api platform activity digest | *(no exact string match — may use helpers)* |
 | `/api/post_view` | POST | `api_post_view` | `backend/blueprints/post_views.py:28` | api post view | `client/src/pages/CommunityFeed.tsx` (1), `client/src/pages/HomeTimeline.tsx` (1), `client/src/pages/PostDetail.tsx` (1) |
 | `/` | GET | `index` | `backend/blueprints/public.py:23` | index | *(no exact string match — may use helpers)* |
