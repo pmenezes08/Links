@@ -71,7 +71,7 @@ Preset **agents** on **`group_posts` / `group_replies`**: owners enable on **gro
 
 ## Onboarding profile helpers (non-Steve)
 
-**[`backend/services/onboarding_llm.py`](backend/services/onboarding_llm.py)** runs **chat.completions** for onboarding routes with **xAI** first (`grok-4.3` primary) and **OpenAI `gpt-4o`** as fallback when **`OPENAI_API_KEY`** is set and the primary call fails. Log with **`surface=onboarding_ai`** and the **`model`** column set to the provider model id that succeeded. **Company intel** ([`onboarding_company_intel.fetch_company_intel_blurb`](backend/services/onboarding_company_intel.py)) still uses xAI **responses** + **web_search** only (no OpenAI fallback in v1).
+**[`backend/services/onboarding_llm.py`](backend/services/onboarding_llm.py)** runs **chat.completions** for onboarding routes with **xAI** first (`grok-4.3` primary) and **OpenAI `gpt-4o`** as fallback when **`OPENAI_API_KEY`** is set and the primary call fails. Log with **`surface=onboarding_ai`** and the **`model`** column set to the provider model id that succeeded. **Company intel** ([`onboarding_company_intel.fetch_company_intel_blurb`](backend/services/onboarding_company_intel.py)) uses **xAI** **Responses** + **`web_search`** first, then **OpenAI** **Responses** + **`web_search`** when xAI is missing or returns no usable blurb; optional model id via **`ONBOARDING_OPENAI_COMPANY_INTEL_MODEL`** (default **`gpt-5.5`**). Usage rows use the winning provider’s **`model`** id.
 
 ---
 

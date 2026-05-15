@@ -992,7 +992,9 @@ def onboarding_compose_bio():
                 company_intel = reuse_company_intel
             else:
                 intel_t0 = time.perf_counter()
-                company_intel, ci_resp = onboarding_ci.fetch_company_intel_blurb(company, role=role)
+                company_intel, ci_resp, ci_model = onboarding_ci.fetch_company_intel_blurb(
+                    company, role=role
+                )
                 intel_rt_ms = int((time.perf_counter() - intel_t0) * 1000)
                 cit, cout = onboarding_ci.usage_from_responses_api(ci_resp)
                 if company_intel:
@@ -1004,7 +1006,7 @@ def onboarding_compose_bio():
                         tokens_out=cout,
                         success=True,
                         response_time_ms=intel_rt_ms,
-                        model=onboarding_ci.GROK_MODEL,
+                        model=ci_model,
                     )
                 else:
                     ai_usage.log_usage(
@@ -1016,7 +1018,7 @@ def onboarding_compose_bio():
                         success=False,
                         reason_blocked="company_intel_failed",
                         response_time_ms=intel_rt_ms,
-                        model=onboarding_ci.GROK_MODEL,
+                        model=ci_model,
                     )
 
         return jsonify({"success": True, "bio": bio, "company_intel": company_intel})
