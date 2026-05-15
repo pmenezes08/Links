@@ -87,6 +87,19 @@ def should_include_community_resources(user_message: str) -> bool:
     return bool(_COMMUNITY_RESOURCE_RE.search(user_message or ""))
 
 
+def render_third_party_job_grounding_rules() -> str:
+    """Shared bullets for feed, DM, and group-chat system prompts (append where tool rules live)."""
+    return (
+        "THIRD-PARTY JOBS / EMPLOYERS:\n"
+        "- Do not invent specific job titles, requirements, locations, application URLs, or "
+        "requisition IDs for external companies.\n"
+        "- When web_search / x_search were supplied for this turn, ground claims in retrieved "
+        "snippets and prefer linking the employer's official careers or job-posting page.\n"
+        "- If you cannot verify a listing exists, say so and tell the user how to confirm "
+        "(e.g. search that employer's careers site) instead of fabricating JD text."
+    )
+
+
 def render_response_policy_prompt(user_message: str, *, surface: str, mentorship_enabled: bool = False) -> str:
     mode = classify_response_mode(user_message, mentorship_enabled=mentorship_enabled)
     return f"""STEVE RESPONSE POLICY:
@@ -123,6 +136,8 @@ CONTEXT USE:
 - Use community documents, events, links, and polls only for community-resource questions or when directly referenced.
 - Use the C-Point Platform Manual for C-Point product, privacy, pricing, onboarding, discovery, bugs, feedback, founder, mission, or policy questions.
 - Do not mention injected context unless it matters to the answer.
+
+{render_third_party_job_grounding_rules()}
 
 SURFACE: {surface}"""
 

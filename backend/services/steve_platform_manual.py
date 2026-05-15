@@ -371,13 +371,40 @@ def explicitly_asks_about_x(message: str | None) -> bool:
     return any(term in msg for term in EXPLICIT_X_TERMS)
 
 
+def strip_steve_invocation_mentions(text: str | None) -> str:
+    """Remove @Steve mention tokens only; do not strip the word \"Steve\" in prose.
+
+    Invocation must not imply a C-Point \"platform manual\" question for tool gating.
+    """
+    if not text:
+        return ""
+    return re.sub(r"(?i)@steve\b", "", str(text)).strip()
+
+
+def _platform_term_matches(msg: str, term: str) -> bool:
+    """Avoid false positives e.g. PLATFORM term \"here\" matching inside \"there\"."""
+    if not term:
+        return False
+    if term == "here":
+        return bool(re.search(r"\bhere\b", msg))
+    return term in msg
+
+
 def detect_platform_manual_intent(message: str | None) -> bool:
-    msg = _norm(message)
+    """True when the user is asking about C-Point / the product (platform manual path).
+
+    ``@Steve`` is stripped first so addressing the assistant does not force platform intent.
+    """
+    stripped = strip_steve_invocation_mentions(message)
+    msg = _norm(stripped)
     if not msg:
         return False
-    if explicitly_asks_about_x(msg) and not any(term in msg for term in ("c-point", "cpoint", "steve")):
+    # Pure X/Twitter browse without C-Point product context → not a platform-manual turn.
+    if explicitly_asks_about_x(stripped) and not any(
+        term in msg for term in ("c-point", "cpoint")
+    ):
         return False
-    return any(term in msg for term in PLATFORM_TERMS)
+    return any(_platform_term_matches(msg, term) for term in PLATFORM_TERMS)
 
 
 def is_platform_question(message: str | None) -> bool:

@@ -39,7 +39,16 @@ and then write the code. Do **not** silently diverge.
    tied to a community), pass **`community_id`** into `check_steve_access` /
    `gate_or_reason` so eligible members can consume the **Steve Community
    Package** monthly pool per KB flags (`community-tiers` page).
-   **Feed replies** attach Grok **`web_search` + `x_search`** only when **`steve_tool_policy`** + **`steve_prompt_policy`** detect live-news or explicit browse intent (or KB allows default-on when explicit-only is OFF). DM and group @Steve use the same resolver and **`SteveCommunityConfig`** kill-switches (**`paid_steve_package_feed_attach_*`**). Platform-only and professional-advice-only turns omit tools. **@Mentioned** users on feed/group may receive gated profile context when **`user_can_access_steve_kb`** allows.
+   **Feed replies** attach Grok **`web_search` + `x_search`** when **`steve_tool_policy`** +
+   **`steve_prompt_policy`** detect live-news, explicit browse intent, **or job/careers-site /
+   listing-verification wording** (see **`steve_job_listing_or_employer_research_requested`**), or when
+   KB allows default-on (**`external_search_explicit_only`** OFF). **`detect_platform_manual_intent`**
+   strips **`@Steve`** mentions so addressing Steve does not force a platform-manual turn or strip tools.
+   **`SteveCommunityConfig`** kill-switches (**`paid_steve_package_feed_attach_*`**) still apply.
+   Platform-only and professional-advice-only turns omit tools. **THIRD-PARTY JOBS / EMPLOYERS** rules in
+   **`steve_prompt_policy`** require verifiable external postings (no fabricated listings). DM and group
+   chat use the same resolver. **@Mentioned** users on feed/group may receive gated profile context when
+   **`user_can_access_steve_kb`** allows.
    **News and current-events** replies use **`steve_prompt_policy` `news_current_events`** mode: structured sections (Key developments, Why it matters, Sources), substantive bullets, reputable-source guidance, and **`[Article headline](URL)`** Markdown for sources where possible; bare URLs and numeric citations are normalised in **`format_steve_response_links`**. The canonical **“what Steve can do”** inventory is KB **`steve-platform-manual`** card **`steve.what_can_i_do`** (seeded from **`docs/STEVE_PLATFORM_KB.md`**).
 
 Skip any of the above and the user's "Steve uses this month" counter

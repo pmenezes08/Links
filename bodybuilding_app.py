@@ -23745,7 +23745,8 @@ def _steve_ai_reply_for_group_post(
         system_prompt += (
             "\n\nYou are this group's Career Expert agent. Lead with empathy; use a short TL;DR when the answer is long. "
             "Use clear headings and bullets; a brief illustrative story is welcome when it helps everyone reading the thread. "
-            "Invite others in the group to share lived experience when relevant."
+            "Invite others in the group to share lived experience when relevant. "
+            "For real job postings at external companies, follow THIRD-PARTY JOBS / EMPLOYERS in the policy appended below—verify or say you cannot."
         )
     system_prompt += (
         "\nBase your answer on this group thread, the optional \"Group resources\" block in the user message "

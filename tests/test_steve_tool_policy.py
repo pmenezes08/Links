@@ -117,3 +117,32 @@ def test_kb_can_disable_x_tool_only_when_eligible():
     cfg = replace(SteveCommunityConfig(), feed_attach_x_search_tool=False)
     tools = steve_tools_for_message("breaking news roundup", config=cfg)
     assert tools == [{"type": "web_search"}]
+
+
+def test_platform_intent_not_tripped_by_at_steve_for_casual_message():
+    from backend.services.steve_platform_manual import is_platform_question
+
+    assert not is_platform_question("@Steve hello thanks")
+
+
+def test_careers_site_phrase_gets_tools_with_explicit_only():
+    from backend.services.steve_platform_manual import is_platform_question
+
+    cfg = SteveCommunityConfig()
+    msg = "@Steve is there an OpenAI revenue ops role on their careers site?"
+    assert not is_platform_question(msg)
+    tools = steve_tools_for_message(
+        msg,
+        platform_question=is_platform_question(msg),
+        config=cfg,
+    )
+    assert tools == [{"type": "web_search"}, {"type": "x_search"}]
+
+
+def test_job_listing_signal_overrides_profile_suppression_when_mixed():
+    cfg = SteveCommunityConfig()
+    tools = steve_tools_for_message(
+        "@Steve tell me about @alice and any open roles at Meta",
+        config=cfg,
+    )
+    assert tools == [{"type": "web_search"}, {"type": "x_search"}]
