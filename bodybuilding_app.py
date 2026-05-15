@@ -23346,7 +23346,6 @@ def _steve_ai_reply_for_group_post(
     from backend.services.steve_model_config import estimate_response_cost_usd, output_cap_for_surface
     from backend.services.steve_prompt_policy import (
         append_response_policy,
-        should_include_community_resources,
         should_include_user_profile,
     )
     from backend.services.steve_profiling_gates import user_can_access_steve_kb
@@ -23467,26 +23466,6 @@ def _steve_ai_reply_for_group_post(
         f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]"
     )
 
-    if community_id and should_include_community_resources(user_message):
-        try:
-            community_context = _build_steve_community_context(
-                c,
-                int(community_id),
-                placeholder,
-                steve_config.doc_excerpt_chars_default,
-                events_limit=steve_config.events_limit,
-                links_limit=steve_config.links_limit,
-                docs_limit=steve_config.docs_limit,
-                polls_limit=steve_config.polls_limit,
-            )
-            if community_context and community_context.strip():
-                context_parts.append(
-                    "Community context (use this to answer questions about events, links, documents, and polls):\n"
-                    + community_context
-                )
-        except Exception as ctx_err:
-            logger.warning("Steve community context (group post) failed: %s", ctx_err)
-
     if not should_include_user_profile(user_message):
         commenter_profile_ctx = ""
     elif not user_can_access_steve_kb(username, username, {"community_id": community_id}):
@@ -23502,13 +23481,10 @@ def _steve_ai_reply_for_group_post(
             "Use clear headings and bullets; a brief illustrative story is welcome when it helps everyone reading the thread. "
             "Invite others in the group to share lived experience when relevant."
         )
-    if community_id:
-        system_prompt += (
-            "\nYou have access to this community's upcoming events, useful links, "
-            "document excerpts, and active polls. Use them when answering questions about community resources. "
-            "If the user asks about an uploaded document, base your answer only on the document excerpts in the context; "
-            "if there is no excerpt or it says the document could not be read, say so instead of inventing content."
-        )
+    system_prompt += (
+        "\nBase your answer on this group thread and any user/mention context below. "
+        "Do not assume parent-community calendar, links, documents, or polls unless they appear explicitly in the prompt."
+    )
     if commenter_profile_ctx:
         system_prompt += (
             f"\n\nWHAT YOU KNOW ABOUT @{username}:\n{commenter_profile_ctx}\n"
@@ -24258,8 +24234,8 @@ def ai_steve_reply():
             context_parts.append(f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]")
             context_parts.append("\nNote: If the user asks you to respond to or help another user, look through the comments above to find that user's question or message and address it directly.")
             
-            # Community context: same as post @Steve — calendar, links, PDF excerpts, polls
-            if community_id and should_include_community_resources(user_message):
+            # Community context: same as post @Steve — calendar, links, PDF excerpts, polls (not for exclusive group posts)
+            if community_id and should_include_community_resources(user_message) and not is_group_post:
                 try:
                     community_context = _build_steve_community_context(
                         c,
@@ -30106,6 +30082,18 @@ def api_group_posts_create():
                     and steve_reply_count_for_post(c, int(post_id)) == 0
                 ):
                     schedule_agent_first_reply(c, int(post_id), username)
+            try:
+                from backend.services.group_feed_notifications import fanout_group_post_notifications
+
+                fanout_group_post_notifications(
+                    group_id=int(group_id),
+                    group_post_id=int(post_id),
+                    author_username=username,
+                    content=content,
+                    community_id=community_id_for_audio,
+                )
+            except Exception as fan_e:
+                logger.warning("group post notification fanout failed: %s", fan_e)
             conn.commit()
             return jsonify({'success': True})
     except Exception as e:
@@ -30444,6 +30432,21 @@ def api_group_replies_create():
                     'reply_count': 0,
                 },
             }
+            try:
+                from backend.services.group_feed_notifications import notify_group_post_reply_recipients
+
+                if reply_group_id is not None and reply_id:
+                    notify_group_post_reply_recipients(
+                        group_post_id=post_id,
+                        group_id=int(reply_group_id),
+                        from_user=username,
+                        community_id=int(community_id) if community_id is not None else None,
+                        parent_reply_id=parent_id,
+                        reply_id=int(reply_id),
+                        reply_content=content,
+                    )
+            except Exception as nre:
+                logger.warning("group reply notification failed: %s", nre)
         if thread_payload:
             app_obj = current_app._get_current_object()
             threading.Thread(

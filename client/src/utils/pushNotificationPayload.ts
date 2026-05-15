@@ -85,6 +85,7 @@ export function extractForegroundPushContent(detail: unknown): { title: string; 
     ''
 
   if (!title || title.trim() === '') title = dataTitle || 'Notification'
+  if (title === 'Notification' && dataTitle) title = dataTitle
   if (!body || body.trim() === '') body = dataBody || ''
 
   if (dataStrings.aps_alert && typeof dataStrings.aps_alert === 'string') {
@@ -115,6 +116,10 @@ export function normalizePathForForegroundCompare(path: string): string {
   if (reactFeed) return `/community_feed/${reactFeed[1]}`
   const plainFeed = /^\/community_feed\/(\d+)$/.exec(p)
   if (plainFeed) return `/community_feed/${plainFeed[1]}`
+  const reactGroup = /^\/group_feed_react\/(\d+)$/.exec(p)
+  if (reactGroup) return `/group_feed/${reactGroup[1]}`
+  const plainGroup = /^\/group_feed\/(\d+)$/.exec(p)
+  if (plainGroup) return `/group_feed/${plainGroup[1]}`
   return p
 }
 
@@ -140,6 +145,9 @@ function inferHeadlineSublineFromUrl(url: string): { headline: string; subline?:
   }
   if (/community_feed/.test(u) || /community_feed_react/.test(u)) {
     return { headline: 'Community', subline: 'New activity in a community' }
+  }
+  if (/^\/group_feed/.test(u) || /\/group_feed_react\//.test(u)) {
+    return { headline: 'Group', subline: 'New activity in a group' }
   }
   if (u.startsWith('/profile/')) {
     const who = u.slice('/profile/'.length).replace(/\/$/, '')
@@ -227,6 +235,12 @@ export function navigateToPushUrl(navigate: NavigateFunction, url: string | unde
   if (url.startsWith('/community_feed/')) {
     const id = url.replace('/community_feed/', '').replace(/\/$/, '')
     navigate(`/community_feed_react/${id}`)
+    return
+  }
+
+  if (url.startsWith('/group_feed/')) {
+    const id = url.replace('/group_feed/', '').replace(/\/$/, '')
+    navigate(`/group_feed_react/${id}`)
     return
   }
 

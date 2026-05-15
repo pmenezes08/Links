@@ -39,7 +39,6 @@ type Stage =
   | 'professional_bio_review'
   | 'profile_review'
   | 'recommend'
-  | 'linkedin'
   | 'optional_social'
   | 'journey'
   | 'manual_bio_edit'
@@ -180,9 +179,8 @@ const PERSONAL_SECTION_STEPS = [
 const PROFESSIONAL_SECTION_STEPS = [
   'Optional: import CV (PDF)',
   'Role or current work',
-  'Collaboration signals',
-  'Strengths',
-  'LinkedIn',
+  'Themes you are known for professionally (career-wide)',
+  'Strengths and domains you have built over time',
   'Professional bio draft',
 ]
 
@@ -297,7 +295,6 @@ function stageProgress(stage: Stage): number {
     fix_company: 6,
     professional_associations: 7,
     professional_strengths: 7,
-    linkedin: 7,
     professional_bio_review: 8,
     profile_review: 8,
     manual_bio_edit: 8,
@@ -322,7 +319,6 @@ function firstUnansweredStageForSection(section: ProfileSection, c: Collected): 
   if (!c.role?.trim()) return 'professional'
   if (!c.professionalAssociations?.trim()) return 'professional_associations'
   if (!c.professionalStrengths?.trim()) return 'professional_strengths'
-  if (!c.professionalBio?.trim()) return 'linkedin'
   return 'professional_bio_review'
 }
 
@@ -330,7 +326,7 @@ function sectionHasStarted(section: ProfileSection, c: Collected): boolean {
   if (section === 'personal') {
     return !!(c.talkAllDay?.trim() || c.reachOut?.trim() || c.journey?.trim() || c.recommend?.trim() || c.bio?.trim())
   }
-  return !!(c.role?.trim() || c.professionalAssociations?.trim() || c.professionalStrengths?.trim() || c.linkedin?.trim() || c.professionalBio?.trim())
+  return !!(c.role?.trim() || c.professionalAssociations?.trim() || c.professionalStrengths?.trim() || c.professionalBio?.trim())
 }
 
 function startOrResumeSection(section: ProfileSection, c: Collected): Stage {
@@ -359,8 +355,11 @@ function normalizeResumeStage(savedStage: Stage, c: Collected): Stage {
   if (savedStage === 'talk_all_day' || savedStage === 'reach_out' || savedStage === 'journey' || savedStage === 'recommend' || savedStage === 'optional_social' || savedStage === 'personal_bio_review') {
     return c.personalSectionComplete ? nextIncompleteProfileStage(c) : firstUnansweredStageForSection('personal', c)
   }
-  if (savedStage === 'professional' || savedStage === 'professional_confirm' || savedStage === 'fix_role' || savedStage === 'fix_company' || savedStage === 'professional_associations' || savedStage === 'professional_strengths' || savedStage === 'linkedin' || savedStage === 'professional_bio_review' || savedStage === 'cv_upload' || savedStage === 'cv_review') {
+  if (savedStage === 'professional' || savedStage === 'professional_confirm' || savedStage === 'fix_role' || savedStage === 'fix_company' || savedStage === 'professional_associations' || savedStage === 'professional_strengths' || savedStage === 'professional_bio_review' || savedStage === 'cv_upload' || savedStage === 'cv_review') {
     return c.professionalSectionComplete ? nextIncompleteProfileStage(c) : firstUnansweredStageForSection('professional', c)
+  }
+  if (String(savedStage) === 'linkedin') {
+    return c.professionalSectionComplete ? nextIncompleteProfileStage(c) : 'professional_bio_review'
   }
   if (savedStage === 'section_picker') {
     return nextIncompleteProfileStage(c)
@@ -426,28 +425,6 @@ function profileSummaryBlock(c: Collected): string {
   if (c.linkedin?.trim()) lines.push('• LinkedIn: added')
   if (lines.length === 0) return 'Nothing is on your public profile yet — we’ll build it together.'
   return lines.join('\n')
-}
-
-function validateLinkedInProfileUrl(raw: string): { ok: boolean; url?: string; error?: string } {
-  const value = raw.trim()
-  if (!value) return { ok: false, error: 'Please paste your LinkedIn profile URL, or skip this step.' }
-  try {
-    const url = new URL(value.startsWith('http') ? value : `https://${value}`)
-    const host = url.hostname.toLowerCase().replace(/^www\./, '')
-    const path = url.pathname.toLowerCase()
-    if (host !== 'linkedin.com') {
-      return { ok: false, error: 'Please use a LinkedIn profile URL, for example https://www.linkedin.com/in/yourname.' }
-    }
-    if (!path.startsWith('/in/') || path.split('/').filter(Boolean).length < 2) {
-      return { ok: false, error: 'That looks like a LinkedIn page, but not a personal profile. Please use your /in/ profile URL.' }
-    }
-    if (['/company/', '/school/', '/jobs/', '/posts/', '/feed/', '/pulse/'].some(blocked => path.startsWith(blocked))) {
-      return { ok: false, error: 'That LinkedIn URL is not a personal profile. Please use your own /in/ profile URL.' }
-    }
-    return { ok: true, url: url.toString() }
-  } catch {
-    return { ok: false, error: 'Please enter a valid LinkedIn profile URL, for example https://www.linkedin.com/in/yourname.' }
-  }
 }
 
 /** Parse optional personal social URLs for Firestore onboardingIdentity.socialProvidedLinks. */
@@ -1103,7 +1080,7 @@ export default function OnboardingChat({
       }
       case 'professional_section_intro':
         addSteveMessage(
-          "Let's build your Professional Identity. This has up to 6 steps, including an optional CV import, 3 dedicated questions, LinkedIn, and your professional bio draft. It takes about 2 minutes and helps make your work and collaboration context clear.",
+          "Let's build your Professional Identity. This has up to 5 steps (plus optional CV import), including two short questions about your broader professional track record and your bio draft. It takes about 2 minutes and helps make your work and collaboration context clear.",
           {
             sectionCard: {
               title: 'Professional Identity',
@@ -1133,18 +1110,24 @@ export default function OnboardingChat({
       case 'cv_review':
         break
       case 'professional_associations':
-        addSteveMessage('What kinds of work, ideas, or opportunities should people associate you with?', {
-          inputType: 'text',
-          inputPlaceholder: 'e.g. product strategy, community building, early-stage ventures',
-          options: stageHistory.current.length > 1 ? [{ label: '← Go back', value: 'go_back', icon: '↩️' }] : undefined,
-        })
+        addSteveMessage(
+          'What themes, topics, or kinds of work are you often associated with professionally? Think across your career — not only your current title. (e.g. climate policy, product discovery, community building)',
+          {
+            inputType: 'text',
+            inputPlaceholder: 'e.g. early-stage ventures, machine learning in health, cross-border teams',
+            options: stageHistory.current.length > 1 ? [{ label: '← Go back', value: 'go_back', icon: '↩️' }] : undefined,
+          },
+        )
         break
       case 'professional_strengths':
-        addSteveMessage('What are you especially good at, or what do people usually come to you for?', {
-          inputType: 'text',
-          inputPlaceholder: 'e.g. simplifying complex ideas, partnerships, go-to-market',
-          options: stageHistory.current.length > 1 ? [{ label: '← Go back', value: 'go_back', icon: '↩️' }] : undefined,
-        })
+        addSteveMessage(
+          'What strengths, domains, or skills have you built up over your professional life — things people might know you for? This can be broad and is not limited to what your current job asks of you.',
+          {
+            inputType: 'text',
+            inputPlaceholder: 'e.g. turning research into products, stakeholder alignment, technical writing',
+            options: stageHistory.current.length > 1 ? [{ label: '← Go back', value: 'go_back', icon: '↩️' }] : undefined,
+          },
+        )
         break
       case 'recommend': {
         const recOpts: ChatMessage['options'] = [{ label: 'Skip', value: 'skip_recommend', icon: '⏭️' }]
@@ -1153,16 +1136,6 @@ export default function OnboardingChat({
           inputType: 'text',
           inputPlaceholder: 'e.g. Sapiens, a favorite podcast, or a local place',
           options: recOpts,
-        })
-        break
-      }
-      case 'linkedin': {
-        const lnOpts: ChatMessage['options'] = [{ label: 'Skip', value: 'skip_linkedin', icon: '⏭️' }]
-        if (stageHistory.current.length > 1) lnOpts.push({ label: '← Go back', value: 'go_back', icon: '↩️' })
-        addSteveMessage('Optional: add your LinkedIn URL so people can find your professional profile. You can skip this.', {
-          inputType: 'url',
-          inputPlaceholder: 'https://linkedin.com/in/yourprofile',
-          options: lnOpts,
         })
         break
       }
@@ -1234,7 +1207,7 @@ export default function OnboardingChat({
       'name', 'location', 'photo', 'section_picker', 'personal_section_intro', 'talk_all_day',
       'reach_out', 'journey', 'recommend', 'optional_social', 'personal_bio_review',
       'professional_section_intro', 'cv_upload', 'cv_review', 'professional', 'professional_associations',
-      'professional_strengths', 'linkedin', 'professional_bio_review', 'profile_review',
+      'professional_strengths', 'professional_bio_review', 'profile_review',
     ]
     if (mainStages.includes(next)) {
       const hist = stageHistory.current
@@ -1675,8 +1648,7 @@ export default function OnboardingChat({
           optional_social: 'personal_bio_review',
           professional: 'professional_associations',
           professional_associations: 'professional_strengths',
-          professional_strengths: 'linkedin',
-          linkedin: 'professional_bio_review',
+          professional_strengths: 'professional_bio_review',
         }
         const returnStage = gibberishReturnStage.current
         gibberishReturnStage.current = null
@@ -1711,7 +1683,7 @@ export default function OnboardingChat({
         break
       }
       case 'choose_professional_section': {
-        addUserMessage('Professional Identity - about 2 minutes - up to 6 steps - 3 questions')
+        addUserMessage('Professional Identity - about 2 minutes - up to 5 steps - 2 questions')
         const order = collected.profileSectionOrder?.includes('professional')
           ? collected.profileSectionOrder
           : [...(collected.profileSectionOrder || []), 'professional' as ProfileSection]
@@ -1746,6 +1718,7 @@ export default function OnboardingChat({
                 company: c.company || '',
                 current_role_start_ym: c.currentRoleStartYm || '',
                 work_history: c.workHistory || [],
+                professional_about: (c.professionalBio || '').trim(),
               }),
             })
             const j = await r.json().catch(() => null)
@@ -1780,6 +1753,7 @@ export default function OnboardingChat({
           company: '',
           currentRoleStartYm: '',
           workHistory: undefined,
+          professionalBio: '',
         }
         setCollected(reset)
         advanceTo('professional', reset)
@@ -1812,10 +1786,6 @@ export default function OnboardingChat({
       case 'start_professional_section':
         addUserMessage('Start professional section')
         advanceTo('professional')
-        break
-      case 'skip_linkedin':
-        addUserMessage('Skip')
-        advanceTo('professional_bio_review')
         break
       case 'skip_optional_social':
         addUserMessage('Skip')
@@ -2104,7 +2074,7 @@ export default function OnboardingChat({
       case 'professional_strengths': {
         const newCollected = { ...collected, professionalStrengths: val }
         setCollected(newCollected)
-        advanceTo('linkedin', newCollected)
+        advanceTo('professional_bio_review', newCollected)
         break
       }
       case 'recommend': {
@@ -2112,23 +2082,6 @@ export default function OnboardingChat({
         setCollected(newCollected)
         addSteveMessage('Good pick.')
         setTimeout(() => advanceTo('optional_social', newCollected), 600)
-        break
-      }
-      case 'linkedin': {
-        const parsed = validateLinkedInProfileUrl(val)
-        if (!parsed.ok) {
-          addSteveMessage(parsed.error || 'Please add a valid LinkedIn profile URL, or skip this step.', {
-            inputType: 'url',
-            inputPlaceholder: 'https://www.linkedin.com/in/yourprofile',
-            options: [{ label: 'Skip', value: 'skip_linkedin', icon: '⏭️' }],
-          })
-          return
-        }
-        const newCollected = { ...collected, linkedin: parsed.url || val }
-        setCollected(newCollected)
-        await saveField('linkedin', parsed.url || val)
-        addSteveMessage('LinkedIn saved. It will appear with your professional profile details.')
-        setTimeout(() => advanceTo('professional_bio_review', newCollected), 600)
         break
       }
       case 'optional_social': {
@@ -2218,10 +2171,6 @@ export default function OnboardingChat({
     if (currentStage === 'location') {
       return lower.length > 80 || (/^(hey|what|how|can|tell|who)/.test(lower) && lower.includes('?'))
     }
-    if (currentStage === 'linkedin') {
-      if (lower.includes('linkedin.com') || lower.includes('skip')) return false
-      return lower.includes('?') || /^(hey|what|how|can|tell)/.test(lower)
-    }
     if (currentStage === 'optional_social') {
       if (/instagram\.|tiktok\.|snapchat\.|facebook\.|fb\.com/i.test(lower) || lower.includes('skip')) return false
       return lower.includes('?') || /^(hey|what|how|can|tell)/.test(lower)
@@ -2236,7 +2185,6 @@ export default function OnboardingChat({
         name: "What's your first and last name?",
         location: 'Where are you based?',
         professional: 'What do you do professionally?',
-        linkedin: 'Got a LinkedIn URL?',
         optional_social: 'Optional social profile URLs?',
         journey: 'What should your network remember about your journey?',
         talk_all_day: 'What are the things you could talk about all day?',
@@ -2341,12 +2289,14 @@ export default function OnboardingChat({
               description: String(row.description ?? ''),
             }))
           : []
+        const roleDesc = String(j.current_role_description || '').trim()
         const newCollected: Collected = {
           ...collected,
           role: String(j.role || ''),
           company: String(j.company || ''),
           currentRoleStartYm: String(j.current_role_start_ym || ''),
           workHistory: wh,
+          professionalBio: roleDesc || collected.professionalBio || '',
         }
         setCollected(newCollected)
         setCvFile(null)
@@ -2524,7 +2474,7 @@ export default function OnboardingChat({
                             className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-left transition hover:border-[#4db6ac]/35 hover:bg-[#4db6ac]/10"
                           >
                             <div className="text-[12px] font-semibold text-white">Professional Identity</div>
-                            <div className="mt-1 text-[11px] text-white/55">About 2 minutes · up to 6 steps · 3 questions · {msg.sectionPicker.professionalStatus}</div>
+                            <div className="mt-1 text-[11px] text-white/55">About 2 minutes · up to 5 steps · 2 questions · {msg.sectionPicker.professionalStatus}</div>
                           </button>
                         </div>
                       </div>

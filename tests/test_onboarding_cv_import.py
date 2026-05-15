@@ -82,6 +82,18 @@ def test_professional_work_history_json_is_valid_storage_blob():
     assert data == []
 
 
+def test_normalize_llm_cv_payload_current_role_description():
+    raw = {
+        "current_role": "Analyst",
+        "current_company": "Bank",
+        "current_role_start_ym": "2024-01",
+        "current_role_description": "Own credit risk models for SME lending across EU markets.",
+        "prior_roles": [],
+    }
+    out = normalize_llm_cv_payload(raw)
+    assert out["current_role_description"] == "Own credit risk models for SME lending across EU markets."
+
+
 def test_normalize_import_alias_current_start():
     raw = {
         "current_role": "Designer",

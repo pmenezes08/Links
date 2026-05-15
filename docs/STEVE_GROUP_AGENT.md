@@ -36,6 +36,11 @@
 
 - **Career Expert** preset: `max_output_tokens` capped at **2000**, combined with `min(entitlements, KB/package caps)` in [`_steve_ai_reply_for_group_post`](bodybuilding_app.py).
 
+## Context (LLM)
+
+- **Thread-only for resources:** Group Steve does **not** inject parent-community calendar, links, document excerpts, or polls via `_build_steve_community_context`. Answers use the **group thread** (and media), entitlements/KB policy, gated **mention profiles**, and tools when enabled.
+- **Community main-feed @Steve** is unchanged: may still attach community resource context when the message asks for documents/events/links/polls per prompt policy.
+
 ## Proactive
 
 - **`steve_proactive_enabled`**: column reserved; behaviour in later iteration.

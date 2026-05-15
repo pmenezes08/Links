@@ -447,7 +447,7 @@ export default function Notifications(){
       return
     }
     const isPollNotification = typeKey === 'poll' || typeKey === 'poll_reminder' || typeKey === 'poll_closed'
-    const isReplyNotification = typeKey === 'reply' || typeKey === 'mention_reply' || typeKey === 'story_comment' || typeKey === 'story_reaction'
+    const isReplyNotification = typeKey === 'reply' || typeKey === 'mention_reply' || typeKey === 'group_feed_reply' || typeKey === 'story_comment' || typeKey === 'story_reaction'
     const isStoryNotification = typeKey === 'story_reaction' || typeKey === 'story_comment'
 
     if (!url && isPollNotification && n.community_id) {
@@ -463,7 +463,7 @@ export default function Notifications(){
     // Enhanced navigation with state for better back button behavior
     if (url.startsWith('http') || url.startsWith('/')){
       // Use SPA navigation for known in-app routes
-      if (url.startsWith('/post/') || url.startsWith('/reply/') || url.startsWith('/group_reply/') || url.startsWith('/community_feed_react/') || url.startsWith('/community/') || url.startsWith('/event/') || url.includes('/tasks_react') || url.includes('/polls_react') || url.includes('/useful_links_react') || url.startsWith('/admin_dashboard')){
+      if (url.startsWith('/post/') || url.startsWith('/reply/') || url.startsWith('/group_reply/') || url.startsWith('/group_feed_react/') || url.startsWith('/community_feed_react/') || url.startsWith('/community/') || url.startsWith('/event/') || url.includes('/tasks_react') || url.includes('/polls_react') || url.includes('/useful_links_react') || url.startsWith('/admin_dashboard')){
         if (import.meta.env.DEV) console.log('Using SPA navigation to:', url)
 
         const navigationState = {

@@ -87,6 +87,13 @@ describe('shouldSkipForegroundBannerDueToSameRoute', () => {
     expect(normalizePathForForegroundCompare('/community_feed_react/9')).toBe('/community_feed/9')
   })
 
+  it('treats group_feed and group_feed_react as same', () => {
+    expect(
+      shouldSkipForegroundBannerDueToSameRoute('/group_feed_react/3', '/group_feed/3'),
+    ).toBe(true)
+    expect(normalizePathForForegroundCompare('/group_feed_react/3')).toBe('/group_feed/3')
+  })
+
   it('returns false when different', () => {
     expect(shouldSkipForegroundBannerDueToSameRoute('/a', '/b')).toBe(false)
   })
@@ -109,5 +116,14 @@ describe('navigateToPushUrl', () => {
     }) as unknown as NavigateFunction
     navigateToPushUrl(nav, '/community_feed/9')
     expect(calls).toEqual(['/community_feed_react/9'])
+  })
+
+  it('rewrites group_feed to group_feed_react', () => {
+    const calls: string[] = []
+    const nav = ((to: string) => {
+      calls.push(to)
+    }) as unknown as NavigateFunction
+    navigateToPushUrl(nav, '/group_feed/3')
+    expect(calls).toEqual(['/group_feed_react/3'])
   })
 })

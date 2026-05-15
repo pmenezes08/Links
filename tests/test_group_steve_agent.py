@@ -208,3 +208,57 @@ def test_short_ask_steve_post_does_not_create_schedule(mysql_dsn):
         row = c.fetchone()
         n = int(row["c"] if hasattr(row, "keys") else row[0])
     assert n == 0
+
+
+def test_group_steve_does_not_build_community_context(monkeypatch, mysql_dsn):
+    """Exclusive-group Steve must not call _build_steve_community_context (parent-community bundle)."""
+    import bodybuilding_app as ba
+    from tests.test_group_feed_blueprint import _add_group_member, _insert_group, _insert_group_post
+
+    make_user("gsc_owner", subscription="premium")
+    make_user("gsc_member", subscription="premium")
+    cid = make_community("gsc-comm", tier="free", creator_username="gsc_owner")
+    gid = _insert_group(cid, "Gctx", "gsc_owner")
+    _add_group_member(gid, "gsc_owner")
+    _add_group_member(gid, "gsc_member")
+    pid = _insert_group_post(gid, "gsc_owner", "hello group post for steve context test")
+
+    class _Resp:
+        output_text = "Steve says OK."
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        class _R:
+            @staticmethod
+            def create(**kwargs):
+                return _Resp()
+
+        responses = _R()
+
+    monkeypatch.setattr(ba, "XAI_API_KEY", "test-key")
+    monkeypatch.setattr(ba, "OpenAI", _Client)
+
+    def _forbidden(*args, **kwargs):
+        raise AssertionError("_build_steve_community_context must not run for group Steve")
+
+    monkeypatch.setattr(ba, "_build_steve_community_context", _forbidden)
+
+    client = ba.app.test_client()
+    with client.session_transaction() as sess:
+        sess["username"] = "gsc_member"
+
+    r = client.post(
+        "/api/ai/steve_reply",
+        json={
+            "post_id": pid,
+            "user_message": "What is on the community calendar this week?",
+            "community_id": cid,
+            "is_group_post": True,
+        },
+    )
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body is not None
+    assert body.get("success") is True

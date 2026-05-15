@@ -225,7 +225,29 @@ export default function Profile() {
     loading: cachedProfileLoading,
     error: cachedProfileError,
     refresh: refreshUserProfile,
+    applyProfileFromServer,
   } = useUserProfile()
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/profile_me?_nocache=${Date.now()}`, {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+          cache: 'no-store',
+        })
+        const j = await r.json().catch(() => null)
+        if (cancelled || !j?.success || !j.profile) return
+        applyProfileFromServer(j.profile as Record<string, unknown>)
+      } catch {
+        /* non-fatal — keep context profile */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [applyProfileFromServer])
 
   /** Warm / refetch public profile API so /profile/:username shows latest data after saves (server cache is busted separately). */
   const prefetchPublicProfileApi = useCallback(async () => {
@@ -576,6 +598,7 @@ export default function Profile() {
         professionalInfo.about,
         professionalInfo.summary,
         professionalInfo.bio,
+        profile.professional_about,
         profile.professional_summary,
         profile.professionalSummary,
       ),

@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Tuple
 
 from backend.services.profile_structured_fields import (
     MAX_COMPANY_LEN,
+    MAX_ENTRY_DESCRIPTION_LEN,
     MAX_TITLE_LEN,
     _clip,
     normalize_yyyy_mm,
@@ -31,9 +32,10 @@ Rules:
   {"title","company","location","start","end","description"} — use "" for unknown fields.
   Dates as YYYY-MM when month known, else YYYY for year-only, else "".
   "end" can be "" for roles with no clear end.
+- current_role_description: 1-3 sentences summarizing what they do in the CURRENT role (scope, impact, focus), taken or lightly edited from the CV bullets for that role only. If there is no substantive text, use "".
 - Do NOT duplicate the current position in prior_roles.
 - If text is ambiguous, prefer empty strings over guessing.
-Return ONLY valid JSON with exactly these keys: current_role, current_company, current_role_start_ym, prior_roles
+Return ONLY valid JSON with exactly these keys: current_role, current_company, current_role_start_ym, current_role_description, prior_roles
 """
 
 
@@ -124,6 +126,11 @@ def normalize_llm_cv_payload(parsed: Dict[str, Any]) -> Dict[str, Any]:
         start_raw = parsed.get("current_start")
     current_role_start_ym = normalize_yyyy_mm(str(start_raw) if start_raw is not None else "")
 
+    desc_raw = parsed.get("current_role_description")
+    if desc_raw is None:
+        desc_raw = parsed.get("current_role_summary") or parsed.get("role_description")
+    current_role_description = _clip(str(desc_raw) if desc_raw is not None else "", MAX_ENTRY_DESCRIPTION_LEN)
+
     prior = parsed.get("prior_roles")
     if prior is None:
         prior = parsed.get("work_history") or parsed.get("previous_roles")
@@ -145,6 +152,7 @@ def normalize_llm_cv_payload(parsed: Dict[str, Any]) -> Dict[str, Any]:
         "role": role,
         "company": company,
         "current_role_start_ym": current_role_start_ym or "",
+        "current_role_description": current_role_description,
         "work_history": work_list,
         "professional_work_history_json": work_json,
     }

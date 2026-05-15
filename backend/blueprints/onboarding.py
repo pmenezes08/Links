@@ -771,9 +771,13 @@ def onboarding_compose_bio():
             if role:
                 parts.append(f"I work as {role}{' at ' + company if company else ''}.")
             if professional_associations:
-                parts.append(f"People should associate me with {professional_associations.lower()}.")
+                parts.append(
+                    f"Across my career, I'm often associated with themes like: {professional_associations.lower()}."
+                )
             if professional_strengths:
-                parts.append(f"People usually come to me for {professional_strengths.lower()}.")
+                parts.append(
+                    f"I've built depth in areas such as: {professional_strengths.lower()}."
+                )
         else:
             if talk_all_day:
                 parts.append(f"I could talk all day about {talk_all_day.lower()}.")
@@ -835,11 +839,15 @@ def onboarding_compose_bio():
             system_prompt = (
                 "You are a professional profile writer for a private networking platform. "
                 "Compose a clear 2-4 sentence professional bio in first person. "
-                "Focus on what they do, what people should associate them with, and where collaboration makes sense. "
-                "Use the role and company as context, not as a resume dump. "
-                "If an existing bio is provided, weave it together with the new onboarding answers into one coherent whole. "
-                "Avoid repeating concrete facts already used in the personal bio, especially location, unless the fact is central to the professional context. "
-                "Preserve at least one concrete phrase or detail from the user's answers when possible. "
+                "Ground the bio in their role and company, plus their career-wide themes below. "
+                "IMPORTANT: The 'themes' and 'strengths' answers describe patterns across their professional life — "
+                "they are NOT necessarily about their current employer or day-to-day job. "
+                "Do not imply their present role is about partnerships, sales, or that colleagues turn to them for the named themes unless the text clearly says so. "
+                "Do not imply that colleagues, clients, or teams routinely rely on them or come to them for help unless the user's own words say that. "
+                "Weave themes in lightly as general professional interests or track record, not as facts about today's job. "
+                "If an existing bio draft or CV-style role description is provided, treat it as factual ground truth for the current role's scope; still interpret themes/strengths as career-wide unless they clearly reference only today’s job. "
+                "Avoid repeating concrete facts already used in the personal bio, especially location, unless essential. "
+                "Preserve at least one concrete phrase from the user's inputs when possible. "
                 "Avoid generic phrases such as 'passionate about', 'driven by', 'meaningful connections', and 'leveraging'. "
                 "Keep it useful and human, not corporate. Do NOT use hashtags, emojis, or buzzwords. Return ONLY the bio text."
             )
@@ -850,8 +858,10 @@ def onboarding_compose_bio():
                 + location_dedup_note
                 + "Professional details from onboarding:\n"
                 f"{professional}\n"
-                f"People should associate them with: {professional_associations}\n"
-                f"People usually come to them for: {professional_strengths}\n"
+                "Themes or topics they're often associated with across their career (not limited to the current title):\n"
+                f"{professional_associations}\n"
+                "Strengths, domains, or problems they've built expertise in over time (general; not necessarily what only the current role demands):\n"
+                f"{professional_strengths}\n"
                 f"{'Based in ' + location if location else ''}\n\n"
                 f"{style_guidance}\n\n"
                 "Write their professional bio:"
@@ -975,9 +985,13 @@ def onboarding_compose_bio():
             if role:
                 parts.append(f"I work as {role}{' at ' + company if company else ''}.")
             if professional_associations:
-                parts.append(f"People should associate me with {professional_associations.lower()}.")
+                parts.append(
+                    f"Across my career, I'm often associated with themes like: {professional_associations.lower()}."
+                )
             if professional_strengths:
-                parts.append(f"People usually come to me for {professional_strengths.lower()}.")
+                parts.append(
+                    f"I've built depth in areas such as: {professional_strengths.lower()}."
+                )
         else:
             if talk_all_day:
                 parts.append(f"I could talk all day about {talk_all_day.lower()}.")
@@ -1340,6 +1354,7 @@ def onboarding_parse_cv():
         "role": normalized.get("role") or "",
         "company": normalized.get("company") or "",
         "current_role_start_ym": normalized.get("current_role_start_ym") or "",
+        "current_role_description": normalized.get("current_role_description") or "",
         "work_history": normalized.get("work_history") or [],
     })
 
@@ -1355,7 +1370,7 @@ def onboarding_apply_professional_structured():
     current_role_start_ym = (data.get("current_role_start_ym") or "").strip()
     raw_wh = data.get("work_history")
 
-    from backend.services.profile_structured_fields import normalize_yyyy_mm, parse_work_history_for_storage
+    from backend.services.profile_structured_fields import normalize_yyyy_mm, parse_work_history_for_storage, _clip
 
     if not role and not company:
         if not isinstance(raw_wh, list) or not raw_wh:
@@ -1367,6 +1382,8 @@ def onboarding_apply_professional_structured():
     if not isinstance(raw_wh, list):
         return jsonify({"success": False, "error": "work_history must be a list"}), 400
     work_json, _ = parse_work_history_for_storage(json.dumps(raw_wh, ensure_ascii=False))
+    about_raw = (data.get("professional_about") or "").strip()
+    professional_about_db = _clip(about_raw, 12000) if about_raw else None
 
     try:
         with get_db_connection() as conn:
@@ -1378,10 +1395,11 @@ def onboarding_apply_professional_structured():
                     role = {ph},
                     company = {ph},
                     current_role_start_ym = {ph},
-                    professional_work_history = {ph}
+                    professional_work_history = {ph},
+                    professional_about = {ph}
                 WHERE username = {ph}
                 """,
-                (role or None, company or None, ym or None, work_json, username),
+                (role or None, company or None, ym or None, work_json, professional_about_db, username),
             )
             conn.commit()
         try:

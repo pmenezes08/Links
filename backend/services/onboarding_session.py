@@ -28,7 +28,6 @@ PROFESSIONAL_STAGES = {
     "fix_company",
     "professional_associations",
     "professional_strengths",
-    "linkedin",
     "professional_bio_review",
     "cv_upload",
     "cv_review",
@@ -145,7 +144,6 @@ def _section_started(section: str, data: Dict[str, Any]) -> bool:
             "role",
             "professionalAssociations",
             "professionalStrengths",
-            "linkedin",
             "professionalBio",
         )
     return any(str(data.get(key) or "").strip() for key in keys)
@@ -171,8 +169,6 @@ def _first_unanswered_stage_for_section(section: str, data: Dict[str, Any]) -> s
         return "professional_associations"
     if not str(data.get("professionalStrengths") or "").strip():
         return "professional_strengths"
-    if not str(data.get("professionalBio") or "").strip():
-        return "linkedin"
     return "professional_bio_review"
 
 
@@ -214,6 +210,9 @@ def next_unanswered_profile_stage(
     saved_stage = str(stage or "").strip()
     if saved_stage == "complete":
         return "complete"
+
+    if saved_stage == "linkedin":
+        return "professional_bio_review"
 
     if saved_stage in ("cv_upload", "cv_review"):
         return saved_stage
