@@ -22953,6 +22953,177 @@ def _build_steve_community_context(
     return "\n\n".join(parts)
 
 
+def _build_steve_group_resource_context(
+    c,
+    group_id: int,
+    placeholder,
+    max_doc_chars_total=2000,
+    *,
+    events_limit=10,
+    links_limit=10,
+    docs_limit=10,
+    polls_limit=5,
+):
+    """Links, document excerpts, calendar, polls for one exclusive group (``group_id`` only).
+
+    Does not load community memory or parent-community-only rows (no ``group_id`` on those rows).
+    """
+    from backend.services.database import USE_MYSQL
+    from backend.services.group_polls_data import ensure_group_poll_tables, poll_expired
+
+    parts = []
+    gid = int(group_id)
+    events_limit = max(0, int(events_limit or 0))
+    links_limit = max(0, int(links_limit or 0))
+    docs_limit = max(0, int(docs_limit or 0))
+    polls_limit = max(0, int(polls_limit or 0))
+
+    try:
+        if events_limit <= 0:
+            raise ValueError("events disabled by context budget")
+        if USE_MYSQL:
+            c.execute(
+                f"""
+                SELECT title, date, start_time, end_time, description
+                FROM calendar_events
+                WHERE group_id = {placeholder} AND date >= CURDATE()
+                ORDER BY date ASC
+                LIMIT {events_limit}
+                """,
+                (gid,),
+            )
+        else:
+            c.execute(
+                f"""
+                SELECT title, date, start_time, end_time, description
+                FROM calendar_events
+                WHERE group_id = {placeholder} AND date >= date('now')
+                ORDER BY date ASC
+                LIMIT {events_limit}
+                """,
+                (gid,),
+            )
+        events = c.fetchall()
+        if events:
+            lines = []
+            for evt in events:
+                t = evt["title"] if hasattr(evt, "keys") else evt[0]
+                d = evt["date"] if hasattr(evt, "keys") else evt[1]
+                st = evt["start_time"] if hasattr(evt, "keys") else evt[2]
+                desc = (evt["description"] if hasattr(evt, "keys") else evt[4]) or ""
+                lines.append(
+                    f"- {t} | Date: {d}" + (f" | Time: {st}" if st else "") + (f" | {desc[:100]}" if desc else "")
+                )
+            parts.append("Upcoming events in this group:\n" + "\n".join(lines))
+    except ValueError:
+        pass
+    except Exception as e:
+        logger.warning(f"Steve group calendar context failed: {e}")
+
+    try:
+        if links_limit <= 0:
+            raise ValueError("links disabled by context budget")
+        c.execute(
+            f"""
+            SELECT url, description FROM useful_links
+            WHERE group_id = {placeholder}
+            ORDER BY created_at DESC
+            LIMIT {links_limit}
+            """,
+            (gid,),
+        )
+        links = c.fetchall()
+        if links:
+            lines = []
+            for lnk in links:
+                url = lnk["url"] if hasattr(lnk, "keys") else lnk[0]
+                desc = (lnk["description"] if hasattr(lnk, "keys") else lnk[1]) or url
+                lines.append(f"- {desc} ({url})")
+            parts.append("Useful links in this group:\n" + "\n".join(lines))
+    except ValueError:
+        pass
+    except Exception as e:
+        logger.warning(f"Steve group links context failed: {e}")
+
+    try:
+        if docs_limit <= 0 or max_doc_chars_total <= 0:
+            raise ValueError("documents disabled by context budget")
+        c.execute(
+            f"""
+            SELECT file_path, description FROM useful_docs
+            WHERE group_id = {placeholder}
+            ORDER BY created_at DESC
+            LIMIT {docs_limit}
+            """,
+            (gid,),
+        )
+        docs = c.fetchall()
+        if docs:
+            doc_lines = []
+            chars_remaining = max_doc_chars_total
+            for doc in docs:
+                fp = doc["file_path"] if hasattr(doc, "keys") else doc[0]
+                desc = (doc["description"] if hasattr(doc, "keys") else doc[1]) or fp
+                text = extract_pdf_text_for_steve(fp, max_chars=min(4000, chars_remaining))
+                excerpt = text if text else "(Could not read document.)"
+                doc_lines.append(f"Document: {desc}\nContent (excerpt): {excerpt}")
+                if text:
+                    chars_remaining -= len(text)
+                if chars_remaining <= 0:
+                    break
+            parts.append("Group documents:\n" + "\n\n---\n\n".join(doc_lines))
+    except ValueError:
+        pass
+    except Exception as e:
+        logger.warning(f"Steve group docs context failed: {e}")
+
+    try:
+        if polls_limit <= 0:
+            raise ValueError("polls disabled by context budget")
+        ensure_group_poll_tables(c)
+        gp_t = "`group_polls`" if USE_MYSQL else "group_polls"
+        gpo_t = "`group_poll_options`" if USE_MYSQL else "group_poll_options"
+        c.execute(
+            f"""
+            SELECT id, question, expires_at FROM {gp_t}
+            WHERE group_id = {placeholder} AND is_active = 1
+            ORDER BY created_at DESC
+            LIMIT {polls_limit}
+            """,
+            (gid,),
+        )
+        polls = c.fetchall()
+        if polls:
+            poll_lines = []
+            for poll in polls:
+                pid = poll["id"] if hasattr(poll, "keys") else poll[0]
+                q = poll["question"] if hasattr(poll, "keys") else poll[1]
+                exp_raw = poll["expires_at"] if hasattr(poll, "keys") else poll[2]
+                if poll_expired(exp_raw):
+                    continue
+                try:
+                    c.execute(
+                        f"SELECT option_text, votes FROM {gpo_t} WHERE group_poll_id = {placeholder} ORDER BY id",
+                        (pid,),
+                    )
+                    opts = c.fetchall()
+                    opt_strs = [
+                        f"{(o['option_text'] if hasattr(o, 'keys') else o[0])} ({(o['votes'] if hasattr(o, 'keys') else o[1])} votes)"
+                        for o in opts
+                    ]
+                    poll_lines.append(f"- Poll: {q} | Options: {', '.join(opt_strs)}")
+                except Exception:
+                    poll_lines.append(f"- Poll: {q}")
+            if poll_lines:
+                parts.append("Active polls in this group:\n" + "\n".join(poll_lines))
+    except ValueError:
+        pass
+    except Exception as e:
+        logger.warning(f"Steve group polls context failed: {e}")
+
+    return "\n\n".join(parts)
+
+
 def _needs_community_analysis(message: str) -> bool:
     """Detect if a message requires community/networking analysis.
     This determines whether to use the expensive multi-agent model.
@@ -23425,7 +23596,7 @@ def _steve_ai_reply_for_group_post(
     gp_t = '`group_posts`' if USE_MYSQL else 'group_posts'
     gr_t = '`group_replies`' if USE_MYSQL else 'group_replies'
     c.execute(
-        f"SELECT content, username, image_path FROM {gp_t} WHERE id = {placeholder}",
+        f"SELECT content, username, image_path, group_id FROM {gp_t} WHERE id = {placeholder}",
         (group_post_id,),
     )
     prow = c.fetchone()
@@ -23451,6 +23622,11 @@ def _steve_ai_reply_for_group_post(
     post_content = prow['content'] if hasattr(prow, 'keys') else prow[0]
     post_author = prow['username'] if hasattr(prow, 'keys') else prow[1]
     post_image_path = prow['image_path'] if hasattr(prow, 'keys') else prow[2]
+    group_id_raw = prow['group_id'] if hasattr(prow, 'keys') else prow[3]
+    try:
+        exclusive_group_id = int(group_id_raw) if group_id_raw is not None else None
+    except (TypeError, ValueError):
+        exclusive_group_id = None
 
     base_url = os.environ.get('PUBLIC_BASE_URL', 'https://app.c-point.co')
     media_base = os.environ.get('CLOUDFLARE_R2_PUBLIC_URL', '')
@@ -23536,6 +23712,25 @@ def _steve_ai_reply_for_group_post(
     context_parts.append(
         f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]"
     )
+    if exclusive_group_id:
+        try:
+            grp_ctx = _build_steve_group_resource_context(
+                c,
+                exclusive_group_id,
+                placeholder,
+                max_doc_chars_total=steve_config.doc_excerpt_chars_default,
+                events_limit=steve_config.events_limit,
+                links_limit=steve_config.links_limit,
+                docs_limit=steve_config.docs_limit,
+                polls_limit=steve_config.polls_limit,
+            )
+            if grp_ctx and grp_ctx.strip():
+                context_parts.append(
+                    "Group resources for this exclusive group (events, links, documents, polls in this group only):\n"
+                    + grp_ctx
+                )
+        except Exception as grp_ctx_err:
+            logger.warning("Steve group resource context failed: %s", grp_ctx_err)
 
     if not should_include_user_profile(user_message):
         commenter_profile_ctx = ""
@@ -23553,8 +23748,11 @@ def _steve_ai_reply_for_group_post(
             "Invite others in the group to share lived experience when relevant."
         )
     system_prompt += (
-        "\nBase your answer on this group thread and any user/mention context below. "
-        "Do not assume parent-community calendar, links, documents, or polls unless they appear explicitly in the prompt."
+        "\nBase your answer on this group thread, the optional \"Group resources\" block in the user message "
+        "(this group's calendar, links, document excerpts, and polls), "
+        "and any user/mention context below. Prefer facts from those excerpts over guessing; "
+        "if an excerpt is missing or unreadable, say so. "
+        "Do not rely on parent-community resources that are not present in that block or the thread."
     )
     if commenter_profile_ctx:
         system_prompt += (

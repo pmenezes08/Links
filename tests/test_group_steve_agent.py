@@ -322,3 +322,43 @@ def test_group_steve_does_not_build_community_context(monkeypatch, mysql_dsn):
     body = r.get_json()
     assert body is not None
     assert body.get("success") is True
+
+
+def test_build_steve_group_resource_context_includes_scoped_links_and_docs(mysql_dsn):
+    """``useful_links`` / ``useful_docs`` rows with ``group_id`` appear in group resource context."""
+    from datetime import datetime
+
+    import bodybuilding_app as ba
+    from backend.services.database import get_db_connection, get_sql_placeholder
+
+    from tests.test_group_feed_blueprint import _insert_group
+
+    ba.add_missing_tables()
+    make_user("grp_res_u")
+    cid = make_community("grp-res-comm", tier="free", creator_username="grp_res_u")
+    gid = _insert_group(cid, "GrpRes", "grp_res_u")
+    ph = get_sql_placeholder()
+    ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""
+            INSERT INTO useful_links (community_id, group_id, username, url, description, created_at)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """,
+            (None, gid, "grp_res_u", "https://group-only.example/doc", "Group-scoped link label", ts),
+        )
+        c.execute(
+            f"""
+            INSERT INTO useful_docs (community_id, group_id, username, file_path, description, created_at)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """,
+            (None, gid, "grp_res_u", "/nonexistent.pdf", "Group-scoped doc title", ts),
+        )
+        conn.commit()
+        out = ba._build_steve_group_resource_context(c, gid, ph)
+    assert "Useful links in this group" in out
+    assert "Group-scoped link label" in out
+    assert "https://group-only.example/doc" in out
+    assert "Group documents" in out
+    assert "Group-scoped doc title" in out

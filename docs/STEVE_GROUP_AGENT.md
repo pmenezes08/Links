@@ -39,7 +39,8 @@
 
 ## Context (LLM)
 
-- **Thread-only for resources:** Group Steve does **not** inject parent-community calendar, links, document excerpts, or polls via `_build_steve_community_context`. Answers use the **group thread** (and media), entitlements/KB policy, gated **mention profiles**, and tools when enabled.
+- **Group-scoped resources (exclusive group feed):** `_steve_ai_reply_for_group_post` loads this group's materials via `_build_steve_group_resource_context`: **group** `calendar_events`, `useful_links`, `useful_docs` (PDF excerpts via the same extraction path as community Steve), and active **group** polls (`group_polls` / `group_poll_options`), all `WHERE group_id = <exclusive groups.id>`. Limits follow the same Steve package budget knobs as community context (events/links/docs/polls caps, doc excerpt budget). **Parent-community** calendar, community-wide links/docs/polls, and `steve_community_memory` are **not** included via `_build_steve_community_context` (that builder is not used for `is_group_post` / group-feed paths).
+- **Group chat Steve is different:** `group_chats`-driven replies (`backend/blueprints/group_chat.py`, `SURFACE_GROUP` on that surface) do **not** automatically receive this exclusive-group resource bundle unless product adds an explicit mapping from chat to `groups.id` / resources — do not assume parity with the **group feed** path above.
 - **Community main-feed @Steve** is unchanged: may still attach community resource context when the message asks for documents/events/links/polls per prompt policy.
 
 ## Proactive
