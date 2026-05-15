@@ -2569,6 +2569,9 @@ def add_missing_tables():
                     ('professional_work_history', 'TEXT'),
                     ('professional_education', 'TEXT'),
                     ('personal_highlight_answers', 'TEXT'),
+                    ('professional_cv_r2_key', 'TEXT'),
+                    ('professional_cv_uploaded_at', 'TEXT'),
+                    ('professional_cv_original_filename', 'TEXT'),
                 ]:
                     try:
                         c.execute(f"SHOW COLUMNS FROM users LIKE '{col}'")
@@ -11230,7 +11233,8 @@ def api_profile_me():
                            u.role, u.company, u.industry, u.linkedin, u.professional_about, u.professional_interests,
                            u.professional_company_intel, u.notification_show_previews,
                            u.current_role_start_ym, u.professional_work_history, u.professional_education,
-                           u.personal_highlight_answers
+                           u.personal_highlight_answers,
+                           u.professional_cv_r2_key, u.professional_cv_uploaded_at, u.professional_cv_original_filename
                     FROM users u
                     LEFT JOIN user_profiles p ON u.username = p.username
                     WHERE u.username = ?
@@ -11245,7 +11249,8 @@ def api_profile_me():
                            u.role, u.company, u.industry, u.linkedin, u.professional_about, u.professional_interests,
                            u.professional_company_intel,
                            u.current_role_start_ym, u.professional_work_history, u.professional_education,
-                           u.personal_highlight_answers
+                           u.personal_highlight_answers,
+                           u.professional_cv_r2_key, u.professional_cv_uploaded_at, u.professional_cv_original_filename
                     FROM users u
                     LEFT JOIN user_profiles p ON u.username = p.username
                     WHERE u.username = ?
@@ -11286,7 +11291,19 @@ def api_profile_me():
             crs_raw = get_val('current_role_start_ym')
             crs_out = (str(crs_raw).strip() if crs_raw is not None else '') or None
             highlights_me = decode_personal_highlights_for_api(get_val('personal_highlight_answers'))
-            
+            if hasattr(row, 'keys'):
+                cv_key_raw = get_val('professional_cv_r2_key')
+                cv_at_raw = get_val('professional_cv_uploaded_at')
+                cv_fn_raw = get_val('professional_cv_original_filename')
+            else:
+                try:
+                    cv_key_raw, cv_at_raw, cv_fn_raw = row[-3], row[-2], row[-1]
+                except Exception:
+                    cv_key_raw = cv_at_raw = cv_fn_raw = None
+            cv_uploaded_at = (str(cv_at_raw).strip() if cv_at_raw is not None else '') or None
+            cv_original_filename = (str(cv_fn_raw).strip() if cv_fn_raw is not None else '') or None
+            has_stored_cv = bool((str(cv_key_raw).strip() if cv_key_raw is not None else ''))
+
             profile = {
                 'username': username,
                 'email': get_val('email') if hasattr(row, 'keys') else row[1],
@@ -11328,6 +11345,9 @@ def api_profile_me():
                     'current_role_start': crs_out,
                     'work_history': work_l,
                     'education': edu_l,
+                    'cv_uploaded_at': cv_uploaded_at,
+                    'cv_original_filename': cv_original_filename,
+                    'has_stored_cv': has_stored_cv,
                 },
                 'notification_show_previews': (
                     True
@@ -11363,6 +11383,57 @@ def api_profile_me():
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
+
+
+@app.route('/api/profile/cv', methods=['GET'])
+@login_required
+def api_profile_cv_download():
+    """Download the user's last stored CV PDF (private R2; session required)."""
+    from io import BytesIO
+
+    from flask import send_file
+
+    from backend.services.r2_storage import download_bytes_from_r2
+
+    username = session['username']
+    key = None
+    fname = 'cv.pdf'
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(
+                f"SELECT professional_cv_r2_key, professional_cv_original_filename FROM users WHERE username = {ph}",
+                (username,),
+            )
+            row = c.fetchone()
+        if row:
+            if hasattr(row, 'keys'):
+                key = row.get('professional_cv_r2_key')
+                fn = row.get('professional_cv_original_filename')
+            else:
+                key, fn = row[0], row[1] if len(row) > 1 else (row[0], None)
+            if fn and str(fn).strip():
+                base = os.path.basename(str(fn).strip())
+                if base:
+                    fname = base[:180]
+    except Exception as e:
+        logger.error("api_profile_cv_download lookup failed: %s", e)
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+    if not key or not str(key).strip():
+        return jsonify({'success': False, 'error': 'No CV on file'}), 404
+
+    data = download_bytes_from_r2(str(key).strip())
+    if not data:
+        return jsonify({'success': False, 'error': 'Could not retrieve file'}), 404
+
+    return send_file(
+        BytesIO(data),
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=fname,
+    )
 
 
 @app.route('/api/account/timezone', methods=['POST'])

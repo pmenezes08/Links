@@ -85,7 +85,7 @@ Logout also deletes the following IndexedDB databases:
 
 ### Cache Storage / Service Worker
 
-Current SW version: `2.69.0`.
+Current SW version: `2.69.1`.
 
 Current Cache Storage buckets:
 
@@ -96,6 +96,7 @@ Current Cache Storage buckets:
 Current explicit no-cache API list in `client/public/sw.js`:
 
 - `/api/profile_me`
+- `/api/profile/cv`
 - `/api/profile/ai_suggestions`
 - `/api/profile/ai_review`
 - `/api/profile/steve_analysis`
@@ -126,6 +127,7 @@ must be treated as user-scoped in later PRs.
 ### Identity and Profile
 
 - `/api/profile_me`
+- `/api/profile/cv`
 - `/api/profile/ai_suggestions`
 - `/api/profile/ai_review`
 - `/api/profile/steve_analysis`

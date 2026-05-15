@@ -28,6 +28,7 @@ PROFESSIONAL_STAGES = {
     "fix_company",
     "professional_associations",
     "professional_strengths",
+    "linkedin",
     "professional_bio_review",
     "cv_upload",
     "cv_review",
@@ -139,14 +140,18 @@ def build_defer_timestamps(now_utc: Optional[datetime] = None) -> Tuple[str, str
 def _section_started(section: str, data: Dict[str, Any]) -> bool:
     if section == "personal":
         keys = ("talkAllDay", "reachOut", "journey", "recommend", "bio")
-    else:
-        keys = (
+        return any(str(data.get(key) or "").strip() for key in keys)
+    base = any(
+        str(data.get(key) or "").strip()
+        for key in (
             "role",
             "professionalAssociations",
             "professionalStrengths",
+            "linkedin",
             "professionalBio",
         )
-    return any(str(data.get(key) or "").strip() for key in keys)
+    )
+    return base or bool(data.get("linkedinDone"))
 
 
 def _first_unanswered_stage_for_section(section: str, data: Dict[str, Any]) -> str:
@@ -169,6 +174,8 @@ def _first_unanswered_stage_for_section(section: str, data: Dict[str, Any]) -> s
         return "professional_associations"
     if not str(data.get("professionalStrengths") or "").strip():
         return "professional_strengths"
+    if not bool(data.get("linkedinDone")):
+        return "linkedin"
     return "professional_bio_review"
 
 
@@ -212,7 +219,9 @@ def next_unanswered_profile_stage(
         return "complete"
 
     if saved_stage == "linkedin":
-        return "professional_bio_review"
+        if data.get("professionalSectionComplete"):
+            return next_incomplete_profile_stage(data)
+        return "linkedin"
 
     if saved_stage in ("cv_upload", "cv_review"):
         return saved_stage

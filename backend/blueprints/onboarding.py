@@ -7,7 +7,8 @@ import logging
 import os
 import threading
 import time
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 
 from functools import wraps
 
@@ -30,6 +31,67 @@ from backend.services.firestore_writes import merge_onboarding_identity_to_steve
 
 onboarding_bp = Blueprint("onboarding", __name__)
 logger = logging.getLogger(__name__)
+
+
+def _truthy_param(val) -> bool:
+    if val is None:
+        return False
+    s = str(val).strip().lower()
+    return s in ("1", "true", "yes", "on")
+
+
+def _persist_user_cv_pdf(username: str, raw_pdf: bytes, original_filename: str) -> bool:
+    """Store CV bytes in private R2 and update users.* metadata. Returns True if stored."""
+    from backend.services.r2_storage import (
+        CV_R2_KEY_PREFIX,
+        R2_ENABLED,
+        delete_from_r2,
+        upload_private_bytes_to_r2,
+    )
+
+    if not R2_ENABLED or not raw_pdf:
+        return False
+    safe_name = (original_filename or "cv.pdf").replace("\\", "/").split("/")[-1].strip() or "cv.pdf"
+    safe_name = safe_name[:180] if len(safe_name) > 180 else safe_name
+    key = f"{CV_R2_KEY_PREFIX}/{username}/{uuid.uuid4().hex}.pdf"
+    if not upload_private_bytes_to_r2(raw_pdf, key, "application/pdf"):
+        return False
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(
+                f"SELECT professional_cv_r2_key FROM users WHERE username = {ph}",
+                (username,),
+            )
+            row = c.fetchone()
+            old_key = None
+            if row:
+                old_key = row.get("professional_cv_r2_key") if hasattr(row, "keys") else row[0]
+            if old_key:
+                try:
+                    delete_from_r2(str(old_key))
+                except Exception as del_err:
+                    logger.warning("delete old CV from R2 failed for %s: %s", username, del_err)
+            now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            c.execute(
+                f"""UPDATE users SET
+                    professional_cv_r2_key = {ph},
+                    professional_cv_uploaded_at = {ph},
+                    professional_cv_original_filename = {ph}
+                    WHERE username = {ph}""",
+                (key, now_iso, safe_name, username),
+            )
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error("persist_user_cv_pdf DB error for %s: %s", username, e)
+        try:
+            delete_from_r2(key)
+        except Exception:
+            pass
+        return False
+
 
 XAI_API_KEY = os.getenv('XAI_API_KEY', '')
 GROK_MODEL_FAST = 'grok-4.20-non-reasoning'
@@ -1277,7 +1339,8 @@ def onboarding_parse_cv():
     if not upload or not getattr(upload, "filename", ""):
         return jsonify({"success": False, "error": "No file uploaded"}), 400
 
-    filename = (upload.filename or "").lower()
+    upload_name = (upload.filename or "").strip() or "cv.pdf"
+    filename = upload_name.lower()
     if not filename.endswith(".pdf"):
         return jsonify({"success": False, "error": "Please upload a PDF file"}), 400
 
@@ -1349,6 +1412,11 @@ def onboarding_parse_cv():
         model=GROK_MODEL_FAST,
     )
 
+    persist = _truthy_param(request.args.get("persist")) or _truthy_param(
+        (request.form.get("persist") if request.form else None)
+    )
+    cv_stored = bool(persist and _persist_user_cv_pdf(username, raw, upload_name))
+
     return jsonify({
         "success": True,
         "role": normalized.get("role") or "",
@@ -1356,6 +1424,7 @@ def onboarding_parse_cv():
         "current_role_start_ym": normalized.get("current_role_start_ym") or "",
         "current_role_description": normalized.get("current_role_description") or "",
         "work_history": normalized.get("work_history") or [],
+        "cv_stored": cv_stored,
     })
 
 
@@ -1369,8 +1438,17 @@ def onboarding_apply_professional_structured():
     company = (data.get("company") or "").strip()
     current_role_start_ym = (data.get("current_role_start_ym") or "").strip()
     raw_wh = data.get("work_history")
+    mode = (data.get("mode") or "replace").strip().lower()
+    if mode not in ("replace", "merge"):
+        mode = "replace"
 
-    from backend.services.profile_structured_fields import normalize_yyyy_mm, parse_work_history_for_storage, _clip
+    from backend.services.profile_cv_merge import merge_work_history_for_cv
+    from backend.services.profile_structured_fields import (
+        decode_work_history_db,
+        normalize_yyyy_mm,
+        parse_work_history_for_storage,
+        _clip,
+    )
 
     if not role and not company:
         if not isinstance(raw_wh, list) or not raw_wh:
@@ -1381,7 +1459,51 @@ def onboarding_apply_professional_structured():
         raw_wh = []
     if not isinstance(raw_wh, list):
         return jsonify({"success": False, "error": "work_history must be a list"}), 400
-    work_json, _ = parse_work_history_for_storage(json.dumps(raw_wh, ensure_ascii=False))
+
+    if mode == "merge":
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                c.execute(
+                    f"""
+                    SELECT role, company, current_role_start_ym, professional_work_history
+                    FROM users WHERE username = {ph}
+                    """,
+                    (username,),
+                )
+                row = c.fetchone()
+            db_role = ""
+            db_company = ""
+            db_ym = ""
+            db_wh_raw = None
+            if row:
+                if hasattr(row, "keys"):
+                    db_role = str(row.get("role") or "").strip()
+                    db_company = str(row.get("company") or "").strip()
+                    db_ym = str(row.get("current_role_start_ym") or "").strip()
+                    db_wh_raw = row.get("professional_work_history")
+                else:
+                    db_role = str(row[0] or "").strip()
+                    db_company = str(row[1] or "").strip()
+                    db_ym = str(row[2] or "").strip()
+                    db_wh_raw = row[3]
+            db_items = decode_work_history_db(db_wh_raw)
+            work_json, _ = merge_work_history_for_cv(
+                db_role=db_role,
+                db_company=db_company,
+                db_start_ym=db_ym,
+                db_history_items=db_items,
+                parsed_role=role,
+                parsed_company=company,
+                parsed_start_ym=ym,
+                parsed_cv_work_history=raw_wh,
+            )
+        except Exception as me:
+            logger.warning("apply_professional_structured merge failed for %s: %s", username, me)
+            return jsonify({"success": False, "error": "Failed to merge work history"}), 500
+    else:
+        work_json, _ = parse_work_history_for_storage(json.dumps(raw_wh, ensure_ascii=False))
     about_raw = (data.get("professional_about") or "").strip()
     professional_about_db = _clip(about_raw, 12000) if about_raw else None
 

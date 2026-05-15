@@ -60,7 +60,10 @@ def test_inventory_doc_lists_required_sections_and_boundaries() -> None:
 
 def test_logout_inventory_matches_current_client_cleanup_contract() -> None:
     logout_ts = _read("client/src/utils/logout.ts")
+    account_reset_ts = _read("client/src/utils/accountStateReset.ts")
     chat_cache_ts = _read("client/src/utils/chatThreadsCache.ts")
+
+    assert "resetAccountScopedState" in logout_ts
 
     for key in (
         "signal_device_id",
@@ -74,7 +77,7 @@ def test_logout_inventory_matches_current_client_cleanup_contract() -> None:
         "communityManagementShowNested",
         "cached_profile",
     ):
-        assert key in logout_ts
+        assert key in account_reset_ts
 
     for prefix in (
         "signal_",
@@ -87,13 +90,13 @@ def test_logout_inventory_matches_current_client_cleanup_contract() -> None:
         "community-feed:",
         "group-feed:",
     ):
-        assert prefix in logout_ts
+        assert prefix in account_reset_ts
 
-    assert "cpoint_processed_deep_links" in logout_ts
-    assert "sessionStorage.clear()" in logout_ts
+    assert "cpoint_processed_deep_links" in account_reset_ts
+    assert "sessionStorage.clear()" in account_reset_ts
 
     for db_name in ("cpoint-offline", "chat-encryption", "signal-protocol", "signal-store"):
-        assert db_name in logout_ts or db_name in _read("client/src/utils/offlineDb.ts")
+        assert db_name in account_reset_ts or db_name in _read("client/src/utils/offlineDb.ts")
 
     viewer_prefixes = set(_js_string_array(chat_cache_ts, "VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES"))
     assert {
@@ -103,7 +106,7 @@ def test_logout_inventory_matches_current_client_cleanup_contract() -> None:
         "chat-messages:",
         "chat-profile:",
     }.issubset(viewer_prefixes)
-    assert "...VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES" in logout_ts
+    assert "VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES" in account_reset_ts
 
 
 def test_offline_db_inventory_pins_current_scoping_baseline() -> None:
@@ -125,7 +128,7 @@ def test_offline_db_inventory_pins_current_scoping_baseline() -> None:
 def test_service_worker_inventory_pins_current_api_cache_baseline() -> None:
     sw_js = _read("client/public/sw.js")
 
-    assert "const SW_VERSION = '2.69.0'" in sw_js
+    assert "const SW_VERSION = '2.69.1'" in sw_js
     assert "cp-shell-${SW_VERSION}" in sw_js
     assert "cp-runtime-${SW_VERSION}" in sw_js
     assert "cp-media-${SW_VERSION}" in sw_js
@@ -170,6 +173,7 @@ def test_user_scoped_endpoint_inventory_is_backed_by_current_routes() -> None:
     route_sources = "\n".join(files.values())
     for endpoint in (
         "/api/profile_me",
+        "/api/profile/cv",
         "/api/check_admin",
         "/api/user_communities_hierarchical",
         "/api/user_parent_community",

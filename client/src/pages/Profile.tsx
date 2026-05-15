@@ -37,6 +37,9 @@ export type ProfessionalForm = {
   current_role_start: string
   work_history: WorkExperienceRow[]
   education: EducationRow[]
+  cv_uploaded_at?: string
+  cv_original_filename?: string
+  has_stored_cv?: boolean
 }
 
 type ProfileSummary = {
@@ -74,6 +77,9 @@ const PROFESSIONAL_DEFAULT: ProfessionalForm = {
   current_role_start: '',
   work_history: [],
   education: [],
+  cv_uploaded_at: '',
+  cv_original_filename: '',
+  has_stored_cv: false,
 }
 
 const GENDERS = ['Female', 'Male', 'Prefer not to say', 'Other']
@@ -216,6 +222,18 @@ export default function Profile() {
   const cityCache = useRef<Map<string, string[]>>(new Map())
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [detailsModalOpen, setDetailsModalOpen] = useState(false)
+  const [cvModalOpen, setCvModalOpen] = useState(false)
+  const [cvParsing, setCvParsing] = useState(false)
+  const [cvApplying, setCvApplying] = useState(false)
+  const [cvPending, setCvPending] = useState<{
+    role: string
+    company: string
+    current_role_start_ym: string
+    professional_about: string
+    work_history: WorkExperienceRow[]
+    cv_stored?: boolean
+  } | null>(null)
+  const cvFileInputRef = useRef<HTMLInputElement | null>(null)
   const [interestInput, setInterestInput] = useState('')
   const serverPersonalRef = useRef<PersonalForm>(PERSONAL_DEFAULT)
   const [showLeaveModal, setShowLeaveModal] = useState(false)
@@ -609,6 +627,9 @@ export default function Profile() {
       ),
       work_history: mapWorkHistoryFromApi(professionalInfo.work_history),
       education: mapEducationFromApi(professionalInfo.education),
+      cv_uploaded_at: coalesceString(professionalInfo.cv_uploaded_at),
+      cv_original_filename: coalesceString(professionalInfo.cv_original_filename),
+      has_stored_cv: Boolean(professionalInfo.has_stored_cv),
     })
     setInterestInput('')
     setError(null)
@@ -855,6 +876,122 @@ export default function Profile() {
       setFeedback('Unable to save professional information')
     } finally {
       setSavingProfessional(false)
+    }
+  }
+
+  async function parseCvUpload(file: File) {
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      setFeedback('Please choose a PDF file.')
+      return
+    }
+    setCvParsing(true)
+    setFeedback(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const r = await fetch('/api/onboarding/parse_cv?persist=1', { method: 'POST', credentials: 'include', body: fd })
+      const j = await r.json().catch(() => null)
+      if (!r.ok || !j?.success) {
+        setFeedback((j?.error as string) || 'Could not read that CV.')
+        return
+      }
+      const wh: WorkExperienceRow[] = Array.isArray(j.work_history)
+        ? j.work_history.map((row: Record<string, unknown>) => ({
+            title: String(row.title ?? ''),
+            company: String(row.company ?? ''),
+            location: String(row.location ?? ''),
+            start: String(row.start ?? ''),
+            end: String(row.end ?? ''),
+            description: String(row.description ?? ''),
+          }))
+        : []
+      const roleDesc = String(j.current_role_description || '').trim()
+      setCvPending({
+        role: String(j.role || ''),
+        company: String(j.company || ''),
+        current_role_start_ym: String(j.current_role_start_ym || ''),
+        professional_about: roleDesc,
+        work_history: wh,
+        cv_stored: Boolean(j.cv_stored),
+      })
+      setCvModalOpen(true)
+    } catch {
+      setFeedback('Network error uploading CV.')
+    } finally {
+      setCvParsing(false)
+      try {
+        if (cvFileInputRef.current) cvFileInputRef.current.value = ''
+      } catch { /* ignore */ }
+    }
+  }
+
+  async function applyCvStructured(mode: 'replace' | 'merge') {
+    if (!cvPending || cvApplying) return
+    setCvApplying(true)
+    setFeedback(null)
+    try {
+      const r = await fetch('/api/onboarding/apply_professional_structured', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode,
+          role: cvPending.role,
+          company: cvPending.company,
+          current_role_start_ym: cvPending.current_role_start_ym,
+          work_history: cvPending.work_history,
+          professional_about: cvPending.professional_about,
+        }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok || !j?.success) {
+        setFeedback((j?.error as string) || 'Could not update from CV.')
+        return
+      }
+      setFeedback(mode === 'merge' ? 'Professional details merged from CV.' : 'Professional details updated from CV.')
+      setCvModalOpen(false)
+      setCvPending(null)
+      try {
+        const pr = await fetch(`/api/profile_me?_nocache=${Date.now()}`, {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+          cache: 'no-store',
+        })
+        const pj = await pr.json().catch(() => null)
+        if (pj?.success && pj.profile) {
+          applyProfileFromServer(pj.profile as Record<string, unknown>)
+        } else {
+          await refreshUserProfile()
+        }
+        await prefetchPublicProfileApi()
+      } catch {}
+    } catch {
+      setFeedback('Could not apply CV changes.')
+    } finally {
+      setCvApplying(false)
+    }
+  }
+
+  async function downloadStoredCv() {
+    setFeedback(null)
+    try {
+      const r = await fetch('/api/profile/cv', { credentials: 'include' })
+      if (!r.ok) {
+        setFeedback('No CV file available to download.')
+        return
+      }
+      const blob = await r.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = professional.cv_original_filename?.trim() || 'cv.pdf'
+      a.rel = 'noopener'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      setFeedback('Download failed.')
     }
   }
 
@@ -1187,6 +1324,52 @@ export default function Profile() {
               <div className="font-semibold">Professional information</div>
               <p className="text-xs text-[#9fb0b5]">How you work and what you do — edit anytime.</p>
             </header>
+            <input
+              ref={cvFileInputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              className="hidden"
+              onChange={e => {
+                const f = e.target.files?.[0]
+                if (f) void parseCvUpload(f)
+              }}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/10 disabled:opacity-50"
+                disabled={cvParsing}
+                onClick={() => cvFileInputRef.current?.click()}
+              >
+                {cvParsing ? 'Reading CV…' : 'Upload CV (PDF)'}
+              </button>
+              {professional.has_stored_cv ? (
+                <button
+                  type="button"
+                  className="rounded-md border border-[#4db6ac]/50 bg-[#4db6ac]/10 px-3 py-1.5 text-xs font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20"
+                  onClick={() => void downloadStoredCv()}
+                >
+                  Download last CV
+                </button>
+              ) : null}
+            </div>
+            {professional.cv_uploaded_at ? (
+              <p className="text-[11px] text-[#9fb0b5]">
+                Last CV on file:{' '}
+                {(() => {
+                  try {
+                    const d = new Date(professional.cv_uploaded_at)
+                    return Number.isNaN(d.getTime()) ? professional.cv_uploaded_at : d.toLocaleString()
+                  } catch {
+                    return professional.cv_uploaded_at
+                  }
+                })()}
+                {professional.cv_original_filename ? ` · ${professional.cv_original_filename}` : ''}
+              </p>
+            ) : null}
+            <p className="text-[11px] text-[#9fb0b5]">
+              When storage is enabled, your PDF is kept privately for repopulating this section. You choose whether to replace all professional fields from the CV or merge (e.g. move your previous role into history if you have a new one).
+            </p>
             <label className="text-sm block">
               Professional bio / about
               <textarea
@@ -1259,6 +1442,74 @@ export default function Profile() {
               {savingProfessional ? 'Saving…' : 'Save professional info'}
             </button>
           </form>
+
+          {cvModalOpen && cvPending ? (
+            <div
+              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="cv-modal-title"
+            >
+              <div className="max-w-lg w-full rounded-xl border border-white/15 bg-[#0d1619] p-4 shadow-xl space-y-3">
+                <div id="cv-modal-title" className="font-semibold text-white">
+                  Apply CV to your profile?
+                </div>
+                <p className="text-xs text-[#9fb0b5]">
+                  Steve extracted the following. Choose how to update your professional section (role, company, dates, work history, professional bio).
+                </p>
+                {cvPending.cv_stored === false ? (
+                  <p className="text-xs text-amber-200/90">
+                    The PDF was not stored (cloud storage may be unavailable). You can still apply the parsed fields.
+                  </p>
+                ) : null}
+                <ul className="text-xs text-[#c8d8dc] list-disc pl-4 space-y-1 max-h-40 overflow-y-auto">
+                  <li>Current role: {cvPending.role.trim() || '—'}</li>
+                  <li>Company: {cvPending.company.trim() || '—'}</li>
+                  <li>Start (year-month): {cvPending.current_role_start_ym.trim() || '—'}</li>
+                  <li>Past roles in CV: {cvPending.work_history.length}</li>
+                  {cvPending.professional_about ? (
+                    <li className="list-none -ml-4 mt-2 text-[#9fb0b5]">
+                      Bio: {cvPending.professional_about.length > 220 ? `${cvPending.professional_about.slice(0, 220)}…` : cvPending.professional_about}
+                    </li>
+                  ) : null}
+                </ul>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  <button
+                    type="button"
+                    className="rounded-md bg-[#4db6ac] text-black text-sm font-medium py-2.5 hover:brightness-110 disabled:opacity-50"
+                    disabled={cvApplying}
+                    onClick={() => void applyCvStructured('replace')}
+                  >
+                    {cvApplying ? 'Applying…' : 'Replace all from CV'}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-md border border-white/20 bg-white/5 text-white text-sm font-medium py-2.5 hover:bg-white/10 disabled:opacity-50"
+                    disabled={cvApplying}
+                    onClick={() => void applyCvStructured('merge')}
+                  >
+                    {cvApplying ? 'Applying…' : 'Merge (keep history)'}
+                  </button>
+                </div>
+                <p className="text-[11px] text-[#7a8f94]">
+                  Merge moves your previous current role into past experience when the CV shows a different role or company, then adds CV work history without duplicates.
+                </p>
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    className="rounded-md border border-white/15 px-3 py-2 text-sm text-[#9fb0b5] hover:bg-white/5 disabled:opacity-50"
+                    disabled={cvApplying}
+                    onClick={() => {
+                      setCvModalOpen(false)
+                      setCvPending(null)
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <section className="rounded-xl border border-white/10 p-4 space-y-3">

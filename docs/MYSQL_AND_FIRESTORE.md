@@ -37,7 +37,7 @@ Database name: env `FIRESTORE_DATABASE` (default **`cpoint`**).
 
 | Table | Defined / ensured in | Role |
 |-------|----------------------|------|
-| `users` | `bodybuilding_app.py` (init), `init_database.py`, `backend/services/user_trial.py` (`trial_revoked_at`) | Accounts, credentials, profile fields. **`trial_revoked_at`** (DATETIME NULL): when set (admin **End trial**), entitlements skip the signup trial tier regardless of account age; see `POST /api/admin/users/<username>/trial/revoke` in **`BACKEND_ROUTES.md`**. |
+| `users` | `bodybuilding_app.py` (init), `init_database.py`, `backend/services/user_trial.py` (`trial_revoked_at`) | Accounts, credentials, profile fields. **`trial_revoked_at`** (DATETIME NULL): when set (admin **End trial**), entitlements skip the signup trial tier regardless of account age; see `POST /api/admin/users/<username>/trial/revoke` in **`BACKEND_ROUTES.md`**. **`professional_cv_r2_key`**, **`professional_cv_uploaded_at`**, **`professional_cv_original_filename`**: last CV PDF stored privately in R2 (key + metadata); download/authenticated access via **`GET /api/profile/cv`**. |
 | `user_profiles` | `add_user_profiles_table.py`, monolith | Extended profile. |
 | `communities` | `init_database.py`, monolith | Community rows, hierarchy. |
 | `user_communities` | monolith | Membership + roles. |
