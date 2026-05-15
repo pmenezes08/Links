@@ -6,6 +6,7 @@ from backend.services.steve_community_config import SteveCommunityConfig
 from backend.services.steve_tool_policy import (
     normalize_message_for_live_search_signals,
     steve_external_search_requested,
+    steve_job_listing_or_employer_research_requested,
     steve_tool_names_for_log,
     steve_tools_for_message,
 )
@@ -146,3 +147,37 @@ def test_job_listing_signal_overrides_profile_suppression_when_mixed():
         config=cfg,
     )
     assert tools == [{"type": "web_search"}, {"type": "x_search"}]
+
+
+def test_roles_at_company_triggers_tools_with_explicit_only():
+    from backend.services.steve_platform_manual import is_platform_question
+
+    cfg = SteveCommunityConfig()
+    msg = "@Steve what roles at OpenAI should I look at?"
+    assert not is_platform_question(msg)
+    tools = steve_tools_for_message(
+        msg,
+        platform_question=is_platform_question(msg),
+        config=cfg,
+    )
+    assert tools == [{"type": "web_search"}, {"type": "x_search"}]
+
+
+def test_render_hosted_search_capability_instructions_reflects_tool_flag():
+    from backend.services.steve_prompt_policy import render_hosted_search_capability_instructions
+
+    assert "THIS TURN includes" in render_hosted_search_capability_instructions(
+        has_hosted_search_tools=True
+    )
+    assert "don't have web lookup" in render_hosted_search_capability_instructions(
+        has_hosted_search_tools=False
+    )
+
+
+def test_role_at_company_heuristic_not_career_at_a_crossroads():
+    assert not steve_job_listing_or_employer_research_requested(
+        "@Steve I feel my career at a crossroads"
+    )
+    assert steve_job_listing_or_employer_research_requested(
+        "@Steve any roles at OpenAI for revenue ops?"
+    )

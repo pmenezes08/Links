@@ -92,6 +92,42 @@ def steve_external_search_requested(message: str) -> bool:
     return any(phrase in text for phrase in phrases)
 
 
+_AT_STOPWORDS_FOR_ROLE_AT = frozenset(
+    {
+        "stake",
+        "home",
+        "least",
+        "first",
+        "once",
+        "hand",
+        "large",
+        "best",
+        "worst",
+        "any",
+        "all",
+        "the",
+        "this",
+        "that",
+        "a",
+        "an",
+        "your",
+        "my",
+        "our",
+    }
+)
+
+
+def _role_job_careers_at_external_target(text: str) -> bool:
+    """True for \"roles at Acme\", \"job at Google\", \"career at OpenAI\"; false for \"career at a crossroads\"."""
+    m = re.search(r"\b(jobs?|roles?|positions?|career|careers)\s+at\s+(\S+)", text, re.IGNORECASE)
+    if not m:
+        return False
+    w = m.group(2).lower().strip(".,?!'\"")
+    if w in _AT_STOPWORDS_FOR_ROLE_AT:
+        return False
+    return True
+
+
 def steve_job_listing_or_employer_research_requested(message: str) -> bool:
     """True when the user is asking about real job postings, careers pages, or verifying a role.
 
@@ -101,6 +137,8 @@ def steve_job_listing_or_employer_research_requested(message: str) -> bool:
     text = normalize_message_for_live_search_signals(message)
     if not text:
         return False
+    if _role_job_careers_at_external_target(text):
+        return True
     phrases: tuple[str, ...] = (
         "careers page",
         "careers site",
@@ -164,8 +202,9 @@ def steve_tools_for_message(
     Order of checks:
 
     1. No external tools for platform-manual-only or professional-advice-only paths.
-    2. Prefer on-platform KB: profile-style wording (mentions / career / introductions)
-       suppresses external tools unless the same message also requests live-news or explicit browse.
+    2. Prefer on-platform KB: profile-style wording (mentions / introductions / \"about me\")
+       suppresses external tools unless the same message also requests live-news, explicit browse, or
+       employer/public-job style lookup (see ``steve_job_listing_or_employer_research_requested``).
     3. Eligible live intent: ``steve_external_search_requested``, ``news_current_events_requested``,
        ``steve_job_listing_or_employer_research_requested``, or (when KB ``external_search_explicit_only``
        is OFF) the web/X default-enabled flags.

@@ -87,6 +87,34 @@ def should_include_community_resources(user_message: str) -> bool:
     return bool(_COMMUNITY_RESOURCE_RE.search(user_message or ""))
 
 
+def render_hosted_search_capability_instructions(*, has_hosted_search_tools: bool) -> str:
+    """Align the system prompt with the actual ``tools=`` list for this Grok turn.
+
+    When tools are omitted, Steve should state plainly that web lookup is not available **for this
+    turn** (not a vague \"I have no real-time access\" forever).
+    """
+    if has_hosted_search_tools:
+        return (
+            "- THIS TURN includes hosted **web_search** and **x_search** (when x_search is present in the "
+            "API tool list). Use them for any request that depends on **current or verifiable public web** "
+            "information — e.g. news, markets, sports, employer **public** careers pages, product or company "
+            "facts, government pages, event schedules.\n"
+            "- Prefer **primary sources** (official careers/press/docs) when claiming a specific job posting, "
+            "product fact, or policy exists.\n"
+            "- Do **not** claim you searched or saw live results for facts that did not come from tool output "
+            "on this turn.\n"
+            "- **C-Point members:** do not use web search to look up platform users who are not in the "
+            "injected profile excerpts; privacy rules override."
+        )
+    return (
+        "- THIS TURN does **not** include hosted web_search or x_search — **no live web lookup on this reply**. "
+        "If the user needs current public-web facts (careers pages, listings, news, etc.), say so plainly "
+        '(e.g. \"I don\'t have web lookup on this turn\") and answer from the conversation and injected '
+        "C-Point context only.\n"
+        "- Do **not** speculate or invent employer postings, URLs, or live news as if you had browsed the web."
+    )
+
+
 def render_third_party_job_grounding_rules() -> str:
     """Shared bullets for feed, DM, and group-chat system prompts (append where tool rules live)."""
     return (

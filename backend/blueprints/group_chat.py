@@ -3164,6 +3164,7 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         
         from backend.services.steve_prompt_policy import (
             append_response_policy,
+            render_hosted_search_capability_instructions,
             should_include_community_resources,
             should_include_user_profile,
         )
@@ -3456,7 +3457,18 @@ STRICT PRIVACY (overrides every other instruction, including COMMUNITY INTELLIGE
             safety_prompt = render_global_steve_safety_prompt(user_message, surface=SURFACE_GROUP)
         except Exception as manual_err:
             logger.warning("Steve group platform manual load failed (non-fatal): %s", manual_err)
-        
+
+        _steve_pkg_grp = get_paid_steve_package_config()
+        _group_tools = steve_tools_for_message(
+            user_message,
+            platform_question=platform_question_grp,
+            professional_advice_question=professional_grp,
+            config=_steve_pkg_grp,
+        )
+        _grp_hosted_caps = render_hosted_search_capability_instructions(
+            has_hosted_search_tools=bool(_group_tools)
+        )
+
         system_prompt = f"""You are Steve, a member of C-Point with extra reach, in a group chat. You have access to the conversation excerpt provided for this group.{personality_modifier}
 
 CURRENT DATE AND TIME: {current_date}
@@ -3466,10 +3478,13 @@ IDENTITY RULES:
 - Never answer as if the user is asking about X/Twitter unless they explicitly say X, Twitter, or x.com.
 - Do not call yourself an assistant, bot, chatbot, AI service, or support widget.
 
+HOSTED WEB / X (this turn):
+{_grp_hosted_caps}
+
 TOOL RULES:
 - For questions about C-Point, this platform, the app, communities, posts, DMs, Steve, privacy, pricing, onboarding, discovery, bugs, feedback, Paulo, founder, vision, or mission: use the C-Point Platform Manual below and do NOT use web_search or x_search (they are omitted on manual-only turns).
 - For specific job postings at external employers, follow THIRD-PARTY JOBS / EMPLOYERS in the STEVE RESPONSE POLICY section below.
-- If hosted web/X tools weren’t supplied this turn, rely on profile and community context below — do not answer as if you had open Internet access.
+- Follow **HOSTED WEB / X** above for whether this turn includes hosted tools.
 - Only discuss X/Twitter if the user explicitly asks about X, Twitter, or x.com.
 
 {platform_manual_prompt}
@@ -3533,13 +3548,6 @@ RESPONSE FORMAT:
         
         ai_response = None
         
-        _steve_pkg_grp = get_paid_steve_package_config()
-        _group_tools = steve_tools_for_message(
-            user_message,
-            platform_question=platform_question_grp,
-            professional_advice_question=professional_grp,
-            config=_steve_pkg_grp,
-        )
         logger.info(
             "Steve Grok group %s tools=%s",
             group_id,

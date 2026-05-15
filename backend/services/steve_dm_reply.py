@@ -481,6 +481,38 @@ def _run_grok_dm_turn(
         else "- You have access to the conversation excerpts provided below (recent window plus optional older summary).\n"
     )
 
+    platform_question_dm = False
+    professional_dm = False
+    try:
+        from backend.services.steve_platform_manual import (
+            is_professional_advice_intent,
+            is_platform_question,
+        )
+
+        platform_question_dm = bool(is_platform_question(user_message))
+        professional_dm = bool(is_professional_advice_intent(user_message))
+    except Exception as manual_gate_err:
+        logger.warning("Steve DM platform/manual gate failed (non-fatal): %s", manual_gate_err)
+
+    from backend.services.steve_community_config import get_paid_steve_package_config
+    from backend.services.steve_prompt_policy import render_hosted_search_capability_instructions
+    from backend.services.steve_tool_policy import steve_tool_names_for_log, steve_tools_for_message
+
+    steve_pkg = get_paid_steve_package_config()
+    dm_tools = steve_tools_for_message(
+        user_message,
+        platform_question=platform_question_dm,
+        professional_advice_question=professional_dm,
+        config=steve_pkg,
+    )
+    has_web_tools = bool(dm_tools)
+    caps_lines = render_hosted_search_capability_instructions(has_hosted_search_tools=has_web_tools)
+    admin_line = (
+        "\n- As an admin, you have full platform access."
+        if is_app_admin(sender_username)
+        else ""
+    )
+
     system_prompt = f"""You are Steve, a member of C-Point with extra reach, in a private 1:1 chat.
 
 CURRENT DATE AND TIME: {current_date}
@@ -492,8 +524,7 @@ IDENTITY RULES:
 
 YOUR CAPABILITIES:
 {history_rule}
-- Hosted web_search / x_search are only supplied when your message clearly asks for live/off-platform facts (sport scores, headlines, trending topics, explicit “search” etc.). Questions about users on this platform rely on injected profile context instead.
-- {"As an admin, you have full platform access." if is_app_admin(sender_username) else ""}
+{caps_lines}{admin_line}
 
 REMINDER VAULT (CRITICAL):
 - You cannot save, insert, or schedule rows in the user’s C-Point Reminder Vault from this chat turn by yourself.
@@ -503,7 +534,7 @@ REMINDER VAULT (CRITICAL):
 
 TOOL RULES:
 - For questions about C-Point, this platform, the app, communities, posts, DMs, Steve, privacy, pricing, onboarding, discovery, bugs, feedback, Paulo, founder, vision, or mission: use the C-Point Platform Manual below and do NOT use web_search or x_search (hosted tools won’t appear for manual-only turns).
-- If hosted web/X tools aren’t supplied for your turn, answer from injected context — do not speculate as if you had Internet access.
+- Follow **YOUR CAPABILITIES** above for whether this turn includes hosted web/X tools; do not contradict that.
 - Only discuss X/Twitter if the user explicitly asks about X, Twitter, or x.com.
 
 {platform_manual_prompt}
@@ -553,29 +584,6 @@ Only share this information if asked. Be factual — do not embellish or invent 
         model_config.max_output_tokens_dm,
     )
 
-    platform_question_dm = False
-    professional_dm = False
-    try:
-        from backend.services.steve_platform_manual import (
-            is_professional_advice_intent,
-            is_platform_question,
-        )
-
-        platform_question_dm = bool(is_platform_question(user_message))
-        professional_dm = bool(is_professional_advice_intent(user_message))
-    except Exception as manual_gate_err:
-        logger.warning("Steve DM platform/manual gate failed (non-fatal): %s", manual_gate_err)
-
-    from backend.services.steve_community_config import get_paid_steve_package_config
-    from backend.services.steve_tool_policy import steve_tool_names_for_log, steve_tools_for_message
-
-    steve_pkg = get_paid_steve_package_config()
-    dm_tools = steve_tools_for_message(
-        user_message,
-        platform_question=platform_question_dm,
-        professional_advice_question=professional_dm,
-        config=steve_pkg,
-    )
     logger.info("Steve DM Grok model=%s tools=%s", model_to_use, steve_tool_names_for_log(dm_tools))
 
     client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
