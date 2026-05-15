@@ -128,6 +128,29 @@ def _role_job_careers_at_external_target(text: str) -> bool:
     return True
 
 
+def steve_external_tool_suppressed_for_profile_intent(message: str) -> bool:
+    """True when profile-style wording blocks hosted tools without live/news/job/browse signals.
+
+    Kept in sync with ``steve_tools_for_message`` so the tool-router round never
+    re-enables web/X for the same suppressed cohort turns.
+    """
+    from backend.services.steve_prompt_policy import (
+        news_current_events_requested,
+        should_include_user_profile,
+    )
+
+    text = message or ""
+    explicit = steve_external_search_requested(text)
+    news_live = news_current_events_requested(text)
+    job_research = steve_job_listing_or_employer_research_requested(text)
+    _text_wo_steve_mention = re.sub(r"@steve\b", "", text, flags=re.IGNORECASE).strip()
+    profile_signal = bool(
+        should_include_user_profile(text)
+        and should_include_user_profile(_text_wo_steve_mention)
+    )
+    return bool(profile_signal and not news_live and not explicit and not job_research)
+
+
 def steve_job_listing_or_employer_research_requested(message: str) -> bool:
     """True when the user is asking about real job postings, careers pages, or verifying a role.
 
@@ -218,23 +241,15 @@ def steve_tools_for_message(
     if platform_question or professional_advice_question:
         return []
 
-    from backend.services.steve_prompt_policy import (
-        news_current_events_requested,
-        should_include_user_profile,
-    )
-
     text = message or ""
+    if steve_external_tool_suppressed_for_profile_intent(text):
+        return []
+
+    from backend.services.steve_prompt_policy import news_current_events_requested
+
     explicit = steve_external_search_requested(text)
     news_live = news_current_events_requested(text)
     job_research = steve_job_listing_or_employer_research_requested(text)
-    _text_wo_steve_mention = re.sub(r"@steve\b", "", text, flags=re.IGNORECASE).strip()
-    profile_signal = bool(
-        should_include_user_profile(text)
-        and should_include_user_profile(_text_wo_steve_mention)
-    )
-
-    if profile_signal and not news_live and not explicit and not job_research:
-        return []
 
     explicit_only = True
     web_default = False

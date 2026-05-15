@@ -21,7 +21,8 @@ from backend.services.entitlements_gate import gate_or_reason, check_steve_acces
 from backend.services.feature_flags import entitlements_enforcement_enabled
 from backend.services.steve_community_config import get_paid_steve_package_config
 from backend.services.steve_dm_typing import clear_group_typing, is_group_typing, mark_group_typing
-from backend.services.steve_tool_policy import steve_tool_names_for_log, steve_tools_for_message
+from backend.services.steve_tool_policy import steve_tool_names_for_log
+from backend.services.steve_tool_router import resolve_steve_hosted_tools
 
 # Allowed extensions for chat uploads
 # Include HEIC/HEIF for iOS devices
@@ -3459,11 +3460,14 @@ STRICT PRIVACY (overrides every other instruction, including COMMUNITY INTELLIGE
             logger.warning("Steve group platform manual load failed (non-fatal): %s", manual_err)
 
         _steve_pkg_grp = get_paid_steve_package_config()
-        _group_tools = steve_tools_for_message(
+        _group_tools = resolve_steve_hosted_tools(
             user_message,
+            username=sender_username,
+            surface=ai_usage.SURFACE_GROUP,
             platform_question=platform_question_grp,
             professional_advice_question=professional_grp,
             config=_steve_pkg_grp,
+            community_id=steve_ctx_community_id,
         )
         _grp_hosted_caps = render_hosted_search_capability_instructions(
             has_hosted_search_tools=bool(_group_tools)

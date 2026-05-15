@@ -110,10 +110,8 @@ from backend.services.reactions import (
     get_post_reaction_summary,
     get_reply_reaction_summary,
 )
-from backend.services.steve_tool_policy import (
-    steve_tool_names_for_log as _steve_tool_names_for_log,
-    steve_tools_for_message as _steve_tools_for_message,
-)
+from backend.services.steve_tool_policy import steve_tool_names_for_log as _steve_tool_names_for_log
+from backend.services.steve_tool_router import resolve_steve_hosted_tools as _resolve_steve_hosted_tools
 
 try:
     from PIL import Image
@@ -23368,11 +23366,14 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             
             ai_response = None
             try:
-                _feed_tools = _steve_tools_for_message(
+                _feed_tools = _resolve_steve_hosted_tools(
                     post_content,
+                    username=author_username,
+                    surface=_ai_usage.SURFACE_FEED,
                     platform_question=platform_question,
                     professional_advice_question=professional_advice_question,
                     config=steve_config,
+                    community_id=int(community_id) if community_id is not None else None,
                 )
                 logger.info(
                     "Steve post reply Grok call tools=%s (%s mode)",
@@ -23588,6 +23589,7 @@ def _steve_ai_reply_for_group_post(
     from backend.services.steve_model_config import estimate_response_cost_usd, output_cap_for_surface
     from backend.services.steve_prompt_policy import (
         append_response_policy,
+        render_hosted_search_capability_instructions,
         should_include_user_profile,
     )
     from backend.services.steve_profiling_gates import user_can_access_steve_kb
@@ -23783,7 +23785,6 @@ def _steve_ai_reply_for_group_post(
     else:
         user_content = context
         effective_system = system_prompt
-    started = time.perf_counter()
     entitlement_cap = output_cap_for_surface(
         _ent,
         _ai_usage.SURFACE_GROUP,
@@ -23807,12 +23808,18 @@ def _steve_ai_reply_for_group_post(
         professional_grp = bool(is_professional_advice_intent(user_message))
     except Exception as _pf_err:
         logger.warning("Steve group-post platform/manual gate failed: %s", _pf_err)
-    _reply_tools = _steve_tools_for_message(
+    _reply_tools = _resolve_steve_hosted_tools(
         user_message,
+        username=username,
+        surface=_ai_usage.SURFACE_GROUP,
         platform_question=platform_question_grp,
         professional_advice_question=professional_grp,
         config=steve_config,
+        community_id=int(community_id) if community_id is not None else None,
     )
+    _hosted_caps_grp = render_hosted_search_capability_instructions(has_hosted_search_tools=bool(_reply_tools))
+    effective_system = f"{effective_system}\n\nHOSTED WEB / X (this turn):\n{_hosted_caps_grp}\n"
+    started = time.perf_counter()
     response = client.responses.create(
         model=model_to_use,
         input=[
@@ -24579,11 +24586,14 @@ def ai_steve_reply():
                     professional_feed_r = bool(is_professional_advice_intent(user_message))
                 except Exception as _pfr_err:
                     logger.warning("Steve comment-reply platform gate failed (non-fatal): %s", _pfr_err)
-                _reply_tools = _steve_tools_for_message(
+                _reply_tools = _resolve_steve_hosted_tools(
                     user_message,
+                    username=username,
+                    surface=_ai_usage.SURFACE_FEED,
                     platform_question=platform_question_feed_r,
                     professional_advice_question=professional_feed_r,
                     config=steve_config,
+                    community_id=int(community_id) if community_id is not None else None,
                 )
                 logger.info(
                     "Steve reply Grok model=%s tools=%s (%s mode)",

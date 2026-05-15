@@ -496,11 +496,14 @@ def _run_grok_dm_turn(
 
     from backend.services.steve_community_config import get_paid_steve_package_config
     from backend.services.steve_prompt_policy import render_hosted_search_capability_instructions
-    from backend.services.steve_tool_policy import steve_tool_names_for_log, steve_tools_for_message
+    from backend.services.steve_tool_policy import steve_tool_names_for_log
+    from backend.services.steve_tool_router import resolve_steve_hosted_tools
 
     steve_pkg = get_paid_steve_package_config()
-    dm_tools = steve_tools_for_message(
+    dm_tools = resolve_steve_hosted_tools(
         user_message,
+        username=sender_username,
+        surface=ai_usage.SURFACE_DM,
         platform_question=platform_question_dm,
         professional_advice_question=professional_dm,
         config=steve_pkg,

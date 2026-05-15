@@ -39,10 +39,14 @@ and then write the code. Do **not** silently diverge.
    tied to a community), pass **`community_id`** into `check_steve_access` /
    `gate_or_reason` so eligible members can consume the **Steve Community
    Package** monthly pool per KB flags (`community-tiers` page).
-   **Feed replies** attach Grok **`web_search` + `x_search`** when **`steve_tool_policy`** +
-   **`steve_prompt_policy`** detect live-news, explicit browse intent, **or job/careers-site /
-   listing-verification wording** (see **`steve_job_listing_or_employer_research_requested`**), or when
-   KB allows default-on (**`external_search_explicit_only`** OFF). **`detect_platform_manual_intent`**
+   **Feed replies** attach Grok **`web_search` + `x_search`** when **`steve_tool_router.resolve_steve_hosted_tools`** applies **`steve_tool_policy`** +
+   **`steve_prompt_policy`** (live-news, explicit browse intent, **or job/careers-site /
+   listing-verification wording** per **`steve_job_listing_or_employer_research_requested`**, or when
+   KB allows default-on with **`external_search_explicit_only`** OFF). If that **static** policy returns
+   no tools, a **short JSON-only router** call (same xAI stack, **no** `web_search` / `x_search` on that
+   call) may attach hosted tools for **ambiguous public web / X** phrasing; it is **skipped** for
+   platform-manual-only and professional-advice-only turns, for **profile-suppressed** cohorts (same gate
+   as static policy), and when **`STEVE_TOOL_ROUTER_DISABLED`** is set. **`detect_platform_manual_intent`**
    strips **`@Steve`** mentions so addressing Steve does not force a platform-manual turn or strip tools.
    **`SteveCommunityConfig`** kill-switches (**`paid_steve_package_feed_attach_*`**) still apply.
    Platform-only and professional-advice-only turns omit tools. **THIRD-PARTY JOBS / EMPLOYERS** rules in
