@@ -12,6 +12,8 @@ from backend.services.database import USE_MYSQL, get_sql_placeholder
 
 logger = logging.getLogger(__name__)
 
+STEVE_GROUP_POST_USERNAME = "steve"
+
 PRESET_CAREER_EXPERT = "career_expert"
 CAREER_EXPERT_OUTPUT_CAP = 2000
 MIN_ASK_STEVE_CHARS = 80
@@ -82,6 +84,100 @@ def ensure_group_steve_agent_schema(cursor) -> None:
             )
     except Exception as e:
         logger.warning("group_steve_agent_schedule create: %s", e)
+
+
+def _ensure_steve_user_row(cursor) -> None:
+    """``group_posts.username`` FKs to ``users``; ensure Steve exists before inserting."""
+    ph = get_sql_placeholder()
+    try:
+        cursor.execute(f"SELECT 1 FROM users WHERE username = {ph} LIMIT 1", (STEVE_GROUP_POST_USERNAME,))
+        if cursor.fetchone():
+            return
+        cursor.execute(
+            f"""
+            INSERT INTO users (username, password, email, verified)
+            VALUES ({ph}, {ph}, {ph}, 1)
+            """,
+            (STEVE_GROUP_POST_USERNAME, "AI_USER_NO_LOGIN", "steve@c-point.ai"),
+        )
+    except Exception as e:
+        logger.debug("ensure steve user: %s", e)
+
+
+def agent_display_title(preset: str) -> str:
+    p = (preset or "").strip().lower()
+    if p == PRESET_CAREER_EXPERT:
+        return "Career Expert"
+    return "Assistant"
+
+
+def build_group_agent_welcome_body(
+    *,
+    group_name: str,
+    preset: str,
+    creator_username: str,
+) -> str:
+    title = agent_display_title(preset)
+    gn = (group_name or "this group").strip()
+    cu = (creator_username or "someone").strip()
+    return (
+        f"Hi everyone — I'm Steve, your **{title}** agent for **{gn}**.\n\n"
+        f"I'm here to help with thoughtful answers, quick summaries, and discussion prompts. "
+        f"Mention **@Steve** on a reply, or turn on **Ask Steve** when you start a post.\n\n"
+        f"**@{cu}** set up this group — glad to be here with you all."
+    )
+
+
+def insert_group_agent_welcome_post(
+    cursor,
+    *,
+    group_id: int,
+    group_name: str,
+    preset: str,
+    creator_username: str,
+) -> Optional[int]:
+    """
+    Static welcome ``group_posts`` row from Steve when an agent-enabled group is created.
+    No auto-reply schedule, no member notification fan-out (visible when members open the feed).
+    """
+    _ensure_steve_user_row(cursor)
+    ensure_group_steve_agent_schema(cursor)
+    body = build_group_agent_welcome_body(
+        group_name=group_name,
+        preset=preset,
+        creator_username=creator_username,
+    )
+    gp_t = "`group_posts`" if USE_MYSQL else "group_posts"
+    ph = get_sql_placeholder()
+    ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        cursor.execute(
+            f"""
+            INSERT INTO {gp_t} (
+                group_id, username, content, image_path, video_path, audio_path, audio_summary,
+                created_at, media_paths, link_urls, ask_steve
+            )
+            VALUES ({ph}, {ph}, {ph}, NULL, NULL, NULL, NULL, {ph}, NULL, NULL, 0)
+            """,
+            (int(group_id), STEVE_GROUP_POST_USERNAME, body, ts),
+        )
+        rid = cursor.lastrowid
+        return int(rid) if rid is not None else None
+    except Exception as e:
+        logger.warning("insert_group_agent_welcome_post (wide row) failed: %s", e)
+    try:
+        cursor.execute(
+            f"""
+            INSERT INTO {gp_t} (group_id, username, content, image_path, created_at)
+            VALUES ({ph}, {ph}, {ph}, NULL, {ph})
+            """,
+            (int(group_id), STEVE_GROUP_POST_USERNAME, body, ts),
+        )
+        rid = cursor.lastrowid
+        return int(rid) if rid is not None else None
+    except Exception as e2:
+        logger.error("insert_group_agent_welcome_post failed: %s", e2)
+        return None
 
 
 def root_may_enable_agent(community_id: int) -> bool:

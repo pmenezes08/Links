@@ -29192,8 +29192,25 @@ def api_groups_create():
                     ),
                 )
                 gid = c.lastrowid
+            welcome_group_post_id: int | None = None
+            if steve_agent_enabled and steve_agent_preset:
+                try:
+                    from backend.services.group_steve_agent import insert_group_agent_welcome_post
+
+                    welcome_group_post_id = insert_group_agent_welcome_post(
+                        c,
+                        group_id=int(gid),
+                        group_name=name,
+                        preset=steve_agent_preset,
+                        creator_username=username,
+                    )
+                except Exception as wpost_err:
+                    logger.warning("group create: agent welcome post failed (non-fatal): %s", wpost_err)
             conn.commit()
-            return jsonify({'success': True, 'group_id': int(gid)})
+            payload = {"success": True, "group_id": int(gid)}
+            if welcome_group_post_id is not None:
+                payload["welcome_group_post_id"] = welcome_group_post_id
+            return jsonify(payload)
     except Exception as e:
         logger.error(f"api_groups_create error: {e}")
         return jsonify({'success': False, 'error': 'Failed to create group'})

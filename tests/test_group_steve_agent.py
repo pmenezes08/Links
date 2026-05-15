@@ -67,7 +67,67 @@ def test_groups_create_accepts_agent_with_steve_package(mysql_dsn):
     body = r.get_json()
     assert body is not None
     assert body.get("success") is True
-    assert isinstance(body.get("group_id"), int)
+    gid = body.get("group_id")
+    assert isinstance(gid, int)
+    wpid = body.get("welcome_group_post_id")
+    assert isinstance(wpid, int)
+    from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
+
+    gp_t = "`group_posts`" if USE_MYSQL else "group_posts"
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT username, content, group_id FROM {gp_t} WHERE id = {ph}", (wpid,))
+        row = c.fetchone()
+    assert row is not None
+    u = row["username"] if hasattr(row, "keys") else row[0]
+    assert str(u).lower() == "steve"
+    content = row["content"] if hasattr(row, "keys") else row[1]
+    assert "Career Expert" in (content or "")
+    assert "Agent Group OK" in (content or "")
+    assert "gsa_admin2" in (content or "")
+    gid_db = row["group_id"] if hasattr(row, "keys") else row[2]
+    assert int(gid_db) == int(gid)
+
+
+def test_groups_create_no_agent_welcome_post_without_flag(mysql_dsn):
+    import bodybuilding_app
+    from backend.services import community_billing
+    from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
+
+    community_billing.ensure_tables()
+    make_user("gsa_plain", is_admin=True)
+    cid = make_community("gsa-plain", tier="paid_l1", creator_username="gsa_plain")
+    community_billing.mark_steve_package_subscription(
+        cid,
+        subscription_id="sub_plain",
+        status="active",
+        current_period_end="2030-12-31",
+    )
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "gsa_plain")
+    r = client.post(
+        "/api/groups/create",
+        data={
+            "community_id": str(cid),
+            "name": "No Agent Group",
+            "approval_required": "0",
+        },
+    )
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body is not None
+    assert body.get("welcome_group_post_id") is None
+    gid = int(body["group_id"])
+    gp_t = "`group_posts`" if USE_MYSQL else "group_posts"
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT COUNT(*) AS c FROM {gp_t} WHERE group_id = {ph}", (gid,))
+        row = c.fetchone()
+        n = int(row["c"] if hasattr(row, "keys") else row[0])
+    assert n == 0
 
 
 def test_steve_mention_in_group_reply_cancels_schedule(mysql_dsn):

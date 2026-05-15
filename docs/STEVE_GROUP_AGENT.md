@@ -27,10 +27,11 @@
 
 ## Automation behaviour
 
-1. **Delayed first reply:** Random **15–120 minutes** (triangular skew toward ~30 min); stored in **`group_steve_agent_schedule`**; processed by [`POST /api/cron/group-steve-agent-due`](bodybuilding_app.py) (`X-Cron-Secret`).
-2. **`@Steve`:** Cancels pending schedule for that post; immediate reply path; does **not** consume the 5-slot auto budget.
-3. **Auto budget:** **Five** Steve replies per post that count toward automation (`auto_steve_used_count` on `group_posts`). After the 5th, a **static** cap notice is inserted (no extra LLM call).
-4. **Reply to Steve:** If a member replies **directly** to Steve’s comment **without** `@Steve`, server may trigger an auto continuation (same budget rules) via background thread.
+1. **Welcome post:** When a group is created with **Steve agent enabled** (v1: Career Expert), a **static** opening post from **@Steve** is inserted on the group feed (`group_posts`) introducing the agent role. No LLM call, no `ask_steve` schedule, and no member notification fan-out for that row (members see it when they open the feed). Response may include `welcome_group_post_id`.
+2. **Delayed first reply:** Random **15–120 minutes** (triangular skew toward ~30 min); stored in **`group_steve_agent_schedule`**; processed by [`POST /api/cron/group-steve-agent-due`](bodybuilding_app.py) (`X-Cron-Secret`).
+3. **`@Steve`:** Cancels pending schedule for that post; immediate reply path; does **not** consume the 5-slot auto budget.
+4. **Auto budget:** **Five** Steve replies per post that count toward automation (`auto_steve_used_count` on `group_posts`). After the 5th, a **static** cap notice is inserted (no extra LLM call).
+5. **Reply to Steve:** If a member replies **directly** to Steve’s comment **without** `@Steve`, server may trigger an auto continuation (same budget rules) via background thread.
 
 ## Output
 
