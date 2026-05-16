@@ -353,6 +353,7 @@ def plan_timely_topic(
     topic_seed: str = "",
     community_name: str = "",
     community_context_enabled: bool = True,
+    recency_instructions: str = "",
 ) -> Dict[str, Any]:
     """Pick one timely topic using public web search results."""
     cleaned_seed = str(topic_seed or "").strip()
@@ -381,6 +382,8 @@ def plan_timely_topic(
         if cleaned_seed
         else "Standing theme or seed: choose a timely angle that fits the community context.\n"
     )
+    recency = (recency_instructions or "").strip()
+    recency_block = f"\n{recency}\n" if recency else ""
     result = generate_web_search_json(
         system_prompt=(
             f"You are planning one timely topic for Steve's {roundup_kind} roundup. "
@@ -389,11 +392,14 @@ def plan_timely_topic(
             "Return JSON with keys: topic, why_now, source_links. "
             "topic should be short, concrete, and ready to place in a headline. "
             "why_now should be one short sentence. "
-            "source_links should be an array of 1-4 exact URLs that justify the choice."
+            "source_links should be an array of 1-4 exact URLs that justify the choice. "
+            "Every URL must support news or events within the recency window when a recency rule is given."
+            f"{recency_block}"
         ),
         user_prompt=(
             f"{seed_line}"
             f"{community_line}"
+            f"{recency_block}"
             "Pick a topic Steve can cover right now. Avoid vague evergreen labels such as 'technology news'."
         ),
         max_output_tokens=700,

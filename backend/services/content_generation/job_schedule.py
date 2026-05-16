@@ -79,6 +79,9 @@ def parse_time_of_day(s: Any) -> Tuple[int, int]:
 
 def normalize_cadence(raw: Any) -> str:
     c = str(raw or "weekly").strip().lower().replace("-", "")
+    # bi-weekly -> biweekly
+    if c == "daily":
+        return "daily"
     if c == "biweekly":
         return "biweekly"
     if c == "beweekly":  # typo guard
