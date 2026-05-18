@@ -22,6 +22,28 @@ Access is by invitation only. Privacy and exclusivity are built in from day one.
 
 This is your world. Come connect with it.`
 
+/** Copy for the 4-step About C-Point modal (dashboard empty state). */
+export const ABOUT_CPOINT_MODAL_COMMUNITY_FEEDS_INTRO =
+  'Each community has its own feed: conversations and updates stay inside that invitation-only network—not a global public timeline. What you see is what your communities share with their members.'
+
+export const ABOUT_CPOINT_MODAL_COMMUNITY_FEEDS_BULLETS: string[] = [
+  'Posts and discussion — threads and replies in the community feed',
+  'Polls — quick input and decisions from members',
+  "Events — create and share what's happening for your group",
+  'Media — photos and files alongside posts, in context',
+  'People — connect with members in your community (profiles, outreach)',
+]
+
+export const ABOUT_CPOINT_MODAL_DMS_PARAS: string[] = [
+  'Beyond the feed, C-Point supports private messaging: one-to-one DMs and smaller group chats that sit alongside your communities.',
+  'Use them for side conversations, coordination, or anything that does not need to be a community post — still private, still within the relationships you choose.',
+]
+
+export const ABOUT_CPOINT_MODAL_STEVE_PARAS: string[] = [
+  'Steve is C-Point’s built-in intelligent presence: an always-on member focused on making the platform smarter and easier to use.',
+  'Steve can help with context in discussions, product questions, useful summaries where your plan allows — like making sense of a long post or a voice note before you listen.',
+]
+
 export type AboutHowCard = {
   id: string
   title: string

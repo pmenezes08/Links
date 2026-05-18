@@ -62,6 +62,7 @@ import Notifications from './pages/Notifications'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminProfile from './pages/AdminProfile'
 import KeyPosts from './pages/KeyPosts'
+import AboutCPoint from './pages/AboutCPoint'
 import OnboardingWelcome from './pages/OnboardingWelcome'
 import VerifyOverlay from './components/VerifyOverlay'
 import EventDetail from './pages/EventDetail'
@@ -728,6 +729,7 @@ function AppRoutes(){
                 <Route path="/account_settings_react" element={<AccountSettings />} />
                 <Route path="/account_settings/security" element={<AccountSecurity />} />
                 <Route path="/account_settings/danger" element={<AccountDangerZone />} />
+                <Route path="/about_cpoint" element={<AboutCPoint />} />
                   <Route path="/subscription_plans" element={<SubscriptionPlans />} />
                 <Route path="/notifications" element={<Notifications />} />
                 <Route path="/admin" element={<AdminDashboard />} />

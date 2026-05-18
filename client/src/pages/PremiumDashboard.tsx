@@ -18,6 +18,7 @@ import { useLogoutRequest } from '../contexts/LogoutPromptContext'
 import OnboardingChat from './OnboardingChat'
 import OnboardingIntroGate from '../components/onboarding/OnboardingIntroGate'
 import DashboardBottomNav, { isPremiumDashboardPath } from '../components/DashboardBottomNav'
+import AboutCPointModal from '../components/about/AboutCPointModal'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
@@ -118,6 +119,7 @@ export default function PremiumDashboard() {
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [joinCode, setJoinCode] = useState('')
+  const [showAboutCPointModal, setShowAboutCPointModal] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newCommName, setNewCommName] = useState('')
   const [newCommType, setNewCommType] = useState<'Gym'|'University'|'General'|'Business'>('General')
@@ -936,7 +938,7 @@ export default function PremiumDashboard() {
                   <button
                     type="button"
                     className="w-full py-2 rounded-lg border border-[#4db6ac]/50 text-sm font-medium text-[#4db6ac] hover:bg-[#4db6ac]/10 touch-manipulation"
-                    onClick={() => navigate('/about_cpoint')}
+                    onClick={() => setShowAboutCPointModal(true)}
                   >
                     Read About C-Point
                   </button>
@@ -947,7 +949,7 @@ export default function PremiumDashboard() {
                     Welcome to C-Point
                   </div>
                   <div className="text-sm text-[#9fb0b5] leading-relaxed space-y-3">
-                    <p>A global platform of private, independent networks - we call them communities.</p>
+                    <p>A global platform of private, independent social media networks.</p>
                     <p className="font-medium text-white/80">Your dashboard is empty by design.</p>
                     <p>There are no public feeds, no algorithms, and no endless noise — only the communities you create or are invited to join. This is how we protect real privacy and genuine connection.</p>
                     <p>Create or ask to be invited to the private spaces that matter to you — whether personal or professional.</p>
@@ -970,7 +972,7 @@ export default function PremiumDashboard() {
                     Hi, I'm Steve.
                   </div>
                   <div className="text-sm text-[#9fb0b5] leading-relaxed">
-                    <p>Think of me as an ever-present member whose purpose is to bring intelligence to the platform. Why am I here? To help you meet people in your communities you might not yet know. To help you find people you know who aren't in any of your communities yet. To add facts or a different perspective to discussions. And to do the small things that go a long way — like summarising a voice note so you know what it's about before you listen, or condensing a long post so you're up to speed in seconds.</p>
+                    <p>Think of me as an ever-present member whose purpose is to bring intelligence to the platform. Why am I here? To help you meet people in your communities you might not yet know. To add facts or a different perspective to discussions. And to do the small things that go a long way — like summarising a voice note so you know what it's about before you listen, or condensing a long post so you're up to speed in seconds.</p>
                   </div>
                   <div className="mt-4">
                     <button 
@@ -1197,6 +1199,8 @@ export default function PremiumDashboard() {
           </div>
         </div>
       )}
+
+      <AboutCPointModal open={showAboutCPointModal} onClose={() => setShowAboutCPointModal(false)} />
 
       {/* Communities modal removed; dashboard links use /communities?parent_id= */}
         {showCreateModal && (
