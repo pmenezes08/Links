@@ -605,6 +605,17 @@ def _seed_pages() -> List[Dict[str, Any]]:
                  "help": "Use the Stripe Price ID (``price_...``), not Product ID (``prod_...``). "
                          "Paste the live-mode monthly Price ID here. Used for production checkouts only.",
                  "group": "premium"},
+                {"name": "iap_purchases_enabled", "label": "Production IAP grants enabled", "type": "boolean", "value": False,
+                 "help": "Keep false until App Store / Play review is approved. Sandbox/license-test purchases can still be granted for review.",
+                 "group": "premium"},
+                {"name": "web_app_billing_url", "label": "Web billing URL for mobile overflow", "type": "string",
+                 "value": "https://app.c-point.co/subscription_plans",
+                 "help": "Native apps link here when an additional community must be billed on web.",
+                 "group": "premium"},
+                {"name": "premium_apple_product_id", "label": "Apple product ID — Premium monthly", "type": "string",
+                 "value": "cpoint_premium_monthly", "group": "premium"},
+                {"name": "premium_google_product_id", "label": "Google Play product ID — Premium monthly", "type": "string",
+                 "value": "cpoint_premium_monthly", "group": "premium"},
 
                 # Enterprise-derived (Pro / effective tier)
                 {"name": "enterprise_derived_label", "label": "Public label for this effective tier", "type": "string",
@@ -706,6 +717,10 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "paid_l1_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
                  "help": "Paste the ``price_...`` ID from Stripe live mode. Read by /api/kb/pricing on production only.",
                  "group": "paid_l1"},
+                {"name": "paid_l1_apple_product_id", "label": "Apple product ID — L1 monthly", "type": "string",
+                 "value": "cpoint_community_l1_monthly", "group": "paid_l1"},
+                {"name": "paid_l1_google_product_id", "label": "Google Play product ID — L1 monthly", "type": "string",
+                 "value": "cpoint_community_l1_monthly", "group": "paid_l1"},
 
                 # Paid L2 — 76–150 members
                 {"name": "paid_l2_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 99.99, "group": "paid_l2"},
@@ -722,6 +737,10 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "paid_l2_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
                  "help": "Paste the ``price_...`` ID from Stripe live mode. Read by /api/kb/pricing on production only.",
                  "group": "paid_l2"},
+                {"name": "paid_l2_apple_product_id", "label": "Apple product ID — L2 monthly", "type": "string",
+                 "value": "cpoint_community_l2_monthly", "group": "paid_l2"},
+                {"name": "paid_l2_google_product_id", "label": "Google Play product ID — L2 monthly", "type": "string",
+                 "value": "cpoint_community_l2_monthly", "group": "paid_l2"},
 
                 # Paid L3 — 151–250 members
                 {"name": "paid_l3_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 189.99, "group": "paid_l3"},
@@ -738,6 +757,10 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "paid_l3_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
                  "help": "Paste the ``price_...`` ID from Stripe live mode. Read by /api/kb/pricing on production only.",
                  "group": "paid_l3"},
+                {"name": "paid_l3_apple_product_id", "label": "Apple product ID — L3 monthly", "type": "string",
+                 "value": "cpoint_community_l3_monthly", "group": "paid_l3"},
+                {"name": "paid_l3_google_product_id", "label": "Google Play product ID — L3 monthly", "type": "string",
+                 "value": "cpoint_community_l3_monthly", "group": "paid_l3"},
 
                 # Unit economics — the flat €/member basis all paid tiers are derived from.
                 {"name": "flat_price_per_member_eur", "label": "Flat price per member (internal)", "type": "decimal", "prefix": "€", "value": 0.76,

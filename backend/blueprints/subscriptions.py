@@ -649,6 +649,23 @@ def _preflight_premium(username: str) -> Optional[Tuple[Dict[str, Any], int]]:
         logger.exception("premium preflight: active_seat_for failed for %s", username)
         return None
     if not seat:
+        try:
+            billing = user_billing.get_billing_state(username) or {}
+        except Exception:
+            billing = {}
+        provider = str(billing.get("subscription_provider") or "").strip().lower()
+        active = str(billing.get("subscription") or "").strip().lower() in ("premium", "pro", "paid")
+        if active and provider in ("apple", "google"):
+            label = "App Store" if provider == "apple" else "Google Play"
+            return (
+                {
+                    "success": False,
+                    "error": f"Your Premium subscription is managed through {label}.",
+                    "reason": "store_billing_active",
+                    "billing_provider": provider,
+                },
+                409,
+            )
         return None
     if not seat.get("active"):
         return None
@@ -697,7 +714,20 @@ def _preflight_community_tier(
              "root_community_id": root_id},
             409,
         )
+    state = community_billing.get_billing_state(community_id) or {}
+    billing_provider = str(state.get("billing_provider") or "stripe").strip().lower()
     if community_billing.has_active_subscription(community_id):
+        if billing_provider in ("apple", "google"):
+            label = "App Store" if billing_provider == "apple" else "Google Play"
+            return (
+                {"success": False,
+                 "error": f"This community is billed through {label}. Manage it from the mobile store account.",
+                 "reason": "store_billing_active",
+                 "billing_provider": billing_provider,
+                 "community_id": community_id,
+                 "portal_required": False},
+                409,
+            )
         return (
             {"success": False,
              "error": "This community already has an active subscription. Use Stripe to change or renew it.",
@@ -897,6 +927,7 @@ def api_community_billing(community_id: int):
         "days_remaining": None if inherited else state.get("days_remaining"),
         "benefits_end_at": None if inherited else state.get("benefits_end_at"),
         "has_stripe_customer": False if inherited else bool(state.get("stripe_customer_id")),
+        "billing_provider": None if inherited else (state.get("billing_provider") or "stripe"),
         "stripe_mode": _stripe_mode(),
         # Freeze state — non-null even when not frozen so clients can
         # render an "active" indicator without a separate request.
@@ -949,6 +980,15 @@ def api_community_billing_change_tier(community_id: int):
         }), 409
 
     state = community_billing.get_billing_state(community_id) or {}
+    billing_provider = str(state.get("billing_provider") or "stripe").strip().lower()
+    if billing_provider in ("apple", "google"):
+        label = "App Store" if billing_provider == "apple" else "Google Play"
+        return jsonify({
+            "success": False,
+            "error": f"This community is billed through {label}. Change tiers from the mobile store account.",
+            "reason": "store_billing_active",
+            "billing_provider": billing_provider,
+        }), 409
     current_tier = str(state.get("tier") or "").strip().lower()
     if current_tier == tier_code:
         return jsonify({
@@ -1040,6 +1080,14 @@ def api_admin_community_billing_change_tier(community_id: int):
         }), 409
 
     state = community_billing.get_billing_state(community_id) or {}
+    billing_provider = str(state.get("billing_provider") or "stripe").strip().lower()
+    if billing_provider in ("apple", "google"):
+        return jsonify({
+            "success": False,
+            "error": "This community is billed through a mobile store.",
+            "reason": "store_billing_active",
+            "billing_provider": billing_provider,
+        }), 409
     current_tier = str(state.get("tier") or "").strip().lower()
     if current_tier == tier_code:
         return jsonify({

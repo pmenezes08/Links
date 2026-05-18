@@ -9,6 +9,7 @@ Stripe subscription:
                                            paying for this community)
     communities.subscription_status      — active / past_due / cancelled
     communities.current_period_end       — next renewal boundary
+    communities.billing_provider         — stripe / apple / google
 
 The tier Stripe subscription lives in ``stripe_subscription_id``. The
 optional **Steve Community Package** is a **second** Stripe subscription
@@ -61,6 +62,7 @@ def ensure_tables() -> None:
             ("stripe_subscription_id", "VARCHAR(64) NULL"),
             ("stripe_customer_id", "VARCHAR(64) NULL"),
             ("subscription_status", "VARCHAR(32) NULL"),
+            ("billing_provider", "VARCHAR(32) NULL"),
             ("current_period_end", "DATETIME NULL"),
             ("cancel_at_period_end", "TINYINT(1) NOT NULL DEFAULT 0"),
             ("canceled_at", "DATETIME NULL"),
@@ -104,7 +106,7 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
             c.execute(
                 f"""
                 SELECT tier, stripe_subscription_id, stripe_customer_id,
-                       subscription_status, current_period_end,
+                       subscription_status, billing_provider, current_period_end,
                        cancel_at_period_end, canceled_at,
                        steve_package_stripe_subscription_id,
                        steve_package_subscription_status,
@@ -130,6 +132,7 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
                 "stripe_subscription_id": None,
                 "stripe_customer_id": None,
                 "subscription_status": None,
+                "billing_provider": None,
                 "current_period_end": None,
                 "cancel_at_period_end": False,
                 "canceled_at": None,
@@ -153,16 +156,16 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
             return row[key]
         return row[idx]
 
-    current_period_end = _g("current_period_end", 4)
+    current_period_end = _g("current_period_end", 5)
     current_period_end_str = str(current_period_end) if current_period_end else None
-    cancel_at_period_end = bool(_g("cancel_at_period_end", 5))
-    canceled_at = _g("canceled_at", 6)
+    cancel_at_period_end = bool(_g("cancel_at_period_end", 6))
+    canceled_at = _g("canceled_at", 7)
 
-    steve_sub_id = _g("steve_package_stripe_subscription_id", 7)
-    steve_status = _g("steve_package_subscription_status", 8)
-    steve_period_end = _g("steve_package_current_period_end", 9)
-    steve_cancel_end = bool(_g("steve_package_cancel_at_period_end", 10))
-    steve_canceled_at = _g("steve_package_canceled_at", 11)
+    steve_sub_id = _g("steve_package_stripe_subscription_id", 8)
+    steve_status = _g("steve_package_subscription_status", 9)
+    steve_period_end = _g("steve_package_current_period_end", 10)
+    steve_cancel_end = bool(_g("steve_package_cancel_at_period_end", 11))
+    steve_canceled_at = _g("steve_package_canceled_at", 12)
 
     steve_period_end_str = (
         str(steve_period_end) if steve_period_end else None
@@ -176,6 +179,7 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
         "stripe_subscription_id": _g("stripe_subscription_id", 1),
         "stripe_customer_id": _g("stripe_customer_id", 2),
         "subscription_status": _g("subscription_status", 3),
+        "billing_provider": _g("billing_provider", 4) or "stripe",
         "current_period_end": current_period_end_str,
         "cancel_at_period_end": cancel_at_period_end,
         "canceled_at": str(canceled_at) if canceled_at else None,
@@ -195,7 +199,7 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
 
 
 def has_active_subscription(community_id: int) -> bool:
-    """Return True when this community already has a live Stripe sub.
+    """Return True when this community already has a live billing sub.
 
     Used as a preflight in checkout creation so owners can't double-pay.
     Past-due/cancelled do not count as active — those communities should
@@ -204,7 +208,7 @@ def has_active_subscription(community_id: int) -> bool:
     state = get_billing_state(community_id) or {}
     sub_id = state.get("stripe_subscription_id")
     status = (state.get("subscription_status") or "").lower()
-    return bool(sub_id) and status == "active"
+    return bool(sub_id) and status in ("active", "trialing")
 
 
 def tier_subscription_is_live(
@@ -248,9 +252,12 @@ def _coerce_period_end(value: Any) -> Optional[str]:
         return None
     try:
         ts = int(value)
+        if ts > 1_000_000_000_000:
+            ts = ts // 1000
         return datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
-        return None
+        dt = _parse_datetime(value)
+        return dt.strftime("%Y-%m-%d %H:%M:%S") if dt else None
 
 
 def _days_until(value: Any) -> Optional[int]:
@@ -294,6 +301,7 @@ def mark_subscription(
     subscription_id: Optional[str] = None,
     customer_id: Optional[str] = None,
     status: Optional[str] = None,
+    provider: Optional[str] = "stripe",
     current_period_end: Any = None,
     cancel_at_period_end: Optional[bool] = None,
     canceled_at: Any = None,
@@ -327,6 +335,9 @@ def mark_subscription(
     if status is not None:
         sets.append(f"subscription_status = {ph}")
         params.append((status or "").strip().lower() or None)
+    if provider is not None:
+        sets.append(f"billing_provider = {ph}")
+        params.append((provider or "").strip().lower() or None)
     if current_period_end is not None:
         sets.append(f"current_period_end = {ph}")
         params.append(_coerce_period_end(current_period_end))

@@ -22,6 +22,7 @@ def register_blueprints(app: Flask) -> None:
     from .steve_chat import steve_chat_bp
     from .summaries import summaries_bp
     from .enterprise import enterprise_bp
+    from .iap import iap_bp
     from .subscription_webhooks import subscription_webhooks_bp
     from .subscriptions import subscriptions_bp
     from .admin_subscriptions import admin_subscriptions_bp
@@ -53,6 +54,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(steve_chat_bp)
     app.register_blueprint(summaries_bp)
     app.register_blueprint(enterprise_bp)
+    app.register_blueprint(iap_bp)
     app.register_blueprint(subscription_webhooks_bp)
     app.register_blueprint(subscriptions_bp)
     app.register_blueprint(admin_subscriptions_bp)
@@ -80,6 +82,8 @@ def register_blueprints(app: Flask) -> None:
         _ub.ensure_tables()
         from backend.services import subscription_billing_ledger as _ledger
         _ledger.ensure_tables()
+        from backend.services import iap_links as _iap_links
+        _iap_links.ensure_tables()
         from backend.services import community_lifecycle as _community_lifecycle
         _community_lifecycle.ensure_tables()
         from backend.services import media_assets as _media_assets
