@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useEntitlements } from '../../hooks/useEntitlements'
+import { openExternalBillingUrl, providerBadge, providerLabel } from '../../utils/mobileStoreBilling'
 
 export type MembershipTab = 'plan' | 'ai' | 'billing' | 'payment' | 'notifications'
 
@@ -50,6 +51,7 @@ interface BillingResponse {
     subscription: string
     is_special: boolean
     inherited_from?: string | null
+    subscription_provider?: string | null
     since?: string | null
   }
   stripe: {
@@ -435,6 +437,8 @@ function BillingTab({ variant }: { variant: 'billing' | 'payment' }) {
   if (!data) return null
 
   const sub = data.stripe.subscription
+  const provider = String(data.plan.subscription_provider || 'stripe').toLowerCase()
+  const storeBilled = provider === 'apple' || provider === 'google'
   const renewal = sub?.current_period_end ? new Date(sub.current_period_end * 1000) : null
   const trial = sub?.trial_end ? new Date(sub.trial_end * 1000) : null
   const amount = useMemo(() => {
@@ -459,10 +463,17 @@ function BillingTab({ variant }: { variant: 'billing' | 'payment' }) {
             {data.plan.inherited_from?.startsWith('enterprise:') && (
               <span className="ml-2 text-xs text-white/50">via Enterprise</span>
             )}
+            <span className="ml-2 rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[11px] font-medium text-white/60">
+              {providerBadge(provider)}
+            </span>
           </div>
         </div>
 
-        {sub ? (
+        {storeBilled ? (
+          <div className="text-sm text-white/70">
+            This Premium subscription is managed through {providerLabel(provider)}. Use the store subscription screen to cancel or change payment.
+          </div>
+        ) : sub ? (
           <div className="text-sm text-white/80 space-y-1">
             <div>Status: <span className="font-medium capitalize">{sub.status}</span>
               {sub.cancel_at_period_end && (
@@ -486,7 +497,19 @@ function BillingTab({ variant }: { variant: 'billing' | 'payment' }) {
           </div>
         )}
 
-        {data.stripe.portal_available && (
+        {storeBilled ? (
+          <button
+            onClick={() => openExternalBillingUrl(
+              provider === 'apple'
+                ? 'https://apps.apple.com/account/subscriptions'
+                : 'https://play.google.com/store/account/subscriptions',
+            )}
+            className="w-full mt-2 bg-white/10 border border-white/20 rounded-lg py-2.5 text-sm font-semibold hover:bg-white/20 transition"
+          >
+            <i className="fa-regular fa-credit-card mr-2" />
+            Open {providerLabel(provider)} subscriptions
+          </button>
+        ) : data.stripe.portal_available && (
           <button
             onClick={openPortal}
             disabled={portalBusy}

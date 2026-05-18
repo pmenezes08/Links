@@ -605,6 +605,17 @@ def _seed_pages() -> List[Dict[str, Any]]:
                  "help": "Use the Stripe Price ID (``price_...``), not Product ID (``prod_...``). "
                          "Paste the live-mode monthly Price ID here. Used for production checkouts only.",
                  "group": "premium"},
+                {"name": "iap_purchases_enabled", "label": "Production IAP grants enabled", "type": "boolean", "value": False,
+                 "help": "Keep false until App Store / Play review is approved. Sandbox/license-test purchases can still be granted for review.",
+                 "group": "premium"},
+                {"name": "web_app_billing_url", "label": "Web billing URL for mobile overflow", "type": "string",
+                 "value": "https://app.c-point.co/subscription_plans",
+                 "help": "Native apps link here when an additional community must be billed on web.",
+                 "group": "premium"},
+                {"name": "premium_apple_product_id", "label": "Apple product ID — Premium monthly", "type": "string",
+                 "value": "cpoint_premium_monthly", "group": "premium"},
+                {"name": "premium_google_product_id", "label": "Google Play product ID — Premium monthly", "type": "string",
+                 "value": "cpoint_premium_monthly", "group": "premium"},
 
                 # Enterprise-derived (Pro / effective tier)
                 {"name": "enterprise_derived_label", "label": "Public label for this effective tier", "type": "string",
@@ -687,44 +698,52 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "free_community_posts_per_day", "label": "Posts per day (per community)", "type": "integer", "value": 0,
                  "help": "0 = unlimited. Posts are cheap — no cap for free communities.", "group": "free"},
                 {"name": "free_community_upgrade_cta", "label": "Upgrade CTA shown to owner", "type": "string",
-                 "value": "Your community has reached 25 members. Upgrade to Paid L1 (€25/mo) to grow up to 75.",
+                 "value": "Your community has reached 25 members. Upgrade to Paid L1 (€49.99/mo) to grow up to 75.",
                  "group": "free"},
 
                 # Paid L1 — 26–75 members
-                {"name": "paid_l1_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 25, "group": "paid_l1"},
+                {"name": "paid_l1_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 49.99, "group": "paid_l1"},
                 {"name": "paid_l1_max_members", "label": "Max members", "type": "integer", "value": 75, "group": "paid_l1"},
                 {"name": "paid_l1_media_gb", "label": "Media quota (GB)", "type": "decimal", "suffix": "GB", "value": 5, "tbd": True, "group": "paid_l1"},
                 {"name": "paid_l1_networking_page_included", "label": "Shown on networking page", "type": "boolean", "value": False,
                  "help": "Not included at L1 — sold as add-on (see Networking Page).", "group": "paid_l1"},
                 {"name": "paid_l1_content_creation_available", "label": "Content creation available", "type": "boolean", "value": True, "group": "paid_l1"},
                 {"name": "paid_l1_upgrade_cta", "label": "Upgrade CTA shown to owner", "type": "string",
-                 "value": "You're at 75 members. Upgrade to Paid L2 (€50/mo) to grow up to 150.",
+                 "value": "You're at 75 members. Upgrade to Paid L2 (€99.99/mo) to grow up to 150.",
                  "group": "paid_l1"},
                 {"name": "paid_l1_stripe_price_id_test", "label": "Stripe price ID — monthly (test)", "type": "string", "value": "", "tbd": True,
                  "help": "Paste the ``price_...`` ID from Stripe test mode. Read by /api/kb/pricing on staging only.",
                  "group": "paid_l1"},
-                {"name": "paid_l1_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
+                {"name": "paid_l1_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "price_1TYaE2DHGQ57hB63fjGqo2nZ",
                  "help": "Paste the ``price_...`` ID from Stripe live mode. Read by /api/kb/pricing on production only.",
                  "group": "paid_l1"},
+                {"name": "paid_l1_apple_product_id", "label": "Apple product ID — L1 monthly", "type": "string",
+                 "value": "cpoint_community_l1_monthly", "group": "paid_l1"},
+                {"name": "paid_l1_google_product_id", "label": "Google Play product ID — L1 monthly", "type": "string",
+                 "value": "cpoint_community_l1_monthly", "group": "paid_l1"},
 
                 # Paid L2 — 76–150 members
-                {"name": "paid_l2_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 50, "group": "paid_l2"},
+                {"name": "paid_l2_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 99.99, "group": "paid_l2"},
                 {"name": "paid_l2_max_members", "label": "Max members", "type": "integer", "value": 150, "group": "paid_l2"},
                 {"name": "paid_l2_media_gb", "label": "Media quota (GB)", "type": "decimal", "suffix": "GB", "value": 10, "tbd": True, "group": "paid_l2"},
                 {"name": "paid_l2_networking_page_included", "label": "Shown on networking page", "type": "boolean", "value": False, "group": "paid_l2"},
                 {"name": "paid_l2_content_creation_available", "label": "Content creation available", "type": "boolean", "value": True, "group": "paid_l2"},
                 {"name": "paid_l2_upgrade_cta", "label": "Upgrade CTA shown to owner", "type": "string",
-                 "value": "You're at 150 members. Upgrade to Paid L3 (€80/mo) to grow up to 250.",
+                 "value": "You're at 150 members. Upgrade to Paid L3 (€189.99/mo) to grow up to 250.",
                  "group": "paid_l2"},
                 {"name": "paid_l2_stripe_price_id_test", "label": "Stripe price ID — monthly (test)", "type": "string", "value": "", "tbd": True,
                  "help": "Paste the ``price_...`` ID from Stripe test mode. Read by /api/kb/pricing on staging only.",
                  "group": "paid_l2"},
-                {"name": "paid_l2_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
+                {"name": "paid_l2_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "price_1TYaE2DHGQ57hB63Vr9ugl3Z",
                  "help": "Paste the ``price_...`` ID from Stripe live mode. Read by /api/kb/pricing on production only.",
                  "group": "paid_l2"},
+                {"name": "paid_l2_apple_product_id", "label": "Apple product ID — L2 monthly", "type": "string",
+                 "value": "cpoint_community_l2_monthly", "group": "paid_l2"},
+                {"name": "paid_l2_google_product_id", "label": "Google Play product ID — L2 monthly", "type": "string",
+                 "value": "cpoint_community_l2_monthly", "group": "paid_l2"},
 
                 # Paid L3 — 151–250 members
-                {"name": "paid_l3_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 80, "group": "paid_l3"},
+                {"name": "paid_l3_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 189.99, "group": "paid_l3"},
                 {"name": "paid_l3_max_members", "label": "Max members", "type": "integer", "value": 250, "group": "paid_l3"},
                 {"name": "paid_l3_media_gb", "label": "Media quota (GB)", "type": "decimal", "suffix": "GB", "value": 25, "tbd": True, "group": "paid_l3"},
                 {"name": "paid_l3_networking_page_included", "label": "Shown on networking page", "type": "boolean", "value": False, "group": "paid_l3"},
@@ -735,25 +754,30 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "paid_l3_stripe_price_id_test", "label": "Stripe price ID — monthly (test)", "type": "string", "value": "", "tbd": True,
                  "help": "Paste the ``price_...`` ID from Stripe test mode. Read by /api/kb/pricing on staging only.",
                  "group": "paid_l3"},
-                {"name": "paid_l3_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
+                {"name": "paid_l3_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "price_1TYaE2DHGQ57hB63cnv6WV3h",
                  "help": "Paste the ``price_...`` ID from Stripe live mode. Read by /api/kb/pricing on production only.",
                  "group": "paid_l3"},
+                {"name": "paid_l3_apple_product_id", "label": "Apple product ID — L3 monthly", "type": "string",
+                 "value": "cpoint_community_l3_monthly", "group": "paid_l3"},
+                {"name": "paid_l3_google_product_id", "label": "Google Play product ID — L3 monthly", "type": "string",
+                 "value": "cpoint_community_l3_monthly", "group": "paid_l3"},
 
                 # Unit economics — the flat €/member basis all paid tiers are derived from.
-                {"name": "flat_price_per_member_eur", "label": "Flat price per member (internal)", "type": "decimal", "prefix": "€", "value": 0.33,
-                 "help": "Internal unit-economics anchor: Paid L1 (75 × €0.33 ≈ €25), "
-                         "L2 (150 × €0.33 ≈ €50), L3 (250 × €0.33 ≈ €80). Must stay "
+                {"name": "flat_price_per_member_eur", "label": "Flat price per member (internal)", "type": "decimal", "prefix": "€", "value": 0.76,
+                 "help": "Internal blended unit-economics anchor after May-2026 repricing: "
+                         "Paid L1 (€49.99 / 75 ≈ €0.67/member), L2 (€99.99 / 150 ≈ €0.67/member), "
+                         "L3 (€189.99 / 250 ≈ €0.76/member). Must stay "
                          "above infra + support cost per member — revisit if Cloud Run / "
                          "Cloud SQL unit costs change. Not shown to end-users.",
                  "group": "economics"},
-                {"name": "break_even_members_paid_l1", "label": "Break-even members for L1", "type": "integer", "value": 8,
-                 "help": "With €25 revenue/mo on a ~€3 per-active-member cost basis "
+                {"name": "break_even_members_paid_l1", "label": "Break-even members for L1", "type": "integer", "value": 17,
+                 "help": "With €49.99 revenue/mo on a ~€3 per-active-member cost basis "
                          "(Cloud Run + egress + Steve weight), L1 turns profit around "
-                         "member #8. Keeps the cheapest paid tier from being a loss leader "
+                         "member #17. Keeps the cheapest paid tier from being a loss leader "
                          "at low member counts.",
                  "group": "economics"},
-                {"name": "break_even_members_paid_l2", "label": "Break-even members for L2", "type": "integer", "value": 17, "group": "economics"},
-                {"name": "break_even_members_paid_l3", "label": "Break-even members for L3", "type": "integer", "value": 27, "group": "economics"},
+                {"name": "break_even_members_paid_l2", "label": "Break-even members for L2", "type": "integer", "value": 34, "group": "economics"},
+                {"name": "break_even_members_paid_l3", "label": "Break-even members for L3", "type": "integer", "value": 64, "group": "economics"},
 
                 # Paid-community trial (separate from the user-tier trial).
                 {"name": "paid_trial_duration_days", "label": "Paid-community trial duration (days)", "type": "integer", "value": 14,
@@ -1025,12 +1049,12 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 "| Tier | Members | Price | Networking page | Content creation |\n"
                 "|---|---|---|---|---|\n"
                 "| Free | ≤ 25 | €0 | No | No |\n"
-                "| Paid L1 | 26–75 | €25/mo | Add-on | Yes |\n"
-                "| Paid L2 | 76–150 | €50/mo | Add-on | Yes |\n"
-                "| Paid L3 | 151–250 | €80/mo | Add-on | Yes |\n"
+                "| Paid L1 | 26–75 | €49.99/mo | Add-on | Yes |\n"
+                "| Paid L2 | 76–150 | €99.99/mo | Add-on | Yes |\n"
+                "| Paid L3 | 151–250 | €189.99/mo | Add-on | Yes |\n"
                 "| Enterprise | ≥ 251 | Custom (€299+ starting) | Included | Included |\n\n"
-                "Prices are derived from the internal `flat_price_per_member_eur = €0.33` "
-                "anchor (see Unit economics group) — any tier change must keep margin per "
+                "Prices are derived from the internal blended per-member economics anchor "
+                "(see Unit economics group) — any tier change must keep margin per "
                 "active member above the per-member infra + support cost.\n\n"
                 "### Paid community trial\n\n"
                 "New Paid subscriptions start with a **14-day trial**, one per billing "

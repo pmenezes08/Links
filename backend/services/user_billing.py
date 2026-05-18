@@ -211,7 +211,10 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
     if isinstance(value, datetime):
         return value.replace(tzinfo=None)
     try:
-        return datetime.utcfromtimestamp(int(value))
+        ts = int(value)
+        if ts > 1_000_000_000_000:
+            ts = ts // 1000
+        return datetime.utcfromtimestamp(ts)
     except Exception:
         pass
     text = str(value).strip()

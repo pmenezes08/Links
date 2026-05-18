@@ -5,11 +5,11 @@ def test_build_onboarding_tier_hints_includes_kb_community_tiers(monkeypatch):
     fields = {
         "free_community_media_gb": 1,
         "free_community_max_members": 25,
-        "paid_l1_price_eur_monthly": 25,
+        "paid_l1_price_eur_monthly": 49.99,
         "paid_l1_max_members": 75,
-        "paid_l2_price_eur_monthly": 50,
+        "paid_l2_price_eur_monthly": 99.99,
         "paid_l2_max_members": 150,
-        "paid_l3_price_eur_monthly": 80,
+        "paid_l3_price_eur_monthly": 189.99,
         "paid_l3_max_members": 250,
     }
 
@@ -34,7 +34,7 @@ def test_build_onboarding_tier_hints_includes_kb_community_tiers(monkeypatch):
     assert hints["community_tiers"]["free"]["max_members"] == 25
     assert hints["community_tiers"]["paid_l1"] == {
         "label": "Paid L1",
-        "price_eur_monthly": 25,
+        "price_eur_monthly": 49.99,
         "max_members": 75,
         "min_members": 26,
     }

@@ -15,11 +15,10 @@ Each handler:
     3. Returns 200 unconditionally after logging — the stores retry
        otherwise.
 
-The Apple/Google handlers are structural stubs for Wave 5. They verify
-signatures and log the raw event but don't yet mutate ``users.subscription``
-— that requires storing product-IDs and original_transaction_ids we aren't
-yet capturing. The Stripe handler is fully wired because we already
-persist customer email / session metadata at Checkout time.
+The Apple/Google handlers verify signatures, resolve store purchase IDs via
+``iap_links``, and apply lifecycle updates through the same user/community
+billing services as Stripe. Stripe remains the web billing rail; native apps
+use StoreKit / Play Billing for digital subscriptions.
 """
 
 from __future__ import annotations
@@ -36,6 +35,8 @@ from backend.services import (
     community_billing,
     community_lifecycle,
     enterprise_iap_nag,
+    iap_links,
+    mobile_iap,
     subscription_billing_ledger,
     subscription_audit,
     user_billing,
@@ -716,13 +717,25 @@ def apple_webhook():
     decoded = _decode_jws_unsafely(signed)
     notif_type = decoded.get("notificationType") or "unknown"
     subtype = decoded.get("subtype")
-    original_tx_id = (decoded.get("data") or {}).get("originalTransactionId")
+    data = decoded.get("data") or {}
+    tx_payload = mobile_iap.decode_jws_payload(data.get("signedTransactionInfo") or "")
+    original_tx_id = (
+        tx_payload.get("originalTransactionId")
+        or data.get("originalTransactionId")
+    )
+    expires_at = tx_payload.get("expiresDate")
 
     # Map original_transaction_id -> username once the IAP link table exists.
     username = _lookup_username_by_apple_tx(original_tx_id) or ""
 
     action = _apple_notif_to_action(notif_type, subtype)
     if action:
+        mobile_iap.apply_store_lifecycle(
+            provider=iap_links.PROVIDER_APPLE,
+            purchase_key=original_tx_id,
+            action=_audit_action_to_lifecycle(action),
+            expires_at=expires_at,
+        )
         subscription_audit.log(
             username=username,
             action=action,
@@ -770,10 +783,17 @@ def google_webhook():
     sub_notif = decoded.get("subscriptionNotification") or {}
     notification_type = sub_notif.get("notificationType")
     purchase_token = sub_notif.get("purchaseToken")
+    expires_at = sub_notif.get("expiryTimeMillis")
 
     username = _lookup_username_by_google_token(purchase_token) or ""
     action = _google_notif_to_action(notification_type)
     if action:
+        mobile_iap.apply_store_lifecycle(
+            provider=iap_links.PROVIDER_GOOGLE,
+            purchase_key=purchase_token,
+            action=_audit_action_to_lifecycle(action),
+            expires_at=expires_at,
+        )
         subscription_audit.log(
             username=username,
             action=action,
@@ -815,12 +835,27 @@ def _google_notif_to_action(notif_type: Optional[int]) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 def _lookup_username_by_apple_tx(_tx_id: Optional[str]) -> Optional[str]:
-    """Placeholder — IAP link table lands with the mobile IAP integration."""
-    return None
+    return iap_links.find_username(iap_links.PROVIDER_APPLE, _tx_id)
 
 
 def _lookup_username_by_google_token(_token: Optional[str]) -> Optional[str]:
-    return None
+    return iap_links.find_username(iap_links.PROVIDER_GOOGLE, _token)
+
+
+def _audit_action_to_lifecycle(action: Optional[str]) -> str:
+    if not action:
+        return "active"
+    if action.endswith("_purchased"):
+        return "purchased"
+    if action.endswith("_renewed"):
+        return "renewed"
+    if action.endswith("_cancelled"):
+        return "cancelled"
+    if action.endswith("_expired"):
+        return "expired"
+    if action.endswith("_paused_for_enterprise"):
+        return "cancelled"
+    return "active"
 
 
 def _decode_jws_unsafely(signed: str) -> Dict[str, Any]:
