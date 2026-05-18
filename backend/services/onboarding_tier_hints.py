@@ -33,19 +33,19 @@ def _community_tier_hints() -> Dict[str, Any]:
         },
         "paid_l1": {
             "label": "Paid L1",
-            "price_eur_monthly": _field("community-tiers", "paid_l1_price_eur_monthly", 25),
+            "price_eur_monthly": _field("community-tiers", "paid_l1_price_eur_monthly", 49.99),
             "max_members": paid_l1_max,
             "min_members": int(free_max) + 1,
         },
         "paid_l2": {
             "label": "Paid L2",
-            "price_eur_monthly": _field("community-tiers", "paid_l2_price_eur_monthly", 50),
+            "price_eur_monthly": _field("community-tiers", "paid_l2_price_eur_monthly", 99.99),
             "max_members": paid_l2_max,
             "min_members": int(paid_l1_max) + 1,
         },
         "paid_l3": {
             "label": "Paid L3",
-            "price_eur_monthly": _field("community-tiers", "paid_l3_price_eur_monthly", 80),
+            "price_eur_monthly": _field("community-tiers", "paid_l3_price_eur_monthly", 189.99),
             "max_members": paid_l3_max,
             "min_members": int(paid_l2_max) + 1,
         },
