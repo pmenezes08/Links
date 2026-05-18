@@ -932,17 +932,14 @@ export default function PremiumDashboard() {
               <div className="px-3 py-6">
                 <div className="mx-auto max-w-xl space-y-4">
                   <div className="liquid-glass-surface overflow-hidden rounded-3xl border border-white/10 p-5 text-center shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
-                    <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-[#4db6ac]/25 bg-[#4db6ac]/10 text-[#4db6ac]">
-                      <i className="fa-solid fa-network-wired text-2xl" />
-                    </div>
                     <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]">
                       Welcome to C-Point
                     </div>
-                    <h2 className="mt-2 text-2xl font-semibold leading-tight tracking-[-0.03em] text-white">
-                      Your C-Point starts with a community.
+                    <h2 className="mt-2 text-xl font-semibold leading-tight tracking-[-0.025em] text-white sm:text-[22px]">
+                      Enter the network where ideas connect people.
                     </h2>
-                    <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-[#9fb0b5]">
-                      Create a private social media network for a group, team, club, company, school, or circle of friends.
+                    <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-[#9fb0b5]">
+                      C-Point is a global platform of private, invitation-only micro-networks. Each network is its own world — no public feeds, no strangers, no algorithmic noise.
                     </p>
                     <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
                       <button
@@ -966,8 +963,8 @@ export default function PremiumDashboard() {
                     {[
                       { icon: 'fa-solid fa-lock', title: 'Private feeds', text: 'No public timeline.' },
                       { icon: 'fa-regular fa-comments', title: 'Member chats', text: 'DMs and groups.' },
-                      { icon: 'fa-regular fa-calendar-check', title: 'Events & polls', text: 'Coordinate fast.' },
                       { icon: 'fa-solid fa-wand-magic-sparkles', title: 'Steve built in', text: 'Help and summaries.' },
+                      { icon: 'fa-solid fa-user-group', title: 'Networking', text: 'Find members inside your network.' },
                     ].map((tile) => (
                       <div key={tile.title} className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
                         <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-[#4db6ac]/10 text-[#4db6ac]">
