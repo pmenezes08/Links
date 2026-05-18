@@ -1152,7 +1152,7 @@ def admin_broadcast_notification():
                         target_email = (email_row["email"] if hasattr(email_row, "keys") else email_row[0]) if email_row else None
                         if target_email:
                             from bodybuilding_app import _send_email_via_resend
-                            subject = title or "Notification from C.Point"
+                            subject = title or "Notification from C-Point"
                             html = f"<p>{composite_message.replace(chr(10), '<br>')}</p>"
                             if link_value:
                                 html += f'<p><a href="{link_value}">View details</a></p>'

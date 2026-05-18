@@ -581,7 +581,7 @@ def send_push_to_user(target_username: str, payload: dict):
     """Send push notification to the given user (web + native)."""
     
     # Extract payload data
-    title = payload.get('title', 'C.Point Notification')
+    title = payload.get('title', 'C-Point Notification')
     body = payload.get('body', '')
     tag = payload.get("tag") if isinstance(payload, dict) else None
     # Include title/body in FCM data so iOS/Android foreground delivery can show them (notificaion block is often omitted in-app).

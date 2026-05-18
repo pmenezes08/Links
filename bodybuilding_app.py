@@ -26732,7 +26732,7 @@ def invite_landing(token):
     # can open the app (via the verified https App Link) or fall back to the Play
     # Store natively — no confirm() dialog, no JS timer required. iOS / desktop
     # fall back to the custom cpoint:// scheme, which Safari routes through the
-    # system "Open in C.Point?" sheet or Universal Links.
+    # system "Open in C-Point?" sheet or Universal Links.
     if is_android:
         android_fallback = quote(play_store_url, safe='')
         app_url = (
@@ -26758,7 +26758,7 @@ def invite_landing(token):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="apple-itunes-app" content="app-id=6755534074, app-argument=https://app.c-point.co/invite/{token}">
-    <title>Join {community_name} on C.Point</title>
+    <title>Join {community_name} on C-Point</title>
     <style>
         * {{ margin:0; padding:0; box-sizing:border-box; }}
         body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#000; color:#fff; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }}
@@ -26778,15 +26778,15 @@ def invite_landing(token):
 </head>
 <body>
     <div class="container">
-        <div class="logo"><img src="{logo_url}" alt="C.Point" /></div>
+        <div class="logo"><img src="{logo_url}" alt="C-Point" /></div>
         <h1>You're Invited!</h1>
         <p class="invite-info">Join <strong>{community_name}</strong></p>
         <p class="invited-by">Invited by {invited_by}</p>
-        <a href="{app_url}" class="btn btn-primary" id="openAppBtn">Open in C.Point App</a>
+        <a href="{app_url}" class="btn btn-primary" id="openAppBtn">Open in C-Point App</a>
         <p style="color:#555; font-size:12px; margin:14px 0 10px;">Don't have the app yet?</p>
         {store_btn}
         <button type="button" class="btn btn-tertiary" id="copyInviteLinkBtn">Copy invite link</button>
-        <p class="hint">After you install, open the app from your home screen — we save your invite automatically when you tap Download above. If you don&apos;t land in the right community, open this page again and tap &quot;Open in C.Point App&quot;, or on Sign in use &quot;Use invite from clipboard&quot;.</p>
+        <p class="hint">After you install, open the app from your home screen — we save your invite automatically when you tap Download above. If you don&apos;t land in the right community, open this page again and tap &quot;Open in C-Point App&quot;, or on Sign in use &quot;Use invite from clipboard&quot;.</p>
     </div>
     <script>
 (function() {{
@@ -26821,7 +26821,7 @@ def invite_landing(token):
                 if (IS_ANDROID) return;
 
                 // iOS / desktop: let the anchor trigger cpoint://. If the app is
-                // installed, Safari shows the system "Open in C.Point?" sheet and
+                // installed, Safari shows the system "Open in C-Point?" sheet and
                 // the page goes hidden when it launches. If the app is not
                 // installed, nothing happens — after a short delay we silently
                 // redirect to the App Store. visibilitychange is the reliable
