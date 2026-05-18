@@ -425,8 +425,11 @@ export default function CommunityFeed() {
       return
     }
     try {
-      const key = communityOwnerSetupStorageKey(currentUsername, community_id)
-      if (localStorage.getItem(key)) {
+      const key = communityOwnerSetupStorageKey(currentUsername, String(community_id))
+      const serverSeen = Boolean(
+        (data.community as { owner_feed_setup_intro_seen?: boolean | number })?.owner_feed_setup_intro_seen,
+      )
+      if (serverSeen || localStorage.getItem(key)) {
         setOwnerIntroGateReady(true)
         setShowOwnerIntro(false)
         return

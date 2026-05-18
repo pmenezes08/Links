@@ -23,9 +23,11 @@ from urllib.parse import urlencode, urljoin
 from flask import Blueprint, jsonify, request, session
 
 from backend.services import ai_usage, auth_session, session_identity, user_billing
+from backend.services import client_ui_flags
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.entitlements import resolve_entitlements
 from backend.services.feature_flags import entitlements_enforcement_enabled
+from redis_cache import cache
 
 
 me_bp = Blueprint("me", __name__)
@@ -435,3 +437,29 @@ def me_billing_portal():
         return jsonify({"success": False, "error": "Unable to open billing portal", "detail": str(err)}), 500
 
     return jsonify({"success": True, "url": portal.get("url")})
+
+
+@me_bp.route("/api/me/communities-spotlight-tour-seen", methods=["POST"])
+def mark_communities_spotlight_tour_seen():
+    """Persist that the signed-in user finished the Communities page spotlight tour."""
+    username = _session_username()
+    if not username:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            client_ui_flags.ensure_user_ui_columns(c)
+            c.execute(
+                f"UPDATE users SET communities_spotlight_tour_seen = 1 WHERE username = {ph}",
+                (username,),
+            )
+            conn.commit()
+    except Exception as err:
+        logger.exception("mark_communities_spotlight_tour_seen failed for %s: %s", username, err)
+        return jsonify({"success": False, "error": "Could not save preference"}), 500
+    try:
+        cache.delete(f"profile:{username}")
+    except Exception:
+        pass
+    return jsonify({"success": True})

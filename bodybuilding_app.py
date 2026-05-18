@@ -11220,6 +11220,9 @@ def api_profile_me():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            from backend.services import client_ui_flags
+
+            client_ui_flags.ensure_user_ui_columns(c)
             # Include professional fields in the query (notification_show_previews added in migration)
             row = None
             try:
@@ -11363,6 +11366,17 @@ def api_profile_me():
                     profile["timezone"] = None
             except Exception:
                 profile["timezone"] = None
+
+            try:
+                c.execute("SELECT communities_spotlight_tour_seen FROM users WHERE username = ?", (username,))
+                spot_row = c.fetchone()
+                if spot_row is not None:
+                    raw = spot_row["communities_spotlight_tour_seen"] if hasattr(spot_row, "keys") else spot_row[0]
+                    profile["communities_spotlight_tour_seen"] = bool(int(raw or 0))
+                else:
+                    profile["communities_spotlight_tour_seen"] = False
+            except Exception:
+                profile["communities_spotlight_tour_seen"] = False
 
             # Cache profile for faster future requests
             from redis_cache import USER_CACHE_TTL
@@ -27220,6 +27234,9 @@ def api_community_feed(community_id):
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            from backend.services import client_ui_flags
+
+            client_ui_flags.ensure_community_ui_columns(c)
 
             # Community info
             c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
@@ -27228,6 +27245,9 @@ def api_community_feed(community_id):
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
             community = dict(community_row)
             community['allow_nsfw_imagine'] = bool(community.get('allow_nsfw_imagine')) if community.get('allow_nsfw_imagine') is not None else False
+            community['owner_feed_setup_intro_seen'] = bool(
+                int(community.get('owner_feed_setup_intro_seen') or 0)
+            )
             frozen_payload = _community_lifecycle.frozen_access_payload(username or '', community)
             if frozen_payload:
                 return jsonify(frozen_payload), 423

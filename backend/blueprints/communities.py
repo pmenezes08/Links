@@ -1615,3 +1615,50 @@ def republish_welcome_post(community_id: int):
         return jsonify({"success": False, "error": "not_published"}), 200
 
     return jsonify({"success": True, "post_id": post_id})
+
+
+@communities_bp.route(
+    "/api/communities/<int:community_id>/owner-feed-setup-intro-seen",
+    methods=["POST"],
+)
+@_login_required
+def mark_owner_feed_setup_intro_seen(community_id: int):
+    """Record that the community owner finished or dismissed the feed setup intro.
+
+    Owner-only (matches ``CommunityFeed`` gating). Idempotent.
+    """
+    username = session["username"]
+    if not community_svc.is_community_owner(username, community_id):
+        return jsonify({"success": False, "error": "forbidden"}), 403
+
+    ph = get_sql_placeholder()
+    try:
+        from backend.services import client_ui_flags
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            client_ui_flags.ensure_community_ui_columns(c)
+            c.execute(
+                f"""
+                UPDATE communities SET owner_feed_setup_intro_seen = 1
+                WHERE id = {ph}
+                """,
+                (community_id,),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.exception(
+            "mark_owner_feed_setup_intro_seen failed for community %s: %s",
+            community_id, exc,
+        )
+        return jsonify({"success": False, "error": "save_failed"}), 500
+
+    try:
+        invalidate_community_cache(community_id)
+    except Exception:
+        pass
+    try:
+        cache.delete(f"profile:{username}")
+    except Exception:
+        pass
+    return jsonify({"success": True})

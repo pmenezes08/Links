@@ -4,10 +4,10 @@ import { clearDeviceCache } from '../../utils/deviceCache'
 import { invalidateDashboardCache } from '../../utils/dashboardCache'
 
 export const communityOwnerSetupStorageKey = (username: string, communityId: string) =>
-  `cpoint_community_owner_setup:v1:${username}:${communityId}`
+  `cpoint_community_owner_setup:v1:${username.trim().toLowerCase()}:${communityId}`
 
 export const communityOwnerSetupResumeKey = (username: string, communityId: string) =>
-  `cpoint_community_owner_setup_resume:v1:${username}:${communityId}`
+  `cpoint_community_owner_setup_resume:v1:${username.trim().toLowerCase()}:${communityId}`
 
 export type IntroStepId =
   | 'welcome'
@@ -266,6 +266,16 @@ export default function CommunityOwnerSetupIntro({
     }
   }, [phase, stepIndex, username, communityId, steps])
 
+  const persistIntroSeen = useCallback(() => {
+    void fetch(`/api/communities/${encodeURIComponent(communityId)}/owner-feed-setup-intro-seen`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+      .then(() => onCommunityUpdated())
+      .catch(() => {})
+  }, [communityId, onCommunityUpdated])
+
   const persist = useCallback(
     (reason: 'completed' | 'dismissed') => {
       try {
@@ -278,9 +288,10 @@ export default function CommunityOwnerSetupIntro({
       } catch {
         /* ignore */
       }
+      persistIntroSeen()
       onFinished(reason)
     },
-    [communityId, onFinished, username],
+    [communityId, onFinished, persistIntroSeen, username],
   )
 
   const finishFromSteps = useCallback(() => {
@@ -299,9 +310,10 @@ export default function CommunityOwnerSetupIntro({
     } catch {
       /* ignore */
     }
+    persistIntroSeen()
     onOpenManageCommunity()
     onFinished('completed')
-  }, [communityId, onFinished, onOpenManageCommunity, username])
+  }, [communityId, onFinished, onOpenManageCommunity, persistIntroSeen, username])
 
   const openInviteAndComplete = useCallback(() => {
     try {
@@ -314,9 +326,10 @@ export default function CommunityOwnerSetupIntro({
     } catch {
       /* ignore */
     }
+    persistIntroSeen()
     onFinished('completed')
     navigate(`/community/${encodeURIComponent(communityId)}/members?open_invite=1`)
-  }, [communityId, navigate, onFinished, username])
+  }, [communityId, navigate, onFinished, persistIntroSeen, username])
 
   const postUpdateCommunity = useCallback(
     async (next: CommunityOwnerSetupSnapshot, opts?: { imageFile?: File | null; removeBackground?: boolean }) => {

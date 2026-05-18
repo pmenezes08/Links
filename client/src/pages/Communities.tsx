@@ -28,7 +28,11 @@ type Community = {
 type CommunityManagementCache = {
   communities: Community[]
   meta: { parentName: string; parentType: string }
-  userData?: { username: string; current_user_profile_picture?: string | null }
+  userData?: {
+    username: string
+    current_user_profile_picture?: string | null
+    communities_spotlight_tour_seen?: boolean
+  }
 }
 
 const COMMUNITY_MGMT_CACHE_TTL_MS = 5 * 60 * 1000
@@ -247,7 +251,12 @@ export default function Communities(){
   const location = useLocation()
   const { setTitle } = useHeader()
   const communityDeviceCacheKey = useMemo(() => `community-management:${location.search || 'root'}`, [location.search])
-  const [_data, setData] = useState<{ username:string; current_user_profile_picture?:string|null; community_name?:string }|null>(null)
+  const [_data, setData] = useState<{
+    username: string
+    current_user_profile_picture?: string | null
+    community_name?: string
+    communities_spotlight_tour_seen?: boolean
+  } | null>(null)
   const [communities, setCommunities] = useState<Community[]>([])
   const [parentName, setParentName] = useState<string>('')
   const [parentType, setParentType] = useState<string>('')
@@ -297,7 +306,10 @@ export default function Communities(){
   const [groupsModalCommunityId, setGroupsModalCommunityId] = useState<number|null>(null)
   const openGroups = (cid: number) => { setGroupsModalCommunityId(cid); setShowGroupsModal(true) }
   const communitiesGuideKey = useMemo(
-    () => (_data?.username ? `${COMMUNITIES_SPOTLIGHT_TOUR_PREFIX}${_data.username}` : null),
+    () =>
+      _data?.username
+        ? `${COMMUNITIES_SPOTLIGHT_TOUR_PREFIX}${String(_data.username).trim().toLowerCase()}`
+        : null,
     [_data?.username],
   )
   const showTrainingTab = useMemo(() => {
@@ -436,6 +448,11 @@ export default function Communities(){
 
   useEffect(() => {
     if (loading || error || !communitiesGuideKey) return
+    if (_data?.communities_spotlight_tour_seen) {
+      setCommunitiesGuideDismissed(true)
+      setCommunitiesGuideStep(null)
+      return
+    }
     try {
       if (window.localStorage.getItem(communitiesGuideKey) === '1') {
         setCommunitiesGuideDismissed(true)
@@ -445,12 +462,18 @@ export default function Communities(){
     } catch {}
     setCommunitiesGuideDismissed(false)
     setCommunitiesGuideStep(prev => (prev === null ? 0 : prev))
-  }, [loading, error, communitiesGuideKey])
+  }, [_data?.communities_spotlight_tour_seen, loading, error, communitiesGuideKey])
 
   const dismissCommunitiesGuide = useCallback(() => {
     if (communitiesGuideKey) {
       try { window.localStorage.setItem(communitiesGuideKey, '1') } catch {}
     }
+    setData(prev => (prev ? { ...prev, communities_spotlight_tour_seen: true } : prev))
+    void fetch('/api/me/communities-spotlight-tour-seen', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    }).catch(() => {})
     setCommunitiesGuideDismissed(true)
     setCommunitiesGuideStep(null)
   }, [communitiesGuideKey])
@@ -529,7 +552,11 @@ export default function Communities(){
           const r = await fetch(`/api/profile_me`, { credentials:'include', headers: { 'Accept': 'application/json' } })
           const j = await r.json().catch(()=>null)
           if (mounted && j?.success && j.profile){
-            const meta = { username: j.profile.username, current_user_profile_picture: j.profile.profile_picture }
+            const meta = {
+              username: j.profile.username,
+              current_user_profile_picture: j.profile.profile_picture,
+              communities_spotlight_tour_seen: Boolean(j.profile.communities_spotlight_tour_seen),
+            }
             latestUserMeta = meta
             setData(meta)
           }
@@ -638,6 +665,15 @@ export default function Communities(){
     const n = Number(raw)
     return Number.isFinite(n) && n > 0 ? n : null
   }, [location.search])
+
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search)
+    if (sp.get('from_owner_intro') !== '1') return
+    sp.delete('from_owner_intro')
+    sp.delete('resume_feed_id')
+    const qs = sp.toString()
+    navigate(`${location.pathname}${qs ? `?${qs}` : ''}`, { replace: true })
+  }, [location.pathname, location.search, navigate])
 
   return (
     <div className="min-h-screen bg-black text-white relative pb-safe">
