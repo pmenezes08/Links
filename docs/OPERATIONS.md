@@ -70,6 +70,10 @@ Current break-even on community pricing (€0.33/member flat) recalculated
 against the reduced floor: ~180 paying members, or roughly 1 Enterprise
 customer OR 3–4 L1 paid communities.
 
+> Community pricing was repriced in May 2026 to L1 EUR 49.99, L2 EUR 99.99,
+> and L3 EUR 189.99. Use KB `community-tiers` for current pricing truth; the
+> older €0.33/member note is historical cost context.
+
 ### 0.2 When to review staging scaling
 
 Keep `cpoint-app-staging` at `min-instances=0` until one of:

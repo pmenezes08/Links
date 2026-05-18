@@ -43,6 +43,15 @@ Short narratives for **how behaviour spans** Flask, Stripe, MySQL, Firestore, cr
 
 Communities can have **Stripe-backed** billing separate from the user’s personal subscription. Paid tiers use one Stripe subscription on the community row (`stripe_subscription_id`); owners may add a **Steve Community Package**, stored as a **second** subscription (`steve_package_*` columns) so tier webhooks and Steve-package webhooks never overwrite each other. **Steve Community Package** usage in feed/group contexts can draw from a **shared monthly pool** on the billing root (`ai_usage_log.community_id` normalized to the root for Steve surfaces); see **`entitlements_gate.check_steve_access`** with `community_id` and **`docs/STEVE_AND_VOICE_NOTES.md`**. Flows live under **`backend/blueprints/subscriptions.py`**, **`subscription_webhooks.py`**, and related services.
 
+### Mobile store billing rails
+
+- **Web remains Stripe.** Web clients still call `/api/stripe/create_checkout_session` for Premium and community tier checkout, and `/api/me/billing/portal` for Stripe-managed subscriptions.
+- **Native apps use store billing.** `client/src/utils/mobileStoreBilling.ts` calls `@capgo/native-purchases` for StoreKit / Play Billing purchases, then confirms with `/api/iap/apple/confirm` or `/api/iap/google/confirm`. `/api/iap/config` returns product IDs, the launch flag, and the web overflow URL from KB.
+- **One store-billed community per provider account.** `backend/services/iap_links.py` maps Apple `originalTransactionId` / Google `purchaseToken` to the C-Point user and community. Backend confirm rejects a second active community for the same provider with `store_community_limit`.
+- **Additional communities go to web billing.** Native UI opens `https://app.c-point.co/subscription_plans` as a clickable external link for extra communities; it must not open Stripe Checkout inside the native app.
+- **Provider-aware management.** `billing_provider` on community rows and `subscription_provider` on users route management to Stripe, App Store, or Google Play. Stripe portal/change-tier endpoints reject Apple/Google-managed rows with `store_billing_active`.
+- **Launch gate.** Production IAP grants stay off until `iap_purchases_enabled=true` in KB after App Store / Play review. Sandbox/license-test restore/confirm paths are kept available for review testing.
+
 ### Subscription hub API (`GET /api/me/subscriptions`)
 
 Single JSON contract for **Manage Membership**, **SubscriptionPlans**, and Steve checkout preflight alignment:

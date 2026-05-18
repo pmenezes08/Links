@@ -15,11 +15,10 @@ Each handler:
     3. Returns 200 unconditionally after logging — the stores retry
        otherwise.
 
-The Apple/Google handlers are structural stubs for Wave 5. They verify
-signatures and log the raw event but don't yet mutate ``users.subscription``
-— that requires storing product-IDs and original_transaction_ids we aren't
-yet capturing. The Stripe handler is fully wired because we already
-persist customer email / session metadata at Checkout time.
+The Apple/Google handlers verify signatures, resolve store purchase IDs via
+``iap_links``, and apply lifecycle updates through the same user/community
+billing services as Stripe. Stripe remains the web billing rail; native apps
+use StoreKit / Play Billing for digital subscriptions.
 """
 
 from __future__ import annotations

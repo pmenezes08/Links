@@ -61,6 +61,7 @@ Also: **`groups`** (optional **`steve_agent_enabled`**, **`steve_agent_preset`**
 | Table | Role |
 |-------|------|
 | `user_billing`, `community_billing`-related columns | Stripe state (see `user_billing.py`, `community_billing.py`). |
+| `iap_links` | Apple / Google purchase link table. Keyed by `(provider, purchase_key)` where `purchase_key` is Apple original transaction ID or Google purchase token. Stores `username`, `sku`, optional `community_id`, `tier_code`, `product_id`, `status`, `environment`, and `expires_at`; used by confirm/restore endpoints and store webhooks to mutate `users` / `communities` idempotently. |
 | `subscription_billing_ledger`, `subscription_audit_log` | Ledger & audit (`subscription_billing_ledger.py`, `subscription_audit.py`). |
 | `user_enterprise_seats` | Enterprise seat tracking (`enterprise_membership.py`). |
 | `enterprise_iap_nag` | IAP nag state (`enterprise_iap_nag.py`). |
@@ -137,7 +138,7 @@ Many **`exercises`**, **`workouts`**, **`workout_exercises`**, **`exercise_sets`
 ## 3. Operational notes
 
 - **Schema changes:** Prefer adding `ensure_*` in the owning service and running migration in deploy — same pattern as `register_blueprints` bootstraps billing tables.
-- **Source of truth:** For billing amounts and product rules, **in-app KB** still wins (`AGENTS.md`). These tables hold **operational** data only.
+- **Source of truth:** For billing amounts, Stripe price IDs, mobile product IDs, `iap_purchases_enabled`, and product rules, **in-app KB** still wins (`AGENTS.md`). These tables hold **operational** data only.
 - **Firestore costs:** Driven by read/write volumes on `dm_conversations`, `group_chats`, `posts`, and `steve_user_profiles`.
 
 ---

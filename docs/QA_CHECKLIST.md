@@ -129,6 +129,19 @@ Uses `test_doublepay` (has personal Premium) to verify the IAP nag.
 - [ ] Visit the client — a winback banner at €3.99 first-month should
       appear on the Account Settings page.
 
+## §7a — Mobile store billing
+
+Run these in TestFlight and Play internal testing before flipping `iap_purchases_enabled=true`.
+
+- [ ] iOS Premium: tap Subscribe, complete sandbox StoreKit purchase, confirm Premium appears in Active subscriptions with an **App Store** badge.
+- [ ] iOS Community: upgrade one owned root community to L1/L2/L3, confirm the community row shows the tier and **App Store** badge.
+- [ ] iOS extra community: attempt to upgrade a second community and confirm the modal explains web billing with a clickable `https://app.c-point.co/subscription_plans` link.
+- [ ] Android Premium: repeat Premium via Play Billing license tester and confirm the **Google Play** badge.
+- [ ] Android Community: repeat one community tier purchase via Play Billing and confirm the **Google Play** badge.
+- [ ] Restore purchases: use the native restore action on both platforms and confirm active purchases reappear without opening Stripe.
+- [ ] Web guard: for a store-billed community, try Stripe change-tier / portal paths; backend must return `store_billing_active` and the UI must route management to the store.
+- [ ] Web still works: from desktop web, Premium and community checkout still open Stripe Checkout.
+
 ## §8 — Entitlements gating
 
 - [ ] As `test_free`, try to open a DM with Steve. Client should show
