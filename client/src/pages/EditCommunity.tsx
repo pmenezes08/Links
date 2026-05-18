@@ -4,6 +4,7 @@ import ContentGenerationModal from '../components/ContentGenerationModal'
 import DeleteCommunityModal, { type DeleteCommunityResult } from '../components/DeleteCommunityModal'
 import { clearDeviceCache } from '../utils/deviceCache'
 import { invalidateDashboardCache } from '../utils/dashboardCache'
+import { openExternalBillingUrl, providerBadge, providerLabel } from '../utils/mobileStoreBilling'
 
 // Tiers and Stripe state live exclusively on the root community. The
 // API now also returns a payload for sub-community owners with
@@ -26,6 +27,7 @@ interface CommunityBilling {
   days_remaining: number | null
   benefits_end_at: string | null
   has_stripe_customer: boolean
+  billing_provider: string | null
   stripe_mode: 'test' | 'live'
   media_limit_gb: number | null
   media_limit_bytes: number | null
@@ -187,6 +189,7 @@ export default function EditCommunity(){
               : Number(j.days_remaining),
             benefits_end_at: j.benefits_end_at || null,
             has_stripe_customer: !!j.has_stripe_customer,
+            billing_provider: j.billing_provider || 'stripe',
             stripe_mode: j.stripe_mode === 'live' ? 'live' : 'test',
             media_limit_gb: j.media_limit_gb === null || j.media_limit_gb === undefined
               ? null
@@ -388,6 +391,8 @@ export default function EditCommunity(){
 
     const hasPaidTier = billing.tier !== 'free' && billing.tier !== ''
     const showManageSubscription = hasPaidTier || billing.has_stripe_customer
+    const billingProvider = String(billing.billing_provider || 'stripe').toLowerCase()
+    const isStoreBilled = billingProvider === 'apple' || billingProvider === 'google'
     const mediaLimitBytes = billing.media_limit_bytes
     const activeMediaBytes = billing.media_usage.active_bytes
     const mediaPercent = mediaLimitBytes && mediaLimitBytes > 0
@@ -427,6 +432,9 @@ export default function EditCommunity(){
           </div>
           <span className="inline-flex items-center rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1 text-[11px] font-medium text-cpoint-turquoise">
             {billing.tier_label || TIER_LABEL[billing.tier] || billing.tier}
+          </span>
+          <span className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[11px] font-medium text-white/60">
+            {providerBadge(billing.billing_provider || 'stripe')}
           </span>
         </div>
 
@@ -517,7 +525,13 @@ export default function EditCommunity(){
           {showManageSubscription ? 'Manage Subscription' : 'Choose paid tier'}
         </button>
 
-        {hasPaidTier && !billing.has_stripe_customer && (
+        {hasPaidTier && isStoreBilled && (
+          <div className="text-xs text-white/40">
+            This tier is managed through {providerLabel(billingProvider)}. Tier changes and cancellation happen in the store account.
+          </div>
+        )}
+
+        {hasPaidTier && !billing.has_stripe_customer && !isStoreBilled && (
           <div className="text-xs text-white/40">
             This tier has no Stripe customer attached yet. Use checkout to reconnect billing.
           </div>
@@ -529,6 +543,8 @@ export default function EditCommunity(){
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error) return <div className="p-4 text-red-400">{error}</div>
   if (!allowed) return <div className="p-4 text-[#9fb0b5]">No access.</div>
+  const modalBillingProvider = String(billing?.billing_provider || 'stripe').toLowerCase()
+  const modalStoreBilled = modalBillingProvider === 'apple' || modalBillingProvider === 'google'
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -883,7 +899,9 @@ export default function EditCommunity(){
                 <p className="text-xs uppercase tracking-[0.2em] text-[#00CEC8]">Billing</p>
                 <h3 className="mt-2 text-lg font-semibold">Manage Subscription</h3>
                 <p className="mt-1 text-sm text-white/55">
-                  Change tier, add Steve pool billing, or open Stripe to cancel / payment methods.
+                  {modalStoreBilled
+                    ? `This subscription is managed through ${providerLabel(modalBillingProvider)}.`
+                    : 'Change tier, add Steve pool billing, or open Stripe to cancel / payment methods.'}
                 </p>
               </div>
               <button
@@ -899,6 +917,7 @@ export default function EditCommunity(){
             <div className="mt-6 flex flex-col gap-2">
               <button
                 type="button"
+                disabled={modalStoreBilled}
                 className="rounded-full bg-[#00CEC8] px-4 py-2.5 text-xs font-semibold text-black hover:bg-[#00CEC8]/90"
                 onClick={() => {
                   setShowManageSubscriptionModal(false)
@@ -921,13 +940,21 @@ export default function EditCommunity(){
               )}
               <button
                 type="button"
-                disabled={!billing.has_stripe_customer}
+                disabled={!billing.has_stripe_customer && !modalStoreBilled}
                 className="rounded-full border border-white/20 px-4 py-2.5 text-xs font-semibold text-white hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
                 onClick={() => {
+                  if (modalStoreBilled) {
+                    openExternalBillingUrl(
+                      modalBillingProvider === 'apple'
+                        ? 'https://apps.apple.com/account/subscriptions'
+                        : 'https://play.google.com/store/account/subscriptions',
+                    )
+                    return
+                  }
                   void openCommunityBillingPortal()
                 }}
               >
-                Cancel Community Tier Subscription
+                {modalStoreBilled ? `Open ${providerLabel(modalBillingProvider)} subscriptions` : 'Cancel Community Tier Subscription'}
               </button>
               <button
                 type="button"

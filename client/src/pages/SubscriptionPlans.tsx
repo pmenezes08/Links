@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
+import {
+  currentStoreProvider,
+  loadIapConfig,
+  openExternalBillingUrl,
+  providerBadge,
+  providerLabel,
+  purchaseStoreSubscription,
+  restoreStorePurchases,
+  type IapConfig,
+  type StoreProvider,
+} from '../utils/mobileStoreBilling'
 
 /**
  * KB-driven subscriptions hub — Personal + Community redesign.
@@ -126,6 +137,7 @@ interface ActivePersonalSubscription {
   cancel_at_period_end?: boolean
   benefits_end_at?: string | null
   is_special?: boolean
+  subscription_provider?: string | null
 }
 
 interface ActiveCommunitySubscription {
@@ -146,6 +158,7 @@ interface ActiveCommunitySubscription {
   steve_addon_eligible?: boolean
   steve_addon_reason?: string
   steve_addon_message?: string
+  billing_provider?: string | null
 }
 
 interface ActiveSubscriptionsPayload {
@@ -284,6 +297,8 @@ export default function SubscriptionPlans() {
   const [pageMode, setPageMode] = useState<PageMode>(null)
   const [pendingTier, setPendingTier] = useState<CommunityTierLevel | null>(null)
   const [activeSubscriptions, setActiveSubscriptions] = useState<ActiveSubscriptionsPayload | null>(null)
+  const [iapConfig, setIapConfig] = useState<IapConfig | null>(null)
+  const [mobileBillingNotice, setMobileBillingNotice] = useState(false)
 
   useEffect(() => {
     setTitle('Subscriptions')
@@ -353,12 +368,13 @@ export default function SubscriptionPlans() {
       setLoading(true)
       setError(null)
       try {
-        const [pricingRes, activeRes] = await Promise.all([
+        const [pricingRes, activeRes, iapRes] = await Promise.all([
           fetch('/api/kb/pricing', {
             credentials: 'include',
             headers: { Accept: 'application/json' },
           }),
           loadActiveSubscriptions().catch(() => null),
+          loadIapConfig().catch(() => null),
         ])
         if (!pricingRes.ok) {
           throw new Error(`HTTP ${pricingRes.status}`)
@@ -370,6 +386,7 @@ export default function SubscriptionPlans() {
           }
           setPricing(data)
           if (activeRes?.success) setActiveSubscriptions(activeRes)
+          if (iapRes?.success) setIapConfig(iapRes)
         }
       } catch (err) {
         if (!cancelled) {
@@ -462,14 +479,50 @@ export default function SubscriptionPlans() {
     [],
   )
 
-  const onSubscribePremium = useCallback(() => {
+  const storeProvider = currentStoreProvider()
+
+  const onSubscribePremium = useCallback(async () => {
+    const provider = currentStoreProvider()
+    const productId = provider ? iapConfig?.[provider]?.premium_product_id : ''
+    if (provider && productId) {
+      setCheckoutLoading('premium')
+      setError(null)
+      try {
+        await purchaseStoreSubscription({ provider, productId })
+        setStatus(`Premium is active through ${providerLabel(provider)}.`)
+        await loadActiveSubscriptions()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unable to start in-app purchase')
+      } finally {
+        setCheckoutLoading(null)
+      }
+      return
+    }
     startCheckout({ plan_id: 'premium', billing_cycle: 'monthly' }, 'premium')
-  }, [startCheckout])
+  }, [iapConfig, loadActiveSubscriptions, startCheckout])
+
+  const onRestorePurchases = useCallback(async () => {
+    const provider = currentStoreProvider()
+    if (!provider || !iapConfig) return
+    setCheckoutLoading(`restore:${provider}`)
+    setError(null)
+    setModalError(null)
+    try {
+      const count = await restoreStorePurchases(provider, iapConfig)
+      setStatus(count > 0 ? `Restored ${count} purchase${count === 1 ? '' : 's'}.` : 'No active purchases found to restore.')
+      await loadActiveSubscriptions()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to restore purchases')
+    } finally {
+      setCheckoutLoading(null)
+    }
+  }, [iapConfig, loadActiveSubscriptions])
 
   const onPickTier = useCallback(
     (tier: CommunityTierLevel) => {
       setPendingTier(tier)
       setModalError(null)
+      setMobileBillingNotice(false)
       setView('picker')
     },
     [],
@@ -480,6 +533,12 @@ export default function SubscriptionPlans() {
       if (!pendingTier) return
       const activeCommunity = activeSubscriptions?.communities?.find((item) => item.id === communityId)
       if (activeCommunity) {
+        const billingProvider = String(activeCommunity.billing_provider || 'stripe').toLowerCase()
+        if (billingProvider === 'apple' || billingProvider === 'google') {
+          setMobileBillingNotice(false)
+          setModalError(`This community is managed through ${providerLabel(billingProvider)}. Change or cancel it from that store account.`)
+          return
+        }
         const key = `change-tier:${communityId}:${pendingTier.tier_code}`
         setCheckoutLoading(key)
         setModalError(null)
@@ -509,6 +568,36 @@ export default function SubscriptionPlans() {
         }
         return
       }
+      const provider = currentStoreProvider()
+      const productId = provider ? iapConfig?.[provider]?.community_product_ids?.[pendingTier.tier_code] : ''
+      if (provider && productId) {
+        const existingStoreCommunity = activeSubscriptions?.communities?.find((item) => {
+          const billingProvider = String(item.billing_provider || '').toLowerCase()
+          return billingProvider === provider && item.id !== communityId
+        })
+        if (existingStoreCommunity) {
+          setMobileBillingNotice(true)
+          setModalError(`You already have one community billed through ${providerLabel(provider)}. Additional communities are upgraded on the web app.`)
+          return
+        }
+        const key = `community_tier:${pendingTier.tier_code}:${communityId}`
+        setCheckoutLoading(key)
+        setModalError(null)
+        setMobileBillingNotice(false)
+        try {
+          await purchaseStoreSubscription({ provider, productId, communityId })
+          setStatus(`Community is active on ${tierLabel(pendingTier.tier_code)} through ${providerLabel(provider)}.`)
+          setView(null)
+          setPendingTier(null)
+          resetSubscriptionPageScroll()
+          await loadActiveSubscriptions()
+        } catch (err) {
+          setModalError(err instanceof Error ? err.message : 'Unable to start in-app purchase')
+        } finally {
+          setCheckoutLoading(null)
+        }
+        return
+      }
       startCheckout(
         {
           plan_id: 'community_tier',
@@ -525,7 +614,7 @@ export default function SubscriptionPlans() {
         },
       )
     },
-    [activeSubscriptions, loadActiveSubscriptions, pendingTier, startCheckout],
+    [activeSubscriptions, iapConfig, loadActiveSubscriptions, pendingTier, startCheckout],
   )
 
   const onSteveCommunityChosen = useCallback(
@@ -606,11 +695,16 @@ export default function SubscriptionPlans() {
                     payload={pricing.sku.premium}
                     onSubscribe={onSubscribePremium}
                     loading={checkoutLoading === 'premium'}
+                    storeProvider={storeProvider}
+                    storeProductAvailable={!!(storeProvider && iapConfig?.[storeProvider]?.premium_product_id)}
+                    onRestore={onRestorePurchases}
+                    restoreLoading={checkoutLoading != null && checkoutLoading.startsWith('restore:')}
                   />
                   <CommunityCard
                     payload={pricing.sku.community_tier}
                     onOpen={() => {
                       setModalError(null)
+                      setMobileBillingNotice(false)
                       setView('community')
                     }}
                   />
@@ -701,14 +795,18 @@ export default function SubscriptionPlans() {
             setView('community')
             setPendingTier(null)
             setModalError(null)
+            setMobileBillingNotice(false)
           }}
           onChoose={onCommunityChosen}
           activeSubscriptions={activeSubscriptions}
           error={modalError}
           loading={!!checkoutLoading}
+          mobileBillingNotice={mobileBillingNotice}
+          webBillingUrl={iapConfig?.web_app_billing_url || 'https://app.c-point.co/subscription_plans'}
           onCreate={() => {
             setView(null)
             setModalError(null)
+            setMobileBillingNotice(false)
             navigate('/premium_dashboard?open_create=1')
           }}
         />
@@ -811,12 +909,21 @@ function PersonalCard({
   payload,
   onSubscribe,
   loading,
+  storeProvider,
+  storeProductAvailable,
+  onRestore,
+  restoreLoading,
 }: {
   payload: PremiumPayload
   onSubscribe: () => void
   loading: boolean
+  storeProvider: StoreProvider | null
+  storeProductAvailable: boolean
+  onRestore: () => void
+  restoreLoading: boolean
 }) {
-  const disabled = !payload.purchasable || loading
+  const disabled = (!payload.purchasable && !storeProductAvailable) || loading || restoreLoading
+  const ctaLabel = storeProvider && storeProductAvailable ? `Subscribe with ${providerLabel(storeProvider)}` : payload.cta_label
   return (
     <section className="rounded-2xl border border-white/10 bg-white/5 p-8 flex flex-col">
       <div className="flex items-start justify-between">
@@ -860,11 +967,23 @@ function PersonalCard({
             : 'bg-cpoint-turquoise text-black hover:bg-cpoint-turquoise/90')
         }
       >
-        {loading ? 'Starting checkout…' : payload.cta_label}
+        {loading ? 'Starting checkout…' : ctaLabel}
       </button>
+      {storeProvider && (
+        <button
+          type="button"
+          onClick={onRestore}
+          disabled={restoreLoading}
+          className="mt-3 text-xs font-semibold text-cpoint-turquoise hover:underline disabled:text-white/35 disabled:no-underline"
+        >
+          {restoreLoading ? 'Restoring…' : `Restore ${providerLabel(storeProvider)} purchases`}
+        </button>
+      )}
       {!payload.purchasable && (
         <p className="mt-3 text-xs text-white/40">
-          Checkout will open once a Stripe price is configured.
+          {storeProductAvailable
+            ? `${providerLabel(storeProvider)} billing is available on this device.`
+            : 'Checkout will open once a Stripe price is configured.'}
         </p>
       )}
     </section>
@@ -980,6 +1099,7 @@ function ActiveSubscriptionsSection({
                     : renewalCopy(personal?.current_period_end)
                 }
                 status={personal?.is_special ? 'special' : personal?.subscription_status || personal?.subscription || 'active'}
+                provider={personal?.subscription_provider || 'stripe'}
               />
             ) : (
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/50">
@@ -1001,6 +1121,7 @@ function ActiveSubscriptionsSection({
                     : 'Billing details need attention before Premium counts as active.'
                 }
                 status={personal?.subscription_status || personal?.subscription || 'attention'}
+                provider={personal?.subscription_provider || 'stripe'}
                 actionLabel="Manage"
                 onAction={() => {
                   if (onManagePersonalBilling) onManagePersonalBilling()
@@ -1026,6 +1147,7 @@ function ActiveSubscriptionsSection({
                     title={community.name}
                     subtitle={communitySubtitleCommunity(community)}
                     status={tierLabel(community.tier || community.subscription_status)}
+                    provider={community.billing_provider || 'stripe'}
                     actionLabel="Manage"
                     onAction={() => onManageCommunity(community.id)}
                   />
@@ -1054,6 +1176,7 @@ function ActiveSubscriptionsSection({
                         : communitySubtitleCommunity(community)
                     }
                     status={tierLabel(community.tier || community.subscription_status)}
+                    provider={community.billing_provider || 'stripe'}
                     actionLabel="Manage"
                     onAction={() => onManageCommunity(community.id)}
                   />
@@ -1078,6 +1201,7 @@ function ActiveRow({
   actionLabel,
   onAction,
   children,
+  provider,
 }: {
   title: string
   subtitle: string
@@ -1085,6 +1209,7 @@ function ActiveRow({
   actionLabel?: string
   onAction?: () => void
   children?: React.ReactNode
+  provider?: string | null
 }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
@@ -1095,6 +1220,11 @@ function ActiveRow({
           <span className="rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-2 py-0.5 text-[11px] font-medium text-cpoint-turquoise">
             {status}
           </span>
+          {provider && (
+            <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[11px] font-medium text-white/60">
+              {providerBadge(provider)}
+            </span>
+          )}
         </div>
         <p className="mt-1 text-sm text-white/55">{subtitle}</p>
       </div>
@@ -1700,6 +1830,8 @@ function CommunityPickerModal({
   activeSubscriptions,
   error,
   loading,
+  mobileBillingNotice,
+  webBillingUrl,
 }: {
   tier: CommunityTierLevel
   preselectedCommunityId: string
@@ -1709,6 +1841,8 @@ function CommunityPickerModal({
   activeSubscriptions: ActiveSubscriptionsPayload | null
   error?: string | null
   loading?: boolean
+  mobileBillingNotice?: boolean
+  webBillingUrl: string
 }) {
   const [communities, setCommunities] = useState<Community[] | null>(null)
   const [loadErr, setLoadErr] = useState<string | null>(null)
@@ -1827,6 +1961,15 @@ function CommunityPickerModal({
       {error && (
         <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
           {error}
+          {mobileBillingNotice && (
+            <button
+              type="button"
+              onClick={() => openExternalBillingUrl(webBillingUrl)}
+              className="mt-3 block text-left text-cpoint-turquoise underline"
+            >
+              Open web billing: {webBillingUrl}
+            </button>
+          )}
         </div>
       )}
 

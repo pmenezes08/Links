@@ -326,6 +326,8 @@ def me_billing():
     subscription: Optional[Dict[str, Any]] = None
     if stripe_configured and user.get("email"):
         subscription = _find_stripe_subscription(stripe_mod, user["email"])
+    billing_state = user_billing.get_billing_state(username) or {}
+    provider = (billing_state.get("subscription_provider") or "stripe").strip().lower()
 
     return jsonify({
         "success": True,
@@ -334,6 +336,7 @@ def me_billing():
             "subscription": user.get("subscription") or "free",
             "is_special": bool(ent.get("is_special")),
             "inherited_from": ent.get("inherited_from"),
+            "subscription_provider": provider,
             "since": user.get("created_at"),
         },
         "stripe": {
@@ -393,6 +396,14 @@ def me_billing_portal():
                 "reason": "not_owner",
             }), 403
         state = community_billing.get_billing_state(community_id) or {}
+        provider = str(state.get("billing_provider") or "stripe").strip().lower()
+        if provider in ("apple", "google"):
+            return jsonify({
+                "success": False,
+                "error": "This community is managed through a mobile store.",
+                "reason": "store_billing_active",
+                "billing_provider": provider,
+            }), 409
         customer_id = state.get("stripe_customer_id") or None
         if not customer_id:
             return jsonify({
@@ -402,6 +413,14 @@ def me_billing_portal():
             }), 404
     else:
         billing_state = user_billing.get_billing_state(username) or {}
+        provider = str(billing_state.get("subscription_provider") or "stripe").strip().lower()
+        if provider in ("apple", "google"):
+            return jsonify({
+                "success": False,
+                "error": "This subscription is managed through a mobile store.",
+                "reason": "store_billing_active",
+                "billing_provider": provider,
+            }), 409
         customer_id = billing_state.get("stripe_customer_id") or None
         if customer_id:
             pass
