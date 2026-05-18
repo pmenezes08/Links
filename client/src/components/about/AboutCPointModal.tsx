@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ABOUT_CPOINT_MODAL_COMMUNITY_FEEDS_BULLETS,
+  ABOUT_CPOINT_MODAL_COMMUNITY_FEED_FEATURES,
   ABOUT_CPOINT_MODAL_COMMUNITY_FEEDS_INTRO,
   ABOUT_CPOINT_MODAL_DMS_PARAS,
   ABOUT_CPOINT_MODAL_STEVE_PARAS,
@@ -117,12 +117,17 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
         {step === 1 ? (
           <div className="space-y-3 mb-4">
             <p className="text-sm text-[#9fb0b5] leading-relaxed">{ABOUT_CPOINT_MODAL_COMMUNITY_FEEDS_INTRO}</p>
-            <div className="text-[11px] uppercase tracking-wider text-[#9fb0b5]/70">What you can do in a community</div>
-            <ul className="list-disc pl-5 space-y-2 text-sm text-[#9fb0b5] leading-relaxed">
-              {ABOUT_CPOINT_MODAL_COMMUNITY_FEEDS_BULLETS.map((line) => (
-                <li key={line}>{line}</li>
+            <div className="grid grid-cols-2 gap-2">
+              {ABOUT_CPOINT_MODAL_COMMUNITY_FEED_FEATURES.map((feature) => (
+                <div key={feature.title} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                  <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg bg-[#4db6ac]/10 text-[#4db6ac]">
+                    <i className={`${feature.icon} text-sm`} />
+                  </div>
+                  <div className="text-sm font-semibold text-white">{feature.title}</div>
+                  <div className="mt-1 text-xs leading-relaxed text-[#9fb0b5]">{feature.text}</div>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         ) : null}
 

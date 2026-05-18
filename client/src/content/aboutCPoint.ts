@@ -24,24 +24,24 @@ This is your world. Come connect with it.`
 
 /** Copy for the 4-step About C-Point modal (dashboard empty state). */
 export const ABOUT_CPOINT_MODAL_COMMUNITY_FEEDS_INTRO =
-  'Each community has its own feed: conversations and updates stay inside that invitation-only network—not a global public timeline. What you see is what your communities share with their members.'
+  'Each community has its own private feed: posts, updates, events, polls and media stay inside that invitation-only network.'
 
-export const ABOUT_CPOINT_MODAL_COMMUNITY_FEEDS_BULLETS: string[] = [
-  'Posts and discussion — threads and replies in the community feed',
-  'Polls — quick input and decisions from members',
-  "Events — create and share what's happening for your group",
-  'Media — photos and files alongside posts, in context',
-  'People — connect with members in your community (profiles, outreach)',
+export const ABOUT_CPOINT_MODAL_COMMUNITY_FEED_FEATURES: Array<{ icon: string; title: string; text: string }> = [
+  { icon: 'fa-regular fa-comments', title: 'Posts', text: 'Updates and discussion threads.' },
+  { icon: 'fa-solid fa-square-poll-vertical', title: 'Polls', text: 'Quick input from members.' },
+  { icon: 'fa-regular fa-calendar', title: 'Events', text: "Create what's happening." },
+  { icon: 'fa-regular fa-images', title: 'Media', text: 'Photos and files in context.' },
+  { icon: 'fa-regular fa-address-book', title: 'Members', text: 'Connect with your community.' },
 ]
 
 export const ABOUT_CPOINT_MODAL_DMS_PARAS: string[] = [
-  'Beyond the feed, C-Point supports private messaging: one-to-one DMs and smaller group chats that sit alongside your communities.',
-  'Use them for side conversations, coordination, or anything that does not need to be a community post — still private, still within the relationships you choose.',
+  'Beyond the feed, use one-to-one DMs and smaller group chats for side conversations, planning and coordination.',
+  'They sit alongside your communities, so the relationships stay private and intentional.',
 ]
 
 export const ABOUT_CPOINT_MODAL_STEVE_PARAS: string[] = [
-  'Steve is C-Point’s built-in intelligent presence: an always-on member focused on making the platform smarter and easier to use.',
-  'Steve can help with context in discussions, product questions, useful summaries where your plan allows — like making sense of a long post or a voice note before you listen.',
+  'Steve is C-Point’s built-in intelligent presence: an always-on member focused on making the platform easier to use.',
+  'Ask Steve for product help, discussion context, or summaries where your plan allows.',
 ]
 
 export type AboutHowCard = {

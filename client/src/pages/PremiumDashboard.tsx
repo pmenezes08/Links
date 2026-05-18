@@ -929,54 +929,63 @@ export default function PremiumDashboard() {
             </span>
           </div>
             {communities.length === 0 ? (
-              <div className="px-3 py-6 space-y-4">
-                <div className="mx-auto max-w-xl rounded-xl border border-white/10 bg-white/[0.02] p-3 sm:p-4">
-                  <div className="text-sm font-semibold text-white mb-1.5">About C-Point</div>
-                  <p className="text-sm text-[#9fb0b5] leading-relaxed mb-3">
-                    Manifesto, how the app works, and what Steve can do — a short in-app guide.
-                  </p>
-                  <button
-                    type="button"
-                    className="w-full py-2 rounded-lg border border-[#4db6ac]/50 text-sm font-medium text-[#4db6ac] hover:bg-[#4db6ac]/10 touch-manipulation"
-                    onClick={() => setShowAboutCPointModal(true)}
-                  >
-                    Read About C-Point
-                  </button>
-                </div>
-                {/* Welcome Card */}
-                <div className="mx-auto max-w-xl liquid-glass-surface border border-white/10 rounded-2xl p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
-                  <div className="text-base font-semibold text-white mb-3">
-                    Welcome to C-Point
+              <div className="px-3 py-6">
+                <div className="mx-auto max-w-xl space-y-4">
+                  <div className="liquid-glass-surface overflow-hidden rounded-3xl border border-white/10 p-5 text-center shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+                    <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-[#4db6ac]/25 bg-[#4db6ac]/10 text-[#4db6ac]">
+                      <i className="fa-solid fa-network-wired text-2xl" />
+                    </div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]">
+                      Welcome to C-Point
+                    </div>
+                    <h2 className="mt-2 text-2xl font-semibold leading-tight tracking-[-0.03em] text-white">
+                      Your C-Point starts with a community.
+                    </h2>
+                    <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-[#9fb0b5]">
+                      Create a private social media network for a group, team, club, company, school, or circle of friends.
+                    </p>
+                    <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
+                      <button
+                        className="rounded-full bg-[#4db6ac] px-5 py-2.5 font-semibold text-black shadow-lg transition-transform hover:brightness-110 active:scale-95 touch-manipulation"
+                        onClick={() => { setNewCommType('General'); setShowCreateModal(true) }}
+                        style={{ WebkitTapHighlightColor: 'transparent' }}
+                      >
+                        Create your first community
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full border border-white/15 px-5 py-2.5 font-medium text-white/80 transition hover:bg-white/5 touch-manipulation"
+                        onClick={() => setShowAboutCPointModal(true)}
+                      >
+                        How C-Point works
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-sm text-[#9fb0b5] leading-relaxed space-y-3">
-                    <p>A global platform of private, independent social media networks.</p>
-                    <p className="font-medium text-white/80">Your dashboard is empty by design.</p>
-                    <p>There are no public feeds, no algorithms, and no endless noise — only the communities you create or are invited to join. This is how we protect real privacy and genuine connection.</p>
-                    <p>Create or ask to be invited to the private spaces that matter to you — whether personal or professional.</p>
-                  </div>
-                  <div className="mt-5 text-center">
-                    <div className="text-sm text-white/70 mb-3">Ready to get started?</div>
-                    <button 
-                      className="px-5 py-2.5 rounded-full bg-[#4db6ac] text-black font-semibold shadow-lg hover:brightness-110 active:scale-95 transition-transform touch-manipulation"
-                      onClick={() => { setNewCommType('General'); setShowCreateModal(true) }}
-                      style={{ WebkitTapHighlightColor: 'transparent' }}
-                    >
-                      Create Your Community
-                    </button>
-                  </div>
-                </div>
 
-                {/* Meet Steve Card */}
-                <div className="mx-auto max-w-xl liquid-glass-surface border border-white/10 rounded-2xl p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
-                  <div className="text-base font-semibold text-white mb-3">
-                    Hi, I'm Steve.
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { icon: 'fa-solid fa-lock', title: 'Private feeds', text: 'No public timeline.' },
+                      { icon: 'fa-regular fa-comments', title: 'Member chats', text: 'DMs and groups.' },
+                      { icon: 'fa-regular fa-calendar-check', title: 'Events & polls', text: 'Coordinate fast.' },
+                      { icon: 'fa-solid fa-wand-magic-sparkles', title: 'Steve built in', text: 'Help and summaries.' },
+                    ].map((tile) => (
+                      <div key={tile.title} className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                        <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-[#4db6ac]/10 text-[#4db6ac]">
+                          <i className={`${tile.icon} text-sm`} />
+                        </div>
+                        <div className="text-sm font-semibold text-white">{tile.title}</div>
+                        <div className="mt-1 text-xs text-[#9fb0b5]">{tile.text}</div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="text-sm text-[#9fb0b5] leading-relaxed">
-                    <p>Think of me as an ever-present member whose purpose is to bring intelligence to the platform. Why am I here? To help you meet people in your communities you might not yet know. To add facts or a different perspective to discussions. And to do the small things that go a long way — like summarising a voice note so you know what it's about before you listen, or condensing a long post so you're up to speed in seconds.</p>
-                  </div>
-                  <div className="mt-4">
-                    <button 
-                      className="px-5 py-2.5 rounded-full border border-[#4db6ac]/40 text-[#4db6ac] font-medium hover:bg-[#4db6ac]/10 active:scale-95 transition-all touch-manipulation"
+
+                  <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-white">Meet Steve</div>
+                      <div className="text-xs text-[#9fb0b5]">Ask what to try first.</div>
+                    </div>
+                    <button
+                      className="shrink-0 rounded-full border border-[#4db6ac]/40 px-4 py-2 text-sm font-medium text-[#4db6ac] transition hover:bg-[#4db6ac]/10 active:scale-95 touch-manipulation"
                       onClick={() => navigate('/user_chat/chat/Steve')}
                       style={{ WebkitTapHighlightColor: 'transparent' }}
                     >
