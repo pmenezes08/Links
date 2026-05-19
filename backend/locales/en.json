@@ -92,6 +92,25 @@
     "checkout_failed": "Could not start checkout. Please try again.",
     "portal_failed": "Could not open the billing portal. Please try again."
   },
+  "chat": {
+    "dm": {
+      "other_username_required": "Other user is required.",
+      "message_id_and_url_required": "message_id and media_url are required.",
+      "invalid_message_id": "Invalid message id.",
+      "message_not_found": "Message not found.",
+      "edit_own_only": "You can only edit your own attachments.",
+      "nothing_to_remove": "Nothing to remove.",
+      "attachment_not_found": "Attachment not found.",
+      "failed_to_delete_chat": "Could not delete this chat.",
+      "failed_to_update_message": "Could not update this message."
+    },
+    "audio": {
+      "no_audio_uploaded": "No audio file uploaded.",
+      "no_audio_selected": "No audio file selected.",
+      "save_failed": "Could not save the audio file.",
+      "upload_failed": "Could not upload the audio file."
+    }
+  },
   "onboarding": {
     "validation": {
       "no_text": "Please provide some text.",

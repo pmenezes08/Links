@@ -92,6 +92,25 @@
     "checkout_failed": "Não foi possível iniciar o pagamento. Tenta de novo.",
     "portal_failed": "Não foi possível abrir o portal de faturação. Tenta de novo."
   },
+  "chat": {
+    "dm": {
+      "other_username_required": "Indica o outro utilizador.",
+      "message_id_and_url_required": "São necessários message_id e media_url.",
+      "invalid_message_id": "ID de mensagem inválido.",
+      "message_not_found": "Mensagem não encontrada.",
+      "edit_own_only": "Só podes editar os teus próprios anexos.",
+      "nothing_to_remove": "Não há nada para remover.",
+      "attachment_not_found": "Anexo não encontrado.",
+      "failed_to_delete_chat": "Não foi possível apagar esta conversa.",
+      "failed_to_update_message": "Não foi possível atualizar esta mensagem."
+    },
+    "audio": {
+      "no_audio_uploaded": "Não foi enviado nenhum ficheiro de áudio.",
+      "no_audio_selected": "Não foi selecionado nenhum ficheiro de áudio.",
+      "save_failed": "Não foi possível guardar o ficheiro de áudio.",
+      "upload_failed": "Não foi possível carregar o ficheiro de áudio."
+    }
+  },
   "onboarding": {
     "validation": {
       "no_text": "Indica algum texto.",

@@ -7,7 +7,7 @@ from functools import wraps
 
 from flask import Blueprint, abort, jsonify, request, session
 
-from backend.services import auth_session, session_identity
+from backend.services import api_errors, auth_session, session_identity
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.dm_chat_threads import build_chat_threads_payload
 from backend.services.dm_chats_tables import ensure_deleted_chat_threads_table
@@ -29,7 +29,7 @@ def _login_required(view_func):
     def wrapper(*args, **kwargs):
         if not session_identity.valid_session_username(session):
             if request.path.startswith("/api/") or request.path.startswith("/check_"):
-                return jsonify({"success": False, "error": "unauthenticated"}), 401
+                return api_errors.auth_required()
             from flask import redirect, url_for
 
             return redirect(url_for("auth.login"))
@@ -110,7 +110,7 @@ def clear_chat_history():
     data = request.get_json() or {}
     other_username = data.get("other_username")
     if not other_username:
-        return jsonify({"success": False, "error": "other_username required"}), 400
+        return api_errors.error_response("chat.dm.other_username_required", 400)
     ph = get_sql_placeholder()
     try:
         with get_db_connection() as conn:
@@ -184,7 +184,7 @@ def delete_chat_thread():
         return jsonify({"success": True})
     except Exception as e:
         logger.error("delete_chat_thread error for %s with %s: %s", username, other_username, e)
-        return jsonify({"success": False, "error": "Failed to delete chat"}), 500
+        return api_errors.error_response("chat.dm.failed_to_delete_chat", 500)
 
 
 @dm_chats_bp.route("/api/chat/dm/remove_message_media", methods=["POST"])
@@ -196,11 +196,11 @@ def remove_dm_message_media():
     message_id = data.get("message_id")
     media_url = (data.get("media_url") or "").strip()
     if message_id is None or not media_url:
-        return jsonify({"success": False, "error": "message_id and media_url required"}), 400
+        return api_errors.error_response("chat.dm.message_id_and_url_required", 400)
     try:
         mid = int(message_id)
     except (TypeError, ValueError):
-        return jsonify({"success": False, "error": "Invalid message_id"}), 400
+        return api_errors.error_response("chat.dm.invalid_message_id", 400)
 
     from backend.services.message_media_utils import (
         parse_media_paths,
@@ -225,7 +225,7 @@ def remove_dm_message_media():
             )
             row = c.fetchone()
             if not row:
-                return jsonify({"success": False, "error": "Message not found"}), 404
+                return api_errors.error_response("chat.dm.message_not_found", 404)
 
             sender = row["sender"] if hasattr(row, "keys") else row[0]
             receiver = row["receiver"] if hasattr(row, "keys") else row[1]
@@ -233,15 +233,15 @@ def remove_dm_message_media():
             media_raw = row["media_paths"] if hasattr(row, "keys") else row[3]
 
             if sender != username:
-                return jsonify({"success": False, "error": "You can only edit your own attachments"}), 403
+                return api_errors.error_response("chat.dm.edit_own_only", 403)
 
             paths = parse_media_paths(media_raw)
             if len(paths) < 2:
-                return jsonify({"success": False, "error": "Nothing to remove"}), 400
+                return api_errors.error_response("chat.dm.nothing_to_remove", 400)
 
             idx = find_media_index(paths, media_url)
             if idx < 0:
-                return jsonify({"success": False, "error": "Attachment not found"}), 404
+                return api_errors.error_response("chat.dm.attachment_not_found", 404)
 
             paths.pop(idx)
             text_empty = not (msg_body or "").strip()
@@ -302,4 +302,4 @@ def remove_dm_message_media():
 
     except Exception as e:
         logger.error("remove_dm_message_media: %s", e, exc_info=True)
-        return jsonify({"success": False, "error": "Failed to update message"}), 500
+        return api_errors.error_response("chat.dm.failed_to_update_message", 500)

@@ -16,7 +16,7 @@ from werkzeug.utils import secure_filename
 
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.media import save_uploaded_file
-from backend.services import ai_usage, auth_session, session_identity
+from backend.services import ai_usage, api_errors, auth_session, session_identity
 from backend.services.entitlements_gate import gate_or_reason, check_steve_access
 from backend.services.feature_flags import entitlements_enforcement_enabled
 from backend.services.steve_community_config import get_paid_steve_package_config
@@ -1242,11 +1242,11 @@ def upload_voice_message():
     username = session["username"]
     
     if 'audio' not in request.files:
-        return jsonify({'success': False, 'error': 'No audio uploaded'}), 400
+        return api_errors.error_response("chat.audio.no_audio_uploaded", 400)
     
     audio = request.files['audio']
     if audio.filename == '':
-        return jsonify({'success': False, 'error': 'No audio selected'}), 400
+        return api_errors.error_response("chat.audio.no_audio_selected", 400)
     
     try:
         # Save audio file using media service
@@ -1258,14 +1258,14 @@ def upload_voice_message():
         
         if not stored_path:
             logger.error(f"Failed to save voice message: filename={audio.filename}, mimetype={audio.mimetype}")
-            return jsonify({'success': False, 'error': 'Failed to save audio'}), 400
+            return api_errors.error_response("chat.audio.save_failed", 400)
         
         logger.info(f"Voice message uploaded: {stored_path} by {username}")
         return jsonify({'success': True, 'audio_path': stored_path})
         
     except Exception as e:
         logger.error(f"Error uploading voice message: {e}")
-        return jsonify({'success': False, 'error': 'Failed to upload audio'}), 500
+        return api_errors.error_response("chat.audio.upload_failed", 500)
 
 
 @group_chat_bp.route("/api/group_chat/<int:group_id>/send_media", methods=["POST"])
