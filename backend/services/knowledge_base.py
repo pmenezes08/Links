@@ -790,12 +790,12 @@ def _seed_pages() -> List[Dict[str, Any]]:
                  "group": "trial"},
 
                 # Paid · Steve package (add-on)
-                {"name": "paid_steve_package_price_eur_monthly", "label": "Package price / month", "type": "decimal", "prefix": "€", "value": 49,
+                {"name": "paid_steve_package_price_eur_monthly", "label": "Package price / month", "type": "decimal", "prefix": "€", "value": 49.99,
                  "help": "Canonical customer-facing Steve Community add-on price. Provider cost controls below remain in USD because xAI/OpenAI bills are USD-based.", "group": "paid_steve_package"},
-                {"name": "paid_steve_package_monthly_credit_pool", "label": "Community Steve calls / month", "type": "integer", "value": 200,
-                 "help": "Customer-facing shared call pool across all members.", "group": "paid_steve_package"},
-                {"name": "paid_steve_package_monthly_provider_cost_ceiling_usd", "label": "Provider cost ceiling / month", "type": "decimal", "prefix": "$", "value": 5.00,
-                 "help": "Hidden operator-only xAI circuit breaker. Do not expose to users.", "group": "paid_steve_package"},
+                {"name": "paid_steve_package_monthly_credit_pool", "label": "Community Steve credits / month", "type": "integer", "value": 200,
+                 "help": "Customer-facing shared credit pool (weighted debits) across all members.", "group": "paid_steve_package"},
+                {"name": "paid_steve_package_monthly_provider_cost_ceiling_usd", "label": "Provider cost ceiling / month", "type": "decimal", "prefix": "$", "value": 19.99,
+                 "help": "Hidden operator-only xAI circuit breaker (~40% of €49.99 gross at typical FX). Do not expose to users.", "group": "paid_steve_package"},
                 {"name": "paid_steve_package_provider_cost_reservation_usd", "label": "Provider cost reservation / call", "type": "decimal", "prefix": "$", "value": 0.03,
                  "help": "Pre-call reservation used to prevent concurrent requests from overspending the hidden ceiling.", "group": "paid_steve_package"},
                 {"name": "paid_steve_package_model", "label": "Community Steve model", "type": "string", "value": "grok-4.3",
@@ -1248,16 +1248,28 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 # Internal pool
                 {"name": "credit_pool_internal_min", "label": "Internal credit pool (min)", "type": "integer", "value": 150, "group": "internal_pool"},
                 {"name": "credit_pool_internal_max", "label": "Internal credit pool (max)", "type": "integer", "value": 250, "group": "internal_pool"},
-                {"name": "internal_weights", "label": "Internal credit weights (per action)", "type": "weighted_map",
+                {"name": "internal_weights", "label": "Internal credit weights (surface floor)", "type": "weighted_map",
                  "value": {
                      "dm": 1,
                      "group": 3,
                      "feed": 3,
                      "post_summary": 2,
+                     "voice_summary": 2,
+                     "translation": 1,
+                     "networking_steve": 2,
                      "voice_minute": 1,
                  },
                  "group": "internal_pool",
-                 "help": "DM=1, group=3, feed=3, post summary=2, voice minute=1. Tune as Grok pricing shifts."},
+                 "help": "Minimum credits per call by surface; actual debit is max(floor, context tier) + tool addons."},
+                {"name": "credit_tier_slim_max_tokens_in", "label": "Context tier — slim max input tokens", "type": "integer", "value": 4000, "group": "internal_pool"},
+                {"name": "credit_tier_standard_max_tokens_in", "label": "Context tier — standard max input tokens", "type": "integer", "value": 12000, "group": "internal_pool"},
+                {"name": "credit_tier_slim_weight", "label": "Context tier — slim credits", "type": "decimal", "value": 1, "group": "internal_pool"},
+                {"name": "credit_tier_standard_weight", "label": "Context tier — standard credits", "type": "decimal", "value": 2, "group": "internal_pool"},
+                {"name": "credit_tier_heavy_weight", "label": "Context tier — heavy credits", "type": "decimal", "value": 3, "group": "internal_pool"},
+                {"name": "credit_addon_web_search", "label": "Addon credits — web_search", "type": "decimal", "value": 1, "group": "internal_pool"},
+                {"name": "credit_addon_x_search", "label": "Addon credits — x_search", "type": "decimal", "value": 1, "group": "internal_pool"},
+                {"name": "credit_addon_tool_router", "label": "Addon credits — tool router pass", "type": "decimal", "value": 0.5, "group": "internal_pool"},
+                {"name": "max_credits_per_call", "label": "Max credits debited per call", "type": "decimal", "value": 10, "group": "internal_pool"},
 
                 # Content gen weights
                 {"name": "content_gen_weights", "label": "Content-generation weights (per run)", "type": "weighted_map",
@@ -1314,13 +1326,13 @@ def _seed_pages() -> List[Dict[str, Any]]:
             "body": (
                 "**What the user sees**: ~`steve_uses_per_month_user_facing` Steve uses per month, "
                 "plus `whisper_minutes_per_month` minutes of voice transcription.\n\n"
-                "**What runs internally**: a weighted credit pool. A DM reply costs 1 credit; a "
-                "group-chat reply costs 3; a feed comment/post reply costs 3; a post summary "
-                "costs 2; a Whisper minute costs 1. Pool size is set so average users never hit "
-                "the ceiling, and heavy users hit the ceiling before the xAI bill does.\n\n"
-                "**Why the weighting works**: group and feed calls burn ~3× the tokens of a DM "
-                "(200-message context + tools). Pricing them as 3× credits internally keeps a "
-                "€7.99 subscription's worst case below the €3.99 AI spend cap.\n\n"
+                "**What runs internally**: weighted **credits** per Steve call (stored on "
+                "``ai_usage_log.credits_debited``). Debit = max(surface floor, context tier from "
+                "input tokens) + addons for ``web_search`` / ``x_search`` / tool-router. User still "
+                "sees **X of 100** credits; heavy context + search debits more per turn.\n\n"
+                "**Why the weighting works**: aligns ~100 credits with the hidden "
+                "``monthly_spend_ceiling_eur`` (€3.99) worst-case mix — more light DMs per month, "
+                "fewer heavy feed+search turns.\n\n"
                 "**Model Costs**: this page is the single source of truth for the math. "
                 "When you edit any model cost, the Calculator (under Planning → Calculator) "
                 "updates automatically. Re-verify `model_costs_source` every month.\n\n"
@@ -1890,7 +1902,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
                         {"title": "Special users table + audit log", "area": "backend", "phase": "now", "status": "ongoing", "effort": "S", "target_quarter": "2026-Q2", "notes": "users.is_special + special_access_log."},
                         {"title": "Membership management UI (account settings)", "area": "client", "phase": "now", "status": "not_started", "effort": "M", "target_quarter": "2026-Q2", "notes": "Plan switcher, cancel, invoice history."},
                         {"title": "Stripe integration (web subscriptions + portal)", "area": "Subscriptions", "phase": "now", "status": "not_started", "effort": "L", "target_quarter": "2026-Q2", "notes": "Web-only first; mobile IAP tracked under iOS/Android rows."},
-                        {"title": "Credit tracking + display (X / 100 Steve uses)", "area": "client", "phase": "now", "status": "not_started", "effort": "M", "target_quarter": "2026-Q2", "notes": "Requires ai_usage_log extension with credit weights."},
+                        {"title": "Credit tracking + display (X / 100 Steve uses)", "area": "client", "phase": "now", "status": "completed", "effort": "M", "target_quarter": "2026-Q2", "notes": "Weighted credits_debited on ai_usage_log; SUM enforcement; context tier + tool addons from KB."},
                         {"title": "Admin-web: Premium / Special columns on Users tab", "area": "admin", "phase": "now", "status": "not_started", "effort": "S", "target_quarter": "2026-Q2", "notes": "Grant/Revoke Special from row action."},
                         {"title": "Trial countdown + soft conversion flow", "area": "Subscriptions", "phase": "now", "status": "not_started", "effort": "M", "target_quarter": "2026-Q2", "notes": "Email sequence at days 7 / 14 / 25 / 28."},
                         {"title": "Email normalization + canonical_email on users", "area": "backend", "phase": "now", "status": "ongoing", "effort": "S", "target_quarter": "2026-Q2", "test": "signup:canonical_uniqueness", "test_status": "not_run", "notes": "Shipped: backend/services/email_normalization.py + users.canonical_email column + signup uniqueness on canonical. Blocks the Gmail dot/plus alias trick. Flip to completed after CI is green + a staging signup smoke run."},
@@ -1911,7 +1923,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
                         {"title": "Android — Internal/closed track QA (Billing)", "area": "Android", "phase": "now", "status": "ongoing", "effort": "M", "target_quarter": "2026-Q3", "notes": "Internal/closed testing; purchase/restore vs backend parity."},
                         {"title": "Android — Production rollout (staged) + flag", "area": "Android", "phase": "now", "status": "not_started", "effort": "M", "target_quarter": "2026-Q3", "notes": "Staged production rollout; enable `iap_purchases_enabled` when ready."},
                         {"title": "max_tool_invocations hard cap", "area": "AI", "phase": "next", "status": "not_started", "effort": "S", "target_quarter": "2026-Q3", "notes": "Prevents worst-case per-turn cost."},
-                        {"title": "Per-user monthly spend circuit breaker", "area": "AI", "phase": "next", "status": "not_started", "effort": "M", "target_quarter": "2026-Q3", "notes": "Align engine enforcement with KB monthly_spend_ceiling_eur so no user exceeds modeled worst-case Grok + Whisper spend."},
+                        {"title": "Per-user monthly spend circuit breaker", "area": "AI", "phase": "next", "status": "completed", "effort": "M", "target_quarter": "2026-Q3", "notes": "entitlements_gate monthly_spend_ceiling_eur on SUM(cost_usd); Steve package $19.99/community."},
                         {"title": "Device fingerprint + IP/ASN signup throttle", "area": "backend", "phase": "next", "status": "not_started", "effort": "M", "target_quarter": "2026-Q3", "notes": "Activate only if free-trial abuse materializes."},
                         {"title": "Nightly cron: auto-revoke expired Special grants", "area": "backend", "phase": "next", "status": "not_started", "effort": "S", "target_quarter": "2026-Q3", "notes": "Scheduled job under /api/cron/* clears time-boxed Special access and logs audit rows when grants expire."},
                         {"title": "Annual plan promotion + discount flow", "area": "Subscriptions", "phase": "later", "status": "not_started", "effort": "M", "target_quarter": "2026-Q4", "notes": "Annual SKUs vs monthly; proration rules and downgrade paths coordinated with Stripe and entitlements."},

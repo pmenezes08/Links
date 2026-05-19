@@ -71,7 +71,7 @@ Also: **`groups`** (optional **`steve_agent_enabled`**, **`steve_agent_preset`**
 
 | Table | Role |
 |-------|------|
-| **`ai_usage_log`** | **Required** for every AI/Whisper call — `ai_usage.ensure_tables()`. |
+| **`ai_usage_log`** | **Required** for every AI/Whisper call — `ai_usage.ensure_tables()`. Columns include `credits_debited` (weighted Steve allowance) and `credits_meta` (JSON breakdown). |
 | `special_access_log` | Overrides (`special_access.py`). |
 
 ### Knowledge base (admin)

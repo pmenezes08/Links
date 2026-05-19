@@ -283,8 +283,9 @@ don't build parallel queries.
 
 | Function | Window | Surface filter | Used for |
 |---|---|---|---|
-| `monthly_steve_count` | 1st of month UTC → now | `STEVE_SURFACES` | `steve_uses_per_month` cap + "Steve uses this month" UI |
-| `daily_count` | Rolling 24h | `STEVE_SURFACES` | `ai_daily_limit` enforcement + "Steve uses today" UI |
+| `monthly_steve_count` | 1st of month UTC → now | `STEVE_SURFACES` | `steve_uses_per_month` cap + "Steve uses this month" UI (SUM of `credits_debited` when `STEVE_WEIGHTED_CREDITS_ENABLED` is on) |
+| `daily_count` | Rolling 24h | `STEVE_SURFACES` | `ai_daily_limit` enforcement + "Steve uses today" UI (same weighted SUM) |
+| `community_monthly_steve_pool_usage` | Calendar month | `STEVE_SURFACES` + `community_id` | Steve Community Package pool (200 credits default); dual gate with `monthly_community_spend_usd` vs KB `$19.99` ceiling |
 | `daily_any_count` | Rolling 24h | *none* | Admin-only "all AI activity" metric |
 | `whisper_minutes_this_month` | 1st of month UTC → now | `whisper` only, sums `duration_seconds/60` | `whisper_minutes_per_month` cap + "Voice transcription this month" UI |
 | `current_month_summary` | 1st of month UTC → now | grouped by surface | Manage Membership AI Usage tab, admin Manage drawer |

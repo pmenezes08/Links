@@ -106,6 +106,7 @@ def log_row(
     community_id: Optional[int] = None,
     created_at: Optional[datetime] = None,
     request_type: Optional[str] = None,
+    credits_debited: Optional[float] = None,
 ) -> None:
     """Insert one raw ``ai_usage_log`` row with a custom ``created_at``.
 
@@ -124,13 +125,13 @@ def log_row(
             INSERT INTO ai_usage_log
                 (username, request_type, surface, tokens_in, tokens_out,
                  cost_usd, duration_seconds, success, reason_blocked,
-                 community_id, created_at)
+                 community_id, credits_debited, created_at)
             VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph},
-                    {ph}, {ph})
+                    {ph}, {ph}, {ph})
             """,
             (username, rtype, surface, tokens_in, tokens_out, cost_usd,
              duration_seconds, 1 if success else 0, reason_blocked,
-             community_id, created_str),
+             community_id, credits_debited, created_str),
         )
         try:
             conn.commit()

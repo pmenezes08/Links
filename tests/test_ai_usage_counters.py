@@ -294,3 +294,31 @@ class TestCurrentMonthSummary:
         assert summary["steve_call_count"] == 2
         assert summary["steve_call_count"] == monthly_steve_count("alice")
         assert ai_usage.community_monthly_steve_pool_usage(123) == 1
+
+
+class TestWeightedSteveCredits:
+    """Weighted debit SUM (STEVE_WEIGHTED_CREDITS_ENABLED defaults on in tests)."""
+
+    def test_monthly_sums_credits_debited(self, mysql_dsn):
+        make_user("alice")
+        log_row("alice", surface=SURFACE_DM, credits_debited=2.0)
+        log_row("alice", surface=SURFACE_DM, credits_debited=3.5)
+        assert monthly_steve_count("alice") == 6
+
+    def test_legacy_null_credits_use_surface_weight(self, mysql_dsn):
+        make_user("alice")
+        log_row("alice", surface=SURFACE_GROUP)
+        assert monthly_steve_count("alice") == 3
+
+    def test_community_pool_sums_weighted_credits(self, mysql_dsn):
+        make_user("alice")
+        log_row("alice", surface=SURFACE_FEED, community_id=99, credits_debited=4.0)
+        log_row("alice", surface=SURFACE_FEED, community_id=99, credits_debited=2.0)
+        assert ai_usage.community_monthly_steve_pool_usage(99) == 6
+
+    def test_daily_never_exceeds_monthly_with_weights(self, mysql_dsn):
+        make_user("alice")
+        log_row("alice", surface=SURFACE_DM, credits_debited=2.0, created_at=hours_ago(2))
+        log_row("alice", surface=SURFACE_DM, credits_debited=1.0, created_at=hours_ago(1))
+        log_row("alice", surface=SURFACE_DM, credits_debited=50.0, created_at=days_ago(10))
+        assert daily_count("alice") <= monthly_steve_count("alice")

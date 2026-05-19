@@ -631,7 +631,10 @@ Only share this information if asked. Be factual — do not embellish or invent 
     )
 
     try:
+        from backend.services.steve_credit_weights import tools_flags_from_hosted_tools
+
         tokens_in, tokens_out = response_usage_tokens(response)
+        web_t, x_t = tools_flags_from_hosted_tools(dm_tools)
         ai_usage.log_usage(
             sender_username,
             surface=ai_usage.SURFACE_DM,
@@ -641,6 +644,8 @@ Only share this information if asked. Be factual — do not embellish or invent 
             cost_usd=estimate_response_cost_usd(response, model_config),
             response_time_ms=response_time_ms,
             model=model_to_use,
+            tools_web_search=web_t,
+            tools_x_search=x_t,
         )
     except Exception:
         pass

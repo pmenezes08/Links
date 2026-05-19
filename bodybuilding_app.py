@@ -23532,12 +23532,15 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             
             # MIGRATED to backend/services/ai_usage.py — safe to delete when monolith-split runs
             try:
+                from backend.services.steve_credit_weights import tools_flags_from_hosted_tools
+
                 tokens_in, tokens_out = response_usage_tokens(response)
                 billing_community_id = (
                     community_id
                     if (_ent or {}).get("steve_billing_source") == "community_pool"
                     else None
                 )
+                web_t, x_t = tools_flags_from_hosted_tools(_feed_tools)
                 _ai_usage.log_usage(
                     author_username,
                     surface=_ai_usage.SURFACE_FEED,
@@ -23548,6 +23551,8 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                     response_time_ms=response_time_ms if "response_time_ms" in locals() else None,
                     community_id=billing_community_id,
                     model=steve_config.model,
+                    tools_web_search=web_t,
+                    tools_x_search=x_t,
                 )
             except Exception:
                 pass
@@ -23927,12 +23932,15 @@ def _steve_ai_reply_for_group_post(
     )
     steve_reply_id = c.lastrowid
     try:
+        from backend.services.steve_credit_weights import tools_flags_from_hosted_tools
+
         tokens_in, tokens_out = response_usage_tokens(response)
         billing_community_id = (
             int(community_id)
             if (_ent or {}).get("steve_billing_source") == "community_pool" and community_id
             else None
         )
+        web_t, x_t = tools_flags_from_hosted_tools(_reply_tools)
         _ai_usage.log_usage(
             username,
             surface=_ai_usage.SURFACE_GROUP,
@@ -23943,6 +23951,8 @@ def _steve_ai_reply_for_group_post(
             response_time_ms=response_time_ms,
             community_id=billing_community_id,
             model=model_to_use,
+            tools_web_search=web_t,
+            tools_x_search=x_t,
         )
     except Exception as log_err:
         logger.warning("Could not log AI usage (group steve): %s", log_err)
@@ -24758,12 +24768,15 @@ def ai_steve_reply():
             
             # MIGRATED to backend/services/ai_usage.py — safe to delete when monolith-split runs
             try:
+                from backend.services.steve_credit_weights import tools_flags_from_hosted_tools
+
                 tokens_in, tokens_out = response_usage_tokens(response)
                 billing_community_id = (
                     community_id
                     if (_ent or {}).get("steve_billing_source") == "community_pool"
                     else None
                 )
+                web_t, x_t = tools_flags_from_hosted_tools(_reply_tools)
                 _ai_usage.log_usage(
                     username,
                     surface=_ai_usage.SURFACE_FEED,
@@ -24774,6 +24787,8 @@ def ai_steve_reply():
                     response_time_ms=response_time_ms if "response_time_ms" in locals() else None,
                     community_id=billing_community_id,
                     model=model_to_use,
+                    tools_web_search=web_t,
+                    tools_x_search=x_t,
                 )
             except Exception as log_err:
                 logger.warning(f"Could not log AI usage: {log_err}")

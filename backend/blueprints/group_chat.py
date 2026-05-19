@@ -3672,7 +3672,11 @@ RESPONSE FORMAT:
 
         # Log a successful Steve group call against the sender's allowance.
         try:
+            from backend.services.steve_credit_weights import tools_flags_from_hosted_tools
+
             tokens_in, tokens_out = response_usage_tokens(response) if "response" in locals() else (None, None)
+            _gtools = _group_tools if "_group_tools" in locals() else []
+            web_t, x_t = tools_flags_from_hosted_tools(_gtools)
             ai_usage.log_usage(
                 sender_username,
                 surface=ai_usage.SURFACE_GROUP,
@@ -3683,6 +3687,8 @@ RESPONSE FORMAT:
                 response_time_ms=response_time_ms if "response_time_ms" in locals() else None,
                 model=model_config.model,
                 community_id=steve_ctx_community_id,
+                tools_web_search=web_t,
+                tools_x_search=x_t,
             )
         except Exception:
             pass

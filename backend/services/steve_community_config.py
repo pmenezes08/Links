@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class SteveCommunityConfig:
     monthly_credit_pool: int = 200
-    monthly_provider_cost_ceiling_usd: float = 5.0
+    monthly_provider_cost_ceiling_usd: float = 19.99
     provider_cost_reservation_usd: float = 0.03
     model: str = "grok-4.3"
     model_input_usd_per_million: float = 1.25

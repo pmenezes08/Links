@@ -96,6 +96,7 @@ def check_steve_access(
     duration_seconds: Optional[float] = None,
     community_id: Optional[Any] = None,
     locale: Optional[str] = None,
+    estimated_credits_debit: Optional[float] = None,
 ) -> Tuple[bool, Optional[Dict[str, Any]], Optional[int], Dict[str, Any]]:
     """Decide whether ``username`` can invoke Steve on ``surface`` right now.
 
@@ -129,6 +130,19 @@ def check_steve_access(
             locale=locale,
         )
         return False, payload, status, {}
+
+    est_debit: float = 0.0
+    if surface in ai_usage.STEVE_SURFACES:
+        if estimated_credits_debit is not None:
+            est_debit = float(estimated_credits_debit)
+        else:
+            try:
+                from backend.services.steve_credit_weights import estimate_credits_debited
+
+                heavy = surface in (ai_usage.SURFACE_FEED, ai_usage.SURFACE_GROUP)
+                est_debit = estimate_credits_debited(surface, heavy_tools=heavy)
+            except Exception:
+                est_debit = 1.0
 
     kb_fields = _community_tiers_field_map()
     steve_pkg_config = get_paid_steve_package_config(kb_fields)
@@ -179,8 +193,12 @@ def check_steve_access(
                             err,
                         )
 
-    pool_has_room = pool_cap > 0 and pool_used < pool_cap and not provider_cost_exhausted
-    pool_exhausted = (pool_cap > 0 and pool_used >= pool_cap) or provider_cost_exhausted
+    pool_has_room = (
+        pool_cap > 0
+        and (float(pool_used) + est_debit) <= float(pool_cap)
+        and not provider_cost_exhausted
+    )
+    pool_exhausted = (pool_cap > 0 and (float(pool_used) + est_debit) > float(pool_cap)) or provider_cost_exhausted
     uses_community_pool = (
         surface in ai_usage.STEVE_SURFACES
         and pool_active
@@ -290,7 +308,7 @@ def check_steve_access(
 
         if not skip_personal_monthly:
             used_m = ai_usage.monthly_steve_count(username)
-            if used_m >= monthly_cap:
+            if float(used_m) + est_debit > float(monthly_cap):
                 usage_snapshot = _snapshot(username, ent)
                 payload, status = errs.build_error(
                     errs.REASON_MONTHLY_STEVE_CAP,
@@ -477,6 +495,7 @@ def gate_or_reason(
     duration_seconds: Optional[float] = None,
     enforce_override: Optional[bool] = None,
     community_id: Optional[Any] = None,
+    estimated_credits_debit: Optional[float] = None,
 ) -> Tuple[bool, Optional[str], Dict[str, Any]]:
     """Non-Flask version of the gate.
 
@@ -492,6 +511,7 @@ def gate_or_reason(
         surface,
         duration_seconds=duration_seconds,
         community_id=community_id,
+        estimated_credits_debit=estimated_credits_debit,
     )
     if allowed:
         return True, None, ent

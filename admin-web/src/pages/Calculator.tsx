@@ -199,8 +199,19 @@ function MonthTab({ costs, allowance }: { costs: ModelCosts; allowance: UserAllo
   const ceiling = allowance.monthly_spend_ceiling_eur
   const pctOfCeiling = ceiling > 0 ? (totalEur / ceiling) * 100 : 0
 
-  const totalCalls = dmCount + groupCount + feedCount + postSummaryCount
-  const userFacingUses = totalCalls
+  const w = allowance.internal_weights || {}
+  const addonTool = 1
+  const tierOf = (input: number) => (input > 12000 ? 3 : input > 4000 ? 2 : 1)
+  const creditsFor = (key: string, input: number, tool: number) => {
+    const base = Math.max(Number(w[key] ?? 1), tierOf(input))
+    return Math.min(10, base + (tool > 0 ? addonTool : 0))
+  }
+  const totalCredits =
+    dmCount * creditsFor('dm', 2000, 0) +
+    groupCount * creditsFor('group', 8000, 1) +
+    feedCount * creditsFor('feed', 6000, 1) +
+    postSummaryCount * creditsFor('post_summary', 3000, 0)
+  const userFacingUses = totalCredits
   const allowanceLimit = allowance.steve_uses_per_month
   const allowancePct = allowanceLimit > 0 ? (userFacingUses / allowanceLimit) * 100 : 0
 
@@ -250,8 +261,11 @@ function MonthTab({ costs, allowance }: { costs: ModelCosts; allowance: UserAllo
         </Card>
 
         <Card title="Against user-facing allowance" icon="fa-user-check">
+          <p className="text-xs text-muted mb-2">
+            Weighted credits (context tier + tools), not raw call count.
+          </p>
           <MeterBar
-            label={`Steve uses: ${userFacingUses} / ${allowanceLimit}`}
+            label={`Steve credits: ${userFacingUses} / ${allowanceLimit}`}
             pct={allowancePct}
             dangerPct={100}
           />

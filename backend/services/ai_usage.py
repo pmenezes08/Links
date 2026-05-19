@@ -174,6 +174,8 @@ def ensure_tables() -> None:
         _ensure_column(c, "response_time_ms", "INT NULL")
         _ensure_column(c, "community_id", "INT NULL")
         _ensure_column(c, "model", "VARCHAR(64) NULL")
+        _ensure_column(c, "credits_debited", "DECIMAL(6, 2) NULL")
+        _ensure_column(c, "credits_meta", "VARCHAR(512) NULL")
 
         # Indexes for the hot queries (counter helpers below).
         _ensure_index(c, "idx_ai_usage_user_surface", "username, surface")
@@ -192,6 +194,22 @@ def ensure_tables() -> None:
 # ────────────────────────────────────────────────────────────────────
 
 
+def _legacy_credit_case_sql() -> str:
+    """SQL expression matching KB ``internal_weights`` defaults for NULL rows."""
+    return """
+        CASE LOWER(COALESCE(surface, ''))
+            WHEN 'dm' THEN 1
+            WHEN 'group' THEN 3
+            WHEN 'feed' THEN 3
+            WHEN 'post_summary' THEN 2
+            WHEN 'voice_summary' THEN 2
+            WHEN 'translation' THEN 1
+            WHEN 'networking_steve' THEN 2
+            ELSE 1
+        END
+    """
+
+
 def log_usage(
     username: str,
     *,
@@ -206,6 +224,11 @@ def log_usage(
     response_time_ms: Optional[int] = None,
     community_id: Optional[int] = None,
     model: Optional[str] = None,
+    credits_debited: Optional[float] = None,
+    credits_meta: Optional[str] = None,
+    tools_web_search: bool = False,
+    tools_x_search: bool = False,
+    router_pass_in_turn: bool = False,
 ) -> None:
     """Insert one row into ``ai_usage_log``.
 
@@ -249,6 +272,28 @@ def log_usage(
     ph = get_sql_placeholder()
     now = _utc_now_str()
 
+    deb: Optional[float] = credits_debited
+    meta_str: Optional[str] = credits_meta
+    if surface in STEVE_SURFACES:
+        if not success:
+            deb = 0.0
+        elif deb is None:
+            try:
+                from backend.services import steve_credit_weights as scw
+
+                deb, meta = scw.compute_credits_debited(
+                    surface=surface,
+                    request_type=rtype,
+                    tokens_in=tokens_in,
+                    tools_web_search=tools_web_search,
+                    tools_x_search=tools_x_search,
+                    router_pass_in_turn=router_pass_in_turn,
+                )
+                if meta_str is None:
+                    meta_str = scw.credits_meta_json(meta)
+            except Exception as err:
+                logger.debug("credits_debited compute failed: %s", err)
+
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -257,9 +302,10 @@ def log_usage(
                 INSERT INTO ai_usage_log
                     (username, request_type, surface, tokens_in, tokens_out,
                      cost_usd, duration_seconds, success, reason_blocked,
-                     response_time_ms, community_id, model, created_at)
+                     response_time_ms, community_id, model, credits_debited,
+                     credits_meta, created_at)
                 VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph},
-                        {ph}, {ph}, {ph}, {ph}, {ph})
+                        {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
                 """,
                 (
                     username,
@@ -274,6 +320,8 @@ def log_usage(
                     response_time_ms,
                     cid_norm,
                     model,
+                    deb,
+                    meta_str,
                     now,
                 ),
             )
@@ -351,6 +399,36 @@ def _fetch_count(cursor, sql: str, params: tuple) -> int:
         return 0
 
 
+def _fetch_sum_credits(cursor, sql: str, params: tuple) -> float:
+    try:
+        cursor.execute(sql, params)
+        row = cursor.fetchone()
+    except Exception as err:
+        logger.debug("ai_usage credits sum query failed: %s", err)
+        return 0.0
+    if not row:
+        return 0.0
+    try:
+        raw = row["cnt"] if hasattr(row, "keys") else row[0]
+        return float(raw or 0)
+    except Exception:
+        return 0.0
+
+
+def _steve_credits_sum_sql() -> str:
+    legacy = _legacy_credit_case_sql()
+    return f"COALESCE(SUM(COALESCE(credits_debited, {legacy})), 0)"
+
+
+def _use_weighted_steve_credits() -> bool:
+    try:
+        from backend.services.feature_flags import steve_weighted_credits_enabled
+
+        return steve_weighted_credits_enabled()
+    except Exception:
+        return True
+
+
 def daily_count(username: str) -> int:
     """Successful personal Steve calls in the last 24 rolling hours for ``username``.
 
@@ -372,6 +450,22 @@ def daily_count(username: str) -> int:
     placeholders = ",".join([ph] * len(STEVE_SURFACES))
     with get_db_connection() as conn:
         c = conn.cursor()
+        if _use_weighted_steve_credits():
+            from backend.services.steve_credit_weights import display_credits_used
+
+            total = _fetch_sum_credits(
+                c,
+                f"""
+                SELECT {_steve_credits_sum_sql()} AS cnt FROM ai_usage_log
+                WHERE username = {ph}
+                  AND surface IN ({placeholders})
+                  AND success = 1
+                  AND community_id IS NULL
+                  AND created_at >= {ph}
+                """,
+                (username, *STEVE_SURFACES, _twenty_four_hours_ago()),
+            )
+            return display_credits_used(total)
         return _fetch_count(
             c,
             f"""
@@ -410,58 +504,96 @@ def daily_any_count(username: str) -> int:
         )
 
 
-def monthly_steve_count(username: str) -> int:
-    """Personal Steve calls (excluding Whisper / content-gen) this calendar month.
-
-    Enforces ``steve_uses_per_month``. Whisper is not a Steve "call" — it's
-    a transcription minute, tracked separately. Community-attributed Steve
-    calls are counted by :func:`community_monthly_steve_pool_usage` instead.
-    """
+def monthly_steve_credits_used(username: str) -> float:
+    """Personal Steve credits debited this calendar month (raw float sum)."""
     if not username:
-        return 0
+        return 0.0
     ensure_tables()
     ph = get_sql_placeholder()
     placeholders = ",".join([ph] * len(STEVE_SURFACES))
     with get_db_connection() as conn:
         c = conn.cursor()
-        return _fetch_count(
-            c,
-            f"""
-            SELECT COUNT(*) AS cnt FROM ai_usage_log
-            WHERE username = {ph}
-              AND surface IN ({placeholders})
-              AND success = 1
-              AND community_id IS NULL
-              AND created_at >= {ph}
-            """,
-            (username, *STEVE_SURFACES, _first_of_current_month_utc()),
+        if _use_weighted_steve_credits():
+            return _fetch_sum_credits(
+                c,
+                f"""
+                SELECT {_steve_credits_sum_sql()} AS cnt FROM ai_usage_log
+                WHERE username = {ph}
+                  AND surface IN ({placeholders})
+                  AND success = 1
+                  AND community_id IS NULL
+                  AND created_at >= {ph}
+                """,
+                (username, *STEVE_SURFACES, _first_of_current_month_utc()),
+            )
+        return float(
+            _fetch_count(
+                c,
+                f"""
+                SELECT COUNT(*) AS cnt FROM ai_usage_log
+                WHERE username = {ph}
+                  AND surface IN ({placeholders})
+                  AND success = 1
+                  AND community_id IS NULL
+                  AND created_at >= {ph}
+                """,
+                (username, *STEVE_SURFACES, _first_of_current_month_utc()),
+            )
+        )
+
+
+def monthly_steve_count(username: str) -> int:
+    """Personal Steve allowance used (credits when weighted, else call count).
+
+    Enforces ``steve_uses_per_month``. Community pool uses
+    :func:`community_monthly_steve_pool_usage`.
+    """
+    from backend.services.steve_credit_weights import display_credits_used
+
+    return display_credits_used(monthly_steve_credits_used(username))
+
+
+def community_monthly_steve_pool_credits_used(root_community_id: int) -> float:
+    """Weighted credits debited from the community Steve pool this month."""
+    if not root_community_id:
+        return 0.0
+    ensure_tables()
+    ph = get_sql_placeholder()
+    placeholders = ",".join([ph] * len(STEVE_SURFACES))
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        if _use_weighted_steve_credits():
+            return _fetch_sum_credits(
+                c,
+                f"""
+                SELECT {_steve_credits_sum_sql()} AS cnt FROM ai_usage_log
+                WHERE community_id = {ph}
+                  AND surface IN ({placeholders})
+                  AND success = 1
+                  AND created_at >= {ph}
+                """,
+                (int(root_community_id), *STEVE_SURFACES, _first_of_current_month_utc()),
+            )
+        return float(
+            _fetch_count(
+                c,
+                f"""
+                SELECT COUNT(*) AS cnt FROM ai_usage_log
+                WHERE community_id = {ph}
+                  AND surface IN ({placeholders})
+                  AND success = 1
+                  AND created_at >= {ph}
+                """,
+                (int(root_community_id), *STEVE_SURFACES, _first_of_current_month_utc()),
+            )
         )
 
 
 def community_monthly_steve_pool_usage(root_community_id: int) -> int:
-    """Steve calls this month attributed to ``root_community_id`` (shared pool).
+    """Community pool credits used (display int) for ``root_community_id``."""
+    from backend.services.steve_credit_weights import display_credits_used
 
-    Rows must use the **billing root** id on ``ai_usage_log.community_id``
-    (``log_usage`` normalizes subgroup ids for :data:`STEVE_SURFACES`).
-    """
-    if not root_community_id:
-        return 0
-    ensure_tables()
-    ph = get_sql_placeholder()
-    placeholders = ",".join([ph] * len(STEVE_SURFACES))
-    with get_db_connection() as conn:
-        c = conn.cursor()
-        return _fetch_count(
-            c,
-            f"""
-            SELECT COUNT(*) AS cnt FROM ai_usage_log
-            WHERE community_id = {ph}
-              AND surface IN ({placeholders})
-              AND success = 1
-              AND created_at >= {ph}
-            """,
-            (int(root_community_id), *STEVE_SURFACES, _first_of_current_month_utc()),
-        )
+    return display_credits_used(community_monthly_steve_pool_credits_used(root_community_id))
 
 
 def monthly_count(username: str, surface: Optional[str] = None) -> int:
