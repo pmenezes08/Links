@@ -86,4 +86,9 @@ def test_onboarding_api_auth_failure_returns_json():
     app.register_blueprint(onboarding_bp)
     response = app.test_client().post("/api/onboarding/defer_profile", json={})
     assert response.status_code == 401
-    assert response.get_json() == {"success": False, "error": "Unauthorized"}
+    body = response.get_json()
+    # Migrated to the shared api_errors shape -- switch on the stable
+    # identifier rather than the (now localized) English text.
+    assert body["success"] is False
+    assert body["error_code"] == "auth.authentication_required"
+    assert body["message_key"] == "auth.authentication_required"

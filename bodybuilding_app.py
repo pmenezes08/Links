@@ -49,6 +49,7 @@ from backend.services.user_activity_tables import ensure_user_activity_tables, r
 from backend.services.admin_metrics import compute_admin_metrics
 from backend.services.dm_chats_tables import ensure_archived_chats_table
 from backend.services import ai_usage as _ai_usage
+from backend.services import api_errors as _api_errors
 from backend.services import community_lifecycle as _community_lifecycle
 from backend.services import remember_tokens as remember_tokens_service
 from backend.services import session_identity
@@ -33062,7 +33063,7 @@ def create_workout():
     
     if 'username' not in session:
         print(f"Debug: User not logged in")
-        return jsonify({'success': False, 'error': 'Not logged in'})
+        return _api_errors.auth_required()
     
     try:
         name = request.form.get('name')
@@ -33122,7 +33123,7 @@ def create_workout():
 @app.route('/get_workouts', methods=['GET'])
 def get_workouts():
     if 'username' not in session:
-        return jsonify({'success': False, 'error': 'Not logged in'})
+        return _api_errors.auth_required()
     
     try:
         conn = get_db_connection()
@@ -33159,7 +33160,7 @@ def get_workouts():
 @app.route('/get_workout_details', methods=['GET'])
 def get_workout_details():
     if 'username' not in session:
-        return jsonify({'success': False, 'error': 'Not logged in'})
+        return _api_errors.auth_required()
     
     try:
         workout_id = request.args.get('workout_id')
@@ -33217,7 +33218,7 @@ def get_workout_details():
 @app.route('/add_exercise_to_workout', methods=['POST'])
 def add_exercise_to_workout():
     if 'username' not in session:
-        return jsonify({'success': False, 'error': 'Not logged in'})
+        return _api_errors.auth_required()
     
     try:
         workout_id = request.form.get('workout_id')
@@ -33271,7 +33272,7 @@ def add_exercise_to_workout():
 @app.route('/remove_exercise_from_workout', methods=['POST'])
 def remove_exercise_from_workout():
     if 'username' not in session:
-        return jsonify({'success': False, 'error': 'Not logged in'})
+        return _api_errors.auth_required()
     
     try:
         workout_exercise_id = request.form.get('workout_exercise_id')
@@ -33319,7 +33320,7 @@ def remove_exercise_from_workout():
 @app.route('/delete_workout', methods=['POST'])
 def delete_workout():
     if 'username' not in session:
-        return jsonify({'success': False, 'error': 'Not logged in'})
+        return _api_errors.auth_required()
     
     try:
         workout_id = request.form.get('workout_id')
@@ -33681,7 +33682,7 @@ def simple_test_route():
 def save_community_info():
     try:
         if 'username' not in session:
-            return jsonify({'success': False, 'error': 'Not logged in'})
+            return _api_errors.auth_required()
         
         community_id = request.form.get('community_id')
         info = request.form.get('info', '')
@@ -33728,7 +33729,7 @@ def save_community_info():
 def upload_community_files():
     try:
         if 'username' not in session:
-            return jsonify({'success': False, 'error': 'Not logged in'})
+            return _api_errors.auth_required()
         
         community_id = request.form.get('community_id')
         
@@ -33836,7 +33837,7 @@ def download_community_file(filename):
 def delete_community_file():
     try:
         if 'username' not in session:
-            return jsonify({'success': False, 'error': 'Not logged in'})
+            return _api_errors.auth_required()
         
         community_id = request.form.get('community_id')
         file_id = request.form.get('file_id')
@@ -33891,7 +33892,7 @@ def delete_community_file():
 def save_community_announcement():
     try:
         if 'username' not in session:
-            return jsonify({'success': False, 'error': 'Not logged in'})
+            return _api_errors.auth_required()
         
         content = request.form.get('content')
         community_id_raw = request.form.get('community_id')
@@ -34118,7 +34119,7 @@ def get_community_announcements():
 def delete_community_announcement():
     try:
         if 'username' not in session:
-            return jsonify({'success': False, 'error': 'Not logged in'})
+            return _api_errors.auth_required()
         
         announcement_id = request.form.get('announcement_id')
         community_id_raw = request.form.get('community_id')
