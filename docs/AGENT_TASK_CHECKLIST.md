@@ -15,6 +15,7 @@ Reference docs are **part of the implementation**. If the code you ship makes a 
 | Monolith reduction **epic** (priority, acceptance, or hotspot list) shifts | Edit **`docs/MONOLITH_REDUCTION_ROADMAP.md`**; align **KB → Product Roadmap** row if status changes. |
 | **Product Roadmap** row added, renamed, merged, dropped, or materially retargeted (`knowledge_base.py` → **`product-roadmap` → roadmap_items**) | Update **both** KB seeds **and** the Notion hub **Product roadmap** database (**same Names / titles**, **Area**, status). Prefer editing KB first, then mirror to Notion (or Notion MCP from Cursor). Details: § **Product roadmap (KB ↔ Notion)** below. |
 | New integration, blueprint, or architectural seam worth documenting | Edit **`docs/C_POINT_ARCHITECTURE.md`**. |
+| User-facing strings, locale handling, push/email copy, or new locale | Follow **[`docs/I18N_ROADMAP.md`](I18N_ROADMAP.md)** — keys in catalogs, recipient locale for push/email, no monolith additions. |
 
 Skips are only OK when the change **cannot** affect the doc (e.g. typo-only, pure test fixture rename with no route/schema/journey impact).
 
