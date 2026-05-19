@@ -20,7 +20,7 @@ async function clearCapacitorStorage(): Promise<void> {
 }
 
 /** Deactivate server-side push mappings and browser subscription before session cookies are cleared. */
-async function unregisterPushBeforeLogout(): Promise<void> {
+export async function unregisterPushBeforeLogout(): Promise<void> {
   const w = typeof window !== 'undefined' ? (window as unknown as { __fcmToken?: string }) : null
   const fcmToken = w?.__fcmToken?.trim() || ''
 
@@ -33,6 +33,8 @@ async function unregisterPushBeforeLogout(): Promise<void> {
     })
     if (!res.ok) {
       console.warn('unregister_fcm response:', res.status)
+    } else {
+      console.log('📴 FCM tokens deactivated on server')
     }
   } catch (e) {
     console.warn('unregister_fcm failed:', e)
@@ -51,17 +53,25 @@ async function unregisterPushBeforeLogout(): Promise<void> {
           body: JSON.stringify({ endpoint }),
         })
         await sub.unsubscribe()
+        console.log('📴 Web push subscription removed')
       }
     }
   } catch (e) {
     console.warn('web push unsubscribe failed:', e)
   }
+
+  try {
+    const win = window as unknown as { __fcmToken?: string; __reregisterPushToken?: unknown }
+    delete win.__fcmToken
+    delete win.__reregisterPushToken
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function performLogout(): Promise<void> {
   console.log('🚪 Starting logout process...')
-  
-  // 0. Clear Google Sign-In cached account (so next sign-in shows account picker)
+
   try {
     const { Capacitor } = await import('@capacitor/core')
     if (Capacitor.isNativePlatform()) {
@@ -70,7 +80,9 @@ export async function performLogout(): Promise<void> {
     }
   } catch {}
 
-  // 0a. Clear Capacitor native storage first (critical for iOS apps)
+  // Push first: session cookie, install cookie, and service worker must still be present.
+  await unregisterPushBeforeLogout()
+
   await clearCapacitorStorage()
 
   await resetAccountScopedState({
@@ -78,19 +90,7 @@ export async function performLogout(): Promise<void> {
     unregisterServiceWorkers: true,
   })
 
-  // Expire native push install id cookie client-side (server also clears on /logout)
-  try {
-    document.cookie = 'native_push_install_id=; Max-Age=0; Path=/; SameSite=Lax'
-  } catch {
-    /* ignore */
-  }
-
-  // 6. Unregister push tokens while session cookie is still valid (stops post-logout notifications)
-  await unregisterPushBeforeLogout()
-
-  // 7. Clear any cached data in memory by reloading the page after logout
+  // Keep native_push_install_id until /logout so the server can match install-scoped rows.
   console.log('🚪 Navigating to /logout endpoint...')
-
-  // Navigate to logout endpoint - use replace to prevent back button issues
   window.location.replace('/logout')
 }

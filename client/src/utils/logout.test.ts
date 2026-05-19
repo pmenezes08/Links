@@ -140,15 +140,26 @@ describe('performLogout (Phase G4)', () => {
     expect(deleted.some((n) => n.includes('app-shell'))).toBe(false)
   })
 
-  it('calls unregister_fcm fetch before navigating to /logout', async () => {
+  it('calls unregister_fcm before service worker unregister and /logout', async () => {
+    const order: string[] = []
+    fetchMock.mockImplementation((url: string | Request) => {
+      const u = typeof url === 'string' ? url : ''
+      if (u.includes('/api/push/unregister_fcm')) order.push('unregister_fcm')
+      return Promise.resolve({ ok: true, status: 200 } as Response)
+    })
+    swUnregister.mockImplementation(() => {
+      order.push('sw_unregister')
+      return Promise.resolve(true)
+    })
+    locationReplace.mockImplementation((href: string) => {
+      order.push(`replace:${href}`)
+    })
+
     await performLogout()
-    const idxFetch = sequence.findIndex((s) => s.includes('/api/push/unregister_fcm'))
-    const idxReplace = sequence.findIndex((s) => s.startsWith('replace:'))
-    expect(idxFetch).not.toBe(-1)
-    expect(idxReplace).not.toBe(-1)
-    expect(idxFetch).toBeLessThan(idxReplace)
-    expect(sequence[idxReplace]).toBe('replace:/logout')
-    expect(swUnregister).toHaveBeenCalled()
+
+    expect(order.indexOf('unregister_fcm')).toBeGreaterThanOrEqual(0)
+    expect(order.indexOf('sw_unregister')).toBeGreaterThan(order.indexOf('unregister_fcm'))
+    expect(order[order.length - 1]).toBe('replace:/logout')
   })
 
   it('deletes the offline account database during logout', async () => {

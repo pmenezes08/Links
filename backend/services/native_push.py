@@ -262,6 +262,76 @@ def deactivate_for_install(install_id: Optional[str]) -> dict[str, int]:
     return {"native_push_tokens": int(native_rows), "fcm_tokens": int(fcm_rows)}
 
 
+def deactivate_all_push_for_user(username: Optional[str]) -> dict[str, int]:
+    """Deactivate FCM/native rows and remove web push subscriptions for a user (logout)."""
+    username = (username or "").strip()
+    if not username:
+        return {"native_push_tokens": 0, "fcm_tokens": 0, "push_subscriptions": 0}
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        ph = get_sql_placeholder()
+
+        if USE_MYSQL:
+            c.execute(
+                f"UPDATE fcm_tokens SET is_active = 0 WHERE username = {ph}",
+                (username,),
+            )
+        else:
+            c.execute(
+                "UPDATE fcm_tokens SET is_active = 0 WHERE username = ?",
+                (username,),
+            )
+        fcm_rows = c.rowcount or 0
+
+        try:
+            if USE_MYSQL:
+                c.execute(
+                    f"UPDATE native_push_tokens SET is_active = 0 WHERE username = {ph}",
+                    (username,),
+                )
+            else:
+                c.execute(
+                    "UPDATE native_push_tokens SET is_active = 0 WHERE username = ?",
+                    (username,),
+                )
+            native_rows = c.rowcount or 0
+        except Exception as exc:
+            logger.warning("native_push_tokens deactivate for user %s: %s", username, exc)
+            native_rows = 0
+
+        web_rows = 0
+        try:
+            if USE_MYSQL:
+                c.execute(
+                    f"DELETE FROM push_subscriptions WHERE username = {ph}",
+                    (username,),
+                )
+            else:
+                c.execute(
+                    "DELETE FROM push_subscriptions WHERE username = ?",
+                    (username,),
+                )
+            web_rows = c.rowcount or 0
+        except Exception as exc:
+            logger.warning("push_subscriptions delete for user %s: %s", username, exc)
+
+        conn.commit()
+
+    logger.info(
+        "native_push.deactivate_all_for_user user=%s native=%d fcm=%d web=%d",
+        username,
+        native_rows,
+        fcm_rows,
+        web_rows,
+    )
+    return {
+        "native_push_tokens": int(native_rows),
+        "fcm_tokens": int(fcm_rows),
+        "push_subscriptions": int(web_rows),
+    }
+
+
 __all__ = [
     "DEFAULT_APNS_ENVIRONMENT",
     "register_native_push_token",
@@ -269,4 +339,5 @@ __all__ = [
     "associate_install_tokens_with_user",
     "associate_fcm_tokens_for_install",
     "deactivate_for_install",
+    "deactivate_all_push_for_user",
 ]

@@ -123,6 +123,27 @@ def test_deactivate_for_install_flips_all_rows(mysql_dsn):
     assert _active_counts() == (1, 1)
 
 
+def test_deactivate_all_push_for_user_flips_only_that_user(mysql_dsn):
+    _ensure_push_tables()
+    _seed("token-a", "alice", "install-1")
+    _seed("token-b", "bob", "install-2")
+
+    result = native_push.deactivate_all_push_for_user("alice")
+
+    assert result["native_push_tokens"] >= 1
+    assert result["fcm_tokens"] >= 1
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) AS count FROM fcm_tokens WHERE username='alice' AND is_active=1")
+        alice = c.fetchone()
+        c.execute("SELECT COUNT(*) AS count FROM fcm_tokens WHERE username='bob' AND is_active=1")
+        bob = c.fetchone()
+    alice_count = alice["count"] if hasattr(alice, "keys") else alice[0]
+    bob_count = bob["count"] if hasattr(bob, "keys") else bob[0]
+    assert alice_count == 0
+    assert bob_count >= 1
+
+
 def test_deactivate_for_install_unknown_id_is_noop(mysql_dsn):
     _ensure_push_tables()
     _seed("token-a", "alice", "install-1")

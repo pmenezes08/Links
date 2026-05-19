@@ -31,6 +31,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from backend.services.native_push import (
     associate_fcm_tokens_for_install,
     associate_install_tokens_with_user,
+    deactivate_all_push_for_user,
     deactivate_for_install,
 )
 from backend.services import auth_session, disposable_email, remember_tokens, session_identity
@@ -563,7 +564,15 @@ def logout():
     logger = current_app.logger
     username = session.get("username")
     install_id = (request.cookies.get(auth_session.INSTALL_COOKIE_NAME) or "").strip()
-    push_counts = deactivate_for_install(install_id) if install_id else {"native_push_tokens": 0, "fcm_tokens": 0}
+    push_counts = deactivate_all_push_for_user(username) if username else {
+        "native_push_tokens": 0,
+        "fcm_tokens": 0,
+        "push_subscriptions": 0,
+    }
+    if install_id:
+        install_counts = deactivate_for_install(install_id)
+        for key in ("native_push_tokens", "fcm_tokens"):
+            push_counts[key] = max(push_counts.get(key, 0), install_counts.get(key, 0))
     tokens_revoked = remember_tokens.revoke_by_cookie(request)
 
     session.clear()
@@ -585,11 +594,12 @@ def logout():
     current_app.session_interface.save_session(current_app, session, resp)
     auth_session.no_store(resp)
     logger.info(
-        "auth.logout pre_username=%s tokens_revoked=%d push_native=%d push_fcm=%d",
+        "auth.logout pre_username=%s tokens_revoked=%d push_native=%d push_fcm=%d push_web=%d",
         username or "-",
         tokens_revoked,
         push_counts.get("native_push_tokens", 0),
         push_counts.get("fcm_tokens", 0),
+        push_counts.get("push_subscriptions", 0),
     )
     return resp
 
