@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Capacitor } from '@capacitor/core'
 import { invalidateDashboardCache } from '../utils/dashboardCache'
 import { deleteCachedKeyVal } from '../utils/offlineDb'
@@ -18,6 +19,7 @@ const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 
 export default function MobileLogin() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const { refresh, applyProfileFromServer } = useUserProfile()
   const [searchParams] = useSearchParams()
   const inviteToken = searchParams.get('invite')
@@ -383,7 +385,7 @@ export default function MobileLogin() {
                 </p>
               </div>
             ) : (
-              <p className="text-xs text-white/60 mt-1">Sign in to your account</p>
+              <p className="text-xs text-white/60 mt-1">{t('auth.login.subtitle')}</p>
             )}
           </div>
         )}
@@ -471,14 +473,14 @@ export default function MobileLogin() {
             }}
           >
             <div className="text-center mb-4">
-              <h2 className="text-xl font-semibold text-white mb-1">Welcome Back</h2>
+              <h2 className="text-xl font-semibold text-white mb-1">{t('auth.login.welcome_back')}</h2>
               <p className="text-white/70 text-base">{pendingUsername}</p>
             </div>
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
                 name="password"
-                placeholder="Enter Password"
+                placeholder={t('auth.login.password_placeholder')}
                 required
                 autoFocus
                 className="w-full rounded-md bg-black border border-white/10 px-3 py-2.5 text-sm text-white outline-none pr-10"
@@ -505,9 +507,9 @@ export default function MobileLogin() {
               disabled={isSubmitting}
               className="w-full rounded-lg bg-teal-400 text-white py-2.5 text-sm font-medium active:opacity-90 disabled:opacity-50"
             >
-              {isSubmitting ? 'Logging in...' : 'Login'}
+              {isSubmitting ? t('auth.login.login_submitting') : t('auth.login.login_submit')}
             </button>
-            <button type="button" onClick={() => navigate('/login')} className="w-full rounded-lg border border-white/10 bg-white/5 text-white py-2.5 text-sm font-medium active:opacity-90">Back</button>
+            <button type="button" onClick={() => navigate('/login')} className="w-full rounded-lg border border-white/10 bg-white/5 text-white py-2.5 text-sm font-medium active:opacity-90">{t('auth.login.back')}</button>
           </form>
         ) : (
           <form 
@@ -522,7 +524,7 @@ export default function MobileLogin() {
               const username = formData.get('username') as string
               
               if (!username?.trim()) {
-                setError('Username is required')
+                setError(t('auth.login.username_required'))
                 setIsSubmitting(false)
                 return
               }
@@ -582,7 +584,7 @@ export default function MobileLogin() {
                 }
               } catch (err) {
                 console.error('Login error:', err)
-                setError('Connection error. Please try again.')
+                setError(t('auth.login.connection_error'))
                 // Clear stored username on error
                 try { sessionStorage.removeItem('cpoint_pending_username') } catch {}
               } finally {
@@ -594,7 +596,7 @@ export default function MobileLogin() {
               <input
                 type="text"
                 name="username"
-                placeholder="Username"
+                placeholder={t('auth.login.username_placeholder')}
                 required
                 autoComplete="username"
                 className="w-full rounded-md border border-white/10 bg-white/10 px-3 py-3 text-base outline-none focus:border-teal-400/70"
@@ -605,19 +607,19 @@ export default function MobileLogin() {
               disabled={isSubmitting}
               className="w-full rounded-lg bg-teal-400 text-white py-2 text-sm font-medium active:opacity-90 disabled:opacity-50"
             >
-              {isSubmitting ? 'Signing in...' : 'Sign In'}
+              {isSubmitting ? t('auth.login.submitting') : t('auth.login.submit')}
             </button>
           </form>
         )}
         <div className="text-center mt-3">
-          <button onClick={() => { setShowForgot(true); setResetSent(false) }} className="text-teal-300 text-sm">Forgot Password?</button>
+          <button onClick={() => { setShowForgot(true); setResetSent(false) }} className="text-teal-300 text-sm">{t('auth.login.forgot')}</button>
         </div>
 
         {step !== 'password' && (
           <>
             <div className="flex items-center gap-3 my-4 text-white/40 text-[12px]">
               <div className="flex-1 h-px bg-white/10" />
-              <span>or</span>
+              <span>{t('auth.login.or')}</span>
               <div className="flex-1 h-px bg-white/10" />
             </div>
 
@@ -710,7 +712,7 @@ export default function MobileLogin() {
                 </div>
               )}
 
-              <a href={inviteToken ? `/signup?invite=${inviteToken}` : '/signup'} className="block w-full text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm">Create Account</a>
+              <a href={inviteToken ? `/signup?invite=${inviteToken}` : '/signup'} className="block w-full text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm">{t('auth.login.create_account_cta')}</a>
 
               {Capacitor.getPlatform() !== 'web' && !inviteToken && authCheckDone && (
                 <div className="space-y-2">
@@ -772,7 +774,7 @@ export default function MobileLogin() {
               <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-[#4db6ac]/10 flex items-center justify-center">
                 <i className="fa-solid fa-link text-[#4db6ac] text-xl" />
               </div>
-              <h3 className="text-lg font-semibold m-0">Use your invite link</h3>
+              <h3 className="text-lg font-semibold m-0">{t('auth.login.use_invite_title')}</h3>
             </div>
             <p className="text-sm text-white/70 text-center mb-4 leading-relaxed">
               We&apos;ll read your clipboard once to find your community invite. On the next step, iOS may ask you to allow paste — that&apos;s expected.
@@ -803,13 +805,13 @@ export default function MobileLogin() {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="w-[90%] max-w-sm bg-[#1a1a1a] border border-[#333] rounded-xl">
             <div className="flex items-center justify-between p-4 border-b border-[#333]">
-              <h2 className="text-white text-base font-semibold">Reset Password</h2>
+              <h2 className="text-white text-base font-semibold">{t('auth.login.reset_title')}</h2>
               <button className="text-[#999] text-2xl" onClick={() => setShowForgot(false)}>&times;</button>
             </div>
             <div className="p-4">
               {!resetSent ? (
                 <>
-                  <p className="text-white/70 text-sm mb-4">Enter your email address. We'll send you a link to reset your password.</p>
+                  <p className="text-white/70 text-sm mb-4">{t('auth.login.reset_helper')}</p>
                   <form onSubmit={submitReset} className="space-y-3">
                     <input
                       type="email"
@@ -819,14 +821,14 @@ export default function MobileLogin() {
                       required
                       className="w-full rounded-md border border-white/10 bg-white/10 px-3 py-2 text-sm outline-none focus:border-teal-400/70"
                     />
-                    <button type="submit" className="w-full rounded-lg bg-teal-400 text-white py-2 text-sm font-medium active:opacity-90">Send Reset Link</button>
+                    <button type="submit" className="w-full rounded-lg bg-teal-400 text-white py-2 text-sm font-medium active:opacity-90">{t('auth.login.reset_submit')}</button>
                   </form>
                 </>
               ) : (
                 <>
-                  <div className="w-full rounded-md border border-teal-500 text-teal-400 bg-teal-500/10 px-3 py-2 text-sm text-center">Reset link sent! Check your email.</div>
-                  <p className="text-white/70 text-sm mt-4 text-center">If an account exists with the provided information, you will receive an email with instructions to reset your password.</p>
-                  <button className="w-full mt-4 rounded-lg border border-white/10 bg-white/5 py-2 text-sm" onClick={() => setShowForgot(false)}>Close</button>
+                  <div className="w-full rounded-md border border-teal-500 text-teal-400 bg-teal-500/10 px-3 py-2 text-sm text-center">{t('auth.login.reset_sent_short')}</div>
+                  <p className="text-white/70 text-sm mt-4 text-center">{t('auth.login.reset_sent_helper')}</p>
+                  <button className="w-full mt-4 rounded-lg border border-white/10 bg-white/5 py-2 text-sm" onClick={() => setShowForgot(false)}>{t('common.close')}</button>
                 </>
               )}
 

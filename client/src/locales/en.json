@@ -46,6 +46,147 @@
     "network": "Network error. Please check your connection and try again.",
     "server": "Server error. Please try again in a moment."
   },
+  "onboarding": {
+    "welcome": {
+      "title": "Welcome to Connection Point",
+      "carousel": [
+        "Enter the network where ideas connect people.",
+        "Share your thoughts, images, and connect through meaningful conversations.",
+        "Connect with your world"
+      ],
+      "get_started": "Get started",
+      "images_coming_soon": "Welcome images coming soon",
+      "slide_label": "Go to slide {{number}}"
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "subtitle": "Sign in to your account",
+      "welcome_back": "Welcome Back",
+      "username_placeholder": "Username",
+      "username_required": "Username is required",
+      "password_placeholder": "Enter Password",
+      "submit": "Sign In",
+      "submitting": "Signing in...",
+      "login_submit": "Login",
+      "login_submitting": "Logging in...",
+      "back": "Back",
+      "forgot": "Forgot Password?",
+      "or": "or",
+      "create_account_cta": "Create Account",
+      "connection_error": "Connection error. Please try again.",
+      "google": "Continue with Google",
+      "reset_title": "Reset Password",
+      "reset_helper": "Enter your email address. We'll send you a link to reset your password.",
+      "reset_submit": "Send Reset Link",
+      "reset_sent_short": "Reset link sent! Check your email.",
+      "reset_sent_helper": "If an account exists with the provided information, you will receive an email with instructions to reset your password.",
+      "use_invite_title": "Use your invite link"
+    },
+    "signup": {
+      "title": "Create your account",
+      "submit": "Create account",
+      "have_account": "Already have an account?",
+      "sign_in": "Sign in"
+    }
+  },
+  "navigation": {
+    "home": "Home",
+    "feed": "Feed",
+    "communities": "Communities",
+    "chat": "Chat",
+    "messages": "Messages",
+    "notifications": "Notifications",
+    "profile": "Profile",
+    "settings": "Settings",
+    "menu": "Menu",
+    "back": "Back",
+    "close_search": "Close search",
+    "search_communities": "Search communities",
+    "dashboard": "Dashboard",
+    "my_profile": "My Profile",
+    "followers": "Followers",
+    "subscriptions": "Subscriptions",
+    "logout": "Logout",
+    "account_settings": "Account Settings",
+    "admin_profile": "Admin Profile",
+    "admin_dashboard": "Admin Dashboard"
+  },
+  "steve": {
+    "label": "Steve",
+    "options_label": "Steve options",
+    "main_aria": "Steve",
+    "recommendations_aria": "Steve recommendations",
+    "news_aria": "News and articles",
+    "talk_to_steve": "Talk to Steve",
+    "talk_to_steve_helper": "Open direct messages",
+    "recommendations": "Steve Recommendations",
+    "recommendations_helper": "Networking and curated picks",
+    "networking": "Networking",
+    "networking_helper": "Ask Steve to match you with people in your networks",
+    "news_articles": "News / Articles",
+    "news_articles_helper": "Personalized reading from your networks",
+    "coming_soon": "Coming soon",
+    "coming_soon_body": "Steve will surface articles and updates tailored to your communities."
+  },
+  "communities": {
+    "page_title": "Community Management",
+    "page_title_named": "Community: {{name}}",
+    "joined_groups": "Joined Groups",
+    "no_joined_groups": "No joined groups",
+    "no_joined_groups_here": "No joined groups in this community.",
+    "no_available_groups": "No available groups",
+    "no_available_groups_here": "No available groups in this community.",
+    "create_sub_community": "Create Sub-Community",
+    "create_group": "Create Group",
+    "create_sub_or_group": "Create Sub-Community or Group",
+    "create_under": "Create Under",
+    "join_policy": "Join Policy",
+    "sub_name_placeholder": "e.g., Engineering Team",
+    "group_name_placeholder": "e.g., Morning Runners",
+    "create": "Create",
+    "join_to_view": "Join this community to view and join its groups.",
+    "hide_nested": "Hide nested communities",
+    "show_nested": "Show nested communities"
+  },
+  "feed": {
+    "page_title": "Feed",
+    "loading": "Loading...",
+    "empty_title": "Your feed is quiet",
+    "empty_body": "Follow people or join communities to see posts here.",
+    "compose_placeholder": "What's on your mind?",
+    "post": "Post",
+    "posting": "Posting...",
+    "like": "Like",
+    "comment": "Comment",
+    "share": "Share",
+    "reply": "Reply",
+    "load_more": "Load more"
+  },
+  "chat": {
+    "page_title": "Messages",
+    "empty_state": "No messages yet.",
+    "type_message_placeholder": "Type a message...",
+    "send": "Send",
+    "you": "you"
+  },
+  "billing": {
+    "subscription_plans_title": "Subscription Plans",
+    "current_plan": "Current plan",
+    "upgrade": "Upgrade",
+    "manage": "Manage",
+    "loading": "Loading plans..."
+  },
+  "profile": {
+    "edit_profile": "Edit Profile",
+    "followers_one": "{{count}} follower",
+    "followers_other": "{{count}} followers",
+    "following": "Following",
+    "posts": "Posts",
+    "about": "About",
+    "joined": "Joined"
+  },
   "time": {
     "just_now": "just now",
     "minutes_ago_one": "{{count}} minute ago",

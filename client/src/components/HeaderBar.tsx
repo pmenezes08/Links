@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
+import { useTranslation } from 'react-i18next'
 import Avatar from './Avatar'
 import { useLogoutRequest } from '../contexts/LogoutPromptContext'
 import { useBadges } from '../contexts/BadgeContext'
@@ -16,6 +17,7 @@ type HeaderBarProps = {
 export default function HeaderBar({ title, username, displayName, avatarUrl, titleAccessory }: HeaderBarProps){
   const navigate = useNavigate()
   const location = useLocation()
+  const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
   const { unreadMsgs, unreadNotifs } = useBadges()
   const isWeb = typeof window !== 'undefined' ? Capacitor.getPlatform() === 'web' : false
@@ -43,11 +45,11 @@ export default function HeaderBar({ title, username, displayName, avatarUrl, tit
         style={{ background: '#000' }}
       >
         {showBack ? (
-          <button className="mr-2 p-2 rounded-full hover:bg-white/5" onClick={goBack} aria-label="Back">
+          <button className="mr-2 p-2 rounded-full hover:bg-white/5" onClick={goBack} aria-label={t('navigation.back')}>
             <i className="fa-solid fa-arrow-left" />
           </button>
         ) : (
-          <button className="mr-3 md:hidden" onClick={() => setMenuOpen(v=>!v)} aria-label="Menu">
+          <button className="mr-3 md:hidden" onClick={() => setMenuOpen(v=>!v)} aria-label={t('navigation.menu')}>
             <Avatar username={username || ''} url={resolvedAvatar} size={32} />
           </button>
         )}
@@ -85,11 +87,11 @@ export default function HeaderBar({ title, username, displayName, avatarUrl, tit
           })()}
         </div>
         <div className="flex items-center gap-2">
-          <button className="relative p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat')} aria-label="Messages">
+          <button className="relative p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat')} aria-label={t('navigation.messages')}>
             <i className="fa-solid fa-comments" />
             {unreadMsgs > 0 ? (<span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#4db6ac] text-black text-[10px] flex items-center justify-center">{unreadMsgs > 99 ? '99+' : unreadMsgs}</span>) : null}
           </button>
-          <button className="relative p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/notifications')} aria-label="Notifications">
+          <button className="relative p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/notifications')} aria-label={t('navigation.notifications')}>
             <i className="fa-regular fa-bell" />
             {unreadNotifs > 0 ? (<span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#4db6ac] text-black text-[10px] flex items-center justify-center">{unreadNotifs > 99 ? '99+' : unreadNotifs}</span>) : null}
           </button>
@@ -109,16 +111,16 @@ export default function HeaderBar({ title, username, displayName, avatarUrl, tit
               {username === 'admin' && (
                 <>
                   <a href="/admin_profile_react" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors">
-                    <i className="fa-solid fa-shield-halved w-5" /> Admin Profile
+                    <i className="fa-solid fa-shield-halved w-5" /> {t('navigation.admin_profile')}
                   </a>
                   <a href="/admin" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors">
-                    <i className="fa-solid fa-chart-line w-5" /> Admin Dashboard
+                    <i className="fa-solid fa-chart-line w-5" /> {t('navigation.admin_dashboard')}
                   </a>
                 </>
               )}
 
               <a href="/premium_dashboard" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors">
-                <i className="fa-solid fa-house w-5" /> Dashboard
+                <i className="fa-solid fa-house w-5" /> {t('navigation.dashboard')}
               </a>
 
               <button
@@ -128,32 +130,32 @@ export default function HeaderBar({ title, username, displayName, avatarUrl, tit
                 }}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
               >
-                <i className="fa-solid fa-user w-5" /> My Profile
+                <i className="fa-solid fa-user w-5" /> {t('navigation.my_profile')}
               </button>
 
               <button
                 onClick={() => navigate('/followers')}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
               >
-                <i className="fa-solid fa-users w-5" /> Followers
+                <i className="fa-solid fa-users w-5" /> {t('navigation.followers')}
               </button>
 
               <button
                 onClick={() => navigate('/subscription_plans')}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
               >
-                <i className="fa-solid fa-crown w-5" /> Subscriptions
+                <i className="fa-solid fa-crown w-5" /> {t('navigation.subscriptions')}
               </button>
 
               <button
                 onClick={requestLogout}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
               >
-                <i className="fa-solid fa-right-from-bracket w-5" /> Logout
+                <i className="fa-solid fa-right-from-bracket w-5" /> {t('navigation.logout')}
               </button>
 
               <a href="/account_settings" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors">
-                <i className="fa-solid fa-cog w-5" /> Account Settings
+                <i className="fa-solid fa-cog w-5" /> {t('navigation.account_settings')}
               </a>
             </nav>
           </div>
@@ -170,11 +172,11 @@ export default function HeaderBar({ title, username, displayName, avatarUrl, tit
             {/* Install action moved to login page */}
             {username === 'admin' ? (
               <>
-                <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/admin_profile_react">Admin Profile</a>
-                <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/admin">Admin Dashboard</a>
+                <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/admin_profile_react">{t('navigation.admin_profile')}</a>
+                <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/admin">{t('navigation.admin_dashboard')}</a>
               </>
             ) : null}
-              <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/premium_dashboard">Dashboard</a>
+              <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/premium_dashboard">{t('navigation.dashboard')}</a>
               <button
                 className="block w-full text-left px-4 py-3 rounded-xl hover:bg:white/5 text-white"
                 onClick={() => {
@@ -183,12 +185,12 @@ export default function HeaderBar({ title, username, displayName, avatarUrl, tit
                   else navigate('/profile')
                 }}
               >
-                My Profile
+                {t('navigation.my_profile')}
               </button>
-                <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg:white/5 text:white" onClick={()=> { setMenuOpen(false); navigate('/followers') }}>Followers</button>
-                <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/subscription_plans') }}>Subscriptions</button>
-            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={requestLogout}>Logout</button>
-              <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/account_settings">Account Settings</a>
+                <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg:white/5 text:white" onClick={()=> { setMenuOpen(false); navigate('/followers') }}>{t('navigation.followers')}</button>
+                <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/subscription_plans') }}>{t('navigation.subscriptions')}</button>
+            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={requestLogout}>{t('navigation.logout')}</button>
+              <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/account_settings">{t('navigation.account_settings')}</a>
           </div>
           <div className="flex-1 h-full" onClick={()=> setMenuOpen(false)} />
         </div>

@@ -4,6 +4,7 @@ import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 import ManageMembershipModal, { type MembershipTab } from '../components/membership/ManageMembershipModal'
 import RequestMyDataModal from '../components/privacy/RequestMyDataModal'
+import LanguagePicker from '../components/settings/LanguagePicker'
 
 type ProfileData = {
   username: string
@@ -425,6 +426,10 @@ export default function AccountSettings(){
               </label>
             </div>
           </div>
+
+          {/* Language picker -- locked decision: lives between Notifications and
+              Danger Zone (docs/I18N_ROADMAP.md § 3). */}
+          <LanguagePicker />
 
           {/* Danger Zone */}
           <div className="rounded-xl border border-red-500/40 bg-red-500/5 p-6">

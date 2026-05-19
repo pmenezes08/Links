@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useHeader } from '../contexts/HeaderContext'
 import {
   currentStoreProvider,
@@ -289,6 +290,7 @@ export default function SubscriptionPlans() {
   const { setTitle } = useHeader()
   const navigate = useNavigate()
   const location = useLocation()
+  const { t } = useTranslation()
   const [pricing, setPricing] = useState<PricingPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -303,8 +305,8 @@ export default function SubscriptionPlans() {
   const [mobileBillingNotice, setMobileBillingNotice] = useState(false)
 
   useEffect(() => {
-    setTitle('Subscriptions')
-  }, [setTitle])
+    setTitle(t('navigation.subscriptions'))
+  }, [setTitle, t])
 
   const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search])
   const preselectedCommunityId = queryParams.get('community_id') || ''

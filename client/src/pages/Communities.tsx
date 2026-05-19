@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import type { CSSProperties, Dispatch, SetStateAction } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { formatSmartTime } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
@@ -249,6 +250,7 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
 export default function Communities(){
   const navigate = useNavigate()
   const location = useLocation()
+  const { t } = useTranslation()
   const { setTitle } = useHeader()
   const communityDeviceCacheKey = useMemo(() => `community-management:${location.search || 'root'}`, [location.search])
   const [_data, setData] = useState<{
@@ -650,10 +652,10 @@ export default function Communities(){
     return () => { mounted = false }
   }, [communityDeviceCacheKey])
 
-  useEffect(() => { 
-    if (parentName) setTitle(`Community: ${parentName}`)
-    else setTitle('Community Management')
-  }, [setTitle, parentName])
+  useEffect(() => {
+    if (parentName) setTitle(t('communities.page_title_named', { name: parentName }))
+    else setTitle(t('communities.page_title'))
+  }, [setTitle, parentName, t])
 
   const guideHighlightTab = communitiesGuideStep !== null ? COMMUNITIES_GUIDE_STEPS[communitiesGuideStep]?.tab : null
 
@@ -910,7 +912,7 @@ export default function Communities(){
                             {/* Joined Groups */}
                             <div className="space-y-2">
                               <div className="flex items-center justify-between">
-                                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-[#8ca0a8]">Joined Groups</div>
+                                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-[#8ca0a8]">{t('communities.joined_groups')}</div>
                                 <select
                                   value={joinedFilter}
                                   onChange={e => setJoinedFilter(e.target.value)}
@@ -931,7 +933,7 @@ export default function Communities(){
                                   filtered = joinedGroups.filter(g => validCommunityIds.has(g.community_id))
                                 }
                                 return filtered.length === 0 ? (
-                                  <div className="text-[#6f7c81] text-xs py-4 text-center">No joined groups{joinedFilter !== 'all' || parentIdParam ? ' in this community' : ''}.</div>
+                                  <div className="text-[#6f7c81] text-xs py-4 text-center">{joinedFilter !== 'all' || parentIdParam ? t('communities.no_joined_groups_here') : `${t('communities.no_joined_groups')}.`}</div>
                                 ) : (
                                   <div className="space-y-2">
                                     {filtered.map(g => (
@@ -979,7 +981,7 @@ export default function Communities(){
                                   filtered = availableGroups.filter(g => validCommunityIds.has(g.community_id))
                                 }
                                 return filtered.length === 0 ? (
-                                  <div className="text-[#6f7c81] text-xs py-4 text-center">No available groups{availableFilter !== 'all' || parentIdParam ? ' in this community' : ''}.</div>
+                                  <div className="text-[#6f7c81] text-xs py-4 text-center">{availableFilter !== 'all' || parentIdParam ? t('communities.no_available_groups_here') : `${t('communities.no_available_groups')}.`}</div>
                                 ) : (
                                   <div className="space-y-2">
                                     {filtered.map(g => (
@@ -1054,7 +1056,7 @@ export default function Communities(){
                               type="button"
                               onClick={()=> setShowNested(value => !value)}
                               aria-pressed={showNested}
-                              aria-label={showNested ? 'Hide nested communities' : 'Show nested communities'}
+                              aria-label={showNested ? t('communities.hide_nested') : t('communities.show_nested')}
                               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4db6ac]/60 ${showNested ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
                             >
                               <span
@@ -1401,6 +1403,7 @@ export default function Communities(){
 
 function PlusActions({ onCreateSub, onCreateGroup }:{ onCreateSub: ()=>void, onCreateGroup: ()=>void }){
   const [open, setOpen] = useState(false)
+  const { t } = useTranslation()
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 flex flex-col items-center pb-safe" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}>
       {/* Dropdown appears ABOVE the button */}
@@ -1411,14 +1414,14 @@ function PlusActions({ onCreateSub, onCreateGroup }:{ onCreateSub: ()=>void, onC
             onClick={() => { setOpen(false); onCreateSub() }}
           >
             <i className="fa-solid fa-sitemap text-[#4db6ac] w-5" />
-            Create Sub-Community
+            {t('communities.create_sub_community')}
           </button>
           <button 
             className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-white/5 text-sm text-white flex items-center gap-2" 
             onClick={() => { setOpen(false); onCreateGroup() }}
           >
             <i className="fa-solid fa-users text-[#4db6ac] w-5" />
-            Create Group
+            {t('communities.create_group')}
           </button>
         </div>
       )}
@@ -1426,7 +1429,7 @@ function PlusActions({ onCreateSub, onCreateGroup }:{ onCreateSub: ()=>void, onC
         className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#4db6ac] text-black font-medium text-sm shadow-lg hover:brightness-110 transition-all duration-200 border border-[#4db6ac]"
         onClick={() => setOpen(v => !v)}
       >
-        <span>Create Sub-Community or Group</span>
+        <span>{t('communities.create_sub_or_group')}</span>
         <i className={`fa-solid fa-chevron-${open ? 'down' : 'up'} text-xs transition-transform`} />
       </button>
     </div>

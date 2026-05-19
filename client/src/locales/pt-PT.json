@@ -46,6 +46,147 @@
     "network": "Erro de ligação. Verifica a tua ligação e tenta de novo.",
     "server": "Erro do servidor. Tenta de novo daqui a um momento."
   },
+  "onboarding": {
+    "welcome": {
+      "title": "Bem-vindo ao Connection Point",
+      "carousel": [
+        "Entra na rede onde as ideias ligam as pessoas.",
+        "Partilha os teus pensamentos, imagens e liga-te através de conversas significativas.",
+        "Liga-te ao teu mundo"
+      ],
+      "get_started": "Começar",
+      "images_coming_soon": "Imagens de boas-vindas em breve",
+      "slide_label": "Ir para o slide {{number}}"
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Iniciar sessão",
+      "subtitle": "Inicia sessão na tua conta",
+      "welcome_back": "Bem-vindo de volta",
+      "username_placeholder": "Nome de utilizador",
+      "username_required": "O nome de utilizador é obrigatório.",
+      "password_placeholder": "Introduz a palavra-passe",
+      "submit": "Iniciar sessão",
+      "submitting": "A iniciar sessão...",
+      "login_submit": "Entrar",
+      "login_submitting": "A entrar...",
+      "back": "Voltar",
+      "forgot": "Esqueceste-te da palavra-passe?",
+      "or": "ou",
+      "create_account_cta": "Criar conta",
+      "connection_error": "Erro de ligação. Tenta de novo.",
+      "google": "Continuar com a Google",
+      "reset_title": "Repor palavra-passe",
+      "reset_helper": "Indica o teu email. Enviamos-te uma ligação para repores a palavra-passe.",
+      "reset_submit": "Enviar ligação de reposição",
+      "reset_sent_short": "Ligação enviada! Verifica o teu email.",
+      "reset_sent_helper": "Se existir uma conta com a informação indicada, vais receber um email com instruções para repor a palavra-passe.",
+      "use_invite_title": "Usa a tua ligação de convite"
+    },
+    "signup": {
+      "title": "Cria a tua conta",
+      "submit": "Criar conta",
+      "have_account": "Já tens conta?",
+      "sign_in": "Inicia sessão"
+    }
+  },
+  "navigation": {
+    "home": "Início",
+    "feed": "Feed",
+    "communities": "Comunidades",
+    "chat": "Conversas",
+    "messages": "Mensagens",
+    "notifications": "Notificações",
+    "profile": "Perfil",
+    "settings": "Definições",
+    "menu": "Menu",
+    "back": "Voltar",
+    "close_search": "Fechar pesquisa",
+    "search_communities": "Procurar comunidades",
+    "dashboard": "Painel",
+    "my_profile": "O meu perfil",
+    "followers": "Seguidores",
+    "subscriptions": "Subscrições",
+    "logout": "Sair",
+    "account_settings": "Definições da conta",
+    "admin_profile": "Perfil de admin",
+    "admin_dashboard": "Painel de admin"
+  },
+  "steve": {
+    "label": "Steve",
+    "options_label": "Opções do Steve",
+    "main_aria": "Steve",
+    "recommendations_aria": "Recomendações do Steve",
+    "news_aria": "Notícias e artigos",
+    "talk_to_steve": "Falar com o Steve",
+    "talk_to_steve_helper": "Abrir mensagens diretas",
+    "recommendations": "Recomendações do Steve",
+    "recommendations_helper": "Networking e seleções personalizadas",
+    "networking": "Networking",
+    "networking_helper": "Pede ao Steve para te ligar com pessoas das tuas redes",
+    "news_articles": "Notícias / Artigos",
+    "news_articles_helper": "Leituras personalizadas das tuas redes",
+    "coming_soon": "Em breve",
+    "coming_soon_body": "O Steve vai trazer-te artigos e novidades à medida das tuas comunidades."
+  },
+  "communities": {
+    "page_title": "Gestão da comunidade",
+    "page_title_named": "Comunidade: {{name}}",
+    "joined_groups": "Grupos onde estás",
+    "no_joined_groups": "Não estás em nenhum grupo",
+    "no_joined_groups_here": "Não estás em nenhum grupo desta comunidade.",
+    "no_available_groups": "Sem grupos disponíveis",
+    "no_available_groups_here": "Sem grupos disponíveis nesta comunidade.",
+    "create_sub_community": "Criar subcomunidade",
+    "create_group": "Criar grupo",
+    "create_sub_or_group": "Criar subcomunidade ou grupo",
+    "create_under": "Criar dentro de",
+    "join_policy": "Política de adesão",
+    "sub_name_placeholder": "ex.: Equipa de Engenharia",
+    "group_name_placeholder": "ex.: Corredores da Manhã",
+    "create": "Criar",
+    "join_to_view": "Adere a esta comunidade para veres e entrares nos grupos.",
+    "hide_nested": "Ocultar subcomunidades",
+    "show_nested": "Mostrar subcomunidades"
+  },
+  "feed": {
+    "page_title": "Feed",
+    "loading": "A carregar...",
+    "empty_title": "O teu feed está calmo",
+    "empty_body": "Segue pessoas ou junta-te a comunidades para veres publicações aqui.",
+    "compose_placeholder": "Em que estás a pensar?",
+    "post": "Publicar",
+    "posting": "A publicar...",
+    "like": "Gostar",
+    "comment": "Comentar",
+    "share": "Partilhar",
+    "reply": "Responder",
+    "load_more": "Carregar mais"
+  },
+  "chat": {
+    "page_title": "Mensagens",
+    "empty_state": "Ainda não há mensagens.",
+    "type_message_placeholder": "Escreve uma mensagem...",
+    "send": "Enviar",
+    "you": "tu"
+  },
+  "billing": {
+    "subscription_plans_title": "Planos de subscrição",
+    "current_plan": "Plano atual",
+    "upgrade": "Atualizar",
+    "manage": "Gerir",
+    "loading": "A carregar planos..."
+  },
+  "profile": {
+    "edit_profile": "Editar perfil",
+    "followers_one": "{{count}} seguidor",
+    "followers_other": "{{count}} seguidores",
+    "following": "A seguir",
+    "posts": "Publicações",
+    "about": "Sobre",
+    "joined": "Aderiu"
+  },
   "time": {
     "just_now": "agora mesmo",
     "minutes_ago_one": "há {{count}} minuto",
