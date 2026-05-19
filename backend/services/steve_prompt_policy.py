@@ -121,11 +121,10 @@ def render_hosted_search_capability_instructions(
         return (
             "- THIS TURN does **not** include hosted web_search yet — the answer may be incomplete for "
             "live public-web facts (e.g. latest podcast episode, release date, listing).\n"
-            "- Briefly say you can **search the web** for this if they want, and ask them to reply with "
-            "exactly one of:\n"
-            '  - **\"Yes, search the web for this\"** (English)\n'
-            '  - **\"Sim, consulta a internet\"** (Portuguese)\n'
-            "- Mention that web search uses a bit more of their monthly Steve credits than a short chat.\n"
+            "- Briefly offer to **search the web** for this if they want. Ask for a short, clear confirmation "
+            "in **the same language the user is using in this conversation** — phrase it naturally for them; "
+            "do **not** prescribe canned example phrases in another language or list multiple languages.\n"
+            "- Do **not** mention credits, allowances, or billing.\n"
             "- Do **not** invent episode numbers, URLs, or headlines as if you had browsed the web."
         )
     return (

@@ -195,10 +195,14 @@ def test_render_hosted_search_capability_instructions_reflects_tool_flag():
     assert "don't have web lookup" in render_hosted_search_capability_instructions(
         has_hosted_search_tools=False
     )
-    assert "consulta a internet" in render_hosted_search_capability_instructions(
+    optional_caps = render_hosted_search_capability_instructions(
         has_hosted_search_tools=False,
         optional_web_offer=True,
     )
+    assert "same language" in optional_caps.lower()
+    assert "monthly steve" not in optional_caps.lower()
+    assert "more of their" not in optional_caps.lower()
+    assert "consulta a internet" not in optional_caps.lower()
 
 
 def test_role_at_company_heuristic_not_career_at_a_crossroads():
