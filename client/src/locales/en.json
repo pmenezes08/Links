@@ -123,6 +123,23 @@
     "network": "Network error. Please check your connection and try again.",
     "server": "Server error. Please try again in a moment."
   },
+  "shared": {
+    "back_online": "Back online",
+    "offline": "You're offline",
+    "dismiss": "Dismiss",
+    "reset_zoom": "Reset zoom",
+    "article": "Article",
+    "loading_options": "Loading options...",
+    "loading_members": "Loading members...",
+    "no_members_available": "No members available yet.",
+    "loading_parent_communities": "Loading your parent communities...",
+    "loading_communities": "Loading your communities...",
+    "search_members": "Search members",
+    "search_gifs": "Search GIFs",
+    "clear_search": "Clear search",
+    "close_gif_picker": "Close GIF picker",
+    "no_gifs_found": "No GIFs found. Try a different search."
+  },
   "onboarding": {
     "welcome": {
       "title": "Welcome to Connection Point",

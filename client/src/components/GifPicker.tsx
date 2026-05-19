@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 export type GifSelection = {
   id: string
@@ -26,6 +27,7 @@ type GiphyItem = {
 }
 
 export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps){
+  const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<GifSelection[]>([])
   const [loading, setLoading] = useState(false)
@@ -165,15 +167,15 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="flex-1 bg-transparent text-[12px] text-white placeholder-white/35 outline-none"
-              placeholder="Search GIFs"
+              placeholder={t('shared.search_gifs')}
             />
             {query && (
-              <button className="text-white/35 hover:text-white transition px-1" onClick={() => setQuery('')} aria-label="Clear search">
+              <button className="text-white/35 hover:text-white transition px-1" onClick={() => setQuery('')} aria-label={t('shared.clear_search')}>
                 <i className="fa-solid fa-xmark text-xs" />
               </button>
             )}
           </div>
-          <button className="shrink-0 w-7 h-7 rounded-full text-white/60 hover:text-white hover:bg-white/10 flex items-center justify-center transition" onClick={onClose} aria-label="Close GIF picker">
+          <button className="shrink-0 w-7 h-7 rounded-full text-white/60 hover:text-white hover:bg-white/10 flex items-center justify-center transition" onClick={onClose} aria-label={t('shared.close_gif_picker')}>
             <i className="fa-solid fa-times text-sm" />
           </button>
         </div>
@@ -194,7 +196,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
           ) : error ? (
             <div className="py-12 text-center text-sm text-red-400 px-4 leading-relaxed">{error}</div>
           ) : results.length === 0 ? (
-            <div className="py-10 text-center text-sm text-white/60">No GIFs found. Try a different search.</div>
+            <div className="py-10 text-center text-sm text-white/60">{t('shared.no_gifs_found')}</div>
           ) : (
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
               {results.map((gif) => (

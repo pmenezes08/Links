@@ -1,7 +1,9 @@
 import { useNetwork } from '../contexts/NetworkContext'
+import { useTranslation } from 'react-i18next'
 
 export default function OfflineBanner() {
   const { isOnline, justReconnected, isInitialized } = useNetwork()
+  const { t } = useTranslation()
 
   // Only show after initialization to prevent false "You're offline" / ghost mode on cold start
   if (!isInitialized || (isOnline && !justReconnected)) return null
@@ -23,7 +25,7 @@ export default function OfflineBanner() {
             justReconnected ? 'bg-green-400' : 'bg-red-400 animate-pulse'
           }`}
         />
-        {justReconnected ? 'Back online' : "You're offline"}
+        {justReconnected ? t('shared.back_online') : t('shared.offline')}
       </div>
     </div>
   )

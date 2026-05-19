@@ -123,6 +123,23 @@
     "network": "Erro de ligação. Verifica a tua ligação e tenta de novo.",
     "server": "Erro do servidor. Tenta de novo daqui a um momento."
   },
+  "shared": {
+    "back_online": "De volta online",
+    "offline": "Estás offline",
+    "dismiss": "Dispensar",
+    "reset_zoom": "Repor zoom",
+    "article": "Artigo",
+    "loading_options": "A carregar opções...",
+    "loading_members": "A carregar membros...",
+    "no_members_available": "Ainda não há membros disponíveis.",
+    "loading_parent_communities": "A carregar as tuas comunidades principais...",
+    "loading_communities": "A carregar as tuas comunidades...",
+    "search_members": "Procurar membros",
+    "search_gifs": "Procurar GIFs",
+    "clear_search": "Limpar pesquisa",
+    "close_gif_picker": "Fechar seletor de GIFs",
+    "no_gifs_found": "Sem GIFs encontrados. Tenta outra pesquisa."
+  },
   "onboarding": {
     "welcome": {
       "title": "Bem-vindo ao Connection Point",
