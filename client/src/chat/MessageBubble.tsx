@@ -11,6 +11,7 @@
  */
 
 import { memo } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { ChatMessage } from '../types/chat'
 import MessageImage from '../components/MessageImage'
 import MessageVideo from '../components/MessageVideo'
@@ -114,6 +115,7 @@ function MessageBubbleInner({
   onMentionClick,
   onRetry,
 }: MessageBubbleProps) {
+  const { t } = useTranslation()
   const textBase = m.text || ''
   const videoEmbed = extractVideoEmbedFromPost(textBase, undefined)
   const textAfterVideo = videoEmbed ? removeVideoUrlFromText(textBase, videoEmbed) : textBase
@@ -129,7 +131,7 @@ function MessageBubbleInner({
   const longPressOptionalActions =
     onRemoveMediaItem && removableMedia.length > 0
       ? removableMedia.map((url, i) => ({
-          label: removableMedia.length > 1 ? `Remove item ${i + 1}` : 'Remove attachment',
+          label: removableMedia.length > 1 ? t('chat.remove_item', { number: i + 1 }) : t('chat.remove_attachment'),
           danger: true as const,
           iconClass: 'fa-regular fa-image',
           onClick: () => onRemoveMediaItem(url),
@@ -476,14 +478,14 @@ function MessageBubbleInner({
                 onChange={(e) => onEditTextChange(e.target.value)}
                 rows={2}
                 autoFocus
-                placeholder="Edit message..."
+                placeholder={t('chat.edit_message_placeholder')}
               />
               <div className="flex gap-2 justify-end mt-1.5">
                 <button
                   className="px-2.5 py-1 text-xs text-white/60 hover:text-white/80 transition-colors"
                   onClick={onCancelEdit}
                 >
-                  Cancel
+                  {t('chat.cancel')}
                 </button>
                 <button
                   className={`px-3 py-1 text-xs rounded-md flex items-center gap-1.5 ${
@@ -499,7 +501,7 @@ function MessageBubbleInner({
                   ) : (
                     <i className="fa-solid fa-check text-[10px]" />
                   )}
-                  <span>Save</span>
+                  <span>{t('chat.save')}</span>
                 </button>
               </div>
             </div>

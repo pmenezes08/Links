@@ -3,6 +3,7 @@
  * (keyboard, polls, composer) does not re-run link/video parsing for every message.
  */
 import { memo, useMemo, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import Avatar from '../components/Avatar'
 import LongPressActionable from './LongPressActionable'
 import { formatDateLabel, normalizeMediaPath } from './index'
@@ -80,6 +81,7 @@ export type GroupMessageRowProps = {
 }
 
 function GroupMessageRowInner(props: GroupMessageRowProps) {
+  const { t } = useTranslation()
   const {
     msg,
     showAvatar,
@@ -152,7 +154,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
   const longPressOptionalActions =
     onRemoveMediaItem && removableMedia.length > 0
       ? removableMedia.map((url, i) => ({
-          label: removableMedia.length > 1 ? `Remove item ${i + 1}` : 'Remove attachment',
+          label: removableMedia.length > 1 ? t('chat.remove_item', { number: i + 1 }) : t('chat.remove_attachment'),
           danger: true as const,
           iconClass: 'fa-regular fa-image',
           onClick: () => onRemoveMediaItem(msg.id, url),
@@ -220,7 +222,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                         className="px-3 py-1 text-xs text-white/60 hover:text-white"
                         disabled={editingSaving}
                       >
-                        Cancel
+                        {t('chat.cancel')}
                       </button>
                       <button
                         type="button"
@@ -228,7 +230,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                         disabled={editingSaving || !editText.trim()}
                         className="px-3 py-1 text-xs bg-[#4db6ac] text-black rounded-lg disabled:opacity-50"
                       >
-                        {editingSaving ? <i className="fa-solid fa-spinner fa-spin" /> : 'Save'}
+                        {editingSaving ? <i className="fa-solid fa-spinner fa-spin" /> : t('chat.save')}
                       </button>
                     </div>
                   </div>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
@@ -138,6 +139,7 @@ function formatGroupThreadTime(dateStr: string) {
 export default function GroupChatThread() {
   const { group_id } = useParams()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const mentionToProfile = useCallback((username: string) => {
     navigate(`/profile/${encodeURIComponent(username)}`)
   }, [navigate])
@@ -2150,7 +2152,7 @@ export default function GroupChatThread() {
       <div className="min-h-screen chat-thread-bg text-white flex flex-col">
         <div style={{ paddingTop: 'env(safe-area-inset-top, 0px)', background: '#000' }}>
           <div className="h-12 flex items-center px-3">
-            <button className="p-2 rounded-full hover:bg-white/10" onClick={() => navigate('/user_chat')} aria-label="Back">
+            <button className="p-2 rounded-full hover:bg-white/10" onClick={() => navigate('/user_chat')} aria-label={t('common.back')}>
               <i className="fa-solid fa-arrow-left text-white" />
             </button>
           </div>
@@ -2170,7 +2172,7 @@ export default function GroupChatThread() {
       <div className="min-h-screen chat-thread-bg text-white flex flex-col">
         <div style={{ paddingTop: 'env(safe-area-inset-top, 0px)', background: '#000' }}>
           <div className="h-12 flex items-center px-3">
-            <button className="p-2 rounded-full hover:bg-white/10" onClick={() => navigate('/user_chat')} aria-label="Back">
+            <button className="p-2 rounded-full hover:bg-white/10" onClick={() => navigate('/user_chat')} aria-label={t('common.back')}>
               <i className="fa-solid fa-arrow-left text-white" />
             </button>
           </div>
@@ -2224,7 +2226,7 @@ export default function GroupChatThread() {
           <button 
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
             onClick={() => navigate('/user_chat')} 
-            aria-label="Back to Messages"
+            aria-label={t('chat.back_to_messages')}
           >
             <i className="fa-solid fa-arrow-left text-white" />
           </button>
@@ -2242,7 +2244,7 @@ export default function GroupChatThread() {
           <button 
             type="button"
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
-            aria-label="More options"
+            aria-label={t('chat.more_options')}
             aria-haspopup="true"
             aria-expanded={headerMenuOpen}
             onMouseDown={(e) => e.stopPropagation()}
@@ -2406,14 +2408,14 @@ export default function GroupChatThread() {
                 {!navigator.onLine ? (
                   <>
                     <i className="fa-solid fa-wifi-slash text-3xl mb-3 opacity-50" />
-                    <div className="text-sm">Messages not available offline</div>
+                    <div className="text-sm">{t('chat.offline_unavailable')}</div>
                     <div className="text-xs mt-1 opacity-70">Go back online to load this conversation</div>
                   </>
                 ) : (
                   <>
                     <i className="fa-solid fa-comments text-4xl mb-3 opacity-50" />
-                    <div className="text-sm">No messages yet</div>
-                    <div className="text-xs mt-1">Send a message to start the conversation</div>
+                    <div className="text-sm">{t('chat.empty_state')}</div>
+                    <div className="text-xs mt-1">{t('chat.empty_group_helper')}</div>
                   </>
                 )}
               </div>
@@ -2558,7 +2560,7 @@ export default function GroupChatThread() {
             scrollToBottom()
             setShowScrollDown(false)
           }}
-          aria-label="Scroll to latest"
+          aria-label={t('chat.scroll_latest')}
         >
           <i className="fa-solid fa-arrow-down" />
         </button>
@@ -2590,7 +2592,7 @@ export default function GroupChatThread() {
               className="text-white/60 hover:text-white flex items-center gap-2"
             >
               <i className="fa-solid fa-xmark" />
-              <span className="text-sm">Cancel</span>
+              <span className="text-sm">{t('chat.cancel')}</span>
             </button>
             <span className="text-white/80 text-sm">
               {selectedMessages.size} selected
@@ -2601,7 +2603,7 @@ export default function GroupChatThread() {
               className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-400 rounded-full disabled:opacity-40 disabled:cursor-not-allowed hover:bg-red-500/30 transition-colors"
             >
               <i className="fa-solid fa-trash text-sm" />
-              <span className="text-sm">Delete</span>
+              <span className="text-sm">{t('chat.delete')}</span>
             </button>
           </div>
         ) : (
@@ -2644,7 +2646,7 @@ export default function GroupChatThread() {
                   </div>
                   <div className="min-w-0">
                     <div className="text-white font-medium text-sm sm:text-base">Photos</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">Send from gallery</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_from_gallery')}</div>
                   </div>
                 </button>
                 <button
@@ -2667,8 +2669,8 @@ export default function GroupChatThread() {
                     <i className="fa-solid fa-video text-[#4db6ac] text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">Video</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">Send from gallery</div>
+                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.video')}</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_from_gallery')}</div>
                   </div>
                 </button>
                 <button
@@ -2725,9 +2727,9 @@ export default function GroupChatThread() {
                     {replyTo.voice ? (
                       <><i className="fa-solid fa-microphone text-xs mr-1" />{replyTo.audio_summary ? replyTo.audio_summary.slice(0, 80) + (replyTo.audio_summary.length > 80 ? '…' : '') : 'Voice message'}</>
                     ) : replyTo.video ? (
-                      <><i className="fa-solid fa-video text-xs mr-1" />Video</>
+                      <><i className="fa-solid fa-video text-xs mr-1" />{t('chat.video')}</>
                     ) : replyTo.image && !replyTo.text ? (
-                      <><i className="fa-solid fa-image text-xs mr-1" />Photo</>
+                      <><i className="fa-solid fa-image text-xs mr-1" />{t('chat.photo')}</>
                     ) : (
                       replyTo.text && replyTo.text.length > 80 ? replyTo.text.slice(0, 80) + '…' : replyTo.text
                     )}
@@ -2897,7 +2899,7 @@ export default function GroupChatThread() {
                       setPreviewPlaying(false)
                     }}
                     className="w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors active:scale-95"
-                    aria-label="Delete recording"
+                    aria-label={t('chat.delete_recording')}
                     style={{ touchAction: 'manipulation' }}
                   >
                     <i className="fa-solid fa-trash text-sm pointer-events-none" />
@@ -2909,7 +2911,7 @@ export default function GroupChatThread() {
                       togglePreviewPlayback()
                     }}
                     className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
-                    aria-label={previewPlaying ? 'Pause' : 'Play'}
+                    aria-label={previewPlaying ? t('chat.pause') : t('chat.play')}
                     style={{ touchAction: 'manipulation' }}
                   >
                     <i className={`fa-solid ${previewPlaying ? 'fa-pause' : 'fa-play'} text-sm pointer-events-none ${!previewPlaying ? 'ml-0.5' : ''}`} />
@@ -2931,7 +2933,7 @@ export default function GroupChatThread() {
                   ref={textareaRef}
                   rows={1}
                   className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-40 min-h-[38px]"
-                  placeholder="Message"
+                  placeholder={t('chat.message_placeholder')}
                   defaultValue=""
                   autoComplete="off"
                   autoCorrect="on"
@@ -3016,7 +3018,7 @@ export default function GroupChatThread() {
                   e.stopPropagation()
                   void checkMicrophonePermission()
                 }}
-                aria-label="Start voice message"
+                aria-label={t('chat.start_voice')}
                 style={{
                   touchAction: 'manipulation',
                   WebkitTapHighlightColor: 'transparent',
@@ -3036,7 +3038,7 @@ export default function GroupChatThread() {
                     e.stopPropagation()
                     void stopVoiceRecording()
                   }}
-                  aria-label="Pause recording"
+                  aria-label={t('chat.pause_recording')}
                   style={{
                     touchAction: 'manipulation',
                     WebkitTapHighlightColor: 'transparent',
@@ -3051,7 +3053,7 @@ export default function GroupChatThread() {
                     e.stopPropagation()
                     void sendVoiceDirectly()
                   }}
-                  aria-label="Send voice message"
+                  aria-label={t('chat.send_voice')}
                   style={{
                     touchAction: 'manipulation',
                     WebkitTapHighlightColor: 'transparent',
@@ -3073,7 +3075,7 @@ export default function GroupChatThread() {
                   void sendRecordingPreview()
                 }}
                 disabled={sending}
-                aria-label="Send voice message"
+                aria-label={t('chat.send_voice')}
                 style={{
                   touchAction: 'manipulation',
                   WebkitTapHighlightColor: 'transparent',
@@ -3111,7 +3113,7 @@ export default function GroupChatThread() {
                   handleSend()
                 }}
                 disabled={sending || !draftDisplay.trim()}
-                aria-label="Send"
+                aria-label={t('chat.send')}
                 style={{
                   touchAction: 'manipulation',
                   WebkitTapHighlightColor: 'transparent',
@@ -3419,7 +3421,7 @@ export default function GroupChatThread() {
                     <i className="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm" />
                     <input
                       type="text"
-                      placeholder="Search members..."
+                      placeholder={t('chat.search_members')}
                       value={memberSearchQuery}
                       onChange={(e) => setMemberSearchQuery(e.target.value)}
                       className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]/50"
@@ -3463,7 +3465,7 @@ export default function GroupChatThread() {
                   {loadingAvailable ? (
                     <div className="p-8 text-center">
                       <i className="fa-solid fa-spinner fa-spin text-[#4db6ac] text-2xl" />
-                      <p className="text-white/50 text-sm mt-2">Loading members...</p>
+                      <p className="text-white/50 text-sm mt-2">{t('chat.loading_members')}</p>
                     </div>
                   ) : availableMembers.length > 0 ? (
                     <div className="p-2">
@@ -3767,7 +3769,7 @@ export default function GroupChatThread() {
             >
               <i className="fa-solid fa-xmark text-xl" />
             </button>
-            <span className="text-white font-medium">Send Image</span>
+            <span className="text-white font-medium">{t('chat.send_image')}</span>
             <div className="w-8" />
           </div>
 
@@ -3847,7 +3849,7 @@ export default function GroupChatThread() {
           >
             <div className="flex items-center gap-2 mb-3">
               <i className="fa-solid fa-wand-magic-sparkles text-[#4db6ac]" />
-              <span className="text-white font-semibold text-sm">Edit Steve summary</span>
+            <span className="text-white font-semibold text-sm">{t('chat.edit_summary')}</span>
             </div>
             <textarea
               value={editSummaryText}
@@ -3855,17 +3857,17 @@ export default function GroupChatThread() {
               className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-3 text-sm text-white resize-none focus:outline-none focus:border-[#4db6ac] leading-relaxed"
               rows={4}
               autoFocus
-              placeholder="Edit the AI-generated summary..."
+              placeholder={t('chat.edit_summary_placeholder')}
             />
             <div className="flex gap-2 mt-3 justify-end">
               <button
                 onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}
                 className="px-4 py-2 text-sm rounded-lg bg-white/10 text-white/70 hover:bg-white/15"
-              >Cancel</button>
+              >{t('chat.cancel')}</button>
               <button
                 onClick={() => handleSaveSummaryEdit(editingSummaryId)}
                 className="px-4 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
-              >Save</button>
+              >{t('chat.save')}</button>
             </div>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import Avatar from '../components/Avatar'
 
 interface ChatHeaderProps {
@@ -14,6 +15,7 @@ export default function ChatHeader({
   profilePicture,
 }: ChatHeaderProps) {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
   const headerMenuRef = useRef<HTMLDivElement | null>(null)
   const profilePath = username ? `/profile/${encodeURIComponent(username)}` : null
@@ -63,7 +65,7 @@ export default function ChatHeader({
           <button 
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
             onClick={() => navigate('/user_chat')} 
-            aria-label="Back to Messages"
+            aria-label={t('chat.back_to_messages')}
           >
             <i className="fa-solid fa-arrow-left text-white" />
           </button>
@@ -75,13 +77,13 @@ export default function ChatHeader({
           />
           <div className="flex-1 min-w-0">
             <div className="font-semibold truncate text-white text-sm">
-              {displayName || username || 'Chat'}
+              {displayName || username || t('chat.page_title')}
             </div>
           </div>
           <button 
             type="button"
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
-            aria-label="More options"
+            aria-label={t('chat.more_options')}
             aria-haspopup="true"
             aria-expanded={headerMenuOpen}
             onMouseDown={(event) => event.stopPropagation()}
@@ -106,7 +108,7 @@ export default function ChatHeader({
                   onClick={() => setHeaderMenuOpen(false)}
                 >
                   <i className="fa-solid fa-user text-xs text-[#4db6ac]" />
-                  <span>View Profile</span>
+                  <span>{t('chat.view_profile')}</span>
                 </Link>
               </div>
             </div>

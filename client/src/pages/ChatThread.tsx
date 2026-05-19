@@ -19,6 +19,7 @@ import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useHeader } from '../contexts/HeaderContext'
 import { useBadges } from '../contexts/BadgeContext'
 import { useUserProfile } from '../contexts/UserProfileContext'
@@ -68,6 +69,7 @@ import {
 type Message = ChatMessage
 
 export default function ChatThread(){
+  const { t } = useTranslation()
   const { setTitle } = useHeader()
   const { refreshBadges } = useBadges()
   const { profile: myProfile } = useUserProfile()
@@ -2727,7 +2729,7 @@ export default function ChatThread(){
           <button 
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
             onClick={()=> navigate('/user_chat')} 
-            aria-label="Back to Messages"
+            aria-label={t('chat.back_to_messages')}
           >
             <i className="fa-solid fa-arrow-left text-white" />
           </button>
@@ -2749,7 +2751,7 @@ export default function ChatThread(){
           <button 
             type="button"
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
-            aria-label="More options"
+            aria-label={t('chat.more_options')}
             aria-haspopup="true"
             aria-expanded={headerMenuOpen}
             onMouseDown={(event)=> event.stopPropagation()}
@@ -2895,7 +2897,7 @@ export default function ChatThread(){
         {messages.length === 0 && !navigator.onLine && (
           <div className="flex flex-col items-center justify-center py-20 text-[#9fb0b5]">
             <i className="fa-solid fa-wifi-slash text-3xl mb-3 opacity-50" />
-            <div className="text-sm">Messages not available offline</div>
+            <div className="text-sm">{t('chat.offline_unavailable')}</div>
             <div className="text-xs mt-1 opacity-70">Go back online to load this conversation</div>
           </div>
         )}
@@ -3116,7 +3118,7 @@ export default function ChatThread(){
           right: '22px'
         }}
         onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
-        aria-label="Scroll to latest"
+        aria-label={t('chat.scroll_latest')}
       >
         <i className="fa-solid fa-arrow-down" />
       </button>
@@ -3134,7 +3136,7 @@ export default function ChatThread(){
             onClick={exitMultiSelectMode}
           >
             <i className="fa-solid fa-xmark text-lg" />
-            <span className="text-sm">Cancel</span>
+            <span className="text-sm">{t('chat.cancel')}</span>
           </button>
           
           <div className="text-white/80 text-sm font-medium">
@@ -3151,7 +3153,7 @@ export default function ChatThread(){
             disabled={selectedMessages.size === 0}
           >
             <i className="fa-solid fa-trash text-sm" />
-            <span className="text-sm">Delete</span>
+            <span className="text-sm">{t('chat.delete')}</span>
           </button>
         </div>
       </div>
@@ -3208,7 +3210,7 @@ export default function ChatThread(){
                   </div>
                   <div className="min-w-0">
                     <div className="text-white font-medium text-sm sm:text-base">Photos</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">Send from gallery</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_from_gallery')}</div>
                   </div>
                 </button>
                 <button
@@ -3243,8 +3245,8 @@ export default function ChatThread(){
                     <i className="fa-solid fa-video text-[#4db6ac] text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">Video</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">Attach from library</div>
+                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.video')}</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.attach_from_library')}</div>
                   </div>
                 </button>
               </div>
@@ -3439,7 +3441,7 @@ export default function ChatThread(){
                     setPreviewPlaying(false)
                   }}
                   className="w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors active:scale-95"
-                  aria-label="Delete recording"
+                  aria-label={t('chat.delete_recording')}
                   style={{ touchAction: 'manipulation' }}
                 >
                   <i className="fa-solid fa-trash text-sm pointer-events-none" />
@@ -3453,7 +3455,7 @@ export default function ChatThread(){
                     togglePreviewPlayback()
                   }}
                   className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
-                  aria-label={previewPlaying ? 'Pause' : 'Play'}
+                  aria-label={previewPlaying ? t('chat.pause') : t('chat.play')}
                   style={{ touchAction: 'manipulation' }}
                 >
                   <i className={`fa-solid ${previewPlaying ? 'fa-pause' : 'fa-play'} text-sm pointer-events-none ${!previewPlaying ? 'ml-0.5' : ''}`} />
@@ -3478,7 +3480,7 @@ export default function ChatThread(){
                 ref={textareaRef}
                 rows={1}
                 className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-40 min-h-[38px]"
-                placeholder="Message"
+                placeholder={t('chat.message_placeholder')}
                 defaultValue=""
                 autoComplete="off"
                 autoCorrect="on"
@@ -3560,7 +3562,7 @@ export default function ChatThread(){
                 e.stopPropagation()
                 void checkMicrophonePermission()
               }}
-              aria-label="Start voice message"
+              aria-label={t('chat.start_voice')}
               style={{
                 touchAction: 'manipulation',
                 WebkitTapHighlightColor: 'transparent',
@@ -3583,7 +3585,7 @@ export default function ChatThread(){
                   e.stopPropagation()
                   void stopVoiceRecording()
                 }}
-                aria-label="Pause recording"
+                aria-label={t('chat.pause_recording')}
                 style={{
                   touchAction: 'manipulation',
                   WebkitTapHighlightColor: 'transparent',
@@ -3600,7 +3602,7 @@ export default function ChatThread(){
                   e.stopPropagation()
                   void sendVoiceDirectly()
                 }}
-                aria-label="Send voice message"
+                aria-label={t('chat.send_voice')}
                 style={{
                   touchAction: 'manipulation',
                   WebkitTapHighlightColor: 'transparent',
@@ -3623,7 +3625,7 @@ export default function ChatThread(){
                   void sendRecordingPreview()
                 }}
                 disabled={sending}
-                aria-label="Send voice message"
+                aria-label={t('chat.send_voice')}
                 style={{
                   touchAction: 'manipulation',
                   WebkitTapHighlightColor: 'transparent',
@@ -3662,7 +3664,7 @@ export default function ChatThread(){
                 send()
               }}
               disabled={sending || !draftDisplay.trim()}
-              aria-label="Send"
+              aria-label={t('chat.send')}
               style={{
                 touchAction: 'manipulation',
                 WebkitTapHighlightColor: 'transparent',
@@ -3890,7 +3892,7 @@ export default function ChatThread(){
               <button
                 type="button"
                 className="p-2 rounded-full hover:bg-white/10 text-white/70"
-                aria-label="Close"
+                aria-label={t('common.close')}
                 onClick={() => {
                   setReminderVaultOpen(false)
                   setEditingVaultId(null)
@@ -4049,7 +4051,7 @@ export default function ChatThread(){
           >
             <div className="flex items-center gap-2 mb-3">
               <i className="fa-solid fa-wand-magic-sparkles text-[#4db6ac]" />
-              <span className="text-white font-semibold text-sm">Edit Steve summary</span>
+              <span className="text-white font-semibold text-sm">{t('chat.edit_summary')}</span>
             </div>
             <textarea
               value={editSummaryText}
@@ -4057,13 +4059,13 @@ export default function ChatThread(){
               className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-3 text-sm text-white resize-none focus:outline-none focus:border-[#4db6ac] leading-relaxed"
               rows={4}
               autoFocus
-              placeholder="Edit the AI-generated summary..."
+              placeholder={t('chat.edit_summary_placeholder')}
             />
             <div className="flex gap-2 mt-3 justify-end">
               <button
                 onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}
                 className="px-4 py-2 text-sm rounded-lg bg-white/10 text-white/70 hover:bg-white/15"
-              >Cancel</button>
+              >{t('chat.cancel')}</button>
               <button
                 onClick={async () => {
                   const newSummary = editSummaryText.trim()
@@ -4090,7 +4092,7 @@ export default function ChatThread(){
                   }
                 }}
                 className="px-4 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
-              >Save</button>
+              >{t('chat.save')}</button>
             </div>
           </div>
         </div>
@@ -4107,12 +4109,12 @@ export default function ChatThread(){
             <button 
               className="p-2 rounded-full hover:bg-white/10 transition-colors"
               onClick={() => setPreviewImage(null)}
-              aria-label="Back to chat"
+                aria-label={t('chat.back_to_chat')}
             >
               <i className="fa-solid fa-arrow-left text-white text-lg" />
             </button>
             <div className="flex-1 text-center">
-              <div className="text-white font-medium">Photo</div>
+              <div className="text-white font-medium">{t('chat.photo')}</div>
             </div>
             <div className="w-10"></div> {/* Spacer for centering */}
           </div>
