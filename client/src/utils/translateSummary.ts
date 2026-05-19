@@ -1,10 +1,11 @@
 import { ENTITLEMENTS_REFRESH_EVENT } from '../hooks/useEntitlements'
+import { isEntitlementsError, type EntitlementsError } from './entitlementsError'
 
 export type TranslateContext = 'voice_summary' | 'profile'
 
 export type TranslateSummaryResult =
   | { ok: true; translated: string }
-  | { ok: false; error?: string; entitlementsError?: Record<string, unknown> }
+  | { ok: false; error?: string; entitlementsError?: EntitlementsError }
 
 export async function requestTranslateSummary({
   summary,
@@ -27,8 +28,8 @@ export async function requestTranslateSummary({
       }),
     })
     const data = await res.json().catch(() => null)
-    if (data?.error === 'entitlements_error') {
-      return { ok: false, entitlementsError: data as Record<string, unknown> }
+    if (isEntitlementsError(data)) {
+      return { ok: false, entitlementsError: data }
     }
     if (data?.success && data.translated_summary) {
       try {
