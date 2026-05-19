@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import ContentGenerationModal from '../components/ContentGenerationModal'
 import DeleteCommunityModal, { type DeleteCommunityResult } from '../components/DeleteCommunityModal'
 import { clearDeviceCache } from '../utils/deviceCache'
@@ -54,6 +55,7 @@ const TIER_LABEL: Record<string, string> = {
 export default function EditCommunity(){
   const { community_id } = useParams()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   // NOTE: public/private/closed type dropdown was removed April 2026.
@@ -540,9 +542,9 @@ export default function EditCommunity(){
     )
   }
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
+  if (loading) return <div className="p-4 text-[#9fb0b5]">{t('communities.loading')}</div>
   if (error) return <div className="p-4 text-red-400">{error}</div>
-  if (!allowed) return <div className="p-4 text-[#9fb0b5]">No access.</div>
+  if (!allowed) return <div className="p-4 text-[#9fb0b5]">{t('communities.no_access')}</div>
   const modalBillingProvider = String(billing?.billing_provider || 'stripe').toLowerCase()
   const modalStoreBilled = modalBillingProvider === 'apple' || modalBillingProvider === 'google'
 
@@ -558,22 +560,22 @@ export default function EditCommunity(){
         <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(-1)}>
           <i className="fa-solid fa-arrow-left" />
         </button>
-        <div className="ml-2 font-semibold">Manage Community</div>
+        <div className="ml-2 font-semibold">{t('communities.manage_community')}</div>
       </div>
 
       <div className="app-subnav-offset max-w-2xl mx-auto px-3 pb-24" style={{ '--app-subnav-height': '48px' } as CSSProperties}>
         <form ref={formRef} onSubmit={onSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-1">Community name</label>
+            <label className="block text-sm text-[#9fb0b5] mb-1">{t('communities.community_name')}</label>
             <input className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none" value={name} onChange={e=> setName(e.target.value)} required />
           </div>
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-1">Description</label>
+            <label className="block text-sm text-[#9fb0b5] mb-1">{t('communities.description')}</label>
             <textarea
               className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none min-h-[96px]"
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="What is this community about?"
+              placeholder={t('communities.description_placeholder')}
               rows={3}
             />
             <div className="text-xs text-[#9fb0b5] mt-1">Shown below the community name on the feed.</div>
@@ -675,7 +677,7 @@ export default function EditCommunity(){
           </div>
 
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-1">Community image</label>
+            <label className="block text-sm text-[#9fb0b5] mb-1">{t('communities.community_image')}</label>
             
             {/* Current image preview */}
             {currentBackgroundPath && !removeBackground && !imageFile && (
@@ -811,8 +813,8 @@ export default function EditCommunity(){
           </div>
           
           <div className="flex justify-end gap-2">
-            <button type="button" className="px-3 py-2 rounded-md border border-white/10 hover:bg-white/5" onClick={()=> navigate(-1)}>Cancel</button>
-            <button type="submit" className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110">Save Changes</button>
+            <button type="button" className="px-3 py-2 rounded-md border border-white/10 hover:bg-white/5" onClick={()=> navigate(-1)}>{t('common.cancel')}</button>
+            <button type="submit" className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110">{t('communities.save_changes')}</button>
           </div>
         </form>
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useHeader } from '../contexts/HeaderContext'
 
 // NOTE: Billing controls used to live here. They moved to
@@ -14,6 +15,7 @@ import { useHeader } from '../contexts/HeaderContext'
 export default function EditGroup(){
   const { group_id } = useParams()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const { setTitle } = useHeader()
   const [name, setName] = useState('')
   const [approvalRequired, setApprovalRequired] = useState(false)
@@ -23,7 +25,7 @@ export default function EditGroup(){
   const [saving, setSaving] = useState(false)
   const [successMsg, setSuccessMsg] = useState<string|null>(null)
 
-  useEffect(() => { setTitle('Manage Group') }, [setTitle])
+  useEffect(() => { setTitle(t('communities.manage_group')) }, [setTitle, t])
 
   useEffect(() => {
     let mounted = true
@@ -86,11 +88,11 @@ export default function EditGroup(){
     } catch { alert('Failed to delete group') }
   }
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
+  if (loading) return <div className="p-4 text-[#9fb0b5]">{t('communities.loading')}</div>
   if (error) return (
     <div className="p-4">
       <div className="text-red-400 mb-3">{error}</div>
-      <button className="px-3 py-1.5 rounded-lg border border-white/10 text-sm text-white hover:bg-white/5" onClick={() => navigate(-1)}>← Back</button>
+      <button className="px-3 py-1.5 rounded-lg border border-white/10 text-sm text-white hover:bg-white/5" onClick={() => navigate(-1)}>← {t('common.back')}</button>
     </div>
   )
 
@@ -102,7 +104,7 @@ export default function EditGroup(){
           <button className="p-2 rounded-full hover:bg-white/5" onClick={() => navigate(`/group_feed_react/${group_id}`)}>
             <i className="fa-solid fa-arrow-left" />
           </button>
-          <div className="text-lg font-semibold">Manage Group</div>
+          <div className="text-lg font-semibold">{t('communities.manage_group')}</div>
         </div>
 
         {successMsg && (
@@ -111,12 +113,12 @@ export default function EditGroup(){
 
         {/* Group Name */}
         <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
-          <div className="text-sm font-medium text-white">Group Name</div>
+          <div className="text-sm font-medium text-white">{t('communities.group_name')}</div>
           <input
             value={name}
             onChange={e => setName(e.target.value)}
             className="w-full rounded-lg border border-white/15 bg-transparent px-3 py-2.5 text-sm text-white placeholder-[#6f7c81] focus:outline-none focus:border-[#4db6ac]"
-            placeholder="Enter group name"
+            placeholder={t('communities.group_name_placeholder')}
           />
         </div>
 
@@ -124,7 +126,7 @@ export default function EditGroup(){
         <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm font-medium text-white">Require Approval to Join</div>
+              <div className="text-sm font-medium text-white">{t('communities.require_approval')}</div>
               <div className="text-xs text-[#6f7c81] mt-0.5">New members need approval before joining</div>
             </div>
             <button
@@ -143,19 +145,19 @@ export default function EditGroup(){
           disabled={saving}
           className="w-full py-3 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110 disabled:opacity-50 transition"
         >
-          {saving ? 'Saving…' : 'Save Changes'}
+          {saving ? t('account.language.saving') : t('communities.save_changes')}
         </button>
 
         {/* Danger Zone — owner only */}
         {isOwner && (
           <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 space-y-3 mt-6">
-            <div className="text-sm font-medium text-red-400">Danger Zone</div>
+            <div className="text-sm font-medium text-red-400">{t('account.danger.section_title')}</div>
             <div className="text-xs text-[#9fb0b5]">Deleting this group will permanently remove all posts, members, and data.</div>
             <button
               onClick={handleDelete}
               className="w-full py-2.5 rounded-lg border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/10 transition-colors"
             >
-              Delete Group
+              {t('communities.delete_group')}
             </button>
           </div>
         )}
