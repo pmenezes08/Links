@@ -305,6 +305,32 @@ Small React app for KB reseed, tests metadata, subscription admin helpers — ca
 
 ---
 
+## 7a. Internationalization (i18n)
+
+User-facing copy is keyed off JSON catalogs, not hard-coded in handlers. See [`I18N_ROADMAP.md`](I18N_ROADMAP.md) for the canonical engineering reference.
+
+**Backend layout:**
+
+| Module | Role |
+|--------|------|
+| `backend/services/i18n.py` | `t(key, locale, **params)` with the `pt-PT → pt → en` fallback chain; `Accept-Language` parsing; `match_locale` / `normalize_locale` helpers. |
+| `backend/services/user_locale.py` | Sole owner of `users.preferred_locale`. `get_preferred_locale`, `set_preferred_locale` (with validation), `resolve_request_locale` (preferred → `X-CPoint-Locale` → `Accept-Language` → `en`). |
+| `backend/services/api_errors.py` | Shared JSON error helper (`error_response`, `auth_required`, `forbidden`, `not_found`) that resolves locale from the current request and returns the backward-compatible `error` plus the new `error_code` / `message_key` / `message` fields. |
+| `backend/services/notification_copy.py` | `recipient_locale(username)`, `push_payload(event, locale, **params)`, `in_app_text(event, locale, **params)`. Async surfaces (push, in-app rows) MUST resolve copy in the recipient's locale, never the sender's session. |
+| `backend/services/entitlements_errors.py` | `build_error(..., locale=…)`: catalog overrides win over `_DEFAULT_TEMPLATES` for non-English locales; KB `cta_copy_templates` overrides apply only when `locale == "en"`. |
+| `backend/services/community_invite_emails.py` | `render_existing_user_added_email`, `render_new_user_invite_email`, `invite_subject` — all accept a `locale` kwarg and pull subject / heading / lead / CTA from the `email.*` namespace. |
+| `backend/locales/en.json`, `backend/locales/pt-PT.json` | Authoritative catalogs. Top-level namespaces: `common`, `errors`, `auth`, `entitlements`, `billing`, `communities`, `notifications`, `email`, `onboarding`, `chat`. |
+
+**Schema:** `users.preferred_locale VARCHAR(16) NULL` (added idempotently by `ensure_locale_column`). `NULL` means "use the request-chain detection"; non-null is an explicit Account Settings choice.
+
+**Routes:** `GET /api/me/locale` (returns saved + active locale + available list), `PATCH /api/me/locale` (`{"locale": "pt-PT"}` or `{"locale": null}` to clear).
+
+**KB stays English.** Entitlements `cta_copy_templates` and any future KB-edited copy is ops-only — PT users always read from the JSON catalogs.
+
+**Inventory:** `python scripts/i18n_inventory.py` (heuristic scan; `--strict <namespace>` for CI).
+
+---
+
 ## 8. NPM dependencies (summary)
 
 - **client:** React 19, Vite, Capacitor ecosystem, react-query, react-router, tailwind, chart.js, testing libs — see `client/package.json`.

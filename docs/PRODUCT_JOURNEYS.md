@@ -213,16 +213,36 @@ See `docs/AGENT_TASK_CHECKLIST.md`, `AGENTS.md` § Living engineering docs. For 
 
 ---
 
-## 9. Knowledge Base (in-app) vs team docs
+## 9. Locale and internationalization
 
-## 9. Knowledge Base (in-app) vs team docs
+**Source of truth:** [`docs/I18N_ROADMAP.md`](I18N_ROADMAP.md). v1 supports `en` (default) and `pt-PT` (tu tone). Admin-web, KB pages, and the marketing landing stay English.
+
+1. **Auto-detect on first launch.** The client reads the device/browser language on boot via `client/src/i18n/` (`react-i18next`). It maps unknown tags to `en` and stores the active locale in local memory only — there is **no first-run language prompt**.
+2. **Every API request carries headers.** The fetch wrapper attaches `Accept-Language` and `X-CPoint-Locale` so the backend can resolve copy even before the user has saved a preference.
+3. **Explicit choice persists.** Account Settings → Language sets `users.preferred_locale` via `PATCH /api/me/locale` (`backend/blueprints/me.py`). The column is owned by `backend/services/user_locale.py`; no other module reads or writes it.
+4. **Backend resolution chain** (`backend/services/user_locale.resolve_request_locale`):
+   1. `users.preferred_locale` (explicit choice)
+   2. `X-CPoint-Locale` header
+   3. `Accept-Language` header
+   4. `en` fallback
+5. **Copy lives in JSON catalogs.** `backend/locales/{en,pt-PT}.json` (server) and `client/src/locales/{en,pt-PT}.json` (client). Server services call `i18n.t(key, locale, **params)`; blueprints return `api_errors.error_response(key, status)` to get the shared `error_code` / `message_key` / `message` shape.
+6. **Async surfaces use recipient locale.** Push and email helpers call `notification_copy.recipient_locale(username)` and `community_invite_emails.render_*(locale=...)`. Never use the sender's session locale for someone else's notification.
+7. **KB stays English.** Entitlements `cta_copy_templates` overrides in the KB apply only when the resolved locale is `en`; PT users always read from the JSON catalogs (locked decision in [`docs/I18N_ROADMAP.md`](I18N_ROADMAP.md) § 1).
+
+**Failure modes:**
+- Missing key → server logs a warning and returns the English value (or the key text if `en` is also missing). Pages never break in production.
+- Stale `users.preferred_locale` (unsupported tag) → defensive normalisation in `get_preferred_locale` strips it back to `None`.
+
+---
+
+## 10. Knowledge Base (in-app) vs team docs
 
 - **In-app KB** (MySQL-seeded, admin editable): **pricing**, **caps**, **policies**, **roadmap rows** used by the product and Steve — **`knowledge_base.py`**, **admin reseed**.
 - **Repo + Notion**: engineering topology, glossary, this journey doc — **not** a substitute for KB for price/cap truth.
 
 ---
 
-## 10. Deploy smoke (staging → production)
+## 11. Deploy smoke (staging → production)
 
 1. Merge to **staging** branch / workflow; run **`cloudbuild.yaml`** → **`cpoint-app-staging`**.
 2. Hit **staging** API and **admin-staging** against staging; remember **shared DB** risk (**OPERATIONS**).

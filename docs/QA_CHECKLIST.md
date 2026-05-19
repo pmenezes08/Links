@@ -344,3 +344,77 @@ Run after changes to authentication, remember-me cookies, CSRF/origin gates, or 
 - [ ] **Cron**: `POST /api/cron/events/reminders` (or another documented cron URL) with `X-Cron-Secret`, expect 200.
 - [ ] **Capacitor iOS/Android**: Google Sign-In via `/api/auth/google` succeeds (POST must not be blocked when shadow CSRF logging is on).
 - [ ] **CSRF rollout**: before flipping `CSRF_ORIGIN_ENFORCE=true`, follow `docs/OPERATIONS.md` § CSRF / Origin enforcement (24h shadow logs on staging, then prod).
+
+## §15 — Internationalization (pt-PT)
+
+Run after any change that touches user-facing strings, the locale
+preference, or push / email copy. See `docs/I18N_ROADMAP.md` for the
+catalog convention and namespaces.
+
+### Auto-detect + headers
+
+- [ ] **Fresh install, pt-PT device.** Reset Capacitor (or use a private
+      browser window in `Accept-Language: pt-PT`). Sign up / log in.
+      Expected: the UI renders in Portuguese without any first-run
+      language prompt. The `Accept-Language` header on `/api/me/*`
+      requests includes `pt-PT`.
+- [ ] **Fresh install, English device.** Same flow with
+      `Accept-Language: en-US`. Expected: UI stays English; no PT
+      strings leak through.
+
+### Account Settings preference
+
+- [ ] Open **Account Settings → Language** (new block under
+      Notifications). Switch from **English** to **Português (Portugal)**
+      with no page reload. Expected: chrome strings, modals, and
+      validation messages change immediately. A `PATCH /api/me/locale`
+      with `{"locale": "pt-PT"}` fires and returns 200.
+- [ ] Reload the page and confirm Portuguese persists (read from
+      `users.preferred_locale`).
+- [ ] Switch back to **English**. Expected: same instant re-render and
+      a fresh `PATCH /api/me/locale`. Reload still shows English.
+
+### API errors
+
+- [ ] Trigger an authentication-required error from the API (e.g.
+      open an authed endpoint in an incognito window). Expected: the
+      response includes `error_code: "auth.authentication_required"`,
+      a `message_key` of the same name, and a localized `message`
+      matching the active locale.
+- [ ] Trigger a signup validation error (e.g. mismatched passwords).
+      Expected: PT users see the PT message; the `error_code` stays
+      `auth.signup.passwords_do_not_match` regardless of locale.
+- [ ] Trigger an entitlements denial (Steve monthly cap on a PT
+      Premium account). Expected: the denial card uses the pt-PT
+      catalog message and CTA label, not the English defaults.
+
+### Push notifications
+
+- [ ] PT user **B** subscribed to a community; English user **A**
+      posts in the group. Expected: B receives a push titled
+      "Nova publicação no grupo" with body "A: <preview>". A still
+      gets English copy on their own device.
+
+### Transactional email
+
+- [ ] Trigger an invite to a PT recipient (existing user or new). The
+      delivered email subject and body must be in Portuguese; the HTML
+      layout, brand colours, and CTA pill stay unchanged.
+- [ ] Trigger the same invite to an English recipient. Email must stay
+      English.
+
+### Layout regression
+
+- [ ] Sweep the high-traffic surfaces (auth, onboarding, Account
+      Settings, Communities, Feed, Chat, Manage Membership) in pt-PT
+      and confirm no string overflow, clipped buttons, or wrapped
+      labels relative to the English baseline. PT often runs longer
+      than EN — note any visual regression as a follow-up issue.
+
+### KB ↔ catalog parity (locked decision)
+
+- [ ] Verify the entitlements denial card for a PT user is **not**
+      pulling from a KB `cta_copy_templates` override (per
+      `docs/I18N_ROADMAP.md` § 1, KB overrides remain English-only;
+      PT users get JSON catalog content even when an English override
+      exists in the KB).
