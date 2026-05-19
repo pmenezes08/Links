@@ -493,6 +493,7 @@ export default function SubscriptionPlans() {
         await loadActiveSubscriptions()
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unable to start in-app purchase')
+        resetSubscriptionPageScroll()
       } finally {
         setCheckoutLoading(null)
       }
@@ -742,6 +743,8 @@ export default function SubscriptionPlans() {
       {view === 'community' && pricing && (
         <CommunityModal
           payload={pricing.sku.community_tier}
+          storeProvider={storeProvider}
+          storeProductIds={storeProvider ? iapConfig?.[storeProvider]?.community_product_ids || {} : {}}
           onPickTier={onPickTier}
           onOpenAddons={() => setView('addons')}
           onClose={() => setView(null)}
@@ -1300,6 +1303,8 @@ function ModalShell({
 
 function CommunityModal({
   payload,
+  storeProvider,
+  storeProductIds,
   onPickTier,
   onOpenAddons,
   onClose,
@@ -1307,6 +1312,8 @@ function CommunityModal({
   error,
 }: {
   payload: CommunityTierPayload
+  storeProvider: StoreProvider | null
+  storeProductIds: Record<string, string>
   onPickTier: (tier: CommunityTierLevel) => void
   onOpenAddons: () => void
   onClose: () => void
@@ -1350,6 +1357,8 @@ function CommunityModal({
             key={tier.tier_code}
             tier={tier}
             ctaLabel={payload.cta_label}
+            storeProvider={storeProvider}
+            storeProductAvailable={!!storeProductIds[tier.tier_code]}
             loading={
               !!pendingKey && pendingKey.startsWith(`community_tier:${tier.tier_code}`)
             }
@@ -1383,15 +1392,23 @@ function CommunityModal({
 function TierRow({
   tier,
   ctaLabel,
+  storeProvider,
+  storeProductAvailable,
   loading,
   onPick,
 }: {
   tier: CommunityTierLevel
   ctaLabel: string
+  storeProvider: StoreProvider | null
+  storeProductAvailable: boolean
   loading: boolean
   onPick: () => void
 }) {
-  const disabled = !tier.purchasable || loading
+  const canPurchase = tier.purchasable || storeProductAvailable
+  const disabled = !canPurchase || loading
+  const label = storeProvider && storeProductAvailable
+    ? `Subscribe with ${providerLabel(storeProvider)}`
+    : ctaLabel
   return (
     <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
       <div className="flex-1 min-w-0">
@@ -1414,14 +1431,14 @@ function TierRow({
         disabled={disabled}
         className={
           'inline-flex shrink-0 items-center justify-center rounded-full px-4 py-2 text-xs font-semibold transition ' +
-          (!tier.purchasable
+          (!canPurchase
             ? 'border border-white/15 bg-white/5 text-white/40 cursor-not-allowed'
             : loading
             ? 'bg-cpoint-turquoise/60 text-black cursor-wait'
             : 'bg-cpoint-turquoise text-black hover:bg-cpoint-turquoise/90')
         }
       >
-        {loading ? 'Starting…' : tier.purchasable ? ctaLabel : 'Coming soon'}
+        {loading ? 'Starting…' : canPurchase ? label : 'Coming soon'}
       </button>
     </div>
   )
