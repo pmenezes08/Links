@@ -69,11 +69,17 @@ class TestNotificationPreviewPreference:
             c = conn.cursor()
             try:
                 c.execute(
-                    "ALTER TABLE users ADD COLUMN notification_show_previews TINYINT(1) DEFAULT 1"
+                    "ALTER TABLE users DROP COLUMN notification_show_previews"
                 )
                 conn.commit()
             except Exception:
                 pass
+
+        from backend.services import notifications as notifications_mod
+        from backend.services.notifications import ensure_users_notification_show_previews_column
+
+        notifications_mod._SHOW_PREVIEWS_COLUMN_ENSURED = False
+        ensure_users_notification_show_previews_column()
 
         import bodybuilding_app
 

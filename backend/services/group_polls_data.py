@@ -11,63 +11,105 @@ from backend.services.database import USE_MYSQL, get_sql_placeholder
 logger = logging.getLogger(__name__)
 
 
+def _mysql_table_exists(cursor, table_name: str) -> bool:
+    cursor.execute(f"SHOW TABLES LIKE '{table_name}'")
+    return bool(cursor.fetchone())
+
+
+def _commit_cursor(cursor) -> None:
+    conn = getattr(cursor, "connection", None)
+    if conn is not None:
+        conn.commit()
+
+
 def ensure_group_poll_tables(cursor) -> None:
     if USE_MYSQL:
-        try:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS `group_polls` (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    group_id INT NOT NULL,
-                    group_post_id INT NOT NULL,
-                    question VARCHAR(512) NOT NULL,
-                    created_by VARCHAR(191) NOT NULL,
-                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    expires_at DATETIME NULL,
-                    is_active TINYINT(1) NOT NULL DEFAULT 1,
-                    single_vote TINYINT(1) NOT NULL DEFAULT 1,
-                    UNIQUE KEY uniq_gp_post (group_post_id),
-                    KEY idx_gp_group (group_id),
-                    CONSTRAINT fk_gp_group FOREIGN KEY (group_id) REFERENCES `groups`(id) ON DELETE CASCADE,
-                    CONSTRAINT fk_gp_post FOREIGN KEY (group_post_id) REFERENCES `group_posts`(id) ON DELETE CASCADE
+        if not _mysql_table_exists(cursor, "group_polls"):
+            try:
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS `group_polls` (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        group_id INT NOT NULL,
+                        group_post_id INT NOT NULL,
+                        question VARCHAR(512) NOT NULL,
+                        created_by VARCHAR(191) NOT NULL,
+                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        expires_at DATETIME NULL,
+                        is_active TINYINT(1) NOT NULL DEFAULT 1,
+                        single_vote TINYINT(1) NOT NULL DEFAULT 1,
+                        UNIQUE KEY uniq_gp_post (group_post_id),
+                        KEY idx_gp_group (group_id),
+                        CONSTRAINT fk_gp_group FOREIGN KEY (group_id) REFERENCES `groups`(id) ON DELETE CASCADE,
+                        CONSTRAINT fk_gp_post FOREIGN KEY (group_post_id) REFERENCES `group_posts`(id) ON DELETE CASCADE
+                    )
+                    """
                 )
-                """
-            )
-        except Exception:
-            logger.exception("group_polls CREATE TABLE failed")
-        try:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS `group_poll_options` (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    group_poll_id INT NOT NULL,
-                    option_text VARCHAR(512) NOT NULL,
-                    votes INT NOT NULL DEFAULT 0,
-                    KEY idx_gpo_poll (group_poll_id),
-                    CONSTRAINT fk_gpo_poll FOREIGN KEY (group_poll_id) REFERENCES `group_polls`(id) ON DELETE CASCADE
-                )
-                """
-            )
-        except Exception:
-            logger.exception("group_poll_options CREATE TABLE failed")
-        try:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS `group_poll_votes` (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    group_poll_id INT NOT NULL,
-                    option_id INT NOT NULL,
-                    username VARCHAR(191) NOT NULL,
-                    voted_at DATETIME NOT NULL,
-                    UNIQUE KEY uniq_gpv (group_poll_id, username, option_id),
-                    KEY idx_gpv_poll (group_poll_id),
-                    CONSTRAINT fk_gpv_poll FOREIGN KEY (group_poll_id) REFERENCES `group_polls`(id) ON DELETE CASCADE,
-                    CONSTRAINT fk_gpv_opt FOREIGN KEY (option_id) REFERENCES `group_poll_options`(id) ON DELETE CASCADE
-                )
-                """
-            )
-        except Exception:
-            logger.exception("group_poll_votes CREATE TABLE failed")
+                _commit_cursor(cursor)
+            except Exception:
+                logger.exception("group_polls CREATE TABLE with FK failed; retrying without FK")
+                try:
+                    cursor.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS `group_polls` (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            group_id INT NOT NULL,
+                            group_post_id INT NOT NULL,
+                            question VARCHAR(512) NOT NULL,
+                            created_by VARCHAR(191) NOT NULL,
+                            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                            expires_at DATETIME NULL,
+                            is_active TINYINT(1) NOT NULL DEFAULT 1,
+                            single_vote TINYINT(1) NOT NULL DEFAULT 1,
+                            UNIQUE KEY uniq_gp_post (group_post_id),
+                            KEY idx_gp_group (group_id),
+                            KEY idx_gp_post (group_post_id)
+                        )
+                        """
+                    )
+                    _commit_cursor(cursor)
+                except Exception:
+                    logger.exception("group_polls CREATE TABLE failed")
+
+        if _mysql_table_exists(cursor, "group_polls"):
+            if not _mysql_table_exists(cursor, "group_poll_options"):
+                try:
+                    cursor.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS `group_poll_options` (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            group_poll_id INT NOT NULL,
+                            option_text VARCHAR(512) NOT NULL,
+                            votes INT NOT NULL DEFAULT 0,
+                            KEY idx_gpo_poll (group_poll_id),
+                            CONSTRAINT fk_gpo_poll FOREIGN KEY (group_poll_id) REFERENCES `group_polls`(id) ON DELETE CASCADE
+                        )
+                        """
+                    )
+                    _commit_cursor(cursor)
+                except Exception:
+                    logger.exception("group_poll_options CREATE TABLE failed")
+            if _mysql_table_exists(cursor, "group_poll_options"):
+                if not _mysql_table_exists(cursor, "group_poll_votes"):
+                    try:
+                        cursor.execute(
+                            """
+                            CREATE TABLE IF NOT EXISTS `group_poll_votes` (
+                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                group_poll_id INT NOT NULL,
+                                option_id INT NOT NULL,
+                                username VARCHAR(191) NOT NULL,
+                                voted_at DATETIME NOT NULL,
+                                UNIQUE KEY uniq_gpv (group_poll_id, username, option_id),
+                                KEY idx_gpv_poll (group_poll_id),
+                                CONSTRAINT fk_gpv_poll FOREIGN KEY (group_poll_id) REFERENCES `group_polls`(id) ON DELETE CASCADE,
+                                CONSTRAINT fk_gpv_opt FOREIGN KEY (option_id) REFERENCES `group_poll_options`(id) ON DELETE CASCADE
+                            )
+                            """
+                        )
+                        _commit_cursor(cursor)
+                    except Exception:
+                        logger.exception("group_poll_votes CREATE TABLE failed")
     else:
         cursor.execute(
             """

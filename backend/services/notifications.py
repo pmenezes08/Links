@@ -27,6 +27,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 _PREVIEW_TEXT_COLUMN_ENSURED = False
+_SHOW_PREVIEWS_COLUMN_ENSURED = False
 
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
@@ -76,6 +77,47 @@ def ensure_notifications_preview_text_column() -> None:
         _PREVIEW_TEXT_COLUMN_ENSURED = True
     except Exception as exc:
         logger.warning("Could not ensure notifications.preview_text column: %s", exc)
+
+
+def ensure_users_notification_show_previews_column() -> None:
+    """Add users.notification_show_previews if missing (MySQL lazy migrate). Idempotent."""
+    global _SHOW_PREVIEWS_COLUMN_ENSURED
+    if _SHOW_PREVIEWS_COLUMN_ENSURED:
+        return
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if USE_MYSQL:
+                c.execute("SHOW COLUMNS FROM users LIKE 'notification_show_previews'")
+                if not c.fetchone():
+                    c.execute(
+                        "ALTER TABLE users ADD COLUMN notification_show_previews TINYINT(1) DEFAULT 1"
+                    )
+                    conn.commit()
+                    logger.info(
+                        "Added notification_show_previews column to users (lazy migrate)"
+                    )
+            else:
+                c.execute("PRAGMA table_info(users)")
+                has_col = False
+                for row in c.fetchall():
+                    col_name = row["name"] if hasattr(row, "keys") else row[1]
+                    if col_name == "notification_show_previews":
+                        has_col = True
+                        break
+                if not has_col:
+                    c.execute(
+                        "ALTER TABLE users ADD COLUMN notification_show_previews INTEGER DEFAULT 1"
+                    )
+                    conn.commit()
+                    logger.info(
+                        "Added notification_show_previews column to users (lazy migrate, SQLite)"
+                    )
+        _SHOW_PREVIEWS_COLUMN_ENSURED = True
+    except Exception as exc:
+        logger.warning(
+            "Could not ensure users.notification_show_previews column: %s", exc
+        )
 
 
 def create_notification(

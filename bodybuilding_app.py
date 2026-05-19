@@ -82,6 +82,7 @@ from backend.services.notifications import (
     check_single_poll_notifications,
     create_notification,
     ensure_notifications_preview_text_column,
+    ensure_users_notification_show_previews_column,
     fanout_community_post_notifications,
     send_push_to_user,
     truncate_notification_preview,
@@ -4227,15 +4228,14 @@ def _deferred_startup_init():
                 logger.info("Background: add_missing_tables completed")
             except Exception as e:
                 logger.warning(f"Background: add_missing_tables failed: {e}")
-            else:
-                try:
-                    from backend.services.group_polls_data import ensure_group_poll_tables
+            try:
+                from backend.services.group_polls_data import ensure_group_poll_tables
 
-                    with get_db_connection() as _gp_conn:
-                        ensure_group_poll_tables(_gp_conn.cursor())
-                    logger.info("Background: ensure_group_poll_tables completed")
-                except Exception:
-                    logger.exception("Background: ensure_group_poll_tables failed")
+                with get_db_connection() as _gp_conn:
+                    ensure_group_poll_tables(_gp_conn.cursor())
+                logger.info("Background: ensure_group_poll_tables completed")
+            except Exception:
+                logger.exception("Background: ensure_group_poll_tables failed")
         
         # 3. Phase 2: ensure tenants table
         try:
@@ -11224,6 +11224,7 @@ def api_profile_me():
             from backend.services import client_ui_flags
 
             client_ui_flags.ensure_user_ui_columns(c)
+            ensure_users_notification_show_previews_column()
             # Include professional fields in the query (notification_show_previews added in migration)
             row = None
             try:
@@ -11488,6 +11489,7 @@ def api_account_timezone():
 def api_account_notification_preferences():
     """Toggle whether notification list shows a snippet of post/reply content."""
     try:
+        ensure_users_notification_show_previews_column()
         data = request.get_json(silent=True) or {}
         show = data.get('show_content_previews')
         if show is None:

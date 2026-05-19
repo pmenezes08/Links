@@ -24,6 +24,7 @@ from backend.services.database import USE_MYSQL, get_db_connection
 from backend.services.notifications import (
     check_single_event_notifications,
     check_single_poll_notifications,
+    ensure_users_notification_show_previews_column,
 )
 
 
@@ -491,6 +492,7 @@ def get_notifications():
             # fetching notification rows (otherwise the notifications result set is discarded).
             show_content_previews = True
             try:
+                ensure_users_notification_show_previews_column()
                 c.execute(
                     "SELECT notification_show_previews FROM users WHERE username = ? LIMIT 1",
                     (username,),
