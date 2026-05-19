@@ -26,6 +26,7 @@ import { BadgeProvider } from './contexts/BadgeContext'
 import OfflineBanner from './components/OfflineBanner'
 import OutboxDrainer from './components/OutboxDrainer'
 import BrandAssetsInit from './components/BrandAssetsInit'
+import LocaleBootstrap from './components/LocaleBootstrap'
 import CrossfitExact from './pages/CrossfitExact'
 import CommunityFeed from './pages/CommunityFeed'
 import CommunityCalendar from './pages/CommunityCalendar'
@@ -844,6 +845,7 @@ export default function App() {
             <OfflineBanner />
             <OutboxDrainer />
             <BrandAssetsInit />
+            <LocaleBootstrap />
             <PushInit />
             <NotificationPrompt />
             <AppRoutes />

@@ -1,0 +1,59 @@
+{
+  "_meta": {
+    "locale": "pt-PT",
+    "name": "Português (Portugal)",
+    "description": "European Portuguese, informal 'tu' tone. See docs/I18N_ROADMAP.md."
+  },
+  "common": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "retry": "Tentar de novo",
+    "loading": "A carregar...",
+    "ok": "OK",
+    "close": "Fechar",
+    "yes": "Sim",
+    "no": "Não",
+    "back": "Voltar",
+    "next": "Seguinte",
+    "done": "Concluído",
+    "edit": "Editar",
+    "delete": "Apagar",
+    "confirm": "Confirmar",
+    "search": "Procurar",
+    "send": "Enviar",
+    "post": "Publicar",
+    "share": "Partilhar",
+    "more": "Mais",
+    "less": "Menos"
+  },
+  "account": {
+    "settings": "Definições da conta",
+    "language": {
+      "section_title": "Idioma",
+      "helper": "Aplica-se à aplicação, notificações e emails.",
+      "option_en": "Inglês",
+      "option_pt_pt": "Português (Portugal)",
+      "saving": "A guardar...",
+      "saved": "Guardado.",
+      "save_failed": "Não foi possível guardar o teu idioma. Tenta de novo."
+    },
+    "notifications": {
+      "section_title": "Notificações"
+    }
+  },
+  "errors": {
+    "generic": "Algo correu mal. Tenta de novo.",
+    "network": "Erro de ligação. Verifica a tua ligação e tenta de novo.",
+    "server": "Erro do servidor. Tenta de novo daqui a um momento."
+  },
+  "time": {
+    "just_now": "agora mesmo",
+    "minutes_ago_one": "há {{count}} minuto",
+    "minutes_ago_other": "há {{count}} minutos",
+    "hours_ago_one": "há {{count}} hora",
+    "hours_ago_other": "há {{count}} horas",
+    "yesterday": "ontem",
+    "days_ago_one": "há {{count}} dia",
+    "days_ago_other": "há {{count}} dias"
+  }
+}

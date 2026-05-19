@@ -1,3 +1,5 @@
+import i18n from '../i18n'
+
 export function parseFlexibleDate(input: any): Date | null {
   if (!input) return null
   if (input instanceof Date) return isNaN(input.getTime()) ? null : input
@@ -87,7 +89,20 @@ export function formatSmartTime(input: any): string {
   const hour = 60 * minute
   const day = 24 * hour
 
-  if (diffMs < minute) return 'just now'
+  // Compact relative labels reuse the i18n catalog (with English
+  // fallbacks if i18n hasn't booted yet, e.g. during very early SSR /
+  // tests) so PT users see "agora mesmo", "5min", "ontem" without each
+  // call site having to wire useTranslation.
+  const t = (key: string, fallback: string): string => {
+    try {
+      const value = i18n.t(key)
+      return typeof value === 'string' && value ? value : fallback
+    } catch {
+      return fallback
+    }
+  }
+
+  if (diffMs < minute) return t('time.just_now', 'just now')
   if (diffMs < hour){
     const mins = Math.max(1, Math.floor(diffMs / minute))
     return `${mins}min`
@@ -100,12 +115,13 @@ export function formatSmartTime(input: any): string {
   // Yesterday check
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const startOfYesterday = new Date(startOfToday.getTime() - day)
-  if (d >= startOfYesterday && d < startOfToday) return 'yesterday'
+  if (d >= startOfYesterday && d < startOfToday) return t('time.yesterday', 'yesterday')
 
-  // Within last 7 days -> weekday name
+  // Within last 7 days -> weekday name, formatted in the active locale.
   const sevenDaysAgo = new Date(startOfToday.getTime() - 7 * day)
   if (d >= sevenDaysAgo){
-    try{ return d.toLocaleDateString(undefined, { weekday: 'short' }) }catch{}
+    const lang = (i18n?.language || undefined) as string | undefined
+    try{ return d.toLocaleDateString(lang, { weekday: 'short' }) }catch{}
     const wdays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
     return wdays[d.getDay()]
   }

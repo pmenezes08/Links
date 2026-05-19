@@ -327,6 +327,16 @@ User-facing copy is keyed off JSON catalogs, not hard-coded in handlers. See [`I
 
 **KB stays English.** Entitlements `cta_copy_templates` and any future KB-edited copy is ops-only — PT users always read from the JSON catalogs.
 
+**Client layout:**
+
+| Module | Role |
+|--------|------|
+| `client/src/i18n/index.ts` | Boots `react-i18next` with bundled catalogs, `LanguageDetector` (localStorage + navigator), and keeps `<html lang>` in sync. |
+| `client/src/i18n/fetchHeaders.ts` | Monkey-patches `window.fetch` once at boot to attach `Accept-Language` + `X-CPoint-Locale` to every same-origin request. |
+| `client/src/i18n/useLocale.ts` | Hook for the Account Settings language picker: flips `i18n.language` immediately and calls `PATCH /api/me/locale`. |
+| `client/src/components/LocaleBootstrap.tsx` | Once-per-session GET `/api/me/locale` to adopt the saved choice as soon as the user is authed. |
+| `client/src/locales/en.json`, `client/src/locales/pt-PT.json` | Authoritative client catalogs. Bundled (no http loader) so first paint never waits on the network. |
+
 **Inventory:** `python scripts/i18n_inventory.py` (heuristic scan; `--strict <namespace>` for CI).
 
 ---
