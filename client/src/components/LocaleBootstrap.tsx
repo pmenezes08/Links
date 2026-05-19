@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { Capacitor } from '@capacitor/core'
 
 import i18n, { matchLocale } from '../i18n'
 
@@ -24,6 +25,28 @@ export default function LocaleBootstrap() {
 
     let cancelled = false
 
+    // 1) Native shells: ask Capacitor for the device language tag. The
+    //    react-i18next browser detector reads navigator.language, which
+    //    on Capacitor maps to the WebView locale -- usually right but
+    //    not guaranteed to match the OS keyboard / system language. The
+    //    plugin call gives us the explicit system tag before the user
+    //    has had a chance to pick anything in Account Settings.
+    if (Capacitor.isNativePlatform()) {
+      import('@capacitor/device')
+        .then(({ Device }) => Device.getLanguageTag())
+        .then((res) => {
+          if (cancelled) return
+          const tag = matchLocale(res?.value)
+          if (tag && tag !== i18n.language) {
+            i18n.changeLanguage(tag).catch(() => undefined)
+          }
+        })
+        .catch(() => undefined)
+    }
+
+    // 2) After auth becomes available, the server's saved
+    //    preferred_locale wins over both the WebView guess and the
+    //    Capacitor device tag.
     fetch('/api/me/locale', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {

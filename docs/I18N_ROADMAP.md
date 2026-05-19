@@ -374,6 +374,35 @@ namespace gains untranslated strings.
 The script is intentionally a **heuristic**, not a parser; review its
 matches before treating any namespace as "complete".
 
+### Catalog drift CI
+
+`scripts/i18n_check_catalogs.py` (added in PR 23) runs in
+`.github/workflows/test.yml` (`i18n-catalogs` job) on every push and
+PR. It flattens every catalog under `backend/locales/` and
+`client/src/locales/`, then diffs each locale against the `en` source
+of truth. The job fails if a locale is **missing** a key, has
+**extra** keys not present in `en`, or has **list-length drift** (e.g.
+the `onboarding.welcome.carousel` array changed length without a
+matching translation).
+
+Run locally with:
+
+```bash
+python scripts/i18n_check_catalogs.py
+```
+
+The script is stdlib-only and finishes in well under a second on the
+current catalogs.
+
+### Capacitor device locale
+
+On native shells, `client/src/components/LocaleBootstrap.tsx` calls
+`@capacitor/device.Device.getLanguageTag()` once at boot and feeds the
+result through `matchLocale()`. This gives us the explicit iOS /
+Android system tag before the WebView's `navigator.language` heuristic
+runs, and is then immediately overridden by the user's saved
+`preferred_locale` once `/api/me/locale` resolves.
+
 ---
 
 ## 13. Risks and mitigations

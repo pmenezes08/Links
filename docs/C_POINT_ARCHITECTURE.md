@@ -339,6 +339,8 @@ User-facing copy is keyed off JSON catalogs, not hard-coded in handlers. See [`I
 
 **Inventory:** `python scripts/i18n_inventory.py` (heuristic scan; `--strict <namespace>` for CI).
 
+**Catalog drift CI:** `python scripts/i18n_check_catalogs.py` runs in `.github/workflows/test.yml` (job `i18n-catalogs`). Flattens every catalog under `backend/locales/` and `client/src/locales/`, diffs each locale against the `en` source of truth, and fails on missing / extra / drift.
+
 ---
 
 ## 8. NPM dependencies (summary)
