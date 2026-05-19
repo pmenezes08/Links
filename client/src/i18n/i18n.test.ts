@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_LOCALE, matchLocale, normalizeLocale } from './index'
+import i18n, { DEFAULT_LOCALE, matchLocale, normalizeLocale } from './index'
 
 describe('matchLocale', () => {
   it('returns null when the tag is unknown', () => {
@@ -36,5 +36,18 @@ describe('normalizeLocale', () => {
   it('keeps a supported locale unchanged', () => {
     expect(normalizeLocale('pt-PT')).toBe('pt-PT')
     expect(normalizeLocale('en-US')).toBe('en')
+  })
+})
+
+describe('runtime translation resources', () => {
+  it.each(['pt-PT', 'pt', 'pt-pt'])('renders Portuguese strings for %s', async (tag) => {
+    await i18n.changeLanguage(tag)
+    expect(i18n.t('account.language.section_title')).toBe('Idioma')
+    expect(i18n.t('account.language.helper')).toContain('aplicação')
+  })
+
+  it('renders English strings after switching back', async () => {
+    await i18n.changeLanguage('en')
+    expect(i18n.t('account.language.section_title')).toBe('Language')
   })
 })

@@ -23,6 +23,13 @@ export const DEFAULT_LOCALE = 'en'
 export const SUPPORTED_LOCALES = ['en', 'pt-PT'] as const
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number]
 
+// i18next may internally resolve regional tags in different forms depending
+// on browser / native shell input (`pt`, `pt-PT`, or lower-cased `pt-pt`).
+// Keep the public app locale as `pt-PT`, but register the same catalog under
+// every key i18next can reasonably ask for so a successful language switch
+// never falls back to English text.
+const I18NEXT_SUPPORTED_LNGS = ['en', 'pt', 'pt-PT', 'pt-pt'] as const
+
 const ALIAS_MAP: Record<string, SupportedLocale> = {
   en: 'en',
   'en-us': 'en',
@@ -62,10 +69,12 @@ i18n
   .init({
     resources: {
       en: { translation: en },
+      pt: { translation: ptPT },
       'pt-PT': { translation: ptPT },
+      'pt-pt': { translation: ptPT },
     },
     fallbackLng: DEFAULT_LOCALE,
-    supportedLngs: [...SUPPORTED_LOCALES],
+    supportedLngs: [...I18NEXT_SUPPORTED_LNGS],
     nonExplicitSupportedLngs: true,
     interpolation: {
       escapeValue: false, // react already escapes

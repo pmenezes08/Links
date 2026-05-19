@@ -90,13 +90,11 @@ export function useLocale(): UseLocaleResult {
 
       setError(null)
 
-      if (matched !== i18n.language) {
-        try {
-          await i18n.changeLanguage(matched)
-        } catch {
-          // i18next swallows missing-namespace warnings; nothing else
-          // we can do here without losing the locale flip.
-        }
+      try {
+        await i18n.changeLanguage(matched)
+      } catch (err) {
+        setError((err as Error)?.message || 'change_failed')
+        return matched
       }
 
       if (persist) {
