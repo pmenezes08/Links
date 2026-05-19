@@ -33,6 +33,7 @@ from flask import Blueprint, jsonify, request, session
 import os
 
 from backend.services import (
+    api_errors,
     auth_session,
     enterprise_iap_nag,
     enterprise_membership,
@@ -61,7 +62,7 @@ def _login_required(view):
     @wraps(view)
     def wrapper(*args, **kwargs):
         if not _session_username():
-            return jsonify({"success": False, "error": "Authentication required"}), 401
+            return api_errors.auth_required()
         return view(*args, **kwargs)
     return wrapper
 
@@ -71,7 +72,7 @@ def _admin_required(view):
     def wrapper(*args, **kwargs):
         uname = _session_username()
         if not uname:
-            return jsonify({"success": False, "error": "Authentication required"}), 401
+            return api_errors.auth_required()
         if not is_app_admin(uname):
             return jsonify({"success": False, "error": "Admin access required"}), 403
         return view(*args, **kwargs)

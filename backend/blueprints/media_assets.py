@@ -8,7 +8,7 @@ from datetime import datetime
 
 from flask import Blueprint, jsonify, request, session
 
-from backend.services import media_assets
+from backend.services import api_errors, media_assets
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.r2_storage import (
     R2_ENABLED,
@@ -75,7 +75,7 @@ def _image_upload_payload(prefix: str, filename: str, content_type: str):
 def api_message_image_upload_url():
     """Presigned PUT for DM chat photos — bypasses Cloud Run body size / CPU."""
     if not _session_username():
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+        return api_errors.auth_required()
     data = request.get_json() or {}
     recipient_id = data.get("recipient_id")
     filename = (data.get("filename") or "photo.jpg").strip()
@@ -99,7 +99,7 @@ def api_message_image_upload_url():
 def api_video_upload_url():
     """Get a presigned URL for direct DM video upload to R2."""
     if not _session_username():
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+        return api_errors.auth_required()
     data = request.get_json() or {}
     recipient_id = data.get("recipient_id")
     filename = (data.get("filename") or "video.mp4").strip()
@@ -123,7 +123,7 @@ def api_video_upload_url():
 def api_post_video_upload_url():
     """Get a presigned URL for direct community/group post video upload to R2."""
     if not _session_username():
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+        return api_errors.auth_required()
     data = request.get_json() or {}
     filename = (data.get("filename") or "video.mp4").strip()
     content_type = (data.get("content_type") or get_content_type(filename)).strip()

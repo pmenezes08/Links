@@ -29,6 +29,7 @@ from backend.services.content_generation import (
     update_job,
     update_job_next_run,
 )
+from backend.services import api_errors
 from backend.services.steve_content_enrichment import fetch_article_for_reader
 from backend.services.content_generation.job_schedule import (
     compute_schedule_timestamps,
@@ -50,7 +51,7 @@ def _login_required(view_func):
     @wraps(view_func)
     def wrapper(*args, **kwargs):
         if "username" not in session:
-            return jsonify({"success": False, "error": "Authentication required"}), 401
+            return api_errors.auth_required()
         return view_func(*args, **kwargs)
 
     return wrapper

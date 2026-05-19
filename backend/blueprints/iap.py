@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 
 from flask import Blueprint, jsonify, request, session
 
-from backend.services import auth_session, iap_links, mobile_iap, session_identity
+from backend.services import api_errors, auth_session, iap_links, mobile_iap, session_identity
 
 
 iap_bp = Blueprint("iap", __name__)
@@ -24,7 +24,7 @@ def _session_username() -> Optional[str]:
 @iap_bp.route("/api/iap/config", methods=["GET"])
 def api_iap_config():
     if not _session_username():
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+        return api_errors.auth_required()
     return jsonify({"success": True, **mobile_iap.config()})
 
 
@@ -51,7 +51,7 @@ def api_iap_google_restore():
 def _confirm(provider: str):
     username = _session_username()
     if not username:
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+        return api_errors.auth_required()
     body = request.get_json(silent=True) or {}
     ok, reason, result = mobile_iap.confirm_purchase(
         provider=provider,
@@ -78,7 +78,7 @@ def _confirm(provider: str):
 def _restore(provider: str):
     username = _session_username()
     if not username:
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+        return api_errors.auth_required()
     body = request.get_json(silent=True) or {}
     transactions = body.get("transactions") or []
     if not isinstance(transactions, list):

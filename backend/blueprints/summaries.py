@@ -16,7 +16,7 @@ import logging
 
 from flask import Blueprint, jsonify, request, session
 
-from backend.services import ai_usage
+from backend.services import ai_usage, api_errors
 from backend.services.entitlements import resolve_entitlements
 from backend.services.feature_flags import entitlements_enforcement_enabled
 
@@ -35,7 +35,7 @@ def voice_summary_preflight():
     """
     username = session.get("username")
     if not username:
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+        return api_errors.auth_required()
 
     body = request.get_json(silent=True) or {}
     try:

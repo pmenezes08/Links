@@ -7,7 +7,7 @@ from functools import wraps
 
 from flask import Blueprint, jsonify, request, session
 
-from backend.services import auth_session, branding_assets, session_identity
+from backend.services import api_errors, auth_session, branding_assets, session_identity
 from backend.services.community import is_app_admin
 from backend.services.media import save_uploaded_file
 
@@ -26,9 +26,9 @@ def _admin_required(view_func):
     def wrapper(*args, **kwargs):
         username = session_identity.valid_session_username(session)
         if not username:
-            return jsonify({"success": False, "error": "Authentication required"}), 401
+            return api_errors.auth_required()
         if not is_app_admin(username):
-            return jsonify({"success": False, "error": "Admin access required"}), 403
+            return api_errors.forbidden("communities.admin_required")
         return view_func(*args, **kwargs)
 
     return wrapper
