@@ -251,6 +251,11 @@ audio_summary = process_audio_for_summary(
 - `surface='voice_summary'` → counts against `steve_uses_per_month` and
   `ai_daily_limit`.
 
+Manual translation via `POST /translate_summary` uses the same gate and
+logs one Steve row: `surface='voice_summary'` for voice-note summaries,
+`surface='translation'` for public-profile section translation. Both count
+against `steve_uses_per_month` when enforcement is on.
+
 ### Canonical recipe (transcription only, no summary)
 
 ```python

@@ -61,7 +61,30 @@
       "helper": "Atualiza a tua palavra-passe e ajusta os controlos de privacidade num espaço dedicado.",
       "open": "Abrir Privacidade e segurança",
       "request_data": "Pedir os meus dados",
-      "request_data_helper": "Pede-nos uma cópia dos dados pessoais que guardamos sobre ti. Respondemos no prazo de 30 dias."
+      "request_data_helper": "Pede-nos uma cópia dos dados pessoais que guardamos sobre ti. Respondemos no prazo de 30 dias.",
+      "request_data_modal": {
+        "title": "Pedir os meus dados",
+        "subtitle": "Pede-nos uma cópia dos dados pessoais que guardamos sobre a tua conta.",
+        "included_title": "O que vais receber",
+        "included_posts": "Publicações, comentários, mensagens e media que criaste.",
+        "included_profile": "Campos de perfil (nome de utilizador, bio, definições).",
+        "included_metadata": "Metadados da conta (data de registo, estado da subscrição, histórico de login).",
+        "excluded_title": "O que não está incluído",
+        "excluded_members": "Conteúdo de outros membros.",
+        "excluded_community": "Dados ao nível da comunidade (listas de membros, histórico de threads, analytics).",
+        "excluded_note": "Consulta os Termos §7.3 e a nossa Política de Privacidade para o âmbito completo.",
+        "sla_body": "Clica no botão abaixo para enviar email à nossa caixa de Proteção de Dados. Respondemos no prazo de {{days}} dias (RGPD Art. 12(3)); pedidos complexos podem ser prolongados até dois meses adicionais com aviso por escrito.",
+        "email_cta": "Email {{email}}",
+        "email_subject": "Pedido de dados RGPD",
+        "email_greeting": "Olá equipa C-Point,",
+        "email_body": "Gostaria de pedir uma cópia dos dados pessoais que guardam sobre a minha conta C-Point.",
+        "email_username": "Nome de utilizador: {{username}}",
+        "email_account_email": "Email da conta: {{email}}",
+        "email_verify": "Por favor confirmem a receção e digam-me se precisam de mais alguma coisa para verificar a minha identidade.",
+        "email_thanks": "Obrigado,",
+        "username_placeholder": "<o teu nome de utilizador C-Point>",
+        "email_placeholder": "<email registado>"
+      }
     },
     "subscription": {
       "section_title": "Gestão da subscrição",
@@ -377,6 +400,68 @@
     "about_dms_para_2": "Convivem com as tuas comunidades, para que as relações se mantenham privadas e intencionais.",
     "about_steve_para_1": "O Steve é a presença inteligente integrada no C-Point: um membro sempre disponível focado em tornar a plataforma mais fácil de usar.",
     "about_steve_para_2": "Pergunta ao Steve por ajuda com o produto, contexto de discussões ou resumos, consoante o teu plano."
+  },
+  "about_page": {
+    "title": "Sobre o C-Point",
+    "tagline": "Onde as comunidades ganham vida",
+    "version": "Versão {{version}}",
+    "manifesto_section": "Manifesto C-Point",
+    "read_full_manifesto": "Ler o manifesto completo",
+    "ask_steve": "Pergunta ao Steve sobre isto →",
+    "ask_steve_prefill": "Li o manifesto Sobre o C-Point — podes explicar-me o que isto significa para mim?",
+    "how_it_works": "Como funciona",
+    "back_dashboard": "Voltar ao dashboard",
+    "full_manifesto_title": "Manifesto completo",
+    "see_in_action": "Ver em ação",
+    "tutorial_soon": "Vídeo tutorial em breve.",
+    "pillars": {
+      "communities": {
+        "label": "Comunidades",
+        "subtitle": "Criar, convidar, publicar"
+      },
+      "dmsGroups": {
+        "label": "DMs e chats de grupo",
+        "subtitle": "Conversas privadas"
+      },
+      "steve": {
+        "label": "Steve",
+        "subtitle": "Ajuda integrada"
+      }
+    },
+    "cards": {
+      "create_community": {
+        "title": "Criar uma comunidade",
+        "description": "Começa um espaço só por convite para o teu grupo."
+      },
+      "invite_members": {
+        "title": "Convidar pessoas",
+        "description": "Traz membros por convites — sem diretório aberto."
+      },
+      "engagement_posts": {
+        "title": "Engagement e publicações",
+        "description": "Publicações, media, respostas e destaques num só sítio."
+      },
+      "direct_messages": {
+        "title": "Mensagens diretas",
+        "description": "Chats individuais fora do feed."
+      },
+      "group_chats": {
+        "title": "Chats de grupo",
+        "description": "Conversas paralelas mais pequenas dentro de uma comunidade."
+      },
+      "steve_dm": {
+        "title": "Mensagem ao Steve",
+        "description": "Faz perguntas sobre o produto ou pede uma segunda opinião."
+      },
+      "steve_in_feed": {
+        "title": "Steve no feed",
+        "description": "Marca o Steve ou usa resumos consoante o teu plano."
+      },
+      "steve_summaries": {
+        "title": "Resumos e voz",
+        "description": "Condensa threads longas e notas de voz quando disponível."
+      }
+    }
   },
   "communities": {
     "page_title": "Gestão da comunidade",

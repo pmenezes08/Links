@@ -9,8 +9,6 @@
  *   - Billing       : Stripe subscription summary + "Manage payment method"
  *   - Payment       : alias for Billing, kept separate so we can slot a
  *                     custom payment-method UI in later without renaming
- *   - Notifications : email + push preferences (placeholder, renders the
- *                     existing notifications panel copy)
  *
  * The modal never calls Stripe directly — it hits `/api/me/billing` for
  * state and `/api/me/billing/portal` when the user clicks "Manage payment
@@ -22,7 +20,7 @@ import { useTranslation } from 'react-i18next'
 import { useEntitlements } from '../../hooks/useEntitlements'
 import { openExternalBillingUrl, providerBadge, providerLabel } from '../../utils/mobileStoreBilling'
 
-export type MembershipTab = 'plan' | 'ai' | 'billing' | 'payment' | 'notifications'
+export type MembershipTab = 'plan' | 'ai' | 'billing' | 'payment'
 
 /**
  * Format a rolling-window reset timestamp. Keep consistent with the
@@ -92,7 +90,6 @@ const TABS: { id: MembershipTab; labelKey: string; icon: string }[] = [
   { id: 'ai', labelKey: 'billing.tabs.ai', icon: 'fa-robot' },
   { id: 'billing', labelKey: 'billing.tabs.billing', icon: 'fa-receipt' },
   { id: 'payment', labelKey: 'billing.tabs.payment', icon: 'fa-credit-card' },
-  { id: 'notifications', labelKey: 'billing.tabs.notifications', icon: 'fa-bell' },
 ]
 
 export default function ManageMembershipModal({ open, onClose, initialTab = 'plan' }: Props) {
@@ -184,7 +181,6 @@ export default function ManageMembershipModal({ open, onClose, initialTab = 'pla
                 {tab === 'plan' && <PlanTab />}
                 {tab === 'ai' && <AiUsageTab />}
                 {(tab === 'billing' || tab === 'payment') && <BillingTab variant={tab} />}
-                {tab === 'notifications' && <NotificationsTab />}
               </div>
             </div>
           </div>
@@ -533,25 +529,6 @@ function BillingTab({ variant }: { variant: 'billing' | 'payment' }) {
           Upgrade to Premium
         </button>
       )}
-    </div>
-  )
-}
-
-// --- Notifications -------------------------------------------------------
-
-function NotificationsTab() {
-  return (
-    <div className="space-y-4 text-sm">
-      <p className="text-white/70">
-        Device notification settings are managed from the main Account Settings screen.
-      </p>
-      <button
-        onClick={() => { window.location.href = '/account_settings' }}
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-white/20 hover:border-white/40 transition"
-      >
-        <i className="fa-solid fa-gear" />
-        Open notification settings
-      </button>
     </div>
   )
 }

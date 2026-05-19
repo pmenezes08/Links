@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import TranslateGlobeButton from './TranslateGlobeButton'
 
 interface EditableAISummaryProps {
   postId?: number;
@@ -15,49 +16,11 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
   const [isEditing, setIsEditing] = useState(false);
   const [summary, setSummary] = useState(initialSummary);
   const [isSaving, setIsSaving] = useState(false);
-  const [isTranslating, setIsTranslating] = useState(false);
   const [translatedText, setTranslatedText] = useState<string | null>(null);
-  const [showLanguages, setShowLanguages] = useState(false);
-  
-  const languages = [
-    { code: 'pt', nameKey: 'feed.language_pt', flag: '🇵🇹' },
-    { code: 'en', nameKey: 'feed.language_en', flag: '🇬🇧' },
-    { code: 'fr', nameKey: 'feed.language_fr', flag: '🇫🇷' },
-    { code: 'de', nameKey: 'feed.language_de', flag: '🇩🇪' },
-    { code: 'es', nameKey: 'feed.language_es', flag: '🇪🇸' },
-    { code: 'it', nameKey: 'feed.language_it', flag: '🇮🇹' },
-    { code: 'zh', nameKey: 'feed.language_zh', flag: '🇨🇳' }
-  ];
-  
-  const handleTranslate = async (targetLang: string) => {
-    setShowLanguages(false);
-    setIsTranslating(true);
-    try {
-      const response = await fetch('/translate_summary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          summary: initialSummary, 
-          target_language: targetLang 
-        })
-      });
-      const data = await response.json();
-      if (data.success) {
-        setTranslatedText(data.translated_summary);
-      } else {
-        alert(data.error || t('feed.translation_failed'));
-      }
-    } catch (error) {
-      console.error('Translation error:', error);
-      alert(t('feed.translation_failed'));
-    } finally {
-      setIsTranslating(false);
-    }
-  };
-  
+
   const handleSave = async () => {
     if (!summary.trim()) return;
-    
+
     setIsSaving(true);
     try {
       const body: Record<string, unknown> = { summary: summary.trim() }
@@ -73,13 +36,13 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      
+
       const respData = await response.json();
       if (respData.success) {
         onSummaryUpdate(respData.summary);
         setSummary(respData.summary);
         setIsEditing(false);
-        setTranslatedText(null); // Clear translation after edit
+        setTranslatedText(null);
       } else {
         alert(respData.error || t('feed.update_summary_failed'));
       }
@@ -90,12 +53,12 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
       setIsSaving(false);
     }
   };
-  
+
   const handleCancel = () => {
     setSummary(initialSummary);
     setIsEditing(false);
   };
-  
+
   return (
     <div className="px-3 py-2 rounded-lg bg-[#4db6ac]/10 border border-[#4db6ac]/30">
       <div className="flex items-center justify-between mb-1">
@@ -119,43 +82,11 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
             </button>
           )}
           {!isEditing && (
-            <div className="relative">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowLanguages(!showLanguages);
-                }}
-                className="text-[#4db6ac] hover:text-[#4db6ac]/80 text-xs px-1"
-                title={t('feed.translate')}
-                disabled={isTranslating}
-              >
-                {isTranslating ? (
-                  <i className="fa-solid fa-spinner fa-spin" />
-                ) : (
-                  <i className="fa-solid fa-globe" />
-                )}
-              </button>
-              {showLanguages && (
-                <div 
-                  className="absolute right-0 top-6 z-10 bg-[#1a1d29] border border-[#4db6ac]/30 rounded-lg shadow-lg min-w-[160px]"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {languages.map(lang => (
-                    <button
-                      key={lang.code}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleTranslate(lang.code);
-                      }}
-                      className="w-full px-3 py-2 text-left text-xs text-white hover:bg-[#4db6ac]/20 flex items-center gap-2 first:rounded-t-lg last:rounded-b-lg"
-                    >
-                      <span>{lang.flag}</span>
-                      <span>{t(lang.nameKey)}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <TranslateGlobeButton
+              text={initialSummary}
+              context="voice_summary"
+              onTranslated={setTranslatedText}
+            />
           )}
           {isOwner && !isEditing && (
             <button

@@ -61,7 +61,30 @@
       "helper": "Update your password and adjust privacy controls from a dedicated workspace.",
       "open": "Open Privacy & Security",
       "request_data": "Request my data",
-      "request_data_helper": "Ask us for a copy of the personal data we hold about you. We respond within 30 days."
+      "request_data_helper": "Ask us for a copy of the personal data we hold about you. We respond within 30 days.",
+      "request_data_modal": {
+        "title": "Request my data",
+        "subtitle": "Ask us for a copy of the personal data we hold about your account.",
+        "included_title": "What you'll receive",
+        "included_posts": "Posts, comments, messages and media you have authored.",
+        "included_profile": "Profile fields (username, bio, settings).",
+        "included_metadata": "Account metadata (signup date, subscription status, login history).",
+        "excluded_title": "What is not included",
+        "excluded_members": "Other members' content.",
+        "excluded_community": "Community-level data (member rosters, thread history, analytics).",
+        "excluded_note": "See Terms §7.3 and our Privacy Policy for the full scope.",
+        "sla_body": "Click the button below to email our Data Protection inbox. We respond within {{days}} days (GDPR Art. 12(3)); complex requests may be extended by up to two further months with written notice.",
+        "email_cta": "Email {{email}}",
+        "email_subject": "GDPR data request",
+        "email_greeting": "Hi C-Point team,",
+        "email_body": "I would like to request a copy of the personal data you hold about my C-Point account.",
+        "email_username": "Username: {{username}}",
+        "email_account_email": "Account email: {{email}}",
+        "email_verify": "Please reply to confirm receipt and let me know if you need anything further to verify my identity.",
+        "email_thanks": "Thanks,",
+        "username_placeholder": "<your C-Point username>",
+        "email_placeholder": "<email on file>"
+      }
     },
     "subscription": {
       "section_title": "Subscription Management",
@@ -377,6 +400,68 @@
     "about_dms_para_2": "They sit alongside your communities, so the relationships stay private and intentional.",
     "about_steve_para_1": "Steve is C-Point's built-in intelligent presence: an always-on member focused on making the platform easier to use.",
     "about_steve_para_2": "Ask Steve for product help, discussion context, or summaries where your plan allows."
+  },
+  "about_page": {
+    "title": "About C-Point",
+    "tagline": "Where communities come alive",
+    "version": "Version {{version}}",
+    "manifesto_section": "C-Point manifesto",
+    "read_full_manifesto": "Read the full manifesto",
+    "ask_steve": "Ask Steve about this →",
+    "ask_steve_prefill": "I read the About C-Point manifesto — can you walk me through what this means for me?",
+    "how_it_works": "How it works",
+    "back_dashboard": "Back to dashboard",
+    "full_manifesto_title": "Full manifesto",
+    "see_in_action": "See it in action",
+    "tutorial_soon": "Video walkthrough coming soon.",
+    "pillars": {
+      "communities": {
+        "label": "Communities",
+        "subtitle": "Create, invite, post"
+      },
+      "dmsGroups": {
+        "label": "DMs & group chats",
+        "subtitle": "Private conversations"
+      },
+      "steve": {
+        "label": "Steve",
+        "subtitle": "Built-in help"
+      }
+    },
+    "cards": {
+      "create_community": {
+        "title": "Create a community",
+        "description": "Start an invitation-only space for your group."
+      },
+      "invite_members": {
+        "title": "Invite people",
+        "description": "Bring members in through invites — no open directory."
+      },
+      "engagement_posts": {
+        "title": "Engagement & posts",
+        "description": "Posts, media, replies, and highlights in one place."
+      },
+      "direct_messages": {
+        "title": "Direct messages",
+        "description": "One-to-one chats outside the feed."
+      },
+      "group_chats": {
+        "title": "Group chats",
+        "description": "Smaller side conversations alongside a community."
+      },
+      "steve_dm": {
+        "title": "Message Steve",
+        "description": "Ask product questions or get a second opinion."
+      },
+      "steve_in_feed": {
+        "title": "Steve in the feed",
+        "description": "Tag Steve or use summaries where your plan allows."
+      },
+      "steve_summaries": {
+        "title": "Summaries & voice",
+        "description": "Condense long threads and voice notes when available."
+      }
+    }
   },
   "communities": {
     "page_title": "Community Management",

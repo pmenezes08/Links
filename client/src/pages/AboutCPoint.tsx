@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
 import DashboardBottomNav from '../components/DashboardBottomNav'
 import { useHeader } from '../contexts/HeaderContext'
 import {
   ABOUT_CPOINT_VERSION_LABEL,
   ABOUT_HOW_IT_WORKS,
-  MANIFESTO_FULL,
-  MANIFESTO_SUMMARY_PARAS,
   type AboutHowCard,
   type AboutPillar,
 } from '../content/aboutCPoint'
@@ -67,6 +66,9 @@ function TutorialSlotBody({
   onClose: () => void
   onVideoSaved: (slotId: string, url: string) => void
 }) {
+  const { t } = useTranslation()
+  const cardTitle = t(`about_page.cards.${card.id}.title`)
+  const cardDescription = t(`about_page.cards.${card.id}.description`)
   const [pasteUrl, setPasteUrl] = useState('')
   const [saving, setSaving] = useState(false)
   const [uploadErr, setUploadErr] = useState<string | null>(null)
@@ -140,12 +142,12 @@ function TutorialSlotBody({
     return (
       <>
         <div className="flex justify-between items-center mb-3">
-          <h3 className="text-base font-semibold text-white pr-2">{card.title}</h3>
+          <h3 className="text-base font-semibold text-white pr-2">{cardTitle}</h3>
           <button type="button" className="text-xs text-[#9fb0b5] hover:text-white shrink-0" onClick={onClose}>
-            Close
+            {t('common.close')}
           </button>
         </div>
-        <p className="text-sm text-[#9fb0b5] mb-3">{card.description}</p>
+        <p className="text-sm text-[#9fb0b5] mb-3">{cardDescription}</p>
         <video src={videoUrl} controls className="w-full rounded-lg bg-black max-h-[50vh]" playsInline />
         {isAppAdmin ? (
           <p className="text-xs text-[#9fb0b5]/80 mt-3">Admin: replace by uploading again from this card on About.</p>
@@ -158,12 +160,12 @@ function TutorialSlotBody({
     return (
       <>
         <div className="flex justify-between items-center mb-3">
-          <h3 className="text-base font-semibold text-white pr-2">{card.title}</h3>
+          <h3 className="text-base font-semibold text-white pr-2">{cardTitle}</h3>
           <button type="button" className="text-xs text-[#9fb0b5] hover:text-white shrink-0" onClick={onClose}>
-            Close
+            {t('common.close')}
           </button>
         </div>
-        <p className="text-sm text-[#9fb0b5] mb-3">{card.description}</p>
+        <p className="text-sm text-[#9fb0b5] mb-3">{cardDescription}</p>
         <p className="text-sm text-white/90 mb-2">Upload a tutorial video (admin)</p>
         <label className="block mb-3">
           <span className="sr-only">Video file</span>
@@ -193,7 +195,7 @@ function TutorialSlotBody({
           className="w-full py-2 rounded-lg bg-[#4db6ac] text-black text-sm font-semibold disabled:opacity-50"
           onClick={() => void saveUrl(pasteUrl)}
         >
-          {saving ? 'Saving…' : 'Save URL'}
+          {saving ? t('account.language.saving') : t('common.save')}
         </button>
         {uploadErr ? <p className="text-xs text-red-400 mt-2">{uploadErr}</p> : null}
       </>
@@ -203,20 +205,21 @@ function TutorialSlotBody({
   return (
     <>
       <div className="flex justify-between items-center mb-3">
-        <h3 className="text-base font-semibold text-white pr-2">{card.title}</h3>
+        <h3 className="text-base font-semibold text-white pr-2">{cardTitle}</h3>
         <button type="button" className="text-xs text-[#9fb0b5] hover:text-white shrink-0" onClick={onClose}>
-          Close
+          {t('common.close')}
         </button>
       </div>
-      <p className="text-sm text-[#9fb0b5] mb-4">{card.description}</p>
+      <p className="text-sm text-[#9fb0b5] mb-4">{cardDescription}</p>
       <div className="text-center text-sm text-[#9fb0b5] py-6 border border-white/10 rounded-xl">
-        Video walkthrough coming soon.
+        {t('about_page.tutorial_soon')}
       </div>
     </>
   )
 }
 
 export default function AboutCPoint() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { setTitle } = useHeader()
   const isWeb = Capacitor.getPlatform() === 'web'
@@ -227,10 +230,13 @@ export default function AboutCPoint() {
   const [pillarOpen, setPillarOpen] = useState<AboutPillar | null>(null)
   const [slotOpen, setSlotOpen] = useState<AboutHowCard | null>(null)
 
+  const manifestoSummary = t('dashboard.about_manifesto_summary', { returnObjects: true }) as string[]
+  const manifestoFull = t('dashboard.about_manifesto_full')
+
   useEffect(() => {
-    setTitle('About C-Point')
+    setTitle(t('about_page.title'))
     return () => setTitle('')
-  }, [setTitle])
+  }, [setTitle, t])
 
   useEffect(() => {
     let cancel = false
@@ -269,19 +275,19 @@ export default function AboutCPoint() {
             <img src="/api/public/logo" alt="" className="w-12 h-12 rounded-xl object-contain shrink-0" />
             <div className="min-w-0">
               <div className="text-base font-semibold text-white">C-Point</div>
-              <div className="text-sm text-[#4db6ac]">Where communities come alive</div>
+              <div className="text-sm text-[#4db6ac]">{t('about_page.tagline')}</div>
             </div>
           </div>
           <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-[#4db6ac]/40 px-2 py-0.5 text-xs text-[#9fb0b5]">
             <span className="h-1.5 w-1.5 rounded-full bg-[#4db6ac]" />
-            Version {ABOUT_CPOINT_VERSION_LABEL}
+            {t('about_page.version', { version: ABOUT_CPOINT_VERSION_LABEL })}
           </div>
         </div>
 
         <section>
-          <div className="text-[10px] uppercase tracking-wider text-[#9fb0b5]/70 mb-1.5">C-Point manifesto</div>
+          <div className="text-[10px] uppercase tracking-wider text-[#9fb0b5]/70 mb-1.5">{t('about_page.manifesto_section')}</div>
           <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3 space-y-2">
-            {MANIFESTO_SUMMARY_PARAS.map((p, i) => (
+            {Array.isArray(manifestoSummary) && manifestoSummary.map((p, i) => (
               <p key={i} className="text-sm text-[#9fb0b5] leading-relaxed">
                 {p}
               </p>
@@ -291,20 +297,20 @@ export default function AboutCPoint() {
               className="text-sm font-medium text-[#4db6ac] hover:underline"
               onClick={() => setManifestoOpen(true)}
             >
-              Read the full manifesto
+              {t('about_page.read_full_manifesto')}
             </button>
             <button
               type="button"
               className="block text-sm text-[#9fb0b5] hover:text-[#4db6ac] mt-1"
-              onClick={() => navigate(stevePrefillUrl('I read the About C-Point manifesto — can you walk me through what this means for me?'))}
+              onClick={() => navigate(stevePrefillUrl(t('about_page.ask_steve_prefill')))}
             >
-              Ask Steve about this →
+              {t('about_page.ask_steve')}
             </button>
           </div>
         </section>
 
         <section>
-          <div className="text-base font-semibold text-white mb-2">How it works</div>
+          <div className="text-base font-semibold text-white mb-2">{t('about_page.how_it_works')}</div>
           <div className="space-y-2">
             {ABOUT_HOW_IT_WORKS.map((pillar) => (
               <button
@@ -313,8 +319,8 @@ export default function AboutCPoint() {
                 className="w-full text-left rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2.5 hover:border-white/20 transition-colors"
                 onClick={() => setPillarOpen(pillar)}
               >
-                <div className="text-sm font-medium text-white">{pillar.label}</div>
-                <div className="text-xs text-[#9fb0b5]">{pillar.subtitle}</div>
+                <div className="text-sm font-medium text-white">{t(`about_page.pillars.${pillar.id}.label`)}</div>
+                <div className="text-xs text-[#9fb0b5]">{t(`about_page.pillars.${pillar.id}.subtitle`)}</div>
               </button>
             ))}
           </div>
@@ -325,7 +331,7 @@ export default function AboutCPoint() {
           className="w-full py-2 rounded-lg border border-white/15 text-sm text-white hover:bg-white/5"
           onClick={() => navigate('/premium_dashboard')}
         >
-          Back to dashboard
+          {t('about_page.back_dashboard')}
         </button>
       </div>
 
@@ -334,28 +340,28 @@ export default function AboutCPoint() {
       {manifestoOpen ? (
         <ModalBackdrop onClose={() => setManifestoOpen(false)} wide>
           <div className="flex justify-between items-start gap-2 mb-2">
-            <h2 className="text-base font-semibold text-white">Full manifesto</h2>
+            <h2 className="text-base font-semibold text-white">{t('about_page.full_manifesto_title')}</h2>
             <button type="button" className="text-xs text-[#9fb0b5] shrink-0" onClick={() => setManifestoOpen(false)}>
-              Close
+              {t('common.close')}
             </button>
           </div>
-          <div className="whitespace-pre-wrap break-words text-sm text-[#9fb0b5] font-sans">{MANIFESTO_FULL}</div>
+          <div className="whitespace-pre-wrap break-words text-sm text-[#9fb0b5] font-sans">{manifestoFull}</div>
         </ModalBackdrop>
       ) : null}
 
       {pillarOpen ? (
         <ModalBackdrop onClose={() => setPillarOpen(null)}>
           <div className="flex justify-between items-center mb-3">
-            <h2 className="text-base font-semibold text-white">{pillarOpen.label}</h2>
+            <h2 className="text-base font-semibold text-white">{t(`about_page.pillars.${pillarOpen.id}.label`)}</h2>
             <button type="button" className="text-xs text-[#9fb0b5]" onClick={() => setPillarOpen(null)}>
-              Close
+              {t('common.close')}
             </button>
           </div>
           <div className="space-y-2">
             {pillarOpen.cards.map((c) => (
               <div key={c.id} className="rounded-lg border border-white/10 p-3">
-                <div className="text-sm font-medium text-white">{c.title}</div>
-                <div className="text-xs text-[#9fb0b5] mt-0.5">{c.description}</div>
+                <div className="text-sm font-medium text-white">{t(`about_page.cards.${c.id}.title`)}</div>
+                <div className="text-xs text-[#9fb0b5] mt-0.5">{t(`about_page.cards.${c.id}.description`)}</div>
                 <button
                   type="button"
                   className="mt-2 text-sm text-[#4db6ac] font-medium hover:underline"
@@ -364,7 +370,7 @@ export default function AboutCPoint() {
                     setSlotOpen(c)
                   }}
                 >
-                  See it in action
+                  {t('about_page.see_in_action')}
                 </button>
               </div>
             ))}

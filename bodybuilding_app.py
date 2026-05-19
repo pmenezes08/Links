@@ -22068,16 +22068,32 @@ def update_audio_summary():
 @login_required
 def translate_summary():
     """Translate an AI summary to a target language."""
-    data = request.get_json()
+    from backend.services import ai_usage as _ai_usage
+    from backend.services.entitlements_gate import check_steve_access
+    from backend.services.feature_flags import entitlements_enforcement_enabled
+
+    data = request.get_json() or {}
     summary = (data.get('summary') or '').strip()
     target_language = (data.get('target_language') or '').strip()
-    
+    context = (data.get('context') or 'voice_summary').strip().lower()
+    username = session.get('username')
+
     if not summary:
         return jsonify({'success': False, 'error': 'Summary is required'}), 400
-    
+
     if not target_language:
         return jsonify({'success': False, 'error': 'Target language is required'}), 400
-    
+
+    surface = (
+        _ai_usage.SURFACE_TRANSLATION
+        if context == 'profile'
+        else _ai_usage.SURFACE_VOICE_SUMMARY
+    )
+
+    allowed, block_payload, block_status, _ent = check_steve_access(username, surface)
+    if not allowed and entitlements_enforcement_enabled():
+        return jsonify(block_payload), block_status
+
     # Language mapping
     language_map = {
         'pt': 'European Portuguese (Portugal)',
@@ -22088,21 +22104,23 @@ def translate_summary():
         'it': 'Italian',
         'zh': 'Mandarin Chinese (Simplified)'
     }
-    
+
     target_lang_name = language_map.get(target_language)
     if not target_lang_name:
         return jsonify({'success': False, 'error': 'Invalid target language'}), 400
-    
+
     if not OPENAI_AVAILABLE:
         return jsonify({'success': False, 'error': 'Translation service not available'}), 503
-    
+
     if not OPENAI_API_KEY:
         return jsonify({'success': False, 'error': 'Translation service not configured'}), 503
-    
+
+    import time as _time
+    _started = _time.monotonic()
     try:
-        logger.info(f"Translating summary to {target_lang_name}")
+        logger.info(f"Translating summary to {target_lang_name} for {username} ({surface})")
         client = OpenAI(api_key=OPENAI_API_KEY)
-        
+
         system_prompt = f"""You are a professional translator. Translate the given text to {target_lang_name}.
 Rules:
 - Maintain the meaning and tone of the original text
@@ -22110,7 +22128,7 @@ Rules:
 - If translating to European Portuguese, use Portugal vocabulary and grammar, NOT Brazilian Portuguese
 - Keep proper names unchanged
 - Preserve any technical terms that don't need translation"""
-        
+
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -22126,17 +22144,41 @@ Rules:
             max_tokens=200,
             temperature=0.3
         )
-        
+
         translated = response.choices[0].message.content.strip()
+        usage = getattr(response, 'usage', None)
+        tokens_in = getattr(usage, 'prompt_tokens', None) if usage else None
+        tokens_out = getattr(usage, 'completion_tokens', None) if usage else None
+        elapsed_ms = int((_time.monotonic() - _started) * 1000)
+
+        _ai_usage.log_usage(
+            username,
+            surface=surface,
+            request_type='translate_summary',
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            success=True,
+            response_time_ms=elapsed_ms,
+            model='gpt-4o-mini',
+        )
         logger.info(f"Translation successful: {translated[:50]}...")
-        
+
         return jsonify({
             'success': True,
             'translated_summary': translated,
             'target_language': target_language
         })
-        
+
     except Exception as e:
+        elapsed_ms = int((_time.monotonic() - _started) * 1000)
+        _ai_usage.log_usage(
+            username,
+            surface=surface,
+            request_type='translate_summary',
+            success=False,
+            response_time_ms=elapsed_ms,
+            model='gpt-4o-mini',
+        )
         logger.error(f"Error translating summary: {str(e)}")
         return jsonify({'success': False, 'error': 'Translation failed'}), 500
 

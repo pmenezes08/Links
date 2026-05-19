@@ -31,6 +31,7 @@ import ZoomableImage from '../components/ZoomableImage'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
+import { requestTranslateSummary } from '../utils/translateSummary'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 import {
   threadsListCacheKey,
@@ -3849,14 +3850,16 @@ export default function ChatThread(){
                     setDmLangPickerId(null)
                     setDmTranslatingId(msgId)
                     try {
-                      const res = await fetch('/translate_summary', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'include',
-                        body: JSON.stringify({ summary, target_language: lang.code }),
+                      const result = await requestTranslateSummary({
+                        summary,
+                        targetLanguage: lang.code,
+                        context: 'voice_summary',
                       })
-                      const data = await res.json()
-                      if (data.success) setDmTranslations(prev => ({ ...prev, [msgId]: data.translated_summary }))
+                      if (result.ok) {
+                        setDmTranslations(prev => ({ ...prev, [msgId]: result.translated }))
+                      } else if (result.entitlementsError) {
+                        entitlementsHandler.showError(result.entitlementsError)
+                      }
                     } catch {}
                     setDmTranslatingId(null)
                   }}

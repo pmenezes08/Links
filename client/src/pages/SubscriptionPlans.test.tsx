@@ -232,6 +232,14 @@ describe('SubscriptionPlans (Personal + Community redesign)', () => {
     window.scrollTo = vi.fn()
   })
 
+  it('shows back button on entry choice modal', async () => {
+    mockFetchOnce(makePricingPayload())
+    renderPage()
+
+    expect(await screen.findByText(/What would you like to manage/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^back$/i })).toBeInTheDocument()
+  })
+
   it('renders the two top cards (Personal + Community) and hides tier details until opened', async () => {
     mockFetchOnce(makePricingPayload())
     renderPage()

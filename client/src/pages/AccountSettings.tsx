@@ -42,13 +42,13 @@ export default function AccountSettings(){
   const closeMembership = useCallback(() => setMembershipTab(null), [])
 
   // Honor /account_settings/membership and /settings/membership with optional
-  // ?tab=ai|billing|payment|notifications|plan to open the modal directly.
+  // ?tab=ai|billing|payment|plan to open the modal directly.
   useEffect(() => {
     const path = window.location.pathname
     if (!/membership/.test(path)) return
     const params = new URLSearchParams(window.location.search)
     const tab = params.get('tab') as MembershipTab | null
-    const allowed: MembershipTab[] = ['plan', 'ai', 'billing', 'payment', 'notifications']
+    const allowed: MembershipTab[] = ['plan', 'ai', 'billing', 'payment']
     const initial = tab && allowed.includes(tab) ? tab : 'plan'
     setMembershipTab(initial)
   }, [])
@@ -94,13 +94,14 @@ export default function AccountSettings(){
             }
           : null
       )
+      loadProfile({ silent: true, refresh: true })
     } catch {
       setMessage({ type: 'error', text: t('account.messages.notification_update_network') })
       setProfile(prev =>
         prev ? { ...prev, notification_show_previews: previousValue } : null
       )
     }
-  }, [])
+  }, [t])
 
   const openDeviceSettings = useCallback(async () => {
     try {
@@ -129,10 +130,12 @@ export default function AccountSettings(){
     loadProfile()
   }, [])
 
-  function loadProfile(opts?: { silent?: boolean }) {
+  function loadProfile(opts?: { silent?: boolean; refresh?: boolean }) {
     const silent = !!opts?.silent
+    const refresh = !!opts?.refresh
     if (!silent) setLoading(true)
-    fetch('/api/profile_me', { credentials: 'include', headers: { 'Accept': 'application/json' } })
+    const url = refresh ? '/api/profile_me?refresh=1' : '/api/profile_me'
+    fetch(url, { credentials: 'include', headers: { Accept: 'application/json' } })
       .then(r => r.json())
       .then(j => {
         if (j?.success && j.profile) {
@@ -407,10 +410,7 @@ export default function AccountSettings(){
                 <input
                   type="checkbox"
                   className="mt-1 h-4 w-4 shrink-0 rounded border-white/30 bg-black/40 text-[#4db6ac] [accent-color:#4db6ac] focus:ring-[#4db6ac]"
-                  checked={(() => {
-                    const raw = profile.notification_show_previews as boolean | number | string | undefined
-                    return raw !== false && raw !== 0 && raw !== '0'
-                  })()}
+                  checked={profile.notification_show_previews !== false}
                   onChange={e => {
                     const v = e.target.checked
                     const previousValue = profile.notification_show_previews

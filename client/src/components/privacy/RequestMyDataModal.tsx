@@ -1,4 +1,6 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import { useTranslation } from 'react-i18next'
 
 /**
  * Request-my-data modal.
@@ -23,6 +25,8 @@ type Props = {
 }
 
 export default function RequestMyDataModal({ open, onClose, username, accountEmail }: Props) {
+  const { t } = useTranslation()
+
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
@@ -34,30 +38,28 @@ export default function RequestMyDataModal({ open, onClose, username, accountEma
 
   if (!open) return null
 
-  const subject = 'GDPR data request'
+  const subject = t('account.privacy.request_data_modal.email_subject')
   const body = [
-    'Hi C-Point team,',
+    t('account.privacy.request_data_modal.email_greeting'),
     '',
-    'I would like to request a copy of the personal data you hold about my',
-    'C-Point account.',
+    t('account.privacy.request_data_modal.email_body'),
     '',
-    `Username: ${username || '<your C-Point username>'}`,
-    `Account email: ${accountEmail || '<email on file>'}`,
+    t('account.privacy.request_data_modal.email_username', { username: username || t('account.privacy.request_data_modal.username_placeholder') }),
+    t('account.privacy.request_data_modal.email_account_email', { email: accountEmail || t('account.privacy.request_data_modal.email_placeholder') }),
     '',
-    'Please reply to confirm receipt and let me know if you need anything',
-    'further to verify my identity.',
+    t('account.privacy.request_data_modal.email_verify'),
     '',
-    'Thanks,',
+    t('account.privacy.request_data_modal.email_thanks'),
   ].join('\n')
 
   const mailto = `mailto:${PRIVACY_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Request my data"
+      aria-label={t('account.privacy.request_data_modal.title')}
       onClick={onClose}
     >
       <div
@@ -66,16 +68,16 @@ export default function RequestMyDataModal({ open, onClose, username, accountEma
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-lg font-semibold">Request my data</h3>
+            <h3 className="text-lg font-semibold">{t('account.privacy.request_data_modal.title')}</h3>
             <p className="mt-1 text-sm text-white/60">
-              Ask us for a copy of the personal data we hold about your account.
+              {t('account.privacy.request_data_modal.subtitle')}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="rounded-md p-1 text-white/60 hover:bg-white/5 hover:text-white"
-            aria-label="Close"
+            aria-label={t('common.close')}
           >
             <i className="fa-solid fa-xmark"></i>
           </button>
@@ -84,34 +86,31 @@ export default function RequestMyDataModal({ open, onClose, username, accountEma
         <div className="mt-4 space-y-4 text-sm">
           <section className="rounded-lg border border-white/10 bg-white/5 p-3">
             <h4 className="mb-2 text-sm font-semibold text-white/80">
-              What you&rsquo;ll receive
+              {t('account.privacy.request_data_modal.included_title')}
             </h4>
             <ul className="list-disc pl-5 text-white/70 space-y-1">
-              <li>Posts, comments, messages and media you have authored.</li>
-              <li>Profile fields (username, bio, settings).</li>
-              <li>Account metadata (signup date, subscription status, login history).</li>
+              <li>{t('account.privacy.request_data_modal.included_posts')}</li>
+              <li>{t('account.privacy.request_data_modal.included_profile')}</li>
+              <li>{t('account.privacy.request_data_modal.included_metadata')}</li>
             </ul>
           </section>
 
           <section className="rounded-lg border border-white/10 bg-white/5 p-3">
             <h4 className="mb-2 text-sm font-semibold text-white/80">
-              What is not included
+              {t('account.privacy.request_data_modal.excluded_title')}
             </h4>
             <ul className="list-disc pl-5 text-white/70 space-y-1">
-              <li>Other members&rsquo; content.</li>
-              <li>Community-level data (member rosters, thread history, analytics).</li>
+              <li>{t('account.privacy.request_data_modal.excluded_members')}</li>
+              <li>{t('account.privacy.request_data_modal.excluded_community')}</li>
             </ul>
             <p className="mt-2 text-xs text-white/50">
-              See Terms &sect;7.3 and our Privacy Policy for the full scope.
+              {t('account.privacy.request_data_modal.excluded_note')}
             </p>
           </section>
 
           <section className="rounded-lg border border-[#4db6ac]/20 bg-[#4db6ac]/5 p-3">
             <p className="text-white/80">
-              Click the button below to email our Data Protection inbox. We respond
-              within <strong>{SLA_DAYS} days</strong> (GDPR Art. 12(3)); complex
-              requests may be extended by up to two further months with written
-              notice.
+              {t('account.privacy.request_data_modal.sla_body', { days: SLA_DAYS })}
             </p>
           </section>
         </div>
@@ -122,7 +121,7 @@ export default function RequestMyDataModal({ open, onClose, username, accountEma
             onClick={onClose}
             className="rounded-lg border border-white/15 px-4 py-2 text-sm text-white/80 hover:border-white/30"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <a
             href={mailto}
@@ -132,10 +131,11 @@ export default function RequestMyDataModal({ open, onClose, username, accountEma
             }}
           >
             <i className="fa-solid fa-envelope"></i>
-            Email {PRIVACY_EMAIL}
+            {t('account.privacy.request_data_modal.email_cta', { email: PRIVACY_EMAIL })}
           </a>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

@@ -663,7 +663,7 @@ export default function SubscriptionPlans() {
   )
 
   return (
-    <div className="min-h-screen bg-black text-white pt-16 pb-24">
+    <div className="glass-page min-h-screen text-white pb-safe">
       <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
         {ownerIntroFeedReturnId != null && (
           <div className="mb-6 flex flex-col gap-3 rounded-xl border border-cpoint-turquoise/40 bg-cpoint-turquoise/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -679,7 +679,7 @@ export default function SubscriptionPlans() {
             </button>
           </div>
         )}
-        <header className="text-center pt-8 pb-10">
+        <header className="text-center pt-2 pb-4">
           <p className="text-xs uppercase tracking-[0.28em] text-cpoint-turquoise/80">
             {t('subscriptions.header_kicker')}
           </p>
@@ -710,7 +710,7 @@ export default function SubscriptionPlans() {
         {loading && <PricingSkeleton />}
 
         {!loading && pricing && (
-          <div className="space-y-10">
+          <div className="space-y-6">
             <ModeHeader mode={pageMode} onChange={() => setPageMode(null)} />
             {pageMode === 'choose' && (
               <section aria-labelledby="subscriptions-heading">
@@ -876,6 +876,12 @@ function EntryChoiceModal({
   onChooseActive: () => void
 }) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
+
+  const goBack = () => {
+    if (window.history.length > 1) navigate(-1)
+    else navigate('/premium_dashboard')
+  }
 
   useEffect(() => {
     resetSubscriptionPageScroll()
@@ -894,6 +900,15 @@ function EntryChoiceModal({
       className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden bg-black/80 backdrop-blur px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 sm:px-4"
     >
       <div className="w-full sm:max-w-xl rounded-2xl border border-white/10 bg-[#070707] p-6 shadow-2xl shadow-black">
+        <button
+          type="button"
+          className="mb-4 inline-flex items-center gap-2 text-sm text-[#9fb0b5] hover:text-white"
+          onClick={goBack}
+          aria-label={t('common.back')}
+        >
+          <i className="fa-solid fa-arrow-left" />
+          {t('common.back')}
+        </button>
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cpoint-turquoise">
           {t('subscriptions.entry_kicker')}
         </p>

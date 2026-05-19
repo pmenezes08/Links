@@ -7,6 +7,8 @@ import ImageLoader from '../components/ImageLoader'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
 import { profileIndustryLabel } from '../utils/profileOptionLabel'
+import TranslateGlobeButton from '../components/TranslateGlobeButton'
+import { useEntitlements } from '../hooks/useEntitlements'
 
 type PersonalHighlight = {
   id?: string | null
@@ -126,6 +128,10 @@ export default function PublicProfile() {
   const [inviteSubmitting, setInviteSubmitting] = useState(false)
   const [inviteError, setInviteError] = useState('')
   const [inviteSuccess, setInviteSuccess] = useState('')
+  const [personalTranslated, setPersonalTranslated] = useState<string | null>(null)
+  const [professionalTranslated, setProfessionalTranslated] = useState<string | null>(null)
+  const { entitlements } = useEntitlements()
+  const canTranslateProfile = Boolean(entitlements?.can_use_steve)
   const currentUsername = useMemo(() => {
     if (!currentUser || typeof currentUser !== 'object') return ''
     const record = currentUser as Record<string, any>
@@ -171,6 +177,11 @@ export default function PublicProfile() {
       cancelled = true
     }
   }, [username, t])
+
+  useEffect(() => {
+    setPersonalTranslated(null)
+    setProfessionalTranslated(null)
+  }, [username])
 
   useEffect(() => {
     setTitle(t('profile.page_title'))
@@ -367,6 +378,19 @@ export default function PublicProfile() {
     hasStructuredEdu
   const hasInterests = interestTags.length > 0
 
+  const personalSourceText = [
+    bioText,
+    ...highlightItems.map(h => String(h.answer || '').trim()),
+  ].filter(Boolean).join('\n\n')
+
+  const professionalSourceText = [
+    professional.about ? String(professional.about).trim() : '',
+    professional.role ? `${t('profile.public.current_position')}: ${professional.role}` : '',
+    professional.company ? `${t('profile.public.company')}: ${professional.company}` : '',
+    professional.experience ? String(professional.experience).trim() : '',
+    professional.skills ? String(professional.skills).trim() : '',
+  ].filter(Boolean).join('\n\n')
+
   const resolveMediaUrl = (value?: string | null) => {
     if (!value) return null
     if (value.startsWith('http')) return value
@@ -473,7 +497,31 @@ export default function PublicProfile() {
 
         {(bioText || formattedDob || location || hasPersonalHighlights) ? (
           <section className="glass-section space-y-3">
-            <div className="font-semibold">{t('profile.personal.title')}</div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="font-semibold">{t('profile.personal.title')}</div>
+              {canTranslateProfile && personalSourceText ? (
+                <div className="flex items-center gap-1">
+                  {personalTranslated ? (
+                    <button
+                      type="button"
+                      className="text-[#4db6ac] hover:text-[#4db6ac]/80 text-xs px-1"
+                      title={t('feed.show_original')}
+                      onClick={() => setPersonalTranslated(null)}
+                    >
+                      <i className="fa-solid fa-rotate-left" />
+                    </button>
+                  ) : null}
+                  <TranslateGlobeButton
+                    text={personalSourceText}
+                    context="profile"
+                    onTranslated={setPersonalTranslated}
+                  />
+                </div>
+              ) : null}
+            </div>
+            {personalTranslated ? (
+              <p className="text-sm text-white/90 whitespace-pre-wrap leading-relaxed">{personalTranslated}</p>
+            ) : (
             <div className="space-y-2 text-sm text-white/90">
               {bioText ? (
                 <div>
@@ -512,12 +560,37 @@ export default function PublicProfile() {
                 </details>
               ) : null}
             </div>
+            )}
           </section>
         ) : null}
 
         {hasProfessional ? (
           <section className="glass-section space-y-3">
-            <div className="font-semibold">{t('profile.public.professional')}</div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="font-semibold">{t('profile.public.professional')}</div>
+              {canTranslateProfile && professionalSourceText ? (
+                <div className="flex items-center gap-1">
+                  {professionalTranslated ? (
+                    <button
+                      type="button"
+                      className="text-[#4db6ac] hover:text-[#4db6ac]/80 text-xs px-1"
+                      title={t('feed.show_original')}
+                      onClick={() => setProfessionalTranslated(null)}
+                    >
+                      <i className="fa-solid fa-rotate-left" />
+                    </button>
+                  ) : null}
+                  <TranslateGlobeButton
+                    text={professionalSourceText}
+                    context="profile"
+                    onTranslated={setProfessionalTranslated}
+                  />
+                </div>
+              ) : null}
+            </div>
+            {professionalTranslated ? (
+              <p className="text-sm text-white/90 whitespace-pre-wrap leading-relaxed">{professionalTranslated}</p>
+            ) : (
             <div className="space-y-2 text-sm text-white/90">
               {professional.about ? (
                 <div className="text-white/90 leading-relaxed whitespace-pre-wrap">
@@ -653,6 +726,7 @@ export default function PublicProfile() {
                 </a>
               ) : null}
             </div>
+            )}
           </section>
         ) : null}
 

@@ -28,6 +28,7 @@ import { SENDING_MEDIA_LABEL } from '../chat/mediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
 import { openExternalNativeLink } from '../utils/openExternalInApp'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
+import { requestTranslateSummary } from '../utils/translateSummary'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
 import {
   takePendingShareFilesOnce,
@@ -252,17 +253,17 @@ export default function GroupChatThread() {
     setShowLangPicker(null)
     setTranslatingId(msgId)
     try {
-      const res = await fetch('/translate_summary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ summary, target_language: langCode }),
+      const result = await requestTranslateSummary({
+        summary,
+        targetLanguage: langCode,
+        context: 'voice_summary',
       })
-      const data = await res.json()
-      if (data.success && data.translated_summary) {
-        setTranslations(prev => ({ ...prev, [msgId]: data.translated_summary }))
+      if (result.ok) {
+        setTranslations(prev => ({ ...prev, [msgId]: result.translated }))
+      } else if (result.entitlementsError) {
+        entitlementsHandler.showError(result.entitlementsError)
       } else {
-        console.error('Translation failed:', data.error || 'Unknown error')
+        console.error('Translation failed:', result.error || 'Unknown error')
       }
     } catch (err) {
       console.error('Translation request failed:', err)
