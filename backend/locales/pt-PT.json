@@ -92,6 +92,48 @@
     "checkout_failed": "Não foi possível iniciar o pagamento. Tenta de novo.",
     "portal_failed": "Não foi possível abrir o portal de faturação. Tenta de novo."
   },
+  "notifications": {
+    "group_feed_post": {
+      "title": "Nova publicação no grupo",
+      "body": "{author}: {preview}",
+      "message": "{author} publicou em {community}"
+    },
+    "group_feed_post_no_community": {
+      "title": "Nova publicação no grupo",
+      "body": "{author}: {preview}",
+      "message": "{author} publicou num grupo"
+    },
+    "dm_message": {
+      "title": "Nova mensagem",
+      "body": "{author}: {preview}",
+      "message": "{author} enviou-te uma mensagem"
+    },
+    "group_chat_message": {
+      "title": "Nova mensagem de grupo",
+      "body": "{author}: {preview}",
+      "message": "{author} publicou em {group}"
+    },
+    "post_reply": {
+      "title": "Nova resposta",
+      "body": "{author} respondeu à tua publicação",
+      "message": "{author} respondeu à tua publicação"
+    },
+    "post_reaction": {
+      "title": "Nova reação",
+      "body": "{author} reagiu à tua publicação",
+      "message": "{author} reagiu à tua publicação"
+    },
+    "community_invite": {
+      "title": "Tens um convite",
+      "body": "{author} convidou-te para {community}",
+      "message": "{author} convidou-te para entrares em {community}"
+    },
+    "event_reminder": {
+      "title": "Evento a aproximar-se",
+      "body": "{event_name} começa em breve",
+      "message": "Lembrete: {event_name} começa em breve"
+    }
+  },
   "communities": {
     "not_found": "Comunidade não encontrada.",
     "not_a_member": "Não és membro desta comunidade.",

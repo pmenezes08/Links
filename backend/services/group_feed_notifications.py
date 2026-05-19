@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from backend.services import notification_copy
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.notifications import (
     create_notification,
@@ -69,13 +70,14 @@ def fanout_group_post_notifications(
             except Exception as e:
                 logger.warning("group post notify name lookup failed gid=%s: %s", group_id, e)
 
-        line = (
-            f"{author_username} posted in {resolved_name}"
-            if resolved_name
-            else f"{author_username} posted in a group"
-        )
-
         cid = int(community_id) if community_id is not None else None
+
+        # Notification copy is resolved per-recipient so each member sees
+        # the message in their own saved locale (Account Settings choice)
+        # rather than the sender's session locale.
+        push_event = "group_feed_post" if resolved_name else "group_feed_post_no_community"
+        message_event = push_event
+        push_preview = preview or truncate_notification_preview(content or "", 100)
 
         for member in recipients:
             if cid is not None:
@@ -93,6 +95,22 @@ def fanout_group_post_notifications(
                         cid,
                         mute_e,
                     )
+
+            member_locale = notification_copy.recipient_locale(member)
+            line = notification_copy.in_app_text(
+                message_event,
+                member_locale,
+                author=author_username,
+                community=resolved_name or "",
+            )
+            push = notification_copy.push_payload(
+                push_event,
+                member_locale,
+                author=author_username,
+                preview=push_preview,
+                community=resolved_name or "",
+            )
+
             try:
                 create_notification(
                     member,
@@ -111,8 +129,8 @@ def fanout_group_post_notifications(
                 send_push_to_user(
                     member,
                     {
-                        "title": "New group post",
-                        "body": f"{author_username}: {preview or truncate_notification_preview(content or '', 100)}",
+                        "title": push["title"],
+                        "body": push["body"],
                         "url": post_link,
                         "tag": f"group-feed-post-{group_id}-{group_post_id}",
                     },

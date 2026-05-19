@@ -92,6 +92,48 @@
     "checkout_failed": "Could not start checkout. Please try again.",
     "portal_failed": "Could not open the billing portal. Please try again."
   },
+  "notifications": {
+    "group_feed_post": {
+      "title": "New group post",
+      "body": "{author}: {preview}",
+      "message": "{author} posted in {community}"
+    },
+    "group_feed_post_no_community": {
+      "title": "New group post",
+      "body": "{author}: {preview}",
+      "message": "{author} posted in a group"
+    },
+    "dm_message": {
+      "title": "New message",
+      "body": "{author}: {preview}",
+      "message": "{author} sent you a message"
+    },
+    "group_chat_message": {
+      "title": "New group message",
+      "body": "{author}: {preview}",
+      "message": "{author} posted in {group}"
+    },
+    "post_reply": {
+      "title": "New reply",
+      "body": "{author} replied to your post",
+      "message": "{author} replied to your post"
+    },
+    "post_reaction": {
+      "title": "New reaction",
+      "body": "{author} reacted to your post",
+      "message": "{author} reacted to your post"
+    },
+    "community_invite": {
+      "title": "You have an invitation",
+      "body": "{author} invited you to {community}",
+      "message": "{author} invited you to join {community}"
+    },
+    "event_reminder": {
+      "title": "Upcoming event",
+      "body": "{event_name} starts soon",
+      "message": "Reminder: {event_name} starts soon"
+    }
+  },
   "communities": {
     "not_found": "Community not found.",
     "not_a_member": "You're not a member of this community.",
