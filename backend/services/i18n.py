@@ -74,8 +74,14 @@ _load_lock = threading.Lock()
 # ── Locale normalisation ───────────────────────────────────────────────
 
 
-def _match_locale(raw: Optional[str]) -> Optional[str]:
-    """Return a supported locale for ``raw`` or ``None`` when unrecognised."""
+def match_locale(raw: Optional[str]) -> Optional[str]:
+    """Return a supported locale for ``raw`` or ``None`` when unrecognised.
+
+    Unlike :func:`normalize_locale` this distinguishes "unrecognised input
+    that fell back to English" from "the input is genuinely ``en``".
+    Useful when a caller needs to honour the next link in a chain (e.g.
+    ``Accept-Language`` after an unknown ``X-CPoint-Locale``).
+    """
     if not raw:
         return None
     tag = str(raw).strip().replace("_", "-").lower()
@@ -101,7 +107,7 @@ def normalize_locale(raw: Optional[str]) -> str:
     >>> normalize_locale(None)
     'en'
     """
-    matched = _match_locale(raw)
+    matched = match_locale(raw)
     return matched if matched is not None else DEFAULT_LOCALE
 
 
@@ -137,7 +143,7 @@ def parse_accept_language(header: Optional[str]) -> str:
         candidates.append((-quality, idx, tag))
     candidates.sort()
     for _q, _idx, tag in candidates:
-        loc = _match_locale(tag)
+        loc = match_locale(tag)
         if loc is not None:
             return loc
     return DEFAULT_LOCALE

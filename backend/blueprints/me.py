@@ -23,7 +23,7 @@ from urllib.parse import urlencode, urljoin
 from flask import Blueprint, jsonify, request, session
 
 from backend.services import ai_usage, auth_session, session_identity, user_billing
-from backend.services import client_ui_flags
+from backend.services import client_ui_flags, i18n, user_locale
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.entitlements import resolve_entitlements
 from backend.services.feature_flags import entitlements_enforcement_enabled
@@ -165,6 +165,71 @@ def me_entitlements():
         "entitlements": _scrub_entitlements(ent),
         "usage": usage,
         "enforcement_enabled": entitlements_enforcement_enabled(),
+    })
+
+
+# ── Locale preference ─────────────────────────────────────────────────
+#
+# Powers Account Settings → Language (and the upcoming client header
+# wrapper). See ``docs/I18N_ROADMAP.md`` for the resolution chain.
+
+
+@me_bp.route("/api/me/locale", methods=["GET"])
+def me_locale_get():
+    """Return the user's saved locale plus the locale used for *this* request."""
+    username = _session_username()
+    if not username:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    try:
+        saved = user_locale.get_preferred_locale(username)
+        active = user_locale.resolve_request_locale(request, username)
+    except Exception:
+        logger.exception("me_locale_get failed for %s", username)
+        return jsonify({"success": False, "error": "Could not resolve locale"}), 500
+
+    return jsonify({
+        "success": True,
+        "preferred_locale": saved,             # None until the user picks one
+        "active_locale": active,               # what the server is using right now
+        "available_locales": list(i18n.available_locales()),
+        "default_locale": i18n.DEFAULT_LOCALE,
+    })
+
+
+@me_bp.route("/api/me/locale", methods=["PATCH", "POST"])
+def me_locale_set():
+    """Persist the user's locale choice from Account Settings.
+
+    Request body: ``{"locale": "pt-PT"}`` to set, or ``{"locale": null}``
+    to clear and fall back to the request-chain detection.
+    """
+    username = _session_username()
+    if not username:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    raw = payload.get("locale", "__missing__")
+    if raw == "__missing__":
+        return jsonify({"success": False, "error": "locale required"}), 400
+
+    try:
+        stored = user_locale.set_preferred_locale(username, raw)
+    except ValueError as exc:
+        return jsonify({
+            "success": False,
+            "error": "unsupported_locale",
+            "detail": str(exc),
+            "available_locales": list(i18n.available_locales()),
+        }), 400
+    except Exception:
+        logger.exception("me_locale_set failed for %s", username)
+        return jsonify({"success": False, "error": "Could not save locale"}), 500
+
+    return jsonify({
+        "success": True,
+        "preferred_locale": stored,
+        "available_locales": list(i18n.available_locales()),
     })
 
 
