@@ -1,6 +1,6 @@
 {
 	"appId": "co.cpoint.app",
-	"appName": "C.Point",
+	"appName": "C-Point",
 	"webDir": "dist",
 	"server": {
 		"url": "https://cpoint-app-staging-739552904126.europe-west1.run.app",
@@ -19,29 +19,45 @@
 		"scrollEnabled": true
 	},
 	"plugins": {
+		"PushNotifications": {
+			"presentationOptions": [
+				"badge",
+				"sound",
+				"alert"
+			]
+		},
 		"Keyboard": {
 			"resize": "none",
 			"style": "dark"
 		},
 		"GoogleAuth": {
+			"clientId": "739552904126-ini3ms8voub380vij0cgq79k1dreul5h.apps.googleusercontent.com",
+			"androidClientId": "739552904126-ini3ms8voub380vij0cgq79k1dreul5h.apps.googleusercontent.com",
 			"iosClientId": "739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com",
+			"serverClientId": "739552904126-ini3ms8voub380vij0cgq79k1dreul5h.apps.googleusercontent.com",
 			"scopes": [
 				"profile",
 				"email"
 			],
 			"forceCodeForRefreshToken": false
-		}
+		},
+		"Network": {},
+		"Filesystem": {}
 	},
 	"packageClassList": [
 		"AppPlugin",
 		"DevicePlugin",
+		"FilesystemPlugin",
 		"GeolocationPlugin",
 		"KeyboardPlugin",
 		"CAPNetworkPlugin",
 		"PreferencesPlugin",
 		"PushNotificationsPlugin",
+		"SharePlugin",
 		"InAppBrowserPlugin",
+		"NativePurchasesPlugin",
 		"GoogleAuth",
+		"CapacitorCalendarPlugin",
 		"TabsBarPlugin"
 	]
 }

@@ -231,7 +231,10 @@ def send_fcm_notification(
             notification=notification,
             data=string_data,
             token=token,
-            apns=messaging.APNSConfig(payload=apns_payload)
+            android=messaging.AndroidConfig(
+                priority="high",
+            ),
+            apns=messaging.APNSConfig(payload=apns_payload),
         )
         
         # Send

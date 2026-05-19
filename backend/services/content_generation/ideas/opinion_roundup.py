@@ -222,6 +222,20 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
     elif not topic:
         raise ValueError("A topic is required for opinion roundups when topic mode is manual")
 
+    safety_prompt = ""
+    professional_advice_topic = False
+    try:
+        from backend.services.steve_platform_manual import (
+            SURFACE_CONTENT,
+            is_professional_advice_intent,
+            render_global_steve_safety_prompt,
+        )
+
+        professional_advice_topic = is_professional_advice_intent(topic)
+        safety_prompt = render_global_steve_safety_prompt(topic, surface=SURFACE_CONTENT)
+    except Exception:
+        safety_prompt = ""
+
     curated_list = ", ".join(CURATED_VIDEO_SOURCES)
     written_allowlist = ", ".join(
         sorted(d for d in OPINION_PUBLIC_DOMAINS if not d.startswith("www.") and "youtube" not in d and "youtu.be" not in d)
@@ -254,7 +268,8 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             "source_links: all URLs used (written article URL, or YouTube URL, never both). "
             "Do not put raw URLs inside hook/featured_video_summary text; URLs belong in url fields and source_links. "
             "Do not use markdown emphasis markers (** or *) in text fields — plain sentences only. "
-            f"Written-source domains when using WRITTEN PATH (non-exhaustive): {written_allowlist}."
+            f"Written-source domains when using WRITTEN PATH (non-exhaustive): {written_allowlist}. "
+            f"{safety_prompt}"
         ),
         user_prompt=(
             f"Topic: {topic}\n"
@@ -379,6 +394,13 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
 
     if not links:
         raise ValueError("No valid public opinion source links were returned")
+
+    if professional_advice_topic:
+        try:
+            from backend.services.steve_platform_manual import append_professional_disclaimer_if_needed
+            body = append_professional_disclaimer_if_needed(body, topic)
+        except Exception:
+            pass
 
     ordered_links: List[str] = []
     if featured_video_url and featured_video_url in links:

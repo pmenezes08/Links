@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useHeader } from '../contexts/HeaderContext'
 
 type Task = {
   id: number
   community_id: number
+  group_id?: number | null
   title: string
   description?: string|null
   due_date?: string|null
@@ -16,8 +18,13 @@ type Task = {
 }
 
 export default function CommunityTasks(){
+  const { t } = useTranslation()
   const { community_id } = useParams()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const groupIdRaw = searchParams.get('group_id')
+  const groupId = groupIdRaw ? parseInt(groupIdRaw, 10) : NaN
+  const groupIdOk = Number.isFinite(groupId) && groupId > 0
   const { setTitle } = useHeader()
   const [tab, setTab] = useState<'community'|'mine'|'create'>('community')
   const [communityTasks, setCommunityTasks] = useState<Task[]>([])
@@ -28,7 +35,10 @@ export default function CommunityTasks(){
   const [assignAll, setAssignAll] = useState(false)
   const [selected, setSelected] = useState<Record<string, boolean>>({})
 
-  useEffect(() => { setTitle('Tasks') }, [setTitle])
+  useEffect(() => { setTitle(t('feed.tasks')) }, [setTitle, t])
+
+  const sharedTasksLabel = groupIdOk ? t('tasks.tab_group_tasks') : t('tasks.tab_community_tasks')
+  const noSharedTasksMsg = groupIdOk ? t('tasks.empty_group_tasks') : t('tasks.empty_community_tasks')
 
   useEffect(() => {
     let mounted = true
@@ -36,38 +46,50 @@ export default function CommunityTasks(){
       if (!community_id) return
       setLoading(true)
       try{
+        const gidQ = groupIdOk ? `&group_id=${groupId}` : ''
         const [ct, mt] = await Promise.all([
-          fetch(`/api/community_tasks?community_id=${community_id}`, { credentials:'include', headers: { 'Accept': 'application/json' } }).then(r=>r.json()).catch(()=>null),
-          fetch(`/api/my_tasks?community_id=${community_id}`, { credentials:'include', headers: { 'Accept': 'application/json' } }).then(r=>r.json()).catch(()=>null),
+          fetch(`/api/community_tasks?community_id=${community_id}${gidQ}`, { credentials:'include', headers: { 'Accept': 'application/json' } }).then(r=>r.json()).catch(()=>null),
+          fetch(`/api/my_tasks?community_id=${community_id}${gidQ}`, { credentials:'include', headers: { 'Accept': 'application/json' } }).then(r=>r.json()).catch(()=>null),
         ])
         if (!mounted) return
         if (ct?.success) setCommunityTasks(ct.tasks||[])
         if (mt?.success) setMyTasks(mt.tasks||[])
-        // Load members and role from backend POST API
         try{
-          const body = new URLSearchParams({ community_id: String(community_id) })
-          const r = await fetch('/get_community_members', { method:'POST', credentials:'include', body })
-          const j = await r.json().catch(()=>null)
-          if (j?.success && Array.isArray(j.members)){
-            setMembers(j.members.map((m:any)=> ({ username:m.username })))
-            const role = String(j.current_user_role||'').toLowerCase()
-            setIsAdmin(role==='owner' || role==='admin' || role==='app_admin')
+          if (groupIdOk){
+            const r = await fetch(`/api/group_members/${groupId}`, { credentials:'include', headers: { 'Accept': 'application/json' } })
+            const j = await r.json().catch(()=>null)
+            if (j?.success && Array.isArray(j.members)){
+              setMembers(j.members.map((m:any)=> ({ username:m.username })))
+              const role = String(j.current_user_role||'').toLowerCase()
+              setIsAdmin(role==='owner' || role==='admin' || role==='app_admin')
+            }
+          } else {
+            const body = new URLSearchParams({ community_id: String(community_id) })
+            const r = await fetch('/get_community_members', { method:'POST', credentials:'include', body })
+            const j = await r.json().catch(()=>null)
+            if (j?.success && Array.isArray(j.members)){
+              setMembers(j.members.map((m:any)=> ({ username:m.username })))
+              const role = String(j.current_user_role||'').toLowerCase()
+              setIsAdmin(role==='owner' || role==='admin' || role==='app_admin')
+            }
           }
         } catch {}
       } finally { if (mounted) setLoading(false) }
     }
     load()
     return () => { mounted = false }
-  }, [community_id])
+  }, [community_id, groupId, groupIdOk])
 
-  async function toggleComplete(t: Task, checked: boolean){
-    const body = new URLSearchParams({ task_id: String(t.id), community_id: String(t.community_id), completed: checked ? 'true' : 'false' })
+  async function toggleComplete(task: Task, checked: boolean){
+    const body = new URLSearchParams({ task_id: String(task.id), community_id: String(task.community_id), completed: checked ? 'true' : 'false' })
+    if (groupIdOk) body.set('group_id', String(groupId))
     await fetch('/api/complete_task', { method:'POST', credentials:'include', body })
     // Refresh lists
     try{
+      const gidQ = groupIdOk ? `&group_id=${groupId}` : ''
       const [ct, mt] = await Promise.all([
-        fetch(`/api/community_tasks?community_id=${community_id}`, { credentials:'include', headers: { 'Accept': 'application/json' } }).then(r=>r.json()).catch(()=>null),
-        fetch(`/api/my_tasks?community_id=${community_id}`, { credentials:'include', headers: { 'Accept': 'application/json' } }).then(r=>r.json()).catch(()=>null),
+        fetch(`/api/community_tasks?community_id=${community_id}${gidQ}`, { credentials:'include', headers: { 'Accept': 'application/json' } }).then(r=>r.json()).catch(()=>null),
+        fetch(`/api/my_tasks?community_id=${community_id}${gidQ}`, { credentials:'include', headers: { 'Accept': 'application/json' } }).then(r=>r.json()).catch(()=>null),
       ])
       if (ct?.success) setCommunityTasks(ct.tasks||[])
       if (mt?.success) setMyTasks(mt.tasks||[])
@@ -78,11 +100,12 @@ export default function CommunityTasks(){
     if (!community_id) return
     const params = new URLSearchParams()
     params.append('community_id', String(community_id))
+    if (groupIdOk) params.append('group_id', String(groupId))
     const title = (form.get('title') as string||'').trim()
     const description = (form.get('description') as string||'').trim()
     const due_date = (form.get('due_date') as string||'').trim()
     const status = (form.get('status') as string||'').trim()
-    if (!title) { alert('Title is required'); return }
+    if (!title) { alert(t('tasks.title_required')); return }
     params.append('title', title)
     if (description) params.append('description', description)
     if (due_date) params.append('due_date', due_date)
@@ -93,36 +116,38 @@ export default function CommunityTasks(){
     }
     const r = await fetch('/api/create_task', { method:'POST', credentials:'include', body: params })
     const j = await r.json().catch(()=>null)
-    if (!j?.success){ alert(j?.error || 'Failed to create task'); return }
+    if (!j?.success){ alert(j?.error || t('tasks.create_failed')); return }
     setTab('community')
     setAssignAll(false)
     setSelected({})
     // Reload
     try{
+      const gidQ = groupIdOk ? `&group_id=${groupId}` : ''
       const [ct, mt] = await Promise.all([
-        fetch(`/api/community_tasks?community_id=${community_id}`, { credentials:'include', headers: { 'Accept': 'application/json' } }).then(r=>r.json()).catch(()=>null),
-        fetch(`/api/my_tasks?community_id=${community_id}`, { credentials:'include', headers: { 'Accept': 'application/json' } }).then(r=>r.json()).catch(()=>null),
+        fetch(`/api/community_tasks?community_id=${community_id}${gidQ}`, { credentials:'include', headers: { 'Accept': 'application/json' } }).then(r=>r.json()).catch(()=>null),
+        fetch(`/api/my_tasks?community_id=${community_id}${gidQ}`, { credentials:'include', headers: { 'Accept': 'application/json' } }).then(r=>r.json()).catch(()=>null),
       ])
       if (ct?.success) setCommunityTasks(ct.tasks||[])
       if (mt?.success) setMyTasks(mt.tasks||[])
     }catch{}
   }
 
-  async function deleteTask(t: Task){
+  async function deleteTask(task: Task){
     if (!community_id) return
-    if (!confirm('Delete this task?')) return
-    const body = new URLSearchParams({ task_id: String(t.id), community_id: String(community_id) })
+    if (!confirm(t('tasks.delete_confirm'))) return
+    const body = new URLSearchParams({ task_id: String(task.id), community_id: String(task.community_id) })
+    if (groupIdOk) body.set('group_id', String(groupId))
     const r = await fetch('/api/delete_task', { method:'POST', credentials:'include', body })
     const j = await r.json().catch(()=>null)
-    if (!j?.success){ alert(j?.error || 'Failed to delete'); return }
+    if (!j?.success){ alert(j?.error || t('tasks.delete_failed')); return }
     // refresh
-    setCommunityTasks(prev => prev.filter(x => x.id !== t.id))
-    setMyTasks(prev => prev.filter(x => x.id !== t.id))
+    setCommunityTasks(prev => prev.filter(x => x.id !== task.id))
+    setMyTasks(prev => prev.filter(x => x.id !== task.id))
   }
 
   function StatusPill({ s }:{ s?: Task['status'] }){
     const map:any = { not_started: 'bg-white/10 text-white', ongoing: 'bg-blue-600/20 text-blue-300', completed: 'bg-green-600/20 text-green-300' }
-    const label = s === 'completed' ? 'Completed' : s === 'ongoing' ? 'Ongoing' : 'Not started'
+    const label = s === 'completed' ? t('tasks.status_completed') : s === 'ongoing' ? t('tasks.status_ongoing') : t('tasks.status_not_started')
     return <span className={`px-2 py-0.5 rounded-full text-[10px] border border-white/10 ${map[s||'not_started']}`}>{label}</span>
   }
 
@@ -133,20 +158,20 @@ export default function CommunityTasks(){
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' }}
       >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(groupIdOk ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label={t('common.back')}>
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 h-full flex">
             <button type="button" className={`flex-1 text-center text-sm font-medium ${tab==='community' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setTab('community')}>
-              <div className="pt-2">Community Tasks</div>
+              <div className="pt-2">{sharedTasksLabel}</div>
               <div className={`h-0.5 rounded-full w-20 mx-auto mt-1 ${tab==='community' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
             </button>
             <button type="button" className={`flex-1 text-center text-sm font-medium ${tab==='mine' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setTab('mine')}>
-              <div className="pt-2">Your Tasks</div>
+              <div className="pt-2">{t('tasks.tab_your_tasks')}</div>
               <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${tab==='mine' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
             </button>
             <button type="button" className={`flex-1 text-center text-sm font-medium ${tab==='create' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setTab('create')}>
-              <div className="pt-2">Create Task</div>
+              <div className="pt-2">{t('tasks.tab_create')}</div>
               <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${tab==='create' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
             </button>
           </div>
@@ -161,26 +186,26 @@ export default function CommunityTasks(){
         }}
       >
         {loading ? (
-          <div className="text-[#9fb0b5]">Loading…</div>
+          <div className="text-[#9fb0b5]">{t('common.loading')}</div>
         ) : (
           <>
             {tab === 'community' && (
               <div className="space-y-3">
                 {communityTasks.length === 0 ? (
-                  <div className="text-[#9fb0b5]">No community tasks.</div>
-                ) : communityTasks.map(t => (
-                  <div key={t.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                  <div className="text-[#9fb0b5]">{noSharedTasksMsg}</div>
+                ) : communityTasks.map(task => (
+                  <div key={task.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
                     <div className="flex items-center gap-2">
-                      <button aria-label="Complete task" className={`w-5 h-5 rounded grid place-items-center border ${t.completed ? 'border-[#4db6ac] bg-[#4db6ac]/20' : 'border-white/20 bg-transparent'}`} onClick={()=> toggleComplete(t, !t.completed)}>
-                        <i className={`fa-solid ${t.completed ? 'fa-square-check text-[#4db6ac]' : 'fa-square text-white/60'}`} />
+                      <button aria-label={t('tasks.complete_task_aria')} className={`w-5 h-5 rounded grid place-items-center border ${task.completed ? 'border-[#4db6ac] bg-[#4db6ac]/20' : 'border-white/20 bg-transparent'}`} onClick={()=> toggleComplete(task, !task.completed)}>
+                        <i className={`fa-solid ${task.completed ? 'fa-square-check text-[#4db6ac]' : 'fa-square text-white/60'}`} />
                       </button>
-                      <div className="font-medium flex-1">{t.title}</div>
-                      <StatusPill s={t.status} />
+                      <div className="font-medium flex-1">{task.title}</div>
+                      <StatusPill s={task.status} />
                     </div>
-                    {t.description ? (<div className="text-sm text-[#cfd8dc] mt-1 whitespace-pre-wrap">{t.description}</div>) : null}
-                    <div className="text-xs text-[#9fb0b5] mt-1">{t.due_date ? `Due: ${t.due_date}` : ''}</div>
+                    {task.description ? (<div className="text-sm text-[#cfd8dc] mt-1 whitespace-pre-wrap">{task.description}</div>) : null}
+                    <div className="text-xs text-[#9fb0b5] mt-1">{task.due_date ? t('tasks.due_date', { date: task.due_date }) : ''}</div>
                     <div className="text-right mt-2">
-                      <button className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5 text-xs" onClick={()=> deleteTask(t)}>Delete</button>
+                      <button className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5 text-xs" onClick={()=> deleteTask(task)}>{t('common.delete')}</button>
                     </div>
                   </div>
                 ))}
@@ -190,20 +215,20 @@ export default function CommunityTasks(){
             {tab === 'mine' && (
               <div className="space-y-3">
                 {myTasks.length === 0 ? (
-                  <div className="text-[#9fb0b5]">No tasks assigned to you.</div>
-                ) : myTasks.map(t => (
-                  <div key={t.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                  <div className="text-[#9fb0b5]">{t('tasks.empty_my_tasks')}</div>
+                ) : myTasks.map(task => (
+                  <div key={task.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
                     <div className="flex items-center gap-2">
-                      <button aria-label="Complete task" className={`w-5 h-5 rounded grid place-items-center border ${t.completed ? 'border-[#4db6ac] bg-[#4db6ac]/20' : 'border-white/20 bg-transparent'}`} onClick={()=> toggleComplete(t, !t.completed)}>
-                        <i className={`fa-solid ${t.completed ? 'fa-square-check text-[#4db6ac]' : 'fa-square text-white/60'}`} />
+                      <button aria-label={t('tasks.complete_task_aria')} className={`w-5 h-5 rounded grid place-items-center border ${task.completed ? 'border-[#4db6ac] bg-[#4db6ac]/20' : 'border-white/20 bg-transparent'}`} onClick={()=> toggleComplete(task, !task.completed)}>
+                        <i className={`fa-solid ${task.completed ? 'fa-square-check text-[#4db6ac]' : 'fa-square text-white/60'}`} />
                       </button>
-                      <div className="font-medium flex-1">{t.title}</div>
-                      <StatusPill s={t.status} />
+                      <div className="font-medium flex-1">{task.title}</div>
+                      <StatusPill s={task.status} />
                     </div>
-                    {t.description ? (<div className="text-sm text-[#cfd8dc] mt-1 whitespace-pre-wrap">{t.description}</div>) : null}
-                    <div className="text-xs text-[#9fb0b5] mt-1">{t.due_date ? `Due: ${t.due_date}` : ''}</div>
+                    {task.description ? (<div className="text-sm text-[#cfd8dc] mt-1 whitespace-pre-wrap">{task.description}</div>) : null}
+                    <div className="text-xs text-[#9fb0b5] mt-1">{task.due_date ? t('tasks.due_date', { date: task.due_date }) : ''}</div>
                     <div className="text-right mt-2">
-                      <button className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5 text-xs" onClick={()=> deleteTask(t)}>Delete</button>
+                      <button className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5 text-xs" onClick={()=> deleteTask(task)}>{t('common.delete')}</button>
                     </div>
                   </div>
                 ))}
@@ -212,35 +237,35 @@ export default function CommunityTasks(){
 
             {tab === 'create' && (
               <form className="rounded-2xl border border-white/10 p-3 bg-white/[0.035] space-y-3" onSubmit={(e)=> { e.preventDefault(); createTask(new FormData(e.currentTarget)) }}>
-                <div className="text-sm font-medium">Create Task</div>
-                <label className="text-xs text-[#9fb0b5]">Title
-                  <input name="title" placeholder="Task title" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required />
+                <div className="text-sm font-medium">{t('tasks.create_heading')}</div>
+                <label className="text-xs text-[#9fb0b5]">{t('tasks.title_label')}
+                  <input name="title" placeholder={t('tasks.title_placeholder')} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required />
                 </label>
-                <label className="text-xs text-[#9fb0b5]">Description
-                  <textarea name="description" placeholder="Task description" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[80px]" />
+                <label className="text-xs text-[#9fb0b5]">{t('tasks.description_label')}
+                  <textarea name="description" placeholder={t('tasks.description_placeholder')} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[80px]" />
                 </label>
                 <div className="grid grid-cols-2 gap-2">
-                  <label className="text-xs text-[#9fb0b5]">Due date
+                  <label className="text-xs text-[#9fb0b5]">{t('tasks.due_date_label')}
                     <input name="due_date" type="date" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
                   </label>
-                  <label className="text-xs text-[#9fb0b5]">Status
+                  <label className="text-xs text-[#9fb0b5]">{t('tasks.status_label')}
                     <select name="status" defaultValue="not_started" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none">
-                      <option value="not_started">Not started</option>
-                      <option value="ongoing">Ongoing</option>
-                      <option value="completed">Completed</option>
+                      <option value="not_started">{t('tasks.status_not_started')}</option>
+                      <option value="ongoing">{t('tasks.status_ongoing')}</option>
+                      <option value="completed">{t('tasks.status_completed')}</option>
                     </select>
                   </label>
                 </div>
                 {isAdmin ? (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <button type="button" className={`px-2 py-1 rounded-md border text-xs hover:bg-white/5 ${assignAll ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-white/10'}`} onClick={()=> setAssignAll(v=> { const nv=!v; if(nv){ setSelected({}) } return nv })}>Assign to entire community</button>
-                      {!assignAll && <span className="text-xs text-[#9fb0b5]">or select members:</span>}
+                      <button type="button" className={`px-2 py-1 rounded-md border text-xs hover:bg-white/5 ${assignAll ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-white/10'}`} onClick={()=> setAssignAll(v=> { const nv=!v; if(nv){ setSelected({}) } return nv })}>{groupIdOk ? t('tasks.assign_entire_group') : t('tasks.assign_entire_community')}</button>
+                      {!assignAll && <span className="text-xs text-[#9fb0b5]">{t('tasks.or_select_members')}</span>}
                     </div>
                     {!assignAll && (
                       <div className="max-h-40 overflow-y-auto border border-white/10 rounded-md p-2 space-y-1">
                         {members.length === 0 ? (
-                          <div className="text-sm text-[#9fb0b5]">No members</div>
+                          <div className="text-sm text-[#9fb0b5]">{t('tasks.no_members')}</div>
                         ) : members.map(m => (
                           <label key={m.username} className="flex items-center justify-between gap-2 py-1 px-2 rounded hover:bg-white/5 cursor-pointer">
                             <span className="text-sm">{m.username}</span>
@@ -258,10 +283,10 @@ export default function CommunityTasks(){
                     )}
                   </div>
                 ) : (
-                  <div className="text-xs text-[#9fb0b5]">You are not an admin. The task will be assigned to you.</div>
+                  <div className="text-xs text-[#9fb0b5]">{t('tasks.not_admin_hint')}</div>
                 )}
                 <div className="flex justify-end">
-                  <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">Create</button>
+                  <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">{t('tasks.create_button')}</button>
                 </div>
               </form>
             )}

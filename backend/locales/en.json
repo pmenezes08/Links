@@ -1,0 +1,256 @@
+{
+  "_meta": {
+    "locale": "en",
+    "name": "English",
+    "description": "Default catalog. Source of truth for all keys."
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "retry": "Try again",
+    "loading": "Loading...",
+    "ok": "OK",
+    "close": "Close",
+    "yes": "Yes",
+    "no": "No",
+    "back": "Back",
+    "next": "Next",
+    "done": "Done"
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again.",
+    "network": "Network error. Please check your connection and try again.",
+    "server": "Server error. Please try again in a moment.",
+    "not_found": "Not found.",
+    "forbidden": "You don't have access to that.",
+    "rate_limited": "Too many requests. Please slow down and try again."
+  },
+  "auth": {
+    "authentication_required": "Authentication required",
+    "invalid_credentials": "Invalid username or password.",
+    "user_not_found": "User not found",
+    "signup": {
+      "missing_required_fields": "All required fields must be filled.",
+      "passwords_do_not_match": "Passwords do not match.",
+      "password_too_short": "Password must be at least 6 characters long.",
+      "invalid_email": "Please enter a valid email address.",
+      "disposable_email_blocked": "This email provider isn't supported. Please use a permanent email address (not a disposable / temporary one).",
+      "email_already_registered": "Email already registered.",
+      "invalid_username": "Invalid username.",
+      "username_taken": "Username already taken.",
+      "email_does_not_match_invitation": "Email does not match invitation.",
+      "registration_failed": "An error occurred during registration. Please try again."
+    },
+    "server_error": "Server error. Please try again."
+  },
+  "entitlements": {
+    "premium_required": {
+      "message": "Premium unlocks Steve in DM, feed, and eligible chats — up to {steve_uses_per_month} Steve conversations per month and {whisper_minutes_per_month} minutes of voice-note summaries each billing cycle.",
+      "cta_label": "Upgrade to Premium"
+    },
+    "daily_cap": {
+      "message": "You've hit today's Steve limit of {ai_daily_limit} calls. It resets at {resets_at_daily}.",
+      "cta_label": "See my usage"
+    },
+    "monthly_steve_cap": {
+      "message": "You've used all {steve_uses_per_month} Steve calls for this month. They reset on {resets_at_monthly}.",
+      "cta_label": "See my usage"
+    },
+    "monthly_whisper_cap": {
+      "message": "You've used all {whisper_minutes_per_month} minutes of voice-note summaries this month. They reset on {resets_at_monthly}.",
+      "cta_label": "See my usage"
+    },
+    "community_pool_exhausted": {
+      "message": "This community's shared Steve pool is empty for this month. Premium members can still use their personal allowance.",
+      "cta_label": "Upgrade to Premium"
+    },
+    "rpm_exceeded": {
+      "message": "You're sending requests too fast — slow down for a moment and try again.",
+      "cta_label": "OK"
+    },
+    "hpm_exceeded": {
+      "message": "You've hit the hourly rate limit. Try again in a little while.",
+      "cta_label": "OK"
+    },
+    "special_technical_cap": {
+      "message": "You've hit a technical safety cap. This protects the platform against runaway usage — it'll clear shortly.",
+      "cta_label": "See my usage"
+    },
+    "community_suspended": {
+      "message": "This community is currently suspended. Steve features are paused until the community is reinstated.",
+      "cta_label": "Contact support"
+    },
+    "grace_expired": {
+      "message": "Your Enterprise seat has ended. Subscribe to Premium to keep using Steve.",
+      "cta_label": "Subscribe to Premium"
+    }
+  },
+  "billing": {
+    "premium_required": "Premium subscription required!",
+    "subscription_active": "Your subscription is active.",
+    "subscription_inactive": "You don't have an active subscription.",
+    "checkout_failed": "Could not start checkout. Please try again.",
+    "portal_failed": "Could not open the billing portal. Please try again."
+  },
+  "chat": {
+    "dm": {
+      "other_username_required": "Other user is required.",
+      "message_id_and_url_required": "message_id and media_url are required.",
+      "invalid_message_id": "Invalid message id.",
+      "message_not_found": "Message not found.",
+      "edit_own_only": "You can only edit your own attachments.",
+      "nothing_to_remove": "Nothing to remove.",
+      "attachment_not_found": "Attachment not found.",
+      "failed_to_delete_chat": "Could not delete this chat.",
+      "failed_to_update_message": "Could not update this message."
+    },
+    "audio": {
+      "no_audio_uploaded": "No audio file uploaded.",
+      "no_audio_selected": "No audio file selected.",
+      "save_failed": "Could not save the audio file.",
+      "upload_failed": "Could not upload the audio file."
+    }
+  },
+  "onboarding": {
+    "validation": {
+      "no_text": "Please provide some text.",
+      "no_location": "Please tell us where you're based.",
+      "no_field": "No field specified.",
+      "no_answers": "No answers provided.",
+      "parent_name_required": "Community name is required.",
+      "user_not_found": "User not found."
+    },
+    "deferral": {
+      "unavailable": "Deferral is not available right now.",
+      "save_failed": "Could not defer onboarding. Please try again.",
+      "forbidden": "You can't defer onboarding right now.",
+      "reminders_failed": "Could not schedule onboarding reminders."
+    },
+    "hints": {
+      "tier_load_failed": "Unable to load tier hints right now."
+    }
+  },
+  "email": {
+    "common": {
+      "go_to_c_point": "Go to C-Point",
+      "footer_thanks": "Thanks for being part of C-Point."
+    },
+    "invite_existing_user": {
+      "subject": "{inviter} added you to {community} on C-Point",
+      "heading": "You've Been Added!",
+      "lead_html": "<strong>{inviter}</strong> has added you to <strong>{community}</strong> on C-Point.",
+      "lead_text": "{inviter} has added you to {community} on C-Point.",
+      "secondary": "You can now access this community and start connecting with other members.",
+      "nested_heading": "You're also joining"
+    },
+    "invite_new_user": {
+      "subject": "You're invited to join {community} on C-Point",
+      "heading": "Welcome to C-Point",
+      "lead_html": "You have been invited to join <strong>{community}</strong> by <strong>{inviter}</strong>.",
+      "lead_text": "You have been invited to join {community} by {inviter}.",
+      "cta": "Join {community}",
+      "nested_heading": "You'll also join"
+    }
+  },
+  "notifications": {
+    "group_feed_post": {
+      "title": "New group post",
+      "body": "{author}: {preview}",
+      "message": "{author} posted in {community}"
+    },
+    "group_feed_post_no_community": {
+      "title": "New group post",
+      "body": "{author}: {preview}",
+      "message": "{author} posted in a group"
+    },
+    "dm_message": {
+      "title": "New message",
+      "body": "{author}: {preview}",
+      "message": "{author} sent you a message"
+    },
+    "group_chat_message": {
+      "title": "New group message",
+      "body": "{author}: {preview}",
+      "message": "{author} posted in {group}"
+    },
+    "group_chat_mention": {
+      "title": "{group} — Mention",
+      "body": "{author} mentioned you: {preview}",
+      "message": "{author} mentioned you in {group}"
+    },
+    "dm_photo": {
+      "title": "New photo",
+      "body": "{author}: {preview}",
+      "message": "{author} sent you a photo"
+    },
+    "dm_video": {
+      "title": "New video",
+      "body": "{author}: {preview}",
+      "message": "{author} sent you a video"
+    },
+    "dm_voice": {
+      "title": "New voice message",
+      "body": "{author}: {preview}",
+      "message": "{author} sent you a voice message"
+    },
+    "dm_media": {
+      "title": "New media",
+      "body": "{author}: {preview}",
+      "message": "{author} sent you media"
+    },
+    "dm_reaction": {
+      "title": "New reaction",
+      "body": "{author} reacted to your message",
+      "message": "{author} reacted to your message"
+    },
+    "community_reply": {
+      "title": "New reply",
+      "body": "{author} replied to your post",
+      "message": "{author} replied to your post"
+    },
+    "group_feed_reply": {
+      "title": "New reply",
+      "body": "{author} replied to your post",
+      "message": "{author} replied to your post"
+    },
+    "post_reply": {
+      "title": "New reply",
+      "body": "{author} replied to your post",
+      "message": "{author} replied to your post"
+    },
+    "post_reaction": {
+      "title": "New reaction",
+      "body": "{author} reacted to your post",
+      "message": "{author} reacted to your post"
+    },
+    "community_invite": {
+      "title": "You have an invitation",
+      "body": "{author} invited you to {community}",
+      "message": "{author} invited you to join {community}"
+    },
+    "event_reminder": {
+      "title": "Upcoming event",
+      "body": "{event_name} starts soon",
+      "message": "Reminder: {event_name} starts soon"
+    }
+  },
+  "communities": {
+    "not_found": "Community not found.",
+    "not_a_member": "You're not a member of this community.",
+    "admin_required": "Only community owners or admins can do that.",
+    "invite": {
+      "user_not_found": "User not found.",
+      "cannot_invite_self": "You can't invite yourself.",
+      "already_member": "This user is already a member of this community.",
+      "root_only": "Invites can only be created from root communities.",
+      "invite_sent": "Invitation sent.",
+      "invite_revoked": "Invitation revoked."
+    },
+    "join": {
+      "joined": "Welcome to {community_name}!",
+      "expired_invite": "This invitation has expired.",
+      "used_invite": "This invitation has already been used.",
+      "invalid_invite": "This invitation is not valid."
+    }
+  }
+}

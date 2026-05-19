@@ -7,6 +7,7 @@ import json
 import re
 import os
 import threading
+import time
 from datetime import datetime
 from functools import wraps
 
@@ -15,9 +16,13 @@ from werkzeug.utils import secure_filename
 
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.media import save_uploaded_file
-from backend.services import ai_usage
-from backend.services.entitlements_gate import gate_or_reason
+from backend.services import ai_usage, api_errors, auth_session, session_identity
+from backend.services.entitlements_gate import gate_or_reason, check_steve_access
 from backend.services.feature_flags import entitlements_enforcement_enabled
+from backend.services.steve_community_config import get_paid_steve_package_config
+from backend.services.steve_dm_typing import clear_group_typing, is_group_typing, mark_group_typing
+from backend.services.steve_tool_policy import steve_tool_names_for_log
+from backend.services.steve_tool_router import resolve_steve_hosted_tools
 
 # Allowed extensions for chat uploads
 # Include HEIC/HEIF for iOS devices
@@ -31,9 +36,10 @@ MAX_GROUP_MEMBERS = 5
 AI_USERNAME = 'steve'
 XAI_API_KEY = os.getenv('XAI_API_KEY', '')
 
-# Track when Steve is typing (in-memory, per group_id)
-# Format: {group_id: timestamp_when_started}
-_steve_typing_status: dict[int, float] = {}
+
+@group_chat_bp.after_request
+def _no_store_user_scoped_responses(response):
+    return auth_session.no_store(response)
 
 
 def _public_profile_picture_url(picture_rel):
@@ -121,7 +127,7 @@ def _login_required(view_func):
 
     @wraps(view_func)
     def wrapper(*args, **kwargs):
-        if "username" not in session:
+        if not session_identity.valid_session_username(session):
             return jsonify({"success": False, "error": "Login required"}), 401
         return view_func(*args, **kwargs)
 
@@ -263,6 +269,35 @@ def _ensure_group_message_reactions_table(cursor):
             logger.info("Created group_message_reactions table")
         except Exception as e:
             logger.warning(f"Could not create group_message_reactions table: {e}")
+
+
+def _merge_user_group_message_reactions(cursor, messages, username, ph):
+    """Load current user's rows from group_message_reactions and set msg['reaction'] (mutates messages)."""
+    if not messages:
+        return
+    message_ids = [msg["id"] for msg in messages if msg.get("id")]
+    if not message_ids:
+        return
+    _ensure_group_message_reactions_table(cursor)
+    try:
+        placeholders = ",".join([ph] * len(message_ids))
+        cursor.execute(
+            f"""
+            SELECT message_id, reaction FROM group_message_reactions
+            WHERE message_id IN ({placeholders}) AND username = {ph}
+        """,
+            (*message_ids, username),
+        )
+        user_reactions = {}
+        for r in cursor.fetchall():
+            msg_id = r["message_id"] if hasattr(r, "keys") else r[0]
+            reaction_emoji = r["reaction"] if hasattr(r, "keys") else r[1]
+            user_reactions[msg_id] = reaction_emoji
+        for msg in messages:
+            msg["reaction"] = user_reactions.get(msg["id"])
+        logger.debug(f"Loaded {len(user_reactions)} reactions for user {username}")
+    except Exception as e:
+        logger.warning(f"Could not fetch reactions: {e}")
 
 
 def _ensure_community_id_column(cursor):
@@ -895,6 +930,11 @@ def get_group_messages(group_id: int):
     """Get messages for a group chat."""
     username = session["username"]
     before_id = request.args.get("before_id", type=int)
+    since_id = request.args.get("since_id", type=int)
+    if before_id:
+        since_id = None
+    elif since_id is not None and since_id <= 0:
+        since_id = None
     limit = min(request.args.get("limit", 50, type=int), 100)
     
     # --- Firestore dual-read ---
@@ -915,7 +955,12 @@ def get_group_messages(group_id: int):
                 pass
 
             messages = fs_get_gcm(
-                group_id, username, before_id=before_id, limit=limit, min_id_exclusive=cleared_fs
+                group_id,
+                username,
+                before_id=before_id,
+                since_id=since_id if since_id and since_id > 0 else None,
+                limit=limit,
+                min_id_exclusive=cleared_fs,
             )
             messages = _enrich_group_message_profile_pictures(messages)
             logger.info(f"Firestore group chat read: {len(messages)} messages for group {group_id}")
@@ -928,6 +973,7 @@ def get_group_messages(group_id: int):
                         with get_db_connection() as _conn:
                             _c = _conn.cursor()
                             _ph = get_sql_placeholder()
+                            _merge_user_group_message_reactions(_c, messages, username, _ph)
                             from backend.services.database import USE_MYSQL as _USE_MYSQL
                             if _USE_MYSQL:
                                 _c.execute(f"""
@@ -949,14 +995,8 @@ def get_group_messages(group_id: int):
                 except Exception as rr_err:
                     logger.warning(f"Failed to update read receipt on Firestore path: {rr_err}")
             
-            # Steve typing status (stored in-memory, not Firestore)
-            import time as _time
-            _steve_typing = False
-            if group_id in _steve_typing_status:
-                if _time.time() - _steve_typing_status[group_id] < 30:
-                    _steve_typing = True
-                else:
-                    del _steve_typing_status[group_id]
+            # Steve typing status is stored in Redis/in-memory cache, not Firestore.
+            _steve_typing = is_group_typing(group_id)
             return jsonify({"success": True, "messages": messages, "has_more": len(messages) == limit, "steve_is_typing": _steve_typing})
     except Exception as fs_err:
         logger.warning(f"Firestore group chat read failed, falling back to MySQL: {fs_err}")
@@ -996,6 +1036,16 @@ def get_group_messages(group_id: int):
                     ORDER BY m.created_at DESC
                     LIMIT {ph}
                 """, (group_id, before_id) + cleared_param + (limit,))
+            elif since_id and since_id > 0:
+                c.execute(f"""
+                    SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.client_key, m.created_at,
+                           up.profile_picture, m.is_edited, m.audio_summary
+                    FROM group_chat_messages m
+                    LEFT JOIN user_profiles up ON m.sender_username = up.username
+                    WHERE m.group_id = {ph} AND m.id > {ph} AND m.is_deleted = 0{cleared_sql}
+                    ORDER BY m.id ASC
+                    LIMIT {ph}
+                """, (group_id, since_id) + cleared_param + (limit,))
             else:
                 c.execute(f"""
                     SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.client_key, m.created_at,
@@ -1008,7 +1058,6 @@ def get_group_messages(group_id: int):
                 """, (group_id,) + cleared_param + (limit,))
             
             messages = []
-            message_ids = []
             for row in c.fetchall():
                 # Parse media_paths JSON if present
                 media_paths_raw = row["media_paths"] if hasattr(row, "keys") else row[6]
@@ -1043,31 +1092,8 @@ def get_group_messages(group_id: int):
                     "reaction": None,  # Will be filled below
                 }
                 messages.append(msg_data)
-                message_ids.append(msg_id)
             
-            # Fetch reactions for all messages in batch
-            if message_ids:
-                try:
-                    # Get current user's reactions
-                    placeholders = ','.join([ph] * len(message_ids))
-                    c.execute(f"""
-                        SELECT message_id, reaction FROM group_message_reactions
-                        WHERE message_id IN ({placeholders}) AND username = {ph}
-                    """, (*message_ids, username))
-                    user_reactions = {}
-                    for r in c.fetchall():
-                        # Handle both DictCursor (MySQL) and tuple (SQLite) results
-                        msg_id = r["message_id"] if hasattr(r, "keys") else r[0]
-                        reaction_emoji = r["reaction"] if hasattr(r, "keys") else r[1]
-                        user_reactions[msg_id] = reaction_emoji
-                    
-                    # Update messages with reactions
-                    for msg in messages:
-                        msg["reaction"] = user_reactions.get(msg["id"])
-                    
-                    logger.debug(f"Loaded {len(user_reactions)} reactions for user {username}")
-                except Exception as e:
-                    logger.warning(f"Could not fetch reactions: {e}")
+            _merge_user_group_message_reactions(c, messages, username, ph)
             
             # Update read receipt
             if messages:
@@ -1092,20 +1118,13 @@ def get_group_messages(group_id: int):
                     """, (group_id, username, max_id, now, max_id, now))
                 conn.commit()
             
-            # Reverse to show oldest first
-            messages.reverse()
+            # Reverse to show oldest first (full page and before_id are fetched DESC; since_id is ASC)
+            if not (since_id and since_id > 0):
+                messages.reverse()
             messages = _enrich_group_message_profile_pictures(messages)
             
-            # Check if Steve is typing (with 30 second timeout)
-            import time
-            steve_is_typing = False
-            if group_id in _steve_typing_status:
-                elapsed = time.time() - _steve_typing_status[group_id]
-                if elapsed < 30:  # Typing indicator expires after 30 seconds
-                    steve_is_typing = True
-                else:
-                    # Clean up stale typing status
-                    del _steve_typing_status[group_id]
+            # Check if Steve is typing (short-lived cache flag with TTL)
+            steve_is_typing = is_group_typing(group_id)
             
             return jsonify({
                 "success": True, 
@@ -1223,11 +1242,11 @@ def upload_voice_message():
     username = session["username"]
     
     if 'audio' not in request.files:
-        return jsonify({'success': False, 'error': 'No audio uploaded'}), 400
+        return api_errors.error_response("chat.audio.no_audio_uploaded", 400)
     
     audio = request.files['audio']
     if audio.filename == '':
-        return jsonify({'success': False, 'error': 'No audio selected'}), 400
+        return api_errors.error_response("chat.audio.no_audio_selected", 400)
     
     try:
         # Save audio file using media service
@@ -1239,14 +1258,14 @@ def upload_voice_message():
         
         if not stored_path:
             logger.error(f"Failed to save voice message: filename={audio.filename}, mimetype={audio.mimetype}")
-            return jsonify({'success': False, 'error': 'Failed to save audio'}), 400
+            return api_errors.error_response("chat.audio.save_failed", 400)
         
         logger.info(f"Voice message uploaded: {stored_path} by {username}")
         return jsonify({'success': True, 'audio_path': stored_path})
         
     except Exception as e:
         logger.error(f"Error uploading voice message: {e}")
-        return jsonify({'success': False, 'error': 'Failed to upload audio'}), 500
+        return api_errors.error_response("chat.audio.upload_failed", 500)
 
 
 @group_chat_bp.route("/api/group_chat/<int:group_id>/send_media", methods=["POST"])
@@ -1633,26 +1652,34 @@ def send_group_message(group_id: int):
                 conn.commit()
             except Exception as notif_batch_err:
                 logger.warning(f"Failed to send group message notifications: {notif_batch_err}")
-            
-            # Check if @Steve is mentioned - trigger AI response in background
-            if message_text and re.search(r'@steve\b', message_text, re.IGNORECASE) and username != AI_USERNAME:
-                try:
-                    # Set Steve typing indicator
-                    import time
-                    _steve_typing_status[group_id] = time.time()
-                    
-                    # Run Steve's response in a background thread to not block the request
-                    thread = threading.Thread(
-                        target=_trigger_steve_group_reply,
-                        args=(group_id, group_name, message_text, username, message_id)
+
+            try:
+                c.execute(f"SELECT name FROM group_chats WHERE id = {ph}", (group_id,))
+                gn_row = c.fetchone()
+                steve_group_name = (
+                    (gn_row["name"] if hasattr(gn_row, "keys") else gn_row[0])
+                    if gn_row
+                    else "Group"
+                )
+            except Exception:
+                steve_group_name = "Group"
+
+            group_community_id = None
+            try:
+                c.execute(f"SELECT community_id FROM group_chats WHERE id = {ph}", (group_id,))
+                gid_row = c.fetchone()
+                if gid_row:
+                    gc_raw = (
+                        gid_row["community_id"]
+                        if hasattr(gid_row, "keys")
+                        else gid_row[0]
                     )
-                    thread.daemon = True
-                    thread.start()
-                    logger.info(f"Triggered Steve reply for group {group_id}")
-                except Exception as steve_err:
-                    logger.warning(f"Failed to trigger Steve reply: {steve_err}")
-            
-            return jsonify({
+                    if gc_raw is not None:
+                        group_community_id = int(gc_raw)
+            except Exception:
+                group_community_id = None
+
+            send_payload: dict = {
                 "success": True,
                 "message": {
                     "id": message_id,
@@ -1665,8 +1692,46 @@ def send_group_message(group_id: int):
                     "client_key": client_key,
                     "created_at": now,
                     "profile_picture": profile_picture,
-                }
-            })
+                },
+            }
+
+            # Check if @Steve is mentioned - trigger AI response in background
+            if message_text and re.search(r'@steve\b', message_text, re.IGNORECASE) and username != AI_USERNAME:
+                start_group_steve_thread = True
+                if entitlements_enforcement_enabled():
+                    try:
+                        _allowed_g, _g_ent_payload, _, _ = check_steve_access(
+                            username,
+                            ai_usage.SURFACE_GROUP,
+                            community_id=group_community_id,
+                        )
+                        if not _allowed_g:
+                            send_payload["entitlements_error"] = _g_ent_payload
+                            start_group_steve_thread = False
+                            logger.info(
+                                "Steve group reply skipped (entitlements): user=%s group=%s reason=%s",
+                                username,
+                                group_id,
+                                (_g_ent_payload or {}).get("reason"),
+                            )
+                    except Exception as g_gate_err:
+                        logger.warning("Group Steve entitlement preflight failed (non-fatal): %s", g_gate_err)
+
+                if start_group_steve_thread:
+                    try:
+                        mark_group_typing(group_id)
+
+                        thread = threading.Thread(
+                            target=_trigger_steve_group_reply,
+                            args=(group_id, steve_group_name, message_text, username, message_id),
+                        )
+                        thread.daemon = True
+                        thread.start()
+                        logger.info(f"Triggered Steve reply for group {group_id}")
+                    except Exception as steve_err:
+                        logger.warning(f"Failed to trigger Steve reply: {steve_err}")
+
+            return jsonify(send_payload)
             
     except Exception as e:
         logger.error(f"Error sending message to group {group_id}: {e}")
@@ -1680,14 +1745,27 @@ def _send_group_message_notification(cursor, ph, recipient_username: str, sender
     They only appear as push notifications and affect the chat icon unread count.
     """
     from backend.services.database import USE_MYSQL
+    from backend.services.notifications import push_privacy_summary, send_push_to_user
     
     # Determine push content based on whether it's a mention
     if is_mention:
         push_title = f"{group_name} - Mention"
         push_body = f"{sender_username} mentioned you: {message_preview}"
+        summary_body = push_privacy_summary(
+            recipient_username,
+            "group_chat_mention",
+            author=sender_username,
+            group=group_name,
+        )
     else:
         push_title = group_name
         push_body = f"{sender_username}: {message_preview}"
+        summary_body = push_privacy_summary(
+            recipient_username,
+            "group_chat_message",
+            author=sender_username,
+            group=group_name,
+        )
     
     # Check if recipient is actively viewing this group chat (suppress push if so)
     should_push = True
@@ -1733,6 +1811,7 @@ def _send_group_message_notification(cursor, ph, recipient_username: str, sender
                 {
                     "title": push_title,
                     "body": push_body,
+                    "summary_body": summary_body,
                     "url": f"/group_chat/{group_id}",
                     "tag": f"group-{group_id}-msg"
                 }
@@ -2043,6 +2122,54 @@ def group_video_upload_url(group_id: int):
     return jsonify({"success": True, "upload_url": upload_url, "key": key, "public_url": public_url})
 
 
+@group_chat_bp.route("/api/group_chat/<int:group_id>/image_upload_url", methods=["POST"])
+@_login_required
+def group_image_upload_url(group_id: int):
+    """Presigned PUT for group chat images — same pattern as video_upload_url."""
+    username = session["username"]
+
+    try:
+        from backend.services.r2_storage import R2_ENABLED, R2_PUBLIC_URL, generate_presigned_upload_url, get_content_type
+    except ImportError:
+        return jsonify({"success": False, "error": "Direct upload not available"}), 503
+
+    if not R2_ENABLED or not R2_PUBLIC_URL:
+        return jsonify({"success": False, "error": "Direct upload not available"}), 503
+
+    data = request.get_json() or {}
+    filename = (data.get("filename") or "photo.jpg").strip()
+    content_type = (data.get("content_type") or get_content_type(filename)).strip()
+
+    if not content_type.startswith("image/"):
+        return jsonify({"success": False, "error": "Invalid image type"}), 400
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT 1 FROM group_chat_members WHERE group_id = {ph} AND username = {ph}", (group_id, username))
+            if not c.fetchone():
+                return jsonify({"success": False, "error": "Access denied"}), 403
+    except Exception as e:
+        logger.error(f"group_image_upload_url membership check: {e}")
+        return jsonify({"success": False, "error": "Server error"}), 500
+
+    from datetime import datetime as _dt
+    ts = _dt.now().strftime("%Y%m%d_%H%M%S")
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+    if ext not in ("png", "jpg", "jpeg", "webp", "gif"):
+        ext = "jpg"
+    name = (filename.rsplit(".", 1)[0] if "." in filename else "photo")[:50]
+    key = f"message_photos/{name}_{ts}.{ext}"
+
+    upload_url = generate_presigned_upload_url(key, content_type)
+    if not upload_url:
+        return jsonify({"success": False, "error": "Failed to generate upload URL"}), 500
+
+    public_url = f"{R2_PUBLIC_URL.rstrip('/')}/{key}"
+    return jsonify({"success": True, "upload_url": upload_url, "key": key, "public_url": public_url})
+
+
 @group_chat_bp.route("/api/group_chat/<int:group_id>/steve_personality", methods=["GET", "POST"])
 @_login_required
 def group_steve_personality(group_id: int):
@@ -2166,6 +2293,119 @@ def delete_group_message(group_id: int, message_id: int):
     except Exception as e:
         logger.error(f"Error deleting message {message_id} in group {group_id}: {e}")
         return jsonify({"success": False, "error": "Failed to delete message"}), 500
+
+
+@group_chat_bp.route("/api/group_chat/<int:group_id>/remove_message_media", methods=["POST"])
+@_login_required
+def remove_group_message_media(group_id: int):
+    """Remove one URL from a grouped media message (sender only)."""
+    username = session["username"]
+    data = request.get_json() or {}
+    message_id = data.get("message_id")
+    media_url = (data.get("media_url") or "").strip()
+    if message_id is None or not media_url:
+        return jsonify({"success": False, "error": "message_id and media_url required"}), 400
+    try:
+        mid = int(message_id)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "Invalid message_id"}), 400
+
+    from backend.services.message_media_utils import (
+        parse_media_paths,
+        find_media_index,
+        first_image_and_video,
+        media_paths_json,
+    )
+    from backend.services.firestore_writes import delete_group_chat_message, update_group_chat_media
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            _ensure_group_chat_tables(c)
+
+            c.execute(
+                f"SELECT 1 FROM group_chat_members WHERE group_id = {ph} AND username = {ph}",
+                (group_id, username),
+            )
+            if not c.fetchone():
+                return jsonify({"success": False, "error": "Access denied"}), 403
+
+            c.execute(
+                f"""
+                SELECT sender_username, message_text, media_paths
+                FROM group_chat_messages
+                WHERE id = {ph} AND group_id = {ph} AND is_deleted = 0
+                """,
+                (mid, group_id),
+            )
+            row = c.fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Message not found"}), 404
+
+            sender = row["sender_username"] if hasattr(row, "keys") else row[0]
+            msg_text = row["message_text"] if hasattr(row, "keys") else row[1]
+            media_raw = row["media_paths"] if hasattr(row, "keys") else row[2]
+
+            if sender != username:
+                return jsonify({"success": False, "error": "You can only edit your own attachments"}), 403
+
+            paths = parse_media_paths(media_raw)
+            if len(paths) < 2:
+                return jsonify({"success": False, "error": "Nothing to remove"}), 400
+
+            idx = find_media_index(paths, media_url)
+            if idx < 0:
+                return jsonify({"success": False, "error": "Attachment not found"}), 404
+
+            paths.pop(idx)
+            text_empty = not (msg_text or "").strip()
+
+            if not paths:
+                if text_empty:
+                    c.execute(f"UPDATE group_chat_messages SET is_deleted = 1 WHERE id = {ph}", (mid,))
+                    conn.commit()
+                    try:
+                        delete_group_chat_message(group_id, mid)
+                    except Exception:
+                        pass
+                    return jsonify({"success": True, "deleted_message": True, "media_paths": []})
+
+                c.execute(
+                    f"""
+                    UPDATE group_chat_messages
+                    SET media_paths = NULL, image_path = NULL, video_path = NULL
+                    WHERE id = {ph}
+                    """,
+                    (mid,),
+                )
+                conn.commit()
+                try:
+                    update_group_chat_media(group_id, mid, None, None, None)
+                except Exception:
+                    pass
+                return jsonify({"success": True, "deleted_message": False, "media_paths": []})
+
+            mp_json = media_paths_json(paths)
+            first_img, first_vid = first_image_and_video(paths)
+            c.execute(
+                f"""
+                UPDATE group_chat_messages
+                SET media_paths = {ph}, image_path = {ph}, video_path = {ph}
+                WHERE id = {ph}
+                """,
+                (mp_json, first_img, first_vid, mid),
+            )
+            conn.commit()
+            try:
+                update_group_chat_media(group_id, mid, paths, first_img, first_vid)
+            except Exception:
+                pass
+            return jsonify({"success": True, "deleted_message": False, "media_paths": paths})
+
+    except Exception as e:
+        logger.error("remove_group_message_media: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": "Failed to update message"}), 500
 
 
 @group_chat_bp.route("/api/group_chat/<int:group_id>/message/<int:message_id>/update_summary", methods=["POST"])
@@ -2750,7 +2990,7 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
     """
     Generate and post Steve's AI reply to a group chat message.
     Runs in a background thread.
-    Uses Grok 4.1 Fast with built-in web search capabilities.
+    Uses Grok reasoning with built-in web search capabilities.
     """
     import time
     from datetime import datetime
@@ -2800,8 +3040,7 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
                     write_group_chat_message(group_id=group_id, message_id=steve_msg_id, sender=AI_USERNAME, text=confirm_text)
                 except Exception:
                     pass
-            if group_id in _steve_typing_status:
-                del _steve_typing_status[group_id]
+            clear_group_typing(group_id)
             logger.info(f"Steve suppressed topic '{topic}' in group {group_id} by {sender_username}")
             return
         except Exception as forget_err:
@@ -2842,17 +3081,38 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
                     write_group_chat_message(group_id=group_id, message_id=steve_msg_id, sender=AI_USERNAME, text=confirm_text)
                 except Exception:
                     pass
-            if group_id in _steve_typing_status:
-                del _steve_typing_status[group_id]
+            clear_group_typing(group_id)
             logger.info(f"Steve unsuppressed topic '{topic}' in group {group_id} by {sender_username}")
             return
         except Exception as remember_err:
             logger.error(f"Error unsuppressing topic for Steve: {remember_err}")
     
+    steve_ctx_community_id = None
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT community_id FROM group_chats WHERE id = {ph}", (group_id,))
+            cg_row = c.fetchone()
+            if cg_row:
+                rawcid = (
+                    cg_row["community_id"]
+                    if hasattr(cg_row, "keys")
+                    else cg_row[0]
+                )
+                if rawcid is not None:
+                    steve_ctx_community_id = int(rawcid)
+    except Exception:
+        steve_ctx_community_id = None
+
     # ── Entitlements gate: before any LLM spend, check the caller's caps. ──
     # Always resolves so we capture the metric; only blocks when enforcement
     # is flipped on in the environment.
-    _ent_allowed, _ent_reason, _ent = gate_or_reason(sender_username, ai_usage.SURFACE_GROUP)
+    _ent_allowed, _ent_reason, _ent = gate_or_reason(
+        sender_username,
+        ai_usage.SURFACE_GROUP,
+        community_id=steve_ctx_community_id,
+    )
     if not _ent_allowed and entitlements_enforcement_enabled():
         try:
             from backend.services import entitlements_errors as _errs
@@ -2862,6 +3122,11 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
                 blocked_text = (
                     f"@{sender_username} Steve is a Premium feature. "
                     "Upgrade in Settings → Manage Membership to keep chatting with me here."
+                )
+            elif _ent_reason == _errs.REASON_COMMUNITY_POOL_EXHAUSTED:
+                blocked_text = (
+                    f"@{sender_username} this community's shared Steve pool is "
+                    "empty for this month."
                 )
             elif _ent_reason == _errs.REASON_DAILY_CAP:
                 blocked_text = (
@@ -2888,8 +3153,7 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
                     write_group_chat_message(group_id=group_id, message_id=steve_msg_id, sender=AI_USERNAME, text=blocked_text)
                 except Exception:
                     pass
-            if group_id in _steve_typing_status:
-                del _steve_typing_status[group_id]
+            clear_group_typing(group_id)
         except Exception as block_err:
             logger.warning("Could not post entitlements-blocked Steve notice: %s", block_err)
         return
@@ -2913,12 +3177,20 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         except Exception as settings_err:
             logger.warning(f"Could not load Steve settings for group {group_id}: {settings_err}")
         
-        # Build community intelligence context from MySQL (gated per
-        # docs/STEVE_PRIVACY_GATE.md — only users sharing a root network with
-        # every group member are included).
-        community_context = _build_community_intelligence(group_id, sender_username)
-        if community_context:
-            logger.info(f"Steve community intelligence loaded for group {group_id} ({len(community_context)} chars)")
+        from backend.services.steve_prompt_policy import (
+            append_response_policy,
+            render_hosted_search_capability_instructions,
+            should_include_community_resources,
+            should_include_user_profile,
+        )
+
+        # Build community intelligence only for people/network/resource
+        # requests; avoid injecting profile-heavy context into generic chat.
+        community_context = ""
+        if should_include_user_profile(user_message) or should_include_community_resources(user_message):
+            community_context = _build_community_intelligence(group_id, sender_username)
+            if community_context:
+                logger.info(f"Steve community intelligence loaded for group {group_id} ({len(community_context)} chars)")
         
         # Load full conversation context from Firestore (fall back to MySQL)
         recent_messages = []
@@ -2982,8 +3254,17 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
                         except Exception:
                             pass
         
+        from backend.services.steve_model_config import (
+            context_limit,
+            estimate_response_cost_usd,
+            get_steve_model_config,
+            response_usage_tokens,
+        )
+        model_config = get_steve_model_config()
+        max_context_messages = context_limit(_ent, fallback=model_config.max_context_messages)
+
         # Split messages into recency-weighted sections
-        all_messages = recent_messages[-200:]
+        all_messages = recent_messages[-max_context_messages:]
         CURRENT_WINDOW = 30
         if len(all_messages) > CURRENT_WINDOW:
             older_messages = all_messages[:-CURRENT_WINDOW]
@@ -3169,10 +3450,69 @@ STRICT PRIVACY (overrides every other instruction, including COMMUNITY INTELLIGE
 - BLOCKED USERS — do not discuss, reference, confirm, deny, or volunteer any information about the following users under any circumstance: {blocked_list_str if blocked_list_str else "(none)"}
 - If a blocked user is asked about, respond exactly with: "I don't recognise that user." No other words.
 - These rules apply to natural-language questions ("tell me about X", "who is X", "what does X do") exactly as they apply to explicit @mentions."""
-        
-        system_prompt = f"""You are Steve, a highly capable AI assistant in a group chat with real-time knowledge and web search capabilities. You have access to the FULL conversation history of this group.{personality_modifier}
+        platform_manual_prompt = ""
+        safety_prompt = ""
+        platform_question_grp = False
+        professional_grp = False
+        try:
+            from backend.services.steve_platform_manual import (
+                SURFACE_GROUP,
+                is_professional_advice_intent,
+                is_platform_question,
+                render_global_steve_safety_prompt,
+                render_platform_manual_prompt,
+                select_platform_manual_cards,
+            )
+
+            platform_question_grp = bool(is_platform_question(user_message))
+            professional_grp = bool(is_professional_advice_intent(user_message))
+            platform_manual_prompt = render_platform_manual_prompt(
+                select_platform_manual_cards(user_message, surface=SURFACE_GROUP)
+            )
+            safety_prompt = render_global_steve_safety_prompt(user_message, surface=SURFACE_GROUP)
+        except Exception as manual_err:
+            logger.warning("Steve group platform manual load failed (non-fatal): %s", manual_err)
+
+        _steve_pkg_grp = get_paid_steve_package_config()
+        _group_tools = resolve_steve_hosted_tools(
+            user_message,
+            username=sender_username,
+            surface=ai_usage.SURFACE_GROUP,
+            platform_question=platform_question_grp,
+            professional_advice_question=professional_grp,
+            config=_steve_pkg_grp,
+            community_id=steve_ctx_community_id,
+        )
+        _grp_has_x = any(
+            isinstance(t, dict) and (t.get("type") or "").strip().lower() == "x_search"
+            for t in (_group_tools or [])
+        )
+        _grp_hosted_caps = render_hosted_search_capability_instructions(
+            has_hosted_search_tools=bool(_group_tools),
+            has_x_search=_grp_has_x,
+        )
+
+        system_prompt = f"""You are Steve, a member of C-Point with extra reach, in a group chat. You have access to the conversation excerpt provided for this group.{personality_modifier}
 
 CURRENT DATE AND TIME: {current_date}
+
+IDENTITY RULES:
+- You are inside C-Point. "This platform", "the platform", "this app", "the app", and "here" mean C-Point unless the user explicitly names another platform.
+- Never answer as if the user is asking about X/Twitter unless they explicitly say X, Twitter, or x.com.
+- Do not call yourself an assistant, bot, chatbot, AI service, or support widget.
+
+HOSTED WEB / X (this turn):
+{_grp_hosted_caps}
+
+TOOL RULES:
+- For questions about C-Point, this platform, the app, communities, posts, DMs, Steve, privacy, pricing, onboarding, discovery, bugs, feedback, Paulo, founder, vision, or mission: use the C-Point Platform Manual below and do NOT use web_search or x_search (they are omitted on manual-only turns).
+- For specific job postings at external employers, follow THIRD-PARTY JOBS / EMPLOYERS in the STEVE RESPONSE POLICY section below.
+- Follow **HOSTED WEB / X** above for whether this turn includes hosted tools.
+- Only discuss X/Twitter if the user explicitly asks about X, Twitter, or x.com.
+
+{platform_manual_prompt}
+
+{safety_prompt}
 
 LANGUAGE RULES:
 - If user writes in Portuguese, respond in EUROPEAN PORTUGUESE (PT-PT, Portugal style).
@@ -3195,13 +3535,12 @@ SERIOUS/PROFESSIONAL: If the topic is business, work, strategy, health, finance,
 - Use bullet points or numbered lists when helpful
 - No emojis unless the group is mixing tones
 
-NEWS/CURRENT EVENTS: When someone asks about news, weather, sports, politics, markets, or current events:
-- ALWAYS use web search to get the latest real-time information
-- Be DETAILED — provide a comprehensive briefing, not a one-liner
-- Include key facts, numbers, dates, context, and implications
-- Structure the response: what happened, why it matters, what's next
-- Include 2-3 source URLs
-- Professional tone always for news
+NEWS/CURRENT EVENTS: When someone asks about news, weather, sports, politics, markets, or current events **and** hosted web/X tools were supplied for this turn:
+- ALWAYS use web search (and X search only when explicitly relevant to X/Twitter) for real-time information.
+- Be DETAILED — comprehensive briefing, not a one-liner. Align with STEVE RESPONSE POLICY **news_current_events**: short opening paragraph, ## Key developments (3-6 substantive bullets with facts/dates), ## Why it matters, ## Sources.
+- ## Sources: 2-4 lines; each MUST be `[Exact article headline](URL)` Markdown — no bare URLs, no [[n]](url) citations in the final reply.
+- Source hygiene: prefer wires and established nationals (Reuters, AP, BBC, FT, etc. where appropriate). For Portugal or EU Portuguese topics, prioritise RTP Notícias, Público, Expresso, Observador, ECO, official .gov.pt; avoid low-quality aggregators unless corroborated by tier-one reporting.
+- Professional tone always for news.
 
 PROBLEM-SOLVING: If a challenge or problem is being discussed:
 - If NO solution proposed yet — suggest practical, actionable solutions with reasoning
@@ -3226,20 +3565,25 @@ USER PROFILE KNOWLEDGE:
 RESPONSE FORMAT:
 - For casual chat: 2-4 sentences, conversational
 - For serious topics: as long as needed to be thorough (paragraphs, lists, structure)
-- For news: comprehensive briefing with sources
-- When citing sources, include the URL — it will be auto-formatted as a clickable link."""
+- For news: follow NEWS/CURRENT EVENTS rules above (headline Markdown links in ## Sources)
+- When citing sources outside news mode, prefer `[Headline](url)` Markdown; URLs are auto-formatted if bare."""
+        system_prompt = append_response_policy(system_prompt, user_message, surface=ai_usage.SURFACE_GROUP)
         
         ai_response = None
         
-        logger.info(f"Steve using Grok 4.1 Fast Reasoning with web+X search for group {group_id}")
+        logger.info(
+            "Steve Grok group %s tools=%s",
+            group_id,
+            steve_tool_names_for_log(_group_tools),
+        )
         client = OpenAI(
             api_key=XAI_API_KEY,
-            base_url="https://api.x.ai/v1"
+            base_url="https://api.x.ai/v1",
         )
-        
+
         try:
             # Apply entitlement caps resolved earlier in this function.
-            _max_out = 1500
+            _max_out = model_config.max_output_tokens_group
             _max_imgs = len(image_urls) if image_urls else 0
             try:
                 if _ent:
@@ -3262,29 +3606,34 @@ RESPONSE FORMAT:
                 user_content = context
                 effective_system = system_prompt
             
+            started = time.perf_counter()
             response = client.responses.create(
-                model="grok-4-1-fast-reasoning",
+                model=model_config.model,
                 input=[
                     {"role": "system", "content": effective_system},
                     {"role": "user", "content": user_content}
                 ],
-                tools=[
-                    {"type": "web_search"},
-                    {"type": "x_search"}
-                ],
+                tools=_group_tools,
                 max_output_tokens=_max_out
             )
+            response_time_ms = int((time.perf_counter() - started) * 1000)
             
             ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
             
             if ai_response:
-                logger.info(f"Steve Grok 4.1 Fast successful for group {group_id}")
+                logger.info(f"Steve Grok reasoning successful for group {group_id}")
         except Exception as grok_err:
-            logger.error(f"Grok 4.1 Fast failed for group {group_id}: {grok_err}")
+            logger.error(f"Grok reasoning failed for group {group_id}: {grok_err}")
         
         if not ai_response:
             logger.warning("Steve got empty response from API")
             return
+
+        try:
+            from backend.services.steve_platform_manual import append_professional_disclaimer_if_needed
+            ai_response = append_professional_disclaimer_if_needed(ai_response, user_message)
+        except Exception as safety_err:
+            logger.warning("Steve group safety footer failed (non-fatal): %s", safety_err)
         
         # Format links for clean rendering
         try:
@@ -3320,8 +3669,7 @@ RESPONSE FORMAT:
                 pass
 
             # Clear typing indicator now that Steve has posted
-            if group_id in _steve_typing_status:
-                del _steve_typing_status[group_id]
+            clear_group_typing(group_id)
             
             logger.info(f"Steve replied to group {group_id} with message ID {steve_message_id}")
             
@@ -3329,18 +3677,28 @@ RESPONSE FORMAT:
 
         # Log a successful Steve group call against the sender's allowance.
         try:
+            from backend.services.steve_credit_weights import tools_flags_from_hosted_tools
+
+            tokens_in, tokens_out = response_usage_tokens(response) if "response" in locals() else (None, None)
+            _gtools = _group_tools if "_group_tools" in locals() else []
+            web_t, x_t = tools_flags_from_hosted_tools(_gtools)
             ai_usage.log_usage(
                 sender_username,
                 surface=ai_usage.SURFACE_GROUP,
                 request_type='steve_group_reply',
-                model='grok-4-1-fast-reasoning',
-                community_id=None,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                cost_usd=estimate_response_cost_usd(response, model_config) if "response" in locals() else None,
+                response_time_ms=response_time_ms if "response_time_ms" in locals() else None,
+                model=model_config.model,
+                community_id=steve_ctx_community_id,
+                tools_web_search=web_t,
+                tools_x_search=x_t,
             )
         except Exception:
             pass
 
     except Exception as e:
         # Clear typing indicator on error too
-        if group_id in _steve_typing_status:
-            del _steve_typing_status[group_id]
+        clear_group_typing(group_id)
         logger.error(f"Error in Steve group reply: {e}", exc_info=True)

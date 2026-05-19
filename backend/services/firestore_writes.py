@@ -33,12 +33,77 @@ def _dm_conv_id(user1: str, user2: str) -> str:
     return f"{a}_{b}"
 
 
+def dm_conv_id_for_users(user1: str, user2: str) -> str:
+    """Public alias — same as internal ``_dm_conv_id``."""
+    return _dm_conv_id(user1, user2)
+
+
+def write_steves_message_human_pair_thread(
+    human_peer_a: str,
+    human_peer_b: str,
+    message_id: int,
+    text: str = "",
+    mysql_receiver_username: str = "",
+    timestamp=None,
+) -> None:
+    """
+    Writes Steve's bubble into the Firestore DM document for ``human_peer_a`` and
+    ``human_peer_b`` (not ``steve``↔individual). Matches MySQL row semantics where
+    ``sender=='steve'`` and ``human_dm_thread`` links the bubble to the pair.
+    """
+    if not USE_FIRESTORE_WRITES:
+        return
+    try:
+        fs = _get_client()
+        conv_id = _dm_conv_id(human_peer_a, human_peer_b)
+        ts = timestamp if isinstance(timestamp, datetime) else datetime.utcnow()
+
+        conv_ref = fs.collection("dm_conversations").document(conv_id)
+        conv_ref.set(
+            {
+                # Keep participants as the two humans Steve is mediating — not [steve, user].
+                "participants": sorted([human_peer_a, human_peer_b]),
+                "last_message": (text or "")[:200],
+                "last_sender": "steve",
+                "updated_at": ts,
+            },
+            merge=True,
+        )
+
+        msg_ref = conv_ref.collection("messages").document(str(message_id))
+        recv = mysql_receiver_username or human_peer_b
+        msg_ref.set(
+            {
+                "mysql_id": message_id,
+                "sender": "steve",
+                "receiver": recv,
+                "text": text or "",
+                "image_path": None,
+                "video_path": None,
+                "audio_path": None,
+                "audio_duration_seconds": None,
+                "audio_mime": None,
+                "audio_summary": None,
+                "is_encrypted": False,
+                "created_at": ts,
+                "edited_at": None,
+                "reaction": None,
+                "reaction_by": None,
+            }
+        )
+        logger.debug("Firestore DM write (Steve human pair): msg %s in %s", message_id, conv_id)
+    except Exception as e:
+        logger.warning("Firestore DM write (Steve human pair) failed (non-fatal): %s", e)
+
+
 def write_dm_message(sender: str, receiver: str, message_id: int, text: str = '',
                      image_path: str = None, video_path: str = None,
                      audio_path: str = None, audio_duration_seconds=None,
                      audio_mime: str = None, audio_summary: str = None,
-                     is_encrypted: bool = False, timestamp=None):
-    """Write a DM message to Firestore after MySQL insert."""
+                     media_paths=None, is_encrypted: bool = False, timestamp=None):
+    """Write a DM message to Firestore after MySQL insert.
+    Now includes media_paths array for grouped/multi-media (matches write_group_chat_message
+    and write_post; fixes DM Firestore read gap for send_dm_media calls)."""
     if not USE_FIRESTORE_WRITES:
         return
     try:
@@ -66,6 +131,7 @@ def write_dm_message(sender: str, receiver: str, message_id: int, text: str = ''
             'audio_duration_seconds': audio_duration_seconds,
             'audio_mime': audio_mime,
             'audio_summary': audio_summary,
+            'media_paths': media_paths,
             'is_encrypted': is_encrypted,
             'created_at': ts,
             'edited_at': None,
@@ -167,28 +233,55 @@ def edit_group_chat_message(group_id: int, message_id: int, new_text: str):
         logger.warning(f"Firestore group chat edit failed (non-fatal): {e}")
 
 
-def delete_group_chat_message(group_id: int, message_id: int):
-    """Delete a group chat message from Firestore."""
+def update_dm_message_media(sender: str, receiver: str, message_id: int,
+                            media_paths: list | None, image_path: str | None,
+                            video_path: str | None):
+    """Patch grouped media fields on a DM message doc."""
     if not USE_FIRESTORE_WRITES:
         return
     try:
         fs = _get_client()
-        fs.collection('group_chats').document(str(group_id)).collection('messages').document(str(message_id)).delete()
+        conv_id = _dm_conv_id(sender, receiver)
+        msg_ref = fs.collection('dm_conversations').document(conv_id).collection('messages').document(str(message_id))
+        msg_ref.update({
+            'media_paths': media_paths if media_paths else None,
+            'image_path': image_path,
+            'video_path': video_path,
+        })
+        logger.debug("Firestore DM media update: msg %s in %s", message_id, conv_id)
     except Exception as e:
-        logger.warning(f"Firestore group msg delete failed (non-fatal): {e}")
+        logger.warning("Firestore DM media update failed (non-fatal): %s", e)
 
 
-def edit_group_chat_message(group_id: int, message_id: int, new_text: str):
-    """Update a group chat message text in Firestore."""
+def delete_dm_message(sender: str, receiver: str, message_id: int):
+    """Remove DM message doc from Firestore (MySQL row deleted separately)."""
+    if not USE_FIRESTORE_WRITES:
+        return
+    try:
+        fs = _get_client()
+        conv_id = _dm_conv_id(sender, receiver)
+        fs.collection('dm_conversations').document(conv_id).collection('messages').document(str(message_id)).delete()
+        logger.debug("Firestore DM delete: msg %s in %s", message_id, conv_id)
+    except Exception as e:
+        logger.warning("Firestore DM delete failed (non-fatal): %s", e)
+
+
+def update_group_chat_media(group_id: int, message_id: int,
+                            media_paths: list | None, image_path: str | None,
+                            video_path: str | None):
+    """Patch grouped media on a group message doc."""
     if not USE_FIRESTORE_WRITES:
         return
     try:
         fs = _get_client()
         fs.collection('group_chats').document(str(group_id)).collection('messages').document(str(message_id)).update({
-            'text': new_text,
+            'media_paths': media_paths if media_paths else None,
+            'image_path': image_path,
+            'video_path': video_path,
         })
+        logger.debug("Firestore group media update: msg %s in group %s", message_id, group_id)
     except Exception as e:
-        logger.warning(f"Firestore group msg edit failed (non-fatal): {e}")
+        logger.warning("Firestore group media update failed (non-fatal): %s", e)
 
 
 def write_post(post_id: int, username: str, content: str = '', community_id=None,

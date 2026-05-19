@@ -1,7 +1,7 @@
 # Steve & Voice Notes — Architecture Guide
 
 **Status:** Required reading before you build or touch anything Steve- or
-voice-note related. Last updated 2026-04-19.
+voice-note related. Last updated 2026-05-15.
 
 This document is the single source of truth for how Steve (the LLM
 assistant) and Whisper (audio transcription) are wired into C-Point. If
@@ -35,10 +35,43 @@ and then write the code. Do **not** silently diverge.
 5. **Gate before you spend.** Run the entitlements gate *before* calling
    the paid API, not after. `entitlements_gate.check_steve_access(...)`
    / the `require_steve_access` decorator are the only sanctioned gates.
+   When Steve runs in an **in-community** context (feed replies, group chats
+   tied to a community), pass **`community_id`** into `check_steve_access` /
+   `gate_or_reason` so eligible members can consume the **Steve Community
+   Package** monthly pool per KB flags (`community-tiers` page).
+   **Feed replies** attach Grok **`web_search`** (and **`x_search`** only when the user explicitly asks for X/Twitter) when **`steve_tool_router.resolve_steve_hosted_tools`** applies **`steve_tool_policy`** +
+   **`steve_prompt_policy`** (live-news, explicit browse intent, **or job/careers-site /
+   listing-verification wording** per **`steve_job_listing_or_employer_research_requested`**, or when
+   KB allows default-on with **`external_search_explicit_only`** OFF). If that **static** policy returns
+   no tools, a **short JSON-only router** call (same xAI stack, **no** `web_search` / `x_search` on that
+   call) may attach hosted tools for **ambiguous public web / X** phrasing; it is **skipped** for
+   platform-manual-only and professional-advice-only turns, for **profile-suppressed** cohorts (same gate
+   as static policy), and when **`STEVE_TOOL_ROUTER_DISABLED`** is set. **`detect_platform_manual_intent`**
+   strips **`@Steve`** mentions so addressing Steve does not force a platform-manual turn or strip tools.
+   **`SteveCommunityConfig`** kill-switches (**`paid_steve_package_feed_attach_*`**) still apply.
+   Platform-only and professional-advice-only turns omit tools. **THIRD-PARTY JOBS / EMPLOYERS** rules in
+   **`steve_prompt_policy`** require verifiable external postings (no fabricated listings). DM and group
+   chat use the same resolver. **@Mentioned** users on feed/group may receive gated profile context when
+   **`user_can_access_steve_kb`** allows.
+   **News and current-events** replies use **`steve_prompt_policy` `news_current_events`** mode: structured sections (Key developments, Why it matters, Sources), substantive bullets, reputable-source guidance, and **`[Article headline](URL)`** Markdown for sources where possible; bare URLs and numeric citations are normalised in **`format_steve_response_links`**. The canonical **“what Steve can do”** inventory is KB **`steve-platform-manual`** card **`steve.what_can_i_do`** (seeded from **`docs/STEVE_PLATFORM_KB.md`**).
 
 Skip any of the above and the user's "Steve uses this month" counter
 will silently lie to them. We've already fixed that bug once, don't
 reintroduce it.
+
+---
+
+## Exclusive group Steve agent (group feed)
+
+Preset **agents** on **`group_posts` / `group_replies`**: owners enable on **group create** (requires **Steve Community Package** on the billing root); members use **Ask Steve** on a post; optional **delayed** first reply via cron (**`/api/cron/group-steve-agent-due`**); **`@Steve`** cancels the pending job; **five** auto-budget replies per post then **static** cap notice; **`@Steve`** continues without consuming that budget. Same **`check_steve_access`** / **`log_usage`** / **`SURFACE_GROUP`** pool rules as other group Steve.
+
+**Spec and ops:** [`STEVE_GROUP_AGENT.md`](STEVE_GROUP_AGENT.md).
+
+---
+
+## Onboarding profile helpers (non-Steve)
+
+**[`backend/services/onboarding_llm.py`](backend/services/onboarding_llm.py)** runs **chat.completions** for onboarding routes with **xAI** first (`grok-4.3` primary) and **OpenAI `gpt-4o`** as fallback when **`OPENAI_API_KEY`** is set and the primary call fails. Log with **`surface=onboarding_ai`** and the **`model`** column set to the provider model id that succeeded. **Company intel** ([`onboarding_company_intel.fetch_company_intel_blurb`](backend/services/onboarding_company_intel.py)) uses **xAI** **Responses** + **`web_search`** first, then **OpenAI** **Responses** + **`web_search`** when xAI is missing or returns no usable blurb; optional model id via **`ONBOARDING_OPENAI_COMPANY_INTEL_MODEL`** (default **`gpt-5.5`**). Usage rows use the winning provider’s **`model`** id.
 
 ---
 
@@ -114,9 +147,18 @@ wrong surface is how counters desync.
 | `SURFACE_VOICE_SUMMARY` | GPT summary of a transcribed voice note |
 | `SURFACE_WHISPER` | Audio transcription (the Whisper API call itself). **Always** log `duration_seconds`. |
 | `SURFACE_CONTENT_GEN` | Community-pool content generation. Not counted in `STEVE_SURFACES`. |
+| `SURFACE_ONBOARDING_AI` | Onboarding helpers (e.g. `onboarding_compose_bio`, **`onboarding_parse_cv`**) — logs to `ai_usage_log` but **does not** increment `monthly_steve_count` / personal Steve caps (see `STEVE_SURFACES` in `ai_usage.py`). Uses xAI like other onboarding Grok calls; **no** separate `require_steve_access` gate today. |
 
 `STEVE_SURFACES = (DM, GROUP, FEED, POST_SUMMARY, VOICE_SUMMARY)` — this
 set is what counts against `steve_uses_per_month` and `ai_daily_limit`.
+(Onboarding AI is intentionally **out of** this set.)
+
+**Steve DM pipeline (`run_steve_dm_reply`).** `gate_or_reason(..., SURFACE_DM)` runs **before**
+feedback capture, Reminder Vault, platform digest, or Grok. Without `can_use_steve`,
+the user receives only a markdown **subscription CTA** pointing at **`/account_settings/membership`**
+(via canonical `PUBLIC_BASE_URL` hostname).
+
+**Platform activity digest.** DM flow: `message_looks_like_platform_digest_intent` filters candidates, then an optional Grok classifier confirms intent and adjusts the window hours. **`build_platform_activity_digest`** aggregates **SQL-only facts**: recent posts **with author names** (`users` join), content, optional `image_path`, **exact counts** (`post_count_others` / `message_count_others`), and **recent group transcript lines** from other members only — viewer excluded. **`_grok_compose_digest_from_facts`** must follow a **fixed section layout** per community/group: **`Activity:`** with one line per count from JSON, **`Last activity:`** when present, a single **`Summary:`** paragraph (themes only; no per-message bullets), then **one** path-only link **`[Open feed](/community_feed_react/{id})`** / **`[Open chat](/group_chat/{id})`**. Do not invent users, counts, or paths. **`_fallback_deterministic_digest_body`** mirrors that structure (short stub summaries instead of Grok prose). Validator requires every `feed_path` / `chat_path` verbatim in the final markdown. **Client:** `SmartLink` treats **`href` that starts with `/`** like **@mention → profile**: **`navigate(path)`** inside the SPA; it does **not** use `window.open` for those paths (invite tokens on `/invite/…` still go through join-then-navigate). `PUBLIC_BASE_URL` remains for full URLs / ancillary HTTPS links outside digest bodies. **`log_usage`**: exactly **one row** per delivered digest DM (`surface=SURFACE_DM`, `request_type='platform_activity_digest'`; **`model`** includes Grok digest + intent tokens summed, **`n/a`** only if no upstream LLM). The read-only helper `GET /api/me/platform-activity-digest` returns JSON only — **does not** log usage.
 
 ---
 
@@ -136,8 +178,17 @@ set is what counts against `steve_uses_per_month` and `ai_daily_limit`.
      ```
 3. **Respect the caps in `ent`.** Plumb `ent["max_output_tokens_*"]`,
    `ent["max_context_messages"]`, `ent["max_images_per_turn"]`,
-   `ent["max_tool_invocations_per_turn"]` into your LLM call.
-4. **Log on success.** Exactly one row per upstream API call:
+   `ent["max_tool_invocations_per_turn"]` into your LLM call. For
+   community-pool feed calls, use the stricter of the user's resolved
+   feed cap and the KB-backed Steve Community Package output cap.
+   Shared helpers live in `backend.services.steve_model_config`.
+4. **Use the shared prompt policy.** Add
+   `backend.services.steve_prompt_policy.append_response_policy(...)`
+   to interactive Steve prompts. Casual replies stay short; substantive
+   answers use Markdown headings and bullets (`Short Answer`, `Analysis`,
+   `Recommendation`, `Pitfalls`, `Next Steps`) and instruct the model to
+   reason internally without exposing hidden chain-of-thought.
+5. **Log on success.** Exactly one row per upstream API call:
    ```python
    from backend.services import ai_usage
    ai_usage.log_usage(
@@ -148,13 +199,19 @@ set is what counts against `steve_uses_per_month` and `ai_daily_limit`.
        tokens_out=usage.completion_tokens,
        cost_usd=computed_cost,
        community_id=community_id_or_None,
-       model="grok-4-1-fast-reasoning",
+       model="grok-4.3",
        response_time_ms=int((t1 - t0) * 1000),
    )
    ```
-5. **Log on failure.** Use `ai_usage.log_usage(..., success=False,
+6. **Log on failure.** Use `ai_usage.log_usage(..., success=False,
    reason_blocked="api_error")` for upstream errors so we can spot
    regressions in the admin dashboard.
+
+**Pricing source:** Steve token-cost math must come from official xAI
+documentation only. For Grok 4.3, `steve_model_config` defaults to
+input `$1.25 / 1M`, cached input `$0.20 / 1M`, output `$2.50 / 1M`,
+and xAI server-side tool invocations `$5 / 1k` calls. KB fields mirror
+those values so operators can re-verify and update without code drift.
 
 ---
 
@@ -194,6 +251,11 @@ audio_summary = process_audio_for_summary(
 - `surface='voice_summary'` → counts against `steve_uses_per_month` and
   `ai_daily_limit`.
 
+Manual translation via `POST /translate_summary` uses the same gate and
+logs one Steve row: `surface='voice_summary'` for voice-note summaries,
+`surface='translation'` for public-profile section translation. Both count
+against `steve_uses_per_month` when enforcement is on.
+
 ### Canonical recipe (transcription only, no summary)
 
 ```python
@@ -221,8 +283,9 @@ don't build parallel queries.
 
 | Function | Window | Surface filter | Used for |
 |---|---|---|---|
-| `monthly_steve_count` | 1st of month UTC → now | `STEVE_SURFACES` | `steve_uses_per_month` cap + "Steve uses this month" UI |
-| `daily_count` | Rolling 24h | `STEVE_SURFACES` | `ai_daily_limit` enforcement + "Steve uses today" UI |
+| `monthly_steve_count` | 1st of month UTC → now | `STEVE_SURFACES` | `steve_uses_per_month` cap + "Steve uses this month" UI (SUM of `credits_debited` when `STEVE_WEIGHTED_CREDITS_ENABLED` is on). KB tiers: standard through **25k** billed input tokens; **web_search** addon **0.5**; news/browse attach **web only** unless user asks for X; optional facts (podcast episodes) use confirm-then-search in DM. |
+| `daily_count` | Rolling 24h | `STEVE_SURFACES` | `ai_daily_limit` enforcement + "Steve uses today" UI (same weighted SUM) |
+| `community_monthly_steve_pool_usage` | Calendar month | `STEVE_SURFACES` + `community_id` | Steve Community Package pool (200 credits default); dual gate with `monthly_community_spend_usd` vs KB `$19.99` ceiling |
 | `daily_any_count` | Rolling 24h | *none* | Admin-only "all AI activity" metric |
 | `whisper_minutes_this_month` | 1st of month UTC → now | `whisper` only, sums `duration_seconds/60` | `whisper_minutes_per_month` cap + "Voice transcription this month" UI |
 | `current_month_summary` | 1st of month UTC → now | grouped by surface | Manage Membership AI Usage tab, admin Manage drawer |
@@ -259,6 +322,12 @@ We had a live bug because `daily_count` was unscoped and
 | `max_images_per_turn` | Drop images past this count before the call. |
 | `max_tool_invocations_per_turn` | Cap tool calls per turn (web / X). |
 | `monthly_spend_ceiling_eur` | Soft-budget for the user, informational. |
+
+`credits-entitlements` stores Grok 4.3 pricing fields and
+`hard-limits` stores output/context caps. `resolve_entitlements(...)`
+projects the per-turn caps into `ent`; `steve_model_config` reads the
+pricing fields and provides shared cost helpers for DM, feed, and group
+surfaces.
 
 ---
 

@@ -33,8 +33,11 @@ from flask import Blueprint, jsonify, request, session
 import os
 
 from backend.services import (
+    api_errors,
+    auth_session,
     enterprise_iap_nag,
     enterprise_membership,
+    session_identity,
     subscription_audit,
     winback_promo,
 )
@@ -46,16 +49,20 @@ enterprise_bp = Blueprint("enterprise", __name__)
 logger = logging.getLogger(__name__)
 
 
+@enterprise_bp.after_request
+def _no_store_user_scoped_responses(response):
+    return auth_session.no_store(response)
+
+
 def _session_username() -> str | None:
-    uname = session.get("username")
-    return str(uname) if uname else None
+    return session_identity.valid_session_username(session)
 
 
 def _login_required(view):
     @wraps(view)
     def wrapper(*args, **kwargs):
         if not _session_username():
-            return jsonify({"success": False, "error": "Authentication required"}), 401
+            return api_errors.auth_required()
         return view(*args, **kwargs)
     return wrapper
 
@@ -65,7 +72,7 @@ def _admin_required(view):
     def wrapper(*args, **kwargs):
         uname = _session_username()
         if not uname:
-            return jsonify({"success": False, "error": "Authentication required"}), 401
+            return api_errors.auth_required()
         if not is_app_admin(uname):
             return jsonify({"success": False, "error": "Admin access required"}), 403
         return view(*args, **kwargs)
@@ -546,6 +553,17 @@ def cron_revoke_expired_subscriptions():
             pass
 
     return jsonify({"success": True, "revoked": revoked, "cutoff": cutoff})
+
+
+@enterprise_bp.route("/api/cron/ai-usage/daily-rollup", methods=["POST"])
+def cron_ai_usage_daily_rollup():
+    """Aggregate yesterday's ``ai_usage_log`` rows into ``ai_usage_daily_rollups``."""
+    if not _cron_authed():
+        return jsonify({"success": False, "error": "forbidden"}), 403
+    from backend.services import ai_usage_rollups
+
+    result = ai_usage_rollups.rollup_day()
+    return jsonify({"success": True, **result})
 
 
 @enterprise_bp.route("/api/cron/usage/cycle-notify", methods=["POST"])

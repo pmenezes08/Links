@@ -2,7 +2,7 @@
  * Proper logout utility that clears all client-side state before navigating to /logout
  */
 
-import { VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES } from './chatThreadsCache'
+import { resetAccountScopedState } from './accountStateReset'
 
 // Dynamic import for Capacitor to avoid issues on web
 async function clearCapacitorStorage(): Promise<void> {
@@ -20,7 +20,7 @@ async function clearCapacitorStorage(): Promise<void> {
 }
 
 /** Deactivate server-side push mappings and browser subscription before session cookies are cleared. */
-async function unregisterPushBeforeLogout(): Promise<void> {
+export async function unregisterPushBeforeLogout(): Promise<void> {
   const w = typeof window !== 'undefined' ? (window as unknown as { __fcmToken?: string }) : null
   const fcmToken = w?.__fcmToken?.trim() || ''
 
@@ -33,6 +33,8 @@ async function unregisterPushBeforeLogout(): Promise<void> {
     })
     if (!res.ok) {
       console.warn('unregister_fcm response:', res.status)
+    } else {
+      console.log('📴 FCM tokens deactivated on server')
     }
   } catch (e) {
     console.warn('unregister_fcm failed:', e)
@@ -51,17 +53,25 @@ async function unregisterPushBeforeLogout(): Promise<void> {
           body: JSON.stringify({ endpoint }),
         })
         await sub.unsubscribe()
+        console.log('📴 Web push subscription removed')
       }
     }
   } catch (e) {
     console.warn('web push unsubscribe failed:', e)
   }
+
+  try {
+    const win = window as unknown as { __fcmToken?: string; __reregisterPushToken?: unknown }
+    delete win.__fcmToken
+    delete win.__reregisterPushToken
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function performLogout(): Promise<void> {
   console.log('🚪 Starting logout process...')
-  
-  // 0. Clear Google Sign-In cached account (so next sign-in shows account picker)
+
   try {
     const { Capacitor } = await import('@capacitor/core')
     if (Capacitor.isNativePlatform()) {
@@ -70,146 +80,17 @@ export async function performLogout(): Promise<void> {
     }
   } catch {}
 
-  // 0a. Clear avatar cache so next login doesn't show stale profile picture
-  try {
-    const { clearAllAvatarCache } = await import('./avatarCache')
-    clearAllAvatarCache()
-  } catch {}
-
-  // 0b. Clear Capacitor native storage first (critical for iOS apps)
-  await clearCapacitorStorage()
-  
-  // 1. Clear localStorage items related to the session
-  const keysToRemove = [
-    'signal_device_id',
-    'current_username',
-    'encryption_keys_generated_at',
-    'encryption_needs_sync',
-    'encryption_reset_requested',
-    'last_community_id',
-    'mic_permission_granted',
-    'home-timeline',
-    'communityManagementShowNested',
-    'cached_profile',
-  ]
-  
-  // Also clear any keys that start with these prefixes
-  const prefixesToClear = [
-    'signal_',
-    'chat_',
-    'community_',
-    'cpoint_',
-    'onboarding_',
-    'signal-store-',
-    ...VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES,
-  ]
-  
-  try {
-    // Remove known keys
-    keysToRemove.forEach(key => {
-      try { localStorage.removeItem(key) } catch {}
-    })
-    
-    // Remove keys by prefix
-    const allKeys = Object.keys(localStorage)
-    allKeys.forEach(key => {
-      if (prefixesToClear.some(prefix => key.startsWith(prefix))) {
-        try { localStorage.removeItem(key) } catch {}
-      }
-    })
-    console.log('✅ localStorage cleared')
-  } catch (e) {
-    console.warn('Error clearing localStorage:', e)
-  }
-
-  // 3. Clear sessionStorage
-  try {
-    sessionStorage.clear()
-    console.log('✅ sessionStorage cleared')
-  } catch (e) {
-    console.warn('Error clearing sessionStorage:', e)
-  }
-
-  // 4. Clear IndexedDB databases (encryption, signal protocol, offline DM/feed)
-  try {
-    const { deleteCpointOfflineDatabase } = await import('./offlineDb')
-    await deleteCpointOfflineDatabase()
-  } catch {
-    /* ignore */
-  }
-
-  const dbsToDelete = [
-    'chat-encryption',
-    'signal-protocol',
-    'signal-store',
-  ]
-  
-  for (const dbName of dbsToDelete) {
-    try {
-      await new Promise<void>((resolve) => {
-        const request = indexedDB.deleteDatabase(dbName)
-        request.onsuccess = () => {
-          console.log(`✅ Deleted IndexedDB: ${dbName}`)
-          resolve()
-        }
-        request.onerror = () => {
-          console.warn(`⚠️ Could not delete IndexedDB: ${dbName}`)
-          resolve()
-        }
-        request.onblocked = () => {
-          console.warn(`⚠️ IndexedDB deletion blocked: ${dbName}`)
-          resolve()
-        }
-        // Timeout after 1 second
-        setTimeout(resolve, 1000)
-      })
-    } catch (e) {
-      console.warn(`Error deleting IndexedDB ${dbName}:`, e)
-    }
-  }
-
-  // 5. Clear service worker caches (only user-specific data, NOT app shell or welcome images)
-  try {
-    if ('caches' in window) {
-      const cacheNames = await caches.keys()
-      await Promise.all(
-        cacheNames
-          .filter(cacheName => {
-            // Only clear runtime caches that contain user data
-            // Keep app shell cache (static assets) and don't touch media cache
-            return cacheName.includes('runtime')
-          })
-          .map(cacheName => {
-            console.log(`🗑️ Deleting cache: ${cacheName}`)
-            return caches.delete(cacheName)
-          })
-      )
-      console.log('✅ Service worker user caches cleared')
-    }
-  } catch (e) {
-    console.warn('Error clearing service worker caches:', e)
-  }
-
-  // 6. Unregister push tokens while session cookie is still valid (stops post-logout notifications)
+  // Push first: session cookie, install cookie, and service worker must still be present.
   await unregisterPushBeforeLogout()
 
-  // 7. Clear any cached data in memory by reloading the page after logout
+  await clearCapacitorStorage()
+
+  await resetAccountScopedState({
+    clearSessionStorage: true,
+    unregisterServiceWorkers: true,
+  })
+
+  // Keep native_push_install_id until /logout so the server can match install-scoped rows.
   console.log('🚪 Navigating to /logout endpoint...')
-
-  // Navigate to logout endpoint - use replace to prevent back button issues
   window.location.replace('/logout')
-}
-
-/**
- * Logout button component props
- */
-export function handleLogoutClick(e: React.MouseEvent): void {
-  e.preventDefault()
-
-  // For web, ensure we wait for cleanup before redirecting
-  if (typeof window !== 'undefined') {
-    performLogout().catch(console.error)
-  } else {
-    performLogout()
-  }
 }

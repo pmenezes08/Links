@@ -4,12 +4,13 @@ import StatCard from '../components/StatCard'
 
 interface LeaderboardEntry {
   username: string
-  score: number
+  count: number
 }
 
 interface Cohort {
   month: string
-  cohort_size: number
+  /** Backend key from /api/admin/metrics */
+  size: number
   retention: number[]
 }
 
@@ -24,7 +25,7 @@ interface DashboardStats {
   mau_pct?: number
   mru_repeat_rate_pct?: number
   wru_repeat_rate_pct?: number
-  mau_month?: string
+  mau_month?: number
   cohorts?: Cohort[]
   leaderboards?: {
     top_posters: LeaderboardEntry[]
@@ -50,7 +51,17 @@ export default function Metrics() {
       .finally(() => setLoading(false))
   }, [])
 
-  if (loading) return <div className="text-muted text-center py-20">Loading metrics...</div>
+  if (loading)
+    return (
+      <div className="flex flex-col items-center justify-center py-24 px-6 text-center max-w-lg mx-auto">
+        <i className="fa-solid fa-spinner fa-spin text-3xl text-accent mb-4" aria-hidden />
+        <h2 className="text-lg font-semibold text-white mb-2">Calculating usage metrics</h2>
+        <p className="text-sm text-muted leading-relaxed">
+          DAU, MAU, cohorts, and leaderboards are computed on the server. On large databases this can take up to a minute —
+          please wait.
+        </p>
+      </div>
+    )
   if (error) return <div className="text-red-400 text-center py-20">{error}</div>
   if (!stats) return null
 
@@ -61,6 +72,33 @@ export default function Metrics() {
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold">Metrics</h1>
+
+      <section
+        className="bg-surface-2 border border-white/10 rounded-xl p-4 text-sm text-muted leading-relaxed space-y-2"
+        aria-label="DAU and MAU definitions"
+      >
+        <h2 className="text-sm font-semibold text-white">How DAU and MAU are counted</h2>
+        <p>
+          Both use <span className="text-white/90">distinct usernames</span> with at least one qualifying{' '}
+          <span className="text-white/90">in-app activity</span> in the time window — not login history alone, and not
+          simply opening the app unless that visit produces an event below.
+        </p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li>
+            <span className="text-white/85">DAU:</span> any qualifying activity from{' '}
+            <span className="text-white/85">midnight today</span> (server date) through now.
+          </li>
+          <li>
+            <span className="text-white/85">MAU:</span> any qualifying activity in the{' '}
+            <span className="text-white/85">rolling 30 days</span> ending at the start of today.
+          </li>
+        </ul>
+        <p>
+          <span className="text-white/85">Activity includes</span> (union — one is enough): posts, reactions, poll votes,
+          opening a community feed (visit row), and sending DMs/messages.{' '}
+          <span className="text-white/85">Login history alone does not count.</span>
+        </p>
+      </section>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <StatCard label="DAU" value={stats.dau} icon="fa-chart-line" />
@@ -89,7 +127,7 @@ export default function Metrics() {
                 {cohorts.map((row, i) => (
                   <tr key={i} className="border-b border-white/5 last:border-0">
                     <td className="px-3 py-2">{row.month}</td>
-                    <td className="px-3 py-2 text-right text-muted">{row.cohort_size}</td>
+                    <td className="px-3 py-2 text-right text-muted">{row.size}</td>
                     {Array.from({ length: maxRetentionLen }, (_, j) => {
                       const val = row.retention?.[j]
                       return (
@@ -133,7 +171,7 @@ function LeaderboardCard({ title, entries }: { title: string; entries?: Leaderbo
               <span className="text-muted text-xs w-5 text-right">{i + 1}</span>
               <span className="text-accent font-medium">@{entry.username}</span>
             </div>
-            <span className="text-sm font-semibold">{entry.score}</span>
+            <span className="text-sm font-semibold">{entry.count}</span>
           </div>
         ))}
       </div>

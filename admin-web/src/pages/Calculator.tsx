@@ -35,10 +35,10 @@ interface UserAllowance {
 }
 
 const DEFAULT_MODEL_COSTS: ModelCosts = {
-  primary_name: 'grok-4-1-fast-reasoning',
+  primary_name: 'grok-4.3',
   primary_input_per_m: 0.20,
   primary_output_per_m: 0.50,
-  heavy_name: 'grok-4-20-reasoning',
+  heavy_name: 'grok-4.20-reasoning',
   heavy_input_per_m: 2.0,
   heavy_output_per_m: 6.0,
   whisper_per_minute: 0.006,
@@ -174,9 +174,9 @@ function MonthTab({ costs, allowance }: { costs: ModelCosts; allowance: UserAllo
   const [whisperMin, setWhisperMin] = useState(30)
 
   const callTypes = [
-    { name: 'DM', count: dmCount, setter: setDmCount, input: 2000, output: 300, tool: 0 },
-    { name: 'Group chat', count: groupCount, setter: setGroupCount, input: 8000, output: 600, tool: 1 },
-    { name: 'Community feed', count: feedCount, setter: setFeedCount, input: 6000, output: 500, tool: 1 },
+    { name: 'DM', count: dmCount, setter: setDmCount, input: 15000, output: 400, tool: 0.5 },
+    { name: 'Group chat', count: groupCount, setter: setGroupCount, input: 8000, output: 600, tool: 0.5 },
+    { name: 'Community feed', count: feedCount, setter: setFeedCount, input: 6000, output: 500, tool: 0.5 },
     { name: 'Post summary', count: postSummaryCount, setter: setPostSummaryCount, input: 3000, output: 400, tool: 0 },
   ]
 
@@ -199,8 +199,25 @@ function MonthTab({ costs, allowance }: { costs: ModelCosts; allowance: UserAllo
   const ceiling = allowance.monthly_spend_ceiling_eur
   const pctOfCeiling = ceiling > 0 ? (totalEur / ceiling) * 100 : 0
 
-  const totalCalls = dmCount + groupCount + feedCount + postSummaryCount
-  const userFacingUses = totalCalls
+  const w = allowance.internal_weights || {}
+  const tierStandardMax = 25000
+  const tierOf = (input: number) =>
+    input > tierStandardMax ? 3 : input > 4000 ? 2 : 1
+  const creditsFor = (key: string, input: number, toolAddon: number) => {
+    const base = Math.max(Number(w[key] ?? 1), tierOf(input))
+    return Math.min(10, base + (toolAddon > 0 ? toolAddon : 0))
+  }
+  const surfaceKeys: Record<string, string> = {
+    DM: 'dm',
+    'Group chat': 'group',
+    'Community feed': 'feed',
+    'Post summary': 'post_summary',
+  }
+  const totalCredits = callTypes.reduce(
+    (sum, t) => sum + t.count * creditsFor(surfaceKeys[t.name] || 'dm', t.input, t.tool),
+    0,
+  )
+  const userFacingUses = totalCredits
   const allowanceLimit = allowance.steve_uses_per_month
   const allowancePct = allowanceLimit > 0 ? (userFacingUses / allowanceLimit) * 100 : 0
 
@@ -250,8 +267,11 @@ function MonthTab({ costs, allowance }: { costs: ModelCosts; allowance: UserAllo
         </Card>
 
         <Card title="Against user-facing allowance" icon="fa-user-check">
+          <p className="text-xs text-muted mb-2">
+            Weighted credits (context tier + tools), not raw call count.
+          </p>
           <MeterBar
-            label={`Steve uses: ${userFacingUses} / ${allowanceLimit}`}
+            label={`Steve credits: ${userFacingUses} / ${allowanceLimit}`}
             pct={allowancePct}
             dangerPct={100}
           />

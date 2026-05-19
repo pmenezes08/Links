@@ -129,6 +129,20 @@ Uses `test_doublepay` (has personal Premium) to verify the IAP nag.
 - [ ] Visit the client — a winback banner at €3.99 first-month should
       appear on the Account Settings page.
 
+## §7a — Mobile store billing
+
+Run these in TestFlight and Play internal testing before flipping `iap_purchases_enabled=true`.
+
+- [ ] iOS Premium: tap Subscribe, complete sandbox StoreKit purchase, confirm Premium appears in Active subscriptions with an **App Store** badge.
+- [ ] iOS Community: upgrade one owned root community to L1/L2/L3, confirm the community row shows the tier and **App Store** badge.
+- [ ] iOS extra community: attempt to upgrade a second community and confirm the modal explains web billing with a clickable `https://app.c-point.co/subscription_plans` link.
+- [ ] Android Premium: repeat Premium via Play Billing license tester and confirm the **Google Play** badge.
+- [ ] Android Community: repeat one community tier purchase via Play Billing and confirm the **Google Play** badge.
+- [ ] Android extra community: attempt to upgrade a second community and confirm the modal explains web billing with a clickable `https://app.c-point.co/subscription_plans` link.
+- [ ] Restore purchases: use the native restore action on both platforms and confirm active purchases reappear without opening Stripe.
+- [ ] Web guard: for a store-billed community, try Stripe change-tier / portal paths; backend must return `store_billing_active` and the UI must route management to the store.
+- [ ] Web still works: from desktop web, Premium and community checkout still open Stripe Checkout.
+
 ## §8 — Entitlements gating
 
 - [ ] As `test_free`, try to open a DM with Steve. Client should show
@@ -277,3 +291,204 @@ Run after any change to Steve context, profiling, or KB access.
 - [ ] Confirm no monolith bloat — all new logic in blueprints/services.
 
 Mark corresponding Tests-page rows successful only after full pass.
+
+## §12 — Steve DM Polish
+
+Run after any change to Steve DM rendering, Steve typing indicators, or chat mention rendering.
+
+- [ ] In a direct DM with Steve, send a message that takes more than a second to answer. Confirm "Steve is typing..." appears within a poll tick and disappears when the reply arrives.
+- [ ] Ask Steve to reply with `**bold**` emphasis. Confirm the chat bubble renders bold text rather than literal asterisks.
+- [ ] Ask Steve for a multi-paragraph answer. Confirm double-newline paragraph breaks have clear spacing and are not crammed together.
+- [ ] Ask Steve to mention a known user as `@someuser`. Confirm the mention is teal, tappable, and opens `/profile/someuser`.
+- [ ] In a 1:1 DM between two real users, mention `@steve`. Confirm both sides of that DM see the typing indicator while Steve is working.
+- [ ] In a group chat, mention `@steve` and confirm the existing typing indicator still works through the Redis-backed path.
+- [ ] In a group chat, post a message containing `@someuser`. Confirm the mention is tappable and opens `/profile/someuser`.
+- [ ] Force a Steve error path or entitlement block. Confirm the typing indicator clears immediately when possible, or expires within 30 seconds.
+
+## §13 — Steve Platform Manual KB
+
+Run after any change to Steve's platform manual, persona, platform-question routing, or feedback queue.
+
+- [ ] Ask Steve in DM: `"what can you tell me about this platform?"`. Expected: Steve explains C-Point as a global platform of private micro-networks. He must not describe X/Twitter.
+- [ ] Ask Steve in DM: `"what is C-Point?"`. Expected: Steve mentions trusted private micro-networks and examples such as entrepreneurship networks, university cohorts, sports/athletic clubs, wellness/lifestyle communities, dating/social networks, and small friend groups.
+- [ ] Ask Steve in DM: `"who is Paulo?"`. Expected: Steve uses the approved founder card and does not invent biography, age, location, career history, or private details.
+- [ ] Ask Steve in DM: `"what can you do?"`. Expected: Steve explains platform guidance, communities/DM help, tagging `@Steve`, feedback/bugs, discovery, brainstorming, and general banter without calling himself an assistant.
+- [ ] Ask Steve in DM: `"how do communities work?"`. Expected: Steve explains communities, parent/root networks, sub-communities, feed posts, comments/replies, links/docs, media, key/starred posts, and tagging `@Steve`.
+- [ ] Ask Steve in DM: `"X/Twitter is broken?"`. Expected: Steve may discuss X/Twitter because the user explicitly named it.
+- [ ] In a group chat, ask `@Steve what can you tell me about this platform?`. Expected: same C-Point answer, no X/Twitter confusion.
+- [ ] Report in Steve DM: `"the upload button is broken on mobile"`. Expected: Steve confirms it was sent through with a feedback item number.
+- [ ] In admin-web, open Admin → Steve Feedback. Expected: the report appears with type `bug`, status `new`, submitted_by set to the reporter, and the raw message visible.
+- [ ] Change the feedback item status to `resolved`, add an admin note, and send a closure receipt. Expected: the reporting user receives a Steve DM update.
+- [ ] Ask Steve in DM: `"what is different between C-Point and LinkedIn/X/Discord/Reddit?"`. Expected: Steve says C-Point is complementary, explains public reach/consumption vs private micro-network continuity, and does not name extra competitors the user did not mention.
+- [ ] Ask Steve in DM: `"why does the feed exist?"`. Expected: Steve uses the private social layer / network memory answer and explains that DMs/group chats handle fast coordination while feed threads keep context findable.
+- [ ] Ask Steve in DM about pricing, billing, or Steve limits. Expected: Steve sends the user to the pricing or membership page and does not quote prices, caps, discounts, or plan limits from memory.
+- [ ] Ask Steve in DM for legal advice. Expected: Steve gives only general context and includes the legal disclaimer.
+- [ ] Ask Steve in DM for medical advice. Expected: Steve gives only general information and includes the medical disclaimer.
+- [ ] Ask Steve in DM for investment or tax advice. Expected: Steve gives only general considerations and includes the financial/investment/tax disclaimer.
+- [ ] In a group chat, repeat one professional-advice prompt. Expected: the same disclaimer behavior appears in the group reply.
+- [ ] In a community feed/comment, tag `@Steve` in a legal/medical/financial advice prompt. Expected: Steve includes the appropriate disclaimer and does not present professional advice.
+- [ ] On the networking Steve surface, ask a professional-advice-adjacent question. Expected: Steve preserves member-discovery privacy rules and includes the professional-advice disclaimer when relevant.
+- [ ] Deploy admin-web staging. Expected: Cloud Run revision becomes ready, binds to `$PORT`, admin-web loads, and `/api/*` proxies to the staging app origin.
+
+## §14 — Logout & account switch
+
+Run after changes to authentication, remember-me cookies, CSRF/origin gates, or client-side logout clearing.
+
+- [ ] **Logout**: While signed in, use in-app logout. Confirm you land on `/` or `/welcome`, cannot access `/premium_dashboard` until you sign in again, and notifications do not continue for the prior account on this device after a refresh.
+- [ ] **Account switch**: Log in as user A, browse a community and open DM threads so local caches populate. Log out fully, then log in as user B on the same browser/device. Confirm B’s profile/name appears everywhere (header, mentions), not A’s; no DM or feed content from A without navigating explicitly.
+- [ ] **Remember-me**: With stay-signed-in behaviour, close the browser, reopen — session restores. After full logout, reopening must require credentials again (no silent re-login as the previous user).
+
+**Cross-surface regressions after auth/security deploys**
+
+- [ ] **Admin-web** (cross-subdomain): create a community, edit a user, delete a non–app-admin user — none should return 403.
+- [ ] **Stripe**: re-deliver a recent test event from the Stripe dashboard to `/api/webhooks/stripe`, expect HTTP 200.
+- [ ] **Cron**: `POST /api/cron/events/reminders` (or another documented cron URL) with `X-Cron-Secret`, expect 200.
+- [ ] **Capacitor iOS/Android**: Google Sign-In via `/api/auth/google` succeeds (POST must not be blocked when shadow CSRF logging is on).
+- [ ] **CSRF rollout**: before flipping `CSRF_ORIGIN_ENFORCE=true`, follow `docs/OPERATIONS.md` § CSRF / Origin enforcement (24h shadow logs on staging, then prod).
+
+## §15 — Internationalization (pt-PT)
+
+Run after any change that touches user-facing strings, the locale
+preference, or push / email copy. See `docs/I18N_ROADMAP.md` for the
+catalog convention and namespaces.
+
+### Auto-detect + headers
+
+- [ ] **Fresh install, pt-PT device.** Reset Capacitor (or use a private
+      browser window in `Accept-Language: pt-PT`). Sign up / log in.
+      Expected: the UI renders in Portuguese without any first-run
+      language prompt. The `Accept-Language` header on `/api/me/*`
+      requests includes `pt-PT`.
+- [ ] **Fresh install, English device.** Same flow with
+      `Accept-Language: en-US`. Expected: UI stays English; no PT
+      strings leak through.
+
+### Account Settings preference
+
+- [ ] Open **Account Settings → Language** (block under
+      Notifications). Select **Português (Portugal)**, then click
+      **Save**. Expected: chrome strings, modals, and validation
+      messages change after Save. A `PATCH /api/me/locale` with
+      `{"locale": "pt-PT"}` fires and returns 200.
+- [ ] Reload the page and confirm Portuguese persists (read from
+      `users.preferred_locale`).
+- [ ] Switch back to **English**. Expected: same instant re-render and
+      a fresh `PATCH /api/me/locale`. Reload still shows English.
+- [ ] Simulate a failed `PATCH /api/me/locale` (DevTools offline or
+      mocked 500). Expected: the picker does **not** show the green
+      saved state, even if the in-session UI language changed.
+
+### Feed smoke sweep
+
+- [ ] With pt-PT saved, hard reload and open `/home` or `/feed`.
+      Expected: loading/empty states, dashboard filter labels, poll
+      labels, and post action chrome render in Portuguese; user post
+      bodies and usernames remain unchanged.
+- [ ] Open `/community_feed_react/:id`. Expected: community header
+      fallback copy, stories, announcements, search, poll voters,
+      hide/report/block modals, and bottom navigation labels are in
+      Portuguese.
+- [ ] Open `/group_feed_react/:id`. Expected: group details, post card
+      edit/delete actions, announcements, members/invite modals, and
+      the more sheet are in Portuguese.
+- [ ] Open `/post/:id` and `/reply/:id` (or `/group_reply/:id`).
+      Expected: reply composer placeholders, attachment menus,
+      confirmations, Steve summary chrome, views/reactions modals,
+      and empty reply states are in Portuguese.
+- [ ] Switch back to English, Save, hard reload, and revisit the same
+      feed routes. Expected: chrome returns to English while content
+      authored by users stays in its original language.
+
+### Community + messaging smoke sweep (PRs 39–47)
+
+- [ ] With pt-PT saved, open `/premium_dashboard`. Expected: dashboard
+      tabs, About C-Point modal, and home timeline chrome are in
+      Portuguese.
+- [ ] Open a community **Calendar**, **Polls**, and **Useful Links &
+      Docs** page. Expected: headers, empty states, create/edit
+      modals, and confirmations are in Portuguese.
+- [ ] Open `/communities`. Expected: tabs, spotlight tour, create
+      modals, groups tab, and community item actions are in Portuguese.
+- [ ] Open **Manage Community** (EditCommunity), owner setup intro,
+      delete/frozen modals, and parent community picker. Expected: all
+      chrome in Portuguese; typed `DELETE` confirmation stays literal
+      English for validation.
+- [ ] Open `/community/:id/members`. Expected: member list, invite modal
+      (username / email / QR), role badges, and sub-community actions
+      are in Portuguese.
+- [ ] Open `/user_chat` (Messages inbox). Expected: tabs, community
+      filter, group/DM lists, archived section, new-message flow, and
+      group chat creator are in Portuguese.
+- [ ] Open a **DM thread** and a **group chat thread**. Expected:
+      composer, attachment sheet, long-press menu (Reply/Copy/Edit/
+      Delete), Steve summary chrome, and header menus are in
+      Portuguese.
+- [ ] Open **View Media** from a DM and from a group chat. Expected:
+      empty state, date headers, and viewer chrome are in Portuguese.
+- [ ] Switch back to English, Save, hard reload, and revisit the same
+      community and chat routes. Expected: chrome returns to English.
+
+### Profile, notifications, networking, tasks, subscriptions smoke sweep (PRs 48–52)
+
+- [ ] With pt-PT saved, open `/notifications`. Expected: tabs, empty
+      states, invite actions, and time labels are in Portuguese.
+- [ ] Open `/profile` and your own `/profile/:username` view. Expected:
+      edit chrome, spotlight modals, and settings sections are in
+      Portuguese; **no** “What does Steve know about me?” button on the
+      self public profile.
+- [ ] Open `/networking`. Expected: Steve networking chrome, profile gate,
+      and chat history labels are in Portuguese.
+- [ ] Open `/community/:id/tasks_react`. Expected: task tabs, create
+      form, empty states, and confirmations are in Portuguese.
+- [ ] Open `/subscription_plans`. Expected: entry modal, plan picker,
+      and community tier modals use Portuguese chrome; the entry modal
+      sits at the **top** of the viewport (safe-area padding), not
+      bottom-sheet style. KB plan names, feature bullets, and prices
+      stay as returned by the API.
+- [ ] Switch back to English, Save, hard reload, and revisit the same
+      routes. Expected: chrome returns to English.
+
+### API errors
+
+- [ ] Trigger an authentication-required error from the API (e.g.
+      open an authed endpoint in an incognito window). Expected: the
+      response includes `error_code: "auth.authentication_required"`,
+      a `message_key` of the same name, and a localized `message`
+      matching the active locale.
+- [ ] Trigger a signup validation error (e.g. mismatched passwords).
+      Expected: PT users see the PT message; the `error_code` stays
+      `auth.signup.passwords_do_not_match` regardless of locale.
+- [ ] Trigger an entitlements denial (Steve monthly cap on a PT
+      Premium account). Expected: the denial card uses the pt-PT
+      catalog message and CTA label, not the English defaults.
+
+### Push notifications
+
+- [ ] PT user **B** subscribed to a community; English user **A**
+      posts in the group. Expected: B receives a push titled
+      "Nova publicação no grupo" with body "A: <preview>". A still
+      gets English copy on their own device.
+
+### Transactional email
+
+- [ ] Trigger an invite to a PT recipient (existing user or new). The
+      delivered email subject and body must be in Portuguese; the HTML
+      layout, brand colours, and CTA pill stay unchanged.
+- [ ] Trigger the same invite to an English recipient. Email must stay
+      English.
+
+### Layout regression
+
+- [ ] Sweep the high-traffic surfaces (auth, onboarding, Account
+      Settings, Communities, Feed, Chat, Manage Membership) in pt-PT
+      and confirm no string overflow, clipped buttons, or wrapped
+      labels relative to the English baseline. PT often runs longer
+      than EN — note any visual regression as a follow-up issue.
+
+### KB ↔ catalog parity (locked decision)
+
+- [ ] Verify the entitlements denial card for a PT user is **not**
+      pulling from a KB `cta_copy_templates` override (per
+      `docs/I18N_ROADMAP.md` § 1, KB overrides remain English-only;
+      PT users get JSON catalog content even when an English override
+      exists in the KB).

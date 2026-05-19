@@ -6,6 +6,8 @@ export type UserProfile = Record<string, unknown> | null
 export type UserProfileContextValue = {
   profile: UserProfile
   setProfile: Dispatch<SetStateAction<UserProfile>>
+  /** Apply a full server profile (same side effects as a successful loadProfile fetch, without toggling loading). */
+  applyProfileFromServer: (profile: Record<string, unknown>) => void
   loading: boolean
   error: string | null
   refresh: () => Promise<UserProfile>

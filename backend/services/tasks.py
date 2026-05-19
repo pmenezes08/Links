@@ -68,6 +68,12 @@ def ensure_tasks_table() -> None:
                     pass
             except Exception:
                 pass
+            try:
+                gid_sql = "ALTER TABLE tasks ADD COLUMN group_id INT NULL" if USE_MYSQL else "ALTER TABLE tasks ADD COLUMN group_id INTEGER NULL"
+                c.execute(gid_sql)
+                conn.commit()
+            except Exception:
+                pass
     except Exception as exc:
         logger.error("ensure_tasks_table error: %s", exc)
 
@@ -77,3 +83,10 @@ def is_community_admin_or_owner(username: str, community_id: int) -> bool:
     if not username or not community_id:
         return False
     return is_community_owner(username, community_id) or is_community_admin(username, community_id)
+
+
+def tasks_group_scope_sql(ph: str, group_id: int | None) -> tuple[str, tuple]:
+    """SQL fragment + params: community-wide tasks vs tasks scoped to a single group."""
+    if group_id is not None:
+        return f" AND group_id = {ph}", (group_id,)
+    return " AND (group_id IS NULL OR COALESCE(group_id, 0) = 0)", tuple()

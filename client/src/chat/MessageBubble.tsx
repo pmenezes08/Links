@@ -11,6 +11,7 @@
  */
 
 import { memo } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { ChatMessage } from '../types/chat'
 import MessageImage from '../components/MessageImage'
 import MessageVideo from '../components/MessageVideo'
@@ -21,6 +22,7 @@ import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/vide
 import { normalizeMediaPath, formatMessageTime, parseMessageTime } from './utils'
 import AudioMessage from './AudioMessage'
 import LongPressActionable from './LongPressActionable'
+import { renderTextWithSourceLinks } from '../utils/linkUtils'
 
 export interface MessageBubbleProps {
   message: ChatMessage & {
@@ -56,6 +58,8 @@ export interface MessageBubbleProps {
   onEdit?: () => void
   /** Handler to enter multi-select mode */
   onSelect?: () => void
+  /** Remove one attachment from a multi-media message (sender only; requires ≥2 items server-side). */
+  onRemoveMediaItem?: (mediaUrl: string) => void
   /** Handler to retry a failed message */
   onRetry?: () => void
   /** Handler to update edit text */
@@ -80,8 +84,8 @@ export interface MessageBubbleProps {
   onStoryReplyClick?: (storyId: string, username: string) => void
   /** Username of the other person in the chat (for story navigation) */
   otherUsername?: string
-  /** Function to render linkified text */
-  linkifyText: (text: string) => React.ReactNode[]
+  /** Handler for username mentions in rich text */
+  onMentionClick?: (username: string) => void
 }
 
 function MessageBubbleInner({
@@ -96,6 +100,7 @@ function MessageBubbleInner({
   onCopy,
   onEdit,
   onSelect,
+  onRemoveMediaItem,
   onEditTextChange,
   onCommitEdit,
   onCancelEdit,
@@ -107,9 +112,10 @@ function MessageBubbleInner({
   translatingId,
   onStoryReplyClick,
   otherUsername,
-  linkifyText,
+  onMentionClick,
   onRetry,
 }: MessageBubbleProps) {
+  const { t } = useTranslation()
   const textBase = m.text || ''
   const videoEmbed = extractVideoEmbedFromPost(textBase, undefined)
   const textAfterVideo = videoEmbed ? removeVideoUrlFromText(textBase, videoEmbed) : textBase
@@ -118,6 +124,20 @@ function MessageBubbleInner({
     previewUrls.length > 0 ? stripExtractedUrlsFromText(textAfterVideo, previewUrls) : textAfterVideo
   const showLinkPreviews = previewUrls.length > 0
   const showLinkifiedBody = textWithoutPreviewUrls.trim().length > 0
+
+  const removableMedia =
+    m.sent && !m.isOptimistic && !m.sendFailed && m.media_paths && m.media_paths.length >= 2 ? m.media_paths : []
+
+  const longPressOptionalActions =
+    onRemoveMediaItem && removableMedia.length > 0
+      ? removableMedia.map((url, i) => ({
+          label: removableMedia.length > 1 ? t('chat.remove_item', { number: i + 1 }) : t('chat.remove_attachment'),
+          danger: true as const,
+          iconClass: 'fa-regular fa-image',
+          onClick: () => onRemoveMediaItem(url),
+        }))
+      : undefined
+
   // Only render the "bubble" (liquid-glass background) when there is actual text,
   // a reply/story to quote, inline video, or an active editor. Media and link previews are
   // rendered as siblings of the bubble so they appear with their own thin
@@ -132,6 +152,7 @@ function MessageBubbleInner({
       onCopy={onCopy}
       onEdit={onEdit}
       onSelect={onSelect}
+      optionalActions={longPressOptionalActions}
       disabled={isEditing || (!!m.isOptimistic && !m.sendFailed)}
     >
       <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
@@ -168,8 +189,9 @@ function MessageBubbleInner({
                   </div>
                 ) : (
                   <MessageImage
+                    key={normalizeMediaPath(m.media_paths[0])} // Ensures retry state resets on src change for "Unavailable" preview fix
                     src={normalizeMediaPath(m.media_paths[0])}
-                    alt="Media"
+                    alt={t('chat.media_preview_alt')}
                     className="w-full rounded-lg"
                   />
                 )}
@@ -188,7 +210,7 @@ function MessageBubbleInner({
                 <div className="mb-1.5">
                   <MessageImage
                     src={normalizeMediaPath(m.image_path)}
-                    alt="Shared photo"
+                    alt={t('chat.shared_image_alt')}
                     className="max-w-full max-h-64 cursor-pointer rounded-lg"
                     onClick={() => onImageClick(normalizeMediaPath(m.image_path!))}
                   />
@@ -216,7 +238,7 @@ function MessageBubbleInner({
                 <div className="px-2 pb-1 pt-0.5">
                   <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
                     <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
-                    <span>{translatedSummaries?.[m.id] ? 'Steve summary (translated)' : 'Steve summary'}</span>
+                    <span>{translatedSummaries?.[m.id] ? t('feed.steve_summary_translated') : t('feed.steve_summary')}</span>
                     <div className="ml-auto flex items-center gap-1">
                       {translatedSummaries?.[m.id] && onTranslateSummary && (
                         <button onClick={(e) => { e.stopPropagation(); onTranslateSummary(m.id, '', 'reset') }} className="text-white/30 hover:text-white/50 px-0.5"><i className="fa-solid fa-rotate-left text-[8px]" /></button>
@@ -237,12 +259,12 @@ function MessageBubbleInner({
                 </div>
               ) : m.audio_path && (() => {
                 try {
-                  const t = new Date(m.time).getTime()
-                  if (Date.now() - t < 120000) return (
+                  const createdMs = new Date(m.time).getTime()
+                  if (Date.now() - createdMs < 120000) return (
                     <div className="px-2 pb-1 pt-0.5">
                       <div className="flex items-center gap-1">
                         <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-white/40" />
-                        <span className="text-[11px] text-white/40">Steve summary generating</span>
+                        <span className="text-[11px] text-white/40">{t('feed.steve_summary_generating')}</span>
                         <span className="flex gap-0.5 ml-0.5">
                           <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                           <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -285,7 +307,7 @@ function MessageBubbleInner({
                 m.isOptimistic
                   ? 'bg-[#4db6ac]/40 border border-[#4db6ac]/30'
                   : `liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent' : 'liquid-glass-bubble--received'}`
-              } text-white px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words overflow-hidden max-w-full min-w-0 ${
+              } text-white px-2.5 py-1.5 rounded-2xl text-[14px] leading-relaxed whitespace-pre-wrap break-words overflow-hidden max-w-full min-w-0 ${
                 m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
               }`}
             >
@@ -320,7 +342,7 @@ function MessageBubbleInner({
                     <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-black/30">
                       <img 
                         src={normalizeMediaPath(mediaPath)} 
-                        alt="Story" 
+                        alt={t('chat.story_alt')} 
                         className="w-full h-full object-cover"
                         onError={(e) => {
                           const el = e.currentTarget
@@ -366,9 +388,9 @@ function MessageBubbleInner({
                     </div>
                     <div className="text-[12px] text-white/50 mt-0.5 flex items-center gap-1">
                       {isVideo ? (
-                        <><i className="fa-solid fa-video text-[10px]" /> Video</>
+                        <><i className="fa-solid fa-video text-[10px]" /> {t('chat.video')}</>
                       ) : (
-                        <><i className="fa-solid fa-image text-[10px]" /> Photo</>
+                        <><i className="fa-solid fa-image text-[10px]" /> {t('chat.photo')}</>
                       )}
                     </div>
                   </div>
@@ -395,10 +417,10 @@ function MessageBubbleInner({
               const parts = m.replySnippet.split('|')
               if (parts.length >= 3) {
                 mediaPath = parts[1]
-                displayText = parts.slice(2).join('|') || (isImageReply ? 'Photo' : 'Video')
+                displayText = parts.slice(2).join('|') || (isImageReply ? t('chat.photo') : t('chat.video'))
               }
             } else if (isAudioReply) {
-              displayText = m.replySnippet.substring(2) || 'Voice message'
+              displayText = m.replySnippet.substring(2) || t('chat.voice_message')
             }
             if (displayText.length > 80) displayText = displayText.slice(0, 80) + '…'
             
@@ -456,14 +478,14 @@ function MessageBubbleInner({
                 onChange={(e) => onEditTextChange(e.target.value)}
                 rows={2}
                 autoFocus
-                placeholder="Edit message..."
+                placeholder={t('chat.edit_message_placeholder')}
               />
               <div className="flex gap-2 justify-end mt-1.5">
                 <button
                   className="px-2.5 py-1 text-xs text-white/60 hover:text-white/80 transition-colors"
                   onClick={onCancelEdit}
                 >
-                  Cancel
+                  {t('chat.cancel')}
                 </button>
                 <button
                   className={`px-3 py-1 text-xs rounded-md flex items-center gap-1.5 ${
@@ -479,7 +501,7 @@ function MessageBubbleInner({
                   ) : (
                     <i className="fa-solid fa-check text-[10px]" />
                   )}
-                  <span>Save</span>
+                  <span>{t('chat.save')}</span>
                 </button>
               </div>
             </div>
@@ -493,7 +515,7 @@ function MessageBubbleInner({
                 onEdit()
               }}
             >
-              {showLinkifiedBody ? linkifyText(textWithoutPreviewUrls) : null}
+              {showLinkifiedBody ? renderTextWithSourceLinks(textWithoutPreviewUrls, false, onMentionClick) : null}
               {videoEmbed ? (
                 <div className="block w-full min-w-0 mt-2 max-w-[280px]">
                   {videoEmbed.type === 'youtube' ? (
@@ -565,7 +587,21 @@ const MessageBubble = memo(MessageBubbleInner, (prevProps, nextProps) => {
   if (prevMsg.sendFailed !== nextMsg.sendFailed) return false
   if (prevMsg.edited_at !== nextMsg.edited_at) return false
   if (prevMsg.decryption_error !== nextMsg.decryption_error) return false
-  
+  if (prevMsg.image_path !== nextMsg.image_path) return false
+  if (prevMsg.video_path !== nextMsg.video_path) return false
+  const pm = prevMsg.media_paths
+  const nm = nextMsg.media_paths
+  if (pm === nm) {
+    // same ref or both undefined
+  } else if (!pm || !nm || pm.length !== nm.length) {
+    return false
+  } else {
+    for (let i = 0; i < pm.length; i++) {
+      if (pm[i] !== nm[i]) return false
+    }
+  }
+  if (prevProps.onRemoveMediaItem !== nextProps.onRemoveMediaItem) return false
+
   // Check editing state
   if (prevProps.isEditing !== nextProps.isEditing) return false
   if (prevProps.editText !== nextProps.editText) return false

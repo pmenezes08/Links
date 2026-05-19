@@ -1,4 +1,12 @@
 import { useRef, useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
+
+export interface LongPressOptionalAction {
+  label: string
+  iconClass?: string
+  onClick: () => void
+  danger?: boolean
+}
 
 interface LongPressActionableProps {
   children: React.ReactNode
@@ -8,6 +16,8 @@ interface LongPressActionableProps {
   onCopy: () => void
   onEdit?: () => void
   onSelect?: () => void
+  /** Extra rows above Delete (e.g. remove one collage attachment). */
+  optionalActions?: LongPressOptionalAction[]
   disabled?: boolean
 }
 
@@ -55,8 +65,10 @@ export default function LongPressActionable({
   onCopy, 
   onEdit,
   onSelect,
+  optionalActions,
   disabled 
 }: LongPressActionableProps) {
+  const { t } = useTranslation()
   const [showMenu, setShowMenu] = useState(false)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState<EmojiCategory>('Smileys')
@@ -220,14 +232,14 @@ export default function LongPressActionable({
                 onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onReply() })}
               >
                 <i className="fa-solid fa-reply mr-2 text-xs opacity-60" />
-                Reply
+                {t('chat.action_reply')}
               </button>
               <button 
                 className="text-left px-2 py-1 text-sm hover:bg-white/5 rounded" 
                 onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onCopy() })}
               >
                 <i className="fa-regular fa-copy mr-2 text-xs opacity-60" />
-                Copy
+                {t('chat.action_copy')}
               </button>
               {onEdit && (
                 <button 
@@ -235,7 +247,7 @@ export default function LongPressActionable({
                   onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onEdit() })}
                 >
                   <i className="fa-regular fa-pen-to-square mr-2 text-xs opacity-60" />
-                  Edit
+                  {t('chat.action_edit')}
                 </button>
               )}
               {onSelect && (
@@ -244,15 +256,38 @@ export default function LongPressActionable({
                   onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onSelect() })}
                 >
                   <i className="fa-regular fa-square-check mr-2 text-xs opacity-60" />
-                  Select
+                  {t('chat.action_select')}
                 </button>
               )}
+              {optionalActions?.map((a, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  className={`text-left px-2 py-1 text-sm hover:bg-white/5 rounded ${
+                    a.danger ? 'text-orange-300' : ''
+                  }`}
+                  onClick={() =>
+                    safeAction(() => {
+                      setShowMenu(false)
+                      setShowEmojiPicker(false)
+                      a.onClick()
+                    })
+                  }
+                >
+                  {a.iconClass ? (
+                    <i className={`${a.iconClass} mr-2 text-xs opacity-60`} />
+                  ) : (
+                    <i className="fa-regular fa-file-lines mr-2 text-xs opacity-60" />
+                  )}
+                  {a.label}
+                </button>
+              ))}
               <button 
                 className="text-left px-2 py-1 text-sm text-red-400 hover:bg-white/5 rounded" 
                 onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onDelete() })}
               >
                 <i className="fa-regular fa-trash-can mr-2 text-xs" />
-                Delete
+                {t('chat.delete')}
               </button>
             </div>
           </div>

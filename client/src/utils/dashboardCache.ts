@@ -2,9 +2,19 @@ import { clearDeviceCache, readDeviceCacheStale, writeDeviceCache } from './devi
 
 export const DASHBOARD_DEVICE_CACHE_KEY = 'dashboard-device-cache'
 export const DASHBOARD_CACHE_TTL_MS = 30 * 60 * 1000
-export const DASHBOARD_CACHE_VERSION = 'dashboard-v2'
+export const DASHBOARD_CACHE_VERSION = 'dashboard-v5'
 
-export type DashboardCommunity = { id: number; name: string; type: string }
+export type DashboardCommunity = {
+  id: number
+  name: string
+  type: string
+  description?: string | null
+  member_count?: number
+  last_activity?: string | null
+  is_owner?: boolean
+  is_admin?: boolean
+  unread_posts_count?: number
+}
 
 export type DashboardProfileSnapshot = {
   emailVerified: boolean | null

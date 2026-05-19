@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
+import { useTranslation } from 'react-i18next'
 import Avatar from './Avatar'
-import { handleLogoutClick } from '../utils/logout'
+import { useLogoutRequest } from '../contexts/LogoutPromptContext'
 import { useBadges } from '../contexts/BadgeContext'
 
 type HeaderBarProps = {
@@ -10,11 +11,13 @@ type HeaderBarProps = {
   username?: string
   displayName?: string
   avatarUrl?: string | null
+  titleAccessory?: ReactNode
 }
 
-export default function HeaderBar({ title, username, displayName, avatarUrl }: HeaderBarProps){
+export default function HeaderBar({ title, username, displayName, avatarUrl, titleAccessory }: HeaderBarProps){
   const navigate = useNavigate()
   const location = useLocation()
+  const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
   const { unreadMsgs, unreadNotifs } = useBadges()
   const isWeb = typeof window !== 'undefined' ? Capacitor.getPlatform() === 'web' : false
@@ -28,6 +31,8 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
     ? ((avatarUrl.startsWith('http') || avatarUrl.startsWith('/static')) ? avatarUrl : `/static/${avatarUrl}`)
     : null
 
+  const requestLogout = useLogoutRequest()
+
   const showBack = location.pathname === '/notifications'
   const goBack = () => {
     if (window.history.length > 1) { navigate(-1) } else { navigate('/home') }
@@ -35,43 +40,58 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
 
   return (
     <>
-      <div className="header-with-safe-area fixed left-0 right-0 top-0 h-14 border-b border-[#262f30] bg-black flex items-center px-3 z-[1000] text-white will-change-transform">
+      <div
+        className="header-with-safe-area fixed left-0 right-0 top-0 h-14 border-b border-white/10 bg-black flex items-center px-3 z-[1000] text-white will-change-transform"
+        style={{ background: '#000' }}
+      >
         {showBack ? (
-          <button className="mr-2 p-2 rounded-full hover:bg-white/5" onClick={goBack} aria-label="Back">
+          <button className="mr-2 p-2 rounded-full hover:bg-white/5" onClick={goBack} aria-label={t('navigation.back')}>
             <i className="fa-solid fa-arrow-left" />
           </button>
         ) : (
-          <button className="mr-3 md:hidden" onClick={() => setMenuOpen(v=>!v)} aria-label="Menu">
+          <button className="mr-3 md:hidden" onClick={() => setMenuOpen(v=>!v)} aria-label={t('navigation.menu')}>
             <Avatar username={username || ''} url={resolvedAvatar} size={32} />
           </button>
         )}
-        <div className="tracking-[-0.01em] flex-1 min-w-0 text-center">
+        <div className="tracking-[-0.01em] flex-1 min-w-0 relative flex items-center justify-center min-h-[2.5rem]">
           {(() => {
-            const t = String(title || '')
-            const idx = t.indexOf(' · ')
-            if (idx > -1){
-              const left = t.slice(0, idx)
-              const right = t.slice(idx + 3)
+            const t = String(title || '').trim()
+            if (!t && titleAccessory) {
               return (
-                <div className="inline-block max-w-[75%] whitespace-nowrap overflow-hidden text-ellipsis align-middle">
-                  <span className="font-semibold truncate align-baseline">{left}</span>
-                  <span className="text-[#9fb0b5] text-[13px] font-normal align-baseline">{` · ${right}`}</span>
+                <div className="pointer-events-none absolute left-1/2 top-1/2 z-[1] -translate-x-1/2 -translate-y-1/2 max-w-[min(100%,18rem)]">
+                  <span className="pointer-events-auto inline-flex">{titleAccessory}</span>
+                </div>
+              )
+            }
+            const full = String(title || '')
+            const idx = full.indexOf(' · ')
+            if (idx > -1){
+              const left = full.slice(0, idx)
+              const right = full.slice(idx + 3)
+              return (
+                <div className="inline-flex max-w-[70%] min-w-0 items-center gap-2">
+                  <div className="min-w-0 whitespace-nowrap overflow-hidden text-ellipsis">
+                    <span className="font-semibold align-baseline">{left}</span>
+                    <span className="text-[#9fb0b5] text-[13px] font-normal align-baseline">{` · ${right}`}</span>
+                  </div>
+                  {titleAccessory ? <span className="flex-shrink-0">{titleAccessory}</span> : null}
                 </div>
               )
             }
             return (
-              <span className="font-semibold truncate inline-block align-baseline">
-                {t}
-              </span>
+              <div className="inline-flex max-w-[70%] min-w-0 items-center gap-2 justify-center">
+                <span className="font-semibold truncate align-baseline min-w-0">{full}</span>
+                {titleAccessory ? <span className="flex-shrink-0">{titleAccessory}</span> : null}
+              </div>
             )
           })()}
         </div>
         <div className="flex items-center gap-2">
-          <button className="relative p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat')} aria-label="Messages">
+          <button className="relative p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat')} aria-label={t('navigation.messages')}>
             <i className="fa-solid fa-comments" />
             {unreadMsgs > 0 ? (<span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#4db6ac] text-black text-[10px] flex items-center justify-center">{unreadMsgs > 99 ? '99+' : unreadMsgs}</span>) : null}
           </button>
-          <button className="relative p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/notifications')} aria-label="Notifications">
+          <button className="relative p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/notifications')} aria-label={t('navigation.notifications')}>
             <i className="fa-regular fa-bell" />
             {unreadNotifs > 0 ? (<span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#4db6ac] text-black text-[10px] flex items-center justify-center">{unreadNotifs > 99 ? '99+' : unreadNotifs}</span>) : null}
           </button>
@@ -91,16 +111,16 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
               {username === 'admin' && (
                 <>
                   <a href="/admin_profile_react" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors">
-                    <i className="fa-solid fa-shield-halved w-5" /> Admin Profile
+                    <i className="fa-solid fa-shield-halved w-5" /> {t('navigation.admin_profile')}
                   </a>
                   <a href="/admin" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors">
-                    <i className="fa-solid fa-chart-line w-5" /> Admin Dashboard
+                    <i className="fa-solid fa-chart-line w-5" /> {t('navigation.admin_dashboard')}
                   </a>
                 </>
               )}
 
               <a href="/premium_dashboard" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors">
-                <i className="fa-solid fa-house w-5" /> Dashboard
+                <i className="fa-solid fa-house w-5" /> {t('navigation.dashboard')}
               </a>
 
               <button
@@ -110,32 +130,32 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
                 }}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
               >
-                <i className="fa-solid fa-user w-5" /> My Profile
+                <i className="fa-solid fa-user w-5" /> {t('navigation.my_profile')}
               </button>
 
               <button
                 onClick={() => navigate('/followers')}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
               >
-                <i className="fa-solid fa-users w-5" /> Followers
+                <i className="fa-solid fa-users w-5" /> {t('navigation.followers')}
               </button>
 
               <button
-                onClick={() => navigate('/networking')}
+                onClick={() => navigate('/subscription_plans')}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
               >
-                <i className="fa-solid fa-network-wired w-5" /> Networking
+                <i className="fa-solid fa-crown w-5" /> {t('navigation.subscriptions')}
               </button>
 
               <button
-                onClick={handleLogoutClick}
+                onClick={requestLogout}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
               >
-                <i className="fa-solid fa-right-from-bracket w-5" /> Logout
+                <i className="fa-solid fa-right-from-bracket w-5" /> {t('navigation.logout')}
               </button>
 
               <a href="/account_settings" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors">
-                <i className="fa-solid fa-cog w-5" /> Account Settings
+                <i className="fa-solid fa-cog w-5" /> {t('navigation.account_settings')}
               </a>
             </nav>
           </div>
@@ -152,11 +172,11 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
             {/* Install action moved to login page */}
             {username === 'admin' ? (
               <>
-                <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/admin_profile_react">Admin Profile</a>
-                <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/admin">Admin Dashboard</a>
+                <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/admin_profile_react">{t('navigation.admin_profile')}</a>
+                <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/admin">{t('navigation.admin_dashboard')}</a>
               </>
             ) : null}
-              <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/premium_dashboard">Dashboard</a>
+              <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/premium_dashboard">{t('navigation.dashboard')}</a>
               <button
                 className="block w-full text-left px-4 py-3 rounded-xl hover:bg:white/5 text-white"
                 onClick={() => {
@@ -165,12 +185,12 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
                   else navigate('/profile')
                 }}
               >
-                My Profile
+                {t('navigation.my_profile')}
               </button>
-                <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg:white/5 text:white" onClick={()=> { setMenuOpen(false); navigate('/followers') }}>Followers</button>
-                <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/networking') }}>Networking</button>
-            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={handleLogoutClick}>Logout</button>
-              <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/account_settings">Account Settings</a>
+                <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg:white/5 text:white" onClick={()=> { setMenuOpen(false); navigate('/followers') }}>{t('navigation.followers')}</button>
+                <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/subscription_plans') }}>{t('navigation.subscriptions')}</button>
+            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={requestLogout}>{t('navigation.logout')}</button>
+              <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/account_settings">{t('navigation.account_settings')}</a>
           </div>
           <div className="flex-1 h-full" onClick={()=> setMenuOpen(false)} />
         </div>

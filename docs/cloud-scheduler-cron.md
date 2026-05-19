@@ -110,6 +110,17 @@ gcloud scheduler jobs create http usage-cycle-notify \
   --headers="X-Cron-Secret=$SECRET" \
   --attempt-deadline=300s
 
+# AI usage daily rollup — aggregates yesterday's ai_usage_log into
+# ai_usage_daily_rollups (admin metrics). Daily at 02:15 UTC.
+gcloud scheduler jobs create http ai-usage-daily-rollup \
+  --location=europe-west1 \
+  --schedule="15 2 * * *" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/ai-usage/daily-rollup" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=300s
+
 # Community lifecycle warnings — fires pre-archive warnings for Free
 # communities (day 75, day 88) and purge reminders for archived Free
 # communities (day 300). Daily at 10:05 Europe/Dublin so warnings land
@@ -133,6 +144,48 @@ gcloud scheduler jobs create http communities-lifecycle-dispatch \
   --http-method=POST \
   --headers="X-Cron-Secret=$SECRET" \
   --attempt-deadline=300s
+
+# Retained story media purge — deletes story objects after they have been
+# invisible for 7 days. Daily at 02:40 UTC, after the low-traffic expiry
+# window. Dry-run:
+#   curl -X POST "$BASE/api/cron/media/purge-retained-stories?dry_run=1" \
+#     -H "X-Cron-Secret: $CRON_SECRET"
+gcloud scheduler jobs create http media-purge-retained-stories \
+  --location=europe-west1 \
+  --schedule="40 2 * * *" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/media/purge-retained-stories" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=300s
+
+# Event reminders — checks upcoming calendar events and sends the configured
+# 1-week, 1-day, and 1-hour reminders. The endpoint dedupes per
+# event/user/reminder type and supports dry-run:
+#   curl -X POST "$BASE/api/cron/events/reminders?dry_run=1" \
+#     -H "X-Cron-Secret: $CRON_SECRET"
+gcloud scheduler jobs create http event-reminder-dispatch \
+  --location=europe-west1 \
+  --schedule="*/15 * * * *" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/events/reminders" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=300s
+
+# Onboarding profile reminders — sends the 24h and 48h gentle reminders
+# for users who chose Finish later during profile onboarding. The endpoint
+# dedupes with Firestore sent markers and supports dry-run:
+#   curl -X POST "$BASE/api/cron/onboarding/reminders?dry_run=1" \
+#     -H "X-Cron-Secret: $CRON_SECRET"
+gcloud scheduler jobs create http onboarding-profile-reminders \
+  --location=europe-west1 \
+  --schedule="*/30 * * * *" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/onboarding/reminders" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=120s
 
 # Steve member KB — weekly auto-synthesis. Refreshes every active
 # member's Knowledge Base once per calendar week by processing one of
@@ -202,7 +255,9 @@ migration), run:
 ```bash
 for job in enterprise-grace-sweep enterprise-iap-nag enterprise-winback-expire \
            subscriptions-revoke-expired usage-cycle-notify \
-           communities-lifecycle-dispatch kb-weekly-synthesis; do
+           communities-lifecycle-dispatch media-purge-retained-stories \
+           event-reminder-dispatch kb-weekly-synthesis steve-reminder-vault-dispatch \
+           group-steve-agent-due; do
   gcloud scheduler jobs pause "$job" --location=europe-west1
 done
 ```
@@ -313,3 +368,50 @@ backend endpoint.
 - **Two secrets, one per env.** Never point a staging-prefixed job at
   the prod secret or vice versa — the point of separate secrets is that
   a leak in one env can't be weaponised against the other.
+
+## 8. Steve Reminder Vault dispatch
+
+| Field | Value |
+|-------|--------|
+| **URI** | `{BASE}/api/cron/steve/reminder-vault-dispatch` |
+| **Method** | `POST` |
+| **Header** | `X-Cron-Secret` = same `CRON_SHARED_SECRET` as other crons |
+| **Suggested schedule** | **Every minute** (`*/1 * * * *`, UTC) — short “in N minutes” nudges stay within about a minute after the due time (a 5‑minute cadence can delay by up to ~5 minutes). |
+
+Example (staging `BASE`):
+
+```bash
+BASE=https://cpoint-app-staging-739552904126.europe-west1.run.app
+SECRET=$(gcloud secrets versions access latest --secret=cron-shared-secret-staging)
+
+gcloud scheduler jobs create http steve-reminder-vault-dispatch \
+  --location=europe-west1 \
+  --schedule="*/1 * * * *" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/steve/reminder-vault-dispatch" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=120s
+```
+
+Update an existing prod/staging job to every minute:
+
+```bash
+gcloud scheduler jobs update http steve-reminder-vault-dispatch \
+  --location=europe-west1 --schedule="*/1 * * * *" --time-zone=UTC
+
+gcloud scheduler jobs update http staging-steve-reminder-vault-dispatch \
+  --location=europe-west1 --schedule="*/1 * * * *" --time-zone=UTC
+```
+
+## 9. Group Steve agent — delayed first replies
+
+| Field | Value |
+|-------|--------|
+| **URI** | `{BASE}/api/cron/group-steve-agent-due` |
+| **Method** | `POST` |
+| **Header** | `X-Cron-Secret` = same `CRON_SHARED_SECRET` as other crons |
+| **Suggested schedule** | Every **1–5 minutes** (`*/5 * * * *`, UTC) — processes due rows in `group_steve_agent_schedule` (randomized 15m–2h delay from post time). |
+| **Query** | `dry_run=1` — counts eligible due rows without deleting schedule rows or calling Steve. |
+
+Add `group-steve-agent-due` to the bulk-pause list in §6 when you register the job in GCP.

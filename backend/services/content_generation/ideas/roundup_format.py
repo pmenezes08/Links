@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+import logging
 import re
-from datetime import date
-from typing import Any, Dict, List, Optional, Sequence
+from datetime import date, datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from backend.services.content_generation.job_schedule import (
+    add_months_calendar,
+    normalize_cadence,
+    resolve_zone,
+)
 from backend.services.content_generation.llm import filter_links
+
+logger = logging.getLogger(__name__)
+
+_ISO_DATE_RE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 
 
 def extract_year_from_text(s: str) -> Optional[int]:
@@ -52,7 +62,7 @@ _CADENCE_LABELS: Dict[str, str] = {
 def cadence_label(job: Dict[str, Any]) -> str:
     """Derive a human-readable frequency word from the job schedule."""
     schedule = job.get("schedule") or {}
-    cadence = str(schedule.get("cadence") or "").strip().lower()
+    cadence = normalize_cadence(schedule.get("cadence"))
     return _CADENCE_LABELS.get(cadence, "")
 
 
@@ -91,6 +101,85 @@ def default_min_publication_year() -> int:
     return date.today().year - 3
 
 
+def parse_publication_date(published_date: str) -> Optional[date]:
+    """Best-effort calendar date from LLM output (ISO first, then dateparser)."""
+    s = (published_date or "").strip()
+    if not s:
+        return None
+    m = _ISO_DATE_RE.search(s)
+    if m:
+        try:
+            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            pass
+    try:
+        import dateparser
+
+        parsed = dateparser.parse(
+            s,
+            settings={
+                "PREFER_DAY_OF_MONTH": "first",
+                "RETURN_AS_TIMEZONE_AWARE": False,
+            },
+        )
+        if parsed:
+            return parsed.date()
+    except Exception:
+        return None
+    return None
+
+
+def news_recency_min_date_for_job(
+    job: Dict[str, Any],
+    *,
+    ref_utc: Optional[datetime] = None,
+) -> Tuple[date, str, str]:
+    """Earliest inclusive publication date for stories (local calendar + cadence). Returns (min_date, tz_name, cadence)."""
+    schedule = job.get("schedule") or {}
+    cadence = normalize_cadence(schedule.get("cadence"))
+    tz_name = (job.get("timezone") or "UTC").strip() or "UTC"
+    try:
+        tz = resolve_zone(tz_name)
+    except ValueError:
+        tz = resolve_zone("UTC")
+        tz_name = "UTC"
+
+    if ref_utc is None:
+        ref_utc = datetime.now(timezone.utc)
+    elif ref_utc.tzinfo is None:
+        ref_utc = ref_utc.replace(tzinfo=timezone.utc)
+    today_local = ref_utc.astimezone(tz).date()
+
+    if cadence == "daily":
+        min_date = today_local - timedelta(days=2)
+    elif cadence == "weekly":
+        min_date = today_local - timedelta(days=7)
+    elif cadence == "biweekly":
+        min_date = today_local - timedelta(days=14)
+    elif cadence == "monthly":
+        min_date = add_months_calendar(today_local, -1)
+    else:
+        min_date = today_local - timedelta(days=7)
+    return min_date, tz_name, cadence
+
+
+def news_recency_prompt_clause(min_date: date, tz_name: str, cadence: str) -> str:
+    """LLM instructions for public news roundup recency (matches job cadence)."""
+    label = {
+        "daily": "daily",
+        "weekly": "weekly",
+        "biweekly": "bi-weekly",
+        "monthly": "monthly",
+    }.get(cadence, "weekly")
+    return (
+        f"RECENCY ({label} cadence): Only include stories whose original publication date is on or after "
+        f"{min_date.isoformat()} in timezone {tz_name}. "
+        "Each story must set published_date to a real calendar day — prefer ISO YYYY-MM-DD or 'DD Mon YYYY' (e.g. 14 Apr 2026). "
+        "Do not anchor the roundup on stories older than that window. "
+        "Avoid month-only dates unless the story clearly falls inside the window."
+    )
+
+
 def md_link_title(text: str) -> str:
     """Avoid breaking markdown [text](url) when titles contain brackets."""
     return (text or "").replace("[", "(").replace("]", ")").strip() or "Link"
@@ -117,11 +206,15 @@ def filter_section_items(
     allowed_domains: Sequence[str],
     *,
     min_publication_year: int | None = None,
+    min_publication_date: date | None = None,
 ) -> List[Dict[str, Any]]:
     """Drop items whose URLs are not on the allowlist; drop empty sections.
 
     When min_publication_year is set, drop items with a parseable year strictly before
     that threshold. If that would empty a section, keep the pre-filter items (soft filter).
+
+    When min_publication_date is set (news roundups), drop items with a parseable calendar date
+    strictly before that threshold. Unparseable published_date values are kept (see prompt).
     """
     out: List[Dict[str, Any]] = []
     if not isinstance(sections, list):
@@ -161,6 +254,26 @@ def filter_section_items(
             ]
             if recent_only:
                 items_out = recent_only
+        if min_publication_date is not None and items_out:
+            unparseable = 0
+            day_filtered: List[Dict[str, Any]] = []
+            for it in items_out:
+                pd_raw = it.get("published_date") or ""
+                pd = parse_publication_date(str(pd_raw))
+                if pd is not None:
+                    if pd < min_publication_date:
+                        continue
+                    day_filtered.append(it)
+                else:
+                    unparseable += 1
+                    day_filtered.append(it)
+            if unparseable:
+                logger.warning(
+                    "filter_section_items: %d item(s) with unparseable published_date kept (section=%r)",
+                    unparseable,
+                    title[:60],
+                )
+            items_out = day_filtered
         if title and items_out:
             out.append({"title": title, "items": items_out})
     return out
@@ -169,6 +282,8 @@ def filter_section_items(
 def filter_sources(
     sources: Any,
     allowed_domains: Sequence[str],
+    *,
+    min_publication_date: date | None = None,
 ) -> List[Dict[str, str]]:
     """Keep only valid structured sources from allowed domains."""
     out: List[Dict[str, str]] = []
@@ -181,11 +296,16 @@ def filter_sources(
         url = str(item.get("url") or "").strip()
         if not url or not filter_links([url], allowed_domains):
             continue
+        pub_raw = str(item.get("published_date") or "").strip()
+        if min_publication_date is not None:
+            pd = parse_publication_date(pub_raw)
+            if pd is not None and pd < min_publication_date:
+                continue
         out.append(
             {
                 "title": str(item.get("title") or "").strip(),
                 "outlet": str(item.get("outlet") or "").strip(),
-                "published_date": str(item.get("published_date") or "").strip(),
+                "published_date": pub_raw,
                 "url": url,
             }
         )

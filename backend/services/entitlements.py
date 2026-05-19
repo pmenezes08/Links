@@ -68,8 +68,8 @@ _DEFAULTS: Dict[str, Any] = {
     "internal_weights": {"dm": 1, "group": 3, "feed": 3, "post_summary": 2, "voice_minute": 1},
     # Hard Limits (Premium defaults)
     "ai_daily_limit": 10,
-    "max_output_tokens_dm": 600,
-    "max_output_tokens_feed": 600,
+    "max_output_tokens_dm": 1400,
+    "max_output_tokens_feed": 1400,
     "max_output_tokens_group": 1500,
     "max_tool_invocations_per_turn": 3,
     "max_context_messages": 200,
@@ -165,10 +165,41 @@ def _load_kb_defaults() -> Dict[str, Any]:
 
 
 def _load_user(username: str) -> Optional[Dict[str, Any]]:
-    """Return ``{subscription, is_special, created_at}`` for ``username``, or None."""
+    """Return user subscription fields + ``trial_revoked_at`` when present, or None."""
     ph = get_sql_placeholder()
+
+    def _with_special_no_trial(row) -> Dict[str, Any]:
+        return {
+            "username": row["username"] if hasattr(row, "keys") else row[0],
+            "subscription": (row["subscription"] if hasattr(row, "keys") else row[1]) or "free",
+            "is_special": bool(int((row["is_special"] if hasattr(row, "keys") else row[2]) or 0)),
+            "created_at": str((row["created_at"] if hasattr(row, "keys") else row[3]) or ""),
+            "trial_revoked_at": None,
+        }
+
+    def _full(row) -> Dict[str, Any]:
+        base = _with_special_no_trial(row)
+        raw_tr = row["trial_revoked_at"] if hasattr(row, "keys") else row[4]
+        base["trial_revoked_at"] = raw_tr if raw_tr not in (None, "") else None
+        return base
+
     with get_db_connection() as conn:
         c = conn.cursor()
+        try:
+            c.execute(
+                f"""
+                SELECT username, subscription, is_special, created_at, trial_revoked_at
+                FROM users WHERE username = {ph}
+                """,
+                (username,),
+            )
+            row = c.fetchone()
+            if row:
+                return _full(row)
+            return None
+        except Exception:
+            pass
+
         try:
             c.execute(
                 f"""
@@ -178,7 +209,6 @@ def _load_user(username: str) -> Optional[Dict[str, Any]]:
                 (username,),
             )
         except Exception:
-            # is_special column may not exist yet on very old DBs.
             try:
                 c.execute(
                     f"SELECT username, subscription, created_at FROM users WHERE username = {ph}",
@@ -194,16 +224,13 @@ def _load_user(username: str) -> Optional[Dict[str, Any]]:
                 "subscription": (row["subscription"] if hasattr(row, "keys") else row[1]) or "free",
                 "is_special": False,
                 "created_at": str(row["created_at"] if hasattr(row, "keys") else row[2] or ""),
+                "trial_revoked_at": None,
             }
+
         row = c.fetchone()
-    if not row:
-        return None
-    return {
-        "username": row["username"] if hasattr(row, "keys") else row[0],
-        "subscription": (row["subscription"] if hasattr(row, "keys") else row[1]) or "free",
-        "is_special": bool(int((row["is_special"] if hasattr(row, "keys") else row[2]) or 0)),
-        "created_at": str((row["created_at"] if hasattr(row, "keys") else row[3]) or ""),
-    }
+        if not row:
+            return None
+        return _with_special_no_trial(row)
 
 
 def _is_in_trial_window(user: Dict[str, Any], trial_days: int = 30) -> bool:
@@ -275,7 +302,7 @@ def resolve_entitlements(username: Optional[str]) -> Dict[str, Any]:
         tier = TIER_PREMIUM
         slug = enterprise_seat.get("community_slug") or str(enterprise_seat.get("community_id") or "")
         inherited_from = f"enterprise:{slug}"
-    elif _is_in_trial_window(user):
+    elif _is_in_trial_window(user) and not user.get("trial_revoked_at"):
         tier = TIER_TRIAL
     else:
         tier = TIER_FREE

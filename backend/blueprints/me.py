@@ -18,23 +18,29 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any, Dict, Optional
-from urllib.parse import urljoin
+from urllib.parse import urlencode, urljoin
 
 from flask import Blueprint, jsonify, request, session
 
-from backend.services import ai_usage
+from backend.services import ai_usage, auth_session, session_identity, user_billing
+from backend.services import client_ui_flags, i18n, user_locale
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.entitlements import resolve_entitlements
 from backend.services.feature_flags import entitlements_enforcement_enabled
+from redis_cache import cache
 
 
 me_bp = Blueprint("me", __name__)
 logger = logging.getLogger(__name__)
 
 
+@me_bp.after_request
+def _no_store_user_scoped_responses(response):
+    return auth_session.no_store(response)
+
+
 def _session_username() -> str | None:
-    uname = session.get("username")
-    return str(uname) if uname else None
+    return session_identity.valid_session_username(session)
 
 
 # ── Privacy scrub ──────────────────────────────────────────────────────
@@ -159,6 +165,71 @@ def me_entitlements():
         "entitlements": _scrub_entitlements(ent),
         "usage": usage,
         "enforcement_enabled": entitlements_enforcement_enabled(),
+    })
+
+
+# ── Locale preference ─────────────────────────────────────────────────
+#
+# Powers Account Settings → Language (and the upcoming client header
+# wrapper). See ``docs/I18N_ROADMAP.md`` for the resolution chain.
+
+
+@me_bp.route("/api/me/locale", methods=["GET"])
+def me_locale_get():
+    """Return the user's saved locale plus the locale used for *this* request."""
+    username = _session_username()
+    if not username:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    try:
+        saved = user_locale.get_preferred_locale(username)
+        active = user_locale.resolve_request_locale(request, username)
+    except Exception:
+        logger.exception("me_locale_get failed for %s", username)
+        return jsonify({"success": False, "error": "Could not resolve locale"}), 500
+
+    return jsonify({
+        "success": True,
+        "preferred_locale": saved,             # None until the user picks one
+        "active_locale": active,               # what the server is using right now
+        "available_locales": list(i18n.available_locales()),
+        "default_locale": i18n.DEFAULT_LOCALE,
+    })
+
+
+@me_bp.route("/api/me/locale", methods=["PATCH", "POST"])
+def me_locale_set():
+    """Persist the user's locale choice from Account Settings.
+
+    Request body: ``{"locale": "pt-PT"}`` to set, or ``{"locale": null}``
+    to clear and fall back to the request-chain detection.
+    """
+    username = _session_username()
+    if not username:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    raw = payload.get("locale", "__missing__")
+    if raw == "__missing__":
+        return jsonify({"success": False, "error": "locale required"}), 400
+
+    try:
+        stored = user_locale.set_preferred_locale(username, raw)
+    except ValueError as exc:
+        return jsonify({
+            "success": False,
+            "error": "unsupported_locale",
+            "detail": str(exc),
+            "available_locales": list(i18n.available_locales()),
+        }), 400
+    except Exception:
+        logger.exception("me_locale_set failed for %s", username)
+        return jsonify({"success": False, "error": "Could not save locale"}), 500
+
+    return jsonify({
+        "success": True,
+        "preferred_locale": stored,
+        "available_locales": list(i18n.available_locales()),
     })
 
 
@@ -320,6 +391,8 @@ def me_billing():
     subscription: Optional[Dict[str, Any]] = None
     if stripe_configured and user.get("email"):
         subscription = _find_stripe_subscription(stripe_mod, user["email"])
+    billing_state = user_billing.get_billing_state(username) or {}
+    provider = (billing_state.get("subscription_provider") or "stripe").strip().lower()
 
     return jsonify({
         "success": True,
@@ -328,6 +401,7 @@ def me_billing():
             "subscription": user.get("subscription") or "free",
             "is_special": bool(ent.get("is_special")),
             "inherited_from": ent.get("inherited_from"),
+            "subscription_provider": provider,
             "since": user.get("created_at"),
         },
         "stripe": {
@@ -387,6 +461,14 @@ def me_billing_portal():
                 "reason": "not_owner",
             }), 403
         state = community_billing.get_billing_state(community_id) or {}
+        provider = str(state.get("billing_provider") or "stripe").strip().lower()
+        if provider in ("apple", "google"):
+            return jsonify({
+                "success": False,
+                "error": "This community is managed through a mobile store.",
+                "reason": "store_billing_active",
+                "billing_provider": provider,
+            }), 409
         customer_id = state.get("stripe_customer_id") or None
         if not customer_id:
             return jsonify({
@@ -395,22 +477,39 @@ def me_billing_portal():
                 "reason": "no_customer",
             }), 404
     else:
-        user = _load_user_row(username) or {}
-        email = user.get("email") or ""
-        if not email:
-            return jsonify({"success": False, "error": "No email on file"}), 400
+        billing_state = user_billing.get_billing_state(username) or {}
+        provider = str(billing_state.get("subscription_provider") or "stripe").strip().lower()
+        if provider in ("apple", "google"):
+            return jsonify({
+                "success": False,
+                "error": "This subscription is managed through a mobile store.",
+                "reason": "store_billing_active",
+                "billing_provider": provider,
+            }), 409
+        customer_id = billing_state.get("stripe_customer_id") or None
+        if customer_id:
+            pass
+        else:
+            user = _load_user_row(username) or {}
+            email = user.get("email") or ""
+            if not email:
+                return jsonify({"success": False, "error": "No email on file"}), 400
 
-        subscription = _find_stripe_subscription(stripe_mod, email)
-        customer_id = (subscription or {}).get("customer_id")
-        if not customer_id:
-            return jsonify({"success": False, "error": "No Stripe customer found"}), 404
+            subscription = _find_stripe_subscription(stripe_mod, email)
+            customer_id = (subscription or {}).get("customer_id")
+            if not customer_id:
+                return jsonify({"success": False, "error": "No Stripe customer found"}), 404
 
     return_path = str(body.get("return_path") or "/account_settings").strip() or "/account_settings"
-    # Scope to our own host to prevent open-redirect via return_url.
-    try:
-        return_url = urljoin(request.host_url, return_path.lstrip("/"))
-    except Exception:
-        return_url = urljoin(request.host_url, "account_settings")
+    if not return_path.startswith("/"):
+        return_path = "/account_settings"
+    target = "community" if community_id else "personal"
+    query = urlencode({
+        "target": target,
+        "id": str(community_id or ""),
+        "return_path": return_path,
+    })
+    return_url = urljoin(request.host_url, f"billing_return?{query}")
 
     try:
         portal = stripe_mod.billing_portal.Session.create(
@@ -422,3 +521,29 @@ def me_billing_portal():
         return jsonify({"success": False, "error": "Unable to open billing portal", "detail": str(err)}), 500
 
     return jsonify({"success": True, "url": portal.get("url")})
+
+
+@me_bp.route("/api/me/communities-spotlight-tour-seen", methods=["POST"])
+def mark_communities_spotlight_tour_seen():
+    """Persist that the signed-in user finished the Communities page spotlight tour."""
+    username = _session_username()
+    if not username:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            client_ui_flags.ensure_user_ui_columns(c)
+            c.execute(
+                f"UPDATE users SET communities_spotlight_tour_seen = 1 WHERE username = {ph}",
+                (username,),
+            )
+            conn.commit()
+    except Exception as err:
+        logger.exception("mark_communities_spotlight_tour_seen failed for %s: %s", username, err)
+        return jsonify({"success": False, "error": "Could not save preference"}), 500
+    try:
+        cache.delete(f"profile:{username}")
+    except Exception:
+        pass
+    return jsonify({"success": True})

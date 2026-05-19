@@ -1,9 +1,9 @@
-const SW_VERSION = '2.66.3'
+const SW_VERSION = '2.69.2'
 const APP_SHELL_CACHE = `cp-shell-${SW_VERSION}`
 const RUNTIME_CACHE = `cp-runtime-${SW_VERSION}`
 const MEDIA_CACHE = `cp-media-${SW_VERSION}`
 const MAX_MEDIA_CACHE_SIZE = 50 // Max number of videos/large media to cache
-const FORCE_UPDATE_TIMESTAMP = 1769856600000 // Force cache clear - updated Jan 31 2026
+const FORCE_UPDATE_TIMESTAMP = 1776499200000 // Force cache clear - updated Apr 22 2026
 
 const STATIC_ASSETS = [
   '/',
@@ -34,6 +34,7 @@ const STALE_API_ENDPOINTS = new Set([
 // These are excluded from both staleWhileRevalidate and networkFirst caching.
 const NO_CACHE_API_ENDPOINTS = new Set([
   '/api/profile_me',
+  '/api/profile/cv',
   '/api/profile/ai_suggestions',
   '/api/profile/ai_review',
   '/api/profile/steve_analysis',

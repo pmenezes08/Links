@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
 import ZoomableImage from '../components/ZoomableImage'
+import MessageImage from '../components/MessageImage'
 import { normalizeMediaPath } from '../chat'
+import { Network } from '@capacitor/network'
+import { Filesystem, Directory } from '@capacitor/filesystem'
 
 type MediaItem = {
   id: number
@@ -15,6 +19,7 @@ type MediaItem = {
 }
 
 export default function ChatMedia() {
+  const { t } = useTranslation()
   const { username } = useParams()
   const navigate = useNavigate()
   const { setTitle } = useHeader()
@@ -23,7 +28,7 @@ export default function ChatMedia() {
   const [error, setError] = useState<string | null>(null)
   const [viewingMedia, setViewingMedia] = useState<{ url: string; type: 'image' | 'video' } | null>(null)
 
-  useEffect(() => { setTitle('Media') }, [setTitle])
+  useEffect(() => { setTitle(t('chat.media_title')) }, [setTitle, t])
 
   useEffect(() => {
     let mounted = true
@@ -34,37 +39,67 @@ export default function ChatMedia() {
         const j = await r.json()
         if (!mounted) return
         if (j?.success) { setItems(j.media || []); setError(null) }
-        else setError(j?.error || 'Failed to load media')
-      } catch { if (mounted) setError('Failed to load media') }
+        else setError(j?.error || t('chat.failed_load_media'))
+      } catch { if (mounted) setError(t('chat.failed_load_media')) }
       finally { if (mounted) setLoading(false) }
     }
     load()
     return () => { mounted = false }
-  }, [username])
+  }, [username, t])
 
   const groups = useMemo(() => {
+    const unknownKey = t('chat.unknown_date')
     const map: Record<string, MediaItem[]> = {}
     for (const it of items) {
       const d = parseFlexibleDate(it.created_at)
-      const key = d && !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : 'Unknown Date'
+      const key = d && !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : unknownKey
       if (!map[key]) map[key] = []
       map[key].push(it)
     }
-    const keys = Object.keys(map).sort((a, b) => a === 'Unknown Date' ? 1 : b === 'Unknown Date' ? -1 : a < b ? 1 : -1)
+    const keys = Object.keys(map).sort((a, b) => a === unknownKey ? 1 : b === unknownKey ? -1 : a < b ? 1 : -1)
     const formatted = keys.map(k => {
-      if (k === 'Unknown Date') return k
+      if (k === unknownKey) return unknownKey
       const d = parseFlexibleDate(k)
-      if (!d || isNaN(d.getTime())) return 'Unknown Date'
+      if (!d || isNaN(d.getTime())) return unknownKey
       const today = new Date()
       const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1)
-      if (d.toDateString() === today.toDateString()) return 'Today'
-      if (d.toDateString() === yesterday.toDateString()) return 'Yesterday'
-      return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      if (d.toDateString() === today.toDateString()) return t('chat.today')
+      if (d.toDateString() === yesterday.toDateString()) return t('chat.yesterday_cap')
+      return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
     })
     return { keys: formatted, map, originalKeys: keys }
-  }, [items])
+  }, [items, t])
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading...</div>
+  const saveMediaToDevice = async (url: string, type: 'image' | 'video') => {
+    try {
+      const status = await Network.getStatus()
+      if (!status.connected) {
+        alert(t('chat.save_offline_cached'))
+        return
+      }
+      const response = await fetch(url)
+      if (!response.ok) throw new Error(t('chat.download_failed'))
+      const blob = await response.blob()
+      const reader = new FileReader()
+      const base64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string)
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+      const extension = type === 'video' ? 'mp4' : 'jpg'
+      const path = `cpoint-media-${Date.now()}.${extension}`
+      await Filesystem.writeFile({
+        path,
+        data: base64,
+        directory: Directory.Documents,
+      })
+      alert(t('chat.saved_to_documents', { path }))
+    } catch (err) {
+      alert(t('chat.save_failed', { message: (err as Error).message }))
+    }
+  }
+
+  if (loading) return <div className="p-4 text-[#9fb0b5]">{t('common.loading')}</div>
   if (error) return <div className="p-4 text-red-400">{error}</div>
 
   return (
@@ -72,11 +107,11 @@ export default function ChatMedia() {
       <div className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40 border-b border-white/10"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}>
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={() => navigate(-1)} aria-label="Back">
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={() => navigate(-1)} aria-label={t('common.back')}>
             <i className="fa-solid fa-arrow-left" />
           </button>
-          <div className="flex-1 font-medium">Media</div>
-          <div className="text-sm text-[#9fb0b5]">{items.length} item{items.length !== 1 ? 's' : ''}</div>
+          <div className="flex-1 font-medium">{t('chat.media_title')}</div>
+          <div className="text-sm text-[#9fb0b5]">{t('chat.item_count', { count: items.length })}</div>
         </div>
       </div>
 
@@ -85,8 +120,8 @@ export default function ChatMedia() {
         {items.length === 0 ? (
           <div className="text-center py-12">
             <i className="fa-solid fa-photo-film text-4xl mb-3 block opacity-50 text-[#9fb0b5]" />
-            <p className="text-lg font-medium text-[#9fb0b5]">No media yet</p>
-            <p className="text-sm text-[#9fb0b5]">Photos and videos shared in this chat will appear here</p>
+            <p className="text-lg font-medium text-[#9fb0b5]">{t('chat.no_media_yet')}</p>
+            <p className="text-sm text-[#9fb0b5]">{t('chat.no_media_hint')}</p>
           </div>
         ) : (
           <div className="space-y-8 pt-4">
@@ -105,7 +140,12 @@ export default function ChatMedia() {
                             <div className="absolute inset-0 flex items-center justify-center"><div className="w-10 h-10 rounded-full bg-black/60 flex items-center justify-center"><i className="fa-solid fa-play text-white text-sm ml-0.5" /></div></div>
                           </>
                         ) : (
-                          <img src={normalizeMediaPath(m.url)} alt="" className="w-full h-full object-cover rounded-lg border border-white/10" />
+                          <MessageImage
+                            tile
+                            src={normalizeMediaPath(m.url)}
+                            alt={t('chat.media_preview_alt')}
+                            className="rounded-lg border border-white/10"
+                          />
                         )}
                         <div className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 rounded bg-black/70 border border-white/10 text-white/80">{formatSmartTime(m.created_at)}</div>
                       </div>
@@ -122,18 +162,24 @@ export default function ChatMedia() {
         <div className="fixed inset-0 bg-black z-[9999] flex flex-col" onClick={() => setViewingMedia(null)}>
           <div className="flex items-center justify-between px-4 py-3 bg-black/80" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}>
             <button onClick={() => setViewingMedia(null)} className="text-white p-2 -ml-2"><i className="fa-solid fa-xmark text-xl" /></button>
-            <span className="text-white font-medium">{viewingMedia.type === 'video' ? 'Video' : 'Photo'}</span>
-            <div className="w-8" />
+            <span className="text-white font-medium">{viewingMedia.type === 'video' ? t('chat.video') : t('chat.photo')}</span>
+            <button 
+              onClick={() => saveMediaToDevice(viewingMedia.url, viewingMedia.type)}
+              className="text-white p-2 hover:bg-white/10 rounded-full"
+              title={t('chat.save_to_device_title')}
+            >
+              <i className="fa-solid fa-download" />
+            </button>
           </div>
           <div className="flex-1 flex items-center justify-center overflow-hidden" onClick={e => e.stopPropagation()}>
             {viewingMedia.type === 'video' ? (
               <video src={viewingMedia.url} controls autoPlay playsInline className="max-w-full max-h-full" />
             ) : (
-              <ZoomableImage src={viewingMedia.url} alt="Media" className="w-full h-full" onRequestClose={() => setViewingMedia(null)} />
+              <ZoomableImage src={viewingMedia.url} alt={t('chat.media_preview_alt')} className="w-full h-full" onRequestClose={() => setViewingMedia(null)} />
             )}
           </div>
           <div className="flex items-center justify-center px-4 py-4 bg-black/80" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}>
-            <button onClick={() => setViewingMedia(null)} className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition">Close</button>
+            <button onClick={() => setViewingMedia(null)} className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition">{t('common.close')}</button>
           </div>
         </div>
       )}

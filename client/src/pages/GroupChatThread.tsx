@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
@@ -10,22 +11,24 @@ import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { useAudioRecorder } from '../components/useAudioRecorder'
-import LongPressActionable from '../chat/LongPressActionable'
-import { formatDateLabel, getDateKey, normalizeMediaPath } from '../chat'
+import { GroupMessageRow } from '../chat/GroupMessageRow'
+import { getDateKey, normalizeMediaPath } from '../chat'
 import { useUserProfile } from '../contexts/UserProfileContext'
+import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
+import { useEntitlements } from '../hooks/useEntitlements'
+import { isEntitlementsError } from '../utils/entitlementsError'
+import {
+  buildClientPremiumRequiredError,
+  shouldClientBlockSteveIntent,
+} from '../utils/steveClientGate'
 import ZoomableImage from '../components/ZoomableImage'
-import MessageImage from '../components/MessageImage'
-import VoiceNotePlayer from '../components/VoiceNotePlayer'
 import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
 import { SENDING_MEDIA_LABEL } from '../chat/mediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
-import LinkPreview, { stripExtractedUrlsFromText, feedLinkPreviewUrls } from '../components/LinkPreview'
-import VideoEmbed from '../components/VideoEmbed'
-import YouTubeChatSnippet from '../components/YouTubeChatSnippet'
-import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
 import { openExternalNativeLink } from '../utils/openExternalInApp'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
+import { requestTranslateSummary } from '../utils/translateSummary'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
 import {
   takePendingShareFilesOnce,
@@ -72,6 +75,28 @@ type GroupInfo = {
 }
 
 const GROUP_SEND_CONFIRM_TIMEOUT_MS = 30000
+const GROUP_POLL_INTERVAL_MS = 1500
+const GROUP_FULL_SYNC_EVERY_N_POLL = 6
+
+function mergeGroupReactionsFromMessages(
+  prev: Record<number, string>,
+  msgs: Message[],
+): Record<number, string> {
+  let changed = false
+  const next: Record<number, string> = { ...prev }
+  for (const msg of msgs) {
+    const id = msg.id
+    if (!id || id <= 0) continue
+    const n = msg.reaction || null
+    const p = prev[id] === undefined ? null : prev[id]
+    if (p !== n) {
+      changed = true
+      if (n) next[id] = n
+      else delete next[id]
+    }
+  }
+  return changed ? next : prev
+}
 
 function isConfirmedGroupMessage(
   serverMessage: Message,
@@ -91,9 +116,34 @@ function isConfirmedGroupMessage(
   )
 }
 
+function formatGroupThreadTime(dateStr: string) {
+  try {
+    const date = new Date(dateStr)
+    const now = new Date()
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
+
+    if (diffDays === 0) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }
+    if (diffDays === 1) {
+      return 'Yesterday'
+    }
+    if (diffDays < 7) {
+      return date.toLocaleDateString([], { weekday: 'short' })
+    }
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  } catch {
+    return ''
+  }
+}
+
 export default function GroupChatThread() {
   const { group_id } = useParams()
   const navigate = useNavigate()
+  const { t } = useTranslation()
+  const mentionToProfile = useCallback((username: string) => {
+    navigate(`/profile/${encodeURIComponent(username)}`)
+  }, [navigate])
   const openExternalArticle = useCallback((url: string) => {
     void openExternalNativeLink(url)
   }, [])
@@ -103,17 +153,37 @@ export default function GroupChatThread() {
   const currentUsername = (currentUserProfile as { username?: string })?.username 
     || localStorage.getItem('current_username') 
     || ''
+  const entitlementsHandler = useEntitlementsHandler()
+  const { entitlements, enforcement_enabled, loading: entitlementsLoading } = useEntitlements()
+  const tryBlockSteveIntentSend = useCallback(
+    (text: string) => {
+      if (
+        !shouldClientBlockSteveIntent({
+          enforcement_enabled,
+          loading: entitlementsLoading,
+          entitlements,
+          isSteveDm: false,
+          text,
+        })
+      ) {
+        return false
+      }
+      entitlementsHandler.showError(buildClientPremiumRequiredError())
+      return true
+    },
+    [enforcement_enabled, entitlementsLoading, entitlements, entitlementsHandler],
+  )
   const [group, setGroup] = useState<GroupInfo | null>(null)
   const [serverMessages, setServerMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
   // Server messages are already in chronological order from the API; just append optimistic at the end
-  const messages = (() => {
+  const messages = useMemo(() => {
     const confirmed = serverMessages.filter(m => !(m as any).isOptimistic)
     const optimistic = serverMessages.filter(m => (m as any).isOptimistic)
     return [...confirmed, ...optimistic]
-  })()
+  }, [serverMessages])
   // Use ref-based draft to avoid React state update issues
   const draftRef = useRef('')
   const [draftDisplay, setDraftDisplay] = useState('') // Only for UI updates (button visibility)
@@ -161,6 +231,7 @@ export default function GroupChatThread() {
   const [removingMember, setRemovingMember] = useState<string | null>(null)
   const [deletingMedia, setDeletingMedia] = useState(false)
   const [reactions, setReactions] = useState<Record<number, string>>({})
+  const [showScrollDown, setShowScrollDown] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
   const [editingSaving, setEditingSaving] = useState(false)
@@ -182,17 +253,17 @@ export default function GroupChatThread() {
     setShowLangPicker(null)
     setTranslatingId(msgId)
     try {
-      const res = await fetch('/translate_summary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ summary, target_language: langCode }),
+      const result = await requestTranslateSummary({
+        summary,
+        targetLanguage: langCode,
+        context: 'voice_summary',
       })
-      const data = await res.json()
-      if (data.success && data.translated_summary) {
-        setTranslations(prev => ({ ...prev, [msgId]: data.translated_summary }))
+      if (result.ok) {
+        setTranslations(prev => ({ ...prev, [msgId]: result.translated }))
+      } else if (result.entitlementsError) {
+        entitlementsHandler.showError(result.entitlementsError)
       } else {
-        console.error('Translation failed:', data.error || 'Unknown error')
+        console.error('Translation failed:', result.error || 'Unknown error')
       }
     } catch (err) {
       console.error('Translation request failed:', err)
@@ -227,12 +298,18 @@ export default function GroupChatThread() {
     : []
     
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messageStackRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const userHasScrolledRef = useRef(false)
+  const initialPinActiveRef = useRef(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
+  const pollInFlightRef = useRef(false)
+  const skipNextPollsUntil = useRef(0)
+  const pollTickRef = useRef(0)
+  const clientKeyServerIdRef = useRef<Map<string, number>>(new Map())
   const lastMessageIdRef = useRef<number>(0)
   const previewAudioRef = useRef<HTMLAudioElement | null>(null)
   const headerMenuRef = useRef<HTMLDivElement>(null)
@@ -361,30 +438,90 @@ export default function GroupChatThread() {
 
   const composerGapPx = 4
   const listPaddingBottom = `${(androidKeyboardOpen ? 0 : safeBottomPx) + (androidKeyboardOpen ? 0 : keyboardLift) + effectiveComposerHeight + composerGapPx}px`
+  const scrollButtonBottom = `${(androidKeyboardOpen ? 0 : safeBottomPx) + (androidKeyboardOpen ? 0 : keyboardLift) + effectiveComposerHeight + 12}px`
 
-  // Instant scroll - only used for initial load
-  const scrollToBottom = useCallback(() => {
+  const scrollListToBottom = useCallback((behavior: ScrollBehavior) => {
     const el = listRef.current
     if (!el) return
-    el.scrollTop = el.scrollHeight
+    el.scrollTo({ top: el.scrollHeight, behavior })
   }, [])
+
+  const scrollToBottom = useCallback(() => {
+    scrollListToBottom('auto')
+  }, [scrollListToBottom])
+
+  const scrollToBottomIfAppropriate = useCallback(() => {
+    const el = listRef.current
+    if (!el) {
+      scrollToBottom()
+      return
+    }
+    const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
+    if (nearBottom || !userHasScrolledRef.current) scrollToBottom()
+  }, [scrollToBottom])
   
   const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
 
-  // Pre-paint scroll — fires before browser paints to avoid visible jump
-  useLayoutEffect(() => {
-    if (messages.length === 0) return
-    const el = listRef.current
-    if (!el) return
-    const lastMsg = messages[messages.length - 1]
-    const lastMsgKey = (lastMsg as any).clientKey || lastMsg.id
-    if (lastMsgKey === lastVisibleMsgKeyRef.current) return
-    lastVisibleMsgKeyRef.current = lastMsgKey
-    el.scrollTop = el.scrollHeight
+  useEffect(() => {
+    lastVisibleMsgKeyRef.current = null
+    userHasScrolledRef.current = false
+    initialPinActiveRef.current = true
+    pollTickRef.current = 0
+    skipNextPollsUntil.current = 0
+    clientKeyServerIdRef.current.clear()
+    const endInitialPin = window.setTimeout(() => {
+      initialPinActiveRef.current = false
+    }, 450)
+    return () => clearTimeout(endInitialPin)
+  }, [group_id])
+
+  const messageTailKey = useMemo(() => {
+    if (messages.length === 0) return null
+    const last = messages[messages.length - 1] as Message & { clientKey?: string }
+    const ck = (last as any).clientKey as string | undefined
+    if (ck && clientKeyServerIdRef.current.has(ck)) {
+      return clientKeyServerIdRef.current.get(ck)!
+    }
+    return ck || last.id
   }, [messages])
 
-  // Simple scroll-to-bottom for new messages only (no aggressive initial load behavior)
-  // This prevents the unwanted scrolling/jumping when opening a chat
+  // Pre-paint scroll — fires before browser paints to avoid visible jump
+  useLayoutEffect(() => {
+    if (messages.length === 0 || messageTailKey == null) return
+    const el = listRef.current
+    if (!el) return
+    if (messageTailKey === lastVisibleMsgKeyRef.current) return
+    lastVisibleMsgKeyRef.current = messageTailKey
+    const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
+    if (nearBottom || !userHasScrolledRef.current) {
+      scrollListToBottom('auto')
+      setShowScrollDown(false)
+    } else {
+      setShowScrollDown(true)
+    }
+  }, [messageTailKey, messages.length, scrollListToBottom])
+
+  useLayoutEffect(() => {
+    const stack = messageStackRef.current
+    if (!stack || typeof ResizeObserver === 'undefined') return
+    let frame = 0
+    const onStackResize = () => {
+      if (userHasScrolledRef.current) return
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const list = listRef.current
+        if (!list || userHasScrolledRef.current) return
+        const behavior: ScrollBehavior = initialPinActiveRef.current ? 'smooth' : 'auto'
+        list.scrollTo({ top: list.scrollHeight, behavior })
+      })
+    }
+    const observer = new ResizeObserver(onStackResize)
+    observer.observe(stack)
+    return () => {
+      cancelAnimationFrame(frame)
+      observer.disconnect()
+    }
+  }, [group_id, messages.length])
 
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
@@ -445,7 +582,7 @@ export default function GroupChatThread() {
       keyboardOffsetRef.current = normalizedOffset
       setKeyboardOffset(normalizedOffset)
       if (normalizedOffset > 0) {
-        requestAnimationFrame(scrollToBottom)
+        requestAnimationFrame(scrollToBottomIfAppropriate)
       }
     }
 
@@ -463,7 +600,7 @@ export default function GroupChatThread() {
       viewport.removeEventListener('resize', handleChange)
       viewport.removeEventListener('scroll', handleChange)
     }
-  }, [isMobile, scrollToBottom])
+  }, [isMobile, scrollToBottomIfAppropriate])
 
   // Native keyboard handling (Capacitor — iOS only)
   // Android uses visualViewport above; the Capacitor plugin over-reports on some devices.
@@ -480,7 +617,7 @@ export default function GroupChatThread() {
       if (Math.abs(keyboardOffsetRef.current - height) < KEYBOARD_OFFSET_EPSILON) return
       keyboardOffsetRef.current = height
       setKeyboardOffset(height)
-      requestAnimationFrame(scrollToBottom)
+      requestAnimationFrame(scrollToBottomIfAppropriate)
     }
 
     const handleHide = () => {
@@ -500,11 +637,11 @@ export default function GroupChatThread() {
       showSub?.remove()
       hideSub?.remove()
     }
-  }, [scrollToBottom])
+  }, [scrollToBottomIfAppropriate])
 
   useEffect(() => {
-    requestAnimationFrame(scrollToBottom)
-  }, [composerHeight, scrollToBottom])
+    requestAnimationFrame(scrollToBottomIfAppropriate)
+  }, [composerHeight, scrollToBottomIfAppropriate])
 
   const loadGroup = useCallback(async () => {
     if (!navigator.onLine) {
@@ -520,19 +657,18 @@ export default function GroupChatThread() {
         setGroup(data.group)
         cacheKeyVal(`group-info:${group_id}`, data.group)
       } else {
-        setError(data.error || 'Failed to load group')
+        setError(data.error || t('chat.failed_load_group'))
       }
     } catch (err) {
       console.error('Error loading group:', err)
       const cached = await getCachedKeyVal<any>(`group-info:${group_id}`)
       if (cached) setGroup(prev => prev || cached)
-      else setError('Failed to load group')
+      else setError(t('chat.failed_load_group'))
     }
   }, [group_id])
 
-  const loadMessages = useCallback(async (silent = false) => {
+  const loadMessages = useCallback(async (silent = false, opts?: { pollTick?: number }) => {
     if (!navigator.onLine) {
-      // Offline: load from IndexedDB on initial load only
       if (!silent) {
         const cached = await getCachedMessages(`group:${group_id}`)
         if (cached?.length) {
@@ -544,84 +680,114 @@ export default function GroupChatThread() {
     }
     if (!silent) setLoading(true)
     try {
-      const response = await fetch(`/api/group_chat/${group_id}/messages?limit=50`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
+      const useDelta =
+        silent &&
+        lastMessageIdRef.current > 0 &&
+        opts?.pollTick != null &&
+        opts.pollTick % GROUP_FULL_SYNC_EVERY_N_POLL !== 0
+
+      const url = useDelta
+        ? `/api/group_chat/${group_id}/messages?limit=50&since_id=${lastMessageIdRef.current}`
+        : `/api/group_chat/${group_id}/messages?limit=50`
+
+      const response = await fetch(url, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const data = await response.json()
       if (data.success) {
         const newServerMessages = (data.messages as Message[]).filter(
           m => !pendingDeletions.current.has(m.id)
         )
-        const newMaxId = newServerMessages.length > 0 ? Math.max(...newServerMessages.map(m => m.id)) : 0
-        
-        // Persist to IndexedDB for offline access
-        cacheMessages(`group:${group_id}`, newServerMessages)
+        const isDelta = useDelta && silent
+        const typingNext = data.steve_is_typing === true
+        setSteveIsTyping(prev => (prev === typingNext ? prev : typingNext))
 
-        if (!silent) setHasMoreMessages(!!data.has_more)
+        if (isDelta && newServerMessages.length === 0) {
+          // Typing already updated; no message changes.
+        } else if (isDelta) {
+          setServerMessages(prev => {
+            const optimistic = prev.filter(m => (m as any).isOptimistic)
+            const prevServer = prev.filter(m => !(m as any).isOptimistic)
+            const byId = new Map<number, Message>()
+            for (const m of prevServer) {
+              if (m.id > 0) byId.set(m.id, m)
+            }
+            for (const nm of newServerMessages) {
+              if (pendingDeletions.current.has(nm.id)) continue
+              byId.set(nm.id, nm)
+            }
+            const merged = Array.from(byId.values()).sort((a, b) => a.id - b.id)
+            const unconfirmedOptimistic = optimistic.filter(opt =>
+              !merged.some(nm => isConfirmedGroupMessage(nm, opt))
+            )
+            const next = [...merged, ...unconfirmedOptimistic]
+            if (
+              next.length === prev.length &&
+              next.every((m, i) => m === prev[i])
+            ) {
+              return prev
+            }
+            return next
+          })
+          setReactions(prev => mergeGroupReactionsFromMessages(prev, newServerMessages))
+        } else {
+          if (!silent) setHasMoreMessages(!!data.has_more)
+          if (!isDelta) {
+            cacheMessages(`group:${group_id}`, newServerMessages)
+          }
 
-        setServerMessages(prev => {
-          const optimistic = prev.filter(m => (m as any).isOptimistic)
-          const prevServer = prev.filter(m => !(m as any).isOptimistic)
+          setServerMessages(prev => {
+            const optimistic = prev.filter(m => (m as any).isOptimistic)
+            const prevServer = prev.filter(m => !(m as any).isOptimistic)
 
-          if (silent) {
-            const minNewId = newServerMessages.length > 0 ? Math.min(...newServerMessages.map(m => m.id)) : Infinity
-            const olderFromPrev = prevServer.filter(m => m.id < minNewId)
-            const mergedIds = [...olderFromPrev, ...newServerMessages].map(m => m.id).join(',')
-            const currentIds = prevServer.map(m => m.id).join(',')
-            if (mergedIds === currentIds) {
-              const changed = newServerMessages.some(nm => {
-                const pm = prevServer.find(p => p.id === nm.id)
-                return pm && (pm.text !== nm.text || pm.is_edited !== nm.is_edited)
-              })
-              if (!changed) {
-                // Still filter out confirmed optimistic
-                const unconfirmed = optimistic.filter(opt =>
-                  !newServerMessages.some(nm => isConfirmedGroupMessage(nm, opt))
-                )
-                if (unconfirmed.length !== optimistic.length) {
-                  return [...prevServer, ...unconfirmed]
+            if (silent) {
+              const minNewId = newServerMessages.length > 0 ? Math.min(...newServerMessages.map(m => m.id)) : Infinity
+              const olderFromPrev = prevServer.filter(m => m.id < minNewId)
+              const mergedIds = [...olderFromPrev, ...newServerMessages].map(m => m.id).join(',')
+              const currentIds = prevServer.map(m => m.id).join(',')
+              if (mergedIds === currentIds) {
+                const changed = newServerMessages.some(nm => {
+                  const pm = prevServer.find(p => p.id === nm.id)
+                  return pm && (pm.text !== nm.text || pm.is_edited !== nm.is_edited)
+                })
+                if (!changed) {
+                  const unconfirmed = optimistic.filter(opt =>
+                    !newServerMessages.some(nm => isConfirmedGroupMessage(nm, opt))
+                  )
+                  if (unconfirmed.length !== optimistic.length) {
+                    return [...prevServer, ...unconfirmed]
+                  }
+                  return prev
                 }
-                return prev
               }
             }
-          }
 
-          const minNewId = newServerMessages.length > 0 ? Math.min(...newServerMessages.map(m => m.id)) : Infinity
-          const olderMessages = silent ? prevServer.filter(m => m.id < minNewId && !newServerMessages.some(n => n.id === m.id)) : []
-          // Keep optimistic messages not yet confirmed by server
-          const unconfirmedOptimistic = optimistic.filter(opt =>
-            !newServerMessages.some(nm => isConfirmedGroupMessage(nm, opt))
-          )
-          return [...olderMessages, ...newServerMessages, ...unconfirmedOptimistic]
-        })
-        
-        // Populate reactions from server data
-        const serverReactions: Record<number, string> = {}
-        newServerMessages.forEach(msg => {
-          if (msg.reaction) {
-            serverReactions[msg.id] = msg.reaction
-          }
-        })
-        setReactions(prev => ({ ...prev, ...serverReactions }))
-        
-        lastMessageIdRef.current = newMaxId
-        
-        // Update Steve typing indicator
-        setSteveIsTyping(data.steve_is_typing === true)
+            const minNewId = newServerMessages.length > 0 ? Math.min(...newServerMessages.map(m => m.id)) : Infinity
+            const olderMessages = silent ? prevServer.filter(m => m.id < minNewId && !newServerMessages.some(n => n.id === m.id)) : []
+            const unconfirmedOptimistic = optimistic.filter(opt =>
+              !newServerMessages.some(nm => isConfirmedGroupMessage(nm, opt))
+            )
+            return [...olderMessages, ...newServerMessages, ...unconfirmedOptimistic]
+          })
 
-        // No scroll on new messages - they just appear
+          setReactions(prev => mergeGroupReactionsFromMessages(prev, newServerMessages))
+        }
+
+        const newMaxId = newServerMessages.length > 0 ? Math.max(...newServerMessages.map(m => m.id)) : 0
+        if (newMaxId > 0) {
+          lastMessageIdRef.current = Math.max(lastMessageIdRef.current, newMaxId)
+        }
       }
     } catch (err) {
       console.error('Error loading messages:', err)
-      // Don't show error if we have cached messages
       if (!silent) {
         setServerMessages(prev => {
-          if (!prev.length) setError('Failed to load messages')
+          if (!prev.length) setError(t('chat.failed_load_messages'))
           return prev
         })
       }
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [group_id, scrollToBottom])
+  }, [group_id])
 
   const loadOlderMessages = useCallback(async () => {
     if (loadingOlderRef.current || !hasMoreMessages) return
@@ -664,26 +830,36 @@ export default function GroupChatThread() {
 
   useEffect(() => {
     loadGroup()
-    loadMessages()
+    void loadMessages(false)
     if (navigator.onLine) updatePresence()
 
-    pollingRef.current = setInterval(() => {
+    const tick = () => {
       if (!navigator.onLine) return
-      loadMessages(true)
-      updatePresence()
-    }, 3000)
+      if (Date.now() < skipNextPollsUntil.current) return
+      if (pollInFlightRef.current) return
+      pollInFlightRef.current = true
+      pollTickRef.current += 1
+      const pt = pollTickRef.current
+      if (pt % 4 === 0) updatePresence()
+      void loadMessages(true, { pollTick: pt }).finally(() => {
+        pollInFlightRef.current = false
+      })
+    }
+
+    pollingRef.current = setInterval(tick, GROUP_POLL_INTERVAL_MS)
 
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible' && navigator.onLine) {
-        loadMessages(true)
+      if (document.visibilityState === 'visible' && navigator.onLine && !pollInFlightRef.current) {
+        pollInFlightRef.current = true
+        void loadMessages(true, { pollTick: 0 }).finally(() => {
+          pollInFlightRef.current = false
+        })
       }
     }
     document.addEventListener('visibilitychange', handleVisibility)
 
     return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current)
-      }
+      if (pollingRef.current) clearInterval(pollingRef.current)
       document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [loadGroup, loadMessages, updatePresence])
@@ -836,17 +1012,38 @@ export default function GroupChatThread() {
   const handleSend = useCallback(() => {
     // Get text directly from textarea (uncontrolled)
     const text = (textareaRef.current?.value || '').trim()
-    
+
     // Use ref for synchronous check to prevent double-sends
     if (!text || sendingLockRef.current) return
+
+    // Capture reply state before clearing — compute outbound payload for Steve gate
+    const replySnapshot = replyTo
+    let formattedMessage = text
+    if (replySnapshot) {
+      let replySnippet: string
+      if (replySnapshot.image) {
+        replySnippet = `📷|${replySnapshot.image}|${(replySnapshot.text || 'Photo').slice(0, 60)}`
+      } else if (replySnapshot.video) {
+        const caption = replySnapshot.text || 'Video'
+        replySnippet = `🎥|${replySnapshot.video}|${caption.slice(0, 60)}`
+      } else if (replySnapshot.voice) {
+        const summarySnippet = replySnapshot.audio_summary ? replySnapshot.audio_summary.slice(0, 80) : ''
+        replySnippet = summarySnippet ? `🎤|${summarySnippet}` : '🎤|Voice message'
+      } else {
+        replySnippet = replySnapshot.text.length > 90 ? replySnapshot.text.slice(0, 90) + '…' : replySnapshot.text
+      }
+      formattedMessage = `[REPLY:${replySnapshot.sender}:${replySnippet}]\n${text}`
+    }
+
+    if (tryBlockSteveIntentSend(formattedMessage)) return
 
     // Lock immediately (synchronous) to prevent double-clicks
     sendingLockRef.current = true
     justSentRef.current = true
-    setTimeout(() => { justSentRef.current = false }, 400)
-    
-    // Capture reply state before clearing
-    const replySnapshot = replyTo
+    skipNextPollsUntil.current = Date.now() + 800
+    setTimeout(() => {
+      justSentRef.current = false
+    }, 400)
 
     // Cancel any pending draft save timer FIRST to prevent race condition
     if (draftSaveTimeoutRef.current) {
@@ -868,9 +1065,7 @@ export default function GroupChatThread() {
     }
 
     setReplyTo(null)
-    
-    // Format message with reply if needed
-    let formattedMessage = text
+
     let replySnippet: string | undefined
     if (replySnapshot) {
       if (replySnapshot.image) {
@@ -884,9 +1079,8 @@ export default function GroupChatThread() {
       } else {
         replySnippet = replySnapshot.text.length > 90 ? replySnapshot.text.slice(0, 90) + '…' : replySnapshot.text
       }
-      formattedMessage = `[REPLY:${replySnapshot.sender}:${replySnippet}]\n${text}`
     }
-    
+
     const now = new Date().toISOString()
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`
     const optimisticMessage: Message & { clientKey: string; replySnippet?: string; replySender?: string; isOptimistic: boolean; sendFailed?: boolean; _originalMessage?: string } = {
@@ -945,6 +1139,9 @@ export default function GroupChatThread() {
       .then(response => response.json())
       .then(data => {
         clearTimeout(sendTimeout)
+        if (data?.entitlements_error && isEntitlementsError(data.entitlements_error)) {
+          entitlementsHandler.showError(data.entitlements_error)
+        }
         if (data.success) {
           if (outboxId >= 0) removeFromOutbox(outboxId).catch(() => {})
 
@@ -959,6 +1156,7 @@ export default function GroupChatThread() {
             })
             if (!found) return prev
             const serverId = data.message.id
+            clientKeyServerIdRef.current.set(tempId, serverId)
             return updated.filter(m =>
               m.id !== serverId || (m as any).clientKey === tempId
             )
@@ -976,12 +1174,13 @@ export default function GroupChatThread() {
       .finally(() => {
         sendingLockRef.current = false
       })
-  }, [group_id, scrollToBottom, currentUsername, loadMessages, replyTo])
+  }, [group_id, currentUsername, loadMessages, replyTo, tryBlockSteveIntentSend])
 
   const retryFailedMessage = useCallback((clientKey: string) => {
     const msg = serverMessages.find(m => (m as any).clientKey === clientKey)
     if (!msg) return
     const originalMessage = (msg as any)._originalMessage || msg.text || ''
+    if (tryBlockSteveIntentSend(originalMessage)) return
     setServerMessages(prev => prev.map(m =>
       (m as any).clientKey === clientKey ? { ...m, sendFailed: false, isOptimistic: true } : m
     ))
@@ -1007,6 +1206,9 @@ export default function GroupChatThread() {
       .then(r => r.json())
       .then(data => {
         clearTimeout(retryTimeout)
+        if (data?.entitlements_error && isEntitlementsError(data.entitlements_error)) {
+          entitlementsHandler.showError(data.entitlements_error)
+        }
         if (data.success) {
           getOutboxEntries().then(entries => {
             const e = entries.find(x => x.clientKey === clientKey)
@@ -1020,6 +1222,7 @@ export default function GroupChatThread() {
               return m
             })
             if (!found) return prev
+            clientKeyServerIdRef.current.set(clientKey, data.message.id)
             return updated.filter(m => m.id !== data.message.id || (m as any).clientKey === clientKey)
           })
           lastMessageIdRef.current = Math.max(lastMessageIdRef.current, data.message.id)
@@ -1032,7 +1235,7 @@ export default function GroupChatThread() {
         clearTimeout(retryTimeout)
         markRetryFailed()
       })
-  }, [group_id, serverMessages])
+  }, [group_id, serverMessages, tryBlockSteveIntentSend, entitlementsHandler])
 
   // Handle @mention selection
   const handleMentionSelect = useCallback((username: string) => {
@@ -1345,7 +1548,7 @@ export default function GroupChatThread() {
       })
     } catch (err) {
       console.error('Error sending GIF:', err)
-      alert('Failed to send GIF. Please try again.')
+      alert(t('chat.failed_send_gif'))
       setUploadingMedia(false)
       setUploadProgress(null)
     }
@@ -1519,7 +1722,7 @@ export default function GroupChatThread() {
   }
 
   const handleLeave = async () => {
-    if (!confirm('Are you sure you want to leave this group chat?')) return
+    if (!confirm(t('chat.leave_group_confirm'))) return
 
     try {
       const response = await fetch(`/api/group_chat/${group_id}/leave`, {
@@ -1531,11 +1734,11 @@ export default function GroupChatThread() {
       if (data.success) {
         navigate('/user_chat')
       } else {
-        alert(data.error || 'Failed to leave group')
+        alert(data.error || t('chat.failed_leave_group'))
       }
     } catch (err) {
       console.error('Error leaving group:', err)
-      alert('Failed to leave group')
+      alert(t('chat.failed_leave_group'))
     }
   }
 
@@ -1566,7 +1769,7 @@ export default function GroupChatThread() {
     // Check member limit
     const currentCount = group?.members.length || 0
     if (currentCount + selectedNewMembers.length > 5) {
-      alert('Group chats are limited to 5 members. For larger groups, consider creating a community or sub-community.')
+      alert(t('chat.group_member_limit_hint', { max: 5 }))
       return
     }
     
@@ -1590,43 +1793,23 @@ export default function GroupChatThread() {
         setExpandedCommunities(new Set())
       } else {
         if (data.limit_exceeded) {
-          alert(`Group chats are limited to ${data.max_members} members. For larger groups, consider creating a community or sub-community.`)
+          alert(t('chat.group_member_limit_hint', { max: data.max_members }))
         } else {
-          alert(data.error || 'Failed to add members')
+          alert(data.error || t('chat.failed_add_members'))
         }
       }
     } catch (err) {
       console.error('Error adding members:', err)
-      alert('Failed to add members')
+      alert(t('chat.failed_add_members'))
     } finally {
       setAddingMembers(false)
     }
   }
 
-  const formatTime = (dateStr: string) => {
-    try {
-      const date = new Date(dateStr)
-      const now = new Date()
-      const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
-
-      if (diffDays === 0) {
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      } else if (diffDays === 1) {
-        return 'Yesterday'
-      } else if (diffDays < 7) {
-        return date.toLocaleDateString([], { weekday: 'short' })
-      }
-      return date.toLocaleDateString([], { month: 'short', day: 'numeric' })
-    } catch {
-      return ''
-    }
-  }
-
-  // Render text with @mentions highlighted and links clickable
-  const renderTextWithMentions = (text: string) => {
-    if (!text) return null
-    return renderTextWithSourceLinks(text, false, undefined, openExternalArticle)
-  }
+  const renderMessageText = useCallback(
+    (text: string) => renderTextWithSourceLinks(text, false, mentionToProfile, openExternalArticle),
+    [mentionToProfile, openExternalArticle],
+  )
 
   // Message action handlers
   const handleReaction = async (messageId: number, emoji: string) => {
@@ -1680,8 +1863,52 @@ export default function GroupChatThread() {
     }
   }
 
+  const handleRemoveGroupMediaItem = useCallback(
+    async (messageId: number, mediaUrl: string) => {
+      if (!group_id) return
+      const gid = Number(group_id)
+      if (!Number.isFinite(gid)) return
+      if (!confirm(t('chat.remove_attachment_confirm'))) return
+      try {
+        const res = await fetch(`/api/group_chat/${gid}/remove_message_media`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message_id: messageId, media_url: mediaUrl }),
+        })
+        const j = await res.json().catch(() => null)
+        if (!j?.success) {
+          alert(j?.error || t('chat.failed_remove_attachment'))
+          return
+        }
+        if (j.deleted_message) {
+          setServerMessages(prev => prev.filter(m => m.id !== messageId))
+          return
+        }
+        const mp = (j.media_paths as string[]) || []
+        const pickFirst = (re: RegExp) => mp.find(p => re.test(p.split('?')[0].toLowerCase()))
+        const firstImg = pickFirst(/\.(png|jpg|jpeg|gif|webp)$/i)
+        const firstVid = pickFirst(/\.(mp4|mov|webm|m4v|avi)$/i)
+        setServerMessages(prev =>
+          prev.map(m => {
+            if (m.id !== messageId) return m
+            return {
+              ...m,
+              media_paths: mp.length ? mp : null,
+              image: firstImg ?? null,
+              video: firstVid ?? null,
+            }
+          }),
+        )
+      } catch {
+        alert(t('chat.remove_attachment_network_error'))
+      }
+    },
+    [group_id],
+  )
+
   const handleDeleteMessage = async (messageId: number, messageData: Message) => {
-    if (!confirm('Are you sure you want to delete this message?')) return
+    if (!confirm(t('chat.delete_message_confirm'))) return
 
     /** Positive id = persisted on server; temp / negative = local failed or unsent bubble */
     const hasPersistedServerId = typeof messageId === 'number' && messageId > 0
@@ -1729,7 +1956,7 @@ export default function GroupChatThread() {
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
           )
         })
-        alert(data.error || 'Failed to delete message')
+        alert(data.error || t('chat.failed_delete_message'))
       }
     } catch (err) {
       console.error('Error deleting message:', err)
@@ -1740,7 +1967,7 @@ export default function GroupChatThread() {
           new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         )
       })
-      alert('Network error. Could not delete message.')
+      alert(t('chat.delete_network_error'))
     }
   }
 
@@ -1775,7 +2002,7 @@ export default function GroupChatThread() {
     if (selectedMessages.size === 0) return
     
     const count = selectedMessages.size
-    if (!confirm(`Are you sure you want to delete ${count} message${count > 1 ? 's' : ''}?`)) return
+    if (!confirm(t('chat.delete_messages_confirm', { count }))) return
     
     const idsToDelete = Array.from(selectedMessages)
     const serverIds = idsToDelete.filter((id): id is number => typeof id === 'number' && id > 0)
@@ -1825,13 +2052,13 @@ export default function GroupChatThread() {
       } else {
         idsToDelete.forEach(id => pendingDeletions.current.delete(id))
         loadMessages(true)
-        alert(data.error || 'Failed to delete messages')
+        alert(data.error || t('chat.failed_delete_messages'))
       }
     } catch (err) {
       console.error('Error bulk deleting messages:', err)
       idsToDelete.forEach(id => pendingDeletions.current.delete(id))
       loadMessages(true)
-      alert('Network error. Could not delete messages.')
+      alert(t('chat.delete_messages_network_error'))
     }
   }
 
@@ -1875,14 +2102,14 @@ export default function GroupChatThread() {
         setServerMessages(prev => prev.map(m => 
           m.id === editingId ? { ...m, text: oldMessage.text, is_edited: oldMessage.is_edited } : m
         ))
-        alert(data.error || 'Failed to edit message')
+        alert(data.error || t('chat.failed_edit_message'))
       }
     } catch (err) {
       console.error('Error editing message:', err)
       setServerMessages(prev => prev.map(m => 
         m.id === editingId ? { ...m, text: oldMessage.text } : m
       ))
-      alert('Network error. Could not edit message.')
+      alert(t('chat.edit_message_network_error'))
     } finally {
       setEditingSaving(false)
     }
@@ -1926,7 +2153,7 @@ export default function GroupChatThread() {
       <div className="min-h-screen chat-thread-bg text-white flex flex-col">
         <div style={{ paddingTop: 'env(safe-area-inset-top, 0px)', background: '#000' }}>
           <div className="h-12 flex items-center px-3">
-            <button className="p-2 rounded-full hover:bg-white/10" onClick={() => navigate('/user_chat')} aria-label="Back">
+            <button className="p-2 rounded-full hover:bg-white/10" onClick={() => navigate('/user_chat')} aria-label={t('common.back')}>
               <i className="fa-solid fa-arrow-left text-white" />
             </button>
           </div>
@@ -1946,7 +2173,7 @@ export default function GroupChatThread() {
       <div className="min-h-screen chat-thread-bg text-white flex flex-col">
         <div style={{ paddingTop: 'env(safe-area-inset-top, 0px)', background: '#000' }}>
           <div className="h-12 flex items-center px-3">
-            <button className="p-2 rounded-full hover:bg-white/10" onClick={() => navigate('/user_chat')} aria-label="Back">
+            <button className="p-2 rounded-full hover:bg-white/10" onClick={() => navigate('/user_chat')} aria-label={t('common.back')}>
               <i className="fa-solid fa-arrow-left text-white" />
             </button>
           </div>
@@ -2000,7 +2227,7 @@ export default function GroupChatThread() {
           <button 
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
             onClick={() => navigate('/user_chat')} 
-            aria-label="Back to Messages"
+            aria-label={t('chat.back_to_messages')}
           >
             <i className="fa-solid fa-arrow-left text-white" />
           </button>
@@ -2018,7 +2245,7 @@ export default function GroupChatThread() {
           <button 
             type="button"
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
-            aria-label="More options"
+            aria-label={t('chat.more_options')}
             aria-haspopup="true"
             aria-expanded={headerMenuOpen}
             onMouseDown={(e) => e.stopPropagation()}
@@ -2045,7 +2272,7 @@ export default function GroupChatThread() {
                   }}
                 >
                   <i className="fa-solid fa-users text-xs text-[#4db6ac]" />
-                  <span>View Members</span>
+                  <span>{t('chat.view_members')}</span>
                 </button>
                 <button
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
@@ -2055,13 +2282,13 @@ export default function GroupChatThread() {
                   }}
                 >
                   <i className="fa-solid fa-photo-film text-xs text-[#4db6ac]" />
-                  <span>View Media</span>
+                  <span>{t('chat.view_media')}</span>
                 </button>
                 <button
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
                   onClick={() => {
                     setHeaderMenuOpen(false)
-                    if (!confirm("Reset Steve's conversation context? Steve will still have the full chat history but will stop referencing older discussions.")) return
+                    if (!confirm(t('chat.reset_steve_confirm'))) return
                     fetch(`/api/group_chat/${group_id}/steve_reset_context`, {
                       method: 'POST',
                       credentials: 'include'
@@ -2069,16 +2296,16 @@ export default function GroupChatThread() {
                       .then(r => r.json())
                       .then(d => {
                         if (d?.success) {
-                          alert("Steve's context has been reset.")
+                          alert(t('chat.reset_steve_success'))
                         } else {
-                          alert(d?.error || 'Failed to reset')
+                          alert(d?.error || t('chat.reset_steve_failed'))
                         }
                       })
-                      .catch(() => alert('Failed to reset context'))
+                      .catch(() => alert(t('chat.reset_steve_context_failed')))
                   }}
                 >
                   <i className="fa-solid fa-rotate text-xs text-[#4db6ac]" />
-                  <span>Reset Steve</span>
+                  <span>{t('chat.reset_steve')}</span>
                 </button>
                 <button
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
@@ -2089,7 +2316,7 @@ export default function GroupChatThread() {
                   }}
                 >
                   <i className="fa-solid fa-user-plus text-xs text-[#4db6ac]" />
-                  <span>Add Members</span>
+                  <span>{t('chat.add_members_action')}</span>
                 </button>
                 {group?.members.find(m => m.username === currentUsername)?.is_admin && (
                   <button
@@ -2106,7 +2333,7 @@ export default function GroupChatThread() {
                     }}
                   >
                     <i className="fa-solid fa-gear text-xs text-[#4db6ac]" />
-                    <span>Manage Group</span>
+                    <span>{t('chat.manage_group')}</span>
                   </button>
                 )}
                 <button
@@ -2117,7 +2344,7 @@ export default function GroupChatThread() {
                   }}
                 >
                   <i className="fa-solid fa-arrow-right-from-bracket text-xs" />
-                  <span>Leave Group</span>
+                  <span>{t('chat.leave_group')}</span>
                 </button>
               </div>
             </div>
@@ -2139,6 +2366,7 @@ export default function GroupChatThread() {
           {/* Messages List */}
           <div
             ref={listRef}
+            data-preserve-scroll="true"
             className="flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3"
             style={{
               WebkitOverflowScrolling: 'touch',
@@ -2150,8 +2378,14 @@ export default function GroupChatThread() {
             onScroll={(e) => {
               const el = e.currentTarget
               const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-              if (distFromBottom > 80) userHasScrolledRef.current = true
-              else userHasScrolledRef.current = false
+              if (distFromBottom > 80) {
+                userHasScrolledRef.current = true
+                initialPinActiveRef.current = false
+                if (distFromBottom > 150) setShowScrollDown(true)
+              } else {
+                userHasScrolledRef.current = false
+                setShowScrollDown(false)
+              }
               if (el.scrollTop < 100 && !loadingOlderRef.current && hasMoreMessages) {
                 loadOlderMessages()
               }
@@ -2175,395 +2409,118 @@ export default function GroupChatThread() {
                 {!navigator.onLine ? (
                   <>
                     <i className="fa-solid fa-wifi-slash text-3xl mb-3 opacity-50" />
-                    <div className="text-sm">Messages not available offline</div>
-                    <div className="text-xs mt-1 opacity-70">Go back online to load this conversation</div>
+                    <div className="text-sm">{t('chat.offline_unavailable')}</div>
+                    <div className="text-xs mt-1 opacity-70">{t('chat.offline_go_online')}</div>
                   </>
                 ) : (
                   <>
                     <i className="fa-solid fa-comments text-4xl mb-3 opacity-50" />
-                    <div className="text-sm">No messages yet</div>
-                    <div className="text-xs mt-1">Send a message to start the conversation</div>
+                    <div className="text-sm">{t('chat.empty_state')}</div>
+                    <div className="text-xs mt-1">{t('chat.empty_group_helper')}</div>
                   </>
                 )}
               </div>
             ) : (
-              <div className="space-y-3 py-3">
+              <div ref={messageStackRef} className="space-y-3 py-3">
                 {messages.map((msg, idx) => {
                   const msgWithKey = msg as Message & { clientKey?: string; replySnippet?: string; replySender?: string }
                   const showAvatar = idx === 0 || messages[idx - 1].sender !== msg.sender
-                  const showTime = showAvatar || (idx > 0 && 
-                    new Date(msg.created_at).getTime() - new Date(messages[idx-1].created_at).getTime() > 60000)
+                  const showTime = showAvatar || (idx > 0 &&
+                    new Date(msg.created_at).getTime() - new Date(messages[idx - 1].created_at).getTime() > 60000)
                   const messageReaction = reactions[msg.id]
                   const isOptimistic = !!(msgWithKey as any).isOptimistic || msgWithKey.clientKey?.startsWith('temp_') || msg.id < 0
                   const sendFailed = !!(msgWithKey as any).sendFailed
-                  // Determine if message is sent by current user
-                  // Compare case-insensitively and trim whitespace
                   const senderNormalized = (msg.sender || '').toLowerCase().trim()
                   const currentUserNormalized = (currentUsername || '').toLowerCase().trim()
                   const isSentByMe = isOptimistic || (senderNormalized !== '' && currentUserNormalized !== '' && senderNormalized === currentUserNormalized)
-                  
-                  // Parse reply information from message text
-                  let displayText = msg.text
-                  let replySnippet = msgWithKey.replySnippet
-                  let replySender = msgWithKey.replySender
-                  
-                  if (displayText && !replySnippet) {
-                    const replyMatch = displayText.match(/^\[REPLY:([^:]+):([^\]]+)\](?:\r?\n|\s)*(.*)$/s)
-                    if (replyMatch) {
-                      replySender = replyMatch[1]
-                      replySnippet = replyMatch[2]
-                      displayText = replyMatch[3]
-                    }
-                  }
-
-                  const videoEmbed = extractVideoEmbedFromPost(displayText || '', undefined)
-                  const textAfterVideo = videoEmbed ? removeVideoUrlFromText(displayText || '', videoEmbed) : (displayText || '')
-                  const linkPreviewUrls = textAfterVideo ? feedLinkPreviewUrls(textAfterVideo, videoEmbed?.embedUrl ?? null) : []
-                  const bubbleTextWithoutUrls =
-                    linkPreviewUrls.length > 0 && textAfterVideo
-                      ? stripExtractedUrlsFromText(textAfterVideo, linkPreviewUrls)
-                      : textAfterVideo
-                  
-                  // Date separator logic - matching ChatThread
                   const messageDate = getDateKey(msg.created_at)
                   const prevMessageDate = idx > 0 ? getDateKey(messages[idx - 1].created_at) : null
                   const showDateSeparator = messageDate !== prevMessageDate
-
+                  const firstMedia = msg.media_paths?.[0] || ''
+                  const isMediaImage = firstMedia.match(/\.(jpg|jpeg|png|gif|webp)$/i)
                   return (
-                    <div key={msgWithKey.clientKey || msg.id}>
-                      {showDateSeparator && (
-                        <div className="flex justify-center my-3">
-                          <div className="liquid-glass-chip px-3 py-1 text-xs text-white/80 border">
-                            {formatDateLabel(msg.created_at)}
-                          </div>
-                        </div>
-                      )}
-                      <div className={`flex gap-2 ${showAvatar ? 'mt-4 first:mt-0' : 'mt-0.5'} ${isSentByMe ? 'flex-row-reverse' : ''} ${sendFailed ? 'opacity-60' : isOptimistic ? 'opacity-70' : ''}`}>
-                      <div className="w-8 flex-shrink-0">
-                        {showAvatar && msg.sender && !isSentByMe && (
-                          <Avatar
-                            username={msg.sender}
-                            url={msg.profile_picture || undefined}
-                            size={32}
-                            linkToProfile
-                          />
-                        )}
-                      </div>
-                      <div className={`flex-1 min-w-0 ${isSentByMe ? 'flex flex-col items-end' : ''}`}>
-                        {showAvatar && msg.sender && !isSentByMe && (
-                          <div className="flex items-baseline gap-2 mb-0.5">
-                            <span className="text-sm font-medium text-white/90">{msg.sender}</span>
-                            <span className="text-[11px] text-[#9fb0b5]">{formatTime(msg.created_at)}</span>
-                          </div>
-                        )}
-                        <div className={`flex items-end gap-2 ${isSentByMe ? 'flex-row-reverse' : ''}`}>
-                          {/* Selection checkbox when in selection mode */}
-                          {selectionMode && isSentByMe && (
-                            <button
-                              onClick={() => toggleMessageSelection(msg.id)}
-                              className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                                selectedMessages.has(msg.id)
-                                  ? 'bg-[#4db6ac] border-[#4db6ac]'
-                                  : 'border-white/40 bg-transparent'
-                              }`}
-                            >
-                              {selectedMessages.has(msg.id) && (
-                                <i className="fa-solid fa-check text-black text-xs" />
-                              )}
-                            </button>
-                          )}
-                          <LongPressActionable
-                            onReact={(emoji) => handleReaction(msg.id, emoji)}
-                            onReply={() => {
-                              const firstMedia = msg.media_paths?.[0] || '';
-                              const isMediaImage = firstMedia.match(/\.(jpg|jpeg|png|gif|webp)$/i);
-                              setReplyTo({
-                                text: msg.text || '',
-                                sender: isSentByMe ? 'You' : msg.sender,
-                                image: msg.image || (isMediaImage ? firstMedia : undefined),
-                                video: msg.video || (!isMediaImage && firstMedia ? firstMedia : undefined),
-                                voice: msg.voice || undefined,
-                                audio_summary: msg.audio_summary || undefined,
-                              })
-                              focusTextarea()
-                            }}
-                            onCopy={() => handleCopyMessage(msg.text)}
-                            onDelete={() => handleDeleteMessage(msg.id, msg)}
-                            onEdit={isSentByMe && msg.text && !msg.image && !msg.video && !msg.voice && !msg.media_paths?.length ? () => handleStartEdit(msg.id, msg.text || '') : undefined}
-                            onSelect={isSentByMe ? () => enterSelectionMode(msg.id) : undefined}
-                            disabled={(isOptimistic && !sendFailed) || editingId === msg.id || selectionMode}
-                          >
-                            <div className={`relative ${messageReaction ? 'mb-5' : ''}`}>
-                              {editingId === msg.id ? (
-                                <div className="flex flex-col gap-2 max-w-[280px]">
-                                  <textarea
-                                    value={editText}
-                                    onChange={(e) => setEditText(e.target.value)}
-                                    className="w-full bg-white/10 border border-[#4db6ac] rounded-lg px-3 py-2 text-[14px] text-white resize-none focus:outline-none"
-                                    rows={3}
-                                    autoFocus
-                                  />
-                                  <div className="flex gap-2 justify-end">
-                                    <button
-                                      onClick={handleCancelEdit}
-                                      className="px-3 py-1 text-xs text-white/60 hover:text-white"
-                                      disabled={editingSaving}
-                                    >
-                                      Cancel
-                                    </button>
-                                    <button
-                                      onClick={handleSaveEdit}
-                                      disabled={editingSaving || !editText.trim()}
-                                      className="px-3 py-1 text-xs bg-[#4db6ac] text-black rounded-lg disabled:opacity-50"
-                                    >
-                                      {editingSaving ? <i className="fa-solid fa-spinner fa-spin" /> : 'Save'}
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (displayText || replySnippet) && (
-                                <div className={`rounded-2xl max-w-[280px] ${isSentByMe ? 'rounded-br-lg' : 'rounded-bl-lg'} ${
-                                  isOptimistic 
-                                    ? 'bg-[#4db6ac]/40 border border-[#4db6ac]/30' 
-                                    : `liquid-glass-bubble ${isSentByMe ? 'liquid-glass-bubble--sent' : 'liquid-glass-bubble--received'}`
-                                }`}>
-                                  {/* Reply snippet */}
-                                  {replySnippet && (
-                                    <div className="px-3 pt-2 pb-1 border-b border-white/10">
-                                      <div className="flex items-stretch gap-0 bg-black/20 rounded overflow-hidden">
-                                        <div className="w-0.5 bg-[#4db6ac] flex-shrink-0" />
-                                        <div className="px-2 py-1 min-w-0">
-                                          <div className="text-[10px] text-[#4db6ac] font-medium truncate">
-                                            {replySender}
-                                          </div>
-                                          <div className="text-[11px] text-white/60 whitespace-pre-wrap break-words leading-[1.25]">
-                                            {(() => {
-                                              if (replySnippet.startsWith('📷|') || replySnippet.startsWith('🎥|')) {
-                                                const parts = replySnippet.split('|');
-                                                const isImage = replySnippet.startsWith('📷|');
-                                                const icon = isImage ? 'fa-image' : 'fa-video';
-                                                const defaultLabel = isImage ? 'Photo' : 'Video';
-                                                const caption = parts.length > 2 ? parts.slice(2).join('|').trim() || defaultLabel : defaultLabel;
-                                                return (
-                                                  <span className="inline-flex items-center gap-1">
-                                                    <i className={`fa-solid ${icon} text-[9px]`} /> {caption}
-                                                  </span>
-                                                );
-                                              } else if (replySnippet.startsWith('🎤|')) {
-                                                return (
-                                                  <>
-                                                    <i className="fa-solid fa-microphone text-[9px]" />
-                                                    {replySnippet.length > 2 ? replySnippet.slice(2).trim() : 'Voice message'}
-                                                  </>
-                                                );
-                                              }
-                                              return replySnippet;
-                                            })()}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-                                  {bubbleTextWithoutUrls?.trim() && (
-                                    <div className="text-[14px] text-white whitespace-pre-wrap break-words px-3 py-2">
-                                      {renderTextWithMentions(bubbleTextWithoutUrls)}
-                                      {isOptimistic && (
-                                        <span className="ml-2 text-[10px] text-white/60">
-                                          <i className="fa-solid fa-clock text-[8px] mr-1" />
-                                        </span>
-                                      )}
-                                      {msg.is_edited && !isOptimistic && (
-                                        <span className="ml-2 text-[10px] text-white/40 italic">
-                                          (edited)
-                                        </span>
-                                      )}
-                                    </div>
-                                  )}
-                                  {videoEmbed && (
-                                    <div className="px-2 pb-2 w-full min-w-0">
-                                      {videoEmbed.type === 'youtube' ? (
-                                        <YouTubeChatSnippet videoId={videoEmbed.videoId} />
-                                      ) : (
-                                        <VideoEmbed embed={videoEmbed} />
-                                      )}
-                                    </div>
-                                  )}
-                                  {linkPreviewUrls.map(u => (
-                                    <div key={u} className="px-2 pb-2">
-                                      <LinkPreview url={u} sent={isSentByMe} />
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                              {/* Grouped media display */}
-                              {msg.media_paths && msg.media_paths.length > 0 ? (
-                                <div className="mt-1 max-w-[280px]">
-                                  <div 
-                                    className="relative cursor-pointer"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      setViewingMedia({ urls: msg.media_paths!.map(normalizeMediaPath), index: 0, messageId: msg.id, senderUsername: msg.sender })
-                                    }}
-                                  >
-                                    {/* Show first item as preview */}
-                                    {msg.media_paths[0].match(/\.(mp4|mov|webm|m4v)$/i) ? (
-                                      <div className="relative">
-                                        <video
-                                          src={normalizeMediaPath(msg.media_paths[0]) + '#t=0.1'}
-                                          className="w-full rounded-lg"
-                                          muted
-                                          preload="metadata"
-                                          playsInline
-                                        />
-                                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                          <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
-                                            <i className="fa-solid fa-play text-white text-lg ml-0.5" />
-                                          </div>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <MessageImage
-                                        src={normalizeMediaPath(msg.media_paths[0])}
-                                        alt="Media"
-                                        className="w-full rounded-lg"
-                                      />
-                                    )}
-                                    {/* Overlay with count */}
-                                    {msg.media_paths.length > 1 && (
-                                      <div className="absolute inset-0 bg-black/30 rounded-lg flex items-center justify-center">
-                                        <span className="text-white text-2xl font-semibold">
-                                          {msg.media_paths.length}
-                                        </span>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ) : (
-                                <>
-                                  {msg.image && (
-                                    <div
-                                      className="mt-1 max-w-[280px] cursor-pointer"
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        setViewingMedia({ urls: [normalizeMediaPath(msg.image)], index: 0, messageId: msg.id, senderUsername: msg.sender })
-                                      }}
-                                    >
-                                      <MessageImage
-                                        src={normalizeMediaPath(msg.image)}
-                                        alt="Shared image"
-                                        className="w-full rounded-lg"
-                                      />
-                                    </div>
-                                  )}
-                                  {msg.video && (
-                                    <div 
-                                      className="relative mt-1 max-w-[280px] cursor-pointer"
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        setViewingMedia({ urls: [normalizeMediaPath(msg.video)], index: 0, messageId: msg.id, senderUsername: msg.sender })
-                                      }}
-                                    >
-                                      <video
-                                        src={normalizeMediaPath(msg.video) + '#t=0.1'}
-                                        preload="metadata"
-                                        playsInline
-                                        muted
-                                        className="w-full rounded-lg"
-                                      />
-                                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                        <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
-                                          <i className="fa-solid fa-play text-white text-lg ml-0.5" />
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-                                </>
-                              )}
-                              {msg.voice && (
-                                <>
-                                  <VoiceNotePlayer 
-                                    audioPath={normalizeMediaPath(msg.voice)}
-                                    durationSeconds={msg.audio_duration_seconds}
-                                  />
-                                  {msg.audio_summary ? (
-                                    <div className="px-2 pb-1 pt-0.5">
-                                      <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
-                                        <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
-                                        <span>{translations[msg.id] ? 'Steve summary (translated)' : 'Steve summary'}</span>
-                                        <div className="ml-auto flex items-center gap-1">
-                                          {translations[msg.id] && (
-                                            <button onClick={(e) => { e.stopPropagation(); setTranslations(prev => { const n = { ...prev }; delete n[msg.id]; return n }) }} className="text-white/30 hover:text-white/50 px-0.5"><i className="fa-solid fa-rotate-left text-[8px]" /></button>
-                                          )}
-                                          <button onClick={(e) => { e.stopPropagation(); setShowLangPicker(msg.id); setLangPickerSummary(msg.audio_summary!) }} className="text-white/30 hover:text-white/50 px-0.5" disabled={translatingId === msg.id}>
-                                            {translatingId === msg.id ? <i className="fa-solid fa-spinner fa-spin text-[9px]" /> : <i className="fa-solid fa-globe text-[9px]" />}
-                                          </button>
-                                          {(msg.sender === currentUsername || msg.sender === 'You') && (
-                                            <button onClick={(e) => { e.stopPropagation(); setEditingSummaryId(msg.id); setEditSummaryText(msg.audio_summary || '') }} className="text-white/30 hover:text-white/50 px-0.5"><i className="fa-solid fa-pen text-[8px]" /></button>
-                                          )}
-                                        </div>
-                                      </div>
-                                      <p className="text-[12px] text-white/80 leading-relaxed italic">
-                                        {translations[msg.id] || msg.audio_summary}
-                                      </p>
-                                    </div>
-                                  ) : msg.voice && (() => {
-                                    try {
-                                      const t = new Date(msg.created_at).getTime()
-                                      if (Date.now() - t < 120000) return (
-                                        <div className="px-2 pb-1 pt-0.5">
-                                          <div className="flex items-center gap-1">
-                                            <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-white/40" />
-                                            <span className="text-[11px] text-white/40">Steve summary generating</span>
-                                            <span className="flex gap-0.5 ml-0.5">
-                                              <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                                              <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                                              <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                                            </span>
-                                          </div>
-                                        </div>
-                                      )
-                                    } catch {}
-                                    return null
-                                  })()}
-                                </>
-                              )}
-                              {/* Reaction display */}
-                              {messageReaction && (
-                                <div 
-                                  className="absolute -bottom-5 left-0 bg-[#1a1a1a] border border-white/10 rounded-full px-1.5 py-0.5 text-sm cursor-pointer hover:bg-white/10"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleReaction(msg.id, messageReaction)
-                                  }}
-                                >
-                                  {messageReaction}
-                                </div>
-                              )}
-                            </div>
-                          </LongPressActionable>
-                          {!showAvatar && showTime && (
-                            <span className="text-[10px] text-[#9fb0b5]/60 flex-shrink-0 pb-0.5">
-                              {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          )}
-                        </div>
-                        {sendFailed && isSentByMe && msgWithKey.clientKey && (
-                          <button
-                            onClick={() => retryFailedMessage(msgWithKey.clientKey!)}
-                            className="flex items-center gap-1.5 mt-1 text-[11px] text-red-400 hover:text-red-300 self-end"
-                          >
-                            <i className="fa-solid fa-circle-exclamation text-[10px]" />
-                            Not delivered — tap to retry
-                          </button>
-                        )}
-                        {isOptimistic && !sendFailed && isSentByMe && (
-                          <div className="flex items-center gap-1 mt-0.5 self-end">
-                            <i className="fa-solid fa-clock text-[9px] text-white/30" />
-                            <span className="text-[10px] text-white/30">Sending…</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    </div>
+                    <GroupMessageRow
+                      key={msgWithKey.clientKey || msg.id}
+                      msg={{
+                        ...msg,
+                        clientKey: msgWithKey.clientKey,
+                        replySnippet: msgWithKey.replySnippet,
+                        replySender: msgWithKey.replySender,
+                        isOptimistic,
+                        sendFailed,
+                      }}
+                      showAvatar={showAvatar}
+                      showTime={showTime}
+                      showDateSeparator={showDateSeparator}
+                      messageReaction={messageReaction}
+                      isSentByMe={isSentByMe}
+                      isOptimistic={isOptimistic}
+                      sendFailed={sendFailed}
+                      clientKey={msgWithKey.clientKey}
+                      selectionMode={selectionMode}
+                      isSelected={selectedMessages.has(msg.id)}
+                      onToggleSelect={() => toggleMessageSelection(msg.id)}
+                      onReact={(emoji) => handleReaction(msg.id, emoji)}
+                      onReply={() => {
+                        setReplyTo({
+                          text: msg.text || '',
+                          sender: isSentByMe ? 'You' : msg.sender,
+                          image: msg.image || (isMediaImage ? firstMedia : undefined),
+                          video: msg.video || (!isMediaImage && firstMedia ? firstMedia : undefined),
+                          voice: msg.voice || undefined,
+                          audio_summary: msg.audio_summary || undefined,
+                        })
+                        focusTextarea()
+                      }}
+                      onCopy={() => handleCopyMessage(msg.text)}
+                      onDelete={() => handleDeleteMessage(msg.id, msg)}
+                      onEdit={
+                        isSentByMe && msg.text && !msg.image && !msg.video && !msg.voice && !msg.media_paths?.length
+                          ? () => handleStartEdit(msg.id, msg.text || '')
+                          : undefined
+                      }
+                      onEnterSelectMode={isSentByMe ? () => enterSelectionMode(msg.id) : undefined}
+                      isEditing={editingId === msg.id}
+                      editText={editText}
+                      onEditTextChange={setEditText}
+                      onCancelEdit={handleCancelEdit}
+                      onSaveEdit={handleSaveEdit}
+                      editingSaving={editingSaving}
+                      formatTime={formatGroupThreadTime}
+                      renderMessageText={renderMessageText}
+                      currentUsername={currentUsername}
+                      translationForMessage={translations[msg.id]}
+                      translatingThis={translatingId === msg.id}
+                      onTranslatePress={() => {
+                        setShowLangPicker(msg.id)
+                        setLangPickerSummary(msg.audio_summary!)
+                      }}
+                      onClearTranslation={() =>
+                        setTranslations((prev) => {
+                          const n = { ...prev }
+                          delete n[msg.id]
+                          return n
+                        })
+                      }
+                      canEditSummary={msg.sender === currentUsername || msg.sender === 'You'}
+                      onEditSummaryPress={() => {
+                        setEditingSummaryId(msg.id)
+                        setEditSummaryText(msg.audio_summary || '')
+                      }}
+                      onOpenMediaGroup={(urls) =>
+                        setViewingMedia({ urls, index: 0, messageId: msg.id, senderUsername: msg.sender })
+                      }
+                      onOpenImage={(path) =>
+                        setViewingMedia({ urls: [path], index: 0, messageId: msg.id, senderUsername: msg.sender })
+                      }
+                      onOpenVideo={(path) =>
+                        setViewingMedia({ urls: [path], index: 0, messageId: msg.id, senderUsername: msg.sender })
+                      }
+                      onRetry={
+                        msgWithKey.clientKey ? () => retryFailedMessage(msgWithKey.clientKey!) : undefined
+                      }
+                      onRemoveMediaItem={selectionMode ? undefined : handleRemoveGroupMediaItem}
+                    />
                   )
                 })}
                 {/* Steve is typing indicator */}
@@ -2574,7 +2531,7 @@ export default function GroupChatThread() {
                     </div>
                     <div className="bg-white/10 rounded-2xl rounded-bl-lg px-4 py-2">
                       <div className="flex items-center gap-1">
-                        <span className="text-white/70 text-sm">Steve is typing</span>
+                        <span className="text-white/70 text-sm">{t('chat.steve_typing')}</span>
                         <span className="flex gap-0.5">
                           <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                           <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -2590,6 +2547,25 @@ export default function GroupChatThread() {
           </div>
         </div>
       </div>
+
+      {/* Scroll to latest — above composer (matches DM ChatThread) */}
+      {showScrollDown && !selectionMode && (
+        <button
+          type="button"
+          className="fixed z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
+          style={{
+            bottom: scrollButtonBottom,
+            right: '22px',
+          }}
+          onClick={() => {
+            scrollToBottom()
+            setShowScrollDown(false)
+          }}
+          aria-label={t('chat.scroll_latest')}
+        >
+          <i className="fa-solid fa-arrow-down" />
+        </button>
+      )}
 
       {/* ====== COMPOSER - FIXED AT BOTTOM ====== */}
       <div
@@ -2617,7 +2593,7 @@ export default function GroupChatThread() {
               className="text-white/60 hover:text-white flex items-center gap-2"
             >
               <i className="fa-solid fa-xmark" />
-              <span className="text-sm">Cancel</span>
+              <span className="text-sm">{t('chat.cancel')}</span>
             </button>
             <span className="text-white/80 text-sm">
               {selectedMessages.size} selected
@@ -2628,7 +2604,7 @@ export default function GroupChatThread() {
               className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-400 rounded-full disabled:opacity-40 disabled:cursor-not-allowed hover:bg-red-500/30 transition-colors"
             >
               <i className="fa-solid fa-trash text-sm" />
-              <span className="text-sm">Delete</span>
+              <span className="text-sm">{t('chat.delete')}</span>
             </button>
           </div>
         ) : (
@@ -2670,8 +2646,8 @@ export default function GroupChatThread() {
                     <i className="fa-solid fa-image text-[#4db6ac] text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">Photos</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">Send from gallery</div>
+                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.photos')}</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_from_gallery')}</div>
                   </div>
                 </button>
                 <button
@@ -2682,8 +2658,8 @@ export default function GroupChatThread() {
                     <i className="fa-solid fa-camera text-[#4db6ac] text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">Camera</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">Take a photo</div>
+                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.camera')}</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.take_photo')}</div>
                   </div>
                 </button>
                 <button
@@ -2694,8 +2670,8 @@ export default function GroupChatThread() {
                     <i className="fa-solid fa-video text-[#4db6ac] text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">Video</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">Send from gallery</div>
+                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.video')}</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_from_gallery')}</div>
                   </div>
                 </button>
                 <button
@@ -2707,7 +2683,7 @@ export default function GroupChatThread() {
                   </div>
                   <div className="min-w-0">
                     <div className="text-white font-medium text-sm sm:text-base">GIF</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">Powered by GIPHY</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.powered_by_giphy')}</div>
                   </div>
                 </button>
               </div>
@@ -2752,9 +2728,9 @@ export default function GroupChatThread() {
                     {replyTo.voice ? (
                       <><i className="fa-solid fa-microphone text-xs mr-1" />{replyTo.audio_summary ? replyTo.audio_summary.slice(0, 80) + (replyTo.audio_summary.length > 80 ? '…' : '') : 'Voice message'}</>
                     ) : replyTo.video ? (
-                      <><i className="fa-solid fa-video text-xs mr-1" />Video</>
+                      <><i className="fa-solid fa-video text-xs mr-1" />{t('chat.video')}</>
                     ) : replyTo.image && !replyTo.text ? (
-                      <><i className="fa-solid fa-image text-xs mr-1" />Photo</>
+                      <><i className="fa-solid fa-image text-xs mr-1" />{t('chat.photo')}</>
                     ) : (
                       replyTo.text && replyTo.text.length > 80 ? replyTo.text.slice(0, 80) + '…' : replyTo.text
                     )}
@@ -2924,7 +2900,7 @@ export default function GroupChatThread() {
                       setPreviewPlaying(false)
                     }}
                     className="w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors active:scale-95"
-                    aria-label="Delete recording"
+                    aria-label={t('chat.delete_recording')}
                     style={{ touchAction: 'manipulation' }}
                   >
                     <i className="fa-solid fa-trash text-sm pointer-events-none" />
@@ -2936,7 +2912,7 @@ export default function GroupChatThread() {
                       togglePreviewPlayback()
                     }}
                     className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
-                    aria-label={previewPlaying ? 'Pause' : 'Play'}
+                    aria-label={previewPlaying ? t('chat.pause') : t('chat.play')}
                     style={{ touchAction: 'manipulation' }}
                   >
                     <i className={`fa-solid ${previewPlaying ? 'fa-pause' : 'fa-play'} text-sm pointer-events-none ${!previewPlaying ? 'ml-0.5' : ''}`} />
@@ -2958,7 +2934,7 @@ export default function GroupChatThread() {
                   ref={textareaRef}
                   rows={1}
                   className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-40 min-h-[38px]"
-                  placeholder="Message"
+                  placeholder={t('chat.message_placeholder')}
                   defaultValue=""
                   autoComplete="off"
                   autoCorrect="on"
@@ -3043,7 +3019,7 @@ export default function GroupChatThread() {
                   e.stopPropagation()
                   void checkMicrophonePermission()
                 }}
-                aria-label="Start voice message"
+                aria-label={t('chat.start_voice')}
                 style={{
                   touchAction: 'manipulation',
                   WebkitTapHighlightColor: 'transparent',
@@ -3063,7 +3039,7 @@ export default function GroupChatThread() {
                     e.stopPropagation()
                     void stopVoiceRecording()
                   }}
-                  aria-label="Pause recording"
+                  aria-label={t('chat.pause_recording')}
                   style={{
                     touchAction: 'manipulation',
                     WebkitTapHighlightColor: 'transparent',
@@ -3078,7 +3054,7 @@ export default function GroupChatThread() {
                     e.stopPropagation()
                     void sendVoiceDirectly()
                   }}
-                  aria-label="Send voice message"
+                  aria-label={t('chat.send_voice')}
                   style={{
                     touchAction: 'manipulation',
                     WebkitTapHighlightColor: 'transparent',
@@ -3100,7 +3076,7 @@ export default function GroupChatThread() {
                   void sendRecordingPreview()
                 }}
                 disabled={sending}
-                aria-label="Send voice message"
+                aria-label={t('chat.send_voice')}
                 style={{
                   touchAction: 'manipulation',
                   WebkitTapHighlightColor: 'transparent',
@@ -3138,7 +3114,7 @@ export default function GroupChatThread() {
                   handleSend()
                 }}
                 disabled={sending || !draftDisplay.trim()}
-                aria-label="Send"
+                aria-label={t('chat.send')}
                 style={{
                   touchAction: 'manipulation',
                   WebkitTapHighlightColor: 'transparent',
@@ -3198,7 +3174,7 @@ export default function GroupChatThread() {
             </div>
 
             <div className="p-4 max-h-[50vh] overflow-y-auto">
-              <div className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-3">Members</div>
+              <div className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-3">{t('chat.members_section')}</div>
               <div className="space-y-2">
                 {group.members.map((member) => (
                   <div
@@ -3214,7 +3190,7 @@ export default function GroupChatThread() {
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate">{member.username}</div>
                       {member.is_admin && (
-                        <div className="text-xs text-[#4db6ac]">Admin</div>
+                        <div className="text-xs text-[#4db6ac]">{t('feed.admin')}</div>
                       )}
                     </div>
                     {group.members.find(m => m.username === currentUsername)?.is_admin && 
@@ -3222,7 +3198,7 @@ export default function GroupChatThread() {
                       <button
                         onClick={async () => {
                           if (removingMember) return
-                          if (!confirm(`Remove ${member.username} from the group?`)) return
+                          if (!confirm(t('chat.remove_member_from_group_confirm', { username: member.username }))) return
                           setRemovingMember(member.username)
                           try {
                             const r = await fetch(`/api/group_chat/${group_id}/remove_member`, {
@@ -3233,8 +3209,8 @@ export default function GroupChatThread() {
                             const d = await r.json().catch(() => null)
                             if (d?.success) {
                               setGroup(prev => prev ? { ...prev, members: prev.members.filter(m => m.username !== member.username) } : prev)
-                            } else { alert(d?.error || 'Failed to remove') }
-                          } catch { alert('Failed to remove member') }
+                            } else { alert(d?.error || t('chat.failed_remove_from_group')) }
+                          } catch { alert(t('chat.failed_remove_member')) }
                           finally { setRemovingMember(null) }
                         }}
                         disabled={removingMember === member.username}
@@ -3273,7 +3249,7 @@ export default function GroupChatThread() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-4 border-b border-white/10 flex items-center justify-between">
-              <div className="font-semibold">Manage Group</div>
+              <div className="font-semibold">{t('chat.manage_group')}</div>
               <button onClick={() => setShowManageGroup(false)} className="p-2 rounded-full hover:bg-white/5">
                 <i className="fa-solid fa-xmark" />
               </button>
@@ -3282,7 +3258,7 @@ export default function GroupChatThread() {
             <div className="p-4 space-y-5 max-h-[60vh] overflow-y-auto">
               {/* Rename Group */}
               <div>
-                <label className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-2 block">Group Name</label>
+                <label className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-2 block">{t('chat.group_name_label')}</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -3304,8 +3280,8 @@ export default function GroupChatThread() {
                         const d = await r.json().catch(() => null)
                         if (d?.success) {
                           setGroup(prev => prev ? { ...prev, name: d.name } : prev)
-                        } else { alert(d?.error || 'Failed to rename') }
-                      } catch { alert('Failed to rename') }
+                        } else { alert(d?.error || t('chat.failed_rename_group')) }
+                      } catch { alert(t('chat.failed_rename_group')) }
                       finally { setRenaming(false) }
                     }}
                     disabled={renaming || renameText.trim() === group.name}
@@ -3318,23 +3294,23 @@ export default function GroupChatThread() {
 
               {/* Steve Personality */}
               <div>
-                <label className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-2 block">Steve AI Personality</label>
+                <label className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-2 block">{t('chat.steve_ai_personality')}</label>
                 <div className="flex gap-2">
                   <select
                     value={stevePersonality}
                     onChange={(e) => setStevePersonality(e.target.value)}
                     className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#4db6ac] appearance-none"
                   >
-                    <option value="default">Default</option>
-                    <option value="professional">Professional</option>
-                    <option value="friendly">Friendly</option>
-                    <option value="sarcastic">Sarcastic</option>
-                    <option value="humorous">Humorous</option>
-                    <option value="sage">Sage</option>
-                    <option value="empathetic">Empathetic</option>
-                    <option value="cynic">Cynic</option>
-                    <option value="quirky">Quirky</option>
-                    <option value="unhinged">Unhinged</option>
+                    <option value="default">{t('chat.personality_default')}</option>
+                    <option value="professional">{t('chat.personality_professional')}</option>
+                    <option value="friendly">{t('chat.personality_friendly')}</option>
+                    <option value="sarcastic">{t('chat.personality_sarcastic')}</option>
+                    <option value="humorous">{t('chat.personality_humorous')}</option>
+                    <option value="sage">{t('chat.personality_sage')}</option>
+                    <option value="empathetic">{t('chat.personality_empathetic')}</option>
+                    <option value="cynic">{t('chat.personality_cynic')}</option>
+                    <option value="quirky">{t('chat.personality_quirky')}</option>
+                    <option value="unhinged">{t('chat.personality_unhinged')}</option>
                   </select>
                   <button
                     onClick={async () => {
@@ -3345,9 +3321,9 @@ export default function GroupChatThread() {
                           body: JSON.stringify({ personality: stevePersonality })
                         })
                         const d = await r.json().catch(() => null)
-                        if (d?.success) { alert('Personality saved!') }
-                        else { alert(d?.error || 'Failed to save') }
-                      } catch { alert('Failed to save') }
+                        if (d?.success) { alert(t('chat.personality_saved')) }
+                        else { alert(d?.error || t('chat.failed_save_personality')) }
+                      } catch { alert(t('chat.failed_save_personality')) }
                     }}
                     className="px-4 py-2 bg-[#4db6ac] text-black rounded-lg font-medium text-sm hover:bg-[#5cc4ba] transition"
                   >
@@ -3360,15 +3336,15 @@ export default function GroupChatThread() {
               <div className="pt-3 border-t border-white/10">
                 <button
                   onClick={async () => {
-                    if (!confirm('Are you sure you want to delete this group? This cannot be undone.')) return
+                    if (!confirm(t('chat.delete_group_confirm_manage'))) return
                     try {
                       const r = await fetch(`/api/group_chat/${group_id}/delete`, {
                         method: 'POST', credentials: 'include'
                       })
                       const d = await r.json().catch(() => null)
                       if (d?.success) { navigate('/messages') }
-                      else { alert(d?.error || 'Failed to delete group') }
-                    } catch { alert('Failed to delete group') }
+                      else { alert(d?.error || t('chat.failed_delete_group')) }
+                    } catch { alert(t('chat.failed_delete_group')) }
                   }}
                   className="w-full px-4 py-3 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition text-sm font-medium"
                 >
@@ -3399,7 +3375,7 @@ export default function GroupChatThread() {
           >
             <div className="p-4 border-b border-white/10 flex items-center justify-between flex-shrink-0">
               <div>
-                <div className="font-semibold">Add Members</div>
+                <div className="font-semibold">{t('chat.add_members_action')}</div>
                 <div className="text-xs text-[#9fb0b5]">
                   {group.members.length}/5 members
                   {group.members.length >= 5 && ' (limit reached)'}
@@ -3424,7 +3400,7 @@ export default function GroupChatThread() {
                 <div className="w-16 h-16 bg-[#4db6ac]/20 rounded-full flex items-center justify-center mx-auto mb-4">
                   <i className="fa-solid fa-users text-[#4db6ac] text-2xl" />
                 </div>
-                <h3 className="text-white font-medium mb-2">Group is Full</h3>
+                <h3 className="text-white font-medium mb-2">{t('chat.group_full_title')}</h3>
                 <p className="text-white/60 text-sm mb-4">
                   Group chats are limited to 5 members. For larger groups, consider creating a community or sub-community.
                 </p>
@@ -3446,7 +3422,7 @@ export default function GroupChatThread() {
                     <i className="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm" />
                     <input
                       type="text"
-                      placeholder="Search members..."
+                      placeholder={t('chat.search_members')}
                       value={memberSearchQuery}
                       onChange={(e) => setMemberSearchQuery(e.target.value)}
                       className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]/50"
@@ -3490,7 +3466,7 @@ export default function GroupChatThread() {
                   {loadingAvailable ? (
                     <div className="p-8 text-center">
                       <i className="fa-solid fa-spinner fa-spin text-[#4db6ac] text-2xl" />
-                      <p className="text-white/50 text-sm mt-2">Loading members...</p>
+                      <p className="text-white/50 text-sm mt-2">{t('chat.loading_members')}</p>
                     </div>
                   ) : availableMembers.length > 0 ? (
                     <div className="p-2">
@@ -3521,7 +3497,7 @@ export default function GroupChatThread() {
                         if (sortedCommunities.length === 0) {
                           return (
                             <div className="p-6 text-center">
-                              <p className="text-white/50 text-sm">No members match your search</p>
+                              <p className="text-white/50 text-sm">{t('chat.no_members_match_search')}</p>
                             </div>
                           )
                         }
@@ -3570,7 +3546,7 @@ export default function GroupChatThread() {
                                           setSelectedNewMembers(prev => prev.filter(u => u !== user.username))
                                         } else {
                                           if (group.members.length + selectedNewMembers.length + 1 > 5) {
-                                            alert('Group chats are limited to 5 members. For larger groups, consider creating a community.')
+                                            alert(t('chat.group_member_limit_short', { max: 5 }))
                                             return
                                           }
                                           setSelectedNewMembers(prev => [...prev, user.username])
@@ -3794,7 +3770,7 @@ export default function GroupChatThread() {
             >
               <i className="fa-solid fa-xmark text-xl" />
             </button>
-            <span className="text-white font-medium">Send Image</span>
+            <span className="text-white font-medium">{t('chat.send_image')}</span>
             <div className="w-8" />
           </div>
 
@@ -3846,7 +3822,7 @@ export default function GroupChatThread() {
           <div className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-[80%] max-w-xs p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-3">
               <i className="fa-solid fa-globe text-[#4db6ac]" />
-              <span className="text-white font-semibold text-sm">Translate to</span>
+              <span className="text-white font-semibold text-sm">{t('chat.translate_to')}</span>
             </div>
             <div className="space-y-1">
               {translateLanguages.map(lang => (
@@ -3874,7 +3850,7 @@ export default function GroupChatThread() {
           >
             <div className="flex items-center gap-2 mb-3">
               <i className="fa-solid fa-wand-magic-sparkles text-[#4db6ac]" />
-              <span className="text-white font-semibold text-sm">Edit Steve summary</span>
+            <span className="text-white font-semibold text-sm">{t('chat.edit_summary')}</span>
             </div>
             <textarea
               value={editSummaryText}
@@ -3882,17 +3858,17 @@ export default function GroupChatThread() {
               className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-3 text-sm text-white resize-none focus:outline-none focus:border-[#4db6ac] leading-relaxed"
               rows={4}
               autoFocus
-              placeholder="Edit the AI-generated summary..."
+              placeholder={t('chat.edit_summary_placeholder')}
             />
             <div className="flex gap-2 mt-3 justify-end">
               <button
                 onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}
                 className="px-4 py-2 text-sm rounded-lg bg-white/10 text-white/70 hover:bg-white/15"
-              >Cancel</button>
+              >{t('chat.cancel')}</button>
               <button
                 onClick={() => handleSaveSummaryEdit(editingSummaryId)}
                 className="px-4 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
-              >Save</button>
+              >{t('chat.save')}</button>
             </div>
           </div>
         </div>
@@ -3998,7 +3974,7 @@ export default function GroupChatThread() {
                 <button
                   onClick={async () => {
                     if (!viewingMedia.messageId || deletingMedia) return
-                    if (!confirm('Delete this media message?')) return
+                    if (!confirm(t('chat.delete_media_message_confirm'))) return
                     setDeletingMedia(true)
                     try {
                       const r = await fetch(`/api/group_chat/${group_id}/message/${viewingMedia.messageId}/delete`, {
@@ -4009,9 +3985,9 @@ export default function GroupChatThread() {
                         setViewingMedia(null)
                         loadMessages(true)
                       } else {
-                        alert(d?.error || 'Failed to delete')
+                        alert(d?.error || t('chat.failed_delete_media'))
                       }
-                    } catch { alert('Failed to delete') }
+                    } catch { alert(t('chat.failed_delete_media')) }
                     finally { setDeletingMedia(false) }
                   }}
                   disabled={deletingMedia}

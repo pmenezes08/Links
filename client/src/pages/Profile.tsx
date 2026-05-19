@@ -1,16 +1,21 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react'
+import type { ChangeEvent, CSSProperties, FormEvent, KeyboardEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import Avatar, { clearImageCache } from '../components/Avatar'
 import { useUserProfile } from '../contexts/UserProfileContext'
+import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 import { clearAvatarCache } from '../utils/avatarCache'
+import { profileGenderLabel, profileIndustryLabel, profileInterestLabel } from '../utils/profileOptionLabel'
+import { ProfileSelectField, type SelectOption } from '../components/profile/ProfileSelectField'
+import { ProfileDetailsModal, type WorkExperienceRow, type EducationRow } from '../components/profile/ProfileDetailsModal'
 
 const PROFILE_DRAFT_KEY = 'cpoint_profile_personal_draft'
 
 const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
 const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
 
-type PersonalForm = {
+export type PersonalForm = {
   first_name: string
   last_name: string
   bio: string
@@ -19,9 +24,12 @@ type PersonalForm = {
   gender: string
   country: string
   city: string
+  personal_answer_five_minutes: string
+  personal_answer_outside_work: string
+  personal_answer_cpoint_goals: string
 }
 
-type ProfessionalForm = {
+export type ProfessionalForm = {
   role: string
   company: string
   company_intel: string
@@ -29,6 +37,12 @@ type ProfessionalForm = {
   linkedin: string
   about: string
   interests: string[]
+  current_role_start: string
+  work_history: WorkExperienceRow[]
+  education: EducationRow[]
+  cv_uploaded_at?: string
+  cv_original_filename?: string
+  has_stored_cv?: boolean
 }
 
 type ProfileSummary = {
@@ -50,6 +64,9 @@ const PERSONAL_DEFAULT: PersonalForm = {
   gender: '',
   country: '',
   city: '',
+  personal_answer_five_minutes: '',
+  personal_answer_outside_work: '',
+  personal_answer_cpoint_goals: '',
 }
 
 const PROFESSIONAL_DEFAULT: ProfessionalForm = {
@@ -60,6 +77,12 @@ const PROFESSIONAL_DEFAULT: ProfessionalForm = {
   linkedin: '',
   about: '',
   interests: [],
+  current_role_start: '',
+  work_history: [],
+  education: [],
+  cv_uploaded_at: '',
+  cv_original_filename: '',
+  has_stored_cv: false,
 }
 
 const GENDERS = ['Female', 'Male', 'Prefer not to say', 'Other']
@@ -122,163 +145,59 @@ function coalesceString(...values: Array<unknown>): string {
   return ''
 }
 
-type SelectOption = {
-  value: string
-  label: string
-}
-
-type SelectFieldProps = {
-  value: string
-  onChange: (value: string) => void
-  options: SelectOption[]
-  placeholder?: string
-  disabled?: boolean
-  loading?: boolean
-  searchable?: boolean
-  allowCustomOption?: boolean
-  emptyMessage?: string
-}
-
-function SelectField({
-  value,
-  onChange,
-  options,
-  placeholder,
-  disabled = false,
-  loading = false,
-  searchable = false,
-  allowCustomOption = false,
-  emptyMessage = 'No options available',
-}: SelectFieldProps) {
-  const [open, setOpen] = useState(false)
-  const [query, setQuery] = useState('')
-  const containerRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (!open) return
-    function handleClick(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false)
-      }
-    }
-    function handleKey(event: globalThis.KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    document.addEventListener('keydown', handleKey)
-    return () => {
-      document.removeEventListener('mousedown', handleClick)
-      document.removeEventListener('keydown', handleKey)
-    }
-  }, [open])
-
-  useEffect(() => {
-    if (!open) setQuery('')
-  }, [open])
-
-  const mergedOptions = options.map(option => ({
-    value: option.value,
-    label: option.label || option.value,
-  }))
-
-  const selectedOption = mergedOptions.find(option => option.value === value)
-  const buttonLabel = selectedOption?.label || value || placeholder || 'Select…'
-  const filteredOptions =
-    searchable && query
-      ? mergedOptions.filter(option => option.label.toLowerCase().includes(query.toLowerCase()))
-      : mergedOptions
-  const showCreateOption =
-    allowCustomOption &&
-    query.trim().length > 0 &&
-    !mergedOptions.some(option => option.label.toLowerCase() === query.trim().toLowerCase())
-
-  function handleSelect(nextValue: string) {
-    onChange(nextValue)
-    setOpen(false)
-    setQuery('')
+function personalAnswersFromHighlights(highlights: unknown): Pick<
+  PersonalForm,
+  'personal_answer_five_minutes' | 'personal_answer_outside_work' | 'personal_answer_cpoint_goals'
+> {
+  const base = {
+    personal_answer_five_minutes: '',
+    personal_answer_outside_work: '',
+    personal_answer_cpoint_goals: '',
   }
+  if (!Array.isArray(highlights)) return base
+  for (const raw of highlights) {
+    if (!raw || typeof raw !== 'object') continue
+    const item = raw as { id?: string; answer?: string }
+    const ans = typeof item.answer === 'string' ? item.answer : ''
+    if (item.id === 'five_minutes') base.personal_answer_five_minutes = ans
+    else if (item.id === 'outside_work') base.personal_answer_outside_work = ans
+    else if (item.id === 'cpoint_goals') base.personal_answer_cpoint_goals = ans
+  }
+  return base
+}
 
-  return (
-    <div ref={containerRef} className={`relative ${disabled ? 'opacity-60' : ''}`}>
-      <button
-        type="button"
-        className={`flex w-full items-center justify-between rounded-lg border border-white/12 bg-[#10131a] px-3 py-1.5 text-left transition ${
-          disabled ? 'cursor-not-allowed text-white/40' : 'text-white/80 hover:border-[#4db6ac]/60'
-        }`}
-        onClick={() => {
-          if (!disabled) setOpen(prev => !prev)
-        }}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        disabled={disabled}
-      >
-        <span className={`truncate ${value ? 'text-white' : 'text-white/40'}`}>{buttonLabel}</span>
-        <i
-          className={`fa-solid fa-chevron-down text-[10px] transition-transform ${
-            open ? 'rotate-180 text-[#4db6ac]' : 'text-white/50'
-          }`}
-        />
-      </button>
-      {open ? (
-        <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-lg border border-white/12 bg-[#0b0d11] shadow-[0_16px_35px_rgba(2,4,8,0.55)]">
-          {searchable ? (
-            <div className="p-2">
-              <input
-                className="w-full rounded-md border border-white/10 bg-[#12141a] px-2 py-1 text-xs text-white/80 outline-none focus:border-[#4db6ac]"
-                placeholder="Search…"
-                value={query}
-                onChange={event => setQuery(event.target.value)}
-                autoFocus
-              />
-            </div>
-          ) : null}
-          {loading ? (
-            <div className="flex items-center justify-center gap-2 px-3 py-4 text-xs text-white/60">
-              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white/20 border-t-[#4db6ac]" />
-              Loading…
-            </div>
-          ) : (
-            <div className="max-h-48 overflow-y-auto py-1">
-              {filteredOptions.length ? (
-                filteredOptions.map(option => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className={`flex w-full items-center justify-between px-3 py-2 text-xs text-white/80 transition hover:bg-white/10 ${
-                      option.value === value ? 'text-[#4db6ac]' : ''
-                    }`}
-                    onClick={() => handleSelect(option.value)}
-                  >
-                    <span className="truncate">{option.label}</span>
-                    {option.value === value ? <i className="fa-solid fa-check text-[10px]" /> : null}
-                  </button>
-                ))
-              ) : (
-                <div className="px-3 py-3 text-xs text-white/40">{emptyMessage}</div>
-              )}
-              {showCreateOption ? (
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[#4db6ac] transition hover:bg-[#4db6ac]/10"
-                  onClick={() => handleSelect(query.trim())}
-                >
-                  <i className="fa-solid fa-plus text-[10px]" />
-                  Add “{query.trim()}”
-                </button>
-              ) : null}
-            </div>
-          )}
-        </div>
-      ) : null}
-    </div>
-  )
+function mapWorkHistoryFromApi(items: unknown): WorkExperienceRow[] {
+  if (!Array.isArray(items)) return []
+  return items.map((raw: Record<string, unknown>) => ({
+    title: typeof raw?.title === 'string' ? raw.title : '',
+    company: typeof raw?.company === 'string' ? raw.company : '',
+    location: typeof raw?.location === 'string' ? raw.location : '',
+    start: typeof raw?.start === 'string' ? raw.start : '',
+    end: typeof raw?.end === 'string' ? raw.end : '',
+    description: typeof raw?.description === 'string' ? raw.description : '',
+  }))
+}
+
+function mapEducationFromApi(items: unknown): EducationRow[] {
+  if (!Array.isArray(items)) return []
+  return items.map((raw: Record<string, unknown>) => ({
+    school: typeof raw?.school === 'string' ? raw.school : '',
+    degree: typeof raw?.degree === 'string' ? raw.degree : '',
+    start: typeof raw?.start === 'string' ? raw.start : '',
+    end: typeof raw?.end === 'string' ? raw.end : '',
+    description: typeof raw?.description === 'string' ? raw.description : '',
+  }))
 }
 
 export default function Profile() {
+  const { t } = useTranslation()
+  const { setTitle } = useHeader()
   const navigate = useNavigate()
   const [showOnboardingReturn, setShowOnboardingReturn] = useState(false)
+
+  useEffect(() => {
+    setTitle(t('profile.page_title'))
+  }, [setTitle, t])
   useEffect(() => {
     if (typeof window === 'undefined') return
     try {
@@ -311,7 +230,19 @@ export default function Profile() {
   const [citiesLoading, setCitiesLoading] = useState(false)
   const cityCache = useRef<Map<string, string[]>>(new Map())
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const bioRef = useRef<HTMLTextAreaElement | null>(null)
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false)
+  const [cvModalOpen, setCvModalOpen] = useState(false)
+  const [cvParsing, setCvParsing] = useState(false)
+  const [cvApplying, setCvApplying] = useState(false)
+  const [cvPending, setCvPending] = useState<{
+    role: string
+    company: string
+    current_role_start_ym: string
+    professional_about: string
+    work_history: WorkExperienceRow[]
+    cv_stored?: boolean
+  } | null>(null)
+  const cvFileInputRef = useRef<HTMLInputElement | null>(null)
   const [interestInput, setInterestInput] = useState('')
   const serverPersonalRef = useRef<PersonalForm>(PERSONAL_DEFAULT)
   const [showLeaveModal, setShowLeaveModal] = useState(false)
@@ -321,7 +252,29 @@ export default function Profile() {
     loading: cachedProfileLoading,
     error: cachedProfileError,
     refresh: refreshUserProfile,
+    applyProfileFromServer,
   } = useUserProfile()
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/profile_me?_nocache=${Date.now()}`, {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+          cache: 'no-store',
+        })
+        const j = await r.json().catch(() => null)
+        if (cancelled || !j?.success || !j.profile) return
+        applyProfileFromServer(j.profile as Record<string, unknown>)
+      } catch {
+        /* non-fatal — keep context profile */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [applyProfileFromServer])
 
   /** Warm / refetch public profile API so /profile/:username shows latest data after saves (server cache is busted separately). */
   const prefetchPublicProfileApi = useCallback(async () => {
@@ -343,7 +296,10 @@ export default function Profile() {
     return personal.first_name !== s.first_name || personal.last_name !== s.last_name ||
       personal.bio !== s.bio || personal.display_name !== s.display_name ||
       personal.date_of_birth !== s.date_of_birth || personal.gender !== s.gender ||
-      personal.country !== s.country || personal.city !== s.city
+      personal.country !== s.country || personal.city !== s.city ||
+      personal.personal_answer_five_minutes !== s.personal_answer_five_minutes ||
+      personal.personal_answer_outside_work !== s.personal_answer_outside_work ||
+      personal.personal_answer_cpoint_goals !== s.personal_answer_cpoint_goals
   }, [personal])
 
   // Persist personal form as draft on every change
@@ -392,7 +348,7 @@ export default function Profile() {
   }, [navigate])
 
   const handleSaveAndLeave = useCallback(async () => {
-    if (!navigator.onLine) { alert('Go back online to save changes'); setShowLeaveModal(false); return }
+    if (!navigator.onLine) { alert(t('profile.alert.offline_save')); setShowLeaveModal(false); return }
     setSavingPersonal(true)
     try {
       const form = new FormData()
@@ -404,6 +360,9 @@ export default function Profile() {
       form.append('gender', personal.gender)
       form.append('country', personal.country)
       form.append('city', personal.city)
+      form.append('personal_answer_five_minutes', personal.personal_answer_five_minutes)
+      form.append('personal_answer_outside_work', personal.personal_answer_outside_work)
+      form.append('personal_answer_cpoint_goals', personal.personal_answer_cpoint_goals)
       const response = await fetch('/update_personal_info', { method: 'POST', credentials: 'include', body: form })
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
@@ -450,7 +409,7 @@ export default function Profile() {
     if (!trimmed) return
     const exists = professional.interests.some(existing => existing.toLowerCase() === trimmed.toLowerCase())
     if (professional.interests.length >= MAX_INTERESTS && !exists) {
-      setFeedback(`You can list up to ${MAX_INTERESTS} interests. Remove one to add more.`)
+      setFeedback(t('profile.feedback.interests_max', { max: MAX_INTERESTS }))
       setInterestInput('')
       return
     }
@@ -499,7 +458,7 @@ export default function Profile() {
       if (cachedProfileError) {
         setError(cachedProfileError)
       } else {
-        setError('Unable to load profile')
+        setError(t('profile.error.load_failed'))
       }
       return
     }
@@ -583,6 +542,7 @@ export default function Profile() {
         ) || [cityValue, countryValue].filter(Boolean).join(', '),
       bio: coalesceString(profile.bio, personalInfo.bio, personalInfo.about, profile.summary, profile.about),
     })
+    const hlAnswers = personalAnswersFromHighlights(personalInfo.highlights)
     const loadedPersonal: PersonalForm = {
       first_name: coalesceString(profile.first_name, personalInfo.first_name, personalInfo.firstName),
       last_name: coalesceString(profile.last_name, personalInfo.last_name, personalInfo.lastName),
@@ -607,6 +567,7 @@ export default function Profile() {
       gender: coalesceString(personalInfo.gender, profile.gender),
       country: countryValue,
       city: cityValue,
+      ...hlAnswers,
     }
     serverPersonalRef.current = loadedPersonal
     // Restore draft if it exists and differs from server data
@@ -614,23 +575,19 @@ export default function Profile() {
     try {
       const raw = sessionStorage.getItem(PROFILE_DRAFT_KEY)
       if (raw) {
-        const draft = JSON.parse(raw) as PersonalForm
-        if (draft && typeof draft.bio === 'string') {
-          const differs = Object.keys(loadedPersonal).some(
-            k => (draft as any)[k] !== (loadedPersonal as any)[k]
-          )
-          if (differs) {
-            finalPersonal = draft
-          } else {
-            sessionStorage.removeItem(PROFILE_DRAFT_KEY)
-          }
+        const draft = JSON.parse(raw) as Partial<PersonalForm>
+        const merged = { ...loadedPersonal, ...draft }
+        const differs = (Object.keys(loadedPersonal) as (keyof PersonalForm)[]).some(
+          k => merged[k] !== loadedPersonal[k],
+        )
+        if (differs) {
+          finalPersonal = merged
+        } else {
+          sessionStorage.removeItem(PROFILE_DRAFT_KEY)
         }
       }
     } catch {}
     setPersonal(finalPersonal)
-    if (bioRef.current && bioRef.current.value !== finalPersonal.bio) {
-      bioRef.current.value = finalPersonal.bio
-    }
     setProfessional({
       role: coalesceString(
         professionalInfo.role,
@@ -668,10 +625,20 @@ export default function Profile() {
         professionalInfo.about,
         professionalInfo.summary,
         professionalInfo.bio,
+        profile.professional_about,
         profile.professional_summary,
         profile.professionalSummary,
       ),
       interests: sanitizedInterests,
+      current_role_start: coalesceString(
+        professionalInfo.current_role_start,
+        professionalInfo.currentRoleStart,
+      ),
+      work_history: mapWorkHistoryFromApi(professionalInfo.work_history),
+      education: mapEducationFromApi(professionalInfo.education),
+      cv_uploaded_at: coalesceString(professionalInfo.cv_uploaded_at),
+      cv_original_filename: coalesceString(professionalInfo.cv_original_filename),
+      has_stored_cv: Boolean(professionalInfo.has_stored_cv),
     })
     setInterestInput('')
     setError(null)
@@ -801,34 +768,6 @@ export default function Profile() {
     return () => window.clearTimeout(timer)
   }, [feedback])
 
-  // Prefill Company intel from Steve (no suggestion cards on this page)
-  useEffect(() => {
-    let cancelled = false
-    const myUsername = (cachedProfile as any)?.username
-    if (!myUsername) return
-    fetch(`/api/profile/ai_suggestions?_t=${Date.now()}`, {
-      credentials: 'include',
-      cache: 'no-store',
-      headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
-    })
-      .then(r => r.json())
-      .then(d => {
-        if (cancelled || !d?.success || !d.suggestions) return
-        if (d.forUser && d.forUser !== myUsername) return
-        const pro = d.suggestions.professional
-        if (!pro || typeof pro !== 'object') return
-        const desc = (pro as { company?: { description?: string } }).company?.description
-        const text = typeof desc === 'string' ? desc.trim() : ''
-        if (!text) return
-        setProfessional(prev => {
-          if (prev.company_intel?.trim()) return prev
-          return { ...prev, company_intel: text }
-        })
-      })
-      .catch(() => {})
-    return () => { cancelled = true }
-  }, [cachedProfile])
-
   const locationPreview = personal.city || personal.country
     ? [personal.city, personal.country].filter(Boolean).join(', ')
     : summary?.location || ''
@@ -845,23 +784,23 @@ export default function Profile() {
       : [personal.city, ...cities.filter(city => city.toLowerCase() !== personal.city.toLowerCase())]
     : cities
 
-  const genderOptions: SelectOption[] = GENDERS.map(option => ({ value: option, label: option }))
+  const genderOptions: SelectOption[] = GENDERS.map(option => ({ value: option, label: profileGenderLabel(option, t) }))
   const countryOptions: SelectOption[] = normalizedCountries.map(country => ({ value: country, label: country }))
   const cityOptions: SelectOption[] = normalizedCities.map(city => ({ value: city, label: city }))
-  const industryOptions: SelectOption[] = INDUSTRIES.map(industry => ({ value: industry, label: industry }))
+  const industryOptions: SelectOption[] = INDUSTRIES.map(industry => ({ value: industry, label: profileIndustryLabel(industry, t) }))
 
   const citySelectDisabled = !personal.country
   const cityPlaceholder = personal.country
     ? citiesLoading
-      ? 'Loading cities…'
+      ? t('profile.personal.city_loading')
       : normalizedCities.length
-        ? 'Select a city'
-        : 'Type to add a city'
-    : 'Select a country first'
+        ? t('profile.personal.city_select')
+        : t('profile.personal.city_type_custom')
+    : t('profile.personal.city_select_country_first')
 
   async function handlePersonalSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!navigator.onLine) { alert('Go back online to save changes'); return }
+    if (!navigator.onLine) { alert(t('profile.alert.offline_save')); return }
     if (savingPersonal) return
     setSavingPersonal(true)
     try {
@@ -874,12 +813,15 @@ export default function Profile() {
       form.append('gender', personal.gender)
       form.append('country', personal.country)
       form.append('city', personal.city)
+      form.append('personal_answer_five_minutes', personal.personal_answer_five_minutes)
+      form.append('personal_answer_outside_work', personal.personal_answer_outside_work)
+      form.append('personal_answer_cpoint_goals', personal.personal_answer_cpoint_goals)
       const response = await fetch('/update_personal_info', { method: 'POST', credentials: 'include', body: form })
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
         serverPersonalRef.current = { ...personal }
         try { sessionStorage.removeItem(PROFILE_DRAFT_KEY) } catch {}
-        setFeedback('Personal information saved')
+        setFeedback(t('profile.feedback.personal_saved'))
         setSummary(prev => {
           if (!prev) return prev
           const updatedLocation = [personal.city, personal.country].filter(Boolean).join(', ')
@@ -895,10 +837,10 @@ export default function Profile() {
           await prefetchPublicProfileApi()
         } catch {}
       } else {
-        setFeedback(payload?.error || 'Unable to save personal information')
+        setFeedback(payload?.error || t('profile.feedback.personal_save_failed'))
       }
     } catch {
-      setFeedback('Unable to save personal information')
+      setFeedback(t('profile.feedback.personal_save_failed'))
     } finally {
       setSavingPersonal(false)
     }
@@ -906,7 +848,7 @@ export default function Profile() {
 
   async function handleProfessionalSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!navigator.onLine) { alert('Go back online to save changes'); return }
+    if (!navigator.onLine) { alert(t('profile.alert.offline_save')); return }
     if (savingProfessional) return
     setSavingProfessional(true)
     try {
@@ -925,27 +867,146 @@ export default function Profile() {
       form.append('linkedin', professional.linkedin)
       form.append('about', professional.about)
       form.append('interests', JSON.stringify(interestList))
+      form.append('current_role_start_ym', professional.current_role_start)
+      form.append('work_history_json', JSON.stringify(professional.work_history))
+      form.append('education_json', JSON.stringify(professional.education))
       const response = await fetch('/update_professional', { method: 'POST', credentials: 'include', body: form })
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
-        setFeedback('Professional information saved')
+        setFeedback(t('profile.feedback.professional_saved'))
         try {
           await refreshUserProfile()
           await prefetchPublicProfileApi()
         } catch {}
       } else {
-        setFeedback(payload?.error || 'Unable to save professional information')
+        setFeedback(payload?.error || t('profile.feedback.professional_save_failed'))
       }
     } catch {
-      setFeedback('Unable to save professional information')
+      setFeedback(t('profile.feedback.professional_save_failed'))
     } finally {
       setSavingProfessional(false)
     }
   }
 
+  async function parseCvUpload(file: File) {
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      setFeedback(t('profile.feedback.cv_pdf_only'))
+      return
+    }
+    setCvParsing(true)
+    setFeedback(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const r = await fetch('/api/onboarding/parse_cv?persist=1', { method: 'POST', credentials: 'include', body: fd })
+      const j = await r.json().catch(() => null)
+      if (!r.ok || !j?.success) {
+        setFeedback((j?.error as string) || t('profile.feedback.cv_read_failed'))
+        return
+      }
+      const wh: WorkExperienceRow[] = Array.isArray(j.work_history)
+        ? j.work_history.map((row: Record<string, unknown>) => ({
+            title: String(row.title ?? ''),
+            company: String(row.company ?? ''),
+            location: String(row.location ?? ''),
+            start: String(row.start ?? ''),
+            end: String(row.end ?? ''),
+            description: String(row.description ?? ''),
+          }))
+        : []
+      const roleDesc = String(j.current_role_description || '').trim()
+      setCvPending({
+        role: String(j.role || ''),
+        company: String(j.company || ''),
+        current_role_start_ym: String(j.current_role_start_ym || ''),
+        professional_about: roleDesc,
+        work_history: wh,
+        cv_stored: Boolean(j.cv_stored),
+      })
+      setCvModalOpen(true)
+    } catch {
+      setFeedback(t('profile.feedback.cv_upload_network_error'))
+    } finally {
+      setCvParsing(false)
+      try {
+        if (cvFileInputRef.current) cvFileInputRef.current.value = ''
+      } catch { /* ignore */ }
+    }
+  }
+
+  async function applyCvStructured(mode: 'replace' | 'merge') {
+    if (!cvPending || cvApplying) return
+    setCvApplying(true)
+    setFeedback(null)
+    try {
+      const r = await fetch('/api/onboarding/apply_professional_structured', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode,
+          role: cvPending.role,
+          company: cvPending.company,
+          current_role_start_ym: cvPending.current_role_start_ym,
+          work_history: cvPending.work_history,
+          professional_about: cvPending.professional_about,
+        }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok || !j?.success) {
+        setFeedback((j?.error as string) || t('profile.feedback.cv_update_failed'))
+        return
+      }
+      setFeedback(mode === 'merge' ? t('profile.feedback.cv_merged') : t('profile.feedback.cv_replaced'))
+      setCvModalOpen(false)
+      setCvPending(null)
+      try {
+        const pr = await fetch(`/api/profile_me?_nocache=${Date.now()}`, {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+          cache: 'no-store',
+        })
+        const pj = await pr.json().catch(() => null)
+        if (pj?.success && pj.profile) {
+          applyProfileFromServer(pj.profile as Record<string, unknown>)
+        } else {
+          await refreshUserProfile()
+        }
+        await prefetchPublicProfileApi()
+      } catch {}
+    } catch {
+      setFeedback(t('profile.feedback.cv_apply_failed'))
+    } finally {
+      setCvApplying(false)
+    }
+  }
+
+  async function downloadStoredCv() {
+    setFeedback(null)
+    try {
+      const r = await fetch('/api/profile/cv', { credentials: 'include' })
+      if (!r.ok) {
+        setFeedback(t('profile.feedback.cv_download_unavailable'))
+        return
+      }
+      const blob = await r.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = professional.cv_original_filename?.trim() || 'cv.pdf'
+      a.rel = 'noopener'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      setFeedback(t('profile.feedback.cv_download_failed'))
+    }
+  }
+
   async function handleInterestsSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!navigator.onLine) { alert('Go back online to save changes'); return }
+    if (!navigator.onLine) { alert(t('profile.alert.offline_save')); return }
     if (savingInterests) return
     setSavingInterests(true)
     try {
@@ -955,7 +1016,7 @@ export default function Profile() {
         professional.interests.length >= MAX_INTERESTS &&
         !professional.interests.some(item => item.toLowerCase() === pendingInterest.toLowerCase())
       ) {
-        setFeedback(`You can list up to ${MAX_INTERESTS} interests. Remove one to add more.`)
+        setFeedback(t('profile.feedback.interests_max', { max: MAX_INTERESTS }))
         return
       }
       let interestList = professional.interests
@@ -981,19 +1042,22 @@ export default function Profile() {
       form.append('linkedin', professional.linkedin)
       form.append('about', professional.about)
       form.append('interests', JSON.stringify(interestList))
+      form.append('current_role_start_ym', professional.current_role_start)
+      form.append('work_history_json', JSON.stringify(professional.work_history))
+      form.append('education_json', JSON.stringify(professional.education))
       const response = await fetch('/update_professional', { method: 'POST', credentials: 'include', body: form })
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
-        setFeedback('Personal interests saved')
+        setFeedback(t('profile.feedback.interests_saved'))
         try {
           await refreshUserProfile()
           await prefetchPublicProfileApi()
         } catch {}
       } else {
-        setFeedback(payload?.error || 'Unable to save personal interests')
+        setFeedback(payload?.error || t('profile.feedback.interests_save_failed'))
       }
     } catch {
-      setFeedback('Unable to save personal interests')
+      setFeedback(t('profile.feedback.interests_save_failed'))
     } finally {
       setSavingInterests(false)
     }
@@ -1005,7 +1069,7 @@ export default function Profile() {
   const justUploadedPicRef = useRef<string | null>(null)
 
   async function handlePhotoUpload(file: File) {
-    if (!navigator.onLine) { alert('Go back online to upload a photo'); return }
+    if (!navigator.onLine) { alert(t('profile.alert.offline_upload')); return }
     // Show immediate local preview
     const previewUrl = URL.createObjectURL(file)
     setLocalPhotoPreview(previewUrl)
@@ -1030,7 +1094,7 @@ export default function Profile() {
         
         setSummary(prev => prev ? { ...prev, profile_picture: cacheBustedUrl } : prev)
         setLocalPhotoPreview(null) // Clear local preview, use server URL
-        setFeedback('Profile picture updated')
+        setFeedback(t('profile.feedback.photo_updated'))
         
         // Directly update the context profile with new picture URL
         // This avoids refetching from potentially stale server cache
@@ -1041,11 +1105,11 @@ export default function Profile() {
         void prefetchPublicProfileApi()
       } else {
         setLocalPhotoPreview(null) // Revert to old image on error
-        setFeedback(payload?.error || 'Unable to upload picture')
+        setFeedback(payload?.error || t('profile.feedback.photo_upload_failed'))
       }
     } catch {
       setLocalPhotoPreview(null) // Revert to old image on error
-      setFeedback('Unable to upload picture')
+      setFeedback(t('profile.feedback.photo_upload_failed'))
     } finally {
       setUploadingPhoto(false)
       // Clean up the blob URL
@@ -1058,8 +1122,8 @@ export default function Profile() {
     if (file) handlePhotoUpload(file)
   }
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
-  if (error || !summary) return <div className="p-4 text-red-400">{error || 'Something went wrong'}</div>
+  if (loading) return <div className="p-4 text-[#9fb0b5]">{t('profile.loading')}</div>
+  if (error || !summary) return <div className="p-4 text-red-400">{error || t('profile.error.generic')}</div>
 
   return (
     <div className="glass-page min-h-screen text-white">
@@ -1068,40 +1132,25 @@ export default function Profile() {
           <div className="rounded-xl border border-white/10 overflow-hidden">
             <img
               src={summary.cover_photo.startsWith('http') ? summary.cover_photo : `/static/${summary.cover_photo}`}
-              alt="Cover"
+              alt={t('profile.alt.cover')}
               className="w-full h-40 object-cover"
             />
           </div>
         ) : null}
-          {showOnboardingReturn ? (
+        {showOnboardingReturn ? (
             <div className="rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-white">
-                Finished updating your profile? Jump back to onboarding to complete the setup.
+                {t('profile.onboarding_return.message')}
               </div>
               <button
                 type="button"
                 className="rounded-full border border-[#4db6ac]/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white hover:bg-[#4db6ac]/20"
                 onClick={handleReturnToOnboarding}
               >
-                Return to onboarding
+                {t('profile.onboarding_return.button')}
               </button>
             </div>
-          ) : (
-            <button
-              type="button"
-              className="w-full rounded-xl border border-dashed border-[#4db6ac]/40 bg-[#4db6ac]/5 hover:bg-[#4db6ac]/10 px-4 py-3 flex items-center gap-3 transition-colors"
-              onClick={handleReturnToOnboarding}
-            >
-              <span className="flex items-center justify-center w-8 h-8 rounded-full bg-[#4db6ac]/20 text-[#4db6ac] text-sm">
-                <i className="fa-solid fa-robot" />
-              </span>
-              <div className="text-left">
-                <div className="text-sm font-medium text-white">Let Steve build your profile</div>
-                <div className="text-[11px] text-white/50">Answer a few quick questions instead of filling in fields manually</div>
-              </div>
-              <i className="fa-solid fa-chevron-right text-white/30 ml-auto text-xs" />
-            </button>
-          )}
+          ) : null}
 
         <div className="flex flex-wrap items-center gap-4">
           <div className="relative">
@@ -1111,7 +1160,7 @@ export default function Profile() {
                 className="rounded-full overflow-hidden bg-white/10 border border-white/10 flex items-center justify-center"
                 style={{ width: 64, height: 64 }}
               >
-                <img src={localPhotoPreview} alt="Preview" className="w-full h-full object-cover" />
+                <img src={localPhotoPreview} alt={t('profile.alt.preview')} className="w-full h-full object-cover" />
                 {uploadingPhoto && (
                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-full">
                     <i className="fa-solid fa-spinner fa-spin text-white" />
@@ -1124,7 +1173,7 @@ export default function Profile() {
             <button
               className="absolute -right-1 -bottom-1 w-7 h-7 rounded-full bg-[#4db6ac] text-black text-xs flex items-center justify-center border border-black"
               onClick={() => fileInputRef.current?.click()}
-              aria-label="Change profile picture"
+              aria-label={t('profile.aria.change_profile_picture')}
               type="button"
             >
               <i className="fa-solid fa-camera" />
@@ -1159,39 +1208,42 @@ export default function Profile() {
             className="ml-auto px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm"
             href={`/profile/${encodeURIComponent(summary.username)}`}
           >
-            Preview Profile
+            {t('profile.preview_profile')}
           </a>
         </div>
 
         <section className="rounded-xl border border-white/10 p-4 space-y-3">
           <form className="space-y-3" onSubmit={handlePersonalSubmit}>
+            <header>
+              <div className="font-semibold">{t('profile.personal.title')}</div>
+              <p className="text-xs text-[#9fb0b5]">{t('profile.personal.subtitle')}</p>
+            </header>
             <label className="text-sm block">
-              Personal Bio
+              {t('profile.personal.bio_label')}
               <textarea
-                ref={bioRef}
                 className="mt-1 w-full min-h-[100px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
-                style={{ userSelect: 'text', WebkitUserSelect: 'text' } as React.CSSProperties}
-                defaultValue={personal.bio}
+                style={{ userSelect: 'text', WebkitUserSelect: 'text' } as CSSProperties}
+                value={personal.bio}
                 onChange={event => setPersonal(prev => ({ ...prev, bio: event.target.value }))}
-                placeholder={`💼 Your bio is currently consulting its therapist.\nDrop one polished line to lure it back.`}
+                placeholder={t('profile.personal.bio_placeholder')}
               />
             </label>
             {personal.bio.trim() ? null : (
               <div className="rounded-lg border border-dashed border-white/15 bg-white/[0.03] px-3 py-2 text-xs leading-relaxed text-[#9fb0b5]">
                 <p className="text-white/80 font-medium">
-                  💼 Your bio is currently consulting its therapist.
+                  {t('profile.personal.bio_empty_title')}
                 </p>
-                <p>Drop one polished line to lure it back.</p>
+                <p>{t('profile.personal.bio_empty_subtitle')}</p>
                 <p className="mt-2 whitespace-pre-line">
-                  Example:
-                  {"\n"}"Owned by a sassy rescue cat named Pickles 🐱{'\n'}Excel wizard by day,{'\n'}jazz vinyl curator by night"
+                  {t('profile.personal.bio_empty_example_label')}
+                  {"\n"}{t('profile.personal.bio_empty_example_text')}
                 </p>
-                <p className="mt-2 text-white/70">Impress us—bonus points for zero typos. 🖋️</p>
+                <p className="mt-2 text-white/70">{t('profile.personal.bio_empty_cta')}</p>
               </div>
             )}
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-sm min-w-0">
-                First name
+                {t('profile.personal.first_name')}
                 <input
                   className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
                   value={personal.first_name}
@@ -1199,7 +1251,7 @@ export default function Profile() {
                 />
               </label>
               <label className="text-sm min-w-0">
-                Last name
+                {t('profile.personal.last_name')}
                 <input
                   className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
                   value={personal.last_name}
@@ -1207,7 +1259,7 @@ export default function Profile() {
                 />
               </label>
               <label className="text-sm min-w-0">
-                Display name
+                {t('profile.personal.display_name')}
                 <input
                   className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
                   value={personal.display_name}
@@ -1215,7 +1267,7 @@ export default function Profile() {
                 />
               </label>
               <label className="text-sm min-w-0">
-                Date of birth
+                {t('profile.personal.date_of_birth')}
                 <input
                   type="date"
                   className="mt-1 w-full min-w-0 rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
@@ -1223,54 +1275,54 @@ export default function Profile() {
                   onChange={event => setPersonal(prev => ({ ...prev, date_of_birth: event.target.value }))}
                 />
               </label>
-                <label className="text-sm min-w-0">
-                  Gender
-                  <div className="mt-1">
-                    <SelectField
-                      value={personal.gender}
-                      onChange={nextValue => setPersonal(prev => ({ ...prev, gender: nextValue }))}
-                      options={genderOptions}
-                      placeholder="Select a value"
-                    />
-                  </div>
-                </label>
-                <label className="text-sm min-w-0">
-                  Country
-                  <div className="mt-1">
-                    <SelectField
-                      value={personal.country}
-                      onChange={nextValue => setPersonal(prev => ({ ...prev, country: nextValue, city: '' }))}
-                      options={countryOptions}
-                      placeholder="Select a country"
-                      searchable
-                      allowCustomOption
-                      emptyMessage="No countries match your search"
-                    />
-                  </div>
-                </label>
-                <label className="text-sm min-w-0">
-                  City
-                  <div className="mt-1">
-                    <SelectField
-                      value={personal.city}
-                      onChange={nextValue => setPersonal(prev => ({ ...prev, city: nextValue }))}
-                      options={cityOptions}
-                      placeholder={cityPlaceholder}
-                      disabled={citySelectDisabled}
-                      loading={citiesLoading}
-                      searchable
-                      allowCustomOption
-                      emptyMessage={personal.country ? 'No cities found, type to add your own' : 'Select a country first'}
-                    />
-                  </div>
-                </label>
+              <label className="text-sm min-w-0">
+                {t('profile.personal.gender')}
+                <div className="mt-1">
+                  <ProfileSelectField
+                    value={personal.gender}
+                    onChange={nextValue => setPersonal(prev => ({ ...prev, gender: nextValue }))}
+                    options={genderOptions}
+                    placeholder={t('profile.personal.gender_placeholder')}
+                  />
+                </div>
+              </label>
+              <label className="text-sm min-w-0">
+                {t('profile.personal.country')}
+                <div className="mt-1">
+                  <ProfileSelectField
+                    value={personal.country}
+                    onChange={nextValue => setPersonal(prev => ({ ...prev, country: nextValue, city: '' }))}
+                    options={countryOptions}
+                    placeholder={t('profile.personal.country_placeholder')}
+                    searchable
+                    allowCustomOption
+                    emptyMessage={t('profile.personal.country_empty')}
+                  />
+                </div>
+              </label>
+              <label className="text-sm min-w-0 sm:col-span-2">
+                {t('profile.personal.city')}
+                <div className="mt-1">
+                  <ProfileSelectField
+                    value={personal.city}
+                    onChange={nextValue => setPersonal(prev => ({ ...prev, city: nextValue }))}
+                    options={cityOptions}
+                    placeholder={cityPlaceholder}
+                    disabled={citySelectDisabled}
+                    loading={citiesLoading}
+                    searchable
+                    allowCustomOption
+                    emptyMessage={personal.country ? t('profile.personal.city_empty') : t('profile.personal.city_select_country_first')}
+                  />
+                </div>
+              </label>
             </div>
             <button
               type="submit"
               className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
               disabled={savingPersonal}
             >
-              {savingPersonal ? 'Saving…' : 'Save bio and personal info'}
+              {savingPersonal ? t('profile.saving') : t('profile.personal.save')}
             </button>
           </form>
         </section>
@@ -1278,70 +1330,116 @@ export default function Profile() {
         <section className="rounded-xl border border-white/10 p-4">
           <form className="space-y-4" onSubmit={handleProfessionalSubmit}>
             <header>
-              <div className="font-semibold">Professional information</div>
-              <p className="text-xs text-[#9fb0b5]">Let others know how to collaborate with you.</p>
+              <div className="font-semibold">{t('profile.professional.title')}</div>
+              <p className="text-xs text-[#9fb0b5]">{t('profile.professional.subtitle')}</p>
             </header>
+            <input
+              ref={cvFileInputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              className="hidden"
+              onChange={e => {
+                const f = e.target.files?.[0]
+                if (f) void parseCvUpload(f)
+              }}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/10 disabled:opacity-50"
+                disabled={cvParsing}
+                onClick={() => cvFileInputRef.current?.click()}
+              >
+                {cvParsing ? t('profile.professional.reading_cv') : t('profile.professional.upload_cv')}
+              </button>
+              {professional.has_stored_cv ? (
+                <button
+                  type="button"
+                  className="rounded-md border border-[#4db6ac]/50 bg-[#4db6ac]/10 px-3 py-1.5 text-xs font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20"
+                  onClick={() => void downloadStoredCv()}
+                >
+                  {t('profile.professional.download_last_cv')}
+                </button>
+              ) : null}
+            </div>
+            {professional.cv_uploaded_at ? (
+              <p className="text-[11px] text-[#9fb0b5]">
+                {t('profile.professional.last_cv_on_file')}{' '}
+                {(() => {
+                  try {
+                    const d = new Date(professional.cv_uploaded_at)
+                    return Number.isNaN(d.getTime()) ? professional.cv_uploaded_at : d.toLocaleString()
+                  } catch {
+                    return professional.cv_uploaded_at
+                  }
+                })()}
+                {professional.cv_original_filename ? ` · ${professional.cv_original_filename}` : ''}
+              </p>
+            ) : null}
+            <p className="text-[11px] text-[#9fb0b5]">
+              {t('profile.professional.cv_storage_hint')}
+            </p>
             <label className="text-sm block">
-              About
+              {t('profile.professional.about_label')}
               <textarea
                 className="mt-1 w-full min-h-[96px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
                 value={professional.about}
                 onChange={event => setProfessional(prev => ({ ...prev, about: event.target.value }))}
-                placeholder="Share a short summary about your professional background"
+                placeholder={t('profile.professional.about_placeholder')}
               />
             </label>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-sm">
-                Current position
+                {t('profile.professional.current_position')}
                 <input
                   className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
                   value={professional.role}
                   onChange={event => setProfessional(prev => ({ ...prev, role: event.target.value }))}
-                  placeholder="e.g. Product Manager"
+                  placeholder={t('profile.professional.current_position_placeholder')}
                 />
               </label>
               <label className="text-sm">
-                Company
+                {t('profile.professional.company')}
                 <input
                   className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
                   value={professional.company}
                   onChange={event => setProfessional(prev => ({ ...prev, company: event.target.value }))}
-                  placeholder="Company name"
+                  placeholder={t('profile.professional.company_placeholder')}
                 />
               </label>
               <label className="text-sm sm:col-span-2">
-                Company intel
-                <p className="text-[11px] text-[#9fb0b5] font-normal mt-0.5 mb-1">
-                  What your company does — Steve may suggest text from his research; you can edit it.
-                </p>
+                {t('profile.professional.company_description')}
+                <span className="block text-[11px] text-[#9fb0b5] font-normal mt-0.5 mb-1">
+                  {t('profile.professional.company_description_hint')}
+                </span>
                 <textarea
                   className="mt-1 w-full min-h-[72px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
                   value={professional.company_intel}
                   onChange={event => setProfessional(prev => ({ ...prev, company_intel: event.target.value }))}
-                  placeholder="Brief description of the company (optional)"
+                  placeholder={t('profile.professional.company_description_placeholder')}
                 />
               </label>
               <label className="text-sm">
-                Industry
+                {t('profile.professional.industry')}
                 <div className="mt-1">
-                  <SelectField
+                  <ProfileSelectField
                     value={professional.industry}
                     onChange={nextValue => setProfessional(prev => ({ ...prev, industry: nextValue }))}
                     options={industryOptions}
-                    placeholder="Select an industry"
+                    placeholder={t('profile.professional.industry_placeholder')}
                     searchable
                     allowCustomOption
-                    emptyMessage="No industries match your search"
+                    emptyMessage={t('profile.professional.industry_empty')}
                   />
                 </div>
               </label>
               <label className="text-sm">
-                LinkedIn URL
+                {t('profile.professional.linkedin')}
                 <input
                   className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
                   value={professional.linkedin}
                   onChange={event => setProfessional(prev => ({ ...prev, linkedin: event.target.value }))}
-                  placeholder="https://www.linkedin.com/in/username"
+                  placeholder={t('profile.professional.linkedin_placeholder')}
                 />
               </label>
             </div>
@@ -1350,18 +1448,100 @@ export default function Profile() {
               className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
               disabled={savingProfessional}
             >
-              {savingProfessional ? 'Saving…' : 'Save professional info'}
+              {savingProfessional ? t('profile.saving') : t('profile.professional.save')}
             </button>
           </form>
+
+          {cvModalOpen && cvPending ? (
+            <div
+              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="cv-modal-title"
+            >
+              <div className="max-w-lg w-full rounded-xl border border-white/15 bg-[#0d1619] p-4 shadow-xl space-y-3">
+                <div id="cv-modal-title" className="font-semibold text-white">
+                  {t('profile.cv_modal.title')}
+                </div>
+                <p className="text-xs text-[#9fb0b5]">
+                  {t('profile.cv_modal.description')}
+                </p>
+                {cvPending.cv_stored === false ? (
+                  <p className="text-xs text-amber-200/90">
+                    {t('profile.cv_modal.not_stored_warning')}
+                  </p>
+                ) : null}
+                <ul className="text-xs text-[#c8d8dc] list-disc pl-4 space-y-1 max-h-40 overflow-y-auto">
+                  <li>{t('profile.cv_modal.current_role')} {cvPending.role.trim() || t('profile.cv_modal.empty_value')}</li>
+                  <li>{t('profile.cv_modal.company')} {cvPending.company.trim() || t('profile.cv_modal.empty_value')}</li>
+                  <li>{t('profile.cv_modal.start_ym')} {cvPending.current_role_start_ym.trim() || t('profile.cv_modal.empty_value')}</li>
+                  <li>{t('profile.cv_modal.past_roles_count')} {cvPending.work_history.length}</li>
+                  {cvPending.professional_about ? (
+                    <li className="list-none -ml-4 mt-2 text-[#9fb0b5]">
+                      {t('profile.cv_modal.bio')} {cvPending.professional_about.length > 220 ? `${cvPending.professional_about.slice(0, 220)}…` : cvPending.professional_about}
+                    </li>
+                  ) : null}
+                </ul>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  <button
+                    type="button"
+                    className="rounded-md bg-[#4db6ac] text-black text-sm font-medium py-2.5 hover:brightness-110 disabled:opacity-50"
+                    disabled={cvApplying}
+                    onClick={() => void applyCvStructured('replace')}
+                  >
+                    {cvApplying ? t('profile.cv_modal.applying') : t('profile.cv_modal.replace_all')}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-md border border-white/20 bg-white/5 text-white text-sm font-medium py-2.5 hover:bg-white/10 disabled:opacity-50"
+                    disabled={cvApplying}
+                    onClick={() => void applyCvStructured('merge')}
+                  >
+                    {cvApplying ? t('profile.cv_modal.applying') : t('profile.cv_modal.merge')}
+                  </button>
+                </div>
+                <p className="text-[11px] text-[#7a8f94]">
+                  {t('profile.cv_modal.merge_hint')}
+                </p>
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    className="rounded-md border border-white/15 px-3 py-2 text-sm text-[#9fb0b5] hover:bg-white/5 disabled:opacity-50"
+                    disabled={cvApplying}
+                    onClick={() => {
+                      setCvModalOpen(false)
+                      setCvPending(null)
+                    }}
+                  >
+                    {t('profile.cancel')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </section>
+
+        <section className="rounded-xl border border-white/10 p-4 space-y-3">
+          <div className="font-semibold">{t('profile.spotlight.title')}</div>
+          <p className="text-xs text-[#9fb0b5]">
+            {t('profile.spotlight.subtitle')}
+          </p>
+          <button
+            type="button"
+            className="rounded-md border border-[#4db6ac]/50 bg-[#4db6ac]/10 px-4 py-2 text-sm font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20"
+            onClick={() => setDetailsModalOpen(true)}
+          >
+            {t('profile.spotlight.open')}
+          </button>
         </section>
 
         <section className="rounded-xl border border-white/10 p-4">
           <form className="space-y-3" onSubmit={handleInterestsSubmit}>
             <div>
-              <div className="text-sm font-semibold text-white">Personal interests</div>
-              <p className="text-xs text-[#9fb0b5]">Press enter after each interest to add it.</p>
+              <div className="text-sm font-semibold text-white">{t('profile.interests.title')}</div>
+              <p className="text-xs text-[#9fb0b5]">{t('profile.interests.subtitle')}</p>
               <div className="mt-2 space-y-1">
-                <div className="text-[11px] uppercase tracking-wide text-white/40">Popular suggestions</div>
+                <div className="text-[11px] uppercase tracking-wide text-white/40">{t('profile.interests.popular_suggestions')}</div>
                 <div className="flex flex-wrap gap-2">
                   {INTEREST_SUGGESTIONS.map(suggestion => {
                     const alreadySelected = professional.interests.some(
@@ -1379,7 +1559,7 @@ export default function Profile() {
                         }`}
                         disabled={alreadySelected}
                       >
-                        {suggestion}
+                        {profileInterestLabel(suggestion, t)}
                       </button>
                     )
                   })}
@@ -1393,7 +1573,7 @@ export default function Profile() {
                   type="button"
                   className="flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs text-white hover:bg-white/25 transition"
                   onClick={() => removeInterest(index)}
-                  aria-label={`Remove ${interest}`}
+                  aria-label={t('profile.interests.remove_aria', { interest })}
                 >
                   <span>{interest}</span>
                   <i className="fa-solid fa-xmark text-[10px]" />
@@ -1405,7 +1585,7 @@ export default function Profile() {
                   onChange={event => setInterestInput(event.target.value)}
                   onKeyDown={handleInterestKeyDown}
                   onBlur={handleInterestBlur}
-                  placeholder={professional.interests.length ? 'Add another interest' : 'Add an interest…'}
+                  placeholder={professional.interests.length ? t('profile.interests.add_another') : t('profile.interests.add_first')}
                   className="flex-1 min-w-[140px] bg-transparent text-xs text-white placeholder:text-[#9fb0b5] outline-none"
                 />
               ) : null}
@@ -1415,10 +1595,23 @@ export default function Profile() {
               className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
               disabled={savingInterests}
             >
-              {savingInterests ? 'Saving…' : 'Save personal interests'}
+              {savingInterests ? t('profile.saving') : t('profile.interests.save')}
             </button>
           </form>
         </section>
+
+        <ProfileDetailsModal
+          open={detailsModalOpen}
+          onClose={() => setDetailsModalOpen(false)}
+          personal={personal}
+          setPersonal={setPersonal}
+          professional={professional}
+          setProfessional={setProfessional}
+          onSavePersonal={handlePersonalSubmit}
+          onSaveProfessional={handleProfessionalSubmit}
+          savingPersonal={savingPersonal}
+          savingProfessional={savingProfessional}
+        />
 
         {feedback ? (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full border border-white/10 bg-white/10 text-sm text-white">
@@ -1429,9 +1622,9 @@ export default function Profile() {
         {showLeaveModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
             <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#111] p-5 space-y-4">
-              <h3 className="text-base font-semibold text-white">Unsaved changes</h3>
+              <h3 className="text-base font-semibold text-white">{t('profile.leave_modal.title')}</h3>
               <p className="text-sm text-[#a7b8be]">
-                You have unsaved profile changes. Would you like to save before leaving?
+                {t('profile.leave_modal.message')}
               </p>
               <div className="flex flex-col gap-2">
                 <button
@@ -1439,19 +1632,19 @@ export default function Profile() {
                   disabled={savingPersonal}
                   className="w-full py-2.5 rounded-lg bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
                 >
-                  {savingPersonal ? 'Saving…' : 'Save and leave'}
+                  {savingPersonal ? t('profile.saving') : t('profile.leave_modal.save_and_leave')}
                 </button>
                 <button
                   onClick={handleDiscardAndLeave}
                   className="w-full py-2.5 rounded-lg border border-white/15 text-sm text-white hover:bg-white/5"
                 >
-                  Discard changes
+                  {t('profile.leave_modal.discard')}
                 </button>
                 <button
                   onClick={handleCancelLeave}
                   className="w-full py-2 text-sm text-[#9fb0b5] hover:text-white"
                 >
-                  Cancel
+                  {t('profile.cancel')}
                 </button>
               </div>
             </div>

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from functools import lru_cache, wraps
-from typing import Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from flask import (
     Blueprint,
@@ -21,11 +21,41 @@ from flask import (
 )
 
 from backend.services.content_generation.permissions import can_manage_community_jobs
+from backend.services import api_errors
+from backend.services import auth_session, community as community_svc
+from backend.services import community_group_feed as community_group_feed_svc
+from backend.services import community_admin_notifications
+from backend.services import community_lifecycle
+from backend.services import session_identity
 from backend.services.database import get_db_connection, get_sql_placeholder
+from redis_cache import (
+    CACHE_TTL_USER_PARENT_DASHBOARD,
+    cache,
+    invalidate_community_cache,
+    invalidate_user_cache,
+    user_parent_dashboard_cache_key,
+)
 
 
 communities_bp = Blueprint("communities", __name__)
 logger = logging.getLogger(__name__)
+
+
+@communities_bp.after_request
+def _no_store_user_scoped_responses(response):
+    return auth_session.no_store(response)
+
+
+def _stripe_client():
+    try:
+        import stripe  # type: ignore
+    except Exception:
+        return None
+    api_key = os.environ.get("STRIPE_API_KEY") or ""
+    if not api_key or api_key == "sk_test_your_stripe_key":
+        return None
+    stripe.api_key = api_key
+    return stripe
 
 
 @lru_cache(maxsize=1)
@@ -61,13 +91,15 @@ def _login_required(view_func):
 
     @wraps(view_func)
     def wrapper(*args, **kwargs):
-        if "username" not in session:
+        if not session_identity.valid_session_username(session):
             try:
                 current_app.logger.info(
                     "No username in session for %s, redirecting to login", request.path
                 )
             except Exception:
                 pass
+            if request.path.startswith("/api/") or request.path.startswith("/check_"):
+                return api_errors.auth_required()
             return redirect(url_for("auth.login"))
         return view_func(*args, **kwargs)
 
@@ -96,6 +128,753 @@ def communities_list():
     except Exception as exc:
         logger.error("Error in communities for %s: %s", username, exc)
         abort(500)
+
+
+def _row_value(row: Any, key: str, index: int) -> Any:
+    if hasattr(row, "keys") and key in row.keys():
+        return row[key]
+    if isinstance(row, dict):
+        return row.get(key)
+    if isinstance(row, (list, tuple)) and len(row) > index:
+        return row[index]
+    return None
+
+
+def _collect_delete_affected_usernames(cursor, community_ids: List[int], actor: str) -> List[str]:
+    """Return users whose community/dashboard caches must be invalidated."""
+    affected = {actor}
+    ids = [int(cid) for cid in community_ids if cid]
+    if not ids:
+        return sorted(u for u in affected if u)
+
+    ph = get_sql_placeholder()
+    placeholders = ",".join([ph] * len(ids))
+
+    cursor.execute(
+        f"""
+        SELECT DISTINCT u.username
+        FROM user_communities uc
+        JOIN users u ON uc.user_id = u.id
+        WHERE uc.community_id IN ({placeholders})
+        """,
+        tuple(ids),
+    )
+    for row in cursor.fetchall() or []:
+        username = _row_value(row, "username", 0)
+        if username:
+            affected.add(str(username))
+
+    cursor.execute(
+        f"""
+        SELECT DISTINCT creator_username
+        FROM communities
+        WHERE id IN ({placeholders})
+        """,
+        tuple(ids),
+    )
+    for row in cursor.fetchall() or []:
+        username = _row_value(row, "creator_username", 0)
+        if username:
+            affected.add(str(username))
+
+    return sorted(u for u in affected if u)
+
+
+def _invalidate_community_membership_caches(community_id: int, actor: str) -> None:
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            affected = _collect_delete_affected_usernames(c, [community_id], actor)
+    except Exception:
+        affected = [actor]
+
+    invalidate_community_cache(community_id)
+    for username in affected:
+        invalidate_user_cache(username)
+
+
+def _delete_community_tree(
+    *,
+    community_id: int,
+    actor_username: str,
+    enforce_descendant_ownership: bool,
+    confirm_active_subscription: bool = False,
+    stripe_mod: Any = None,
+) -> Tuple[Dict[str, Any], int]:
+    """Delete a community tree in a single transaction."""
+    if not community_id:
+        return {"success": False, "error": "community_id required"}, 400
+
+    if not community_svc.can_manage_community(actor_username, community_id):
+        return {
+            "success": False,
+            "error": "Only the community owner can delete this community",
+        }, 403
+
+    deleted_ids: List[int] = []
+    affected_usernames: List[str] = [actor_username]
+    deleted_contexts: List[Dict[str, Any]] = []
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id FROM communities WHERE id = {ph}", (community_id,))
+            if not c.fetchone():
+                return {"success": False, "error": "Community not found"}, 404
+
+            descendant_ids = community_svc.get_descendant_community_ids(c, community_id)
+            affected_usernames = _collect_delete_affected_usernames(
+                c,
+                descendant_ids,
+                actor_username,
+            )
+
+            active_billing = [
+                payload
+                for cid in descendant_ids
+                if (payload := community_lifecycle.active_subscription_delete_payload(cid))
+            ]
+            if active_billing and not confirm_active_subscription:
+                return {
+                    "success": False,
+                    "error": (
+                        "This community has an active subscription. Confirm deletion "
+                        "to schedule cancellation at the end of the current billing period."
+                    ),
+                    "reason": "active_subscription_requires_confirmation",
+                    "subscriptions": active_billing,
+                }, 409
+
+            if community_svc.is_app_admin(actor_username):
+                deleted_contexts = [
+                    context
+                    for cid in descendant_ids
+                    if (context := community_admin_notifications.get_community_context(cid))
+                ]
+
+            try:
+                if active_billing:
+                    for billing_payload in active_billing:
+                        community_lifecycle.cancel_subscription_at_period_end(
+                            stripe_mod,
+                            int(billing_payload["community_id"]),
+                        )
+
+                for cid in descendant_ids:
+                    if (
+                        enforce_descendant_ownership
+                        and not community_svc.can_manage_community(actor_username, cid)
+                    ):
+                        conn.rollback()
+                        return {
+                            "success": False,
+                            "error": "Cannot delete: nested community owned by another user",
+                            "blocking_id": cid,
+                        }, 403
+
+                    deleted = community_svc.delete_community_cascade(c, cid)
+                    if deleted != 1:
+                        conn.rollback()
+                        return {
+                            "success": False,
+                            "error": f"Community {cid} not removed (rowcount={deleted})",
+                        }, 500
+                    deleted_ids.append(cid)
+
+                conn.commit()
+            except community_lifecycle.CommunityLifecycleActionError as exc:
+                conn.rollback()
+                return {
+                    "success": False,
+                    "error": str(exc),
+                    "reason": exc.reason,
+                }, exc.status_code
+            except Exception as exc:
+                conn.rollback()
+                logger.exception("delete_community failed")
+                return {"success": False, "error": str(exc)}, 500
+    except Exception as exc:
+        logger.exception("delete_community setup failed")
+        return {"success": False, "error": str(exc)}, 500
+
+    for cid in deleted_ids:
+        invalidate_community_cache(cid)
+    for username in affected_usernames:
+        invalidate_user_cache(username)
+    for context in deleted_contexts:
+        community_admin_notifications.notify_owner_of_admin_action(
+            community_id=int(context["community_id"]),
+            action="deleted",
+            actor_username=actor_username,
+            extra=context,
+        )
+
+    return {
+        "success": True,
+        "message": "Community deleted successfully",
+        "deleted_ids": deleted_ids,
+    }, 200
+
+
+@communities_bp.route("/delete_community", methods=["POST"])
+@_login_required
+def delete_community():
+    community_id = request.form.get("community_id", type=int)
+    confirm_active_subscription = str(
+        request.form.get("confirm_active_subscription") or ""
+    ).strip().lower() in {"1", "true", "yes"}
+    payload, status = _delete_community_tree(
+        community_id=community_id or 0,
+        actor_username=session.get("username", ""),
+        enforce_descendant_ownership=True,
+        confirm_active_subscription=confirm_active_subscription,
+        stripe_mod=_stripe_client() if confirm_active_subscription else None,
+    )
+    return jsonify(payload), status
+
+
+@communities_bp.route("/api/admin/delete_community", methods=["POST"])
+@_login_required
+def admin_delete_community():
+    username = session.get("username", "")
+    if not community_svc.is_app_admin(username):
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+
+    data = request.get_json(silent=True) or {}
+    try:
+        community_id = int(data.get("community_id") or 0)
+    except (TypeError, ValueError):
+        community_id = 0
+
+    payload, status = _delete_community_tree(
+        community_id=community_id,
+        actor_username=username,
+        enforce_descendant_ownership=False,
+        confirm_active_subscription=bool(data.get("confirm_active_subscription")),
+        stripe_mod=_stripe_client() if data.get("confirm_active_subscription") else None,
+    )
+    return jsonify(payload), status
+
+
+@communities_bp.route("/api/communities/<int:community_id>/freeze", methods=["POST"])
+@_login_required
+def freeze_community(community_id: int):
+    username = session.get("username", "")
+    data = request.get_json(silent=True) or {}
+    try:
+        state = community_lifecycle.set_freeze_state(
+            community_id,
+            frozen=True,
+            actor_username=username,
+            reason=str(data.get("reason") or "").strip() or None,
+        )
+    except community_lifecycle.CommunityLifecycleActionError as exc:
+        return jsonify({"success": False, "error": str(exc), "reason": exc.reason}), exc.status_code
+    _invalidate_community_membership_caches(community_id, username)
+    if community_svc.is_app_admin(username):
+        community_admin_notifications.notify_owner_of_admin_action(
+            community_id=community_id,
+            action="frozen",
+            actor_username=username,
+        )
+    return jsonify({"success": True, "community_id": community_id, **state})
+
+
+@communities_bp.route("/api/communities/<int:community_id>/unfreeze", methods=["POST"])
+@_login_required
+def unfreeze_community(community_id: int):
+    username = session.get("username", "")
+    try:
+        state = community_lifecycle.set_freeze_state(
+            community_id,
+            frozen=False,
+            actor_username=username,
+        )
+    except community_lifecycle.CommunityLifecycleActionError as exc:
+        return jsonify({"success": False, "error": str(exc), "reason": exc.reason}), exc.status_code
+    _invalidate_community_membership_caches(community_id, username)
+    if community_svc.is_app_admin(username):
+        community_admin_notifications.notify_owner_of_admin_action(
+            community_id=community_id,
+            action="unfrozen",
+            actor_username=username,
+        )
+    return jsonify({"success": True, "community_id": community_id, **state})
+
+
+@communities_bp.route("/api/user_communities_hierarchical", methods=["GET"])
+@_login_required
+def user_communities_hierarchical():
+    """Return the signed-in user's communities as a parent/child tree."""
+    username = session.get("username", "")
+    try:
+        payload = _load_user_communities_hierarchy(str(username))
+        return jsonify(payload)
+    except Exception as exc:
+        logger.exception("user_communities_hierarchical failed for %s", username)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@communities_bp.route("/api/user_parent_community", methods=["GET"])
+@_login_required
+def api_user_parent_community():
+    """Top-level parent communities for the dashboard, enriched.
+
+    Each entry includes ``member_count``, ``last_activity``, ``is_owner``,
+    ``is_admin``, and ``unread_posts_count`` (rollup across descendants).
+    App admins receive every top-level parent community.
+    """
+    username = session.get("username") or ""
+    bypass_cache = bool(request.args.get("_nocache") or request.args.get("refresh"))
+    cache_key = user_parent_dashboard_cache_key(username) if username else None
+
+    if cache_key and not bypass_cache:
+        cached = cache.get(cache_key)
+        if cached:
+            resp = jsonify(cached)
+            resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            return resp
+
+    try:
+        communities_list = community_svc.get_user_dashboard_communities(username)
+    except Exception as exc:
+        logger.error("api_user_parent_community for %s: %s", username, exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+    response_payload = {
+        "success": True,
+        "communities": communities_list,
+        "parentCommunity": communities_list[0] if communities_list else None,
+    }
+
+    if cache_key and not bypass_cache:
+        try:
+            # Shorter TTL: payload includes volatile unread counts.
+            cache.set(cache_key, response_payload, CACHE_TTL_USER_PARENT_DASHBOARD)
+        except Exception:
+            pass
+
+    resp = jsonify(response_payload)
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
+
+
+@communities_bp.route("/api/community_group_feed/<int:parent_id>", methods=["GET"])
+@_login_required
+def api_community_group_feed(parent_id: int):
+    """Unread posts for a parent community and all descendants (no post_views row for viewer)."""
+    username = session.get("username")
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            descendant_ids = community_svc.get_descendant_community_ids(c, parent_id) or []
+            if not descendant_ids:
+                return jsonify({"success": True, "posts": [], "username": username})
+
+            placeholders = ",".join([ph] * len(descendant_ids))
+            c.execute(
+                f"SELECT id, name FROM communities WHERE id IN ({placeholders})",
+                tuple(descendant_ids),
+            )
+            name_rows = c.fetchall()
+
+            if not name_rows:
+                return jsonify({"success": True, "posts": [], "username": username})
+
+            name_map: Dict[int, Any] = {}
+            for r in name_rows:
+                cid = r["id"] if hasattr(r, "keys") else r[0]
+                cname = r["name"] if hasattr(r, "keys") else r[1]
+                name_map[cid] = cname
+
+            if parent_id not in name_map:
+                return jsonify({"success": True, "posts": [], "username": username})
+
+            community_ids = [cid for cid in descendant_ids if cid in name_map]
+
+            if not community_ids:
+                return jsonify({"success": True, "posts": [], "username": username})
+
+            placeholders = ",".join([ph for _ in community_ids])
+
+            c.execute(
+                f"""
+                SELECT DISTINCT p.id, p.username, p.content, p.community_id,
+                       p.timestamp, p.image_path, p.video_path,
+                       p.audio_path, p.audio_summary
+                FROM posts p
+                WHERE p.community_id IN ({placeholders})
+                  AND (p.group_id IS NULL OR p.group_id = 0)
+                  AND LOWER(p.username) <> LOWER({ph})
+                  AND NOT EXISTS (
+                    SELECT 1 FROM post_views pv
+                    WHERE pv.post_id = p.id AND LOWER(pv.username) = LOWER({ph})
+                  )
+                  AND EXISTS (
+                    SELECT 1 FROM user_communities uc
+                    JOIN users u ON u.id = uc.user_id
+                    WHERE LOWER(u.username) = LOWER({ph}) AND uc.community_id IN ({placeholders})
+                  )
+                ORDER BY p.timestamp DESC
+                LIMIT 200
+            """,
+                tuple(community_ids) + (username, username, username) + tuple(community_ids),
+            )
+
+            rows = c.fetchall()
+
+            if not rows:
+                return jsonify({"success": True, "posts": [], "username": username})
+
+            posts = community_group_feed_svc.build_group_feed_post_dicts(
+                c, rows, username, ph, name_map
+            )
+
+            logger.info(
+                "Community group feed: parent_id=%s, returning %s posts",
+                parent_id,
+                len(posts),
+            )
+            return jsonify({"success": True, "posts": posts, "username": username})
+
+    except Exception as e:
+        logger.error("Error in community_group_feed for parent %s: %s", parent_id, e)
+        return jsonify({"success": False, "error": "Failed to load timeline"}), 500
+
+
+@communities_bp.route("/api/dashboard_unread_feed", methods=["GET"])
+@_login_required
+def api_dashboard_unread_feed():
+    """Dashboard feed: unread and/or recent (48h) posts across parent network(s).
+
+    Query:
+      mode=unread (default) | recent48h
+      parent_id=<int> optional root dashboard community; omit for all networks.
+    """
+    username = session.get("username")
+    mode_raw = (request.args.get("mode") or "unread").strip().lower()
+    mode = "recent48h" if mode_raw in ("recent48h", "recent", "48h") else "unread"
+    parent_filter = request.args.get("parent_id", type=int)
+
+    try:
+        parents = community_svc.get_user_dashboard_communities(username or "")
+        if not parents:
+            return jsonify({"success": True, "posts": [], "username": username})
+
+        allowed_parent_ids: Set[int] = set()
+        for p in parents:
+            try:
+                pid = int(p.get("id") or 0)
+            except (TypeError, ValueError):
+                continue
+            if pid:
+                allowed_parent_ids.add(pid)
+
+        if parent_filter is not None and parent_filter not in allowed_parent_ids:
+            return (
+                jsonify({"success": False, "error": "Invalid community filter"}),
+                403,
+            )
+
+        parents_to_expand = (
+            [p for p in parents if int(p.get("id") or 0) == parent_filter]
+            if parent_filter is not None
+            else parents
+        )
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            all_cids: Set[int] = set()
+            for p in parents_to_expand:
+                try:
+                    pid = int(p.get("id") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if pid:
+                    for cid in community_svc.get_descendant_community_ids(c, pid) or []:
+                        all_cids.add(int(cid))
+            community_ids = sorted(all_cids)
+            if not community_ids:
+                return jsonify({"success": True, "posts": [], "username": username})
+            placeholders = ",".join([ph] * len(community_ids))
+            c.execute(
+                f"SELECT id, name FROM communities WHERE id IN ({placeholders})",
+                tuple(community_ids),
+            )
+            name_map: Dict[int, Any] = {}
+            for r in c.fetchall() or []:
+                cid = r["id"] if hasattr(r, "keys") else r[0]
+                cname = r["name"] if hasattr(r, "keys") else r[1]
+                name_map[cid] = cname
+            community_ids = [cid for cid in community_ids if cid in name_map]
+            if not community_ids:
+                return jsonify({"success": True, "posts": [], "username": username})
+            ph_in = ",".join([ph for _ in community_ids])
+
+            unread_clause = ""
+            time_clause = ""
+            if mode == "unread":
+                unread_clause = f"""
+                  AND NOT EXISTS (
+                    SELECT 1 FROM post_views pv
+                    WHERE pv.post_id = p.id AND LOWER(pv.username) = LOWER({ph})
+                  )
+                """
+            else:
+                time_clause = """
+                  AND p.timestamp >= (UTC_TIMESTAMP() - INTERVAL 48 HOUR)
+                """
+
+            sql = f"""
+                SELECT DISTINCT p.id, p.username, p.content, p.community_id,
+                       p.timestamp, p.image_path, p.video_path,
+                       p.audio_path, p.audio_summary
+                FROM posts p
+                WHERE p.community_id IN ({ph_in})
+                  AND (p.group_id IS NULL OR p.group_id = 0)
+                  AND LOWER(p.username) <> LOWER({ph})
+                  {unread_clause}
+                  {time_clause}
+                  AND EXISTS (
+                    SELECT 1 FROM user_communities uc
+                    JOIN users u ON u.id = uc.user_id
+                    WHERE LOWER(u.username) = LOWER({ph}) AND uc.community_id IN ({ph_in})
+                  )
+                ORDER BY p.timestamp DESC
+                LIMIT 200
+            """
+            if mode == "unread":
+                query_params = tuple(community_ids) + (username, username, username) + tuple(
+                    community_ids
+                )
+            else:
+                query_params = tuple(community_ids) + (username, username) + tuple(community_ids)
+
+            c.execute(sql, query_params)
+            rows = c.fetchall()
+            if not rows:
+                return jsonify({"success": True, "posts": [], "username": username})
+            posts = community_group_feed_svc.build_group_feed_post_dicts(
+                c, rows, username, ph, name_map
+            )
+            logger.info(
+                "dashboard_unread_feed mode=%s parent=%s: returning %s posts for %s",
+                mode,
+                parent_filter,
+                len(posts),
+                username,
+            )
+            return jsonify({"success": True, "posts": posts, "username": username})
+    except Exception as e:
+        logger.error("Error in dashboard_unread_feed: %s", e)
+        return jsonify({"success": False, "error": "Failed to load feed"}), 500
+
+
+def _collect_tree_community_ids(nodes: List[Dict[str, Any]]) -> List[int]:
+    out: List[int] = []
+    for n in nodes:
+        out.append(int(n["id"]))
+        children = n.get("children") or []
+        if children:
+            out.extend(_collect_tree_community_ids(children))
+    return out
+
+
+def _annotate_unread_on_community_tree(
+    cursor: Any,
+    nodes: List[Dict[str, Any]],
+    username: str,
+) -> None:
+    if not nodes:
+        return
+    ids = _collect_tree_community_ids(nodes)
+    if not ids:
+        return
+    unread_map = community_svc.count_unread_posts_by_community_ids(cursor, ids, username)
+
+    def walk(items: List[Dict[str, Any]]) -> None:
+        for n in items:
+            cid = int(n["id"])
+            n["unread_posts_count"] = int(unread_map.get(cid, 0))
+            ch = n.get("children") or []
+            if ch:
+                walk(ch)
+
+    walk(nodes)
+
+
+def _load_user_communities_hierarchy(username: str) -> Dict[str, Any]:
+    ph = get_sql_placeholder()
+    is_app_admin_user = community_svc.is_app_admin(username)
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        if is_app_admin_user:
+            c.execute(
+                """
+                SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id,
+                       c.creator_username, pc.name AS parent_name, NULL AS role,
+                       COALESCE(c.is_frozen, 0) AS is_frozen
+                FROM communities c
+                LEFT JOIN communities pc ON c.parent_community_id = pc.id
+                ORDER BY CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
+                         COALESCE(pc.name, c.name), c.name
+                """
+            )
+            communities = c.fetchall() or []
+        else:
+            c.execute(
+                f"""
+                SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id,
+                       c.creator_username, pc.name AS parent_name, uc.role,
+                       COALESCE(c.is_frozen, 0) AS is_frozen
+                FROM communities c
+                LEFT JOIN users u ON LOWER(u.username) = LOWER({ph})
+                LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.user_id = u.id
+                LEFT JOIN communities pc ON c.parent_community_id = pc.id
+                WHERE uc.user_id IS NOT NULL
+                   OR LOWER(c.creator_username) = LOWER({ph})
+                ORDER BY CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
+                         COALESCE(pc.name, c.name), c.name
+                """,
+                (username, username),
+            )
+            direct_rows = c.fetchall() or []
+            accessible_ids = {_row_value(row, "id", 0) for row in direct_rows}
+            admin_ids = [
+                _row_value(row, "id", 0)
+                for row in direct_rows
+                if _can_see_descendants(username, row)
+            ]
+            if admin_ids:
+                c.execute("SELECT id, parent_community_id FROM communities")
+                all_rows = c.fetchall() or []
+                children_by_parent: Dict[int, List[int]] = {}
+                for row in all_rows:
+                    cid = _row_value(row, "id", 0)
+                    parent_id = _row_value(row, "parent_community_id", 1)
+                    if cid is not None and parent_id is not None:
+                        children_by_parent.setdefault(int(parent_id), []).append(int(cid))
+                for root_id in admin_ids:
+                    _collect_descendants(int(root_id), children_by_parent, accessible_ids)
+
+            if not accessible_ids:
+                return {
+                    "success": True,
+                    "username": username,
+                    "is_app_admin": is_app_admin_user,
+                    "communities": [],
+                }
+
+            ids = sorted(int(x) for x in accessible_ids if x is not None)
+            placeholders = ",".join([ph] * len(ids))
+            c.execute(
+                f"""
+                SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id,
+                       c.creator_username, pc.name AS parent_name, uc.role,
+                       COALESCE(c.is_frozen, 0) AS is_frozen
+                FROM communities c
+                LEFT JOIN communities pc ON c.parent_community_id = pc.id
+                LEFT JOIN users current_u ON LOWER(current_u.username) = LOWER({ph})
+                LEFT JOIN user_communities uc
+                  ON uc.community_id = c.id AND uc.user_id = current_u.id
+                WHERE c.id IN ({placeholders})
+                ORDER BY CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
+                         COALESCE(pc.name, c.name), c.name
+                """,
+                tuple([username] + ids),
+            )
+            communities = c.fetchall() or []
+
+        result = _build_community_tree(c, communities)
+        _annotate_unread_on_community_tree(c, result, username)
+
+    return {
+        "success": True,
+        "username": username,
+        "is_app_admin": is_app_admin_user,
+        "communities": result,
+    }
+
+
+def _can_see_descendants(username: str, row: Any) -> bool:
+    creator = str(_row_value(row, "creator_username", 4) or "").strip().lower()
+    role = str(_row_value(row, "role", 6) or "").strip().lower()
+    return username.strip().lower() == creator or role in {"admin", "owner"}
+
+
+def _collect_descendants(root_id: int, children_by_parent: Dict[int, List[int]], out: set) -> None:
+    for child_id in children_by_parent.get(root_id, []):
+        if child_id in out:
+            continue
+        out.add(child_id)
+        _collect_descendants(child_id, children_by_parent, out)
+
+
+def _build_community_tree(cursor: Any, rows: List[Any]) -> List[Dict[str, Any]]:
+    all_by_id: Dict[int, Dict[str, Any]] = {}
+    for row in rows:
+        cid = int(_row_value(row, "id", 0))
+        all_by_id[cid] = {
+            "id": cid,
+            "name": _row_value(row, "name", 1),
+            "type": _row_value(row, "type", 2),
+            "parent_community_id": _row_value(row, "parent_community_id", 3),
+            "creator_username": _row_value(row, "creator_username", 4),
+            "role": _row_value(row, "role", 6),
+            "is_frozen": bool(_row_value(row, "is_frozen", 7)),
+            "children": [],
+        }
+
+    already_child = set()
+    roots: Dict[int, Dict[str, Any]] = {}
+    for cid, data in list(all_by_id.items()):
+        parent_id = data.get("parent_community_id")
+        if parent_id and int(parent_id) in all_by_id:
+            parent = all_by_id[int(parent_id)]
+            if cid not in already_child:
+                parent["children"].append(data)
+                already_child.add(cid)
+        elif parent_id:
+            parent = _placeholder_parent(cursor, int(parent_id))
+            if parent:
+                parent["children"].append(data)
+                roots[parent["id"]] = parent
+                already_child.add(cid)
+        else:
+            roots[cid] = data
+
+    return list(roots.values())
+
+
+def _placeholder_parent(cursor: Any, parent_id: int) -> Optional[Dict[str, Any]]:
+    ph = get_sql_placeholder()
+    cursor.execute(
+        f"""
+        SELECT id, name, type, creator_username, COALESCE(is_frozen, 0) AS is_frozen
+        FROM communities
+        WHERE id = {ph}
+        """,
+        (parent_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    return {
+        "id": int(_row_value(row, "id", 0)),
+        "name": _row_value(row, "name", 1),
+        "type": _row_value(row, "type", 2),
+        "creator_username": _row_value(row, "creator_username", 3),
+        "is_frozen": bool(_row_value(row, "is_frozen", 4)),
+        "parent_community_id": None,
+        "children": [],
+        "is_parent_only": True,
+    }
 
 
 @communities_bp.route("/get_community_members", methods=["POST"])
@@ -472,6 +1251,26 @@ def remove_community_member():
                 (community_id, member["id"]),
             )
             conn.commit()
+
+        # Auto-unfreeze if the community was frozen due to subscription
+        # expiration and removing this member brought it within the
+        # Free-tier cap. Best-effort — never block the removal.
+        try:
+            from backend.services import community_lifecycle as _lifecycle
+            from backend.services import subscription_audit as _audit
+            if _lifecycle.maybe_auto_unfreeze(int(community_id)):
+                _audit.log(
+                    username=username or "",
+                    action="community_auto_unfrozen_member_removed",
+                    source="remove_community_member",
+                    metadata={
+                        "community_id": int(community_id),
+                        "removed_member": member_username,
+                    },
+                )
+        except Exception:
+            logger.warning("[FREEZE] auto-unfreeze hook failed (non-fatal)", exc_info=True)
+
         return jsonify({"success": True})
     except Exception as exc:
         logger.error("Error removing community member for %s: %s", username, exc)
@@ -776,3 +1575,91 @@ def cron_community_lifecycle_dispatch():
     except Exception as exc:  # pragma: no cover - defensive logging
         logger.exception("community_lifecycle dispatch failed: %s", exc)
         return jsonify({"success": False, "error": "dispatch_failed"}), 500
+
+
+@communities_bp.route(
+    "/api/communities/<int:community_id>/republish_welcome_post",
+    methods=["POST"],
+)
+@_login_required
+def republish_welcome_post(community_id: int):
+    """Re-publish Steve's community welcome post.
+
+    Owner / admin / app-admin only. Idempotent: a no-op when a live welcome
+    post already exists. See ``docs/STEVE_COMMUNITY_WELCOME.md``.
+    """
+    username = session["username"]
+
+    from backend.services.community import is_community_admin, is_community_owner
+    from backend.services.steve_community_welcome import publish_welcome_post
+
+    _, _, is_app_admin = _legacy_community_helpers()
+    if not (
+        is_app_admin(username)
+        or is_community_owner(username, community_id)
+        or is_community_admin(username, community_id)
+    ):
+        return jsonify({"success": False, "error": "forbidden"}), 403
+
+    try:
+        post_id = publish_welcome_post(community_id)
+    except Exception as exc:
+        logger.exception(
+            "republish_welcome_post failed for community %s: %s",
+            community_id, exc,
+        )
+        return jsonify({"success": False, "error": "republish_failed"}), 500
+
+    if post_id is None:
+        # Either community not found, owner is in skip-list, or insert hit a
+        # benign error (already logged inside the service).
+        return jsonify({"success": False, "error": "not_published"}), 200
+
+    return jsonify({"success": True, "post_id": post_id})
+
+
+@communities_bp.route(
+    "/api/communities/<int:community_id>/owner-feed-setup-intro-seen",
+    methods=["POST"],
+)
+@_login_required
+def mark_owner_feed_setup_intro_seen(community_id: int):
+    """Record that the community owner finished or dismissed the feed setup intro.
+
+    Owner-only (matches ``CommunityFeed`` gating). Idempotent.
+    """
+    username = session["username"]
+    if not community_svc.is_community_owner(username, community_id):
+        return jsonify({"success": False, "error": "forbidden"}), 403
+
+    ph = get_sql_placeholder()
+    try:
+        from backend.services import client_ui_flags
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            client_ui_flags.ensure_community_ui_columns(c)
+            c.execute(
+                f"""
+                UPDATE communities SET owner_feed_setup_intro_seen = 1
+                WHERE id = {ph}
+                """,
+                (community_id,),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.exception(
+            "mark_owner_feed_setup_intro_seen failed for community %s: %s",
+            community_id, exc,
+        )
+        return jsonify({"success": False, "error": "save_failed"}), 500
+
+    try:
+        invalidate_community_cache(community_id)
+    except Exception:
+        pass
+    try:
+        cache.delete(f"profile:{username}")
+    except Exception:
+        pass
+    return jsonify({"success": True})

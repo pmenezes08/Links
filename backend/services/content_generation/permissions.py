@@ -2,27 +2,11 @@
 
 from __future__ import annotations
 
-from backend.services.community import is_community_admin, is_community_owner
-from backend.services.database import get_db_connection
-
-
-def is_app_admin(username: str | None) -> bool:
-    normalized = (username or "").strip().lower()
-    if not normalized:
-        return False
-    if normalized == "admin":
-        return True
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT is_admin FROM users WHERE username = ?", (username,))
-            row = c.fetchone()
-            if not row:
-                return False
-            value = row["is_admin"] if hasattr(row, "keys") else row[0]
-            return bool(value)
-    except Exception:
-        return False
+from backend.services.community import (
+    is_app_admin,
+    is_community_admin,
+    is_community_owner,
+)
 
 
 def can_manage_community_jobs(username: str | None, community_id: int) -> bool:

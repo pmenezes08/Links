@@ -12,7 +12,7 @@ rather than a dozen surface-specific ones::
         "cta": {
             "type": "upgrade" | "wait" | "manage" | "open_url",
             "label": "Upgrade to Premium",
-            "url": "/settings/membership"
+            "url": "/subscription_plans?mode=choose"
         },
         "usage": {
             "monthly_steve_used": 100,
@@ -30,7 +30,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional, Tuple
 
-from backend.services import knowledge_base as kb
+from backend.services import i18n, knowledge_base as kb
 
 
 logger = logging.getLogger(__name__)
@@ -71,13 +71,15 @@ _DEFAULT_TEMPLATES: Dict[str, Dict[str, Any]] = {
     REASON_PREMIUM_REQUIRED: {
         "http_status": 402,
         "message": (
-            "Steve is a Premium feature. Upgrade to unlock "
-            "{steve_uses_per_month} Steve calls per month."
+            "Premium unlocks Steve in DM, feed, and eligible chats — up to "
+            "{steve_uses_per_month} Steve conversations per month and "
+            "{whisper_minutes_per_month} minutes of voice-note summaries "
+            "each billing cycle."
         ),
         "cta": {
             "type": "upgrade",
             "label": "Upgrade to Premium",
-            "url": "/settings/membership",
+            "url": "/subscription_plans?mode=choose",
         },
     },
     REASON_DAILY_CAP: {
@@ -125,7 +127,7 @@ _DEFAULT_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "cta": {
             "type": "upgrade",
             "label": "Upgrade to Premium",
-            "url": "/settings/membership",
+            "url": "/subscription_plans?mode=choose",
         },
     },
     REASON_RPM_EXCEEDED: {
@@ -179,10 +181,26 @@ _DEFAULT_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "cta": {
             "type": "upgrade",
             "label": "Subscribe to Premium",
-            "url": "/settings/membership",
+            "url": "/subscription_plans?mode=choose",
         },
     },
 }
+
+
+def _upgrade_offer_caps() -> Dict[str, int]:
+    """KB-facing Premium allowances for upgrade copy (not the user's current tier)."""
+    try:
+        from backend.services.entitlements import _load_kb_defaults
+
+        d = _load_kb_defaults()
+        steve = int(d.get("steve_uses_per_month") or 100)
+        whisper = int(d.get("whisper_minutes_per_month") or 100)
+        return {
+            "steve_uses_per_month": steve,
+            "whisper_minutes_per_month": whisper,
+        }
+    except Exception:
+        return {"steve_uses_per_month": 100, "whisper_minutes_per_month": 100}
 
 
 def _kb_templates() -> Dict[str, Dict[str, Any]]:
@@ -223,20 +241,53 @@ def _format_template(template: str, context: Dict[str, Any]) -> str:
         return template
 
 
+def _localized_message(reason: str, locale: str, context: Dict[str, Any]) -> Optional[str]:
+    """Return the i18n-catalog message for ``reason`` if present.
+
+    Returns ``None`` when the catalog does not have an override (caller
+    falls back to the English default template). Empty-string keys are
+    treated as "intentionally blank" and returned as-is.
+    """
+    key = f"entitlements.{reason}.message"
+    if not i18n.has_key(key, locale):
+        return None
+    return i18n.t(key, locale, **context)
+
+
+def _localized_cta_label(reason: str, locale: str, context: Dict[str, Any]) -> Optional[str]:
+    key = f"entitlements.{reason}.cta_label"
+    if not i18n.has_key(key, locale):
+        return None
+    return i18n.t(key, locale, **context)
+
+
 def build_error(
     reason: str,
     *,
     ent: Optional[Dict[str, Any]] = None,
     usage: Optional[Dict[str, Any]] = None,
     overrides: Optional[Dict[str, Any]] = None,
+    locale: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], int]:
     """Return the shared error JSON shape + HTTP status for ``reason``.
 
     Call like::
 
         payload, status = build_error(REASON_MONTHLY_STEVE_CAP,
-                                      ent=ent, usage=usage)
+                                      ent=ent, usage=usage,
+                                      locale="pt-PT")
         return jsonify(payload), status
+
+    Locale handling
+    ---------------
+
+    * ``locale="en"`` (or ``None``): KB ``cta_copy_templates`` overrides
+      win, then ``_DEFAULT_TEMPLATES``. Backward-compatible behaviour.
+    * Any other supported locale: the i18n catalog
+      (``entitlements.<reason>.message`` / ``entitlements.<reason>.cta_label``)
+      wins, then the English defaults. KB overrides are intentionally
+      ignored for non-English locales — see ``docs/I18N_ROADMAP.md``
+      § 1 (KB stays English).
 
     The function never raises — unknown reasons fall back to a generic
     "limit reached" payload.
@@ -244,26 +295,50 @@ def build_error(
     ent = ent or {}
     usage = usage or {}
     overrides = overrides or {}
+    resolved_locale = i18n.normalize_locale(locale)
 
-    kb_templates = _kb_templates()
     base = dict(_DEFAULT_TEMPLATES.get(reason) or {
         "http_status": 429,
         "message": "You've reached a usage limit.",
         "cta": {"type": "manage", "label": "See my usage", "url": "/settings/membership/ai-usage"},
     })
 
-    kb_override = kb_templates.get(reason) or {}
-    base.update(kb_override)
+    # KB overrides only apply for English; PT (and any future locale)
+    # serves i18n catalog content.
+    if resolved_locale == i18n.DEFAULT_LOCALE:
+        kb_override = _kb_templates().get(reason) or {}
+        base.update(kb_override)
     base.update(overrides)
 
+    offer_caps: Optional[Dict[str, int]] = None
     context: Dict[str, Any] = {**ent, **usage}
-    message = _format_template(str(base.get("message") or ""), context)
+    if reason == REASON_PREMIUM_REQUIRED:
+        offer_caps = _upgrade_offer_caps()
+        context.update(offer_caps)
+
+    # i18n catalog has priority for non-English locales.
+    catalog_message: Optional[str] = None
+    catalog_label: Optional[str] = None
+    if resolved_locale != i18n.DEFAULT_LOCALE:
+        catalog_message = _localized_message(reason, resolved_locale, context)
+        catalog_label = _localized_cta_label(reason, resolved_locale, context)
+
+    if catalog_message is not None:
+        message = catalog_message
+    else:
+        message = _format_template(str(base.get("message") or ""), context)
 
     cta = base.get("cta") or {}
     if isinstance(cta, dict):
+        if catalog_label is not None:
+            label = catalog_label
+        elif cta.get("label"):
+            label = _format_template(str(cta.get("label")), context)
+        else:
+            label = None
         cta = {
             "type": cta.get("type"),
-            "label": _format_template(str(cta.get("label") or ""), context) if cta.get("label") else None,
+            "label": label,
             "url": cta.get("url"),
         }
     else:
@@ -274,13 +349,20 @@ def build_error(
     except Exception:
         status = 429
 
-    payload: Dict[str, Any] = {
-        "success": False,
-        "error": "entitlements_error",
-        "reason": reason,
-        "message": message,
-        "cta": cta,
-        "usage": {
+    empty_usage: Dict[str, Any] = {
+        "monthly_steve_used": None,
+        "monthly_steve_cap": None,
+        "daily_used": None,
+        "daily_cap": None,
+        "whisper_minutes_used": None,
+        "whisper_minutes_cap": None,
+        "resets_at_monthly": None,
+        "resets_at_daily": None,
+    }
+    if reason == REASON_PREMIUM_REQUIRED:
+        usage_payload = dict(empty_usage)
+    else:
+        usage_payload = {
             "monthly_steve_used": usage.get("monthly_steve_used"),
             "monthly_steve_cap": usage.get("monthly_steve_cap") if usage else ent.get("steve_uses_per_month"),
             "daily_used": usage.get("daily_used"),
@@ -289,9 +371,21 @@ def build_error(
             "whisper_minutes_cap": usage.get("whisper_minutes_cap") if usage else ent.get("whisper_minutes_per_month"),
             "resets_at_monthly": usage.get("resets_at_monthly"),
             "resets_at_daily": usage.get("resets_at_daily"),
-        },
+        }
+
+    payload: Dict[str, Any] = {
+        "success": False,
+        "error": "entitlements_error",
+        "reason": reason,
+        "message": message,
+        "message_key": f"entitlements.{reason}.message",
+        "cta": cta,
+        "usage": usage_payload,
         "tier": ent.get("tier"),
+        "locale": resolved_locale,
     }
+    if offer_caps is not None:
+        payload["premium_offer"] = offer_caps
     return payload, status
 
 
@@ -302,11 +396,14 @@ def entitlements_error(
 ) -> Tuple[Dict[str, Any], int]:
     """Convenience alias for :func:`build_error` used in legacy call-sites.
 
-    Accepts ``usage=...`` and ``overrides=...`` as kwargs; anything else is
-    merged into ``overrides`` for one-off tweaks.
+    Accepts ``usage=...``, ``overrides=...`` and ``locale=...`` as kwargs;
+    anything else is merged into ``overrides`` for one-off tweaks.
     """
     usage = extra.pop("usage", None)
     overrides = extra.pop("overrides", None)
+    locale = extra.pop("locale", None)
     if extra:
         overrides = {**(overrides or {}), **extra}
-    return build_error(reason, ent=ent, usage=usage, overrides=overrides)
+    return build_error(
+        reason, ent=ent, usage=usage, overrides=overrides, locale=locale
+    )

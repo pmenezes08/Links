@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { useHeader } from '../contexts/HeaderContext'
 import { useBadges } from '../contexts/BadgeContext'
 import { useUserProfile } from '../contexts/UserProfileContext'
@@ -41,14 +43,14 @@ const CACHE_VERSION = 'v1'
 const CACHE_TTL_MS = 10 * 60 * 1000 // 10 minutes
 
 // Format last message for preview - handles story replies and regular replies
-function formatLastMessagePreview(text: string | null): string {
-  if (!text) return 'Say hello'
+function formatLastMessagePreview(text: string | null, t: TFunction): string {
+  if (!text) return t('chat.say_hello')
   
   // Check for story reply format: [STORY_REPLY:id:emoji:mediaPath]\n<message>
   const storyReplyMatch = text.match(/^\[STORY_REPLY:[^\]]+\][\r\n\s]*(.*)$/s)
   if (storyReplyMatch) {
     const actualMessage = storyReplyMatch[1]?.trim()
-    return actualMessage ? `Replied to story: ${actualMessage}` : 'Replied to a story'
+    return actualMessage ? t('chat.replied_to_story_with', { message: actualMessage }) : t('chat.replied_to_story')
   }
   
   // Check for regular reply format: [REPLY:sender:snippet]\n<message>
@@ -61,6 +63,7 @@ function formatLastMessagePreview(text: string | null): string {
 }
 
 export default function Messages(){
+  const { t } = useTranslation()
   const { setTitle } = useHeader()
   const { refreshBadges, adjustBadges } = useBadges()
   const { profile } = useUserProfile()
@@ -71,9 +74,9 @@ export default function Messages(){
   const sharePick = searchParams.get('share_pick') === '1'
   const shareQuery = sharePick ? '?share=1' : ''
   useEffect(() => {
-    setTitle('Messages')
+    setTitle(t('chat.page_title'))
     return () => setTitle('')
-  }, [setTitle])
+  }, [setTitle, t])
 
   const [threads, setThreads] = useState<Thread[]>([])
   const [loading, setLoading] = useState(true)
@@ -209,7 +212,7 @@ export default function Messages(){
   
   // Delete group chat (only creator can delete)
   const deleteGroupChat = useCallback((groupId: number) => {
-    if (!confirm('Are you sure you want to delete this group chat? This action cannot be undone.')) {
+    if (!confirm(t('chat.delete_group_confirm'))) {
       setGroupSwipeId(null)
       return
     }
@@ -224,15 +227,15 @@ export default function Messages(){
           setGroupChats(prev => prev.filter(g => g.id !== groupId))
           setGroupSwipeId(null)
         } else {
-          alert(j?.error || 'Failed to delete group')
+          alert(j?.error || t('chat.failed_delete_group'))
           setGroupSwipeId(null)
         }
       })
       .catch(() => {
-        alert('Failed to delete group')
+        alert(t('chat.failed_delete_group'))
         setGroupSwipeId(null)
       })
-  }, [])
+  }, [t])
 
   // Archive a chat
   const archiveChat = useCallback((otherUsername: string) => {
@@ -369,8 +372,8 @@ export default function Messages(){
       return { success: true, tree }
     }
     
-    return { success: false, error: membersRes?.error || 'Failed to load communities' }
-  }, [])
+    return { success: false, error: membersRes?.error || t('chat.failed_load_communities') }
+  }, [t])
 
   // Refresh communities on visibility change (when returning to app)
   useEffect(() => {
@@ -418,7 +421,7 @@ export default function Messages(){
           if (!hasCachedCommunities) {
             setCommunityTree([])
           }
-          setCommunityError(result.error || 'Failed to load communities')
+          setCommunityError(result.error || t('chat.failed_load_communities'))
         }
       } catch {
         if (cancelled) {
@@ -427,7 +430,7 @@ export default function Messages(){
         if (!hasCachedCommunities) {
           setCommunityTree([])
         }
-        setCommunityError('Failed to load communities')
+        setCommunityError(t('chat.failed_load_communities'))
       } finally {
         if (!cancelled) {
           setCommunitiesLoading(false)
@@ -539,10 +542,13 @@ export default function Messages(){
 
   const filterSummary =
     communityFilter === 'all'
-      ? `Showing ${threads.length} chat${threads.length === 1 ? '' : 's'}`
+      ? t('chat.showing_count', { count: threads.length })
       : selectedSubNode
-        ? `Filtered to ${selectedSubNode.name} (${visibleThreads.length} chat${visibleThreads.length === 1 ? '' : 's'})`
-        : `Filtered to ${selectedCommunityNode?.name ?? 'community'} (${visibleThreads.length} chat${visibleThreads.length === 1 ? '' : 's'})`
+        ? t('chat.filtered_to', { name: selectedSubNode.name, count: visibleThreads.length })
+        : t('chat.filtered_to', {
+            name: selectedCommunityNode?.name ?? t('chat.filter_community_fallback'),
+            count: visibleThreads.length,
+          })
 
   const renderSubOptions = (nodes: CommunityNode[], depth: number, rootId: number): ReactNode[] =>
     nodes.flatMap(node => {
@@ -580,17 +586,17 @@ export default function Messages(){
           <button
             className="p-2 rounded-full hover:bg-white/5"
             onClick={() => navigate('/premium_dashboard')}
-            aria-label="Back"
+            aria-label={t('common.back')}
           >
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 h-full flex">
             <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='chats' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('chats')}>
-              <div className="pt-2">Chats</div>
+              <div className="pt-2">{t('chat.tab_chats')}</div>
               <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='chats' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
             </button>
             <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='new' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('new')}>
-              <div className="pt-2">New Message</div>
+              <div className="pt-2">{t('chat.tab_new_message')}</div>
               <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='new' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
             </button>
           </div>
@@ -606,20 +612,20 @@ export default function Messages(){
       >
         {sharePick && (
           <div className="mb-3 px-2 py-2 rounded-xl border border-[#4db6ac]/40 bg-[#4db6ac]/10 text-sm text-white/90">
-            Choose a direct chat or a group below — your shared photos or videos will attach to the composer.
+            {t('chat.share_pick_banner')}
           </div>
         )}
         {activeTab === 'chats' ? (
           <div className="space-y-3">
             <div className="bg-black border border-white/10 rounded-xl p-3">
               <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm font-semibold text-white/80">Filter by community</div>
+                  <div className="text-sm font-semibold text-white/80">{t('chat.filter_by_community')}</div>
                 {communitiesLoading ? (
-                  <span className="text-xs text-white/50">Loading…</span>
+                  <span className="text-xs text-white/50">{t('common.loading')}</span>
                 ) : communityError ? (
                   <span className="text-xs text-red-400">{communityError}</span>
-                  ) : communityTree.length === 0 ? (
-                    <span className="text-xs text-white/40">No communities available</span>
+                ) : communityTree.length === 0 ? (
+                    <span className="text-xs text-white/40">{t('chat.no_communities_available')}</span>
                 ) : (
                     <span className="text-xs text-white/40">{filterSummary}</span>
                 )}
@@ -638,7 +644,7 @@ export default function Messages(){
                       : 'border-white/15 bg-black/60 text-white/70 hover:border-white/25'
                   }`}
                 >
-                  All
+                  {t('chat.filter_all')}
                 </button>
                   {communityTree.map(comm => {
                     const selected = communityFilter === comm.id
@@ -658,7 +664,7 @@ export default function Messages(){
                               ? 'border-[#4db6ac]/70 bg-[#4db6ac]/20 text-[#4db6ac]'
                               : 'border-white/15 bg-black/60 text-white/70 hover:border-white/25'
                           }`}
-                          title={comm.members.length ? `${comm.members.length} members` : undefined}
+                          title={comm.members.length ? t('chat.members_count', { count: comm.members.length }) : undefined}
                         >
                           <span className="truncate">{comm.name}</span>
                           {hasChildren ? (
@@ -677,7 +683,7 @@ export default function Messages(){
                 if (node && node.children.length > 0) {
                   return (
                     <div className="rounded-xl border border-white/10 bg-black p-4 space-y-1">
-                      <div className="text-xs text-white/70 mb-2">Filter {node.name}</div>
+                      <div className="text-xs text-white/70 mb-2">{t('chat.filter_node', { name: node.name })}</div>
                       <button
                         type="button"
                         onClick={() => {
@@ -687,7 +693,7 @@ export default function Messages(){
                         }}
                         className={`flex w-full items-center gap-2 px-3 py-2 text-xs text-white/80 hover:bg-white/10 ${subCommunityFilter === null ? 'bg-white/10 text-[#4db6ac]' : ''}`}
                       >
-                        <span className="truncate">All {node.name}</span>
+                        <span className="truncate">{t('chat.filter_all_node', { name: node.name })}</span>
                       </button>
                       {renderSubOptions(node.children, 1, node.id)}
                     </div>
@@ -706,7 +712,7 @@ export default function Messages(){
                 >
                   <div className="flex items-center gap-2">
                     <i className="fa-solid fa-users text-[#4db6ac] text-sm" />
-                    <span className="text-sm font-semibold text-white/80">Group Chats</span>
+                    <span className="text-sm font-semibold text-white/80">{t('chat.group_chats')}</span>
                     <span className="text-xs text-white/40">({groupChats.length})</span>
                     {groupChats.reduce((sum, gc) => sum + gc.unread_count, 0) > 0 && (
                       <span className="px-1.5 py-0.5 rounded-full bg-[#4db6ac] text-black text-[10px] font-medium">
@@ -726,7 +732,7 @@ export default function Messages(){
                           type="text"
                           value={groupSearchQuery}
                           onChange={e => setGroupSearchQuery(e.target.value)}
-                          placeholder="Search groups..."
+                          placeholder={t('chat.search_groups_placeholder')}
                           className="w-full pl-8 pr-8 py-1.5 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder-white/30 outline-none focus:border-[#4db6ac]/50"
                         />
                         {groupSearchQuery && (
@@ -758,7 +764,7 @@ export default function Messages(){
                             type="button"
                             onClick={() => setChatMoreTarget({ type: 'group', groupId: gc.id, displayName: gc.name })}
                             className="my-1 h-[44px] w-[52px] rounded-md bg-white/10 text-white/80 hover:bg-white/20 flex items-center justify-center"
-                            aria-label="More options"
+                            aria-label={t('chat.more_options')}
                           >
                             <i className="fa-solid fa-ellipsis" />
                           </button>
@@ -766,7 +772,7 @@ export default function Messages(){
                             type="button"
                             onClick={() => deleteGroupChat(gc.id)}
                             className="my-1 h-[44px] w-[52px] rounded-md bg-red-500/20 text-red-300 hover:bg-red-500/30 flex items-center justify-center"
-                            aria-label="Delete group"
+                            aria-label={t('chat.delete_group_aria')}
                           >
                             <i className="fa-solid fa-trash text-lg" />
                           </button>
@@ -832,12 +838,12 @@ export default function Messages(){
                                 {gc.last_message ? (
                                   <span><span className="font-medium">{gc.last_message.sender}:</span> {gc.last_message.text}</span>
                                 ) : (
-                                  <span>{gc.member_count} members</span>
+                                  <span>{t('chat.members_count', { count: gc.member_count })}</span>
                                 )}
                               </div>
                             </div>
                             {gc.muted && (
-                              <i className="ml-2 fa-solid fa-bell-slash text-white/40 text-xs" title="Muted" />
+                              <i className="ml-2 fa-solid fa-bell-slash text-white/40 text-xs" title={t('chat.muted_title')} />
                             )}
                             {gc.unread_count > 0 && (
                               <div className="ml-2 px-2 h-5 rounded-full bg-[#4db6ac] text-black text-[11px] flex items-center justify-center">
@@ -864,7 +870,7 @@ export default function Messages(){
                 >
                   <div className="flex items-center gap-2">
                     <i className="fa-solid fa-user text-[#4db6ac] text-sm" />
-                    <span className="text-sm font-semibold text-white/80">Direct Messages</span>
+                    <span className="text-sm font-semibold text-white/80">{t('chat.direct_messages')}</span>
                     {visibleThreads.reduce((sum, t) => sum + (t.unread_count || 0), 0) > 0 && (
                       <span className="px-1.5 py-0.5 rounded-full bg-[#4db6ac] text-black text-[10px] font-medium">
                         {visibleThreads.reduce((sum, t) => sum + (t.unread_count || 0), 0)}
@@ -875,12 +881,12 @@ export default function Messages(){
                 </button>
               )}
               {!directMessagesCollapsed && (loading ? (
-                <div className="px-4 py-4 text-sm text-[#9fb0b5]">Loading chats...</div>
+                <div className="px-4 py-4 text-sm text-[#9fb0b5]">{t('chat.loading_chats')}</div>
               ) : visibleThreads.length === 0 ? (
                 <div className="px-4 py-4 text-sm text-[#9fb0b5]">
                   {communityFilter === 'all'
-                    ? 'No direct messages yet. Start a new one from the New Message tab.'
-                    : 'No chats match this community filter.'}
+                    ? t('chat.no_dms_yet')
+                    : t('chat.no_chats_for_filter')}
                 </div>
               ) : (
                 <>
@@ -892,7 +898,7 @@ export default function Messages(){
                         type="text"
                         value={dmSearchQuery}
                         onChange={e => setDmSearchQuery(e.target.value)}
-                        placeholder="Search conversations..."
+                        placeholder={t('chat.search_conversations_placeholder')}
                         className="w-full pl-8 pr-8 py-1.5 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder-white/30 outline-none focus:border-[#4db6ac]/50"
                       />
                       {dmSearchQuery && (
@@ -903,40 +909,40 @@ export default function Messages(){
                     </div>
                   </div>
                 )}
-                {visibleThreads.filter(t => !dmSearchQuery || (t.display_name || t.other_username).toLowerCase().includes(dmSearchQuery.toLowerCase()) || t.other_username.toLowerCase().includes(dmSearchQuery.toLowerCase())).map((t) => {
-              const isDragging = draggingIdRef.current === t.other_username
-              const tx = isDragging ? Math.min(0, dragX) : (swipeId === t.other_username ? -116 : 0)
+                {visibleThreads.filter(thread => !dmSearchQuery || (thread.display_name || thread.other_username).toLowerCase().includes(dmSearchQuery.toLowerCase()) || thread.other_username.toLowerCase().includes(dmSearchQuery.toLowerCase())).map((thread) => {
+              const isDragging = draggingIdRef.current === thread.other_username
+              const tx = isDragging ? Math.min(0, dragX) : (swipeId === thread.other_username ? -116 : 0)
               const transition = isDragging ? 'none' : 'transform 150ms ease-out'
-              const showActions = isDragging ? (dragX < -20) : (swipeId === t.other_username)
-              const isMuted = t.muted === true
+              const showActions = isDragging ? (dragX < -20) : (swipeId === thread.other_username)
+              const isMuted = thread.muted === true
               return (
-                <div key={t.other_username} className="relative w-full overflow-hidden">
+                <div key={thread.other_username} className="relative w-full overflow-hidden">
                   {/* Actions (revealed on swipe) */}
                   <div className="absolute inset-y-0 right-0 flex items-stretch gap-1 pr-2" style={{ opacity: showActions ? 1 : 0, pointerEvents: showActions ? 'auto' : 'none', transition: 'opacity 150ms ease-out' }}>
                     <button
                       type="button"
-                      onClick={() => setChatMoreTarget({ type: 'dm', username: t.other_username, displayName: t.display_name || t.other_username })}
+                      onClick={() => setChatMoreTarget({ type: 'dm', username: thread.other_username, displayName: thread.display_name || thread.other_username })}
                       className="my-1 h-[44px] w-[52px] rounded-md bg-white/10 text-white/80 hover:bg-white/20 flex items-center justify-center"
-                      aria-label="More options"
+                      aria-label={t('chat.more_options')}
                     >
                       <i className="fa-solid fa-ellipsis" />
                     </button>
                     <button
                       type="button"
                       onClick={() => {
-                        if (!confirm(`Delete chat with ${t.display_name || t.other_username}? The chat will reappear if a new message is sent.`)) return
-                        const fd = new URLSearchParams({ other_username: t.other_username })
+                        if (!confirm(t('chat.delete_dm_confirm', { name: thread.display_name || thread.other_username }))) return
+                        const fd = new URLSearchParams({ other_username: thread.other_username })
                         fetch('/delete_chat_thread', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
                           .then(r=>r.json()).then(j=>{
                             if (j?.success){
-                              setThreads(prev => prev.filter(x => x.other_username !== t.other_username))
+                              setThreads(prev => prev.filter(x => x.other_username !== thread.other_username))
                               setSwipeId(null)
                               // Clear local caches for this chat
                               try {
                                 import('../utils/deviceCache').then(({ clearDeviceCache }) => {
                                   if (me) {
-                                    clearDeviceCache(chatMessagesDeviceCacheKey(me, t.other_username))
-                                    clearDeviceCache(chatProfileDeviceCacheKey(me, t.other_username))
+                                    clearDeviceCache(chatMessagesDeviceCacheKey(me, thread.other_username))
+                                    clearDeviceCache(chatProfileDeviceCacheKey(me, thread.other_username))
                                   }
                                 })
                               } catch {}
@@ -952,7 +958,7 @@ export default function Messages(){
                           }).catch(()=>{})
                       }}
                       className="my-1 h-[44px] w-[52px] rounded-md bg-red-500/20 text-red-300 hover:bg-red-500/30 flex items-center justify-center"
-                      aria-label="Delete chat"
+                      aria-label={t('chat.delete_chat_aria')}
                     >
                       <i className="fa-solid fa-trash" />
                     </button>
@@ -961,56 +967,56 @@ export default function Messages(){
                   {/* Swipeable content */}
                   <button
                     onClick={() => {
-                      const count = t.unread_count || 0
-                      setThreads(prev => prev.map(x => x.other_username===t.other_username ? { ...x, unread_count: 0 } : x))
+                      const count = thread.unread_count || 0
+                      setThreads(prev => prev.map(x => x.other_username===thread.other_username ? { ...x, unread_count: 0 } : x))
                       if (count > 0) adjustBadges({ msgs: -count })
-                      navigate(`/user_chat/chat/${encodeURIComponent(t.other_username)}${shareQuery}`)
+                      navigate(`/user_chat/chat/${encodeURIComponent(thread.other_username)}${shareQuery}`)
                     }}
                     onTouchStart={(e) => {
                       startXRef.current = e.touches[0].clientX
-                      draggingIdRef.current = t.other_username
-                      setDragX(swipeId === t.other_username ? -116 : 0)
+                      draggingIdRef.current = thread.other_username
+                      setDragX(swipeId === thread.other_username ? -116 : 0)
                     }}
                     onTouchMove={(e) => {
-                      if (draggingIdRef.current !== t.other_username) return
+                      if (draggingIdRef.current !== thread.other_username) return
                       const dx = e.touches[0].clientX - startXRef.current
                       setDragX(dx)
                     }}
                     onTouchEnd={() => {
-                      if (draggingIdRef.current !== t.other_username) return
+                      if (draggingIdRef.current !== thread.other_username) return
                       const shouldOpen = dragX <= -80
-                      setSwipeId(shouldOpen ? t.other_username : null)
+                      setSwipeId(shouldOpen ? thread.other_username : null)
                       setDragX(0)
                       draggingIdRef.current = null
                     }}
                     onTouchCancel={() => {
-                      if (draggingIdRef.current !== t.other_username) return
+                      if (draggingIdRef.current !== thread.other_username) return
                       setDragX(0)
                       draggingIdRef.current = null
                     }}
                     className="w-full px-3 py-2 flex items-center gap-3 bg-transparent"
                     style={{ transform: `translateX(${tx}px)`, transition }}
                   >
-                    <Avatar username={t.other_username} url={t.profile_picture_url || undefined} size={48} linkToProfile displayName={t.display_name} loading="eager" />
+                    <Avatar username={thread.other_username} url={thread.profile_picture_url || undefined} size={48} linkToProfile displayName={thread.display_name} loading="eager" />
                     <div className="flex-1 min-w-0 text-left">
                       <div className="flex items-center justify-between">
-                        <div className="font-medium truncate">{t.display_name}</div>
-                        {t.last_activity_time && (
+                        <div className="font-medium truncate">{thread.display_name}</div>
+                        {thread.last_activity_time && (
                           <div className="ml-3 flex-shrink-0 text-[11px] text-[#9fb0b5]">
-                            {new Date(t.last_activity_time).toLocaleDateString()}
+                            {new Date(thread.last_activity_time).toLocaleDateString()}
                           </div>
                         )}
                       </div>
                       <div className="text-[13px] text-[#9fb0b5] truncate">
-                        {formatLastMessagePreview(t.last_message_text)}
+                        {formatLastMessagePreview(thread.last_message_text, t)}
                       </div>
                     </div>
                     {isMuted && (
-                      <i className="ml-2 fa-solid fa-bell-slash text-white/40 text-xs" title="Muted" />
+                      <i className="ml-2 fa-solid fa-bell-slash text-white/40 text-xs" title={t('chat.muted_title')} />
                     )}
-                    {t.unread_count && t.unread_count > 0 ? (
+                    {thread.unread_count && thread.unread_count > 0 ? (
                       <div className="ml-2 px-2 h-5 rounded-full bg-[#4db6ac] text-black text-[11px] flex items-center justify-center">
-                        {t.unread_count > 99 ? '99+' : t.unread_count}
+                        {thread.unread_count > 99 ? '99+' : thread.unread_count}
                       </div>
                     ) : null}
                   </button>
@@ -1039,7 +1045,7 @@ export default function Messages(){
               >
                 <div className="flex items-center gap-2 text-[#9fb0b5]">
                   <i className="fa-solid fa-box-archive text-sm" />
-                  <span className="text-sm font-medium">Archived Chats</span>
+                  <span className="text-sm font-medium">{t('chat.archived_chats')}</span>
                   {archivedThreads.length > 0 && (
                     <span className="text-xs text-white/50">({archivedThreads.length})</span>
                   )}
@@ -1052,27 +1058,27 @@ export default function Messages(){
                   {archivedLoading ? (
                     <div className="px-4 py-6 flex items-center justify-center text-[#9fb0b5]">
                       <i className="fa-solid fa-spinner fa-spin mr-2" />
-                      Loading archived chats...
+                      {t('chat.loading_archived')}
                     </div>
                   ) : archivedThreads.length === 0 ? (
                     <div className="px-4 py-4 text-sm text-[#9fb0b5]">
-                      No archived chats
+                      {t('chat.no_archived')}
                     </div>
                   ) : (
-                    archivedThreads.map((t) => {
-                      const isDragging = draggingIdRef.current === `archived-${t.other_username}`
-                      const tx = isDragging ? Math.min(0, dragX) : (swipeId === `archived-${t.other_username}` ? -60 : 0)
+                    archivedThreads.map((archivedThread) => {
+                      const isDragging = draggingIdRef.current === `archived-${archivedThread.other_username}`
+                      const tx = isDragging ? Math.min(0, dragX) : (swipeId === `archived-${archivedThread.other_username}` ? -60 : 0)
                       const transition = isDragging ? 'none' : 'transform 150ms ease-out'
-                      const showActions = isDragging ? (dragX < -20) : (swipeId === `archived-${t.other_username}`)
+                      const showActions = isDragging ? (dragX < -20) : (swipeId === `archived-${archivedThread.other_username}`)
                       return (
-                        <div key={`archived-${t.other_username}`} className="relative w-full overflow-hidden bg-white/5">
+                        <div key={`archived-${archivedThread.other_username}`} className="relative w-full overflow-hidden bg-white/5">
                           {/* Unarchive action */}
                           <div className="absolute inset-y-0 right-0 flex items-stretch pr-2" style={{ opacity: showActions ? 1 : 0, pointerEvents: showActions ? 'auto' : 'none', transition: 'opacity 150ms ease-out' }}>
                             <button
                               type="button"
-                              onClick={() => unarchiveChat(t.other_username)}
+                              onClick={() => unarchiveChat(archivedThread.other_username)}
                               className="my-1 h-[44px] w-[52px] rounded-md bg-green-500/20 text-green-300 hover:bg-green-500/30 flex items-center justify-center"
-                              aria-label="Unarchive chat"
+                              aria-label={t('chat.unarchive_chat_aria')}
                             >
                               <i className="fa-solid fa-arrow-up-from-bracket" />
                             </button>
@@ -1080,45 +1086,45 @@ export default function Messages(){
 
                           <button
                             onClick={() => {
-                              navigate(`/user_chat/chat/${encodeURIComponent(t.other_username)}${shareQuery}`)
+                              navigate(`/user_chat/chat/${encodeURIComponent(archivedThread.other_username)}${shareQuery}`)
                             }}
                             onTouchStart={(e) => {
                               startXRef.current = e.touches[0].clientX
-                              draggingIdRef.current = `archived-${t.other_username}`
-                              setDragX(swipeId === `archived-${t.other_username}` ? -60 : 0)
+                              draggingIdRef.current = `archived-${archivedThread.other_username}`
+                              setDragX(swipeId === `archived-${archivedThread.other_username}` ? -60 : 0)
                             }}
                             onTouchMove={(e) => {
-                              if (draggingIdRef.current !== `archived-${t.other_username}`) return
+                              if (draggingIdRef.current !== `archived-${archivedThread.other_username}`) return
                               const dx = e.touches[0].clientX - startXRef.current
                               setDragX(dx)
                             }}
                             onTouchEnd={() => {
-                              if (draggingIdRef.current !== `archived-${t.other_username}`) return
+                              if (draggingIdRef.current !== `archived-${archivedThread.other_username}`) return
                               const shouldOpen = dragX <= -40
-                              setSwipeId(shouldOpen ? `archived-${t.other_username}` : null)
+                              setSwipeId(shouldOpen ? `archived-${archivedThread.other_username}` : null)
                               setDragX(0)
                               draggingIdRef.current = null
                             }}
                             onTouchCancel={() => {
-                              if (draggingIdRef.current !== `archived-${t.other_username}`) return
+                              if (draggingIdRef.current !== `archived-${archivedThread.other_username}`) return
                               setDragX(0)
                               draggingIdRef.current = null
                             }}
                             className="w-full px-3 py-2 flex items-center gap-3 bg-transparent"
                             style={{ transform: `translateX(${tx}px)`, transition }}
                           >
-                            <Avatar username={t.other_username} url={t.profile_picture_url || undefined} size={44} displayName={t.display_name} loading="eager" />
+                            <Avatar username={archivedThread.other_username} url={archivedThread.profile_picture_url || undefined} size={44} displayName={archivedThread.display_name} loading="eager" />
                             <div className="flex-1 min-w-0 text-left">
                               <div className="flex items-center justify-between">
-                                <div className="font-medium truncate text-white/70">{t.display_name}</div>
-                                {t.last_activity_time && (
+                                <div className="font-medium truncate text-white/70">{archivedThread.display_name}</div>
+                                {archivedThread.last_activity_time && (
                                   <div className="ml-3 flex-shrink-0 text-[11px] text-[#9fb0b5]">
-                                    {new Date(t.last_activity_time).toLocaleDateString()}
+                                    {new Date(archivedThread.last_activity_time).toLocaleDateString()}
                                   </div>
                                 )}
                               </div>
                               <div className="text-[13px] text-[#9fb0b5] truncate">
-                                {formatLastMessagePreview(t.last_message_text)}
+                                {formatLastMessagePreview(archivedThread.last_message_text, t)}
                               </div>
                             </div>
                           </button>
@@ -1157,7 +1163,7 @@ export default function Messages(){
                   setChatMoreTarget(null)
                 }}>
                   <i className={`fa-solid ${isMuted ? 'fa-bell' : 'fa-bell-slash'} text-white/60 w-6 text-center`} />
-                  {isMuted ? 'Unmute Chat' : 'Mute Chat'}
+                  {isMuted ? t('chat.unmute_chat') : t('chat.mute_chat')}
                 </button>
               )
             })()}
@@ -1167,7 +1173,7 @@ export default function Messages(){
                 setChatMoreTarget(null)
               }}>
                 <i className="fa-solid fa-box-archive text-white/60 w-6 text-center" />
-                Archive Chat
+                {t('chat.archive_chat')}
               </button>
             )}
             {chatMoreTarget.type === 'dm' && (
@@ -1193,7 +1199,7 @@ export default function Messages(){
                 loadThreads(true)
               }}>
                 <i className="fa-solid fa-broom text-white/60 w-6 text-center" />
-                Clear Chat
+                {t('chat.clear_chat')}
               </button>
             )}
             {chatMoreTarget.type === 'dm' && (
@@ -1202,7 +1208,7 @@ export default function Messages(){
                 navigate(`/user_chat/chat/${encodeURIComponent(chatMoreTarget.username ?? '')}${shareQuery}`)
               }}>
                 <i className="fa-solid fa-ban text-white/60 w-6 text-center" />
-                Block User
+                {t('chat.block_user')}
               </button>
             )}
             {chatMoreTarget.type === 'group' && chatMoreTarget.groupId && (
@@ -1212,7 +1218,7 @@ export default function Messages(){
                 loadGroupChats(true)
               }}>
                 <i className="fa-solid fa-broom text-white/60 w-6 text-center" />
-                Clear Chat
+                {t('chat.clear_chat')}
               </button>
             )}
             {chatMoreTarget.type === 'group' && chatMoreTarget.groupId && (
@@ -1224,7 +1230,7 @@ export default function Messages(){
                 setChatMoreTarget(null)
               }}>
                 <i className="fa-solid fa-right-from-bracket text-white/60 w-6 text-center" />
-                Leave Group
+                {t('chat.leave_group')}
               </button>
             )}
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-red-400" onClick={() => {
@@ -1237,9 +1243,9 @@ export default function Messages(){
               }
             }}>
               <i className="fa-solid fa-trash text-red-400/60 w-6 text-center" />
-              Delete Chat
+              {t('chat.delete_chat')}
             </button>
-            <button className="w-full text-center py-3 text-white/50 text-sm" onClick={() => setChatMoreTarget(null)}>Cancel</button>
+            <button className="w-full text-center py-3 text-white/50 text-sm" onClick={() => setChatMoreTarget(null)}>{t('chat.cancel')}</button>
           </div>
         </div>
       )}
@@ -1248,6 +1254,7 @@ export default function Messages(){
 }
 
 function NewMessageInline(){
+  const { t } = useTranslation()
   const [mode, setMode] = useState<'direct' | 'group'>('direct')
   
   return (
@@ -1265,7 +1272,7 @@ function NewMessageInline(){
             }`}
           >
             <i className="fa-solid fa-user mr-2" />
-            Direct Message
+            {t('chat.direct_message_mode')}
           </button>
           <button
             type="button"
@@ -1277,14 +1284,14 @@ function NewMessageInline(){
             }`}
           >
             <i className="fa-solid fa-users mr-2" />
-            Group Chat
+            {t('chat.group_chat_mode')}
           </button>
         </div>
       </div>
       
       {/* Content based on mode */}
       {mode === 'direct' ? (
-        <ParentCommunityPicker title="Start a New Message" variant="compact" />
+        <ParentCommunityPicker title={t('chat.start_new_message_picker')} variant="compact" />
       ) : (
         <GroupChatCreator />
       )}

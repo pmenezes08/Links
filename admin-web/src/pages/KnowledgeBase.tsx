@@ -854,7 +854,7 @@ export default function KnowledgeBase() {
         {/* Main content */}
         <main className="flex-1 p-4 md:p-6 overflow-y-auto">
           {/* Mobile page picker */}
-          <div className="lg:hidden mb-4">
+          <div className="lg:hidden mb-4 space-y-2">
             <select
               value={selectedSlug || ''}
               onChange={(e) => setSelectedSlug(e.target.value)}
@@ -866,6 +866,26 @@ export default function KnowledgeBase() {
                 </option>
               ))}
             </select>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => handleReseed(false)}
+                disabled={reseeding}
+                title="Merge new seed fields only — keeps your edits and existing values."
+                className="text-xs px-3 py-1.5 rounded-lg border border-white/10 text-white/80 hover:bg-white/5 disabled:opacity-50"
+              >
+                <i className={`fa-solid ${reseeding ? 'fa-spinner fa-spin' : 'fa-rotate'} mr-1`} />
+                Reseed (safe)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleReseed(false, selectedSlug || undefined)}
+                disabled={reseeding || !selectedSlug}
+                className="text-xs px-3 py-1.5 rounded-lg border border-white/10 text-white/80 hover:bg-white/5 disabled:opacity-50"
+              >
+                Reseed this page
+              </button>
+            </div>
           </div>
 
           {detailLoading ? (

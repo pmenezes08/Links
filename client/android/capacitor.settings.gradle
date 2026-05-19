@@ -8,6 +8,9 @@ project(':capacitor-app').projectDir = new File('../node_modules/@capacitor/app/
 include ':capacitor-device'
 project(':capacitor-device').projectDir = new File('../node_modules/@capacitor/device/android')
 
+include ':capacitor-filesystem'
+project(':capacitor-filesystem').projectDir = new File('../node_modules/@capacitor/filesystem/android')
+
 include ':capacitor-geolocation'
 project(':capacitor-geolocation').projectDir = new File('../node_modules/@capacitor/geolocation/android')
 
@@ -23,8 +26,17 @@ project(':capacitor-preferences').projectDir = new File('../node_modules/@capaci
 include ':capacitor-push-notifications'
 project(':capacitor-push-notifications').projectDir = new File('../node_modules/@capacitor/push-notifications/android')
 
+include ':capacitor-share'
+project(':capacitor-share').projectDir = new File('../node_modules/@capacitor/share/android')
+
 include ':capgo-inappbrowser'
 project(':capgo-inappbrowser').projectDir = new File('../node_modules/@capgo/inappbrowser/android')
 
+include ':capgo-native-purchases'
+project(':capgo-native-purchases').projectDir = new File('../node_modules/@capgo/native-purchases/android')
+
 include ':codetrix-studio-capacitor-google-auth'
 project(':codetrix-studio-capacitor-google-auth').projectDir = new File('../node_modules/@codetrix-studio/capacitor-google-auth/android')
+
+include ':ebarooni-capacitor-calendar'
+project(':ebarooni-capacitor-calendar').projectDir = new File('../node_modules/@ebarooni/capacitor-calendar/android')

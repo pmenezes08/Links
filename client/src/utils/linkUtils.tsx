@@ -97,42 +97,69 @@ export function SmartLink({
     e.preventDefault()
     e.stopPropagation()
 
-    // Landing page links (www.c-point.co) should open in browser
-    if (isLandingPageLink(href)) {
-      window.open(href, '_blank', 'noopener,noreferrer')
-      return
-    }
+    const raw = href.trim()
 
-    // Check if this is an internal app.c-point.co link
-    if (!isInternalLink(href)) {
-      // External link - prefer in-platform article reader for roundups/news if provided
-      if (onExternalClick) {
-        onExternalClick(href)
+    // Path-only links: always React Router (parity with @mention → profile). Never window.open.
+    if (raw.startsWith('/') && !raw.startsWith('//')) {
+      const absForInvite =
+        typeof window !== 'undefined'
+          ? new URL(raw, window.location.origin).href
+          : `https://app.c-point.co${raw}`
+      const pathInvite = extractInviteToken(absForInvite)
+      if (pathInvite) {
+        setProcessing(true)
+        try {
+          const result = await joinCommunityWithInvite(pathInvite)
+          if (result.success && result.communityId) {
+            if (onJoinCommunity && result.communityName) {
+              onJoinCommunity(result.communityName, result.communityId)
+            }
+            navigate(`/community_feed_react/${result.communityId}`)
+          } else if (result.alreadyMember && result.communityId) {
+            navigate(`/community_feed_react/${result.communityId}`)
+          } else {
+            alert(result.error || 'Failed to join community')
+          }
+        } finally {
+          setProcessing(false)
+        }
         return
       }
-      // Fallback to new tab
-      window.open(href, '_blank', 'noopener,noreferrer')
+      navigate(raw)
       return
     }
 
-    // Check for invite token
-    const inviteToken = extractInviteToken(href)
+    let resolvedHref = raw
+
+    // Landing page links (www.c-point.co) should open in browser
+    if (isLandingPageLink(resolvedHref)) {
+      window.open(resolvedHref, '_blank', 'noopener,noreferrer')
+      return
+    }
+
+    if (!isInternalLink(resolvedHref)) {
+      if (onExternalClick) {
+        onExternalClick(resolvedHref)
+        return
+      }
+      window.open(resolvedHref, '_blank', 'noopener,noreferrer')
+      return
+    }
+
+    const inviteToken = extractInviteToken(resolvedHref)
     if (inviteToken) {
       setProcessing(true)
       try {
         const result = await joinCommunityWithInvite(inviteToken)
-        
+
         if (result.success && result.communityId) {
-          // Successfully joined - show success and navigate
           if (onJoinCommunity && result.communityName) {
             onJoinCommunity(result.communityName, result.communityId)
           }
           navigate(`/community_feed_react/${result.communityId}`)
         } else if (result.alreadyMember && result.communityId) {
-          // Already a member - just navigate
           navigate(`/community_feed_react/${result.communityId}`)
         } else {
-          // Show error as alert for now
           alert(result.error || 'Failed to join community')
         }
       } finally {
@@ -141,8 +168,7 @@ export function SmartLink({
       return
     }
 
-    // Other internal link - navigate within the app
-    const internalPath = extractInternalPath(href)
+    const internalPath = extractInternalPath(resolvedHref)
     if (internalPath) {
       navigate(internalPath)
     }
@@ -275,26 +301,26 @@ export function renderTextWithSourceLinks(
   let lastIndex = 0
   let sourceCounter = 0
   
-  // Match markdown links, https/http URLs, and www. URLs
-  const combinedRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s]+)|(?:^|\s)(www\.[^\s]+)/g
+  // Match markdown links ([text](url) path or https), https/http URLs, and www. URLs
+  const combinedRegex = /\[([^\]]+)\]\(([^)]+)\)|(https?:\/\/[^\s]+)|(?:^|\s)(www\.[^\s]+)/g
   let match
-  
+
   while ((match = combinedRegex.exec(text)) !== null) {
     // For www. matches the full match may include a leading space; adjust start index
     const wwwUrl = match[4]
     const effectiveStart = wwwUrl ? match.index + (match[0].length - wwwUrl.length) : match.index
-    
+
     if (effectiveStart > lastIndex) {
       const textBefore = text.substring(lastIndex, effectiveStart)
       parts.push(...colorizeMentions(replaceFaIcons(applyBoldEmphasis(preserveRichTextNewlines(textBefore, lastIndex))), onMentionClick))
     }
-    
+
     let url: string
     let displayText: string
-    
+
     if (match[1] && match[2]) {
       displayText = match[1]
-      url = match[2]
+      url = match[2].trim()
     } else if (wwwUrl) {
       displayText = wwwUrl
       url = `https://${wwwUrl}`
@@ -367,7 +393,7 @@ export function renderRichText(
   }
 
   const nodes: Array<React.ReactNode> = []
-  const markdownRe = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g
+  const markdownRe = /\[([^\]]+)\]\(([^)]+)\)/g
   let lastIndex = 0
   let match: RegExpExecArray | null
   let sourceCounter = 0
@@ -383,7 +409,7 @@ export function renderRichText(
       )
     }
     const label = match[1]
-    const url = match[2]
+    const url = match[2].trim()
     nodes.push(
       <SmartLink
         key={`md-${match.index}`}
@@ -467,13 +493,18 @@ function renderTextWithLinksInner(
     }
 
     const displayText = match[1]
-    const url = match[2]
-    const fullUrl = url.startsWith('http') ? url : `https://${url}`
+    const urlRaw = match[2]
+    const hrefForLink =
+      urlRaw.startsWith('/') && !urlRaw.startsWith('//')
+        ? urlRaw
+        : urlRaw.startsWith('http')
+          ? urlRaw
+          : `https://${urlRaw}`
 
     parts.push(
       <SmartLink
         key={match.index}
-        href={fullUrl}
+        href={hrefForLink}
         displayText={displayText}
         onJoinCommunity={onJoinCommunity}
         onExternalClick={onExternalClick}

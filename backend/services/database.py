@@ -16,6 +16,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 SQLITE_DB_PATH = Path(os.getenv("SQLITE_DB_PATH") or (_REPO_ROOT / "users.db"))
 USE_MYSQL = os.getenv("DB_BACKEND", "sqlite").lower() == "mysql"
 
+
+def db_backend_is_mysql() -> bool:
+    """True when running against MySQL. Read env each call (avoids import-order bugs)."""
+    return os.environ.get("DB_BACKEND", "sqlite").lower() == "mysql"
+
 # Retry configuration for MySQL connections
 MYSQL_MAX_RETRIES = int(os.environ.get("MYSQL_MAX_RETRIES", "3"))
 MYSQL_RETRY_DELAY = float(os.environ.get("MYSQL_RETRY_DELAY", "0.5"))

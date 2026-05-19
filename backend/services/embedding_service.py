@@ -42,13 +42,14 @@ DIMENSION_CHUNK_TYPES = (
     'Network',
     'UniqueFingerprint',
     'InferredContext',
+    'LifeInterests',
 )
 CHUNK_TYPES = AGGREGATE_CHUNK_TYPES + DIMENSION_CHUNK_TYPES
 
 AGGREGATE_DIMENSION_MAP = {
     'professional': ('Index', 'LifeCareer', 'Expertise', 'CompanyIntel'),
-    'personality': ('Identity', 'Opinions', 'Index'),
-    'experiences': ('GeographyCulture', 'UniqueFingerprint', 'InferredContext', 'LifeCareer'),
+    'personality': ('Identity', 'Opinions', 'LifeInterests', 'Index'),
+    'experiences': ('GeographyCulture', 'UniqueFingerprint', 'InferredContext', 'LifeInterests', 'LifeCareer'),
     'social': ('Network', 'Identity'),
 }
 
@@ -126,7 +127,7 @@ def _load_kb_for_embedding(username: str) -> Dict[str, dict]:
         kb = get_member_knowledge(username, [
             "Index", "LifeCareer", "Expertise", "CompanyIntel",
             "GeographyCulture", "Identity", "Opinions",
-            "UniqueFingerprint", "InferredContext", "Network",
+            "UniqueFingerprint", "InferredContext", "LifeInterests", "Network",
         ])
         return {nt: doc.get("content", {}) for nt, doc in kb.items() if doc.get("content")}
     except Exception:
@@ -259,6 +260,25 @@ def build_dimension_chunks(profile: dict, username: str = None) -> Dict[str, str
         ident_parts.append(f"Lifestyle: {personal['lifestyle']}")
     if ident_parts:
         chunks["Identity"] = " | ".join(part for part in ident_parts if part)
+
+    li = kb.get("LifeInterests", {})
+    li_parts: List[str] = []
+    for key, label in (
+        ("interests", "Interests"),
+        ("rituals", "Rituals"),
+        ("tasteSignals", "Taste"),
+        ("socialContexts", "Social contexts"),
+        ("capabilitySignals", "Capabilities"),
+        ("evidence", "Evidence"),
+    ):
+        if li.get(key):
+            li_parts.append(f"{label}: {_kb_text_for_field(li, key, 8)}")
+    if personal.get("lifestyle"):
+        li_parts.append(f"Lifestyle: {personal['lifestyle']}")
+    if analysis.get("interests"):
+        li_parts.append(f"Legacy interests: {_kb_text_for_field({'interests': analysis.get('interests')}, 'interests', 8)}")
+    if li_parts:
+        chunks["LifeInterests"] = " | ".join(part for part in li_parts if part)
 
     net_kb = kb.get("Network", {})
     net_parts: List[str] = []
@@ -423,7 +443,7 @@ def build_profile_chunks(profile: dict, username: str = None) -> Dict[str, str]:
     if prof_parts:
         chunks['professional'] = ' | '.join(prof_parts)
 
-    # --- personality chunk (KB: Identity + Opinions) ---
+    # --- personality chunk (KB: Identity + Opinions + LifeInterests) ---
     pers_parts = []
     ident_kb = kb.get("Identity", {})
     if ident_kb.get("traits"):
@@ -443,6 +463,13 @@ def build_profile_chunks(profile: dict, username: str = None) -> Dict[str, str]:
         pers_parts.append(f"Beliefs: {_kb_text_for_field(op_kb, 'consistentBeliefs')}")
     if op_kb.get("controversialTakes"):
         pers_parts.append(f"Controversial: {_kb_text_for_field(op_kb, 'controversialTakes')}")
+    li = kb.get("LifeInterests", {})
+    if li.get("interests"):
+        pers_parts.append(f"Life interests: {_kb_text_for_field(li, 'interests', 8)}")
+    if li.get("rituals"):
+        pers_parts.append(f"Rituals: {_kb_text_for_field(li, 'rituals', 6)}")
+    if li.get("capabilitySignals"):
+        pers_parts.append(f"Personal capabilities: {_kb_text_for_field(li, 'capabilitySignals', 6)}")
 
     # Legacy personality data
     identity = analysis.get('identity') or {}
@@ -465,7 +492,7 @@ def build_profile_chunks(profile: dict, username: str = None) -> Dict[str, str]:
     if pers_parts:
         chunks['personality'] = ' | '.join(pers_parts)
 
-    # --- experiences chunk (KB: GeographyCulture + UniqueFingerprint + InferredContext + LifeCareer turning points) ---
+    # --- experiences chunk (KB: GeographyCulture + UniqueFingerprint + InferredContext + LifeInterests + LifeCareer turning points) ---
     exp_parts = []
     geo = kb.get("GeographyCulture", {})
     if geo.get("culturalInfluences"):
@@ -490,6 +517,10 @@ def build_profile_chunks(profile: dict, username: str = None) -> Dict[str, str]:
             exp_parts.append(f"{ix.get('experience', '')}: {ix.get('transformativeImpact', '')}")
         elif isinstance(ix, str):
             exp_parts.append(ix)
+    if li.get("socialContexts"):
+        exp_parts.append(f"Interest social contexts: {_kb_text_for_field(li, 'socialContexts', 6)}")
+    if li.get("tasteSignals"):
+        exp_parts.append(f"Taste signals: {_kb_text_for_field(li, 'tasteSignals', 6)}")
     for tp in (lc.get("turningPoints") or [])[:3]:
         if isinstance(tp, dict):
             exp_parts.append(f"Turning point: {tp.get('description', tp.get('event', ''))}")

@@ -6,19 +6,23 @@ interface MessageImageProps {
   alt: string
   onClick?: () => void
   className?: string
+  /** Fill a fixed-aspect parent (e.g. media grid tile); drops bubble max-height and uses cover */
+  tile?: boolean
 }
 
-export default function MessageImage({ src, alt, onClick, className = '' }: MessageImageProps) {
+export default function MessageImage({ src, alt, onClick, className = '', tile = false }: MessageImageProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [retryWithOriginal, setRetryWithOriginal] = useState(false)
+  const [errorCount, setErrorCount] = useState(0)
   const normalizedSrc = useMemo(() => src?.split('?')[0]?.toLowerCase() || '', [src])
   const isGif = normalizedSrc.endsWith('.gif')
-  
-  // Apply Cloudflare optimization (skip for GIFs to preserve animation)
+
+  // Apply Cloudflare optimization (skip for GIFs). Retry with original on error. errorCount remounts img on hard failures (iOS broken-icon case).
   const displaySrc = useMemo(() => {
-    if (isGif) return src
+    if (isGif || retryWithOriginal) return src
     return optimizeMessagePhoto(src)
-  }, [src, isGif])
+  }, [src, isGif, retryWithOriginal])
 
   const handleLoad = () => {
     setLoading(false)
@@ -26,24 +30,33 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
 
   const handleError = () => {
     setLoading(false)
-    setError(true)
+    if (!retryWithOriginal) {
+      setRetryWithOriginal(true)
+    } else {
+      setErrorCount((prev) => prev + 1)
+      setError(true)
+    }
   }
 
+  const rootLayout = tile ? 'block w-full h-full min-h-0' : 'inline-block'
+
   return (
-    <div 
-      className={`relative rounded overflow-hidden inline-block ${className}`}
+    <div
+      className={`relative rounded overflow-hidden ${rootLayout} ${className}`}
       onClick={onClick}
     >
-      {/* Loading skeleton - minimal */}
       {loading && !error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white/5 min-h-[100px] min-w-[100px]">
+        <div
+          className={`absolute inset-0 flex items-center justify-center bg-white/5 ${tile ? '' : 'min-h-[100px] min-w-[100px]'}`}
+        >
           <div className="w-5 h-5 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
         </div>
       )}
 
-      {/* Error state */}
       {error && (
-        <div className="flex items-center justify-center bg-white/5 min-h-[100px] min-w-[100px] p-4">
+        <div
+          className={`absolute inset-0 flex items-center justify-center bg-white/5 p-4 z-10 ${tile ? '' : 'min-h-[100px] min-w-[100px]'}`}
+        >
           <div className="flex flex-col items-center gap-1 text-white/40">
             <i className="fa-solid fa-image text-lg"></i>
             <div className="text-[10px]">Unavailable</div>
@@ -51,24 +64,24 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
         </div>
       )}
 
-      {/* Actual image */}
       <img
+        key={`preview-${normalizedSrc}-${errorCount}`}
         src={displaySrc}
         alt={alt}
-        className={`max-w-full transition-opacity duration-300 ${
+        className={`max-w-full transition-opacity duration-300 ${tile ? 'h-full w-full object-cover' : ''} ${
           loading ? 'opacity-0' : 'opacity-100'
         }`}
         onLoad={handleLoad}
         onError={handleError}
         loading="eager"
         decoding="async"
-        style={{ 
+        style={{
           display: error ? 'none' : 'block',
-          maxHeight: '320px',
-          imageOrientation: 'from-image',
+          ...(tile
+            ? { height: '100%', width: '100%', objectFit: 'cover' as const }
+            : { maxHeight: '320px', imageOrientation: 'from-image' }),
         }}
       />
-
     </div>
   )
 }

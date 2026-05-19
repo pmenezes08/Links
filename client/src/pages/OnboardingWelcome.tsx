@@ -1,20 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
 export default function OnboardingWelcome(){
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [cards, setCards] = useState<string[]>([])
   const [cardIndex, setCardIndex] = useState(0)
   const [touchStartX, setTouchStartX] = useState<number | null>(null)
   const [touchDeltaX, setTouchDeltaX] = useState(0)
   const [loaded, setLoaded] = useState(false)
   const [imagesLoaded, setImagesLoaded] = useState<Record<number, boolean>>({})
-  
-  const sentences = [
-    'Enter the network where ideas connect people.',
-    'Share your thoughts, images, and connect through meaningful conversations.',
-    'Connect with your world'
-  ]
+
+  const sentences = t('onboarding.welcome.carousel', { returnObjects: true }) as string[]
 
   useEffect(() => {
     // Client instrumentation: log when onboarding is shown
@@ -54,7 +52,7 @@ export default function OnboardingWelcome(){
     <div className="h-screen overflow-hidden bg-black text-white flex items-center justify-center" style={{ height: '100dvh' }}>
       <div className="w-full max-w-xl px-4">
         <div className="mb-3">
-          <div className="text-2xl font-bold">Welcome to Connection Point</div>
+          <div className="text-2xl font-bold">{t('onboarding.welcome.title')}</div>
         </div>
         <div className="text-sm text-[#9fb0b5] mb-3" style={{ minHeight: '32px' }}>
           {sentences[cardIndex % sentences.length]}
@@ -103,7 +101,7 @@ export default function OnboardingWelcome(){
                 <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-2">
                   {cards.map((_, i) => (
                     <button key={i}
-                            aria-label={`Go to slide ${i+1}`}
+                            aria-label={t('onboarding.welcome.slide_label', { number: i + 1 })}
                             onClick={() => setCardIndex(i)}
                             className={`w-2.5 h-2.5 rounded-full ${cardIndex===i ? 'bg-[#4db6ac]' : 'bg-white/30'}`} />
                   ))}
@@ -115,13 +113,13 @@ export default function OnboardingWelcome(){
             <div className="w-full h-[46vh] bg-white/[0.03] flex items-center justify-center">
               <div className="text-center text-white/40">
                 <i className="fa-solid fa-images text-4xl mb-2" />
-                <p className="text-sm">Welcome images coming soon</p>
+                <p className="text-sm">{t('onboarding.welcome.images_coming_soon')}</p>
               </div>
             </div>
           )}
         </div>
         <div className="mt-4">
-          <button className="px-4 py-3 rounded-xl bg-[#4db6ac] text-black font-semibold" onClick={onGetStarted}>Get started</button>
+          <button className="px-4 py-3 rounded-xl bg-[#4db6ac] text-black font-semibold" onClick={onGetStarted}>{t('onboarding.welcome.get_started')}</button>
         </div>
       </div>
     </div>

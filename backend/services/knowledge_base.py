@@ -27,9 +27,10 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
-from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
+from backend.services.database import db_backend_is_mysql, get_db_connection, get_sql_placeholder
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,8 @@ CATEGORIES: List[Dict[str, str]] = [
     {"id": "product", "label": "Product", "icon": "fa-cube"},
     {"id": "pricing", "label": "Pricing", "icon": "fa-euro-sign"},
     {"id": "policy", "label": "Policy", "icon": "fa-shield-halved"},
+    {"id": "steve", "label": "Steve", "icon": "fa-user-astronaut"},
+    {"id": "ai", "label": "AI", "icon": "fa-brain"},
     {"id": "planning", "label": "Planning", "icon": "fa-map"},
     {"id": "reference", "label": "Reference", "icon": "fa-book"},
     {"id": "audit", "label": "Audit", "icon": "fa-clock-rotate-left"},
@@ -52,7 +55,7 @@ def _utc_now_str() -> str:
 
 
 def _ensure_index(cursor, table_name: str, index_name: str, columns_sql: str) -> None:
-    if USE_MYSQL:
+    if db_backend_is_mysql():
         cursor.execute(
             """
             SELECT 1 FROM information_schema.statistics
@@ -224,6 +227,56 @@ def _compute_field_diff(old_fields: List[Dict], new_fields: List[Dict]) -> List[
                 "tbd_to": new_tbd,
             })
     return diffs
+
+
+def _merge_missing_seed_fields(
+    existing_fields: List[Dict[str, Any]],
+    seed_fields: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Append seed field definitions that are absent from an edited KB page.
+
+    Admin-authored values are preserved exactly. This is intentionally a
+    definition merge, not a value sync: if a field already exists, its current
+    label/help/value/tbd metadata remains the source of truth.
+    """
+    existing = list(existing_fields or [])
+    existing_names = {
+        str(field.get("name") or "").strip()
+        for field in existing
+        if str(field.get("name") or "").strip()
+    }
+    missing: List[Dict[str, Any]] = []
+    for seed_field in seed_fields or []:
+        name = str(seed_field.get("name") or "").strip()
+        if not name or name in existing_names:
+            continue
+        field_copy = json.loads(json.dumps(seed_field))
+        missing.append(field_copy)
+        existing.append(field_copy)
+        existing_names.add(name)
+    return existing, missing
+
+
+def _merge_missing_seed_field_groups(
+    existing_groups: List[Dict[str, Any]],
+    seed_groups: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    existing = list(existing_groups or [])
+    existing_ids = {
+        str(group.get("id") or "").strip()
+        for group in existing
+        if str(group.get("id") or "").strip()
+    }
+    missing: List[Dict[str, Any]] = []
+    for seed_group in seed_groups or []:
+        group_id = str(seed_group.get("id") or "").strip()
+        if not group_id or group_id in existing_ids:
+            continue
+        group_copy = json.loads(json.dumps(seed_group))
+        missing.append(group_copy)
+        existing.append(group_copy)
+        existing_ids.add(group_id)
+    return existing, missing
 
 
 def save_page(
@@ -420,6 +473,25 @@ def update_test_status(
 
 # ── Seed ────────────────────────────────────────────────────────────────
 
+def _steve_platform_manual_seed_body() -> str:
+    """Load the canonical Steve Platform Manual doc into the editable KB seed."""
+    try:
+        path = Path(__file__).resolve().parents[2] / "docs" / "STEVE_PLATFORM_KB.md"
+        return path.read_text(encoding="utf-8")
+    except Exception as exc:
+        logger.warning("Could not load docs/STEVE_PLATFORM_KB.md for KB seed: %s", exc)
+        return (
+            "# Steve Platform Manual KB\n\n"
+            "Steve is inside C-Point. C-Point, this platform, the app, and here "
+            "mean C-Point unless the user explicitly names another platform.\n\n"
+            "### `platform.identity`\n\n"
+            "**Priority:** always\n\n"
+            "**Answer / context:**\n\n"
+            "Steve is a member of C-Point with extra reach. He is not a support widget "
+            "and does not answer as if he is on X/Twitter, Grok, or any external network.\n"
+        )
+
+
 def _seed_pages() -> List[Dict[str, Any]]:
     """Default pages. Any with TBD values are flagged ``tbd: true``."""
     return [
@@ -451,6 +523,21 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 "Primary sales channel is **web (Stripe)** for margin; iOS/Android IAP available "
                 "for convenience at the **same public price**."
             ),
+        },
+        {
+            "slug": "steve-platform-manual",
+            "title": "Steve Platform Manual",
+            "category": "steve",
+            "icon": "fa-book-open",
+            "description": "Canonical cards Steve uses to answer questions about C-Point, himself, privacy, feedback, and founder context.",
+            "sort_order": 5,
+            "fields": [
+                {"name": "manual_version", "label": "Manual version", "type": "string", "value": "v1"},
+                {"name": "last_reviewed", "label": "Last reviewed", "type": "date", "value": "2026-05-01"},
+                {"name": "enabled_surfaces", "label": "Enabled surfaces", "type": "string", "value": "steve_dm, steve_group"},
+                {"name": "always_on_card", "label": "Always-on card", "type": "string", "value": "platform.identity"},
+            ],
+            "body": _steve_platform_manual_seed_body(),
         },
 
         # ── Product ─────────────────────────────────────────────────
@@ -511,13 +598,24 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 # ``STRIPE_API_KEY`` mode (test vs live); the opposite mode's ID
                 # is never exposed through the public pricing endpoint.
                 {"name": "premium_stripe_price_id_test", "label": "Stripe price ID — monthly (test)", "type": "string", "value": "", "tbd": True,
-                 "help": "Paste the ``price_...`` ID from Stripe test mode here. "
-                         "Used for staging checkouts only.",
+                 "help": "Use the Stripe Price ID (``price_...``), not Product ID (``prod_...``). "
+                         "Paste the test-mode monthly Price ID here. Used for staging checkouts only.",
                  "group": "premium"},
                 {"name": "premium_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
-                 "help": "Paste the ``price_...`` ID from Stripe live mode here. "
-                         "Used for production checkouts only.",
+                 "help": "Use the Stripe Price ID (``price_...``), not Product ID (``prod_...``). "
+                         "Paste the live-mode monthly Price ID here. Used for production checkouts only.",
                  "group": "premium"},
+                {"name": "iap_purchases_enabled", "label": "Production IAP grants enabled", "type": "boolean", "value": False,
+                 "help": "Keep false until App Store / Play review is approved. Sandbox/license-test purchases can still be granted for review.",
+                 "group": "premium"},
+                {"name": "web_app_billing_url", "label": "Web billing URL for mobile overflow", "type": "string",
+                 "value": "https://app.c-point.co/subscription_plans",
+                 "help": "Native apps link here when an additional community must be billed on web.",
+                 "group": "premium"},
+                {"name": "premium_apple_product_id", "label": "Apple product ID — Premium monthly", "type": "string",
+                 "value": "cpoint_premium_monthly", "group": "premium"},
+                {"name": "premium_google_product_id", "label": "Google Play product ID — Premium monthly", "type": "string",
+                 "value": "cpoint_premium_monthly", "group": "premium"},
 
                 # Enterprise-derived (Pro / effective tier)
                 {"name": "enterprise_derived_label", "label": "Public label for this effective tier", "type": "string",
@@ -600,44 +698,52 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "free_community_posts_per_day", "label": "Posts per day (per community)", "type": "integer", "value": 0,
                  "help": "0 = unlimited. Posts are cheap — no cap for free communities.", "group": "free"},
                 {"name": "free_community_upgrade_cta", "label": "Upgrade CTA shown to owner", "type": "string",
-                 "value": "Your community has reached 25 members. Upgrade to Paid L1 (€25/mo) to grow up to 75.",
+                 "value": "Your community has reached 25 members. Upgrade to Paid L1 (€49.99/mo) to grow up to 75.",
                  "group": "free"},
 
                 # Paid L1 — 26–75 members
-                {"name": "paid_l1_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 25, "group": "paid_l1"},
+                {"name": "paid_l1_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 49.99, "group": "paid_l1"},
                 {"name": "paid_l1_max_members", "label": "Max members", "type": "integer", "value": 75, "group": "paid_l1"},
                 {"name": "paid_l1_media_gb", "label": "Media quota (GB)", "type": "decimal", "suffix": "GB", "value": 5, "tbd": True, "group": "paid_l1"},
                 {"name": "paid_l1_networking_page_included", "label": "Shown on networking page", "type": "boolean", "value": False,
                  "help": "Not included at L1 — sold as add-on (see Networking Page).", "group": "paid_l1"},
                 {"name": "paid_l1_content_creation_available", "label": "Content creation available", "type": "boolean", "value": True, "group": "paid_l1"},
                 {"name": "paid_l1_upgrade_cta", "label": "Upgrade CTA shown to owner", "type": "string",
-                 "value": "You're at 75 members. Upgrade to Paid L2 (€50/mo) to grow up to 150.",
+                 "value": "You're at 75 members. Upgrade to Paid L2 (€99.99/mo) to grow up to 150.",
                  "group": "paid_l1"},
                 {"name": "paid_l1_stripe_price_id_test", "label": "Stripe price ID — monthly (test)", "type": "string", "value": "", "tbd": True,
                  "help": "Paste the ``price_...`` ID from Stripe test mode. Read by /api/kb/pricing on staging only.",
                  "group": "paid_l1"},
-                {"name": "paid_l1_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
+                {"name": "paid_l1_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "price_1TYaE2DHGQ57hB63fjGqo2nZ",
                  "help": "Paste the ``price_...`` ID from Stripe live mode. Read by /api/kb/pricing on production only.",
                  "group": "paid_l1"},
+                {"name": "paid_l1_apple_product_id", "label": "Apple product ID — L1 monthly", "type": "string",
+                 "value": "cpoint_community_l1_monthly", "group": "paid_l1"},
+                {"name": "paid_l1_google_product_id", "label": "Google Play product ID — L1 monthly", "type": "string",
+                 "value": "cpoint_community_l1_monthly", "group": "paid_l1"},
 
                 # Paid L2 — 76–150 members
-                {"name": "paid_l2_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 50, "group": "paid_l2"},
+                {"name": "paid_l2_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 99.99, "group": "paid_l2"},
                 {"name": "paid_l2_max_members", "label": "Max members", "type": "integer", "value": 150, "group": "paid_l2"},
                 {"name": "paid_l2_media_gb", "label": "Media quota (GB)", "type": "decimal", "suffix": "GB", "value": 10, "tbd": True, "group": "paid_l2"},
                 {"name": "paid_l2_networking_page_included", "label": "Shown on networking page", "type": "boolean", "value": False, "group": "paid_l2"},
                 {"name": "paid_l2_content_creation_available", "label": "Content creation available", "type": "boolean", "value": True, "group": "paid_l2"},
                 {"name": "paid_l2_upgrade_cta", "label": "Upgrade CTA shown to owner", "type": "string",
-                 "value": "You're at 150 members. Upgrade to Paid L3 (€80/mo) to grow up to 250.",
+                 "value": "You're at 150 members. Upgrade to Paid L3 (€189.99/mo) to grow up to 250.",
                  "group": "paid_l2"},
                 {"name": "paid_l2_stripe_price_id_test", "label": "Stripe price ID — monthly (test)", "type": "string", "value": "", "tbd": True,
                  "help": "Paste the ``price_...`` ID from Stripe test mode. Read by /api/kb/pricing on staging only.",
                  "group": "paid_l2"},
-                {"name": "paid_l2_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
+                {"name": "paid_l2_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "price_1TYaE2DHGQ57hB63Vr9ugl3Z",
                  "help": "Paste the ``price_...`` ID from Stripe live mode. Read by /api/kb/pricing on production only.",
                  "group": "paid_l2"},
+                {"name": "paid_l2_apple_product_id", "label": "Apple product ID — L2 monthly", "type": "string",
+                 "value": "cpoint_community_l2_monthly", "group": "paid_l2"},
+                {"name": "paid_l2_google_product_id", "label": "Google Play product ID — L2 monthly", "type": "string",
+                 "value": "cpoint_community_l2_monthly", "group": "paid_l2"},
 
                 # Paid L3 — 151–250 members
-                {"name": "paid_l3_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 80, "group": "paid_l3"},
+                {"name": "paid_l3_price_eur_monthly", "label": "Price per month", "type": "decimal", "prefix": "€", "value": 189.99, "group": "paid_l3"},
                 {"name": "paid_l3_max_members", "label": "Max members", "type": "integer", "value": 250, "group": "paid_l3"},
                 {"name": "paid_l3_media_gb", "label": "Media quota (GB)", "type": "decimal", "suffix": "GB", "value": 25, "tbd": True, "group": "paid_l3"},
                 {"name": "paid_l3_networking_page_included", "label": "Shown on networking page", "type": "boolean", "value": False, "group": "paid_l3"},
@@ -648,25 +754,30 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "paid_l3_stripe_price_id_test", "label": "Stripe price ID — monthly (test)", "type": "string", "value": "", "tbd": True,
                  "help": "Paste the ``price_...`` ID from Stripe test mode. Read by /api/kb/pricing on staging only.",
                  "group": "paid_l3"},
-                {"name": "paid_l3_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
+                {"name": "paid_l3_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "price_1TYaE2DHGQ57hB63cnv6WV3h",
                  "help": "Paste the ``price_...`` ID from Stripe live mode. Read by /api/kb/pricing on production only.",
                  "group": "paid_l3"},
+                {"name": "paid_l3_apple_product_id", "label": "Apple product ID — L3 monthly", "type": "string",
+                 "value": "cpoint_community_l3_monthly", "group": "paid_l3"},
+                {"name": "paid_l3_google_product_id", "label": "Google Play product ID — L3 monthly", "type": "string",
+                 "value": "cpoint_community_l3_monthly", "group": "paid_l3"},
 
                 # Unit economics — the flat €/member basis all paid tiers are derived from.
-                {"name": "flat_price_per_member_eur", "label": "Flat price per member (internal)", "type": "decimal", "prefix": "€", "value": 0.33,
-                 "help": "Internal unit-economics anchor: Paid L1 (75 × €0.33 ≈ €25), "
-                         "L2 (150 × €0.33 ≈ €50), L3 (250 × €0.33 ≈ €80). Must stay "
+                {"name": "flat_price_per_member_eur", "label": "Flat price per member (internal)", "type": "decimal", "prefix": "€", "value": 0.76,
+                 "help": "Internal blended unit-economics anchor after May-2026 repricing: "
+                         "Paid L1 (€49.99 / 75 ≈ €0.67/member), L2 (€99.99 / 150 ≈ €0.67/member), "
+                         "L3 (€189.99 / 250 ≈ €0.76/member). Must stay "
                          "above infra + support cost per member — revisit if Cloud Run / "
                          "Cloud SQL unit costs change. Not shown to end-users.",
                  "group": "economics"},
-                {"name": "break_even_members_paid_l1", "label": "Break-even members for L1", "type": "integer", "value": 8,
-                 "help": "With €25 revenue/mo on a ~€3 per-active-member cost basis "
+                {"name": "break_even_members_paid_l1", "label": "Break-even members for L1", "type": "integer", "value": 17,
+                 "help": "With €49.99 revenue/mo on a ~€3 per-active-member cost basis "
                          "(Cloud Run + egress + Steve weight), L1 turns profit around "
-                         "member #8. Keeps the cheapest paid tier from being a loss leader "
+                         "member #17. Keeps the cheapest paid tier from being a loss leader "
                          "at low member counts.",
                  "group": "economics"},
-                {"name": "break_even_members_paid_l2", "label": "Break-even members for L2", "type": "integer", "value": 17, "group": "economics"},
-                {"name": "break_even_members_paid_l3", "label": "Break-even members for L3", "type": "integer", "value": 27, "group": "economics"},
+                {"name": "break_even_members_paid_l2", "label": "Break-even members for L2", "type": "integer", "value": 34, "group": "economics"},
+                {"name": "break_even_members_paid_l3", "label": "Break-even members for L3", "type": "integer", "value": 64, "group": "economics"},
 
                 # Paid-community trial (separate from the user-tier trial).
                 {"name": "paid_trial_duration_days", "label": "Paid-community trial duration (days)", "type": "integer", "value": 14,
@@ -679,9 +790,41 @@ def _seed_pages() -> List[Dict[str, Any]]:
                  "group": "trial"},
 
                 # Paid · Steve package (add-on)
-                {"name": "paid_steve_package_price_eur_monthly", "label": "Package price / month", "type": "decimal", "prefix": "€", "value": 20, "tbd": True, "group": "paid_steve_package"},
-                {"name": "paid_steve_package_monthly_credit_pool", "label": "Community credit pool / month", "type": "integer", "value": 300,
-                 "help": "Shared across all members. Same weights as Credits & Entitlements.", "group": "paid_steve_package"},
+                {"name": "paid_steve_package_price_eur_monthly", "label": "Package price / month", "type": "decimal", "prefix": "€", "value": 49.99,
+                 "help": "Canonical customer-facing Steve Community add-on price. Provider cost controls below remain in USD because xAI/OpenAI bills are USD-based.", "group": "paid_steve_package"},
+                {"name": "paid_steve_package_monthly_credit_pool", "label": "Community Steve credits / month", "type": "integer", "value": 200,
+                 "help": "Customer-facing shared credit pool (weighted debits) across all members.", "group": "paid_steve_package"},
+                {"name": "paid_steve_package_monthly_provider_cost_ceiling_usd", "label": "Provider cost ceiling / month", "type": "decimal", "prefix": "$", "value": 19.99,
+                 "help": "Hidden operator-only xAI circuit breaker (~40% of €49.99 gross at typical FX). Do not expose to users.", "group": "paid_steve_package"},
+                {"name": "paid_steve_package_provider_cost_reservation_usd", "label": "Provider cost reservation / call", "type": "decimal", "prefix": "$", "value": 0.03,
+                 "help": "Pre-call reservation used to prevent concurrent requests from overspending the hidden ceiling.", "group": "paid_steve_package"},
+                {"name": "paid_steve_package_model", "label": "Community Steve model", "type": "string", "value": "grok-4.3",
+                 "help": "Used for all community-feed Steve calls, whether paid by community pool or personal fallback.", "group": "paid_steve_package"},
+                {"name": "paid_steve_package_model_input_usd_per_million", "label": "Model input $ / 1M tokens", "type": "decimal", "prefix": "$", "value": 1.25, "group": "paid_steve_package"},
+                {"name": "paid_steve_package_model_output_usd_per_million", "label": "Model output $ / 1M tokens", "type": "decimal", "prefix": "$", "value": 2.50, "group": "paid_steve_package"},
+                {"name": "paid_steve_package_multi_agent_enabled", "label": "Allow multi-agent in community feed", "type": "boolean", "value": False,
+                 "help": "Keep false unless pricing is reworked; Grok 4.3 is the default community-feed model.", "group": "paid_steve_package"},
+                {"name": "paid_steve_package_web_search_default_enabled", "label": "Web search on by default", "type": "boolean", "value": False,
+                 "help": "Only when External search explicit only is OFF: treat every community-feed @Steve message as needing live web context (high token use). Phrase-based triggers still work when explicit only is ON.", "group": "paid_steve_package"},
+                {"name": "paid_steve_package_x_search_default_enabled", "label": "X search on by default", "type": "boolean", "value": False,
+                 "help": "Only when External search explicit only is OFF: treat every feed @Steve message as needing X/Twitter search (high token use).", "group": "paid_steve_package"},
+                {"name": "paid_steve_package_external_search_explicit_only", "label": "External search explicit only", "type": "boolean", "value": True,
+                 "help": "When ON (recommended): only phrase-based live-news/current-events wording triggers external tools. When OFF: also triggers when Web or X search on by default is ON.", "group": "paid_steve_package"},
+                {"name": "paid_steve_package_feed_attach_web_search_tool", "label": "Hosted Steves (feed/DM/group): allow web_search", "type": "boolean", "value": True,
+                 "help": "When server-side intent says live lookup is warranted, pass Grok hosted web_search. Turn OFF for emergency disable without redeploy. DM and group reuse this flag with the same seeded community-tiers KB row.", "group": "paid_steve_package"},
+                {"name": "paid_steve_package_feed_attach_x_search_tool", "label": "Hosted Steves (feed/DM/group): allow x_search", "type": "boolean", "value": True,
+                 "help": "When intent allows external tools, pass Grok hosted x_search. Matches web flag semantics for all interactive Steve surfaces that read SteveCommunityConfig.", "group": "paid_steve_package"},
+                {"name": "paid_steve_package_max_output_tokens", "label": "Max output tokens", "type": "integer", "value": 1400, "group": "paid_steve_package"},
+                {"name": "paid_steve_package_recent_comments_limit", "label": "Recent comments in context", "type": "integer", "value": 8, "group": "paid_steve_package"},
+                {"name": "paid_steve_package_doc_excerpt_chars_default", "label": "Default document excerpt chars", "type": "integer", "value": 2000, "group": "paid_steve_package"},
+                {"name": "paid_steve_package_doc_excerpt_chars_deep", "label": "Deep document excerpt chars", "type": "integer", "value": 4000, "group": "paid_steve_package"},
+                {"name": "paid_steve_package_docs_limit", "label": "Documents in context", "type": "integer", "value": 10, "group": "paid_steve_package"},
+                {"name": "paid_steve_package_links_limit", "label": "Useful links in context", "type": "integer", "value": 10, "group": "paid_steve_package"},
+                {"name": "paid_steve_package_events_limit", "label": "Events in context", "type": "integer", "value": 10, "group": "paid_steve_package"},
+                {"name": "paid_steve_package_polls_limit", "label": "Polls in context", "type": "integer", "value": 5, "group": "paid_steve_package"},
+                {"name": "paid_steve_package_images_limit", "label": "Images passed to model", "type": "integer", "value": 4, "group": "paid_steve_package"},
+                {"name": "paid_steve_package_context_degrade_before_block", "label": "Degrade context before block", "type": "boolean", "value": True,
+                 "help": "When close to the hidden cost ceiling, reduce context before blocking where practical.", "group": "paid_steve_package"},
                 {"name": "paid_steve_package_free_member_access", "label": "Free members can use pool", "type": "boolean", "value": True, "group": "paid_steve_package"},
                 {"name": "paid_steve_package_premium_priority", "label": "Premium members spend pool before personal credits", "type": "boolean", "value": True, "group": "paid_steve_package"},
                 {"name": "paid_steve_package_fallback_when_empty", "label": "When pool is empty: Premium members fall back to personal credits", "type": "boolean", "value": True, "group": "paid_steve_package"},
@@ -906,12 +1049,12 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 "| Tier | Members | Price | Networking page | Content creation |\n"
                 "|---|---|---|---|---|\n"
                 "| Free | ≤ 25 | €0 | No | No |\n"
-                "| Paid L1 | 26–75 | €25/mo | Add-on | Yes |\n"
-                "| Paid L2 | 76–150 | €50/mo | Add-on | Yes |\n"
-                "| Paid L3 | 151–250 | €80/mo | Add-on | Yes |\n"
+                "| Paid L1 | 26–75 | €49.99/mo | Add-on | Yes |\n"
+                "| Paid L2 | 76–150 | €99.99/mo | Add-on | Yes |\n"
+                "| Paid L3 | 151–250 | €189.99/mo | Add-on | Yes |\n"
                 "| Enterprise | ≥ 251 | Custom (€299+ starting) | Included | Included |\n\n"
-                "Prices are derived from the internal `flat_price_per_member_eur = €0.33` "
-                "anchor (see Unit economics group) — any tier change must keep margin per "
+                "Prices are derived from the internal blended per-member economics anchor "
+                "(see Unit economics group) — any tier change must keep margin per "
                 "active member above the per-member infra + support cost.\n\n"
                 "### Paid community trial\n\n"
                 "New Paid subscriptions start with a **14-day trial**, one per billing "
@@ -1011,6 +1154,73 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 "against what communities are willing to pay for 'discoverable' status."
             ),
         },
+        {
+            "slug": "networking-ai",
+            "title": "Networking AI",
+            "category": "ai",
+            "icon": "fa-network-wired",
+            "description": "Steve networking model choices, weekly prompt caps, and cost assumptions.",
+            "sort_order": 20,
+            "fields": [
+                {"name": "networking_ai_enabled", "label": "Networking AI enabled", "type": "boolean", "value": True,
+                 "help": "Master switch for Steve-powered networking recommendations."},
+                {"name": "weekly_prompts_per_user", "label": "Prompts / user / rolling 7 days", "type": "integer", "value": 20,
+                 "help": "Counts user-visible networking prompts, not internal planner calls."},
+                {"name": "planner_model", "label": "Query planner model", "type": "enum",
+                 "allowed_values": ["grok-4.3", "grok-4.20-reasoning"],
+                 "value": "grok-4.3",
+                 "help": "Turns a user ask into facets, dimensions, constraints, named people, and a retrieval query."},
+                {"name": "final_answer_model", "label": "Final answer model", "type": "enum",
+                 "allowed_values": ["grok-4.3", "grok-4.20-reasoning"],
+                 "value": "grok-4.3",
+                 "help": "Writes the user-facing networking recommendation from the bounded roster."},
+                {"name": "kb_synthesis_model", "label": "Member KB synthesis model", "type": "enum",
+                 "allowed_values": ["grok-4.3", "grok-4.20-reasoning"],
+                 "value": "grok-4.3",
+                 "help": "Builds the long-lived member Knowledge Base dimensions used by search."},
+                {"name": "large_context_model", "label": "Large-context model", "type": "enum",
+                 "allowed_values": ["grok-4.20-reasoning", "grok-4.3"],
+                 "value": "grok-4.20-reasoning",
+                 "help": "Reserved for very large prompts that need a 2M-token context window."},
+                {"name": "use_large_context_model_after_tokens", "label": "Large-context threshold tokens", "type": "integer",
+                 "value": 900000, "help": "Future guardrail for switching to the large-context model."},
+                {"name": "fallback_enabled", "label": "Fallback retry enabled", "type": "boolean", "value": False,
+                 "help": "Retry only when the primary final-answer call produces no usable matches."},
+                {"name": "fallback_model", "label": "Fallback model", "type": "enum",
+                 "allowed_values": ["grok-4.3", "grok-4.20-reasoning", "grok-4.20-multi-agent"],
+                 "value": "grok-4.3"},
+                {"name": "planner_input_usd_per_million", "label": "Planner input $ / 1M tokens", "type": "decimal", "prefix": "$", "value": 0.20},
+                {"name": "planner_output_usd_per_million", "label": "Planner output $ / 1M tokens", "type": "decimal", "prefix": "$", "value": 0.50},
+                {"name": "final_input_usd_per_million", "label": "Final input $ / 1M tokens", "type": "decimal", "prefix": "$", "value": 1.25},
+                {"name": "final_output_usd_per_million", "label": "Final output $ / 1M tokens", "type": "decimal", "prefix": "$", "value": 2.50},
+                {"name": "kb_synthesis_input_usd_per_million", "label": "KB synthesis input $ / 1M tokens", "type": "decimal", "prefix": "$", "value": 1.25},
+                {"name": "kb_synthesis_output_usd_per_million", "label": "KB synthesis output $ / 1M tokens", "type": "decimal", "prefix": "$", "value": 2.50},
+                {"name": "target_margin_percent", "label": "Target gross margin", "type": "percent", "value": 60},
+                {"name": "recommended_price_eur_per_100_users_monthly", "label": "Recommended price / 100 users / month", "type": "decimal",
+                 "prefix": "€", "value": 1000},
+            ],
+            "body": (
+                "# Networking AI controls\n\n"
+                "This page controls the model-backed stages of Steve-powered networking search. "
+                "Use it to test output quality, latency, and cost before changing fixed monthly pricing.\n\n"
+                "## Editable model stages\n\n"
+                "- **Member KB synthesis**: builds the long-lived member Knowledge Base. Default: `grok-4.3`.\n"
+                "- **Query planner**: converts a user prompt into facets, constraints, dimensions, named people, and search rewrite. Default: `grok-4.3`.\n"
+                "- **Final answer**: writes the recommendation from the bounded roster. Default: `grok-4.3`.\n"
+                "- **Large-context fallback**: reserved for prompts that need a 2M-token context window. Default: `grok-4.20-reasoning`.\n"
+                "- **Retry fallback**: optional retry for no-match failures. Default: disabled, model `grok-4.3`.\n\n"
+                "## Locked stages\n\n"
+                "These are not editable from the KB because they are deterministic infrastructure, "
+                "not reasoning/generation choices:\n\n"
+                "- **Embedding generation**: OpenAI `text-embedding-3-small`.\n"
+                "- **Structured search**: deterministic SQL / keyword / KB-dimension scoring.\n"
+                "- **Semantic search**: FAISS or numpy cosine search over precomputed embeddings.\n"
+                "- **Ranking and fusion**: deterministic structured + semantic merge.\n"
+                "- **Context assembly**: deterministic full / mid / slim roster context selection.\n\n"
+                "Invalid model IDs are ignored by the backend and replaced with safe defaults. "
+                "Do not use non-reasoning models for KB synthesis, query planning, or final recommendations."
+            ),
+        },
 
         # ── Pricing ─────────────────────────────────────────────────
         {
@@ -1038,16 +1248,29 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 # Internal pool
                 {"name": "credit_pool_internal_min", "label": "Internal credit pool (min)", "type": "integer", "value": 150, "group": "internal_pool"},
                 {"name": "credit_pool_internal_max", "label": "Internal credit pool (max)", "type": "integer", "value": 250, "group": "internal_pool"},
-                {"name": "internal_weights", "label": "Internal credit weights (per action)", "type": "weighted_map",
+                {"name": "internal_weights", "label": "Internal credit weights (surface floor)", "type": "weighted_map",
                  "value": {
                      "dm": 1,
                      "group": 3,
                      "feed": 3,
                      "post_summary": 2,
+                     "voice_summary": 2,
+                     "translation": 1,
+                     "networking_steve": 2,
                      "voice_minute": 1,
                  },
                  "group": "internal_pool",
-                 "help": "DM=1, group=3, feed=3, post summary=2, voice minute=1. Tune as Grok pricing shifts."},
+                 "help": "Minimum credits per call by surface; actual debit is max(floor, context tier) + tool addons."},
+                {"name": "credit_tier_slim_max_tokens_in", "label": "Context tier — slim max input tokens", "type": "integer", "value": 4000, "group": "internal_pool"},
+                {"name": "credit_tier_standard_max_tokens_in", "label": "Context tier — standard max input tokens", "type": "integer", "value": 25000, "group": "internal_pool",
+                 "help": "Typical Steve DM billed input is ~15k–20k; keep standard tier through that range so credits match real usage."},
+                {"name": "credit_tier_slim_weight", "label": "Context tier — slim credits", "type": "decimal", "value": 1, "group": "internal_pool"},
+                {"name": "credit_tier_standard_weight", "label": "Context tier — standard credits", "type": "decimal", "value": 2, "group": "internal_pool"},
+                {"name": "credit_tier_heavy_weight", "label": "Context tier — heavy credits", "type": "decimal", "value": 3, "group": "internal_pool"},
+                {"name": "credit_addon_web_search", "label": "Addon credits — web_search", "type": "decimal", "value": 0.5, "group": "internal_pool"},
+                {"name": "credit_addon_x_search", "label": "Addon credits — x_search", "type": "decimal", "value": 1, "group": "internal_pool"},
+                {"name": "credit_addon_tool_router", "label": "Addon credits — tool router pass", "type": "decimal", "value": 0.5, "group": "internal_pool"},
+                {"name": "max_credits_per_call", "label": "Max credits debited per call", "type": "decimal", "value": 10, "group": "internal_pool"},
 
                 # Content gen weights
                 {"name": "content_gen_weights", "label": "Content-generation weights (per run)", "type": "weighted_map",
@@ -1086,30 +1309,33 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "topup_pack_credits", "label": "Credit top-up pack size (future)", "type": "integer", "value": 50, "tbd": True, "group": "safety"},
 
                 # Model costs — single source of truth
-                {"name": "model_primary", "label": "Primary model", "type": "string", "value": "grok-4-1-fast-reasoning", "group": "model_costs"},
-                {"name": "model_primary_input_per_m_usd", "label": "Primary model — input $/1M tokens", "type": "decimal", "prefix": "$", "value": 0.20, "group": "model_costs"},
-                {"name": "model_primary_output_per_m_usd", "label": "Primary model — output $/1M tokens", "type": "decimal", "prefix": "$", "value": 0.50, "group": "model_costs"},
-                {"name": "model_heavy", "label": "Heavy model (reasoning)", "type": "string", "value": "grok-4-20-reasoning", "group": "model_costs"},
+                {"name": "model_primary", "label": "Primary model", "type": "string", "value": "grok-4.3", "group": "model_costs"},
+                {"name": "model_primary_input_per_m_usd", "label": "Primary model — input $/1M tokens", "type": "decimal", "prefix": "$", "value": 1.25, "group": "model_costs"},
+                {"name": "model_primary_cached_input_per_m_usd", "label": "Primary model — cached input $/1M tokens", "type": "decimal", "prefix": "$", "value": 0.20, "group": "model_costs"},
+                {"name": "model_primary_output_per_m_usd", "label": "Primary model — output $/1M tokens", "type": "decimal", "prefix": "$", "value": 2.50, "group": "model_costs"},
+                {"name": "model_heavy", "label": "Heavy model (reasoning)", "type": "string", "value": "grok-4.20-reasoning", "group": "model_costs"},
                 {"name": "model_heavy_input_per_m_usd", "label": "Heavy model — input $/1M", "type": "decimal", "prefix": "$", "value": 2.00, "group": "model_costs"},
                 {"name": "model_heavy_output_per_m_usd", "label": "Heavy model — output $/1M", "type": "decimal", "prefix": "$", "value": 6.00, "group": "model_costs"},
                 {"name": "whisper_per_minute_usd", "label": "OpenAI Whisper ($/minute)", "type": "decimal", "prefix": "$", "value": 0.006, "group": "model_costs"},
                 {"name": "tool_call_per_1000_usd", "label": "Web / X / code-exec tool calls ($/1000 calls)", "type": "decimal", "prefix": "$", "value": 5.00, "group": "model_costs"},
                 {"name": "usd_to_eur_rate", "label": "USD → EUR rate", "type": "decimal", "value": 0.92, "group": "model_costs",
                  "help": "Used by the calculator to convert xAI/OpenAI bills to €."},
-                {"name": "model_costs_last_checked", "label": "Model costs last checked", "type": "date", "value": "2026-04-19", "group": "model_costs"},
+                {"name": "model_costs_last_checked", "label": "Model costs last checked", "type": "date", "value": "2026-05-11", "group": "model_costs"},
                 {"name": "model_costs_source", "label": "Source of pricing", "type": "string",
-                 "value": "x.ai/pricing + openai.com/pricing — re-verify monthly.", "group": "model_costs"},
+                 "value": "https://docs.x.ai/developers/models/grok-4.3 + https://docs.x.ai/developers/pricing — re-verify monthly.", "group": "model_costs"},
             ],
             "body": (
                 "**What the user sees**: ~`steve_uses_per_month_user_facing` Steve uses per month, "
                 "plus `whisper_minutes_per_month` minutes of voice transcription.\n\n"
-                "**What runs internally**: a weighted credit pool. A DM reply costs 1 credit; a "
-                "group-chat reply costs 3; a feed comment/post reply costs 3; a post summary "
-                "costs 2; a Whisper minute costs 1. Pool size is set so average users never hit "
-                "the ceiling, and heavy users hit the ceiling before the xAI bill does.\n\n"
-                "**Why the weighting works**: group and feed calls burn ~3× the tokens of a DM "
-                "(200-message context + tools). Pricing them as 3× credits internally keeps a "
-                "€7.99 subscription's worst case below the €3.99 AI spend cap.\n\n"
+                "**What runs internally**: weighted **credits** per Steve call (stored on "
+                "``ai_usage_log.credits_debited``). Debit = max(surface floor, context tier from "
+                "input tokens) + addons for ``web_search`` / ``x_search`` / tool-router. User still "
+                "sees **X of 100** credits; heavy context + search debits more per turn.\n\n"
+                "**Why the weighting works**: aligns ~100 credits with the hidden "
+                "``monthly_spend_ceiling_eur`` (€3.99) worst-case mix — more light DMs per month, "
+                "fewer heavy feed+search turns. Standard context tier runs through **25k** billed "
+                "input tokens (typical DM). News/browse turns attach **web_search** only unless the "
+                "user asks for X/Twitter; optional facts (e.g. podcast episodes) use confirm-then-search.\n\n"
                 "**Model Costs**: this page is the single source of truth for the math. "
                 "When you edit any model cost, the Calculator (under Planning → Calculator) "
                 "updates automatically. Re-verify `model_costs_source` every month.\n\n"
@@ -1174,8 +1400,8 @@ def _seed_pages() -> List[Dict[str, Any]]:
             ],
             "fields": [
                 # Per-turn
-                {"name": "max_output_tokens_dm", "label": "Max output tokens — DM", "type": "integer", "value": 600, "group": "per_turn"},
-                {"name": "max_output_tokens_feed", "label": "Max output tokens — community feed", "type": "integer", "value": 600, "group": "per_turn"},
+                {"name": "max_output_tokens_dm", "label": "Max output tokens — DM", "type": "integer", "value": 1400, "group": "per_turn"},
+                {"name": "max_output_tokens_feed", "label": "Max output tokens — community feed", "type": "integer", "value": 1400, "group": "per_turn"},
                 {"name": "max_output_tokens_group", "label": "Max output tokens — group chat", "type": "integer", "value": 1500, "group": "per_turn"},
                 {"name": "max_tool_invocations_per_turn", "label": "Max tool invocations per turn", "type": "integer", "value": 3,
                  "help": "Hard cap on web/X/code-exec calls per single Steve turn. Caps worst-case spend.", "group": "per_turn"},
@@ -1209,7 +1435,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 "runaway loops, and outright abuse from bankrupting us.\n\n"
                 "**Per-turn worst-case envelope**: group reply + 200 message context + 5 "
                 "images + reasoning + 1500 output + 3 tool calls. Recompute € cost via the "
-                "Calculator with current Grok 4.1 pricing before every pricing change.\n\n"
+                "Calculator with official Grok 4.3 pricing before every pricing change.\n\n"
                 "**Circuit breaker**: if a user's rolling 30-day AI cost crosses "
                 "`monthly_spend_ceiling_eur` (Premium) or `monthly_spend_ceiling_eur_special` "
                 "(Special), AI is frozen for the remainder of the period. UI shows: "
@@ -1642,6 +1868,8 @@ def _seed_pages() -> List[Dict[str, Any]]:
                     "type": "list_of_objects",
                     "schema": [
                         {"name": "title", "type": "string", "label": "Title"},
+                        {"name": "area", "type": "string", "label": "Area",
+                         "help": "Roadmap grouping for filters (e.g. Subscriptions, iOS, Android)."},
                         {"name": "phase", "type": "enum", "label": "Phase",
                          "allowed_values": ["now", "next", "later", "exploring"]},
                         {"name": "status", "type": "enum", "label": "Status",
@@ -1661,37 +1889,62 @@ def _seed_pages() -> List[Dict[str, Any]]:
                         {"name": "notes", "type": "markdown", "label": "Notes"},
                     ],
                     "value": [
-                        {"title": "Admin-web: Knowledge Base (this system)", "phase": "now", "status": "completed", "effort": "M", "target_quarter": "2026-Q2", "notes": "The page you're reading. Seeded + editable + changelog."},
-                        {"title": "KB: field groups, networking page, Steve package, content-gen safety, special users", "phase": "now", "status": "ongoing", "effort": "M", "target_quarter": "2026-Q2", "notes": "Round 2 of KB content."},
-                        {"title": "Usage / credit calculator (admin)", "phase": "now", "status": "ongoing", "effort": "M", "target_quarter": "2026-Q2", "notes": "Single-call, month sim, pricing what-if."},
-                        {"title": "Entitlements service reads directly from KB", "phase": "now", "status": "ongoing", "effort": "M", "target_quarter": "2026-Q2", "notes": "resolve_entitlements(username). Whitelist of KB fields."},
-                        {"title": "Special users table + audit log", "phase": "now", "status": "ongoing", "effort": "S", "target_quarter": "2026-Q2", "notes": "users.is_special + special_access_log."},
-                        {"title": "Membership management UI (account settings)", "phase": "now", "status": "not_started", "effort": "M", "target_quarter": "2026-Q2", "notes": "Plan switcher, cancel, invoice history."},
-                        {"title": "Stripe integration (web subscriptions + portal)", "phase": "now", "status": "not_started", "effort": "L", "target_quarter": "2026-Q2", "notes": "Web-only first; IAP comes in Phase 2."},
-                        {"title": "Credit tracking + display (X / 100 Steve uses)", "phase": "now", "status": "not_started", "effort": "M", "target_quarter": "2026-Q2", "notes": "Requires ai_usage_log extension with credit weights."},
-                        {"title": "Admin-web: Premium / Special columns on Users tab", "phase": "now", "status": "not_started", "effort": "S", "target_quarter": "2026-Q2", "notes": "Grant/Revoke Special from row action."},
-                        {"title": "Trial countdown + soft conversion flow", "phase": "now", "status": "not_started", "effort": "M", "target_quarter": "2026-Q2", "notes": "Email sequence at days 7 / 14 / 25 / 28."},
-                        {"title": "Email normalization + canonical_email on users", "phase": "now", "status": "ongoing", "effort": "S", "target_quarter": "2026-Q2", "test": "signup:canonical_uniqueness", "test_status": "not_run", "notes": "Shipped: backend/services/email_normalization.py + users.canonical_email column + signup uniqueness on canonical. Blocks the Gmail dot/plus alias trick. Flip to completed after CI is green + a staging signup smoke run."},
-                        {"title": "Disposable-email blocklist enforcement", "phase": "now", "status": "ongoing", "effort": "S", "target_quarter": "2026-Q2", "test": "signup:disposable_email_blocked", "test_status": "not_run", "notes": "Shipped: backend/services/disposable_email.py + bundled list at backend/data/disposable_email_domains.txt + KB-driven toggle + extras. Refresh the bundled list quarterly from github.com/disposable-email-domains."},
-                        {"title": "Paid community subscriptions + community billing", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q3", "notes": ""},
-                        {"title": "Paid community Steve package add-on (shared pool)", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q3", "notes": "Pool-first priority for Premium members."},
-                        {"title": "Networking page (public directory)", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q3", "notes": "Included in Enterprise; add-on for Paid."},
-                        {"title": "Content generation feature (paid community)", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q3", "notes": "Option A allowance + safety knobs + autopause."},
-                        {"title": "Media quota enforcement (per-community, Slack-style)", "phase": "next", "status": "not_started", "effort": "M", "target_quarter": "2026-Q3", "notes": ""},
-                        {"title": "Apple IAP + Google Play integration", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q3", "notes": "Same public price across channels."},
-                        {"title": "max_tool_invocations hard cap", "phase": "next", "status": "not_started", "effort": "S", "target_quarter": "2026-Q3", "notes": "Prevents worst-case per-turn cost."},
-                        {"title": "Per-user monthly spend circuit breaker", "phase": "next", "status": "not_started", "effort": "M", "target_quarter": "2026-Q3", "notes": ""},
-                        {"title": "Device fingerprint + IP/ASN signup throttle", "phase": "next", "status": "not_started", "effort": "M", "target_quarter": "2026-Q3", "notes": "Activate only if free-trial abuse materializes."},
-                        {"title": "Nightly cron: auto-revoke expired Special grants", "phase": "next", "status": "not_started", "effort": "S", "target_quarter": "2026-Q3", "notes": ""},
-                        {"title": "Annual plan promotion + discount flow", "phase": "later", "status": "not_started", "effort": "M", "target_quarter": "2026-Q4", "notes": ""},
-                        {"title": "Credit top-up packs (overage)", "phase": "later", "status": "not_started", "effort": "M", "target_quarter": "2026-Q4", "notes": ""},
-                        {"title": "Enterprise onboarding + custom pricing flow", "phase": "later", "status": "not_started", "effort": "L", "target_quarter": "2026-Q4", "notes": ""},
-                        {"title": "Voice calls (Steve-moderated / 1:1 / group)", "phase": "later", "status": "not_started", "effort": "XL", "target_quarter": "2027-Q1", "notes": "Will change cost model — revisit Credits page before launch."},
-                        {"title": "Steve-powered networking search", "phase": "later", "status": "not_started", "effort": "L", "target_quarter": "2027-Q1", "notes": "Adds a new cost line. Re-check Credits."},
-                        {"title": "Local/self-hosted Whisper to reduce OpenAI cost", "phase": "exploring", "status": "not_started", "effort": "L", "target_quarter": "TBD", "notes": ""},
-                        {"title": "Group 'catch me up' summaries (last 24h)", "phase": "exploring", "status": "not_started", "effort": "M", "target_quarter": "TBD", "notes": ""},
-                        {"title": "Card authorization for trials (if abuse > 5%)", "phase": "exploring", "status": "not_started", "effort": "M", "target_quarter": "TBD", "notes": ""},
-                        {"title": "Referral credits", "phase": "exploring", "status": "not_started", "effort": "M", "target_quarter": "TBD", "notes": ""},
+                        # Area values match Notion Product roadmap → Area select (client, admin, backend, infra, AI, iOS, Android, Steve, Subscriptions).
+                        {"title": "Admin-web: Knowledge Base (this system)", "area": "admin", "phase": "now", "status": "completed", "effort": "M", "target_quarter": "2026-Q2", "notes": "The page you're reading. Seeded + editable + changelog. Kept in sync with Notion **Product roadmap** (team hub) — see `docs/AGENT_TASK_CHECKLIST.md` § Product roadmap."},
+                        {"title": "KB: field groups, networking page, Steve package, content-gen safety, special users", "area": "admin", "phase": "now", "status": "ongoing", "effort": "M", "target_quarter": "2026-Q2", "notes": "Round 2 of KB content."},
+                        {"title": "Monolith reduction — shared chat UI (DM + group threads)", "area": "backend", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q4", "notes": "Repo epic: `docs/MONOLITH_REDUCTION_ROADMAP.md` § Chat UI kernel. Cursor: `.cursor/rules/chat-surfaces.mdc`."},
+                        {"title": "Monolith reduction — CommunityFeed & PostDetail decomposition", "area": "backend", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q4", "notes": "Repo: `docs/MONOLITH_REDUCTION_ROADMAP.md` § Community surfaces."},
+                        {"title": "Monolith reduction — group_chat blueprint → services", "area": "backend", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q4", "notes": "Repo: `docs/MONOLITH_REDUCTION_ROADMAP.md` § Group chat API. Cursor: `.cursor/rules/backend-monolith-boundaries.mdc`."},
+                        {"title": "Monolith reduction — large KB / Steve / networking services", "area": "backend", "phase": "later", "status": "not_started", "effort": "L", "target_quarter": "2027-Q1", "notes": "Split `knowledge_base.py`, `steve_knowledge_base.py`, `networking_retrieval.py` — see `docs/MONOLITH_REDUCTION_ROADMAP.md`."},
+                        {"title": "Monolith reduction — Flask bodybuilding_app migration", "area": "backend", "phase": "later", "status": "not_started", "effort": "XL", "target_quarter": "2027-Q1", "notes": "Move legacy `@app.route` to blueprints when touching an area. `docs/MONOLITH_REDUCTION_ROADMAP.md`."},
+                        {"title": "Steve conversation memory and recursive learning for chats", "area": "Steve", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q4", "notes": "Bounded summaries, episodic memory events, and RAG on top of existing steve_dm_reply.py bounded context and steve_knowledge_base synthesis. Related to chat surfaces. See docs/MONOLITH_REDUCTION_ROADMAP.md § Chat UI kernel and docs/STEVE_AND_VOICE_NOTES.md. Test with AI usage counters.", "test": "steve:chat-memory", "test_status": "not_run"},
+                        {"title": "Steve — community-owned agents (owners create/configure)", "area": "Steve", "phase": "exploring", "status": "not_started", "effort": "L", "target_quarter": "TBD", "notes": "Community owners instantiate one or more Steve-style agents for their space: display name and persona/system instructions, tool policy (community KB vs scoped web/topic search), optional knowledge pinning, default surfaces (DM with agent, group @mention routing, optional feed autopilot). Spend debits against the Paid community Steve package pool with per-agent caps; ai_usage_log records need a stable agent/instance id. Depends on entitlement + abuse guardrails (rate limits, mod review queue for first publish). Complements today's single-platform Steve baseline.", "test": "steve:community-agents", "test_status": "not_run"},
+                        {"title": "Steve — KB-backed model costs, entitlement output caps, and prompt policy", "area": "Steve", "phase": "now", "status": "completed", "effort": "M", "target_quarter": "2026-Q2", "notes": "Shipped May 2026: `backend/services/steve_model_config.py` (official Grok 4.3 $/M + cached input + web/tool-call $ via KB), `steve_prompt_policy.py` (adaptive substantive-reply formatting, no visible chain-of-thought), DM/group/feed wiring to KB-backed `max_output_tokens_*` and context caps, richer `ai_usage` logging. KB seeds updated (Credits & Entitlements, Hard Limits, community Steve package, Networking AI pricing fields). Docs: `docs/STEVE_AND_VOICE_NOTES.md`, `PRODUCT_JOURNEYS.md`, `C_POINT_ARCHITECTURE.md`. Staging: `origin/staging` + Cloud Run `cpoint-app-staging` build. Reseed KB in admin after deploy so MySQL picks up seed-only field deltas.", "test": "pytest:steve_model_config+prompt_policy", "test_status": "successful"},
+                        {"title": "Usage / credit calculator (admin)", "area": "admin", "phase": "now", "status": "ongoing", "effort": "M", "target_quarter": "2026-Q2", "notes": "Single-call, month sim, pricing what-if."},
+                        {"title": "Entitlements service reads directly from KB", "area": "backend", "phase": "now", "status": "ongoing", "effort": "M", "target_quarter": "2026-Q2", "notes": "resolve_entitlements(username). Whitelist of KB fields."},
+                        {"title": "Special users table + audit log", "area": "backend", "phase": "now", "status": "ongoing", "effort": "S", "target_quarter": "2026-Q2", "notes": "users.is_special + special_access_log."},
+                        {"title": "Membership management UI (account settings)", "area": "client", "phase": "now", "status": "not_started", "effort": "M", "target_quarter": "2026-Q2", "notes": "Plan switcher, cancel, invoice history."},
+                        {"title": "Stripe integration (web subscriptions + portal)", "area": "Subscriptions", "phase": "now", "status": "not_started", "effort": "L", "target_quarter": "2026-Q2", "notes": "Web-only first; mobile IAP tracked under iOS/Android rows."},
+                        {"title": "Credit tracking + display (X / 100 Steve uses)", "area": "client", "phase": "now", "status": "completed", "effort": "M", "target_quarter": "2026-Q2", "notes": "Weighted credits_debited on ai_usage_log; SUM enforcement; context tier + tool addons from KB."},
+                        {"title": "Admin-web: Premium / Special columns on Users tab", "area": "admin", "phase": "now", "status": "not_started", "effort": "S", "target_quarter": "2026-Q2", "notes": "Grant/Revoke Special from row action."},
+                        {"title": "Trial countdown + soft conversion flow", "area": "Subscriptions", "phase": "now", "status": "not_started", "effort": "M", "target_quarter": "2026-Q2", "notes": "Email sequence at days 7 / 14 / 25 / 28."},
+                        {"title": "Email normalization + canonical_email on users", "area": "backend", "phase": "now", "status": "ongoing", "effort": "S", "target_quarter": "2026-Q2", "test": "signup:canonical_uniqueness", "test_status": "not_run", "notes": "Shipped: backend/services/email_normalization.py + users.canonical_email column + signup uniqueness on canonical. Blocks the Gmail dot/plus alias trick. Flip to completed after CI is green + a staging signup smoke run."},
+                        {"title": "Disposable-email blocklist enforcement", "area": "backend", "phase": "now", "status": "ongoing", "effort": "S", "target_quarter": "2026-Q2", "test": "signup:disposable_email_blocked", "test_status": "not_run", "notes": "Shipped: backend/services/disposable_email.py + bundled list at backend/data/disposable_email_domains.txt + KB-driven toggle + extras. Refresh the bundled list quarterly from github.com/disposable-email-domains."},
+                        {"title": "Paid community subscriptions + community billing", "area": "Subscriptions", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q3", "notes": "Stripe-backed community plans: invoices, seat counts, and webhook-driven entitlement sync for the owning org."},
+                        {"title": "Paid community Steve package add-on (shared pool)", "area": "Subscriptions", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q3", "notes": "Pool-first priority for Premium members."},
+                        {"title": "Networking page (public directory)", "area": "client", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q3", "notes": "Included in Enterprise; add-on for Paid."},
+                        {"title": "Content generation feature (paid community)", "area": "AI", "phase": "next", "status": "not_started", "effort": "L", "target_quarter": "2026-Q3", "notes": "Option A allowance + safety knobs + autopause."},
+                        {"title": "Media quota enforcement (per-community, Slack-style)", "area": "backend", "phase": "next", "status": "not_started", "effort": "M", "target_quarter": "2026-Q3", "notes": "Per-community caps on uploads/media storage with transparent usage meters and enforcement in message/post paths."},
+                        {"title": "Apple IAP + Google Play integration (backend)", "area": "backend", "phase": "now", "status": "ongoing", "effort": "L", "target_quarter": "2026-Q3", "notes": "Server: receipt verification, `/api/webhooks/apple` + `/api/webhooks/google`, idempotent updates, `resolve_entitlements`. KB feature flag for production IAP grants (`iap_purchases_enabled`); sandbox / review exception so App Review can test. Pairs with iOS/Android roadmap rows. docs/PRODUCT_JOURNEYS.md.", "test": "iap:mobile-webhooks", "test_status": "not_run"},
+                        {"title": "iOS Release", "area": "iOS", "phase": "now", "status": "ongoing", "effort": "L", "target_quarter": "2026-Q3", "notes": "Capacitor/Xcode track; coordinates store subscription launch with backend IAP + `iap_purchases_enabled`.", "test": "iap:ios-subscriptions-review", "test_status": "not_run"},
+                        {"title": "iOS Subscriptions / IAP Release", "area": "iOS", "phase": "now", "status": "ongoing", "effort": "L", "target_quarter": "2026-Q3", "notes": "Umbrella: subscription group + products linked to app version; restore; Manage Subscriptions deep link."},
+                        {"title": "iOS — App Store Connect: agreements, subscription products, sandbox", "area": "iOS", "phase": "now", "status": "ongoing", "effort": "L", "target_quarter": "2026-Q3", "notes": "Paid Apps Agreement, ASC products/localizations, sandbox Apple IDs."},
+                        {"title": "iOS — TestFlight + Sandbox IAP QA", "area": "iOS", "phase": "now", "status": "ongoing", "effort": "M", "target_quarter": "2026-Q3", "notes": "Internal/TestFlight builds; purchase, restore, cancel in sandbox."},
+                        {"title": "iOS — App Review submission & post-approval launch", "area": "iOS", "phase": "now", "status": "not_started", "effort": "M", "target_quarter": "2026-Q3", "notes": "App Review notes, sandbox unlock path, post-approval production flag + phased release."},
+                        {"title": "Android Release", "area": "Android", "phase": "now", "status": "not_started", "effort": "L", "target_quarter": "2026-Q3", "notes": "AAB track; coordinates Play billing with backend webhooks + entitlements.", "test": "iap:android-subscriptions-review", "test_status": "not_run"},
+                        {"title": "Android — Play Console: subscriptions, offers, license testers", "area": "Android", "phase": "now", "status": "ongoing", "effort": "L", "target_quarter": "2026-Q3", "notes": "Merchant account, subscription SKUs, base plans/offers, license testers."},
+                        {"title": "Android — Internal/closed track QA (Billing)", "area": "Android", "phase": "now", "status": "ongoing", "effort": "M", "target_quarter": "2026-Q3", "notes": "Internal/closed testing; purchase/restore vs backend parity."},
+                        {"title": "Android — Production rollout (staged) + flag", "area": "Android", "phase": "now", "status": "not_started", "effort": "M", "target_quarter": "2026-Q3", "notes": "Staged production rollout; enable `iap_purchases_enabled` when ready."},
+                        {"title": "max_tool_invocations hard cap", "area": "AI", "phase": "next", "status": "not_started", "effort": "S", "target_quarter": "2026-Q3", "notes": "Prevents worst-case per-turn cost."},
+                        {"title": "Per-user monthly spend circuit breaker", "area": "AI", "phase": "next", "status": "completed", "effort": "M", "target_quarter": "2026-Q3", "notes": "entitlements_gate monthly_spend_ceiling_eur on SUM(cost_usd); Steve package $19.99/community."},
+                        {"title": "Device fingerprint + IP/ASN signup throttle", "area": "backend", "phase": "next", "status": "not_started", "effort": "M", "target_quarter": "2026-Q3", "notes": "Activate only if free-trial abuse materializes."},
+                        {"title": "Nightly cron: auto-revoke expired Special grants", "area": "backend", "phase": "next", "status": "not_started", "effort": "S", "target_quarter": "2026-Q3", "notes": "Scheduled job under /api/cron/* clears time-boxed Special access and logs audit rows when grants expire."},
+                        {"title": "Annual plan promotion + discount flow", "area": "Subscriptions", "phase": "later", "status": "not_started", "effort": "M", "target_quarter": "2026-Q4", "notes": "Annual SKUs vs monthly; proration rules and downgrade paths coordinated with Stripe and entitlements."},
+                        {"title": "Credit top-up packs (overage)", "area": "Subscriptions", "phase": "later", "status": "not_started", "effort": "M", "target_quarter": "2026-Q4", "notes": "Optional one-off Steve credit bundles after monthly allowance is exhausted; Stripe one-time products + ai_usage alignment."},
+                        {"title": "Enterprise onboarding + custom pricing flow", "area": "Subscriptions", "phase": "later", "status": "not_started", "effort": "L", "target_quarter": "2026-Q4", "notes": "Sales-assisted Enterprise: contracts, seat provisioning hooks, resolve_entitlements enterprise paths, KB-driven price display."},
+                        {"title": "Voice calls (Steve-moderated / 1:1 / group)", "area": "Steve", "phase": "later", "status": "not_started", "effort": "XL", "target_quarter": "2027-Q1", "notes": "Will change cost model — revisit Credits page before launch."},
+                        {"title": "Steve-powered networking search", "area": "Steve", "phase": "later", "status": "not_started", "effort": "L", "target_quarter": "2027-Q1", "notes": "Adds a new cost line. Re-check Credits."},
+                        {"title": "Local/self-hosted Whisper to reduce OpenAI cost", "area": "AI", "phase": "exploring", "status": "not_started", "effort": "L", "target_quarter": "TBD", "notes": "Evaluate whisper.cpp / dedicated GPU vs OpenAI Whisper for voice-note transcription under ai_usage-compatible adapter."},
+                        {"title": "Group 'catch me up' summaries (last 24h)", "area": "Steve", "phase": "exploring", "status": "not_started", "effort": "M", "target_quarter": "TBD", "notes": "Digest groups’ last N hours into a single Steve summary; pool accounting and opt-in per community."},
+                        {"title": "Card authorization for trials (if abuse > 5%)", "area": "Subscriptions", "phase": "exploring", "status": "not_started", "effort": "M", "target_quarter": "TBD", "notes": "Hold €1 auth or full pre-auth when free-trial burn metrics exceed threshold; requires Stripe + risk review."},
+                        {"title": "Referral credits", "area": "Subscriptions", "phase": "exploring", "status": "not_started", "effort": "M", "target_quarter": "TBD", "notes": "Invite codes granting bonus Steve uses or whisper minutes; ledger in ai_usage + fraud checks."},
+                        {"title": "Subscriptions — reconcile Stripe lifecycle with resolve_entitlements", "area": "Subscriptions", "phase": "now", "status": "ongoing", "effort": "M", "target_quarter": "2026-Q2", "notes": "Align users.subscription / subscription_status with tier (e.g. past_due vs premium access), verify ENTITLEMENTS_ENFORCEMENT_ENABLED in prod, close gaps where UI billing state diverges from Steve gates. docs/PRODUCT_JOURNEYS.md.", "test": "entitlements:stripe-lifecycle", "test_status": "not_run"},
+                        {"title": "Subscriptions — gate Networking Steve behind entitlements", "area": "Subscriptions", "phase": "now", "status": "not_started", "effort": "S", "target_quarter": "2026-Q2", "notes": "`/api/networking/steve_match` must enforce the same Premium/cap path as DM/group/feed (`resolve_entitlements`) so free users cannot bypass credits via weekly KB cap alone.", "test": "entitlements:networking-steve", "test_status": "not_run"},
+                        {"title": "Subscriptions — Steve blocked UX (modal CTA on DM, group, feed, replies)", "area": "Subscriptions", "phase": "now", "status": "ongoing", "effort": "S", "target_quarter": "2026-Q2", "notes": "When entitlements enforcement is on, DM + group send return embedded entitlements_error for immediate Manage membership / usage CTAs; feed + post replies already use LimitReachedModal via HTTP errors. Extend to any remaining Steve entry points.", "test": "entitlements:client-cta", "test_status": "not_run"},
+                        {"title": "Capacitor Network + Filesystem for offline media and phone memory", "area": "iOS", "phase": "now", "status": "completed", "effort": "M", "target_quarter": "2026-Q3", "notes": "NetworkContext isInitialized + navigator.onLine default + symmetric goOnline prevents cold-start ghost/offline banner (simulator/Xcode). get_steve_user_profile default dict + dashboard cache clear prevents ghost account/empty dashboard/profile load failure. Restored MessageImage/OfflineBanner. Updated PRODUCT_JOURNEYS.md. Matches AGENTS.md invariants. Test passed on new build.", "test": "native:offline-media", "test_status": "passed"},
+                        {"title": "Capacitor Haptics for tactile native feedback", "area": "client", "phase": "now", "status": "not_started", "effort": "S", "target_quarter": "2026-Q3", "notes": "Add vibration/impact on send, delete, media tap, save confirmation. Purpose: improves perceived responsiveness and native feel without any server calls. High ROI, low risk (add to LongPressActionable and MessageBubble).", "test": "native:haptics-ux", "test_status": "not_run"},
+                        {"title": "Capacitor StatusBar for consistent native UI", "area": "client", "phase": "now", "status": "not_started", "effort": "S", "target_quarter": "2026-Q3", "notes": "Dynamic status bar color, style, overlay in media viewer/chat. Purpose: full native immersion, safe-area handling in ChatMedia and ChatThread. Pairs with iOS fixes in IOS_CHAT_COMPOSE_BAR_FIX.md.", "test": "native:statusbar-ui", "test_status": "not_run"},
+                        {"title": "Capacitor App + Storage for background state and persistent local data", "area": "client", "phase": "next", "status": "not_started", "effort": "M", "target_quarter": "2026-Q4", "notes": "App for resume/background events to trigger local sync; Storage for persistent drafts/settings beyond localStorage. Purpose: less server reliance for offline-first (extend offlineDb.ts and deviceCache), better phone memory. Safest after Network/Filesystem.", "test": "native:app-storage-offline", "test_status": "not_run"},
                     ],
                 },
             ],
@@ -1701,7 +1954,8 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 "- **Next** — Phase 2, Q3\n"
                 "- **Later** — Phase 3, Q4+\n"
                 "- **Exploring** — not committed, evaluating\n\n"
-                "Each item has a phase, rough effort (S/M/L/XL), and target quarter."
+                "Each item has a phase, rough effort (S/M/L/XL), target quarter, and **Area** (matches Notion Product roadmap select: client, admin, backend, infra, AI, iOS, Android, Steve, Subscriptions). "
+                "The same rows are maintained in **Notion → C-Point team hub → Product roadmap** — update both in one session per `docs/AGENT_TASK_CHECKLIST.md`."
             ),
         },
 
@@ -1728,7 +1982,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
                         {"term": "Free community", "definition": "≤50 members, no content creation, not listed on networking, low media quota."},
                         {"term": "Paid community", "definition": "Subscription-based. No hard member limit. Content creation opt-in with free allowance. Networking page + Steve package sold as add-ons."},
                         {"term": "Enterprise community", "definition": "Custom subscription. Members get Premium Steve. Steve package + networking page + content generation all bundled."},
-                        {"term": "Steve package", "definition": "Paid-community add-on (~€20/month). Gives the community a shared Steve credit pool that members use before their personal credits."},
+                        {"term": "Steve package", "definition": "Paid-community add-on (€49/month). Gives the community a shared Steve call pool that members use before their personal credits."},
                         {"term": "Networking page", "definition": "Public directory of C-Point communities. Appears for communities with ≥50 members. Included in Enterprise; €15/month add-on for Paid."},
                         {"term": "Premium user", "definition": "Subscriber of €4.99 (early-adoption, first 3 months) / €7.99 (standard). Steve + voice/post summaries + 10 owned communities."},
                         {"term": "Free trial", "definition": "30-day Premium-equivalent access on signup. Community ownership capped at 5 (not Premium's 10)."},
@@ -1993,7 +2247,9 @@ def seed_default_pages(
         latest seed content, preserving the existing version number
         (counted as auto_upgraded). Admin has not yet edited, so safe to
         replace.
-      * Page exists and has been edited         → SKIP, unless force=True.
+      * Page exists and has been edited         → MERGE missing seed fields
+        only, preserving existing admin-authored values/body; if nothing is
+        missing, skip. Use force=True to overwrite.
       * force=True                              → overwrite regardless.
 
     Targeted re-seed:
@@ -2018,6 +2274,8 @@ def seed_default_pages(
                 "inserted": 0,
                 "auto_upgraded": 0,
                 "force_updated": 0,
+                "merged_fields": 0,
+                "merged_pages": 0,
                 "skipped": 0,
                 "total_seeds": 0,
             }
@@ -2025,13 +2283,15 @@ def seed_default_pages(
     inserted = 0
     auto_upgraded = 0
     force_updated = 0
+    merged_fields = 0
+    merged_pages = 0
     skipped = 0
 
     with get_db_connection() as conn:
         c = conn.cursor()
         for seed in seeds:
             c.execute(
-                f"SELECT version, updated_by FROM kb_pages WHERE slug = {ph}",
+                f"SELECT version, updated_by, fields_json, field_groups_json FROM kb_pages WHERE slug = {ph}",
                 (seed["slug"],),
             )
             row = c.fetchone()
@@ -2063,11 +2323,80 @@ def seed_default_pages(
             # Row exists — decide whether to overwrite.
             existing_version = row["version"] if hasattr(row, "keys") else row[0]
             existing_updated_by = row["updated_by"] if hasattr(row, "keys") else row[1]
+            existing_fields_raw = row["fields_json"] if hasattr(row, "keys") else row[2]
+            existing_groups_raw = row["field_groups_json"] if hasattr(row, "keys") else row[3]
             is_untouched = (int(existing_version or 1) == 1
                             and (existing_updated_by or "").strip().lower() == "system-seed")
 
             if not force and not is_untouched:
-                skipped += 1
+                existing_fields = _parse_json(existing_fields_raw, [])
+                existing_groups = _parse_json(existing_groups_raw, [])
+                merged, missing = _merge_missing_seed_fields(
+                    existing_fields,
+                    seed.get("fields") or [],
+                )
+                merged_groups, missing_groups = _merge_missing_seed_field_groups(
+                    existing_groups,
+                    seed.get("field_groups") or [],
+                )
+                if not missing and not missing_groups:
+                    skipped += 1
+                    continue
+                new_version = int(existing_version or 1) + 1
+                c.execute(
+                    f"""
+                    UPDATE kb_pages SET
+                        fields_json = {ph}, field_groups_json = {ph},
+                        version = {ph},
+                        updated_by = {ph}, updated_at = {ph}
+                    WHERE slug = {ph}
+                    """,
+                    (
+                        json.dumps(merged),
+                        json.dumps(merged_groups),
+                        new_version,
+                        "system-seed",
+                        now,
+                        seed["slug"],
+                    ),
+                )
+                c.execute(
+                    f"""
+                    INSERT INTO kb_changelog
+                        (page_slug, version_from, version_to, changed_fields_json,
+                         reason, actor_username, created_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                    """,
+                    (
+                        seed["slug"],
+                        existing_version,
+                        new_version,
+                        json.dumps({
+                            "fields": [
+                                {
+                                    "name": field.get("name"),
+                                    "label": field.get("label") or field.get("name"),
+                                    "from": None,
+                                    "to": field.get("value"),
+                                    "tbd_from": False,
+                                    "tbd_to": bool(field.get("tbd")),
+                                }
+                                for field in missing
+                            ],
+                            "field_groups_added": [
+                                group.get("id")
+                                for group in missing_groups
+                                if group.get("id")
+                            ],
+                            "body_changed": False,
+                        }),
+                        "Auto-merge missing KB seed fields after deploy",
+                        "system-seed",
+                        now,
+                    ),
+                )
+                merged_fields += len(missing)
+                merged_pages += 1
                 continue
 
             # Auto-upgrades of untouched rows keep the system-seed signature
@@ -2110,6 +2439,8 @@ def seed_default_pages(
         "inserted": inserted,
         "auto_upgraded": auto_upgraded,
         "force_updated": force_updated,
+        "merged_fields": merged_fields,
+        "merged_pages": merged_pages,
         "skipped": skipped,
         "total_seeds": len(seeds),
     }

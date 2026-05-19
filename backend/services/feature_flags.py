@@ -34,6 +34,11 @@ def is_enabled(name: str, default: bool = False) -> bool:
 
 # Named helpers — preferred over raw name strings so typos fail at import.
 
+def steve_weighted_credits_enabled() -> bool:
+    """When on, Steve allowance counters SUM ``credits_debited`` instead of COUNT(*)."""
+    return is_enabled("STEVE_WEIGHTED_CREDITS_ENABLED", default=True)
+
+
 def entitlements_enforcement_enabled() -> bool:
     """Master gate for entitlements enforcement (Wave 4).
 

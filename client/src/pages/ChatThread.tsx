@@ -8,21 +8,30 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
+import { useEntitlements } from '../hooks/useEntitlements'
+import {
+  buildClientPremiumRequiredError,
+  shouldClientBlockSteveIntent,
+} from '../utils/steveClientGate'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useHeader } from '../contexts/HeaderContext'
 import { useBadges } from '../contexts/BadgeContext'
 import { useUserProfile } from '../contexts/UserProfileContext'
+import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
+import { isEntitlementsError } from '../utils/entitlementsError'
 import Avatar from '../components/Avatar'
 import ZoomableImage from '../components/ZoomableImage'
 // Encryption removed — not in use
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
+import { requestTranslateSummary } from '../utils/translateSummary'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 import {
   threadsListCacheKey,
@@ -33,8 +42,6 @@ import {
 } from '../utils/chatThreadsCache'
 import { sendImageMessage, sendVideoMessage, sendMultiMediaMessage, SENDING_MEDIA_LABEL, type UploadProgress } from '../chat/mediaSenders'
 import type { ChatMessage } from '../types/chat'
-import { isInternalLink, isLandingPageLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from '../utils/internalLinkHandler'
-import { openExternalNativeLink } from '../utils/openExternalInApp'
 
 // Import utilities and components from chat module
 import {
@@ -63,14 +70,39 @@ import {
 type Message = ChatMessage
 
 export default function ChatThread(){
+  const { t } = useTranslation()
   const { setTitle } = useHeader()
   const { refreshBadges } = useBadges()
   const { profile: myProfile } = useUserProfile()
-  const viewer = (myProfile as { username?: string } | null)?.username
+  const entitlementsHandler = useEntitlementsHandler()
   const { username } = useParams()
+  const { entitlements, enforcement_enabled, loading: entitlementsLoading } = useEntitlements()
+  const isSteveDm = (username || '').toLowerCase() === 'steve'
+  const tryBlockSteveIntentSend = useCallback(
+    (text: string) => {
+      if (
+        !shouldClientBlockSteveIntent({
+          enforcement_enabled,
+          loading: entitlementsLoading,
+          entitlements,
+          isSteveDm,
+          text,
+        })
+      ) {
+        return false
+      }
+      entitlementsHandler.showError(buildClientPremiumRequiredError())
+      return true
+    },
+    [enforcement_enabled, entitlementsLoading, entitlements, isSteveDm, entitlementsHandler],
+  )
+  const viewer = (myProfile as { username?: string } | null)?.username
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const profilePath = username ? `/profile/${encodeURIComponent(username)}` : null
+  const mentionToProfile = useCallback((u: string) => {
+    navigate(`/profile/${encodeURIComponent(u)}`)
+  }, [navigate])
   
   
   
@@ -95,6 +127,7 @@ export default function ChatThread(){
 
   const [otherUserId, setOtherUserId] = useState<number|''>('')
   const [messages, setMessages] = useState<Message[]>([])
+  const [steveIsTyping, setSteveIsTyping] = useState(false)
   const [editingId, setEditingId] = useState<number|string| null>(null)
   const [editText, setEditText] = useState('')
   const [editingSaving, setEditingSaving] = useState(false)
@@ -181,6 +214,14 @@ export default function ChatThread(){
   const [showBlockModal, setShowBlockModal] = useState(false)
   const [blockReason, setBlockReason] = useState('')
   const [blockSubmitting, setBlockSubmitting] = useState(false)
+  const [reminderVaultOpen, setReminderVaultOpen] = useState(false)
+  const [reminderRows, setReminderRows] = useState<Array<{ id: number; reminder_text: string; fire_at_utc: string; tz_label: string }>>([])
+  const [reminderVaultLoading, setReminderVaultLoading] = useState(false)
+  const [reminderVaultError, setReminderVaultError] = useState<string | null>(null)
+  const [editingVaultId, setEditingVaultId] = useState<number | null>(null)
+  const [editVaultText, setEditVaultText] = useState('')
+  const [editVaultIso, setEditVaultIso] = useState('')
+  const [vaultDeletingId, setVaultDeletingId] = useState<number | null>(null)
   const lastFetchTime = useRef<number>(0)
   const [pastedImage, setPastedImage] = useState<File | null>(null)
   const [videoUploadProgress, setVideoUploadProgress] = useState<UploadProgress | null>(null)
@@ -223,7 +264,32 @@ export default function ChatThread(){
     setOtherUserId('')
     setOtherProfile(null)
     setMessages([])
+    setSteveIsTyping(false)
   }, [username])
+
+  const loadReminderVault = useCallback(async () => {
+    setReminderVaultLoading(true)
+    setReminderVaultError(null)
+    try {
+      const r = await fetch('/api/me/steve/reminders', { credentials: 'include' })
+      const d = await r.json()
+      if (!r.ok) {
+        setReminderVaultError(typeof d?.error === 'string' ? d.error : t('chat.reminder_load_failed'))
+        setReminderRows([])
+        return
+      }
+      setReminderRows(Array.isArray(d.reminders) ? d.reminders : [])
+    } catch {
+      setReminderVaultError(t('chat.reminder_network_error'))
+      setReminderRows([])
+    } finally {
+      setReminderVaultLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (reminderVaultOpen) void loadReminderVault()
+  }, [reminderVaultOpen, loadReminderVault])
 
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
@@ -517,7 +583,7 @@ export default function ChatThread(){
   async function commitEdit(){
     if (!editingId) return
     const newBody = editText.trim()
-    if (!newBody) { alert('Message cannot be empty'); return }
+    if (!newBody) { alert(t('chat.message_empty')); return }
     const prev = messages
     setEditingSaving(true)
     // Optimistically update - clear encryption flags since server will store as plain text
@@ -534,112 +600,15 @@ export default function ChatThread(){
       const res = await fetch('/api/chat/edit_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ message_id: editingId, text: newBody }) })
       const j = await res.json().catch(()=>null)
       if (!j?.success){
-        alert(j?.error || 'Edit failed')
+        alert(j?.error || t('chat.edit_failed'))
         setMessages(prev)
       } else {
         setEditingId(null); setEditText('')
       }
     }catch(err){
-      alert('Network error while editing')
+      alert(t('chat.edit_network_error'))
       setMessages(prev)
     } finally { setEditingSaving(false) }
-  }
-
-  // State for join community success modal
-  const [joinedCommunity, setJoinedCommunity] = useState<{ name: string; id: number } | null>(null)
-
-  // Handle clicking on an internal link (c-point.co)
-  const handleInternalLinkClick = useCallback(async (href: string) => {
-    // Check for invite token
-    const inviteToken = extractInviteToken(href)
-    if (inviteToken) {
-      try {
-        const result = await joinCommunityWithInvite(inviteToken)
-        
-        if (result.success && result.communityId) {
-          // Successfully joined - show success modal and navigate
-          if (result.communityName) {
-            setJoinedCommunity({ name: result.communityName, id: result.communityId })
-            // Auto-dismiss and navigate after 2 seconds
-            setTimeout(() => {
-              setJoinedCommunity(null)
-              navigate(`/community_feed_react/${result.communityId}`)
-            }, 2000)
-          } else {
-            navigate(`/community_feed_react/${result.communityId}`)
-          }
-        } else if (result.alreadyMember && result.communityId) {
-          // Already a member - just navigate
-          navigate(`/community_feed_react/${result.communityId}`)
-        } else {
-          // Show error
-          alert(result.error || 'Failed to join community')
-        }
-      } catch (err) {
-        console.error('Error handling invite link:', err)
-        alert('Failed to process invite link')
-      }
-      return
-    }
-
-    // Other internal link - navigate within the app
-    const internalPath = extractInternalPath(href)
-    if (internalPath) {
-      navigate(internalPath)
-    }
-  }, [navigate])
-
-  // Convert URLs in plain text into clickable links (handles internal c-point.co links)
-  function linkifyText(text: string) {
-    const nodes: React.ReactNode[] = []
-    const regex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(\/[^\s]*)?)/gi
-    let lastIndex = 0
-    let match: RegExpExecArray | null
-    while ((match = regex.exec(text)) !== null) {
-      const start = match.index
-      const end = start + match[0].length
-      if (start > lastIndex) nodes.push(text.slice(lastIndex, start))
-      const raw = match[0]
-      const href = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
-      
-      // Check if this is an internal app.c-point.co link
-      const isInternal = isInternalLink(href)
-      // Landing page links (www.c-point.co) should open externally
-      const isLanding = isLandingPageLink(href)
-      
-      nodes.push(
-        <a 
-          key={`${start}-${end}`} 
-          href={href} 
-          target={(isInternal && !isLanding) ? undefined : "_blank"} 
-          rel={(isInternal && !isLanding) ? undefined : "noopener noreferrer"} 
-          className="underline text-[#4db6ac] hover:text-[#45a99c] inline py-0.5 break-all"
-          style={{ lineHeight: '1.6' }}
-          onClick={(e) => {
-            if (isInternal && !isLanding) {
-              e.preventDefault()
-              e.stopPropagation()
-              handleInternalLinkClick(href)
-              return
-            }
-            if (Capacitor.isNativePlatform()) {
-              e.preventDefault()
-              e.stopPropagation()
-              if (isLanding) {
-                window.open(href, '_blank', 'noopener,noreferrer')
-              } else {
-                void openExternalNativeLink(href)
-              }
-            }
-          }}
-        >
-          {raw}
-        </a>
-      )
-      lastIndex = end
-    }
-    if (lastIndex < text.length) nodes.push(text.slice(lastIndex))
-    return nodes
   }
 
   // Encryption is initialized globally in App.tsx - no need for per-chat init
@@ -675,6 +644,21 @@ export default function ChatThread(){
         }
       }
 
+      // Normalize media_paths for multi-media DMs (handles stringified JSON from MySQL,
+      // missing field from prior Firestore formatter, or single image_path fallback).
+      // This ensures persistence on reload/cache (fixes the multi-media bug).
+      let mediaPaths = m.media_paths
+      if (typeof mediaPaths === 'string' && mediaPaths) {
+        try {
+          mediaPaths = JSON.parse(mediaPaths)
+        } catch (e) {
+          mediaPaths = null
+        }
+      }
+      if (!Array.isArray(mediaPaths)) {
+        mediaPaths = m.image_path ? [m.image_path] : []
+      }
+
       const normalizedTime = ensureNormalizedTime(m.time)
       const meta = readMessageMeta(metaRef.current, normalizedTime, messageText, Boolean(m.sent))
       
@@ -687,6 +671,7 @@ export default function ChatThread(){
         text: messageText,
         time: normalizedTime,
         video_path: m.video_path,
+        media_paths: mediaPaths,
         reaction: serverReaction || idBasedReaction || meta.reaction,
         replySnippet: replySnippet || meta.replySnippet,
         storyReply,
@@ -754,6 +739,27 @@ export default function ChatThread(){
       adjustTextareaHeight()
     }
   }, [username, viewer])
+
+  // Steve DM: optional ?prefill= from About C-Point (after draft restore; overwrites draft for this navigation).
+  const prefillParam = searchParams.get('prefill')
+  useEffect(() => {
+    if (!isSteveDm || !username || !prefillParam?.trim()) return
+    const ta = textareaRef.current
+    if (!ta) return
+    const text = prefillParam.trim()
+    ta.value = text
+    draftRef.current = text
+    setDraftDisplay(text)
+    adjustTextareaHeight()
+    setSearchParams(
+      (p) => {
+        const n = new URLSearchParams(p)
+        n.delete('prefill')
+        return n
+      },
+      { replace: true },
+    )
+  }, [username, isSteveDm, prefillParam, setSearchParams])
 
   // Share handoff must run *after* draft restore above, or saved/cleared draft overwrites shared links.
   const shareAttach = searchParams.get('share')
@@ -845,6 +851,7 @@ export default function ChatThread(){
       })
       .then(r=>r.json())
       .then(async (msgResponse) => {
+        setSteveIsTyping(Boolean(msgResponse?.steve_is_typing))
         if (msgResponse?.success && Array.isArray(msgResponse.messages)) {
           const processedMessages = await processRawMessages(msgResponse.messages)
           setMessages(prev => {
@@ -971,6 +978,7 @@ export default function ChatThread(){
       fetch('/get_messages', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
         .then(r => r.json())
         .then(j => {
+          setSteveIsTyping(Boolean(j?.steve_is_typing))
           if (j?.success && Array.isArray(j.messages)) {
             processRawMessages(j.messages).then(processed => {
               setMessages(prev => {
@@ -1046,6 +1054,7 @@ export default function ChatThread(){
       const fd = new URLSearchParams({ other_user_id: String(otherUserId), before_id: String(oldestId) })
       const r = await fetch('/get_messages', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
       const j = await r.json()
+      setSteveIsTyping(Boolean(j?.steve_is_typing))
       if (j?.success && Array.isArray(j.messages) && j.messages.length > 0) {
         const el = listRef.current
         const prevHeight = el?.scrollHeight || 0
@@ -1162,6 +1171,7 @@ export default function ChatThread(){
             body: fd 
           })
           const j = await r.json()
+          setSteveIsTyping(Boolean(j?.steve_is_typing))
           
           if (j?.success && Array.isArray(j.messages)){
             // Track highest message ID for delta fetching
@@ -1499,7 +1509,9 @@ export default function ChatThread(){
   async function send(){
     const messageText = (textareaRef.current?.value || '').trim()
     if (!messageText || sendingLockRef.current) return
-    
+
+    if (tryBlockSteveIntentSend(messageText)) return
+
     sendingLockRef.current = true
     justSentRef.current = true
     setTimeout(() => { justSentRef.current = false }, 400)
@@ -1580,6 +1592,9 @@ export default function ChatThread(){
     
     const optimisticWithKey = { ...optimisticMessage, clientKey: tempId }
     setMessages(prev => [...prev, optimisticWithKey])
+    if (isSteveDm || /@steve\b/i.test(messageText)) {
+      setSteveIsTyping(true)
+    }
     
     recentOptimisticRef.current.set(tempId, {
       message: optimisticWithKey,
@@ -1639,6 +1654,10 @@ export default function ChatThread(){
       .then(r => r.json())
       .then(j => {
         clearTimeout(sendTimeout)
+        if (j?.entitlements_error && isEntitlementsError(j.entitlements_error)) {
+          entitlementsHandler.showError(j.entitlements_error)
+          setSteveIsTyping(false)
+        }
         if (j?.success) {
           if (outboxId >= 0) removeFromOutbox(outboxId).catch(() => {})
 
@@ -1705,6 +1724,7 @@ export default function ChatThread(){
     const msg = messages.find(m => (m.clientKey || m.id) === clientKey)
     if (!msg) return
     const originalMessage = msg._originalMessage || msg.text || ''
+    if (tryBlockSteveIntentSend(originalMessage)) return
     const resolvedId = otherUserId
     if (!resolvedId) return
 
@@ -1737,6 +1757,10 @@ export default function ChatThread(){
       .then(r => r.json())
       .then(j => {
         clearTimeout(retryTimeout)
+        if (j?.entitlements_error && isEntitlementsError(j.entitlements_error)) {
+          entitlementsHandler.showError(j.entitlements_error)
+          setSteveIsTyping(false)
+        }
         if (j?.success && j.message_id) {
           getOutboxEntries().then(entries => {
             const e = entries.find(x => x.clientKey === clientKey)
@@ -1839,6 +1863,7 @@ export default function ChatThread(){
 
   async function confirmSendMedia() {
     if (pendingMedia.length === 0 || !otherUserId) return
+    if (tryBlockSteveIntentSend('')) return
     const mediaToSend = [...pendingMedia]
     const audios = mediaToSend.filter(i => i.type === 'audio')
     const imagesAndVideos = mediaToSend.filter(i => i.type === 'image' || i.type === 'video')
@@ -1919,16 +1944,18 @@ export default function ChatThread(){
 
   async function handleGifSelection(gif: GifSelection) {
     if (!otherUserId) return
+    if (tryBlockSteveIntentSend('')) return
     try {
       const file = await gifSelectionToFile(gif, 'chat-gif')
       handleImageFile(file, 'gif')
     } catch (err) {
       console.error('Failed to prepare GIF for chat', err)
-      alert('Unable to attach GIF. Please try again.')
+      alert(t('chat.attach_gif_failed'))
     }
   }
 
   function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo', cleanup?: () => void) {
+    if (tryBlockSteveIntentSend('')) return
     sendImageMessage({
       file,
       kind,
@@ -1945,6 +1972,7 @@ export default function ChatThread(){
   }
 
   function handleVideoFile(file: File, cleanup?: () => void) {
+    if (tryBlockSteveIntentSend('')) return
     sendVideoMessage({
       file,
       otherUserId,
@@ -2025,6 +2053,7 @@ export default function ChatThread(){
 
   async function uploadSharedAudioFile(file: File) {
     if (!otherUserId) return
+    if (tryBlockSteveIntentSend('')) return
     setSending(true)
     skipNextPollsUntil.current = Date.now() + 5000
     const tempId = `temp_audio_${Date.now()}_${Math.random().toString(36).slice(2)}`
@@ -2074,7 +2103,7 @@ export default function ChatThread(){
         setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
         recentOptimisticRef.current.delete(tempId)
         URL.revokeObjectURL(url)
-        alert(j?.error || 'Failed to send audio')
+        alert(j?.error || t('chat.failed_send_audio'))
       } else if (j.message_id) {
         idBridgeRef.current.tempToServer.set(tempId, j.message_id)
         idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
@@ -2102,7 +2131,7 @@ export default function ChatThread(){
       console.error('Failed to send shared audio', error)
       setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
       recentOptimisticRef.current.delete(tempId)
-      alert('Failed to send audio')
+      alert(t('chat.failed_send_audio'))
     } finally {
       setSending(false)
     }
@@ -2115,6 +2144,8 @@ export default function ChatThread(){
     if (!blob || blob.size === 0) {
       return
     }
+
+    if (tryBlockSteveIntentSend('')) return
     
     setSending(true)
     // Pause polling longer for audio uploads (they take more time than text)
@@ -2140,7 +2171,7 @@ export default function ChatThread(){
         setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
         recentOptimisticRef.current.delete(tempId)
         URL.revokeObjectURL(url)
-        alert(j?.error || 'Failed to send audio')
+        alert(j?.error || t('chat.failed_send_audio'))
       } else {
         // Update optimistic message with server data and remove duplicates
         if (j.message_id) {
@@ -2174,7 +2205,7 @@ export default function ChatThread(){
       console.error('Failed to send audio', error)
       setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
       recentOptimisticRef.current.delete(tempId)
-      alert('Failed to send audio')
+      alert(t('chat.failed_send_audio'))
     }finally{
       setSending(false)
     }
@@ -2263,6 +2294,8 @@ export default function ChatThread(){
     if (!blob || blob.size === 0) {
       return
     }
+
+    if (tryBlockSteveIntentSend('')) return
     
     setSending(true)
     // Pause polling for audio uploads
@@ -2308,7 +2341,7 @@ export default function ChatThread(){
         setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
         recentOptimisticRef.current.delete(tempId)
         URL.revokeObjectURL(url)
-        alert(j?.error || 'Failed to send audio message')
+        alert(j?.error || t('chat.failed_send_audio'))
       } else {
         // Update optimistic message with server data and remove duplicates
         if (j.message_id) {
@@ -2344,7 +2377,7 @@ export default function ChatThread(){
       setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
       recentOptimisticRef.current.delete(tempId)
       const message = error instanceof Error ? error.message : String(error)
-      alert('Failed to send voice message: ' + message)
+      alert(t('chat.failed_send_voice', { message }))
     } finally {
       setSending(false)
     }
@@ -2401,7 +2434,7 @@ export default function ChatThread(){
 
   function handleDeleteMessage(messageId: number | string, messageData: Message) {
     // Show confirmation dialog
-    if (!confirm('Are you sure you want to delete this message?')) {
+    if (!confirm(t('chat.delete_message_confirm'))) {
       return
     }
 
@@ -2474,11 +2507,11 @@ export default function ChatThread(){
         
         // Show error
         if (j?.error) {
-          alert(j.error === 'Premium subscription required!' 
-            ? 'Premium subscription required to delete messages' 
+          alert(j.error === t('chat.premium_required_delete') 
+            ? t('chat.premium_required_delete') 
             : `Failed to delete message: ${j.error}`)
         } else {
-          alert('Failed to delete message')
+          alert(t('chat.failed_delete_message'))
         }
       } else {
         // Success - keep in pending deletions for a while to prevent re-appearing
@@ -2507,8 +2540,50 @@ export default function ChatThread(){
         })
       })
       
-      alert('Network error. Could not delete message.')
+      alert(t('chat.delete_network_error'))
     })
+  }
+
+  async function handleRemoveDmMediaItem(messageId: number | string, mediaUrl: string) {
+    const hasPersistedServerId =
+      (typeof messageId === 'number' && messageId > 0) ||
+      (typeof messageId === 'string' && /^\d+$/.test(messageId) && Number(messageId) > 0)
+    if (!hasPersistedServerId) return
+    if (!confirm(t('chat.remove_attachment_confirm'))) return
+    try {
+      const res = await fetch('/api/chat/dm/remove_message_media', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message_id: messageId, media_url: mediaUrl }),
+      })
+      const j = await res.json().catch(() => null)
+      if (!j?.success) {
+        alert(j?.error || t('chat.failed_remove_attachment'))
+        return
+      }
+      if (j.deleted_message) {
+        setMessages(prev => prev.filter(x => x.id !== messageId))
+        return
+      }
+      const mp = (j.media_paths as string[] | undefined) || []
+      const pickFirst = (re: RegExp) => mp.find(p => re.test(p.split('?')[0].toLowerCase()))
+      const firstImg = pickFirst(/\.(png|jpg|jpeg|gif|webp)$/i)
+      const firstVid = pickFirst(/\.(mp4|mov|webm|m4v|avi)$/i)
+      setMessages(prev =>
+        prev.map(x => {
+          if (x.id !== messageId) return x
+          return {
+            ...x,
+            media_paths: mp.length ? mp : undefined,
+            image_path: firstImg ?? undefined,
+            video_path: firstVid ?? undefined,
+          }
+        })
+      )
+    } catch {
+      alert(t('chat.remove_attachment_network_error'))
+    }
   }
 
   // Toggle message selection in multi-select mode
@@ -2543,7 +2618,7 @@ export default function ChatThread(){
     if (selectedMessages.size === 0) return
     
     const count = selectedMessages.size
-    if (!confirm(`Delete ${count} message${count > 1 ? 's' : ''}?`)) {
+    if (!confirm(t('chat.delete_messages_confirm', { count }))) {
       return
     }
 
@@ -2604,15 +2679,15 @@ export default function ChatThread(){
       })
       const j = await res.json().catch(() => null)
       if (j?.success) {
-        alert(`@${username} has been blocked. You can manage blocked users in Settings → Privacy & Security.`)
+        alert(t('feed.user_blocked', { username }))
         setShowBlockModal(false)
         setBlockReason('')
         navigate('/user_chat')
       } else {
-        alert(j?.error || 'Failed to block user')
+        alert(j?.error || t('feed.block_user_failed'))
       }
     } catch {
-      alert('Network error. Could not block user.')
+      alert(t('feed.block_user_network_failed'))
     } finally {
       setBlockSubmitting(false)
     }
@@ -2655,7 +2730,7 @@ export default function ChatThread(){
           <button 
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
             onClick={()=> navigate('/user_chat')} 
-            aria-label="Back to Messages"
+            aria-label={t('chat.back_to_messages')}
           >
             <i className="fa-solid fa-arrow-left text-white" />
           </button>
@@ -2677,7 +2752,7 @@ export default function ChatThread(){
           <button 
             type="button"
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
-            aria-label="More options"
+            aria-label={t('chat.more_options')}
             aria-haspopup="true"
             aria-expanded={headerMenuOpen}
             onMouseDown={(event)=> event.stopPropagation()}
@@ -2702,7 +2777,7 @@ export default function ChatThread(){
                   onClick={() => setHeaderMenuOpen(false)}
                 >
                   <i className="fa-solid fa-user text-xs text-[#4db6ac]" />
-                  <span>View Profile</span>
+                  <span>{t('chat.view_profile')}</span>
                 </Link>
                 <button
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
@@ -2712,14 +2787,28 @@ export default function ChatThread(){
                   }}
                 >
                   <i className="fa-solid fa-photo-film text-xs text-[#4db6ac]" />
-                  <span>View Media</span>
+                  <span>{t('chat.view_media')}</span>
                 </button>
+                {isSteveDm && (
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                    onClick={() => {
+                      setHeaderMenuOpen(false)
+                      setReminderVaultOpen(true)
+                      setEditingVaultId(null)
+                    }}
+                  >
+                    <i className="fa-solid fa-clock text-xs text-[#4db6ac]" aria-hidden />
+                    <span>{t('chat.reminder_vault')}</span>
+                  </button>
+                )}
                 {(username || '').toLowerCase() === 'steve' && (
                   <button
                     className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
                     onClick={() => {
                       setHeaderMenuOpen(false)
-                      if (!confirm("Reset Steve's conversation context? Steve will still have the full chat history but will stop referencing older discussions.")) return
+                      if (!confirm(t('chat.reset_steve_confirm'))) return
                       fetch('/api/steve/reset_dm_context', {
                         method: 'POST',
                         credentials: 'include',
@@ -2729,16 +2818,16 @@ export default function ChatThread(){
                         .then(r => r.json())
                         .then(d => {
                           if (d?.success) {
-                            alert("Steve's context has been reset.")
+                            alert(t('chat.reset_steve_success'))
                           } else {
-                            alert(d?.error || 'Failed to reset')
+                            alert(d?.error || t('chat.reset_steve_failed'))
                           }
                         })
-                        .catch(() => alert('Failed to reset context'))
+                        .catch(() => alert(t('chat.reset_steve_context_failed')))
                     }}
                   >
                     <i className="fa-solid fa-rotate text-xs text-[#4db6ac]" />
-                    <span>Reset Steve</span>
+                    <span>{t('chat.reset_steve')}</span>
                   </button>
                 )}
                 <button
@@ -2749,7 +2838,7 @@ export default function ChatThread(){
                   }}
                 >
                   <i className="fa-solid fa-ban text-xs" />
-                  <span>Block User</span>
+                  <span>{t('chat.block_user')}</span>
                 </button>
               </div>
             </div>
@@ -2809,8 +2898,8 @@ export default function ChatThread(){
         {messages.length === 0 && !navigator.onLine && (
           <div className="flex flex-col items-center justify-center py-20 text-[#9fb0b5]">
             <i className="fa-solid fa-wifi-slash text-3xl mb-3 opacity-50" />
-            <div className="text-sm">Messages not available offline</div>
-            <div className="text-xs mt-1 opacity-70">Go back online to load this conversation</div>
+            <div className="text-sm">{t('chat.offline_unavailable')}</div>
+            <div className="text-xs mt-1 opacity-70">{t('chat.offline_go_online')}</div>
           </div>
         )}
         {messages.map((m, index) => {
@@ -2903,6 +2992,13 @@ export default function ChatThread(){
                     setEditText(m.text)
                   } : undefined}
                   onSelect={isMultiSelectMode ? undefined : () => enterMultiSelectMode(m.id)}
+                  onRemoveMediaItem={
+                    isMultiSelectMode
+                      ? undefined
+                      : (mediaUrl: string) => {
+                          void handleRemoveDmMediaItem(m.id, mediaUrl)
+                        }
+                  }
                   onEditTextChange={setEditText}
                   onCommitEdit={commitEdit}
                   onCancelEdit={() => {
@@ -2934,7 +3030,7 @@ export default function ChatThread(){
                       
                       if (!cleanStoryId || cleanStoryId === 'undefined' || cleanStoryId === 'null') {
                         console.error('Invalid story ID:', storyId)
-                        alert('Story reference is invalid')
+                        alert(t('chat.story_invalid'))
                         return
                       }
                       
@@ -2943,11 +3039,11 @@ export default function ChatThread(){
                       
                       if (!res.ok) {
                         if (res.status === 404) {
-                          alert('This story is no longer available')
+                          alert(t('chat.story_unavailable'))
                           return
                         }
                         console.error('HTTP error:', res.status)
-                        alert('Unable to load story')
+                        alert(t('chat.story_load_failed'))
                         return
                       }
                       
@@ -2959,18 +3055,18 @@ export default function ChatThread(){
                         navigate(`/community_feed_react/${json.story.community_id}`, { state: { openStoryId: Number(cleanStoryId) } })
                       } else if (json?.error === 'Story not found' || json?.error === 'Story expired') {
                         // Story might have expired
-                        alert('This story is no longer available')
+                        alert(t('chat.story_unavailable'))
                       } else {
                         console.error('Failed to get story details:', json)
-                        alert('Unable to load story')
+                        alert(t('chat.story_load_failed'))
                       }
                     } catch (err) {
                       console.error('Failed to fetch story:', err)
-                      alert('Unable to load story')
+                      alert(t('chat.story_load_failed'))
                     }
                   }}
                   otherUsername={username}
-                  linkifyText={linkifyText}
+                  onMentionClick={mentionToProfile}
                   onRetry={m.clientKey ? () => retryFailedMessage(String(m.clientKey)) : undefined}
                 />
                 </div>
@@ -2978,6 +3074,24 @@ export default function ChatThread(){
             </div>
           )
         })}
+
+        {steveIsTyping && (
+          <div className="flex items-center gap-3 px-3 py-2 mb-2">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#4db6ac] to-[#26a69a] flex items-center justify-center flex-shrink-0">
+              <span className="text-white text-xs font-bold">S</span>
+            </div>
+            <div className="bg-white/10 rounded-2xl rounded-bl-lg px-4 py-2">
+              <div className="flex items-center gap-1">
+                <span className="text-white/70 text-sm">{t('chat.steve_typing')}</span>
+                <span className="flex gap-0.5">
+                  <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* iOS FIX: Scroll anchor/spacer at the very end to ensure last message can scroll fully into view */}
         <div 
@@ -3005,7 +3119,7 @@ export default function ChatThread(){
           right: '22px'
         }}
         onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
-        aria-label="Scroll to latest"
+        aria-label={t('chat.scroll_latest')}
       >
         <i className="fa-solid fa-arrow-down" />
       </button>
@@ -3023,7 +3137,7 @@ export default function ChatThread(){
             onClick={exitMultiSelectMode}
           >
             <i className="fa-solid fa-xmark text-lg" />
-            <span className="text-sm">Cancel</span>
+            <span className="text-sm">{t('chat.cancel')}</span>
           </button>
           
           <div className="text-white/80 text-sm font-medium">
@@ -3040,7 +3154,7 @@ export default function ChatThread(){
             disabled={selectedMessages.size === 0}
           >
             <i className="fa-solid fa-trash text-sm" />
-            <span className="text-sm">Delete</span>
+            <span className="text-sm">{t('chat.delete')}</span>
           </button>
         </div>
       </div>
@@ -3096,8 +3210,8 @@ export default function ChatThread(){
                     <i className="fa-solid fa-image text-[#4db6ac] text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">Photos</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">Send from gallery</div>
+                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.photos')}</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_from_gallery')}</div>
                   </div>
                 </button>
                 <button
@@ -3108,8 +3222,8 @@ export default function ChatThread(){
                     <i className="fa-solid fa-camera text-[#4db6ac] text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">Camera</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">Take a photo</div>
+                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.camera')}</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.take_photo')}</div>
                   </div>
                 </button>
                 <button
@@ -3121,7 +3235,7 @@ export default function ChatThread(){
                   </div>
                   <div className="min-w-0">
                     <div className="text-white font-medium text-sm sm:text-base">GIF</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">Powered by GIPHY</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.powered_by_giphy')}</div>
                   </div>
                 </button>
                 <button
@@ -3132,8 +3246,8 @@ export default function ChatThread(){
                     <i className="fa-solid fa-video text-[#4db6ac] text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">Video</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">Attach from library</div>
+                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.video')}</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.attach_from_library')}</div>
                   </div>
                 </button>
               </div>
@@ -3328,7 +3442,7 @@ export default function ChatThread(){
                     setPreviewPlaying(false)
                   }}
                   className="w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors active:scale-95"
-                  aria-label="Delete recording"
+                  aria-label={t('chat.delete_recording')}
                   style={{ touchAction: 'manipulation' }}
                 >
                   <i className="fa-solid fa-trash text-sm pointer-events-none" />
@@ -3342,7 +3456,7 @@ export default function ChatThread(){
                     togglePreviewPlayback()
                   }}
                   className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
-                  aria-label={previewPlaying ? 'Pause' : 'Play'}
+                  aria-label={previewPlaying ? t('chat.pause') : t('chat.play')}
                   style={{ touchAction: 'manipulation' }}
                 >
                   <i className={`fa-solid ${previewPlaying ? 'fa-pause' : 'fa-play'} text-sm pointer-events-none ${!previewPlaying ? 'ml-0.5' : ''}`} />
@@ -3367,7 +3481,7 @@ export default function ChatThread(){
                 ref={textareaRef}
                 rows={1}
                 className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-40 min-h-[38px]"
-                placeholder="Message"
+                placeholder={t('chat.message_placeholder')}
                 defaultValue=""
                 autoComplete="off"
                 autoCorrect="on"
@@ -3449,7 +3563,7 @@ export default function ChatThread(){
                 e.stopPropagation()
                 void checkMicrophonePermission()
               }}
-              aria-label="Start voice message"
+              aria-label={t('chat.start_voice')}
               style={{
                 touchAction: 'manipulation',
                 WebkitTapHighlightColor: 'transparent',
@@ -3472,7 +3586,7 @@ export default function ChatThread(){
                   e.stopPropagation()
                   void stopVoiceRecording()
                 }}
-                aria-label="Pause recording"
+                aria-label={t('chat.pause_recording')}
                 style={{
                   touchAction: 'manipulation',
                   WebkitTapHighlightColor: 'transparent',
@@ -3489,7 +3603,7 @@ export default function ChatThread(){
                   e.stopPropagation()
                   void sendVoiceDirectly()
                 }}
-                aria-label="Send voice message"
+                aria-label={t('chat.send_voice')}
                 style={{
                   touchAction: 'manipulation',
                   WebkitTapHighlightColor: 'transparent',
@@ -3512,7 +3626,7 @@ export default function ChatThread(){
                   void sendRecordingPreview()
                 }}
                 disabled={sending}
-                aria-label="Send voice message"
+                aria-label={t('chat.send_voice')}
                 style={{
                   touchAction: 'manipulation',
                   WebkitTapHighlightColor: 'transparent',
@@ -3551,7 +3665,7 @@ export default function ChatThread(){
                 send()
               }}
               disabled={sending || !draftDisplay.trim()}
-              aria-label="Send"
+              aria-label={t('chat.send')}
               style={{
                 touchAction: 'manipulation',
                 WebkitTapHighlightColor: 'transparent',
@@ -3586,7 +3700,7 @@ export default function ChatThread(){
               <div className="w-16 h-16 bg-red-600/20 rounded-full flex items-center justify-center mx-auto mb-3">
                 <i className="fa-solid fa-microphone-slash text-red-400 text-2xl" />
               </div>
-              <h3 className="text-white text-lg font-medium mb-2">Microphone Access Needed</h3>
+              <h3 className="text-white text-lg font-medium mb-2">{t('chat.microphone_access_needed')}</h3>
               <p className="text-white/70 text-sm">
                 To enable voice messages, please allow microphone access in your browser settings.
               </p>
@@ -3672,7 +3786,7 @@ export default function ChatThread(){
               <div className="w-16 h-16 bg-[#4db6ac]/20 rounded-full flex items-center justify-center mx-auto mb-3">
                 <i className="fa-solid fa-microphone text-[#4db6ac] text-2xl" />
               </div>
-              <h3 className="text-white text-lg font-medium mb-2">Microphone Access</h3>
+              <h3 className="text-white text-lg font-medium mb-2">{t('chat.microphone_access')}</h3>
               <p className="text-white/70 text-sm leading-relaxed">
                 To send voice messages, we need access to your microphone. 
                 {isMobile ? ' Your browser will ask for permission.' : ' Click "Allow" when your browser asks for permission.'}
@@ -3683,15 +3797,15 @@ export default function ChatThread(){
             <div className="mb-6 space-y-2">
               <div className="flex items-center gap-3 text-sm text-white/80">
                 <i className="fa-solid fa-check text-[#4db6ac] text-xs" />
-                <span>Record voice messages</span>
+                <span>{t('chat.mic_record_voice')}</span>
               </div>
               <div className="flex items-center gap-3 text-sm text-white/80">
                 <i className="fa-solid fa-check text-[#4db6ac] text-xs" />
-                <span>Preview before sending</span>
+                <span>{t('chat.mic_preview_before_send')}</span>
               </div>
               <div className="flex items-center gap-3 text-sm text-white/80">
                 <i className="fa-solid fa-check text-[#4db6ac] text-xs" />
-                <span>Your audio stays private</span>
+                <span>{t('chat.mic_audio_private')}</span>
               </div>
             </div>
 
@@ -3724,7 +3838,7 @@ export default function ChatThread(){
           <div className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-[80%] max-w-xs p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-3">
               <i className="fa-solid fa-globe text-[#4db6ac]" />
-              <span className="text-white font-semibold text-sm">Translate to</span>
+              <span className="text-white font-semibold text-sm">{t('chat.translate_to')}</span>
             </div>
             <div className="space-y-1">
               {dmTranslateLanguages.map(lang => (
@@ -3736,14 +3850,16 @@ export default function ChatThread(){
                     setDmLangPickerId(null)
                     setDmTranslatingId(msgId)
                     try {
-                      const res = await fetch('/translate_summary', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'include',
-                        body: JSON.stringify({ summary, target_language: lang.code }),
+                      const result = await requestTranslateSummary({
+                        summary,
+                        targetLanguage: lang.code,
+                        context: 'voice_summary',
                       })
-                      const data = await res.json()
-                      if (data.success) setDmTranslations(prev => ({ ...prev, [msgId]: data.translated_summary }))
+                      if (result.ok) {
+                        setDmTranslations(prev => ({ ...prev, [msgId]: result.translated }))
+                      } else if (result.entitlementsError) {
+                        entitlementsHandler.showError(result.entitlementsError)
+                      }
                     } catch {}
                     setDmTranslatingId(null)
                   }}
@@ -3753,6 +3869,176 @@ export default function ChatThread(){
                   <span>{lang.name}</span>
                 </button>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Steve Reminder Vault */}
+      {reminderVaultOpen && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          onClick={() => {
+            setReminderVaultOpen(false)
+            setEditingVaultId(null)
+          }}
+        >
+          <div className="absolute inset-0 bg-black/70" />
+          <div
+            className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-full max-w-lg max-h-[min(560px,80vh)] shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
+              <span className="text-white font-semibold text-sm flex items-center gap-2">
+                <i className="fa-solid fa-clock text-[#4db6ac]" aria-hidden /> Reminder Vault
+              </span>
+              <button
+                type="button"
+                className="p-2 rounded-full hover:bg-white/10 text-white/70"
+                aria-label={t('common.close')}
+                onClick={() => {
+                  setReminderVaultOpen(false)
+                  setEditingVaultId(null)
+                }}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 text-sm min-h-0">
+              {reminderVaultLoading && <div className="text-white/60 text-center py-6">Loading…</div>}
+              {reminderVaultError && (
+                <div className="text-amber-300/90 text-center py-3">{reminderVaultError}</div>
+              )}
+              {!reminderVaultLoading && !reminderVaultError && !reminderRows.length && (
+                <div className="text-white/60 text-center py-6">
+                  No scheduled reminders yet. Tell Steve something like: “Steve, remind me to call Alex Tuesday at 3pm”.
+                </div>
+              )}
+              <ul className="space-y-3">
+                {reminderRows.map((row) => (
+                  <li key={row.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    {editingVaultId === row.id ? (
+                      <div className="space-y-2">
+                        <label className="block text-[11px] uppercase tracking-wide text-white/45">{t('chat.reminder_description')}</label>
+                        <textarea
+                          value={editVaultText}
+                          onChange={(e) => setEditVaultText(e.target.value)}
+                          rows={3}
+                          className="w-full bg-white/10 border border-white/20 rounded-lg px-2 py-2 text-white text-sm resize-none focus:outline-none focus:border-[#4db6ac]"
+                        />
+                        <label className="block text-[11px] uppercase tracking-wide text-white/45 mt-2">{t('chat.reminder_when')}</label>
+                        <input
+                          type="datetime-local"
+                          value={editVaultIso}
+                          onChange={(e) => setEditVaultIso(e.target.value)}
+                          className="w-full bg-white/10 border border-white/20 rounded-lg px-2 py-2 text-white text-sm focus:outline-none focus:border-[#4db6ac]"
+                        />
+                        <div className="flex gap-2 justify-end pt-1">
+                          <button
+                            type="button"
+                            className="px-3 py-1.5 text-xs rounded-lg bg-white/10 text-white/80 hover:bg-white/15"
+                            onClick={() => setEditingVaultId(null)}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            className="px-3 py-1.5 text-xs rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
+                            onClick={async () => {
+                              try {
+                                const fireIso = editVaultIso
+                                  ? new Date(editVaultIso).toISOString()
+                                  : undefined
+                                const res = await fetch(`/api/me/steve/reminders/${row.id}`, {
+                                  method: 'PATCH',
+                                  credentials: 'include',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    reminder_text: editVaultText,
+                                    ...(fireIso ? { fire_at_utc: fireIso } : {}),
+                                  }),
+                                })
+                                const data = await res.json()
+                                if (!res.ok || !data.success) {
+                                  alert(typeof data.message === 'string' ? data.message : t('chat.reminder_could_not_save'))
+                                  return
+                                }
+                                setEditingVaultId(null)
+                                void loadReminderVault()
+                              } catch {
+                                alert(t('chat.reminder_could_not_save'))
+                              }
+                            }}
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="text-white/90 whitespace-pre-wrap flex-1 min-w-0">{row.reminder_text}</div>
+                          <button
+                            type="button"
+                            className="flex-shrink-0 p-2 rounded-lg text-white/40 hover:text-rose-300 hover:bg-white/10 disabled:opacity-40"
+                            title="Remove reminder"
+                            aria-label={t('chat.reminder_delete_aria', { id: row.id })}
+                            disabled={vaultDeletingId === row.id}
+                            onClick={async () => {
+                              if (!window.confirm(t('chat.reminder_remove_confirm'))) return
+                              setVaultDeletingId(row.id)
+                              try {
+                                const res = await fetch(`/api/me/steve/reminders/${row.id}`, {
+                                  method: 'DELETE',
+                                  credentials: 'include',
+                                  headers: { Accept: 'application/json' },
+                                })
+                                const data = await res.json().catch(() => ({}))
+                                if (!res.ok || !data.success) {
+                                  alert(typeof data.message === 'string' ? data.message : t('chat.reminder_could_not_remove'))
+                                  return
+                                }
+                                void loadReminderVault()
+                              } catch {
+                                alert(t('chat.reminder_could_not_remove'))
+                              } finally {
+                                setVaultDeletingId(null)
+                              }
+                            }}
+                          >
+                            <i className="fa-solid fa-trash" aria-hidden />
+                          </button>
+                        </div>
+                        <div className="text-xs text-white/45 mt-1">
+                          #{row.id} · {row.fire_at_utc} UTC · tz {row.tz_label}
+                        </div>
+                        <button
+                          type="button"
+                          className="mt-2 text-xs text-[#4db6ac] hover:underline"
+                          onClick={() => {
+                            setEditingVaultId(row.id)
+                            setEditVaultText(row.reminder_text)
+                            const raw = row.fire_at_utc
+                            const norm = raw.includes('T')
+                              ? raw
+                              : raw.replace(' ', 'T')
+                            const iso = norm.endsWith('Z') || norm.includes('+') ? norm : `${norm}Z`
+                            const d = new Date(iso)
+                            const pad = (n: number) => String(n).padStart(2, '0')
+                            const local =
+                              Number.isNaN(d.getTime())
+                                ? ''
+                                : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+                            setEditVaultIso(local)
+                          }}
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         </div>
@@ -3768,7 +4054,7 @@ export default function ChatThread(){
           >
             <div className="flex items-center gap-2 mb-3">
               <i className="fa-solid fa-wand-magic-sparkles text-[#4db6ac]" />
-              <span className="text-white font-semibold text-sm">Edit Steve summary</span>
+              <span className="text-white font-semibold text-sm">{t('chat.edit_summary')}</span>
             </div>
             <textarea
               value={editSummaryText}
@@ -3776,13 +4062,13 @@ export default function ChatThread(){
               className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-3 text-sm text-white resize-none focus:outline-none focus:border-[#4db6ac] leading-relaxed"
               rows={4}
               autoFocus
-              placeholder="Edit the AI-generated summary..."
+              placeholder={t('chat.edit_summary_placeholder')}
             />
             <div className="flex gap-2 mt-3 justify-end">
               <button
                 onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}
                 className="px-4 py-2 text-sm rounded-lg bg-white/10 text-white/70 hover:bg-white/15"
-              >Cancel</button>
+              >{t('chat.cancel')}</button>
               <button
                 onClick={async () => {
                   const newSummary = editSummaryText.trim()
@@ -3809,7 +4095,7 @@ export default function ChatThread(){
                   }
                 }}
                 className="px-4 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
-              >Save</button>
+              >{t('chat.save')}</button>
             </div>
           </div>
         </div>
@@ -3826,12 +4112,12 @@ export default function ChatThread(){
             <button 
               className="p-2 rounded-full hover:bg-white/10 transition-colors"
               onClick={() => setPreviewImage(null)}
-              aria-label="Back to chat"
+                aria-label={t('chat.back_to_chat')}
             >
               <i className="fa-solid fa-arrow-left text-white text-lg" />
             </button>
             <div className="flex-1 text-center">
-              <div className="text-white font-medium">Photo</div>
+              <div className="text-white font-medium">{t('chat.photo')}</div>
             </div>
             <div className="w-10"></div> {/* Spacer for centering */}
           </div>
@@ -3909,24 +4195,6 @@ export default function ChatThread(){
         }}
       />
 
-      {/* Community Join Success Modal */}
-      {joinedCommunity && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="mx-4 w-full max-w-sm rounded-2xl border border-[#4db6ac]/30 bg-[#0a0a0a] p-6 shadow-2xl">
-            <div className="flex flex-col items-center text-center">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#4db6ac]/20">
-                <i className="fa-solid fa-check text-3xl text-[#4db6ac]" />
-              </div>
-              <h3 className="mb-2 text-xl font-semibold text-white">Welcome!</h3>
-              <p className="mb-4 text-sm text-white/70">
-                You've been added to <span className="font-medium text-[#4db6ac]">{joinedCommunity.name}</span>
-              </p>
-              <p className="text-xs text-white/50">Redirecting to community...</p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Block User Modal */}
       {showBlockModal && (
         <div 
@@ -3959,11 +4227,11 @@ export default function ChatThread(){
                 disabled={blockSubmitting}
               >
                 <option value="">Select a reason...</option>
-                <option value="Harassment">Harassment or bullying</option>
-                <option value="Spam">Spam or scam</option>
-                <option value="Offensive content">Offensive content</option>
-                <option value="Threats">Threats or violence</option>
-                <option value="Other">Other</option>
+                <option value="Harassment">{t('feed.report_reason_harassment')}</option>
+                <option value="Spam">{t('feed.report_reason_spam')}</option>
+                <option value="Offensive content">{t('feed.report_reason_offensive')}</option>
+                <option value="Threats">{t('feed.report_reason_threats')}</option>
+                <option value="Other">{t('feed.report_reason_other')}</option>
               </select>
             </div>
 

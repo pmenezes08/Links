@@ -142,7 +142,15 @@ export default function AdminDashboard() {
     [communityChildrenMap]
   )
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities' | 'metrics' | 'content_review' | 'blocked_users' | 'steve_profiling' | 'network_profiling'>('overview')
+  const [metricsExtra, setMetricsExtra] = useState<Partial<Stats> | null>(null)
+  const [metricsLoading, setMetricsLoading] = useState(false)
+  const [metricsError, setMetricsError] = useState<string | null>(null)
+
+  const metricsViewStats = useMemo(() => {
+    if (!stats) return null
+    return { ...stats, ...(metricsExtra ?? {}) }
+  }, [stats, metricsExtra])
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities' | 'metrics' | 'content_review' | 'blocked_users' | 'steve_feedback' | 'steve_profiling' | 'network_profiling'>('overview')
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<'all' | 'premium' | 'free'>('all')
@@ -169,6 +177,9 @@ export default function AdminDashboard() {
   const [inviteLogo, setInviteLogo] = useState<string | null>(null)
   const [inviteLogoStatus, setInviteLogoStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [inviteLogoUploading, setInviteLogoUploading] = useState(false)
+  const [onboardingVideo, setOnboardingVideo] = useState<string | null>(null)
+  const [onboardingVideoStatus, setOnboardingVideoStatus] = useState<'loading' | 'success' | 'error'>('loading')
+  const [onboardingVideoUploading, setOnboardingVideoUploading] = useState(false)
   const [welcomeUploadingIndex, setWelcomeUploadingIndex] = useState<number | null>(null)
   const [welcomeError, setWelcomeError] = useState<string>('')
   const [welcomeMessage, setWelcomeMessage] = useState<string>('')
@@ -226,6 +237,28 @@ export default function AdminDashboard() {
   const [blockedUsers, setBlockedUsers] = useState<BlockedUserEntry[]>([])
   const [blockedUsersLoading, setBlockedUsersLoading] = useState(false)
   const [unblockingId, setUnblockingId] = useState<number | null>(null)
+
+  // Steve Feedback Queue state
+  type SteveFeedbackItem = {
+    id: number
+    created_at: string
+    submitted_by: string
+    type: string
+    severity: string
+    status: string
+    title: string
+    summary?: string | null
+    raw_user_message?: string | null
+    steve_summary?: string | null
+    surface?: string | null
+    community_id?: number | null
+    admin_notes?: string | null
+  }
+  const [steveFeedbackItems, setSteveFeedbackItems] = useState<SteveFeedbackItem[]>([])
+  const [steveFeedbackLoading, setSteveFeedbackLoading] = useState(false)
+  const [steveFeedbackFilter, setSteveFeedbackFilter] = useState<'all' | 'new' | 'triaged' | 'planned' | 'in_progress' | 'resolved' | 'closed'>('new')
+  const [selectedFeedbackId, setSelectedFeedbackId] = useState<number | null>(null)
+  const [feedbackNote, setFeedbackNote] = useState('')
 
   // Steve Profiles state (Phase 0)
   interface SteveProfile {
@@ -327,6 +360,8 @@ export default function AdminDashboard() {
 
   const loadAdminData = async () => {
     setLoading(true)
+    setMetricsExtra(null)
+    setMetricsError(null)
     try {
       const response = await fetch('/api/admin/dashboard', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const data = await response.json()
@@ -441,6 +476,101 @@ export default function AdminDashboard() {
     }
   }
 
+  const loadOnboardingWelcomeVideo = useCallback(async () => {
+    setOnboardingVideoStatus('loading')
+    try {
+      const response = await fetch('/admin/get_onboarding_welcome_video', {
+        credentials: 'include',
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      })
+      const data = await response.json()
+      if (data?.success) {
+        setOnboardingVideo(data.video_url || null)
+        setOnboardingVideoStatus('success')
+      } else {
+        setOnboardingVideoStatus('error')
+      }
+    } catch (error) {
+      console.error('Error loading onboarding welcome video:', error)
+      setOnboardingVideoStatus('error')
+    }
+  }, [])
+
+  const validateOnboardingVideoDuration = (file: File): Promise<void> => new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file)
+    const video = document.createElement('video')
+    const cleanup = () => URL.revokeObjectURL(objectUrl)
+    video.preload = 'metadata'
+    video.onloadedmetadata = () => {
+      const duration = Number.isFinite(video.duration) ? video.duration : 0
+      cleanup()
+      if (duration > 15.5) {
+        reject(new Error('Keep the onboarding welcome video to 15 seconds or less.'))
+        return
+      }
+      resolve()
+    }
+    video.onerror = () => {
+      cleanup()
+      reject(new Error('Could not read this video. Please upload a valid MP4 or WebM file.'))
+    }
+    video.src = objectUrl
+  })
+
+  const handleOnboardingVideoUpload = async (file: File) => {
+    const hasAllowedType = ['video/mp4', 'video/webm'].includes(file.type)
+    const hasAllowedExtension = /\.(mp4|webm)$/i.test(file.name)
+    if (!hasAllowedType && !hasAllowedExtension) {
+      alert('Use an MP4 or WebM video.')
+      return
+    }
+    setOnboardingVideoUploading(true)
+    try {
+      await validateOnboardingVideoDuration(file)
+      const formData = new FormData()
+      formData.append('video', file)
+
+      const response = await fetch('/admin/upload_onboarding_welcome_video', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+      })
+      const data = await response.json()
+      if (data?.success) {
+        setOnboardingVideo(data.video_url || null)
+        setOnboardingVideoStatus('success')
+      } else {
+        alert(data?.error || 'Failed to upload onboarding welcome video')
+      }
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Server error while uploading video')
+    } finally {
+      setOnboardingVideoUploading(false)
+    }
+  }
+
+  const handleRemoveOnboardingVideo = async () => {
+    if (!confirm('Remove the onboarding welcome video?')) return
+
+    try {
+      const response = await fetch('/admin/remove_onboarding_welcome_video', {
+        method: 'POST',
+        credentials: 'include'
+      })
+      const data = await response.json()
+      if (data?.success) {
+        setOnboardingVideo(null)
+        setOnboardingVideoStatus('success')
+      } else {
+        alert(data?.error || 'Failed to remove onboarding welcome video')
+      }
+    } catch (error) {
+      console.error('Error removing onboarding welcome video:', error)
+      alert('Server error while removing video')
+    }
+  }
+
   const loadReportedPosts = useCallback(async (status: string = 'pending') => {
     setReportsLoading(true)
     try {
@@ -481,6 +611,79 @@ export default function AdminDashboard() {
     } finally {
       setBlockedUsersLoading(false)
     }
+  }, [])
+
+  const loadSteveFeedback = useCallback(async () => {
+    setSteveFeedbackLoading(true)
+    try {
+      const qs = new URLSearchParams()
+      if (steveFeedbackFilter !== 'all') qs.set('status', steveFeedbackFilter)
+      const response = await fetch(`/api/admin/steve_feedback?${qs.toString()}`, {
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' },
+      })
+      const data = await response.json()
+      if (data?.success) {
+        setSteveFeedbackItems(data.items || [])
+        if (!selectedFeedbackId && data.items?.length) {
+          setSelectedFeedbackId(data.items[0].id)
+        }
+      } else {
+        setSteveFeedbackItems([])
+      }
+    } catch (error) {
+      console.error('Error loading Steve feedback:', error)
+      setSteveFeedbackItems([])
+    } finally {
+      setSteveFeedbackLoading(false)
+    }
+  }, [steveFeedbackFilter, selectedFeedbackId])
+
+  const updateSteveFeedback = useCallback(async (feedbackId: number, body: Record<string, unknown>) => {
+    const response = await fetch(`/api/admin/steve_feedback/${feedbackId}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const data = await response.json()
+    if (!data?.success) {
+      alert(data?.error || 'Could not update feedback item')
+      return
+    }
+    setSteveFeedbackItems(prev => prev.map(item => item.id === feedbackId ? data.item : item))
+  }, [])
+
+  const addSteveFeedbackNote = useCallback(async () => {
+    if (!selectedFeedbackId || !feedbackNote.trim()) return
+    const response = await fetch(`/api/admin/steve_feedback/${selectedFeedbackId}/notes`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: feedbackNote.trim() }),
+    })
+    const data = await response.json()
+    if (!data?.success) {
+      alert(data?.error || 'Could not add note')
+      return
+    }
+    setFeedbackNote('')
+    setSteveFeedbackItems(prev => prev.map(item => item.id === selectedFeedbackId ? data.item : item))
+  }, [selectedFeedbackId, feedbackNote])
+
+  const sendFeedbackClosureReceipt = useCallback(async (feedbackId: number) => {
+    const response = await fetch(`/api/admin/steve_feedback/${feedbackId}/closure_receipt`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    const data = await response.json()
+    if (!data?.success) {
+      alert(data?.error || 'Could not send closure receipt')
+      return
+    }
+    alert('Closure receipt sent by Steve.')
   }, [])
 
   const loadSteveProfiles = useCallback(async () => {
@@ -941,7 +1144,46 @@ export default function AdminDashboard() {
     loadAdminData()
     loadWelcomeCards()
     loadInviteLogo()
-  }, [setTitle, loadWelcomeCards, loadInviteLogo])
+    loadOnboardingWelcomeVideo()
+  }, [setTitle, loadWelcomeCards, loadInviteLogo, loadOnboardingWelcomeVideo])
+
+  useEffect(() => {
+    if (activeTab !== 'metrics' || !stats) return
+    let cancelled = false
+    setMetricsLoading(true)
+    setMetricsError(null)
+    setMetricsExtra(null)
+    fetch('/api/admin/metrics', { credentials: 'include', headers: { Accept: 'application/json' } })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}))
+        if (cancelled) return
+        if (res.ok && data.success && data.stats) {
+          setMetricsExtra(data.stats)
+          setMetricsError(null)
+        } else {
+          setMetricsExtra(null)
+          const msg =
+            typeof data.error === 'string'
+              ? data.error
+              : !res.ok
+                ? `Could not load metrics (HTTP ${res.status})`
+                : 'Could not load metrics'
+          setMetricsError(msg)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMetricsExtra(null)
+          setMetricsError('Network error — could not reach the server')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setMetricsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeTab, stats])
 
   // Load reported posts when content_review tab is active
   useEffect(() => {
@@ -956,6 +1198,12 @@ export default function AdminDashboard() {
       loadBlockedUsers()
     }
   }, [activeTab, loadBlockedUsers])
+
+  useEffect(() => {
+    if (activeTab === 'steve_feedback') {
+      loadSteveFeedback()
+    }
+  }, [activeTab, loadSteveFeedback])
 
   // Scroll to top when switching tabs
   useEffect(() => {
@@ -977,6 +1225,8 @@ export default function AdminDashboard() {
       setActiveTab('content_review')
     } else if (tab === 'blocked_users') {
       setActiveTab('blocked_users')
+    } else if (tab === 'steve_feedback') {
+      setActiveTab('steve_feedback')
     } else if (tab === 'steve_profiling') {
       setActiveTab('steve_profiling')
     } else if (tab === 'network_profiling') {
@@ -1369,6 +1619,8 @@ export default function AdminDashboard() {
     return name.includes(q) || type.includes(q) || creator.includes(q)
   })
 
+  const selectedFeedbackItem = steveFeedbackItems.find(item => item.id === selectedFeedbackId) || null
+
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -1392,6 +1644,7 @@ export default function AdminDashboard() {
             ['metrics', 'Metrics'],
             ['content_review', 'Reports'],
             ['blocked_users', 'Blocks'],
+            ['steve_feedback', 'Steve Feedback'],
             ['steve_profiling', 'Steve Profiling'],
             ['network_profiling', 'Network Profiling'],
           ] as const).map(([key, label]) => (
@@ -1480,6 +1733,70 @@ export default function AdminDashboard() {
                         Remove Logo
                       </button>
                     )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Onboarding Welcome Video */}
+              <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
+                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-[#4db6ac]">Onboarding Welcome Video</h3>
+                    <p className="text-xs text-white/60 mt-1">
+                      This appears on the first post-login onboarding welcome screen. Use MP4 or WebM, 15 seconds max.
+                    </p>
+                  </div>
+                  <div className="text-xs text-white/50">
+                    {onboardingVideoStatus === 'loading' && <span className="text-white/60">Loading…</span>}
+                    {onboardingVideoStatus === 'success' && <span className="text-[#4db6ac]">Up to date</span>}
+                    {onboardingVideoStatus === 'error' && <span className="text-red-400">Failed to load</span>}
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-4 items-start">
+                  <div className="w-full sm:w-72 aspect-video rounded-xl overflow-hidden border border-white/10 bg-black/30 flex items-center justify-center flex-shrink-0">
+                    {onboardingVideoStatus === 'loading' ? (
+                      <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+                    ) : onboardingVideo ? (
+                      <video
+                        src={onboardingVideo}
+                        className="w-full h-full object-contain"
+                        controls
+                        preload="metadata"
+                      />
+                    ) : (
+                      <div className="text-xs text-white/50 text-center px-4">No onboarding video configured</div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="px-4 py-2 bg-[#4db6ac] text-black rounded-lg text-sm font-medium cursor-pointer hover:bg-[#4db6ac]/90 transition-colors text-center">
+                      {onboardingVideoUploading ? 'Uploading...' : 'Upload Video'}
+                      <input
+                        type="file"
+                        accept="video/mp4,video/webm"
+                        hidden
+                        disabled={onboardingVideoUploading}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            handleOnboardingVideoUpload(file)
+                          }
+                          e.target.value = ''
+                        }}
+                      />
+                    </label>
+                    {onboardingVideo && (
+                      <button
+                        onClick={handleRemoveOnboardingVideo}
+                        className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30 transition-colors"
+                      >
+                        Remove Video
+                      </button>
+                    )}
+                    <p className="text-xs text-white/50 max-w-sm">
+                      The welcome screen still works without a video. The Start onboarding button is always visible immediately.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -1650,7 +1967,7 @@ export default function AdminDashboard() {
                     Add to Community
                   </button>
                   <button 
-                    onClick={() => navigate('/communities')}
+                    onClick={() => navigate('/premium_dashboard')}
                     className="py-2 px-3 bg-[#4db6ac]/20 text-[#4db6ac] rounded-lg text-sm font-medium hover:bg-[#4db6ac]/30 transition-colors"
                   >
                     Create Community
@@ -1670,32 +1987,86 @@ export default function AdminDashboard() {
         )}
 
         {/* Metrics Tab */}
-        {activeTab === 'metrics' && stats && (
-          <div className="space-y-4">
+        {activeTab === 'metrics' && metricsViewStats && (
+          <div className="relative space-y-4 min-h-[24rem]">
+            {metricsLoading && (
+              <div
+                className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 rounded-xl bg-[#0a1214]/90 backdrop-blur-sm border border-white/10 px-6 py-12"
+                role="status"
+                aria-live="polite"
+              >
+                <i className="fa-solid fa-spinner fa-spin text-3xl text-[#4db6ac]" aria-hidden />
+                <div className="text-center max-w-md">
+                  <p className="text-base font-semibold text-white">Calculating usage metrics</p>
+                  <p className="text-sm text-white/65 mt-2 leading-relaxed">
+                    DAU, MAU, cohorts, and leaderboards are computed on the server. On large databases this can take up
+                    to a minute — please wait.
+                  </p>
+                </div>
+              </div>
+            )}
+            {metricsError && !metricsLoading && (
+              <div
+                className="rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+                role="alert"
+              >
+                {metricsError}
+              </div>
+            )}
+            <div
+              className={`space-y-4 transition-opacity ${metricsLoading ? 'opacity-35 pointer-events-none select-none' : ''}`}
+            >
             <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
               <h3 className="text-lg font-semibold mb-3 text-[#4db6ac]">Key Metrics</h3>
+              <div
+                className="mb-4 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/70 leading-relaxed space-y-2"
+                role="region"
+                aria-label="DAU and MAU definitions"
+              >
+                <p className="font-medium text-white/85">How DAU and MAU are counted</p>
+                <p>
+                  Both use <span className="text-white/90">distinct usernames</span> with at least one qualifying{' '}
+                  <span className="text-white/90">in-app activity</span> in the time window — not login history alone,
+                  and not simply opening the app unless that visit produces an event below.
+                </p>
+                <ul className="list-disc pl-5 space-y-1 text-white/65">
+                  <li>
+                    <span className="text-white/80">DAU:</span> any qualifying activity from{' '}
+                    <span className="text-white/80">midnight today</span> (server date) through now.
+                  </li>
+                  <li>
+                    <span className="text-white/80">MAU:</span> any qualifying activity in the{' '}
+                    <span className="text-white/80">rolling 30 days</span> ending at the start of today.
+                  </li>
+                </ul>
+                <p className="text-white/65">
+                  <span className="text-white/80">Activity includes</span> (union — one is enough): posts, reactions,
+                  poll votes, opening a community feed (visit row), and sending DMs/messages.{' '}
+                  <span className="text-white/80">Login history alone does not count.</span>
+                </p>
+              </div>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <div className="bg-white/5 rounded-lg p-3 border border-white/10">
                   <div className="text-xs text-white/60">DAU</div>
-                  <div className="text-xl font-bold">{stats.dau ?? '—'}</div>
-                  <div className="text-xs text-white/60">{stats.dau_pct != null ? `${stats.dau_pct}% of users` : ''}</div>
+                  <div className="text-xl font-bold">{metricsViewStats.dau ?? '—'}</div>
+                  <div className="text-xs text-white/60">{metricsViewStats.dau_pct != null ? `${metricsViewStats.dau_pct}% of users` : ''}</div>
                 </div>
                 <div className="bg-white/5 rounded-lg p-3 border border-white/10">
                   <div className="text-xs text-white/60">MAU</div>
-                  <div className="text-xl font-bold">{stats.mau ?? '—'}</div>
-                  <div className="text-xs text-white/60">{stats.mau_pct != null ? `${stats.mau_pct}% of users` : ''}</div>
+                  <div className="text-xl font-bold">{metricsViewStats.mau ?? '—'}</div>
+                  <div className="text-xs text-white/60">{metricsViewStats.mau_pct != null ? `${metricsViewStats.mau_pct}% of users` : ''}</div>
                 </div>
                 <div className="bg-white/5 rounded-lg p-3 border border-white/10">
                   <div className="text-xs text-white/60">Total Users</div>
-                  <div className="text-xl font-bold">{stats.total_users}</div>
+                  <div className="text-xl font-bold">{metricsViewStats.total_users}</div>
                 </div>
                 <div className="bg-white/5 rounded-lg p-3 border border-white/10">
                   <div className="text-xs text-white/60">Total Communities</div>
-                  <div className="text-xl font-bold">{stats.total_communities}</div>
+                  <div className="text-xl font-bold">{metricsViewStats.total_communities}</div>
                 </div>
                 <div className="bg-white/5 rounded-lg p-3 border border-white/10">
                   <div className="text-xs text-white/60">Avg DAU (30d)</div>
-                  <div className="text-xl font-bold">{stats.avg_dau_30 ?? '—'}</div>
+                  <div className="text-xl font-bold">{metricsViewStats.avg_dau_30 ?? '—'}</div>
                   <div className="text-xs text-white/60">daily avg</div>
                 </div>
               </div>
@@ -1709,15 +2080,15 @@ export default function AdminDashboard() {
                 <div className="flex items-end gap-4">
                   <div>
                     <div className="text-[11px] text-white/60">MRU</div>
-                    <div className="text-xl font-bold">{stats.mru ?? '—'}</div>
+                    <div className="text-xl font-bold">{metricsViewStats.mru ?? '—'}</div>
                   </div>
                   <div>
                     <div className="text-[11px] text-white/60">MAU (month)</div>
-                    <div className="text-xl font-bold">{stats.mau_month ?? '—'}</div>
+                    <div className="text-xl font-bold">{metricsViewStats.mau_month ?? '—'}</div>
                   </div>
                   <div>
                     <div className="text-[11px] text-white/60">Repeat rate</div>
-                    <div className="text-xl font-bold">{stats.mru_repeat_rate_pct != null ? `${stats.mru_repeat_rate_pct}%` : '—'}</div>
+                    <div className="text-xl font-bold">{metricsViewStats.mru_repeat_rate_pct != null ? `${metricsViewStats.mru_repeat_rate_pct}%` : '—'}</div>
                   </div>
                 </div>
               </div>
@@ -1727,15 +2098,15 @@ export default function AdminDashboard() {
                 <div className="flex items-end gap-4">
                   <div>
                     <div className="text-[11px] text-white/60">WRU</div>
-                    <div className="text-xl font-bold">{stats.wru ?? '—'}</div>
+                    <div className="text-xl font-bold">{metricsViewStats.wru ?? '—'}</div>
                   </div>
                   <div>
                     <div className="text-[11px] text-white/60">WAU</div>
-                    <div className="text-xl font-bold">{stats.wau ?? '—'}</div>
+                    <div className="text-xl font-bold">{metricsViewStats.wau ?? '—'}</div>
                   </div>
                   <div>
                     <div className="text-[11px] text-white/60">Repeat rate</div>
-                    <div className="text-xl font-bold">{stats.wru_repeat_rate_pct != null ? `${stats.wru_repeat_rate_pct}%` : '—'}</div>
+                    <div className="text-xl font-bold">{metricsViewStats.wru_repeat_rate_pct != null ? `${metricsViewStats.wru_repeat_rate_pct}%` : '—'}</div>
                   </div>
                 </div>
               </div>
@@ -1746,7 +2117,7 @@ export default function AdminDashboard() {
               <div className="bg-white/5 rounded-lg p-4 border border-white/10">
                 <div className="text-sm font-semibold mb-2">Top Posters</div>
                 <div className="space-y-1 text-sm">
-                  {stats.leaderboards?.top_posters?.length ? stats.leaderboards.top_posters.map((u, i) => (
+                  {metricsViewStats.leaderboards?.top_posters?.length ? metricsViewStats.leaderboards.top_posters.map((u, i) => (
                     <div key={u.username} className="flex items-center justify-between">
                       <span className="text-white/80">{i+1}. {u.username}</span>
                       <span className="text-white/60">{u.count}</span>
@@ -1757,7 +2128,7 @@ export default function AdminDashboard() {
               <div className="bg-white/5 rounded-lg p-4 border border-white/10">
                 <div className="text-sm font-semibold mb-2">Top Reactors</div>
                 <div className="space-y-1 text-sm">
-                  {stats.leaderboards?.top_reactors?.length ? stats.leaderboards.top_reactors.map((u, i) => (
+                  {metricsViewStats.leaderboards?.top_reactors?.length ? metricsViewStats.leaderboards.top_reactors.map((u, i) => (
                     <div key={u.username} className="flex items-center justify-between">
                       <span className="text-white/80">{i+1}. {u.username}</span>
                       <span className="text-white/60">{u.count}</span>
@@ -1768,7 +2139,7 @@ export default function AdminDashboard() {
               <div className="bg-white/5 rounded-lg p-4 border border-white/10">
                 <div className="text-sm font-semibold mb-2">Top Voters</div>
                 <div className="space-y-1 text-sm">
-                  {stats.leaderboards?.top_voters?.length ? stats.leaderboards.top_voters.map((u, i) => (
+                  {metricsViewStats.leaderboards?.top_voters?.length ? metricsViewStats.leaderboards.top_voters.map((u, i) => (
                     <div key={u.username} className="flex items-center justify-between">
                       <span className="text-white/80">{i+1}. {u.username}</span>
                       <span className="text-white/60">{u.count}</span>
@@ -1776,6 +2147,7 @@ export default function AdminDashboard() {
                   )) : <div className="text-white/60">No data</div>}
                 </div>
               </div>
+            </div>
             </div>
           </div>
         )}
@@ -1887,7 +2259,7 @@ export default function AdminDashboard() {
                 className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]"
               />
               <button
-                onClick={() => navigate('/communities')}
+                onClick={() => navigate('/premium_dashboard')}
                 className="px-3 py-1.5 bg-[#4db6ac] text-black rounded-lg text-sm font-medium hover:bg-[#45a099]"
               >
                 Create New
@@ -2247,6 +2619,141 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Steve Feedback Queue Tab */}
+        {activeTab === 'steve_feedback' && (
+          <div className="space-y-4">
+            <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-[#4db6ac]">
+                    <i className="fa-solid fa-inbox mr-2" />
+                    Steve Feedback Queue
+                  </h3>
+                  <p className="text-xs text-white/60 mt-1">Bugs, feature ideas, complaints, and product feedback submitted through Steve.</p>
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    value={steveFeedbackFilter}
+                    onChange={(e) => setSteveFeedbackFilter(e.target.value as typeof steveFeedbackFilter)}
+                    className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-[#4db6ac]"
+                  >
+                    {['all', 'new', 'triaged', 'planned', 'in_progress', 'resolved', 'closed'].map(status => (
+                      <option key={status} value={status}>{status.replace('_', ' ')}</option>
+                    ))}
+                  </select>
+                  <button onClick={loadSteveFeedback} className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-sm">
+                    Refresh
+                  </button>
+                </div>
+              </div>
+
+              {steveFeedbackLoading ? (
+                <div className="text-center py-8 text-white/60">Loading Steve feedback...</div>
+              ) : steveFeedbackItems.length === 0 ? (
+                <div className="text-center py-8 text-white/60">
+                  <i className="fa-solid fa-check-circle text-2xl mb-2 text-green-400" />
+                  <div>No feedback items for this filter</div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    {steveFeedbackItems.map(item => (
+                      <button
+                        key={item.id}
+                        onClick={() => setSelectedFeedbackId(item.id)}
+                        className={`w-full text-left p-3 rounded-xl border transition-colors ${
+                          selectedFeedbackId === item.id ? 'bg-[#4db6ac]/10 border-[#4db6ac]/40' : 'bg-black/30 border-white/10 hover:bg-white/5'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="font-medium text-white/90 truncate">{item.title}</div>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                            item.severity === 'critical' ? 'text-red-300 border-red-400/40 bg-red-500/10' :
+                            item.severity === 'high' ? 'text-orange-300 border-orange-400/40 bg-orange-500/10' :
+                            'text-white/60 border-white/10 bg-white/5'
+                          }`}>
+                            {item.severity}
+                          </span>
+                        </div>
+                        <div className="text-xs text-white/50 flex flex-wrap gap-2">
+                          <span>{item.type.replace('_', ' ')}</span>
+                          <span>•</span>
+                          <span>{item.status.replace('_', ' ')}</span>
+                          <span>•</span>
+                          <span>@{item.submitted_by}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="bg-black/30 border border-white/10 rounded-xl p-4 min-h-[320px]">
+                    {selectedFeedbackItem ? (
+                      <div className="space-y-4">
+                        <div>
+                          <div className="text-xs text-white/40 mb-1">#{selectedFeedbackItem.id} • {new Date(selectedFeedbackItem.created_at).toLocaleString()}</div>
+                          <h4 className="text-white font-semibold">{selectedFeedbackItem.title}</h4>
+                          <div className="text-xs text-white/50 mt-1">@{selectedFeedbackItem.submitted_by} via {selectedFeedbackItem.surface || 'steve_dm'}</div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <select
+                            value={selectedFeedbackItem.status}
+                            onChange={(e) => updateSteveFeedback(selectedFeedbackItem.id, { status: e.target.value })}
+                            className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-sm text-white"
+                          >
+                            {['new', 'triaged', 'planned', 'in_progress', 'resolved', 'closed'].map(status => <option key={status} value={status}>{status.replace('_', ' ')}</option>)}
+                          </select>
+                          <select
+                            value={selectedFeedbackItem.severity}
+                            onChange={(e) => updateSteveFeedback(selectedFeedbackItem.id, { status: selectedFeedbackItem.status, severity: e.target.value })}
+                            className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-sm text-white"
+                          >
+                            {['low', 'medium', 'high', 'critical'].map(sev => <option key={sev} value={sev}>{sev}</option>)}
+                          </select>
+                        </div>
+
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-white/40 mb-1">Steve summary</div>
+                          <div className="text-sm text-white/75 whitespace-pre-wrap">{selectedFeedbackItem.steve_summary || selectedFeedbackItem.summary || 'No summary'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-white/40 mb-1">Raw message</div>
+                          <div className="text-sm text-white/65 whitespace-pre-wrap">{selectedFeedbackItem.raw_user_message || 'No raw message'}</div>
+                        </div>
+                        {selectedFeedbackItem.admin_notes && (
+                          <div>
+                            <div className="text-xs uppercase tracking-wide text-white/40 mb-1">Admin notes</div>
+                            <div className="text-xs text-white/60 whitespace-pre-wrap">{selectedFeedbackItem.admin_notes}</div>
+                          </div>
+                        )}
+
+                        <div className="space-y-2">
+                          <textarea
+                            value={feedbackNote}
+                            onChange={(e) => setFeedbackNote(e.target.value)}
+                            placeholder="Add admin note..."
+                            className="w-full min-h-[70px] bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/35"
+                          />
+                          <div className="flex gap-2">
+                            <button onClick={addSteveFeedbackNote} className="flex-1 py-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-sm">
+                              Add note
+                            </button>
+                            <button onClick={() => sendFeedbackClosureReceipt(selectedFeedbackItem.id)} className="flex-1 py-2 rounded-lg bg-[#4db6ac]/20 border border-[#4db6ac]/30 text-[#4db6ac] hover:bg-[#4db6ac]/30 text-sm">
+                              Send receipt
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-white/50">Select a feedback item to view details.</div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

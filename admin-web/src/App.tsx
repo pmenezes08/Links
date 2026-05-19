@@ -4,7 +4,8 @@ import AuthGuard from './components/AuthGuard'
 import Login from './pages/Login'
 import Overview from './pages/Overview'
 import Users from './pages/Users'
-import Communities from './pages/Communities'
+import NetworkInsights from './pages/NetworkInsights'
+import CommunitiesDirectory from './pages/CommunitiesDirectory'
 import Metrics from './pages/Metrics'
 import Reports from './pages/Reports'
 import Blocked from './pages/Blocked'
@@ -18,6 +19,7 @@ import UserProfiles from './pages/UserProfiles'
 import KnowledgeBase from './pages/KnowledgeBase'
 import Calculator from './pages/Calculator'
 import Enterprise from './pages/Enterprise'
+import Subscriptions from './pages/Subscriptions'
 
 export default function App() {
   return (
@@ -27,7 +29,8 @@ export default function App() {
       <Route element={<AuthGuard><Layout /></AuthGuard>}>
         <Route index element={<Overview />} />
         <Route path="users" element={<Users />} />
-        <Route path="communities" element={<Communities />} />
+        <Route path="network-insights" element={<NetworkInsights />} />
+        <Route path="communities" element={<CommunitiesDirectory />} />
         <Route path="profiles" element={<UserProfiles />} />
         <Route path="metrics" element={<Metrics />} />
         <Route path="reports" element={<Reports />} />
@@ -40,6 +43,7 @@ export default function App() {
         <Route path="kb" element={<KnowledgeBase />} />
         <Route path="calculator" element={<Calculator />} />
         <Route path="enterprise" element={<Enterprise />} />
+        <Route path="subscriptions" element={<Subscriptions />} />
       </Route>
     </Routes>
   )

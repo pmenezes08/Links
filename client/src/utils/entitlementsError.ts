@@ -11,6 +11,7 @@
  *       cta: { type: "upgrade" | "wait" | "manage" | "open_url", label, url },
  *       usage: { ... },
  *       tier: "free" | "trial" | "premium" | "special"
+ *       premium_offer?: { steve_uses_per_month, whisper_minutes_per_month }
  *     }
  *
  * The frontend uses a single handler that switches on `reason` to pick
@@ -49,6 +50,11 @@ export interface EntitlementsUsageSnapshot {
   resets_at_daily?: string | null
 }
 
+export interface PremiumOfferCaps {
+  steve_uses_per_month: number
+  whisper_minutes_per_month: number
+}
+
 export interface EntitlementsError {
   success: false
   error: 'entitlements_error'
@@ -57,6 +63,8 @@ export interface EntitlementsError {
   cta: EntitlementsCta
   usage: EntitlementsUsageSnapshot
   tier?: string
+  /** Set when reason === premium_required — aligns headline numbers with KB Premium caps */
+  premium_offer?: PremiumOfferCaps
 }
 
 export function isEntitlementsError(obj: unknown): obj is EntitlementsError {

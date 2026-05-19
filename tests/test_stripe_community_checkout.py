@@ -210,7 +210,10 @@ class TestAlreadySubscribed:
                                  "community_id": cid,
                                  "tier_code": "paid_l2"})
         assert resp.status_code == 409
-        assert resp.get_json()["reason"] == "already_subscribed"
+        body = resp.get_json()
+        assert body["reason"] == "already_subscribed"
+        assert body["portal_required"] is True
+        assert body["community_id"] == cid
 
     def test_cancelled_sub_does_not_block(self, client):
         """Cancelled/past-due owners re-enter Checkout to restore service."""
@@ -356,3 +359,211 @@ class TestMetadata:
         # preselect.
         assert str(cid) in kwargs["cancel_url"]
         assert "status=cancelled" in kwargs["cancel_url"]
+
+
+# ── 8. Parent-community guard (root-only billing) ──────────────────────
+
+
+class TestParentOnly:
+    """Billing / tier checkout lives on the root community only.
+
+    The cap-enforcement helpers in ``backend/services/community.py``
+    (``ensure_free_parent_member_capacity`` and
+    ``ensure_community_tier_member_capacity``) already short-circuit on
+    ``parent_community_id``, so a paid subscription attached to a
+    child community would silently grant nothing. The preflight and
+    billing endpoints must reject sub-community ids up front.
+    """
+
+    def test_child_community_blocked_at_preflight(self, client):
+        make_user("root_owner", subscription="free")
+        parent_id = make_community("c-parent-ok", tier="free",
+                                   creator_username="root_owner")
+        child_id = make_community("c-child-blocked", tier="free",
+                                  creator_username="root_owner",
+                                  parent_community_id=parent_id)
+        _seed_kb_with_l1_price("price_parent_guard")
+        _login(client, "root_owner")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": child_id,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 409
+        body = resp.get_json()
+        assert body["reason"] == "not_root_community"
+        # The client uses this id to redirect the user to the parent's
+        # Manage Community page instead of leaving them stuck.
+        assert body["root_community_id"] == parent_id
+
+    def test_root_community_passes_the_guard(self, client):
+        make_user("root_ok", subscription="free")
+        parent_id = make_community("c-parent-pass", tier="free",
+                                   creator_username="root_ok")
+        _seed_kb_with_l1_price("price_root_ok")
+        _login(client, "root_ok")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": parent_id,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 200
+
+    def test_deep_nesting_resolves_to_top_root(self, client):
+        """Grandchild → parent → root: root_community_id must be the top."""
+        make_user("deep_owner", subscription="free")
+        root_id = make_community("c-deep-root", tier="free",
+                                 creator_username="deep_owner")
+        mid_id = make_community("c-deep-mid", tier="free",
+                                creator_username="deep_owner",
+                                parent_community_id=root_id)
+        leaf_id = make_community("c-deep-leaf", tier="free",
+                                 creator_username="deep_owner",
+                                 parent_community_id=mid_id)
+        _seed_kb_with_l1_price("price_deep")
+        _login(client, "deep_owner")
+
+        resp = client.post("/api/stripe/create_checkout_session",
+                           json={"plan_id": "community_tier",
+                                 "community_id": leaf_id,
+                                 "tier_code": "paid_l1"})
+        assert resp.status_code == 409
+        body = resp.get_json()
+        assert body["reason"] == "not_root_community"
+        assert body["root_community_id"] == root_id
+
+
+# ── 9. Billing snapshot endpoint ────────────────────────────────────────
+
+
+class TestBillingSnapshot:
+    """``GET /api/communities/<id>/billing`` feeds the EditCommunity
+    Billing panel for **any** community owner — root or sub.
+
+    Tiers and Stripe state live exclusively on the root, so:
+
+    * Root owners see the full panel (status, renewal, portal CTA).
+    * Sub-community owners see a read-only inherited badge with the
+      root community's tier and a pointer back to the root for any
+      Stripe-mutating action.
+
+    This is a flip from the earlier behaviour (children received a 409
+    ``not_root_community``) so a group owner can finally see *which
+    plan their group inherits* on Manage Community without having to
+    open the parent.
+    """
+
+    def test_anon_is_rejected(self, client):
+        resp = client.get("/api/communities/1/billing")
+        assert resp.status_code == 401
+
+    def test_non_owner_is_rejected(self, client):
+        make_user("bill_owner", subscription="free")
+        make_user("bill_outsider", subscription="free")
+        cid = make_community("c-bill-owner", tier="free",
+                             creator_username="bill_owner")
+        _login(client, "bill_outsider")
+
+        resp = client.get(f"/api/communities/{cid}/billing")
+        assert resp.status_code == 403
+        assert resp.get_json()["reason"] == "not_owner"
+
+    def test_child_community_returns_inherited_snapshot(self, client):
+        """Child community owner sees the root's tier with ``is_inherited=True``.
+
+        Replaces the prior ``test_child_community_rejected_with_root_pointer``
+        that 409'd on this exact case. The Manage Community panel now
+        renders a small read-only badge for children — actual checkout
+        / portal still 409s on a child id (covered by ``TestParentOnly``).
+        """
+        make_user("bill_root_owner", subscription="free")
+        parent_id = make_community("c-bill-parent", tier="paid_l1",
+                                   creator_username="bill_root_owner")
+        child_id = make_community("c-bill-child", tier="free",
+                                  creator_username="bill_root_owner",
+                                  parent_community_id=parent_id)
+        community_billing.mark_subscription(
+            parent_id,
+            tier_code="paid_l1",
+            subscription_id="sub_inherited_snapshot",
+            customer_id="cus_inherited_snapshot",
+            status="active",
+        )
+        _seed_kb_with_l1_price("price_inherited_snapshot")
+        _login(client, "bill_root_owner")
+
+        resp = client.get(f"/api/communities/{child_id}/billing")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        assert body["community_id"] == child_id
+        # Tier resolves to the root's tier, not the child's row.
+        assert body["tier"] == "paid_l1"
+        assert body["tier_label"] == "Paid L1"
+        assert body["is_inherited"] is True
+        assert body["inherited_from_root_id"] == parent_id
+        assert body["inherited_from_root_name"] == "c-bill-parent"
+        # Children must not expose the root's Stripe state — those rows
+        # are the billing owner's, not theirs.
+        assert body["subscription_status"] is None
+        assert body["current_period_end"] is None
+        assert body["has_stripe_customer"] is False
+
+    def test_child_owner_not_root_owner_sees_inherited(self, client):
+        """A group owner who isn't the root owner still sees inherited tier.
+
+        Ownership in cpoint is per-community: a root owner can hand a
+        sub-community over to someone else and we still want the
+        sub-community owner to see "you're on Paid L1 (inherited from
+        Paulo IST)" on their Manage Community screen.
+        """
+        make_user("root_owner_only", subscription="free")
+        make_user("child_owner_only", subscription="free")
+        parent_id = make_community("c-parent-x", tier="paid_l2",
+                                   creator_username="root_owner_only")
+        child_id = make_community("c-child-x", tier="free",
+                                  creator_username="child_owner_only",
+                                  parent_community_id=parent_id)
+        community_billing.mark_subscription(
+            parent_id,
+            tier_code="paid_l2",
+            subscription_id="sub_split_owner",
+            customer_id="cus_split_owner",
+            status="active",
+        )
+        _login(client, "child_owner_only")
+
+        resp = client.get(f"/api/communities/{child_id}/billing")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["is_inherited"] is True
+        assert body["inherited_from_root_id"] == parent_id
+        assert body["inherited_from_root_name"] == "c-parent-x"
+        assert body["tier"] == "paid_l2"
+
+    def test_root_community_returns_snapshot(self, client):
+        make_user("bill_root_pass", subscription="free")
+        cid = make_community("c-bill-root-pass", tier="paid_l1",
+                             creator_username="bill_root_pass")
+        community_billing.mark_subscription(
+            cid,
+            tier_code="paid_l1",
+            subscription_id="sub_bill_snapshot",
+            customer_id="cus_bill_snapshot",
+            status="active",
+        )
+        _seed_kb_with_l1_price("price_bill_snapshot")
+        _login(client, "bill_root_pass")
+
+        resp = client.get(f"/api/communities/{cid}/billing")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        assert body["community_id"] == cid
+        assert body["tier"] == "paid_l1"
+        assert body["tier_label"] == "Paid L1"
+        assert body["is_inherited"] is False
+        assert body["inherited_from_root_id"] is None
+        assert body["inherited_from_root_name"] is None
+        assert body["subscription_status"] == "active"
+        assert body["has_stripe_customer"] is True

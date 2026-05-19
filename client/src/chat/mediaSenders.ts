@@ -1,5 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { ChatMessage } from '../types/chat'
+import { compressImageForUpload } from '../utils/compressImageForUpload'
 
 interface BridgeRef {
   tempToServer: Map<string, string | number>
@@ -318,6 +319,70 @@ interface MultiMediaOptions extends BaseMediaOptions {
   lockComposer?: boolean
 }
 
+async function putBlobToPresigned(uploadUrl: string, blob: Blob, contentType: string): Promise<void> {
+  const res = await fetch(uploadUrl, { method: 'PUT', body: blob, headers: { 'Content-Type': contentType } })
+  if (!res.ok) throw new Error(`Upload failed (${res.status})`)
+}
+
+async function uploadDmImageDirect(file: File, otherUserId: number): Promise<string> {
+  const prepared = await compressImageForUpload(file)
+  const contentType = prepared.type || 'image/jpeg'
+  const urlRes = await fetch('/api/message_image_upload_url', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      recipient_id: String(otherUserId),
+      filename: prepared.name || 'photo.jpg',
+      content_type: contentType,
+    }),
+  })
+  const urlData = await urlRes.json().catch(() => null)
+  if (!urlRes.ok || !urlData?.success || !urlData.upload_url || !urlData.public_url) {
+    throw new Error(urlData?.error || 'Failed to get image upload URL')
+  }
+  await putBlobToPresigned(urlData.upload_url, prepared, contentType)
+  return urlData.public_url as string
+}
+
+function uploadDmVideoDirect(
+  file: File,
+  otherUserId: number,
+  onSliceProgress?: (loaded: number, total: number) => void,
+): Promise<string> {
+  return (async () => {
+    const urlRes = await fetch('/api/video_upload_url', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        recipient_id: String(otherUserId),
+        filename: file.name,
+        content_type: file.type || 'video/mp4',
+      }),
+    })
+    const urlData = await urlRes.json().catch(() => null)
+    if (!urlRes.ok || !urlData?.success || !urlData.upload_url || !urlData.public_url) {
+      throw new Error(urlData?.error || 'Failed to get video upload URL')
+    }
+    const ok = await new Promise<boolean>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onSliceProgress?.(e.loaded, e.total)
+      }
+      xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300)
+      xhr.onerror = () => reject(new Error('Video upload failed'))
+      xhr.ontimeout = () => reject(new Error('Video upload timeout'))
+      xhr.open('PUT', urlData.upload_url)
+      xhr.setRequestHeader('Content-Type', file.type || 'video/mp4')
+      xhr.timeout = 600000
+      xhr.send(file)
+    })
+    if (!ok) throw new Error('Video upload failed')
+    return urlData.public_url as string
+  })()
+}
+
 export async function sendMultiMediaMessage(options: MultiMediaOptions) {
   if (!options.otherUserId) return
   const {
@@ -360,138 +425,52 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
   try {
     onProgress?.({ stage: 'uploading', progress: 5, message: SENDING_MEDIA_LABEL })
 
-    const LARGE_VIDEO_THRESHOLD = 25 * 1024 * 1024
-    const directUploadFiles: Array<{ file: File; type: 'image' | 'video' }> = []
-    const formUploadFiles: Array<{ file: File; type: 'image' | 'video' }> = []
-
-    for (const item of files) {
-      if (item.type === 'video' && item.file.size > LARGE_VIDEO_THRESHOLD) {
-        directUploadFiles.push(item)
-      } else {
-        formUploadFiles.push(item)
-      }
+    const n = files.length
+    const sliceFrac = new Array<number>(n).fill(0)
+    const report = () => {
+      const avg = sliceFrac.reduce((a, b) => a + b, 0) / n
+      onProgress?.({ stage: 'uploading', progress: 5 + avg * 90, message: SENDING_MEDIA_LABEL })
     }
 
-    const allUploadedUrls: string[] = []
+    const oid = otherUserId as number
+    const tasks = files.map((item, i) =>
+      item.type === 'image'
+        ? uploadDmImageDirect(item.file, oid).then((url) => {
+            sliceFrac[i] = 1
+            report()
+            return url
+          })
+        : uploadDmVideoDirect(item.file, oid, (loaded, total) => {
+            sliceFrac[i] = total ? loaded / total : 0
+            report()
+          }).then((url) => {
+            sliceFrac[i] = 1
+            report()
+            return url
+          }),
+    )
 
-    for (let i = 0; i < directUploadFiles.length; i++) {
-      const item = directUploadFiles[i]
-      onProgress?.({ stage: 'uploading', progress: 5 + (i / files.length) * 40, message: SENDING_MEDIA_LABEL })
+    const orderedUrls = await Promise.all(tasks)
 
-      const urlRes = await fetch('/api/video_upload_url', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipient_id: String(otherUserId), filename: item.file.name, content_type: item.file.type || 'video/mp4' }),
-      })
-      const urlData = await urlRes.json().catch(() => null)
-      if (!urlData?.success || !urlData.upload_url || !urlData.public_url) {
-        throw new Error(urlData?.error || 'Failed to get upload URL for video')
-      }
+    onProgress?.({ stage: 'uploading', progress: 96, message: SENDING_MEDIA_LABEL })
+    const fd = new FormData()
+    fd.append('recipient_id', String(otherUserId))
+    fd.append('media_urls', JSON.stringify(orderedUrls))
 
-      const putOk = await new Promise<boolean>((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            const base = 5 + (i / files.length) * 40
-            const pct = base + (e.loaded / e.total) * (40 / files.length)
-            onProgress?.({ stage: 'uploading', progress: pct, message: SENDING_MEDIA_LABEL })
-          }
-        }
-        xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300)
-        xhr.onerror = () => reject(new Error('Video upload failed'))
-        xhr.ontimeout = () => reject(new Error('Video upload timeout'))
-        xhr.open('PUT', urlData.upload_url)
-        xhr.setRequestHeader('Content-Type', item.file.type || 'video/mp4')
-        xhr.timeout = 600000
-        xhr.send(item.file)
-      })
-
-      if (!putOk) throw new Error('Failed to upload video to storage')
-      allUploadedUrls.push(urlData.public_url)
+    const res = await fetch('/send_dm_media', { method: 'POST', credentials: 'include', body: fd })
+    const payload = await res.json().catch(() => null)
+    if (!payload?.success) {
+      throw new Error(payload?.error || 'Failed to send media')
     }
 
-    const MAX_BATCH_FILES = 3
-    const MAX_BATCH_BYTES = 15 * 1024 * 1024
-    const batches: Array<Array<{ file: File; type: 'image' | 'video' }>> = []
-    let currentBatch: Array<{ file: File; type: 'image' | 'video' }> = []
-    let currentBatchSize = 0
-
-    for (const item of formUploadFiles) {
-      if (currentBatch.length >= MAX_BATCH_FILES || (currentBatch.length > 0 && currentBatchSize + item.file.size > MAX_BATCH_BYTES)) {
-        batches.push(currentBatch)
-        currentBatch = []
-        currentBatchSize = 0
-      }
-      currentBatch.push(item)
-      currentBatchSize += item.file.size
-    }
-    if (currentBatch.length > 0) batches.push(currentBatch)
-
-    const progressBase = 50
-    const progressRange = 45
-    /** Last successful /send_dm_media JSON (batch final or URL-only send) for optimistic message merge */
-    let lastServerPayload: {
-      id?: number
-      media_paths?: string[]
-      image_path?: string
-      video_path?: string
-      time?: string
-    } | null = null
-    for (let bi = 0; bi < batches.length; bi++) {
-      const batch = batches[bi]
-      const isLastBatch = bi === batches.length - 1
-      const batchProgress = progressBase + (bi / Math.max(batches.length, 1)) * progressRange
-      onProgress?.({ stage: 'uploading', progress: batchProgress, message: SENDING_MEDIA_LABEL })
-
-      const fd = new FormData()
-      for (const item of batch) {
-        fd.append('media', item.file)
-      }
-      fd.append('recipient_id', String(otherUserId))
-
-      if (isLastBatch && allUploadedUrls.length > 0) {
-        fd.append('media_urls', JSON.stringify(allUploadedUrls))
-      }
-      if (!isLastBatch) {
-        fd.append('upload_only', '1')
-      }
-
-      const res = await fetch('/send_dm_media', { method: 'POST', credentials: 'include', body: fd })
-      const batchPayload = await res.json().catch(() => null)
-      if (!batchPayload?.success) {
-        throw new Error(batchPayload?.error || `Batch ${bi + 1} failed`)
-      }
-
-      if (!isLastBatch) {
-        const batchUrls: string[] = batchPayload.media_paths || []
-        allUploadedUrls.push(...batchUrls)
-      } else if (batchPayload.id) {
-        idBridgeRef.current.tempToServer.set(tempId, batchPayload.id)
-        idBridgeRef.current.serverToTemp.set(batchPayload.id, tempId)
-      }
-      if (isLastBatch) {
-        lastServerPayload = batchPayload
-      }
-    }
-
-    if (batches.length === 0 && allUploadedUrls.length > 0) {
-      const fd = new FormData()
-      fd.append('recipient_id', String(otherUserId))
-      fd.append('media_urls', JSON.stringify(allUploadedUrls))
-      const res = await fetch('/send_dm_media', { method: 'POST', credentials: 'include', body: fd })
-      const payload = await res.json().catch(() => null)
-      if (!payload?.success) throw new Error(payload?.error || 'Failed to send media')
-      if (payload.id) {
-        idBridgeRef.current.tempToServer.set(tempId, payload.id)
-        idBridgeRef.current.serverToTemp.set(payload.id, tempId)
-      }
-      lastServerPayload = payload
+    if (payload.id) {
+      idBridgeRef.current.tempToServer.set(tempId, payload.id)
+      idBridgeRef.current.serverToTemp.set(payload.id, tempId)
     }
 
     onProgress?.({ stage: 'done', progress: 100, message: 'Sent!' })
 
-    const p = lastServerPayload
+    const p = payload
     setMessages((prev: ChatMessage[]) =>
       prev.map((message: ChatMessage) => {
         if ((message.clientKey || message.id) !== tempId) return message
@@ -504,7 +483,7 @@ export async function sendMultiMediaMessage(options: MultiMediaOptions) {
           isOptimistic: false,
           time: p?.time ?? message.time,
         }
-      })
+      }),
     )
     finalizeOptimisticEntry(recentOptimisticRef, tempId)
   } catch (error) {

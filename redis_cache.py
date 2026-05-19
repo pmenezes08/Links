@@ -39,6 +39,8 @@ REDIS_DB = int(os.environ.get('REDIS_DB', 0))
 DEFAULT_CACHE_TTL = int(os.environ.get('CACHE_TTL_DEFAULT', '300'))  # 5 minutes
 USER_CACHE_TTL = int(os.environ.get('CACHE_TTL_PROFILES', '900'))    # 15 minutes
 COMMUNITY_CACHE_TTL = int(os.environ.get('CACHE_TTL_COMMUNITIES', '300')) # 5 minutes
+# Shorter TTL for parent dashboard JSON (includes volatile unread counts).
+CACHE_TTL_USER_PARENT_DASHBOARD = int(os.environ.get('CACHE_TTL_USER_PARENT_DASHBOARD', '120'))
 MESSAGE_CACHE_TTL = int(os.environ.get('CACHE_TTL_MESSAGES', '5'))  # 5 seconds to reduce stale windows
 CHAT_THREADS_TTL = int(os.environ.get('CACHE_TTL_CHAT_THREADS', '120')) # 2 minutes
 IMAGE_CACHE_TTL = int(os.environ.get('CACHE_TTL_IMAGES', '7200'))    # 2 hours
@@ -322,6 +324,13 @@ def messages_view_cache_key(viewer, peer):
     """Viewer-specific cache key to avoid mixing 'sent' perspective across users"""
     return f"messages_view:{viewer}:{peer}"
 
+def steve_dm_typing_key(viewer, peer):
+    """Viewer-specific Steve typing indicator key for 1:1 DM threads."""
+    return f"steve_dm_typing:{viewer}:{peer}"
+
+def steve_group_typing_key(group_id):
+    return f"steve_group_typing:{group_id}"
+
 def community_feed_cache_key(community_id, page=1):
     return f"community_feed:{community_id}:page:{page}"
 
@@ -336,6 +345,16 @@ def user_parent_dashboard_cache_key(username):
 
 def user_community_tree_cache_key(username):
     return f"user_community_tree:{username}"
+
+def invalidate_user_parent_dashboard(username):
+    """Invalidate cached dashboard payloads that include unread post counts."""
+    if not username:
+        return
+    try:
+        cache.delete(user_parent_dashboard_cache_key(username))
+        cache.delete(user_community_tree_cache_key(username))
+    except Exception as e:
+        logger.warning("invalidate_user_parent_dashboard failed for %s: %s", username, e)
 
 # Caching decorators
 def cache_result(key_func, ttl=DEFAULT_CACHE_TTL):
@@ -378,8 +397,7 @@ def invalidate_user_cache(username):
         cache.delete(f"public_profile:{username}:_anon")
     cache.delete(chat_threads_cache_key(username))
     cache.delete(user_communities_cache_key(username))
-    cache.delete(user_parent_dashboard_cache_key(username))
-    cache.delete(user_community_tree_cache_key(username))
+    invalidate_user_parent_dashboard(username)
     logger.debug(f"🗑️ Invalidated user cache: {username}")
 
 def invalidate_community_cache(community_id):

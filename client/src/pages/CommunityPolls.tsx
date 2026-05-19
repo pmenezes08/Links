@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 
@@ -7,6 +8,7 @@ type PollOption = { id: number; option_text: string; votes: number; voters?: { u
 type ActivePoll = { id:number; question:string; options: PollOption[]; single_vote?: boolean; total_votes?: number; user_vote?: number|null; is_active: number; expires_at?: string; created_by?: string }
 
 export default function CommunityPolls(){
+  const { t } = useTranslation()
   const { community_id } = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -28,9 +30,17 @@ export default function CommunityPolls(){
   const [votersData, setVotersData] = useState<any>(null)
   const [loadingVoters, setLoadingVoters] = useState(false)
 
-  useEffect(() => { setTitle(editingPollId ? 'Edit Poll' : 'Polls') }, [setTitle, editingPollId])
+  useEffect(() => {
+    setTitle(editingPollId ? t('communities.polls_edit_title') : t('communities.polls_title'))
+  }, [setTitle, editingPollId, t])
 
   async function load(){
+    if (groupId) {
+      setPolls([])
+      setArchivedPolls([])
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try{
       const r = await fetch(`/get_active_polls?community_id=${community_id}`, { credentials:'include' })
@@ -47,28 +57,24 @@ export default function CommunityPolls(){
           expires_at: p.expires_at,
           created_by: p.created_by
         }))
-        // Split into active and archived
         setPolls(allPolls.filter((p:ActivePoll) => p.is_active === 1))
         setArchivedPolls(allPolls.filter((p:ActivePoll) => p.is_active === 0))
       }
     }finally{ setLoading(false) }
   }
-  useEffect(()=>{ load() }, [community_id])
+  useEffect(()=>{ load() }, [community_id, groupId])
 
-  // Check for edit query parameter and load poll data
   useEffect(() => {
     const editParam = searchParams.get('edit')
     if (editParam) {
       const pollId = parseInt(editParam)
       setEditingPollId(pollId)
       setActiveTab('create')
-      // Load poll data
       const poll = polls.find(p => p.id === pollId)
       if (poll) {
         setQuestion(poll.question)
         setOptions(poll.options.map(o => o.option_text))
         setSingleVote(poll.single_vote ?? true)
-        // Prefill expiry if present
         try {
           const raw = (poll as any).expires_at as string | undefined
           if (raw) {
@@ -89,7 +95,6 @@ export default function CommunityPolls(){
 
   async function createPoll(){
     if (editingPollId) {
-      // Edit existing poll
       const payload = {
         poll_id: editingPollId,
         question: question.trim(),
@@ -99,7 +104,7 @@ export default function CommunityPolls(){
       const r = await fetch('/edit_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
       const j = await r.json().catch(()=>null)
       if (j?.success){
-        setSuccessMsg('Poll updated')
+        setSuccessMsg(t('communities.polls_updated'))
         setQuestion('')
         setOptions(['',''])
         setSingleVote(true)
@@ -110,31 +115,27 @@ export default function CommunityPolls(){
         navigate(`/community/${community_id}/polls_react`)
         load()
       } else {
-        alert(j?.error || 'Failed to update poll')
+        alert(j?.error || t('communities.polls_update_failed'))
       }
     } else {
-      // Create new poll
       const fd = new URLSearchParams()
       fd.append('question', question.trim())
       options.filter(x=> x.trim()).forEach(o => fd.append('options[]', o.trim()))
       if (community_id) fd.append('community_id', String(community_id))
       fd.append('single_vote', String(singleVote))
       if (expiresAt) {
-        // Convert local time to UTC before sending to server
         try {
           const localDate = new Date(expiresAt)
-          const utcString = localDate.toISOString().slice(0, 16).replace('T', 'T') // "YYYY-MM-DDTHH:MM"
-          console.log(`📅 Converting poll deadline: Local=${expiresAt} → UTC=${utcString}`)
+          const utcString = localDate.toISOString().slice(0, 16).replace('T', 'T')
           fd.append('expires_at', utcString)
-        } catch (e) {
-          console.error('Failed to convert expires_at to UTC:', e)
-          fd.append('expires_at', expiresAt) // Fallback to original
+        } catch {
+          fd.append('expires_at', expiresAt)
         }
       }
       const r = await fetch('/create_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
       const j = await r.json().catch(()=>null)
       if (j?.success){
-        setSuccessMsg('Poll created')
+        setSuccessMsg(t('communities.polls_created'))
         setQuestion('')
         setOptions(['',''])
         setSingleVote(true)
@@ -143,7 +144,7 @@ export default function CommunityPolls(){
         setTimeout(()=> setSuccessMsg(null), 2000)
         load()
       } else {
-        alert(j?.error || 'Failed to create poll')
+        alert(j?.error || t('communities.polls_create_failed'))
       }
     }
   }
@@ -152,40 +153,30 @@ export default function CommunityPolls(){
     setPolls(prev => prev.map(p => {
       if (p.id !== pollId) return p
       const next = { ...p, options: p.options.map(o => ({ ...o })) }
-      
-      // Check if user already voted on this specific option
       const hasVotedOnThisOption = p.user_vote === optionId
-      
       if (p.single_vote){
-        // Single vote mode
         const prevOptId = p.user_vote || null
         if (prevOptId && prevOptId !== optionId){
-          // Moving vote from one option to another
           const prevOpt = next.options.find(o => o.id === prevOptId)
           if (prevOpt && prevOpt.votes > 0) prevOpt.votes -= 1
         }
         const cur = next.options.find(o => o.id === optionId)
         if (cur) {
           if (hasVotedOnThisOption) {
-            // Toggle off
             if (cur.votes > 0) cur.votes -= 1
             next.user_vote = null
           } else {
-            // Vote on this option
             cur.votes += 1
             next.user_vote = optionId
           }
         }
       } else {
-        // Multiple vote mode: always toggle
         const cur = next.options.find(o => o.id === optionId)
         if (cur){
           if (hasVotedOnThisOption){
-            // Toggle off
             if (cur.votes > 0) cur.votes -= 1
             next.user_vote = null
           } else {
-            // Toggle on
             cur.votes += 1
             next.user_vote = optionId
           }
@@ -200,10 +191,8 @@ export default function CommunityPolls(){
     const res = await fetch('/vote_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: pollId, option_id: optionId }) })
     const j = await res.json().catch(()=>null)
     if (!j?.success){
-      // Reload to reconcile on error
       load()
     } else {
-      // Reload to get correct user_voted state from server
       load()
     }
   }
@@ -226,6 +215,36 @@ export default function CommunityPolls(){
     }finally{ setLoadingVoters(false) }
   }
 
+  if (groupId) {
+    return (
+      <div className="min-h-screen bg-black text-white">
+        <div
+          className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+          style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
+        >
+          <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
+            <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(`/group_feed_react/${groupId}`)} aria-label={t('common.back')}>
+              <i className="fa-solid fa-arrow-left" />
+            </button>
+            <div className="flex-1 font-medium">{t('communities.polls_title')}</div>
+          </div>
+        </div>
+        <div
+          className="app-subnav-offset max-w-2xl mx-auto pb-20 px-3 overflow-y-auto no-scrollbar"
+          style={{
+            WebkitOverflowScrolling: 'touch' as any,
+            minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))',
+            '--app-subnav-height': '40px',
+          } as CSSProperties}
+        >
+          <p className="text-sm text-[#9fb0b5] py-8 leading-relaxed">
+            {t('communities.polls_group_stub')}
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-black text-white">
       <div
@@ -233,20 +252,20 @@ export default function CommunityPolls(){
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
       >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label="Back">
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label={t('common.back')}>
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 h-full flex">
             <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='active' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('active')}>
-              <div className="pt-2">Active</div>
+              <div className="pt-2">{t('communities.polls_tab_active')}</div>
               <div className={`h-0.5 rounded-full w-12 mx-auto mt-1 ${activeTab==='active' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
             </button>
             <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='archive' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('archive')}>
-              <div className="pt-2">Archive</div>
+              <div className="pt-2">{t('communities.polls_tab_archive')}</div>
               <div className={`h-0.5 rounded-full w-12 mx-auto mt-1 ${activeTab==='archive' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
             </button>
             <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='create' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('create')}>
-              <div className="pt-2">Create</div>
+              <div className="pt-2">{t('communities.polls_tab_create')}</div>
               <div className={`h-0.5 rounded-full w-12 mx-auto mt-1 ${activeTab==='create' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
             </button>
           </div>
@@ -268,57 +287,57 @@ export default function CommunityPolls(){
 
         {activeTab === 'create' ? (
           <form ref={formRef} className="rounded-2xl border border-white/10 p-3 bg-white/[0.035] space-y-3" onSubmit={(e)=> { e.preventDefault(); createPoll() }}>
-            <div className="text-sm font-medium">{editingPollId ? 'Edit Poll' : 'Create Poll'}</div>
-            <label className="text-xs text-[#9fb0b5]">Question
-              <input value={question} onChange={e=> setQuestion(e.target.value)} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" placeholder="What should we do?" />
+            <div className="text-sm font-medium">{editingPollId ? t('communities.polls_edit_form_title') : t('communities.polls_create_form_title')}</div>
+            <label className="text-xs text-[#9fb0b5]">{t('communities.polls_question_label')}
+              <input value={question} onChange={e=> setQuestion(e.target.value)} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" placeholder={t('communities.poll_question_placeholder')} />
             </label>
             <div className="space-y-2">
               {options.map((opt, idx) => (
-                <input key={idx} value={opt} onChange={e=> setOptions(prev => prev.map((o,i)=> i===idx? e.target.value : o))} className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" placeholder={`Option ${idx+1}`} />
+                <input key={idx} value={opt} onChange={e=> setOptions(prev => prev.map((o,i)=> i===idx? e.target.value : o))} className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" placeholder={t('communities.poll_option_placeholder', { number: idx + 1 })} />
               ))}
               <div className="flex gap-2">
-                <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs hover:bg-white/5" onClick={()=> setOptions(prev => [...prev, ''])}>Add option</button>
-                <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs hover:bg-white/5" onClick={()=> setOptions(prev => prev.length>2? prev.slice(0,-1): prev)}>Remove option</button>
+                <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs hover:bg-white/5" onClick={()=> setOptions(prev => [...prev, ''])}>{t('communities.add_option')}</button>
+                <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs hover:bg-white/5" onClick={()=> setOptions(prev => prev.length>2? prev.slice(0,-1): prev)}>{t('communities.remove_option')}</button>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
               <div>
                 <button type="button" className={`px-2 py-1 rounded-md border text-sm whitespace-nowrap hover:bg:white/5 ${singleVote ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-white/10'}`} onClick={()=> setSingleVote(v=>!v)}>
-                  Single vote only
+                  {t('communities.polls_single_vote')}
                 </button>
               </div>
               <div className="flex flex-col min-w-0">
-                <label className="text-sm text-[#9fb0b5]">Expiry date (optional)</label>
+                <label className="text-sm text-[#9fb0b5]">{t('communities.polls_expiry_label')}</label>
                 <div className="mt-1 flex items-center gap-2 min-w-0">
                   <input type="datetime-local" value={expiresAt} onChange={e=> setExpiresAt(e.target.value)} className="flex-1 min-w-0 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" />
                   {expiresAt ? (
-                    <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs text-[#9fb0b5] hover:bg-white/5" onClick={()=> setExpiresAt('')}>Clear</button>
+                    <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs text-[#9fb0b5] hover:bg-white/5" onClick={()=> setExpiresAt('')}>{t('communities.polls_clear_expiry')}</button>
                   ) : null}
                 </div>
               </div>
             </div>
             <div className="flex justify-end gap-2">
               {editingPollId && (
-                <button type="button" className="px-3 py-1.5 rounded-md border border-white/10 text-sm hover:bg-white/5" onClick={()=> { setEditingPollId(null); setQuestion(''); setOptions(['','']); setSingleVote(true); setExpiresAt(''); navigate(`/community/${community_id}/polls_react`) }}>Cancel</button>
+                <button type="button" className="px-3 py-1.5 rounded-md border border-white/10 text-sm hover:bg-white/5" onClick={()=> { setEditingPollId(null); setQuestion(''); setOptions(['','']); setSingleVote(true); setExpiresAt(''); navigate(`/community/${community_id}/polls_react`) }}>{t('common.cancel')}</button>
               )}
-              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">{editingPollId ? 'Update' : 'Create'}</button>
+              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">{editingPollId ? t('communities.polls_update') : t('communities.create_poll')}</button>
             </div>
           </form>
         ) : activeTab === 'archive' ? (
           <div className="space-y-3">
             {loading ? (
-              <div className="text-[#9fb0b5]">Loading…</div>
+              <div className="text-[#9fb0b5]">{t('common.loading')}</div>
             ) : archivedPolls.length === 0 ? (
-              <div className="text-[#9fb0b5]">No archived polls.</div>
+              <div className="text-[#9fb0b5]">{t('communities.no_archived_polls')}</div>
             ) : (
               archivedPolls.map(p => (
                 <div key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.035] opacity-75 overflow-hidden">
                   <div className="px-3 py-2 flex items-center gap-2 border-b border-white/10">
                     <div className="font-medium flex-1">{p.question}</div>
-                    <span className="text-xs text-[#9fb0b5]">🔒 Closed</span>
-                    <button title="View voters" className="px-2 py-1 rounded-md border border-[#4db6ac] text-[#4db6ac] hover:bg-[#4db6ac]/10 text-sm" onClick={()=> loadVoters(p.id)}>
+                    <span className="text-xs text-[#9fb0b5]">🔒 {t('communities.polls_closed')}</span>
+                    <button title={t('communities.polls_voters')} className="px-2 py-1 rounded-md border border-[#4db6ac] text-[#4db6ac] hover:bg-[#4db6ac]/10 text-sm" onClick={()=> loadVoters(p.id)}>
                       <i className="fa-solid fa-users mr-1" />
-                      Voters
+                      {t('communities.polls_voters')}
                     </button>
                   </div>
                   <div className="px-3 py-2 space-y-2">
@@ -342,19 +361,19 @@ export default function CommunityPolls(){
         ) : (
           <div className="space-y-3">
             {loading ? (
-              <div className="text-[#9fb0b5]">Loading…</div>
+              <div className="text-[#9fb0b5]">{t('common.loading')}</div>
             ) : polls.length === 0 ? (
-              <div className="text-[#9fb0b5]">No active polls.</div>
+              <div className="text-[#9fb0b5]">{t('communities.no_active_polls')}</div>
             ) : (
               polls.map(p => (
                 <div key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.035] overflow-hidden">
                   <div className="px-3 py-2 flex items-center gap-2 border-b border-white/10">
                     <div className="font-medium flex-1">{p.question}</div>
-                    <button title="View voters" className="px-2 py-1 rounded-md border border-[#4db6ac] text-[#4db6ac] hover:bg-[#4db6ac]/10 text-sm" onClick={()=> loadVoters(p.id)}>
+                    <button title={t('communities.polls_voters')} className="px-2 py-1 rounded-md border border-[#4db6ac] text-[#4db6ac] hover:bg-[#4db6ac]/10 text-sm" onClick={()=> loadVoters(p.id)}>
                       <i className="fa-solid fa-users mr-1" />
-                      Voters
+                      {t('communities.polls_voters')}
                     </button>
-                    <button title="Close poll" className="px-2 py-1 rounded-md border border-red-400 text-red-300 hover:bg-red-500/10" onClick={()=> closePoll(p.id)}>
+                    <button title={t('communities.polls_close_poll')} className="px-2 py-1 rounded-md border border-red-400 text-red-300 hover:bg-red-500/10" onClick={()=> closePoll(p.id)}>
                       <i className="fa-regular fa-trash-can" />
                     </button>
                   </div>
@@ -373,19 +392,18 @@ export default function CommunityPolls(){
         )}
       </div>
 
-      {/* Voters Modal */}
       {viewingVoters && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={()=> { setViewingVoters(null); setVotersData(null) }}>
           <div className="bg-black border border-white/10 rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden" onClick={(e)=> e.stopPropagation()}>
             <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-              <div className="font-medium">Poll Voters</div>
+              <div className="font-medium">{t('communities.polls_voters_modal')}</div>
               <button className="p-2 hover:bg-white/5 rounded-full" onClick={()=> { setViewingVoters(null); setVotersData(null) }}>
                 <i className="fa-solid fa-xmark" />
               </button>
             </div>
             <div className="overflow-y-auto max-h-[calc(80vh-60px)] p-4">
               {loadingVoters ? (
-                <div className="text-[#9fb0b5]">Loading voters...</div>
+                <div className="text-[#9fb0b5]">{t('communities.loading_voters')}</div>
               ) : votersData ? (
                 <div className="space-y-4">
                   {votersData.map((opt: any) => (
@@ -401,13 +419,13 @@ export default function CommunityPolls(){
                           ))}
                         </div>
                       ) : (
-                        <div className="text-xs text-[#9fb0b5]">No votes yet</div>
+                        <div className="text-xs text-[#9fb0b5]">{t('communities.no_votes')}</div>
                       )}
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-[#9fb0b5]">No data</div>
+                <div className="text-[#9fb0b5]">{t('communities.no_data')}</div>
               )}
             </div>
           </div>

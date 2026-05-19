@@ -76,12 +76,16 @@ export function extractUrls(text: string): string[] {
   const matches = text.match(URL_REGEX)
   if (!matches) return []
   const seen = new Set<string>()
-  return matches.filter(u => {
-    const k = u.replace(/\/+$/, '')
-    if (seen.has(k)) return false
-    seen.add(k)
-    return true
-  }).slice(0, 3)
+  return matches
+    .map(u => u.replace(/[.,;)\]}'"`]+$/, '').trim())
+    .filter(u => {
+      if (!u || !u.startsWith('http')) return false
+      const k = u.replace(/\/+$/, '')
+      if (seen.has(k)) return false
+      seen.add(k)
+      return true
+    })
+    .slice(0, 3)
 }
 
 /**

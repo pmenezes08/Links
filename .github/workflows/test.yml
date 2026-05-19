@@ -23,6 +23,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  i18n-catalogs:
+    name: i18n catalog drift (en vs locales)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Compare catalogs against the en source of truth
+        # Stdlib-only script: fails the build if any locale is missing a
+        # key that lives in en, has stray keys, or list-length drift.
+        # See docs/I18N_ROADMAP.md.
+        run: python scripts/i18n_check_catalogs.py
+
   pytest:
     name: Matrix A + B + C (pytest on MySQL 8)
     runs-on: ubuntu-latest

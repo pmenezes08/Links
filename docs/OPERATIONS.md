@@ -1,4 +1,4 @@
-# CPoint — Operations Playbook
+# C-Point — Operations Playbook
 
 > Living reference for the handful of hot operational flows the founder
 > runs personally (deploys, backups, data resets, single-user promotions,
@@ -40,10 +40,10 @@ Console billing report):
 |---------------------------|------|----------------------------------------------------------------|
 | Cloud Run (all services)  | 103.35 | Dominant cost; two services at `min-instances=1` was the cause |
 | Artifact Registry         | 8.71 | Growing creep from stale source-deploy image layers            |
-| Cloud SQL (cpoint-db)     | 7.81 | `db-f1-micro` — already lean, no action                       |
+| Cloud SQL (cpoint-db)     | 7.81 | **`db-f1-micro` today** — upgrade before a marketing push (see §0.5) |
 | Other (Cloud Storage, SM) | 1.91 | Noise                                                         |
 
-Services actually in use for CPoint: `cpoint-app`, `cpoint-app-staging`,
+Services actually in use for C-Point: `cpoint-app`, `cpoint-app-staging`,
 `cpoint-admin`, `cpoint-admin-staging`, `cpoint-landing`. Services
 `evalio` and `links` belong to other projects and are out of scope for
 this project's cost optimisation.
@@ -69,6 +69,10 @@ Projected fixed floor after all actions settle: **~€55–60/month**.
 Current break-even on community pricing (€0.33/member flat) recalculated
 against the reduced floor: ~180 paying members, or roughly 1 Enterprise
 customer OR 3–4 L1 paid communities.
+
+> Community pricing was repriced in May 2026 to L1 EUR 49.99, L2 EUR 99.99,
+> and L3 EUR 189.99. Use KB `community-tiers` for current pricing truth; the
+> older €0.33/member note is historical cost context.
 
 ### 0.2 When to review staging scaling
 
@@ -112,6 +116,41 @@ only gate observability:
    - Dataset: `billing_export` (already created)
    - Enable both *Standard usage cost* and *Pricing* exports.
    First data appears ~24h after enabling.
+
+### 0.5 Cloud SQL tier (pre-scale)
+
+**Current:** `db-f1-micro` on instance `cpoint-db` (shared staging + prod).
+
+**Before ~50k MAU or a paid acquisition push**, upgrade to at least **`db-g1-small`** (or `db-custom-1-3840` if connection headroom is needed):
+
+```powershell
+gcloud sql instances patch cpoint-db --tier=db-g1-small --project=cpoint-127c2
+```
+
+Take an on-demand backup first (§2). Update this section when the tier changes.
+
+**`ai_usage_log` rollups:** nightly cron `POST /api/cron/ai-usage/daily-rollup` (auth: `X-Cron-Secret`) writes `ai_usage_daily_rollups`. Cloud Scheduler jobs: **`ai-usage-daily-rollup`** (prod) and **`staging-ai-usage-daily-rollup`** — daily 02:15 UTC. Admin metrics may still read `ai_usage_log` until rollup consumption is wired.
+
+**Production entitlements:** set `ENTITLEMENTS_ENFORCEMENT_ENABLED=true` on Cloud Run service **`cpoint-app`** when launching paid AI to the public (staging should match for QA).
+
+### 0.4 Admin activity metrics (DAU / MAU)
+
+- **Definition** for admins is documented for Steve in the Platform Manual KB
+  (card `platform.dau_mau` in `docs/STEVE_PLATFORM_KB.md`). After changing that
+  markdown, redeploy and use admin-web **Reseed + Force** for
+  `steve-platform-manual` so Steve picks up the new text.
+- **Database:** `user_login_history` and `community_visit_history` are created at
+  app init via `ensure_user_activity_tables`. If an old database lacked
+  `community_visit_history`, the **feed** path uses an **insert-first** write;
+  **DDL runs only if** that insert fails with a missing-table error (no extra
+  work on the hot path when the table already exists).
+- **`GET /api/admin/metrics`** is intentionally **heavy** (full scans + Python
+  aggregation). Large datasets can be slow or hit HTTP timeouts; improving that
+  is a separate performance effort (SQL rollups / caching), not part of basic
+  correctness checks.
+- **Two admin UIs:** the main React **Admin Dashboard → Metrics** tab and
+  **admin-web → Metrics** both rely on `/api/admin/metrics` for DAU/MAU detail
+  (the dashboard listing endpoint does not include those fields).
 
 ---
 
@@ -231,6 +270,184 @@ For trial-extension edge cases (someone should get "another 30 days"),
 update `users.created_at = NOW()` for just that user and confirm with
 `resolve_entitlements()` returns `tier = 'trial'`. There is no
 separate trial-extension admin UI yet.
+
+---
+
+## 4.1 Stripe subscriptions
+
+Stripe checkout uses the Knowledge Base as the source of truth for Price
+IDs. Add the Stripe **Price ID** (`price_...`), never the Product ID
+(`prod_...`), to these fields:
+
+- `user-tiers`: `premium_stripe_price_id_test` / `premium_stripe_price_id_live`.
+- `community-tiers`: `paid_l1_stripe_price_id_*`, `paid_l2_stripe_price_id_*`, `paid_l3_stripe_price_id_*`.
+- Future add-ons: `paid_steve_package_stripe_price_id_*` and `networking_page_stripe_price_id_*`.
+
+The app chooses `*_test` or `*_live` from the current `STRIPE_API_KEY`
+prefix. Admin-web → Subscriptions shows a diagnostics banner when any
+expected Price ID is missing.
+
+Webhook-owned billing state:
+
+- Personal Premium state is stored on `users` via
+  `backend/services/user_billing.py`.
+- Community tier state is stored on root `communities` via
+  `backend/services/community_billing.py`.
+- `cancel_at_period_end = 1` means benefits are still active until
+  `current_period_end`; do not downgrade entitlement until
+  `customer.subscription.deleted`.
+
+Upgrade, downgrade, and renewal policy:
+
+- New purchases use Stripe Checkout.
+- Existing active community subscriptions use the app-owned
+  `/api/communities/<id>/billing/change-tier` endpoint for L1/L2/L3
+  upgrades and downgrades. This endpoint reads target Price IDs from KB
+  and updates the existing Stripe subscription item.
+- Existing cancelling subscriptions use Stripe Billing Portal to renew
+  or manage cancellation/payment methods. Do not start a second Checkout
+  session for L1 → L2, L2 → L3, or renewal after
+  `cancel_at_period_end`.
+- Configure Stripe Customer Portal in the Stripe Dashboard so Community
+  L1/L2/L3 products and prices are available as a fallback for plan
+  changes and customer self-service.
+- Stripe-side setup for portal fallback:
+  1. Open Stripe Dashboard → Settings → Billing → Customer portal.
+  2. Enable subscription updates.
+  3. Add the Community L1, L2, and L3 recurring monthly prices to the
+     allowed products/prices.
+  4. Save test-mode and live-mode portal configurations separately.
+  5. Verify with an L2 test subscription that L1 downgrade and L3
+     upgrade options appear.
+
+Stripe subscription identification:
+
+- New Community Tier checkouts stamp `community_id`, `community_name`,
+  `tier_code`, and `sku=community_tier` into Stripe subscription metadata.
+- The Stripe subscription description is set to
+  `Community "<name>" - <tier>` so the dashboard list is identifiable
+  without opening the C-Point database.
+- Existing subscriptions can be backfilled after a backup/check:
+  ```powershell
+  python scripts/backfill_stripe_subscription_descriptions.py --dry-run
+  python scripts/backfill_stripe_subscription_descriptions.py --apply
+  ```
+
+### 4.1.1 Community auto-freeze on subscription expiration
+
+When a paid community Stripe subscription terminates (the
+`customer.subscription.deleted` webhook fires *after* Stripe finishes
+its dunning retries), the C-Point app evaluates whether the community
+should auto-freeze:
+
+- If the community has `> free_community_max_members` members at the
+  moment of cancellation, the community is frozen with
+  `frozen_reason = 'subscription_expired'` and `frozen_by = 'system'`.
+- The owner gets an in-app notification
+  (`type = community_subscription_frozen`) and a non-dismissable
+  modal on the community feed offering two actions:
+  1. **Renew subscription** — links to `/subscription_plans` for the
+     community.
+  2. **Remove members** — links to the Manage Community members tab.
+- Non-owners are blocked from the community feed via
+  `frozen_access_payload` until the freeze is lifted.
+- Auto-unfreeze fires automatically when:
+  - A `customer.subscription.created` or `customer.subscription.updated`
+    webhook reports `status = active` and `cancel_at_period_end = false`.
+  - Members are removed (via `/leave_community`,
+    `/remove_community_member`, `delete_account`, or admin
+    `delete_user`) until the count fits the Free cap.
+- Admin-initiated freezes (`frozen_reason != 'subscription_expired'`)
+  are not affected by auto-unfreeze.
+
+KB knobs (page `community-tiers`):
+
+| Field name                                    | Purpose                                                                  | Default |
+|-----------------------------------------------|--------------------------------------------------------------------------|---------|
+| `free_community_max_members`                  | Free-tier member cap. Auto-freeze fires above this number.               | `25`    |
+| `community_lifecycle_notifications_enabled`   | Kill switch. `False` disables auto-freeze and the inactivity dispatcher. | `True`  |
+| `nonpay_grace_days`                           | **Contract** for the Stripe Dashboard dunning window — see below.        | `7`     |
+
+**Stripe Dashboard contract for `nonpay_grace_days`.** This field does
+not run a grace timer in the C-Point app. The auto-freeze is triggered
+by Stripe's `customer.subscription.deleted` event, which only fires
+after Stripe has exhausted its retry schedule. To make the value
+meaningful, configure Stripe Dashboard → Settings → Billing →
+Subscriptions and emails → "Manage failed payments" so the
+**total retry window** matches `nonpay_grace_days`. Update both test
+and live mode. If you change `nonpay_grace_days` in the KB, update the
+Stripe Dashboard at the same time so the contract holds.
+
+Operator playbook:
+
+- **Verify auto-freeze fires** in test mode by cancelling a Stripe
+  subscription on a community with > `free_community_max_members`
+  members. Watch the webhook logs for the `community_auto_frozen_*`
+  audit row.
+- **Disable temporarily** during incident triage by toggling
+  `community_lifecycle_notifications_enabled` to `False` on the KB
+  page. Existing freezes stay; new ones are skipped.
+- **Manual unfreeze** can be performed via the `/api/communities/<id>/freeze`
+  owner endpoint or the admin-web Communities page.
+- **Audit log**: every freeze/unfreeze writes a row to
+  `subscription_audit_log` with one of:
+  `community_auto_frozen_subscription_expired`,
+  `community_auto_unfrozen_member_removed`, or
+  `community_auto_unfrozen_subscription_active`.
+
+## 4.2 Paulo community ownership cleanup
+
+Paulo should not be the platform owner (`communities.creator_username`)
+for existing operational communities because it skews founder KB/test
+data. The owner should be `admin`, while Paulo remains a community
+admin/member where needed.
+
+Always run a Cloud SQL backup first because staging and prod share the
+same database:
+
+```powershell
+gcloud sql backups create `
+  --instance=cpoint-db `
+  --description="pre-paulo-ownership-transfer-$(Get-Date -Format yyyyMMdd-HHmm)"
+```
+
+Survey first:
+
+```powershell
+python scripts/survey_paulo_community_ownership.py
+```
+
+Dry-run execute:
+
+```powershell
+python scripts/execute_paulo_ownership_transfer.py --dry-run
+```
+
+Execute only after reviewing the survey and backup ID:
+
+```powershell
+python scripts/execute_paulo_ownership_transfer.py --yes-i-have-backup
+```
+
+Verification SQL:
+
+```sql
+SELECT COUNT(*) AS paulo_owned
+  FROM communities
+ WHERE LOWER(creator_username) = 'paulo';
+
+SELECT c.id, c.name, u.username, uc.role
+  FROM communities c
+  JOIN user_communities uc ON uc.community_id = c.id
+  JOIN users u ON u.id = uc.user_id
+ WHERE LOWER(c.creator_username) = 'admin'
+   AND LOWER(u.username) IN ('paulo', 'admin')
+ ORDER BY c.id, u.username;
+```
+
+The scripts leave Stripe customer/subscription IDs unchanged. That is
+intentional: platform ownership and paying Stripe customer are separate
+fields.
 
 ---
 
@@ -485,6 +702,40 @@ commerce surface. Two SKUs are live, two ship as "Coming soon" cards.
 **Never set the live price ID on staging or vice versa** — the mode
 filter will simply hide it, but having live IDs in a staging DB makes
 incident triage harder.
+
+---
+
+## CSRF / Origin enforcement (`CSRF_ORIGIN_ENFORCE`)
+
+The app uses `backend.services.security.verify_origin_or_block` on state-changing
+requests. **Default in production is shadow mode** (`CSRF_ORIGIN_ENFORCE` unset
+or `false`): invalid cross-site `Origin`/`Referer` pairs are **logged** as
+`csrf_origin_violation` but the request is **not** blocked.
+
+**Rollout:**
+
+1. Deploy with `CSRF_ORIGIN_ENFORCE=false` (default). Watch Cloud Logging for
+   `csrf_origin_violation` on staging for **24h**; extend the allowlist if a
+   legitimate `(path, origin)` pair appears.
+2. Flip staging: set `CSRF_ORIGIN_ENFORCE=true` on the Cloud Run service env,
+   re-run manual QA (admin-web, Stripe test webhook, cron secret, Google
+   Sign-In `/api/auth/google`).
+3. Repeat observe → flip for production.
+
+**Rollback:** set `CSRF_ORIGIN_ENFORCE=false` immediately (no code deploy if
+the env var is read per request).
+
+**Split-host admin (Cloud Run):** If C.Point Admin is served from a different
+hostname than the API (for example `https://cpoint-admin-staging-….run.app`
+calling `https://cpoint-app-staging-….run.app`), CSRF enforcement will block
+`POST /login` and other writes unless the admin origin is allowed. Set on the
+**app** Cloud Run service:
+
+`CSRF_ALLOWED_ORIGINS=https://cpoint-admin-staging-<hash>.europe-west1.run.app`
+
+Use the exact admin URL origin from the browser (comma-separated if several).
+`cloudbuild.yaml` for staging sets this alongside deploy when the URL matches
+the project’s admin service.
 
 ---
 

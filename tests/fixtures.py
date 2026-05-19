@@ -47,6 +47,7 @@ def make_user(
     created_at: Optional[datetime] = None,
     email: Optional[str] = None,
     is_admin: bool = False,
+    trial_revoked_at: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     """Insert a minimal user row.
 
@@ -70,16 +71,26 @@ def make_user(
             conn.commit()
         except Exception:
             pass
-    return {
+        if trial_revoked_at is not None:
+            tr_s = _fmt(trial_revoked_at)
+            c.execute(
+                f"UPDATE users SET trial_revoked_at = {ph} WHERE username = {ph}",
+                (tr_s, username),
+            )
+            try:
+                conn.commit()
+            except Exception:
+                pass
+    out = {
         "username": username,
         "email": email,
         "subscription": subscription,
         "is_special": bool(is_special),
         "created_at": created_str,
     }
-
-
-# ── ai_usage_log ────────────────────────────────────────────────────────
+    if trial_revoked_at is not None:
+        out["trial_revoked_at"] = _fmt(trial_revoked_at)
+    return out
 
 
 def log_row(
@@ -95,6 +106,7 @@ def log_row(
     community_id: Optional[int] = None,
     created_at: Optional[datetime] = None,
     request_type: Optional[str] = None,
+    credits_debited: Optional[float] = None,
 ) -> None:
     """Insert one raw ``ai_usage_log`` row with a custom ``created_at``.
 
@@ -113,13 +125,13 @@ def log_row(
             INSERT INTO ai_usage_log
                 (username, request_type, surface, tokens_in, tokens_out,
                  cost_usd, duration_seconds, success, reason_blocked,
-                 community_id, created_at)
+                 community_id, credits_debited, created_at)
             VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph},
-                    {ph}, {ph})
+                    {ph}, {ph}, {ph})
             """,
             (username, rtype, surface, tokens_in, tokens_out, cost_usd,
              duration_seconds, 1 if success else 0, reason_blocked,
-             community_id, created_str),
+             community_id, credits_debited, created_str),
         )
         try:
             conn.commit()

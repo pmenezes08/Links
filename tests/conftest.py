@@ -184,6 +184,17 @@ CREATE TABLE IF NOT EXISTS posts (
 )
 """
 
+_POST_VIEWS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS post_views (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    post_id INT NOT NULL,
+    username VARCHAR(191) NOT NULL,
+    viewed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_post_views_post (post_id),
+    INDEX idx_post_views_user (username)
+)
+"""
+
 # Minimal replies shape — the KB weekly sweep joins on
 # ``replies.username`` and ``replies.timestamp`` to decide who's active.
 # Thin schema for the same reason as posts above.
@@ -207,6 +218,17 @@ CREATE TABLE IF NOT EXISTS user_communities (
     role VARCHAR(32) DEFAULT 'member',
     joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_user_community (user_id, community_id)
+)
+"""
+
+_COMMUNITY_ADMINS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS community_admins (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    community_id INT NOT NULL,
+    username VARCHAR(191) NOT NULL,
+    appointed_by VARCHAR(191) NOT NULL DEFAULT 'system',
+    appointed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_community_admin (community_id, username)
 )
 """
 
@@ -240,17 +262,48 @@ def _bootstrap_schema() -> None:
     from backend.services import ai_usage, knowledge_base, special_access
     try:
         from backend.services import enterprise_membership, subscription_audit, \
-            enterprise_iap_nag, winback_promo
+            enterprise_iap_nag, winback_promo, subscription_billing_ledger, \
+            community_lifecycle, community_billing, user_billing
     except ImportError:
         enterprise_membership = subscription_audit = None
-        enterprise_iap_nag = winback_promo = None
+        enterprise_iap_nag = winback_promo = subscription_billing_ledger = None
+        community_lifecycle = community_billing = user_billing = None
 
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute(_USERS_TABLE_SQL)
+        for column, col_def in (
+            ("professional_company_intel", "TEXT NULL"),
+            ("trial_revoked_at", "DATETIME NULL"),
+        ):
+            try:
+                c.execute(f"ALTER TABLE users ADD COLUMN {column} {col_def}")
+            except Exception:
+                pass
         c.execute(_COMMUNITIES_TABLE_SQL)
+        for column, col_def in (
+            ("type", "VARCHAR(32) DEFAULT 'free'"),
+            ("description", "TEXT NULL"),
+            ("is_frozen", "TINYINT(1) DEFAULT 0"),
+            ("join_code", "VARCHAR(32) NULL"),
+            ("location", "TEXT NULL"),
+            ("background_path", "TEXT NULL"),
+            ("template", "VARCHAR(32) DEFAULT 'default'"),
+            ("background_color", "VARCHAR(32) DEFAULT '#2d3839'"),
+            ("text_color", "VARCHAR(32) DEFAULT '#ffffff'"),
+            ("accent_color", "VARCHAR(32) DEFAULT '#4db6ac'"),
+            ("card_color", "VARCHAR(32) DEFAULT '#1a2526'"),
+            ("notify_on_new_member", "TINYINT(1) DEFAULT 0"),
+            ("tenant_id", "INT NULL"),
+        ):
+            try:
+                c.execute(f"ALTER TABLE communities ADD COLUMN {column} {col_def}")
+            except Exception:
+                pass
         c.execute(_USER_COMMUNITIES_TABLE_SQL)
+        c.execute(_COMMUNITY_ADMINS_TABLE_SQL)
         c.execute(_POSTS_TABLE_SQL)
+        c.execute(_POST_VIEWS_TABLE_SQL)
         c.execute(_REPLIES_TABLE_SQL)
         c.execute(_NOTIFICATIONS_TABLE_SQL)
         try:
@@ -270,6 +323,14 @@ def _bootstrap_schema() -> None:
         enterprise_iap_nag.ensure_tables()
     if winback_promo is not None:
         winback_promo.ensure_tables()
+    if subscription_billing_ledger is not None:
+        subscription_billing_ledger.ensure_tables()
+    if community_lifecycle is not None:
+        community_lifecycle.ensure_tables()
+    if community_billing is not None:
+        community_billing.ensure_tables()
+    if user_billing is not None:
+        user_billing.ensure_tables()
 
 
 # ── Per-test cleanup ────────────────────────────────────────────────────
@@ -283,6 +344,8 @@ _TRUNCATE_TABLES: List[str] = [
     "users",
     "communities",
     "user_communities",
+    "community_admins",
+    "post_views",
     "posts",
     "replies",
     "notifications",
@@ -294,7 +357,11 @@ _TRUNCATE_TABLES: List[str] = [
     "enterprise_iap_nag",
     "winback_tokens",
     "subscription_audit_log",
+    "subscription_invoice_payments",
     "community_lifecycle_notifications",
+    "remember_tokens",
+    "native_push_tokens",
+    "fcm_tokens",
 ]
 
 

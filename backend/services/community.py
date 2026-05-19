@@ -6,10 +6,84 @@ import logging
 from collections import deque
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from backend.services.database import get_db_connection, get_sql_placeholder
+from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 
 
 logger = logging.getLogger(__name__)
+
+# New communities default to notifying all members when someone joins.
+DEFAULT_NOTIFY_ON_NEW_MEMBER = 1
+
+
+_COMMUNITY_DEPENDENT_TABLES: List[Tuple[str, str]] = [
+    ("post_views", "post_id IN (SELECT id FROM posts WHERE community_id = {ph})"),
+    ("key_posts", "community_id = {ph}"),
+    ("community_key_posts", "community_id = {ph}"),
+    ("comments", "post_id IN (SELECT id FROM posts WHERE community_id = {ph})"),
+    ("reactions", "post_id IN (SELECT id FROM posts WHERE community_id = {ph})"),
+    ("reply_reactions", "reply_id IN (SELECT id FROM replies WHERE community_id = {ph})"),
+    ("replies", "community_id = {ph}"),
+    (
+        "poll_votes",
+        "poll_id IN (SELECT id FROM polls WHERE post_id IN "
+        "(SELECT id FROM posts WHERE community_id = {ph}))",
+    ),
+    (
+        "poll_options",
+        "poll_id IN (SELECT id FROM polls WHERE post_id IN "
+        "(SELECT id FROM posts WHERE community_id = {ph}))",
+    ),
+    ("polls", "post_id IN (SELECT id FROM posts WHERE community_id = {ph})"),
+    ("posts", "community_id = {ph}"),
+    (
+        "event_rsvps",
+        "event_id IN (SELECT id FROM calendar_events WHERE community_id = {ph})",
+    ),
+    (
+        "event_invitations",
+        "event_id IN (SELECT id FROM calendar_events WHERE community_id = {ph})",
+    ),
+    ("calendar_events", "community_id = {ph}"),
+    (
+        "community_story_reactions",
+        "story_id IN (SELECT id FROM community_stories WHERE community_id = {ph})",
+    ),
+    (
+        "community_story_comments",
+        "story_id IN (SELECT id FROM community_stories WHERE community_id = {ph})",
+    ),
+    (
+        "community_story_views",
+        "story_id IN (SELECT id FROM community_stories WHERE community_id = {ph})",
+    ),
+    ("community_stories", "community_id = {ph}"),
+    (
+        "resource_upvotes",
+        "post_id IN (SELECT id FROM resource_posts WHERE community_id = {ph}) "
+        "OR comment_id IN (SELECT rc.id FROM resource_comments rc "
+        "JOIN resource_posts rp ON rp.id = rc.post_id WHERE rp.community_id = {ph})",
+    ),
+    (
+        "resource_comments",
+        "post_id IN (SELECT id FROM resource_posts WHERE community_id = {ph})",
+    ),
+    ("resource_posts", "community_id = {ph}"),
+    ("user_communities", "community_id = {ph}"),
+    ("community_admins", "community_id = {ph}"),
+    ("community_announcements", "community_id = {ph}"),
+    ("community_files", "community_id = {ph}"),
+    ("community_invites", "community_id = {ph}"),
+    ("community_billing", "community_id = {ph}"),
+    ("community_visit_history", "community_id = {ph}"),
+    ("user_muted_communities", "community_id = {ph}"),
+]
+
+_COMMUNITY_DIRECT_DEPENDENT_TABLES = {
+    table for table, where in _COMMUNITY_DEPENDENT_TABLES
+    if where == "community_id = {ph}"
+}
+
+_FK_NAME_MAX_LEN = 64
 
 
 # ── Community tier taxonomy ────────────────────────────────────────────
@@ -32,6 +106,45 @@ _COMMUNITY_TIERS = {
     COMMUNITY_TIER_PAID_L3,
     COMMUNITY_TIER_ENTERPRISE,
 }
+
+
+def resolve_root_community_id(community_id: int) -> Tuple[int, bool]:
+    """Walk ``parent_community_id`` to the billing / tier root.
+
+    Sub-communities inherit Stripe subscription, tier caps, and pooled
+    Steve semantics from their root network. Returns ``(root_id, is_root)``
+    where ``is_root`` means the original ``community_id`` was already the
+    root.
+
+    On transient DB failure returns ``(community_id, True)`` so callers
+    fail open to the requested id (matches legacy subscriptions behaviour).
+    """
+    ph = get_sql_placeholder()
+    current = int(community_id)
+    original = current
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            for _ in range(16):
+                c.execute(
+                    f"SELECT parent_community_id FROM communities WHERE id = {ph}",
+                    (current,),
+                )
+                row = c.fetchone()
+                if not row:
+                    break
+                parent = row["parent_community_id"] if hasattr(row, "keys") else row[0]
+                if parent is None or parent == "":
+                    break
+                try:
+                    current = int(parent)
+                except (TypeError, ValueError):
+                    break
+    except Exception:
+        logger.exception("resolve_root_community_id failed for %s", community_id)
+        return original, True
+    return current, current == original
+
 
 # KB field names that hold the member cap per tier. Free communities are
 # handled by ``ensure_free_parent_member_capacity`` via the owner's user
@@ -155,6 +268,103 @@ def render_member_cap_error(
         },
         403,
     )
+
+
+def insert_new_community_row(
+    cursor: Any,
+    *,
+    name: str,
+    community_type: str,
+    creator_username: str,
+    join_code: str,
+    created_at: str,
+    description: str,
+    location: str,
+    background_path: Optional[str],
+    template: str,
+    background_color: str,
+    text_color: str,
+    accent_color: str,
+    card_color: str,
+    parent_community_id: Optional[int],
+    notify_on_new_member: int = DEFAULT_NOTIFY_ON_NEW_MEMBER,
+) -> None:
+    """Insert a ``communities`` row with explicit ``notify_on_new_member``.
+
+    Callers read ``cursor.lastrowid`` after this returns. Single source of
+    truth for the column list shared by ``/create_community`` and
+    onboarding bootstrap.
+    """
+    ph = get_sql_placeholder()
+    placeholders = ", ".join([ph] * 15)
+    cursor.execute(
+        f"""
+        INSERT INTO communities (
+            name, type, creator_username, join_code, created_at, description, location,
+            background_path, template, background_color, text_color, accent_color, card_color,
+            parent_community_id, notify_on_new_member
+        )
+        VALUES ({placeholders})
+        """,
+        (
+            name,
+            community_type,
+            creator_username,
+            join_code,
+            created_at,
+            description,
+            location,
+            background_path,
+            template,
+            background_color,
+            text_color,
+            accent_color,
+            card_color,
+            parent_community_id,
+            int(notify_on_new_member),
+        ),
+    )
+
+
+def ensure_notify_on_new_member_schema(cursor: Any, conn: Any) -> None:
+    """Ensure ``notify_on_new_member`` exists with default **on** for new rows.
+
+    Does not update existing rows that already store ``0``.
+    """
+    try:
+        if USE_MYSQL:
+            cursor.execute("SHOW COLUMNS FROM communities LIKE 'notify_on_new_member'")
+            if not cursor.fetchone():
+                cursor.execute(
+                    "ALTER TABLE communities ADD COLUMN notify_on_new_member "
+                    "TINYINT(1) DEFAULT 1"
+                )
+                conn.commit()
+                return
+            cursor.execute(
+                "ALTER TABLE communities MODIFY COLUMN notify_on_new_member "
+                "TINYINT(1) DEFAULT 1"
+            )
+            conn.commit()
+            return
+
+        cursor.execute("PRAGMA table_info(communities)")
+        rows = cursor.fetchall() or []
+        cols: List[str] = []
+        for r in rows:
+            if isinstance(r, (list, tuple)):
+                cols.append(str(r[1]))
+            elif hasattr(r, "keys") and "name" in r.keys():
+                cols.append(str(r["name"]))
+            else:
+                cols.append(str(r[1]) if len(r) > 1 else "")
+        if "notify_on_new_member" not in cols:
+            cursor.execute(
+                "ALTER TABLE communities ADD COLUMN notify_on_new_member INTEGER DEFAULT 1"
+            )
+            conn.commit()
+    except Exception:
+        logger.warning("ensure_notify_on_new_member_schema failed", exc_info=True)
 
 
 def _normalize_subscription(value: Optional[str]) -> str:
@@ -472,6 +682,66 @@ def ensure_community_tier_member_capacity(
     )
 
 
+def normalize_community_type_value(value: Optional[str], *, default: str = "general") -> str:
+    """Lowercase functional category for comparisons (Gym → gym)."""
+    cleaned = str(value or "").strip().lower()
+    return cleaned or default
+
+
+def coerce_community_type_for_create(username: str, requested_type: Optional[str]) -> str:
+    """Type persisted on create. Only platform admins may set non-General types."""
+    if is_app_admin(username):
+        return normalize_community_type_value(requested_type)
+    return "general"
+
+
+def effective_community_type_for_update(
+    username: str,
+    submitted_type: Optional[str],
+    current_type: Optional[str],
+) -> str:
+    """Type persisted on update. Non-admins always keep the stored value."""
+    current = normalize_community_type_value(current_type)
+    if not is_app_admin(username):
+        return current
+    submitted = str(submitted_type or "").strip()
+    if not submitted:
+        return current
+    return normalize_community_type_value(submitted)
+
+
+def is_app_admin(username):
+    """Check if a user is a global app admin.
+
+    Kept in this service so community-management decisions do not need to
+    import the monolith. The legacy ``admin`` username still wins, and the
+    newer ``users.is_admin`` flag is checked case-insensitively.
+    """
+    norm_username = (username or "").strip().lower()
+    if not norm_username:
+        return False
+    if norm_username == "admin":
+        return True
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(
+                f"SELECT is_admin FROM users WHERE LOWER(username) = LOWER({ph})",
+                (username,),
+            )
+            row = c.fetchone()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("is_app_admin failed: %s", exc)
+        return False
+
+    if not row:
+        return False
+    value = row["is_admin"] if hasattr(row, "keys") else row[0]
+    return bool(value)
+
+
 def is_community_owner(username, community_id):
     """Check if a user is the owner of a community."""
     norm_username = (username or "").strip().lower()
@@ -495,6 +765,14 @@ def is_community_owner(username, community_id):
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("is_community_owner failed: %s", exc)
         return False
+
+
+def can_manage_community(username, community_id):
+    """True when ``username`` may edit/delete/manage ``community_id``."""
+    return bool(
+        is_app_admin(username)
+        or is_community_owner(username, community_id)
+    )
 
 
 def is_community_admin(username, community_id):
@@ -558,6 +836,338 @@ def get_parent_chain_ids(cursor, community_id: int) -> List[int]:
         parents.append(parent_id)
         current = parent_id
     return parents
+
+
+def _row_get(row, key: str, idx: int):
+    """Helper to read a column from either dict-like or tuple rows."""
+    if row is None:
+        return None
+    if hasattr(row, "keys"):
+        try:
+            return row[key]
+        except (KeyError, IndexError):
+            return None
+    try:
+        return row[idx]
+    except (IndexError, TypeError):
+        return None
+
+
+def _walk_to_top_parent(cursor, comm_id: int, ph: str) -> Optional[Dict[str, Any]]:
+    """Walk parent chain to find the top-level parent of ``comm_id``.
+
+    Returns a dict with ``id``, ``name``, ``type``, ``description``, or ``None``
+    if the community cannot be resolved.
+    """
+    cursor.execute(
+        f"SELECT id, name, type, description, parent_community_id FROM communities WHERE id = {ph}",
+        (comm_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+
+    current_id = _row_get(row, "id", 0)
+    name = _row_get(row, "name", 1)
+    ctype = _row_get(row, "type", 2)
+    description = _row_get(row, "description", 3)
+    parent_id = _row_get(row, "parent_community_id", 4)
+
+    visited: Set[int] = set()
+    while parent_id is not None and parent_id not in visited:
+        visited.add(parent_id)
+        cursor.execute(
+            f"SELECT id, name, type, description, parent_community_id FROM communities WHERE id = {ph}",
+            (parent_id,),
+        )
+        prow = cursor.fetchone()
+        if not prow:
+            break
+        current_id = _row_get(prow, "id", 0)
+        name = _row_get(prow, "name", 1)
+        ctype = _row_get(prow, "type", 2)
+        description = _row_get(prow, "description", 3)
+        parent_id = _row_get(prow, "parent_community_id", 4)
+
+    return {
+        "id": current_id,
+        "name": name,
+        "type": ctype,
+        "description": description,
+    }
+
+
+def count_unread_posts_by_community_ids(
+    cursor,
+    community_ids: List[int],
+    username: str,
+) -> Dict[int, int]:
+    """Unread = other users' posts with no ``post_views`` row for ``username``."""
+    if not username or not community_ids:
+        return {}
+    try:
+        ids = sorted({int(cid) for cid in community_ids if cid is not None})
+    except (TypeError, ValueError):
+        return {}
+    if not ids:
+        return {}
+    ph = get_sql_placeholder()
+    placeholders = ",".join([ph] * len(ids))
+    try:
+        cursor.execute(
+            f"""
+            SELECT p.community_id AS cid, COUNT(*) AS cnt
+            FROM posts p
+            WHERE p.community_id IN ({placeholders})
+              AND LOWER(p.username) <> LOWER({ph})
+              AND NOT EXISTS (
+                SELECT 1 FROM post_views pv
+                WHERE pv.post_id = p.id AND LOWER(pv.username) = LOWER({ph})
+              )
+            GROUP BY p.community_id
+            """,
+            tuple(ids) + (username, username),
+        )
+        rows = cursor.fetchall() or []
+    except Exception as exc:
+        logger.warning("count_unread_posts_by_community_ids failed: %s", exc)
+        return {}
+    out: Dict[int, int] = {}
+    for row in rows:
+        try:
+            cid = int(_row_get(row, "cid", 0))
+            out[cid] = int(_row_get(row, "cnt", 1) or 0)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def count_unread_posts_in_community_ids(
+    cursor,
+    community_ids: List[int],
+    username: str,
+) -> int:
+    if not username or not community_ids:
+        return 0
+    try:
+        ids = sorted({int(cid) for cid in community_ids if cid is not None})
+    except (TypeError, ValueError):
+        return 0
+    if not ids:
+        return 0
+    ph = get_sql_placeholder()
+    placeholders = ",".join([ph] * len(ids))
+    try:
+        cursor.execute(
+            f"""
+            SELECT COUNT(*) AS cnt
+            FROM posts p
+            WHERE p.community_id IN ({placeholders})
+              AND LOWER(p.username) <> LOWER({ph})
+              AND NOT EXISTS (
+                SELECT 1 FROM post_views pv
+                WHERE pv.post_id = p.id AND LOWER(pv.username) = LOWER({ph})
+              )
+            """,
+            tuple(ids) + (username, username),
+        )
+        row = cursor.fetchone()
+        return int(_row_get(row, "cnt", 0) or 0)
+    except Exception as exc:
+        logger.warning("count_unread_posts_in_community_ids failed: %s", exc)
+        return 0
+
+
+def get_user_dashboard_communities(username: str) -> List[Dict[str, Any]]:
+    """Return top-level parent communities for the dashboard, enriched with
+    ``description``, ``member_count``, ``last_activity``, ``is_owner``,
+    ``is_admin``.
+
+    All username comparisons are case-insensitive. Member counts exclude the
+    global ``admin`` user only (same rule as the community members modal). App
+    admins see every top-level parent community.
+    """
+    if not username:
+        return []
+
+    ph = get_sql_placeholder()
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+
+        if is_app_admin(username):
+            c.execute(
+                """
+                SELECT id, name, type, description
+                FROM communities
+                WHERE parent_community_id IS NULL
+                ORDER BY name
+                """
+            )
+            communities_list: List[Dict[str, Any]] = []
+            for row in c.fetchall():
+                communities_list.append({
+                    "id": _row_get(row, "id", 0),
+                    "name": _row_get(row, "name", 1),
+                    "type": _row_get(row, "type", 2),
+                    "description": _row_get(row, "description", 3),
+                })
+        else:
+            c.execute(
+                f"SELECT id FROM users WHERE LOWER(username) = LOWER({ph})",
+                (username,),
+            )
+            user_row = c.fetchone()
+            user_id = _row_get(user_row, "id", 0) if user_row else None
+
+            community_ids: Set[int] = set()
+
+            if user_id:
+                c.execute(
+                    f"SELECT community_id FROM user_communities WHERE user_id = {ph}",
+                    (user_id,),
+                )
+                for r in c.fetchall():
+                    cid = _row_get(r, "community_id", 0)
+                    if cid:
+                        community_ids.add(cid)
+
+            c.execute(
+                f"SELECT id FROM communities WHERE LOWER(creator_username) = LOWER({ph})",
+                (username,),
+            )
+            for r in c.fetchall():
+                cid = _row_get(r, "id", 0)
+                if cid:
+                    community_ids.add(cid)
+
+            c.execute(
+                f"SELECT community_id FROM community_admins WHERE LOWER(username) = LOWER({ph})",
+                (username,),
+            )
+            for r in c.fetchall():
+                cid = _row_get(r, "community_id", 0)
+                if cid:
+                    community_ids.add(cid)
+
+            top_parents: Dict[int, Dict[str, Any]] = {}
+            for cid in community_ids:
+                top = _walk_to_top_parent(c, cid, ph)
+                if top and top["id"] not in top_parents:
+                    top_parents[top["id"]] = top
+
+            # Surface gym communities for users with gym access.
+            try:
+                has_gym_access = (username or "").lower() == "paulo"
+                if not has_gym_access:
+                    c.execute(
+                        f"""
+                        SELECT 1
+                        FROM communities cm
+                        JOIN user_communities uc ON cm.id = uc.community_id
+                        JOIN users u ON uc.user_id = u.id
+                        WHERE LOWER(u.username) = LOWER({ph}) AND LOWER(cm.type) = 'gym'
+                        LIMIT 1
+                        """,
+                        (username,),
+                    )
+                    has_gym_access = c.fetchone() is not None
+
+                if has_gym_access:
+                    c.execute(
+                        "SELECT id FROM communities WHERE LOWER(type) = 'gym'"
+                    )
+                    for r in c.fetchall():
+                        gid = _row_get(r, "id", 0)
+                        if not gid:
+                            continue
+                        top = _walk_to_top_parent(c, gid, ph)
+                        if top and top["id"] not in top_parents:
+                            top_parents[top["id"]] = top
+            except Exception as exc:
+                logger.warning(
+                    "dashboard gym surface failed for %s: %s", username, exc
+                )
+
+            communities_list = sorted(
+                top_parents.values(),
+                key=lambda x: (x.get("name") or "").lower(),
+            )
+
+        if not communities_list:
+            return []
+
+        owned_ids: Set[int] = set()
+        c.execute(
+            f"SELECT id FROM communities WHERE LOWER(creator_username) = LOWER({ph})",
+            (username,),
+        )
+        for r in c.fetchall():
+            cid = _row_get(r, "id", 0)
+            if cid:
+                owned_ids.add(cid)
+
+        admin_ids: Set[int] = set()
+        c.execute(
+            f"SELECT community_id FROM community_admins WHERE LOWER(username) = LOWER({ph})",
+            (username,),
+        )
+        for r in c.fetchall():
+            cid = _row_get(r, "community_id", 0)
+            if cid:
+                admin_ids.add(cid)
+
+        for comm in communities_list:
+            cid = comm["id"]
+
+            try:
+                c.execute(
+                    f"""
+                    SELECT COUNT(DISTINCT uc.user_id) AS cnt
+                    FROM user_communities uc
+                    JOIN users u ON uc.user_id = u.id
+                    WHERE uc.community_id IN (
+                        SELECT id FROM communities
+                        WHERE id = {ph} OR parent_community_id = {ph}
+                    )
+                    AND LOWER(u.username) <> 'admin'
+                    """,
+                    (cid, cid),
+                )
+                row = c.fetchone()
+                comm["member_count"] = _row_get(row, "cnt", 0) or 0
+            except Exception:
+                comm["member_count"] = 0
+
+            try:
+                c.execute(
+                    f"""
+                    SELECT MAX(timestamp) AS last_post
+                    FROM posts
+                    WHERE community_id IN (
+                        SELECT id FROM communities
+                        WHERE id = {ph} OR parent_community_id = {ph}
+                    )
+                    """,
+                    (cid, cid),
+                )
+                row = c.fetchone()
+                comm["last_activity"] = _row_get(row, "last_post", 0)
+            except Exception:
+                comm["last_activity"] = None
+
+            try:
+                tree_ids = get_descendant_community_ids(c, cid)
+                comm["unread_posts_count"] = count_unread_posts_in_community_ids(
+                    c, tree_ids, username
+                )
+            except Exception:
+                comm["unread_posts_count"] = 0
+
+            comm["is_owner"] = cid in owned_ids
+            comm["is_admin"] = cid in admin_ids
+
+        return communities_list
 
 
 def fetch_community_names(cursor, community_ids: List[int]) -> List[str]:
@@ -656,3 +1266,273 @@ def get_descendant_community_ids(cursor, community_id: int) -> List[int]:
 
     results.sort(key=lambda item: item[1], reverse=True)
     return [cid for cid, _ in results]
+
+
+def invalidate_dashboard_caches_for_community_subtree(
+    community_id: int,
+    *,
+    cursor: Optional[Any] = None,
+) -> None:
+    """Invalidate Redis dashboard snapshot keys for everyone tied to this tree.
+
+    Resolves the top-level parent, collects all descendant community IDs, then
+    invalidates ``user_parent_dashboard:<username>`` for every affected member,
+    owner, or ``community_admins`` row — so descriptions and rolled-up member
+    counts refresh without waiting for TTL.
+
+    When ``cursor`` is provided (same DB transaction), membership rows not yet
+    committed to other connections are visible for the queries.
+    """
+
+    try:
+        from redis_cache import invalidate_user_cache
+
+        cid_int = int(community_id)
+    except (TypeError, ValueError):
+        return
+
+    def _run(c):
+
+        ancestors = get_community_ancestors(c, cid_int)
+        if ancestors:
+            top = ancestors[-1]
+            root_raw = (
+                top.get("id")
+                if isinstance(top, dict)
+                else (top[0] if isinstance(top, (list, tuple)) else None)
+            )
+            root_id = int(root_raw or cid_int)
+        else:
+            root_id = cid_int
+
+        tree_ids = get_descendant_community_ids(c, root_id)
+        if not tree_ids:
+            tree_ids = [root_id]
+
+        ph = get_sql_placeholder()
+        placeholders = ",".join([ph] * len(tree_ids))
+
+        affected: Set[str] = set()
+
+        c.execute(
+            f"""
+            SELECT DISTINCT u.username
+            FROM user_communities uc
+            INNER JOIN users u ON uc.user_id = u.id
+            WHERE uc.community_id IN ({placeholders})
+            """,
+            tuple(tree_ids),
+        )
+        for row in c.fetchall() or []:
+            un = row["username"] if hasattr(row, "keys") else row[0]
+            if un:
+                affected.add(str(un))
+
+        c.execute(
+            f"""
+            SELECT DISTINCT creator_username
+            FROM communities
+            WHERE id IN ({placeholders})
+              AND creator_username IS NOT NULL
+              AND TRIM(COALESCE(creator_username,'')) <> ''
+            """,
+            tuple(tree_ids),
+        )
+        for row in c.fetchall() or []:
+            un = row["creator_username"] if hasattr(row, "keys") else row[0]
+            if un:
+                affected.add(str(un))
+
+        c.execute(
+            f"""
+            SELECT DISTINCT username
+            FROM community_admins
+            WHERE community_id IN ({placeholders})
+              AND username IS NOT NULL
+              AND TRIM(COALESCE(username,'')) <> ''
+            """,
+            tuple(tree_ids),
+        )
+        for row in c.fetchall() or []:
+            un = row["username"] if hasattr(row, "keys") else row[0]
+            if un:
+                affected.add(str(un))
+
+        for username in sorted(affected):
+            try:
+                invalidate_user_cache(username)
+            except Exception as inv_err:
+                logger.warning(
+                    "dashboard subtree cache bust failed for %s: %s",
+                    username,
+                    inv_err,
+                )
+
+    try:
+        if cursor is not None:
+            _run(cursor)
+            return
+
+        with get_db_connection() as conn:
+            cc = conn.cursor()
+            _run(cc)
+    except Exception as exc:
+        logger.warning(
+            "invalidate_dashboard_caches_for_community_subtree(%s) failed: %s",
+            community_id,
+            exc,
+            exc_info=True,
+        )
+
+
+def _table_exists(cursor, table_name: str) -> bool:
+    """Return whether ``table_name`` exists in the active database."""
+    ph = get_sql_placeholder()
+    if ph == "%s":
+        cursor.execute(
+            """
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = DATABASE() AND table_name = %s
+            LIMIT 1
+            """,
+            (table_name,),
+        )
+    else:
+        cursor.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?",
+            (table_name,),
+        )
+    return cursor.fetchone() is not None
+
+
+def _is_missing_optional_schema_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(
+        marker in text
+        for marker in (
+            "unknown column",
+            "no such column",
+            "doesn't exist",
+            "does not exist",
+            "no such table",
+        )
+    )
+
+
+def delete_community_cascade(cursor, community_id: int) -> int:
+    """Delete a community and its dependents using the caller's transaction.
+
+    Missing optional tables are skipped so lean test schemas and older
+    deployments keep working. Real SQL failures are allowed to bubble up,
+    which lets the route roll back and avoid returning a false success.
+    """
+    ph = get_sql_placeholder()
+    for table, where in _COMMUNITY_DEPENDENT_TABLES:
+        if not _table_exists(cursor, table):
+            continue
+        placeholder_count = where.count("{ph}") or 1
+        try:
+            cursor.execute(
+                f"DELETE FROM {table} WHERE {where.format(ph=ph)}",
+                tuple([community_id] * placeholder_count),
+            )
+        except Exception as exc:
+            if _is_missing_optional_schema_error(exc):
+                logger.info(
+                    "Skipping optional community delete table %s due to schema mismatch: %s",
+                    table,
+                    exc,
+                )
+                continue
+            raise
+    cursor.execute(f"DELETE FROM communities WHERE id = {ph}", (community_id,))
+    return int(cursor.rowcount or 0)
+
+
+def _fk_constraint_name(table_name: str) -> str:
+    base = f"fk_{table_name}_community_delete"
+    if len(base) <= _FK_NAME_MAX_LEN:
+        return base
+    return f"fk_{table_name[:42]}_community_delete"
+
+
+def ensure_community_delete_cascade_constraints() -> Dict[str, Any]:
+    """Best-effort migration for direct ``community_id`` foreign keys.
+
+    MySQL can alter existing FKs in place; SQLite cannot, so local SQLite
+    runs only report that the migration was skipped. Startup must never be
+    blocked by a historical orphan row or a type mismatch, so per-table
+    failures are recorded and logged instead of raising.
+    """
+    report: Dict[str, Any] = {"updated": [], "already_ok": [], "skipped": [], "failed": []}
+    ph = get_sql_placeholder()
+    if ph != "%s":
+        report["skipped"].append("sqlite")
+        return report
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            for table in sorted(_COMMUNITY_DIRECT_DEPENDENT_TABLES):
+                try:
+                    if not _table_exists(c, table):
+                        report["skipped"].append(table)
+                        continue
+
+                    c.execute(
+                        """
+                        SELECT rc.CONSTRAINT_NAME, rc.DELETE_RULE
+                        FROM information_schema.REFERENTIAL_CONSTRAINTS rc
+                        JOIN information_schema.KEY_COLUMN_USAGE kcu
+                          ON rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA
+                         AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+                         AND rc.TABLE_NAME = kcu.TABLE_NAME
+                        WHERE rc.CONSTRAINT_SCHEMA = DATABASE()
+                          AND rc.TABLE_NAME = %s
+                          AND kcu.COLUMN_NAME = 'community_id'
+                          AND kcu.REFERENCED_TABLE_NAME = 'communities'
+                        LIMIT 1
+                        """,
+                        (table,),
+                    )
+                    row = c.fetchone()
+                    constraint = None
+                    delete_rule = None
+                    if row:
+                        constraint = row["CONSTRAINT_NAME"] if hasattr(row, "keys") else row[0]
+                        delete_rule = row["DELETE_RULE"] if hasattr(row, "keys") else row[1]
+                    if constraint and str(delete_rule or "").upper() == "CASCADE":
+                        report["already_ok"].append(table)
+                        continue
+
+                    if constraint:
+                        c.execute(f"ALTER TABLE `{table}` DROP FOREIGN KEY `{constraint}`")
+
+                    fk_name = _fk_constraint_name(table)
+                    c.execute(
+                        f"""
+                        ALTER TABLE `{table}`
+                        ADD CONSTRAINT `{fk_name}`
+                        FOREIGN KEY (`community_id`) REFERENCES `communities`(`id`)
+                        ON DELETE CASCADE
+                        """
+                    )
+                    conn.commit()
+                    report["updated"].append(table)
+                except Exception as exc:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    report["failed"].append({"table": table, "error": str(exc)})
+                    logger.warning(
+                        "Could not ensure ON DELETE CASCADE for %s.community_id: %s",
+                        table,
+                        exc,
+                    )
+    except Exception as exc:  # pragma: no cover - defensive startup guard
+        report["failed"].append({"table": "*", "error": str(exc)})
+        logger.warning("Community delete-cascade FK migration failed: %s", exc)
+
+    return report

@@ -2,11 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/static/logo.png" />
-    <link rel="shortcut icon" type="image/png" href="/static/logo.png" />
+    <link rel="icon" type="image/png" href="/api/public/logo" />
+    <link rel="shortcut icon" type="image/png" href="/api/public/logo" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="color-scheme" content="dark">
-    <meta name="app-version" content="2.19.0">
+    <meta name="app-version" content="2.21.0">
     <meta http-equiv="Cache-Control" content="no-cache">
     <meta http-equiv="Pragma" content="no-cache">
     <title>C-Point</title>
@@ -14,6 +14,7 @@
     <meta name="theme-color" content="#000000">
     <!-- iOS PWA -->
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="C-Point">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -59,7 +60,7 @@
       background: #000000;
       z-index: 9999;
     ">
-      <img src="/api/public/logo" alt="C-Point" style="width: 80px; height: 80px; margin-bottom: 24px; border-radius: 16px; object-fit: contain;" />
+      <img src="/api/public/logo" alt="C-Point" style="width: 80px; height: 80px; margin-bottom: 24px; border-radius: 16px; object-fit: contain;" onerror="if(!this.dataset.fallback){this.dataset.fallback='1';this.src='/static/cpoint-logo.svg';}" />
       <div style="
         width: 32px;
         height: 32px;

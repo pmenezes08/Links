@@ -2,31 +2,29 @@ import { UserCircle, Briefcase, Target, Shield } from "lucide-react";
 
 const points = [
   { icon: Briefcase, text: "Dedicated fields for role, company, and industry" },
-  { icon: Target, text: "Professional interests that drive smart matchmaking" },
-  { icon: UserCircle, text: "Rich bios visible across all community interactions" },
-  { icon: Shield, text: "Privacy-first — you control what's shared" },
+  { icon: Target, text: "Professional interests that help the right people find you" },
+  { icon: UserCircle, text: "Rich bios visible to members in the networks you share" },
+  { icon: Shield, text: "Privacy-first — invitation-only spaces, you control what's shared" },
 ];
 
 export const Identity = () => {
   return (
-    <section className="section-padding bg-muted/40">
+    <section className="section-padding bg-white">
       <div className="max-w-6xl mx-auto px-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-          {/* Left: copy */}
           <div>
             <p className="text-sm font-semibold text-primary uppercase tracking-widest mb-3">
-              Professional Identity
+              Trust inside private micro-networks
             </p>
             <h2 className="heading-lg text-foreground mb-4">
-              Identity that{" "}
+              Trust inside{" "}
               <span className="bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
-                Matters.
+                private networks.
               </span>
             </h2>
             <p className="body-lg mb-8">
-              Profiles built for business. Showcase your expertise with dedicated fields for your
-              professional background, making it easy for members to find exactly who they need to
-              talk to.
+              Profiles are built for real collaboration in closed circles — not for performing to the whole internet.
+              Show your expertise so the people who were invited alongside you know who to turn to.
             </p>
             <div className="space-y-4">
               {points.map((p, i) => (
@@ -40,7 +38,6 @@ export const Identity = () => {
             </div>
           </div>
 
-          {/* Right: visual card */}
           <div className="glass-card rounded-2xl p-8 teal-glow">
             <div className="space-y-5">
               <div className="flex items-center gap-4">
@@ -60,8 +57,11 @@ export const Identity = () => {
                 <div>
                   <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Interests</div>
                   <div className="flex flex-wrap gap-2 mt-1">
-                    {["AI/ML", "Startups", "Web3", "Leadership"].map(tag => (
-                      <span key={tag} className="px-2.5 py-1 rounded-full bg-primary/[0.08] text-primary text-xs font-medium">
+                    {["AI/ML", "Startups", "Web3", "Leadership"].map((tag) => (
+                      <span
+                        key={tag}
+                        className="px-2.5 py-1 rounded-full bg-primary/[0.08] text-primary text-xs font-medium"
+                      >
                         {tag}
                       </span>
                     ))}

@@ -14,7 +14,7 @@ from openai import OpenAI
 logger = logging.getLogger(__name__)
 
 XAI_API_KEY = os.getenv("XAI_API_KEY", "")
-GROK_MODEL_FAST = os.getenv("STEVE_CONTENT_MODEL", "grok-4-1-fast-non-reasoning")
+GROK_MODEL_FAST = os.getenv("STEVE_CONTENT_MODEL", "grok-4.20-non-reasoning")
 
 # Tech, culture, analysis, fashion, music — US/Europe-oriented; bare + www for filter_links netloc match.
 _EXPANDED_ROUNDUP_DOMAINS = frozenset(
@@ -100,8 +100,20 @@ def _require_client() -> OpenAI:
     return OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
 
-def _extract_json(raw_text: str) -> Dict[str, Any]:
+def _strip_markdown_json_fence(raw_text: str) -> str:
+    """If the model wrapped JSON in a markdown fence, extract the inner body."""
     text = (raw_text or "").strip()
+    if not text or "```" not in text:
+        return text
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    return text
+
+
+def _extract_json(raw_text: str) -> Dict[str, Any]:
+    text = _strip_markdown_json_fence(raw_text)
+    text = text.strip()
     if not text:
         raise ValueError("Empty model response")
     try:
@@ -111,8 +123,23 @@ def _extract_json(raw_text: str) -> Dict[str, Any]:
     start = text.find("{")
     end = text.rfind("}")
     if start == -1 or end == -1 or end <= start:
+        _log_bad_json_payload(raw_text)
         raise ValueError("No JSON object found in model response")
-    return json.loads(text[start : end + 1])
+    try:
+        return json.loads(text[start : end + 1])
+    except Exception:
+        _log_bad_json_payload(raw_text)
+        raise ValueError("No JSON object found in model response") from None
+
+
+def _log_bad_json_payload(raw_text: str) -> None:
+    raw = raw_text or ""
+    prefix = raw[:240].replace("\n", "\\n")
+    logger.warning(
+        "content_generation_llm: could not parse JSON (len=%s prefix=%r)",
+        len(raw),
+        prefix,
+    )
 
 
 def _clean_url(url: str) -> str:
@@ -271,7 +298,19 @@ def generate_web_search_json(
         temperature=temperature,
     )
     raw = (response.output_text or "").strip() if hasattr(response, "output_text") else ""
-    return _extract_json(raw)
+    if not raw:
+        logger.warning("generate_web_search_json: empty output_text from responses API")
+        return {}
+    try:
+        return _extract_json(raw)
+    except ValueError as exc:
+        logger.warning(
+            "generate_web_search_json: %s (len=%s prefix=%r)",
+            exc,
+            len(raw),
+            raw[:240].replace("\n", "\\n"),
+        )
+        return {}
 
 
 def trim_messages(messages: List[Dict[str, Any]], caps: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -314,6 +353,7 @@ def plan_timely_topic(
     topic_seed: str = "",
     community_name: str = "",
     community_context_enabled: bool = True,
+    recency_instructions: str = "",
 ) -> Dict[str, Any]:
     """Pick one timely topic using public web search results."""
     cleaned_seed = str(topic_seed or "").strip()
@@ -342,6 +382,8 @@ def plan_timely_topic(
         if cleaned_seed
         else "Standing theme or seed: choose a timely angle that fits the community context.\n"
     )
+    recency = (recency_instructions or "").strip()
+    recency_block = f"\n{recency}\n" if recency else ""
     result = generate_web_search_json(
         system_prompt=(
             f"You are planning one timely topic for Steve's {roundup_kind} roundup. "
@@ -350,11 +392,14 @@ def plan_timely_topic(
             "Return JSON with keys: topic, why_now, source_links. "
             "topic should be short, concrete, and ready to place in a headline. "
             "why_now should be one short sentence. "
-            "source_links should be an array of 1-4 exact URLs that justify the choice."
+            "source_links should be an array of 1-4 exact URLs that justify the choice. "
+            "Every URL must support news or events within the recency window when a recency rule is given."
+            f"{recency_block}"
         ),
         user_prompt=(
             f"{seed_line}"
             f"{community_line}"
+            f"{recency_block}"
             "Pick a topic Steve can cover right now. Avoid vague evergreen labels such as 'technology news'."
         ),
         max_output_tokens=700,

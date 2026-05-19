@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response, g, make_response
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response, g, make_response, current_app
 from collections import deque, defaultdict
 # from flask_wtf.csrf import CSRFProtect, generate_csrf, validate_csrf as wtf_validate_csrf
 import errno
@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import sqlite3
 import random
+import threading
 import re
 import logging
 import uuid
@@ -40,29 +41,52 @@ from redis_cache import (
 )
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from urllib.parse import urlencode, urljoin, quote, quote_plus, urlparse
-from typing import Optional, Dict, Any, List, Iterable, Tuple, Set, Sequence
+from typing import Optional, Dict, Any, List, Iterable, Tuple, Set
 from concurrent.futures import ThreadPoolExecutor
-from encryption_endpoints import register_encryption_endpoints
-from signal_endpoints import register_signal_endpoints
 from backend import init_app
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
+from backend.services.user_activity_tables import ensure_user_activity_tables, record_community_feed_visit
+from backend.services.admin_metrics import compute_admin_metrics
 from backend.services.dm_chats_tables import ensure_archived_chats_table
 from backend.services import ai_usage as _ai_usage
+from backend.services import api_errors as _api_errors
+from backend.services import community_lifecycle as _community_lifecycle
+from backend.services import remember_tokens as remember_tokens_service
+from backend.services import session_identity
 from backend.services.community import (
+    can_manage_community,
     fetch_community_names,
     get_community_ancestors,
     get_community_basic,
-    get_descendant_community_ids,
     get_parent_chain_ids,
+    coerce_community_type_for_create,
+    effective_community_type_for_update,
+    insert_new_community_row,
+    invalidate_dashboard_caches_for_community_subtree,
+    is_app_admin,
     is_community_admin,
     is_community_owner,
+)
+from backend.services.group_feed_access import (
+    check_group_feed_access,
+    check_group_feed_access_for_group_post,
+    fetch_group_id_for_group_post,
+    fetch_group_id_for_group_reply,
+)
+from backend.services.group_post_views import count_group_post_views_excluding_admin
+from backend.services.post_views import (
+    ensure_post_views_table,
+    upsert_post_view,
+    count_post_views_excluding_admin,
 )
 from backend.services.notifications import (
     check_single_event_notifications,
     check_single_poll_notifications,
     create_notification,
     ensure_notifications_preview_text_column,
+    ensure_users_notification_show_previews_column,
     fanout_community_post_notifications,
+    push_privacy_summary,
     send_push_to_user,
     truncate_notification_preview,
 )
@@ -85,11 +109,15 @@ from backend.services.media import (
 from backend.services.tasks import (
     ensure_tasks_table as ensure_tasks_table_service,
     is_community_admin_or_owner as service_is_community_admin_or_owner,
+    tasks_group_scope_sql,
 )
 from backend.services.reactions import (
     get_post_reaction_summary,
     get_reply_reaction_summary,
 )
+from backend.services.steve_tool_policy import steve_tool_names_for_log as _steve_tool_names_for_log
+from backend.services.steve_tool_router import resolve_steve_hosted_tools as _resolve_steve_hosted_tools
+
 try:
     from PIL import Image
     PIL_AVAILABLE = True
@@ -106,8 +134,7 @@ except ImportError as e:
     print(f"ERROR OpenAI not available: {e}")
     print("   Run: pip install openai")
 
-# Note: xAI SDK with web_search requires specific setup that doesn't work via OpenAI-compatible API
-# For now, Steve uses xAI/Grok without live web search
+# Hosted Grok Responses API: feed attaches web_search / x_search via steve_tool_policy (KB feed_attach_* kill-switches only).
 XAI_SDK_AVAILABLE = False
 
 # Founder awareness is now handled at the network synthesis level in steve_knowledge_base.py
@@ -365,14 +392,6 @@ FALLBACK_CITY_MAP: Dict[str, List[str]] = {
     'costa rica': ['San José', 'Liberia', 'Alajuela'],
 }
 
-STORY_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'webp'}
-STORY_VIDEO_EXTENSIONS = {'mp4', 'mov', 'm4v', 'webm', 'avi'}
-STORY_ALLOWED_EXTENSIONS = STORY_IMAGE_EXTENSIONS | STORY_VIDEO_EXTENSIONS
-STORY_DEFAULT_LIFESPAN_HOURS = 24
-STORY_MAX_CAPTION_LENGTH = 2000
-STORY_MAX_DESCRIPTION_LENGTH = 2000
-STORY_MAX_COMMENT_LENGTH = 2000
-
 # Authentication decorators (defined early so they are in scope for route decorators)
 def login_required(f):
     @wraps(f)
@@ -391,21 +410,10 @@ def login_required(f):
         # CRITICAL: Verify user still exists in database (handles deleted accounts)
         username = session.get('username')
         try:
-            with get_db_connection() as conn:
-                c = conn.cursor()
-                c.execute("SELECT id FROM users WHERE username=?", (username,))
-                user_exists = c.fetchone() is not None
-                if not user_exists:
-                    logger.warning(f"User {username} no longer exists in database, clearing session")
-                    # Clear the ghost session
-                    session.clear()
-                    session.permanent = False
-                    # Invalidate any cached data
-                    try:
-                        invalidate_user_cache(username)
-                    except Exception:
-                        pass
-                    return redirect(url_for('auth.login'))
+            if not session_identity.user_exists(username):
+                logger.warning(f"User {username} no longer exists in database, clearing session")
+                session_identity.clear_invalid_session(session, username)
+                return redirect(url_for('auth.login'))
         except Exception as e:
             logger.error(f"Error verifying user exists: {e}")
             # On error, allow through but log it
@@ -663,7 +671,15 @@ def api_giphy_search():
                 return jsonify({'data': []})
             url = f'https://api.giphy.com/v1/gifs/search?api_key={key}&q={q}&limit={limit}&offset={offset}&rating={rating}'
         resp = _requests.get(url, timeout=10)
-        return jsonify(resp.json())
+        payload = resp.json()
+        if resp.status_code >= 400:
+            logger.warning(
+                "Giphy upstream HTTP %s: %s",
+                resp.status_code,
+                (payload.get('message') if isinstance(payload, dict) else None) or resp.text[:200],
+            )
+            return jsonify(payload), resp.status_code
+        return jsonify(payload)
     except Exception as e:
         logger.error(f"Giphy proxy error: {e}")
         return jsonify({'data': [], 'error': 'Giphy request failed'}), 502
@@ -690,33 +706,10 @@ def _get_serializer():
 
 @app.before_request
 def _check_csrf_origin():
-    """Lightweight CSRF check: verify Origin/Referer for state-changing requests."""
-    if request.method in ('GET', 'HEAD', 'OPTIONS'):
-        return None
-    origin = request.headers.get('Origin') or ''
-    referer = request.headers.get('Referer') or ''
-    host = request.host
-    # Allow requests with no origin (same-origin, Capacitor native, server-to-server)
-    if not origin and not referer:
-        return None
-    # Allow if origin matches host
-    if origin:
-        from urllib.parse import urlparse
-        parsed = urlparse(origin)
-        if parsed.hostname and (parsed.hostname == host.split(':')[0] or parsed.hostname in ('localhost', '127.0.0.1')):
-            return None
-        # Allow capacitor origin
-        if 'capacitor' in origin.lower() or 'localhost' in origin.lower():
-            return None
-    if referer:
-        from urllib.parse import urlparse
-        parsed = urlparse(referer)
-        if parsed.hostname and (parsed.hostname == host.split(':')[0] or parsed.hostname in ('localhost', '127.0.0.1')):
-            return None
-    # For API calls from the app, allow if the session cookie is present
-    if 'session' in request.cookies or 'cpoint_session' in request.cookies:
-        return None
-    return None  # Permissive for now; can be tightened later
+    """Origin/Referer gate for state-changing requests (see backend.services.security)."""
+    from backend.services import security as _security
+
+    return _security.verify_origin_or_block(request)
 
 @app.before_request
 def _set_tenant_context():
@@ -1083,78 +1076,6 @@ def _ensure_invite_single_use_column(cursor):
         except Exception as e:
             logger.warning(f"Could not add invite_single_use column: {e}")
 
-def ensure_post_views_table(c):
-    """Ensure the post_views table exists for tracking unique post views."""
-    try:
-        if USE_MYSQL:
-            c.execute('''CREATE TABLE IF NOT EXISTS post_views (
-                          id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          post_id INTEGER NOT NULL,
-                          username VARCHAR(191) NOT NULL,
-                          viewed_at DATETIME NOT NULL,
-                          UNIQUE(post_id, username),
-                          FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-                          FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
-                        )''')
-        else:
-            c.execute('''CREATE TABLE IF NOT EXISTS post_views (
-                          id INTEGER PRIMARY KEY AUTOINCREMENT,
-                          post_id INTEGER NOT NULL,
-                          username VARCHAR(191) NOT NULL,
-                          viewed_at TEXT NOT NULL,
-                          UNIQUE(post_id, username),
-                          FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-                          FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
-                        )''')
-    except Exception as e:
-        logger.warning(f"Could not ensure post_views table: {e}")
-
-def _count_post_views_excluding_admin(c, post_id: int) -> Optional[int]:
-    """Return the number of views for a post ignoring admin activity."""
-    try:
-        post_ph = get_sql_placeholder()
-        admin_ph = get_sql_placeholder()
-        c.execute(
-            f"SELECT COUNT(*) as cnt FROM post_views WHERE post_id = {post_ph} AND LOWER(username) <> LOWER({admin_ph})",
-            (post_id, 'admin'),
-        )
-        row = c.fetchone()
-        count = row['cnt'] if hasattr(row, 'keys') else (row[0] if row else 0)
-        return int(count or 0)
-    except Exception as count_err:
-        logger.warning(f"Failed counting post views for post {post_id}: {count_err}")
-        return None
-
-
-def upsert_post_view(c, post_id: int, username: Optional[str]) -> Optional[int]:
-    """Ensure a unique view record for username/post_id, excluding the admin user."""
-    ensure_post_views_table(c)
-    if not username:
-        return _count_post_views_excluding_admin(c, post_id)
-
-    if username.lower() == 'admin':
-        try:
-            post_ph = get_sql_placeholder()
-            admin_ph = get_sql_placeholder()
-            c.execute(
-                f"DELETE FROM post_views WHERE post_id = {post_ph} AND LOWER(username) = LOWER({admin_ph})",
-                (post_id, 'admin'),
-            )
-        except Exception as cleanup_err:
-            logger.warning(f"Failed cleaning admin views for post {post_id}: {cleanup_err}")
-        return _count_post_views_excluding_admin(c, post_id)
-
-    now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-    try:
-        if USE_MYSQL:
-            c.execute("INSERT IGNORE INTO post_views (post_id, username, viewed_at) VALUES (%s,%s,%s)", (post_id, username, now_str))
-        else:
-            c.execute("INSERT OR IGNORE INTO post_views (post_id, username, viewed_at) VALUES (?,?,?)", (post_id, username, now_str))
-    except Exception as insert_err:
-        logger.warning(f"Failed inserting post_view for post {post_id} and user {username}: {insert_err}")
-    return _count_post_views_excluding_admin(c, post_id)
-
-
 def ensure_reply_views_table(c):
     """Ensure the reply_views table exists for tracking unique reply views."""
     try:
@@ -1198,7 +1119,7 @@ def _count_reply_views_excluding_admin(c, reply_id: int) -> int:
 def upsert_reply_view(c, reply_id: int, username: Optional[str]) -> int:
     """Record a unique view for a reply and return the updated count."""
     ensure_reply_views_table(c)
-    if not username or username.lower() == 'admin':
+    if not username or is_app_admin(username):
         return _count_reply_views_excluding_admin(c, reply_id)
     now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
     try:
@@ -1210,346 +1131,6 @@ def upsert_reply_view(c, reply_id: int, username: Optional[str]) -> int:
         logger.warning(f"Failed inserting reply_view for reply {reply_id}: {e}")
     return _count_reply_views_excluding_admin(c, reply_id)
 
-
-def ensure_story_tables(c):
-    """Ensure community_stories, views, reactions, and comments tables exist. Returns True if successful."""
-    try:
-        if USE_MYSQL:
-            c.execute("SHOW TABLES LIKE 'community_stories'")
-            stories_exist = c.fetchone()
-            if not stories_exist:
-                c.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS community_stories (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        community_id INT NOT NULL,
-                        username VARCHAR(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
-                        media_path VARCHAR(512) NOT NULL,
-                        media_type VARCHAR(16) NOT NULL,
-                        caption TEXT,
-                        duration_seconds INT,
-                        status VARCHAR(32) NOT NULL DEFAULT 'active',
-                        created_at DATETIME NOT NULL,
-                        expires_at DATETIME NOT NULL,
-                        view_count INT NOT NULL DEFAULT 0,
-                        last_viewed_at DATETIME,
-                        text_overlays JSON,
-                        location_data JSON,
-                        story_group_id VARCHAR(64),
-                        description TEXT,
-                        INDEX idx_cs_comm_expires (community_id, expires_at),
-                        INDEX idx_cs_user_created (username, created_at),
-                        INDEX idx_cs_group (story_group_id),
-                        CONSTRAINT fk_cs_community FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
-                        CONSTRAINT fk_cs_user FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-                    """
-                )
-            else:
-                for col, col_def in [
-                    ('story_group_id', 'VARCHAR(64)'),
-                    ('description', 'TEXT'),
-                ]:
-                    try:
-                        c.execute(f"ALTER TABLE community_stories ADD COLUMN {col} {col_def}")
-                    except Exception:
-                        pass
-                try:
-                    c.execute("CREATE INDEX idx_cs_group ON community_stories (story_group_id)")
-                except Exception:
-                    pass
-
-            c.execute("SHOW TABLES LIKE 'community_story_views'")
-            if not c.fetchone():
-                c.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS community_story_views (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        story_id INT NOT NULL,
-                        username VARCHAR(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
-                        viewed_at DATETIME NOT NULL,
-                        UNIQUE KEY uniq_story_viewer (story_id, username),
-                        INDEX idx_csv_story (story_id),
-                        INDEX idx_csv_user (username),
-                        CONSTRAINT fk_csv_story FOREIGN KEY (story_id) REFERENCES community_stories(id) ON DELETE CASCADE,
-                        CONSTRAINT fk_csv_user FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-                    """
-                )
-            c.execute("SHOW TABLES LIKE 'community_story_reactions'")
-            if not c.fetchone():
-                c.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS community_story_reactions (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        story_id INT NOT NULL,
-                        username VARCHAR(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
-                        reaction VARCHAR(16) NOT NULL,
-                        created_at DATETIME NOT NULL,
-                        UNIQUE KEY uniq_story_reaction (story_id, username),
-                        INDEX idx_csr_story (story_id),
-                        INDEX idx_csr_reaction (reaction),
-                        CONSTRAINT fk_csr_story FOREIGN KEY (story_id) REFERENCES community_stories(id) ON DELETE CASCADE,
-                        CONSTRAINT fk_csr_user FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-                    """
-                )
-            c.execute("SHOW TABLES LIKE 'community_story_comments'")
-            if not c.fetchone():
-                c.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS community_story_comments (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        story_id INT NOT NULL,
-                        username VARCHAR(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
-                        content TEXT NOT NULL,
-                        created_at DATETIME NOT NULL,
-                        INDEX idx_csc_story (story_id),
-                        INDEX idx_csc_user (username),
-                        CONSTRAINT fk_csc_story FOREIGN KEY (story_id) REFERENCES community_stories(id) ON DELETE CASCADE,
-                        CONSTRAINT fk_csc_user FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-                    """
-                )
-        else:
-            c.execute(
-                """
-                CREATE TABLE IF NOT EXISTS community_stories (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    community_id INTEGER NOT NULL,
-                    username TEXT NOT NULL,
-                    media_path TEXT NOT NULL,
-                    media_type TEXT NOT NULL,
-                    caption TEXT,
-                    duration_seconds INTEGER,
-                    status TEXT NOT NULL DEFAULT 'active',
-                    created_at TEXT NOT NULL,
-                    expires_at TEXT NOT NULL,
-                    view_count INTEGER NOT NULL DEFAULT 0,
-                    last_viewed_at TEXT,
-                    text_overlays TEXT,
-                    location_data TEXT,
-                    story_group_id TEXT,
-                    description TEXT
-                )
-                """
-            )
-            c.execute(
-                """
-                CREATE TABLE IF NOT EXISTS community_story_views (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    story_id INTEGER NOT NULL,
-                    username TEXT NOT NULL,
-                    viewed_at TEXT NOT NULL
-                )
-                """
-            )
-            c.execute("CREATE INDEX IF NOT EXISTS idx_cs_comm_expires ON community_stories (community_id, expires_at)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_cs_user_created ON community_stories (username, created_at)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_cs_group ON community_stories (story_group_id)")
-            c.execute("CREATE UNIQUE INDEX IF NOT EXISTS uniq_story_viewer ON community_story_views (story_id, username)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_csv_user ON community_story_views (username)")
-            c.execute(
-                """
-                CREATE TABLE IF NOT EXISTS community_story_reactions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    story_id INTEGER NOT NULL,
-                    username TEXT NOT NULL,
-                    reaction TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            c.execute("CREATE UNIQUE INDEX IF NOT EXISTS uniq_story_reaction ON community_story_reactions (story_id, username)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_csr_story ON community_story_reactions (story_id)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_csr_reaction ON community_story_reactions (reaction)")
-            c.execute(
-                """
-                CREATE TABLE IF NOT EXISTS community_story_comments (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    story_id INTEGER NOT NULL,
-                    username TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            c.execute("CREATE INDEX IF NOT EXISTS idx_csc_story ON community_story_comments (story_id)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_csc_user ON community_story_comments (username)")
-        return True
-    except Exception as e:
-        logger.error(f"Could not ensure community story tables: {e}")
-        return False
-
-
-STORY_ALLOWED_REACTIONS: Set[str] = {"❤️", "🔥", "👏", "😂", "😮", "👍"}
-
-
-def normalize_story_reaction(value: Optional[str]) -> Optional[str]:
-    if not value:
-        return None
-    token = str(value).strip()
-    return token if token in STORY_ALLOWED_REACTIONS else None
-
-
-def fetch_story_reaction_maps(
-    c,
-    story_ids: Sequence[int],
-    username: Optional[str] = None,
-) -> Tuple[Dict[int, Dict[str, int]], Dict[int, Optional[str]]]:
-    if not story_ids:
-        return {}, {}
-    ensure_story_tables(c)
-    ph = get_sql_placeholder()
-    placeholders = ",".join([ph] * len(story_ids))
-
-    reaction_counts: Dict[int, Dict[str, int]] = {}
-    user_reactions: Dict[int, Optional[str]] = {}
-
-    try:
-        c.execute(
-            f"""
-            SELECT story_id, reaction, COUNT(*) as cnt
-            FROM community_story_reactions
-            WHERE story_id IN ({placeholders})
-            GROUP BY story_id, reaction
-            """,
-            tuple(story_ids),
-        )
-        rows = c.fetchall() or []
-        for row in rows:
-            story_id = row["story_id"] if hasattr(row, "keys") else row[0]
-            reaction = row["reaction"] if hasattr(row, "keys") else row[1]
-            count = row["cnt"] if hasattr(row, "keys") else (row[2] if len(row) > 2 else 0)
-            if story_id is None or reaction is None:
-                continue
-            reaction_counts.setdefault(int(story_id), {})[reaction] = int(count or 0)
-    except Exception as err:
-        logger.warning(f"Failed to aggregate story reactions: {err}")
-
-    if username:
-        try:
-            params = list(story_ids) + [username]
-            c.execute(
-                f"""
-                SELECT story_id, reaction
-                FROM community_story_reactions
-                WHERE story_id IN ({placeholders}) AND LOWER(username) = LOWER({ph})
-                """,
-                tuple(params),
-            )
-            rows = c.fetchall() or []
-            for row in rows:
-                story_id = row["story_id"] if hasattr(row, "keys") else row[0]
-                reaction = row["reaction"] if hasattr(row, "keys") else (row[1] if len(row) > 1 else None)
-                if story_id is None:
-                    continue
-                user_reactions[int(story_id)] = reaction
-        except Exception as err:
-            logger.warning(f"Failed to fetch user story reactions: {err}")
-
-    return reaction_counts, user_reactions
-
-
-def user_has_story_access(c, username: Optional[str], community_id: int, creator_username: Optional[str] = None) -> bool:
-    """Check if a user can interact with community-level ephemeral content (member or ancestor admin)."""
-    if not username or not community_id:
-        return False
-    norm_username = str(username).strip().lower()
-    if norm_username == 'admin':
-        return True
-    creator_norm = str(creator_username).strip().lower() if creator_username else None
-    if creator_norm and norm_username == creator_norm:
-        return True
-
-    ph = get_sql_placeholder()
-    try:
-        c.execute(
-            f"""
-            SELECT 1
-            FROM user_communities uc
-            JOIN users u ON uc.user_id = u.id
-            WHERE LOWER(u.username) = LOWER({ph}) AND uc.community_id = {ph}
-            LIMIT 1
-            """,
-            (username, community_id),
-        )
-        if c.fetchone():
-            return True
-    except Exception as membership_err:
-        logger.warning(f"story access membership check failed for community {community_id}: {membership_err}")
-
-    try:
-        parent_ids = get_parent_chain_ids(c, community_id)
-    except Exception as parent_err:
-        logger.warning(f"story access parent chain failed for community {community_id}: {parent_err}")
-        parent_ids = []
-
-    for parent_id in parent_ids:
-        try:
-            c.execute(
-                f"""
-                SELECT uc.role, c.creator_username
-                FROM user_communities uc
-                JOIN users u ON uc.user_id = u.id
-                JOIN communities c ON c.id = uc.community_id
-                WHERE LOWER(u.username) = LOWER({ph}) AND uc.community_id = {ph}
-                LIMIT 1
-                """,
-                (username, parent_id),
-            )
-            row = c.fetchone()
-        except Exception as ancestor_err:
-            logger.warning(f"story access ancestor check failed for {parent_id}: {ancestor_err}")
-            row = None
-        if not row:
-            continue
-        role = row["role"] if hasattr(row, "keys") else (row[0] if len(row) > 0 else None)
-        creator = row["creator_username"] if hasattr(row, "keys") else (row[1] if len(row) > 1 else None)
-        role_norm = (role or "").strip().lower()
-        if role_norm in {"admin", "owner", "manager", "moderator"}:
-            return True
-        creator_parent_norm = (creator or "").strip().lower()
-        if creator_parent_norm and creator_parent_norm == norm_username:
-            return True
-    return False
-
-
-def record_story_view(c, story_id: int, username: str) -> Optional[int]:
-    """Upsert a story view and return the latest total view count."""
-    ensure_story_tables(c)
-    now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-    try:
-        if USE_MYSQL:
-            c.execute(
-                """
-                INSERT INTO community_story_views (story_id, username, viewed_at)
-                VALUES (%s, %s, %s)
-                ON DUPLICATE KEY UPDATE viewed_at = VALUES(viewed_at)
-                """,
-                (story_id, username, now_str),
-            )
-        else:
-            c.execute(
-                "INSERT OR REPLACE INTO community_story_views (story_id, username, viewed_at) VALUES (?,?,?)",
-                (story_id, username, now_str),
-            )
-    except Exception as view_err:
-        logger.warning(f"Failed recording story view for {story_id}: {view_err}")
-
-    try:
-        ph = get_sql_placeholder()
-        c.execute(f"SELECT COUNT(*) as cnt FROM community_story_views WHERE story_id = {ph}", (story_id,))
-        row = c.fetchone()
-        count = row["cnt"] if hasattr(row, "keys") else (row[0] if row else 0)
-        c.execute(
-            f"UPDATE community_stories SET view_count = {ph}, last_viewed_at = {ph} WHERE id = {ph}",
-            (int(count or 0), now_str, story_id),
-        )
-        return int(count or 0)
-    except Exception as agg_err:
-        logger.warning(f"Failed updating story view count for {story_id}: {agg_err}")
-        return None
 
 # Optional: enforce canonical host (e.g., www.c-point.co) to prevent cookie splits
 CANONICAL_HOST = os.getenv('CANONICAL_HOST')  # e.g., 'www.c-point.co'
@@ -1609,8 +1190,8 @@ TYPING_TTL_SECONDS = 5
 
 # Grok model configuration for Steve
 # Using 4.20 multi-agent only for complex networking/community analysis to control costs
-GROK_MODEL_FAST = "grok-4-1-fast-non-reasoning"          # Default for most interactions
-GROK_MODEL_REASONING = "grok-4-1-fast-reasoning"         # For group chat reasoning
+GROK_MODEL_FAST = "grok-4.20-non-reasoning"          # Default for most interactions
+GROK_MODEL_REASONING = "grok-4.3"         # For group chat reasoning
 GROK_MODEL_420_REASONING = "grok-4.20-0309-reasoning"    # Premium reasoning for flagship networking
 GROK_MODEL_MULTI_AGENT = "grok-4.20-multi-agent-0309"    # Only for profile analysis (web_search tool use)
 STEVE_NETWORKING_MODEL = os.getenv('STEVE_NETWORKING_MODEL', GROK_MODEL_REASONING)
@@ -1735,33 +1316,6 @@ def fetch_user_subscription(cursor, username: Optional[str]) -> str:
 
 def is_free_subscription(subscription_value: str) -> bool:
     return subscription_value not in {'premium'}
-
-
-def delete_community_records(cursor, community_id: int) -> None:
-    """Remove a community and its direct associations."""
-    placeholder = get_sql_placeholder()
-    try:
-        cursor.execute(
-            f"DELETE FROM post_views WHERE post_id IN (SELECT id FROM posts WHERE community_id = {placeholder})",
-            (community_id,),
-        )
-    except Exception as err:
-        logger.warning(f"Failed deleting post_views for community {community_id}: {err}")
-
-    try:
-        cursor.execute(f"DELETE FROM posts WHERE community_id = {placeholder}", (community_id,))
-    except Exception as err:
-        logger.warning(f"Failed deleting posts for community {community_id}: {err}")
-
-    try:
-        cursor.execute(f"DELETE FROM user_communities WHERE community_id = {placeholder}", (community_id,))
-    except Exception as err:
-        logger.warning(f"Failed deleting user_communities for community {community_id}: {err}")
-
-    try:
-        cursor.execute(f"DELETE FROM communities WHERE id = {placeholder}", (community_id,))
-    except Exception as err:
-        logger.warning(f"Failed deleting community {community_id}: {err}")
 
 
 def ensure_followers_table(cursor) -> None:
@@ -2077,8 +1631,37 @@ def add_user_to_community(cursor, user_id: int, community_id: int, role: Optiona
                 (user_id, community_id, role, joined_at_value),
             )
     
-    # Invalidate user's caches so they see the new community immediately
-    _invalidate_user_community_caches(cursor, user_id, username)
+    # Invalidate dashboard caches for everyone on this subtree (members, owners,
+    # admins) so rollups/descriptions refresh; includes the joining user within
+    # the same transaction/cursor snapshot.
+    try:
+        invalidate_dashboard_caches_for_community_subtree(
+            int(community_id), cursor=cursor
+        )
+    except Exception as subtree_exc:
+        logger.warning(
+            "invalidate_dashboard_caches_for_community_subtree after join: %s",
+            subtree_exc,
+        )
+        try:
+            join_un = username
+            if not join_un:
+                ph_fb = get_sql_placeholder()
+                cursor.execute(
+                    f"SELECT username FROM users WHERE id = {ph_fb}",
+                    (user_id,),
+                )
+                _jun = cursor.fetchone()
+                if _jun:
+                    join_un = (
+                        _jun["username"]
+                        if hasattr(_jun, "keys")
+                        else _jun[0]
+                    )
+            if join_un:
+                invalidate_user_cache(join_un)
+        except Exception:
+            pass
 
     # Enterprise seat lifecycle: if the community is tagged ``enterprise``,
     # open a seat for the joining user and (when they're on a mobile-IAP
@@ -2145,24 +1728,6 @@ def add_user_to_community(cursor, user_id: int, community_id: int, role: Optiona
     else:
         logger.info(f"[ADD_USER] Skipping welcome post: skip_welcome_post={skip_welcome_post}, role={role}")
 
-
-def _invalidate_user_community_caches(cursor, user_id: int, username: Optional[str] = None) -> None:
-    """Invalidate a user's community-related caches after membership changes."""
-    try:
-        # If no username provided, look it up
-        if not username:
-            ph = get_sql_placeholder()
-            cursor.execute(f"SELECT username FROM users WHERE id = {ph}", (user_id,))
-            row = cursor.fetchone()
-            if row:
-                username = row['username'] if hasattr(row, 'keys') else row[0]
-        
-        if username:
-            # Invalidate all user community caches
-            invalidate_user_cache(username)
-            logger.info(f"Invalidated community caches for user {username} after membership change")
-    except Exception as cache_err:
-        logger.warning(f"Failed to invalidate user community caches: {cache_err}")
 
 def get_scalar_result(row, column_index=0, column_name=None):
     """Helper to get a scalar value from a database row that could be dict or tuple"""
@@ -2713,14 +2278,6 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure recent_reply_tokens table: {e}")
 
-            # Remember-me tokens for persistent login
-            c.execute('''CREATE TABLE IF NOT EXISTS remember_tokens
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username VARCHAR(191) NOT NULL,
-                          token_hash TEXT NOT NULL,
-                          created_at TEXT NOT NULL,
-                          expires_at TEXT NOT NULL)''')
-            
             # Add missing columns to communities table (MySQL/SQLite safe)
             columns_to_add = [
                 ('description', 'TEXT'),
@@ -3016,6 +2573,32 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure users.professional_share_community_id: {e}")
 
+            # Structured profile (current role start YYYY-MM, work/education JSON, personal highlight answers JSON)
+            try:
+                for col, coltype in [
+                    ('current_role_start_ym', 'TEXT'),
+                    ('professional_work_history', 'TEXT'),
+                    ('professional_education', 'TEXT'),
+                    ('personal_highlight_answers', 'TEXT'),
+                    ('professional_cv_r2_key', 'TEXT'),
+                    ('professional_cv_uploaded_at', 'TEXT'),
+                    ('professional_cv_original_filename', 'TEXT'),
+                ]:
+                    try:
+                        c.execute(f"SHOW COLUMNS FROM users LIKE '{col}'")
+                        if not c.fetchone():
+                            c.execute(f"ALTER TABLE users ADD COLUMN {col} {coltype}")
+                            logger.info(f"Added users.{col}")
+                    except Exception:
+                        try:
+                            c.execute(f"ALTER TABLE users ADD COLUMN {col} {coltype}")
+                            logger.info(f"Added users.{col} (sqlite fallback)")
+                        except Exception as ce2:
+                            logger.warning(f"Could not ensure users.{col}: {ce2}")
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure structured profile columns on users: {e}")
+
             # Ensure personal info columns (country, city, age, gender) exist on users
             try:
                 for col, coltype in [
@@ -3280,6 +2863,69 @@ def add_missing_tables():
                     conn.commit()
             except Exception as e:
                 logger.warning(f"Could not ensure useful_docs table: {e}")
+
+            # Optional group_id on useful_links / useful_docs / posts / calendar_events / tasks
+            try:
+                for table_name, col_name, col_def in (
+                    ("useful_links", "group_id", "INTEGER NULL"),
+                    ("useful_docs", "group_id", "INTEGER NULL"),
+                    ("posts", "group_id", "INTEGER NULL"),
+                    ("calendar_events", "group_id", "INTEGER NULL"),
+                    ("tasks", "group_id", "INTEGER NULL"),
+                ):
+                    try:
+                        if USE_MYSQL:
+                            c.execute(f"SHOW COLUMNS FROM {table_name} LIKE '{col_name}'")
+                            if not c.fetchone():
+                                c.execute(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def}")
+                                logger.info("Added %s.%s", table_name, col_name)
+                        else:
+                            c.execute(f"PRAGMA table_info({table_name})")
+                            existing = {
+                                (row["name"] if hasattr(row, "keys") else row[1])
+                                for row in (c.fetchall() or [])
+                            }
+                            if col_name not in existing:
+                                c.execute(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def}")
+                                logger.info("Added %s.%s (SQLite)", table_name, col_name)
+                    except Exception as col_err:
+                        logger.warning("Column ensure %s.%s: %s", table_name, col_name, col_err)
+                conn.commit()
+            except Exception as ge:
+                logger.warning("group_id column ensure block: %s", ge)
+
+            # Group announcements (text-only; separate from community_announcements)
+            try:
+                if USE_MYSQL:
+                    c.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS group_announcements (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            group_id INT NOT NULL,
+                            content TEXT NOT NULL,
+                            created_by VARCHAR(191) NOT NULL,
+                            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                            KEY idx_g_ann_group (group_id),
+                            CONSTRAINT fk_g_ann_group FOREIGN KEY (group_id) REFERENCES `groups`(id) ON DELETE CASCADE
+                        )
+                        """
+                    )
+                else:
+                    c.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS group_announcements (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            group_id INTEGER NOT NULL,
+                            content TEXT NOT NULL,
+                            created_by TEXT NOT NULL,
+                            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                            FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+                        )
+                        """
+                    )
+                conn.commit()
+            except Exception as ae:
+                logger.warning("group_announcements ensure: %s", ae)
 
             # notifications.preview_text — required by create_notification() and fan-out; MySQL production
             # skips init_db() where this column was originally added, so add it here for all backends.
@@ -3565,20 +3211,17 @@ def init_db():
                           accent_color TEXT DEFAULT '#4db6ac',
                           card_color TEXT DEFAULT '#1a2526',
                           parent_community_id INTEGER,
-                          notify_on_new_member TINYINT(1) DEFAULT 0,
+                          notify_on_new_member TINYINT(1) DEFAULT 1,
                           FOREIGN KEY (creator_username) REFERENCES users(username),
                           FOREIGN KEY (parent_community_id) REFERENCES communities(id))''')
             
-            # Add notify_on_new_member column to existing communities table
+            # Ensure notify_on_new_member exists with default on for new rows.
             try:
-                c.execute("SHOW COLUMNS FROM communities LIKE 'notify_on_new_member'")
-                if not c.fetchone():
-                    logger.info("Adding notify_on_new_member column to communities table...")
-                    c.execute("ALTER TABLE communities ADD COLUMN notify_on_new_member TINYINT(1) DEFAULT 0")
-                    conn.commit()
-                    logger.info("Added notify_on_new_member column to communities table")
+                from backend.services.community import ensure_notify_on_new_member_schema
+
+                ensure_notify_on_new_member_schema(c, conn)
             except Exception as e:
-                logger.warning(f"Could not add notify_on_new_member column: {e}")
+                logger.warning(f"Could not ensure notify_on_new_member schema: {e}")
 
             # Create user_communities table
             logger.info("Creating user_communities table...")
@@ -3749,6 +3392,13 @@ def init_db():
                     )''')
             except Exception as e:
                 logger.warning(f"Could not ensure group post tables: {e}")
+
+            try:
+                from backend.services.group_steve_agent import ensure_group_steve_agent_schema
+
+                ensure_group_steve_agent_schema(c)
+            except Exception as e:
+                logger.warning(f"ensure_group_steve_agent_schema: {e}")
 
             
             # Create community_files table
@@ -4122,31 +3772,7 @@ def init_db():
             
             # Create user activity tracking tables
             logger.info("Creating user activity tracking tables...")
-            
-            # Login history table
-            c.execute('''CREATE TABLE IF NOT EXISTS user_login_history
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username VARCHAR(255) NOT NULL,
-                          login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                          ip_address VARCHAR(45),
-                          user_agent TEXT,
-                          FOREIGN KEY (username) REFERENCES users (username))''')
-            
-            # Community visit history table
-            c.execute('''CREATE TABLE IF NOT EXISTS community_visit_history
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username VARCHAR(191) NOT NULL,
-                          community_id INTEGER NOT NULL,
-                          visit_time TEXT NOT NULL,
-                          FOREIGN KEY (username) REFERENCES users (username),
-                          FOREIGN KEY (community_id) REFERENCES communities (id))''')
-            
-            # Create indexes for better performance
-            c.execute("CREATE INDEX IF NOT EXISTS idx_login_username ON user_login_history(username)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_login_time ON user_login_history(login_time)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_visit_username ON community_visit_history(username)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_visit_community ON community_visit_history(community_id)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_visit_time ON community_visit_history(visit_time)")
+            ensure_user_activity_tables(conn)
             
             # Create resource sharing tables
             logger.info("Creating resource sharing tables...")
@@ -4325,6 +3951,13 @@ def init_db():
                     logger.info("Added notification_show_previews column to users table")
             except Exception as ue:
                 logger.warning(f"Could not add notification_show_previews to users: {ue}")
+            try:
+                c.execute("SHOW COLUMNS FROM users LIKE 'timezone'")
+                if not c.fetchone():
+                    c.execute("ALTER TABLE users ADD COLUMN timezone VARCHAR(64) NULL")
+                    logger.info("Added timezone column to users table (IANA TZ for reminders)")
+            except Exception as ue:
+                logger.warning(f"Could not add timezone to users: {ue}")
             
             # Ensure notifications table has required columns
             try:
@@ -4387,6 +4020,7 @@ def init_db():
                 'time': 'TEXT',
                 'created_at': 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP',
                 'community_id': 'INTEGER',
+                'group_id': 'INTEGER',
                 'timezone': 'VARCHAR(100)',
                 'notification_preferences': "VARCHAR(50) DEFAULT 'all'"
             }
@@ -4605,6 +4239,14 @@ def _deferred_startup_init():
                 logger.info("Background: add_missing_tables completed")
             except Exception as e:
                 logger.warning(f"Background: add_missing_tables failed: {e}")
+            try:
+                from backend.services.group_polls_data import ensure_group_poll_tables
+
+                with get_db_connection() as _gp_conn:
+                    ensure_group_poll_tables(_gp_conn.cursor())
+                logger.info("Background: ensure_group_poll_tables completed")
+            except Exception:
+                logger.exception("Background: ensure_group_poll_tables failed")
         
         # 3. Phase 2: ensure tenants table
         try:
@@ -5904,18 +5546,6 @@ def schedule_imagine_job(job_id: int):
     except Exception as e:
         logger.error(f"Failed to schedule imagine job {job_id}: {e}")
 
-# --- CSRF helpers ---
-def get_csrf_token():
-    """Temporarily disabled CSRF token generation"""
-    return "disabled"
-
-def validate_csrf():
-    """Temporarily disabled CSRF validation"""
-    return True
-
-
-
-
 # Utility functions
 def check_api_limit(username):
     today = datetime.now().strftime('%Y-%m-%d')
@@ -5950,58 +5580,10 @@ def admin_profile():
     username = session.get('username')
     
     # Check if user is admin
-    if username != 'admin':
+    if not is_app_admin(username):
         abort(403)  # Forbidden - only admin can access this page
     # Redirect to React version to ensure consistent UI and scroll behavior
     return redirect(url_for('admin_profile_react'))
-
-@app.route('/logout')
-def logout():
-    # Get username before clearing session for cache invalidation
-    username = session.get('username')
-    
-    # Explicitly clear and mark session non-permanent
-    session.clear()
-    session.permanent = False
-    
-    # Invalidate user cache in Redis
-    if username:
-        try:
-            from redis_cache import invalidate_user_cache
-            invalidate_user_cache(username)
-        except Exception:
-            pass
-    
-    # Clear all session-related cookies
-    from flask import make_response
-    resp = make_response(redirect(url_for('public.index')))
-    
-    # Get cookie domain
-    cookie_domain = app.config.get('SESSION_COOKIE_DOMAIN') or None
-    
-    # Clear remember token
-    resp.set_cookie('remember_token', '', max_age=0, path='/', domain=cookie_domain)
-    
-    # Clear session cookie explicitly
-    session_cookie_name = app.config.get('SESSION_COOKIE_NAME', 'session')
-    resp.set_cookie(session_cookie_name, '', max_age=0, path='/', domain=cookie_domain)
-    
-    # Add cache control headers
-    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-    resp.headers['Pragma'] = 'no-cache'
-    resp.headers['Expires'] = '0'
-    
-    return resp
-# Removed duplicate /login_password route - using auth blueprint version in backend/blueprints/auth.py instead
-
-@app.route('/login_back', methods=['GET'])
-def login_back():
-    """Clear any staged login state and return to username entry page."""
-    try:
-        session.pop('pending_username', None)
-    except Exception:
-        pass
-    return redirect(url_for('auth.login'))
 
 @app.route('/dashboard')
 @login_required
@@ -6073,383 +5655,8 @@ def api_client_log():
         logger.error(f"Error in api_client_log: {e}")
         return jsonify({'success': False}), 500
 
-@app.route('/api/check_pending_login', methods=['GET'])
-def api_check_pending_login():
-    """Check if there's a pending username in session (for two-step login). No auth required."""
-    try:
-        pending_username = session.get('pending_username')
-        cookie_names = list(request.cookies.keys())
-        session_cookie = request.cookies.get('cpoint_session', 'NONE')
-        # Debug logging - log everything!
-        logger.info(f"check_pending_login: pending_username={pending_username}, session_keys={list(session.keys())}, cookie_names={cookie_names}, session_cookie_present={session_cookie != 'NONE'}")
-        if pending_username:
-            return jsonify({'success': True, 'pending_username': pending_username})
-        return jsonify({
-            'success': False, 
-            'pending_username': None, 
-            'debug': {
-                'session_keys': list(session.keys()),
-                'has_session_cookie': session_cookie != 'NONE',
-                'cookie_names': cookie_names
-            }
-        })
-    except Exception as e:
-        logger.error(f"Error in api_check_pending_login: {e}")
-        return jsonify({'success': False, 'pending_username': None, 'error': str(e)})
-
-@app.route('/api/clear_stale_session', methods=['POST'])
-def api_clear_stale_session():
-    """
-    Clear session if user no longer exists in database.
-    Called by login page to prevent ghost sessions after account deletion.
-    """
-    try:
-        username = session.get('username')
-        if not username:
-            return jsonify({'success': True, 'cleared': False, 'reason': 'no_session'})
-        
-        # Check if user exists
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT id FROM users WHERE username=?", (username,))
-            user_exists = c.fetchone() is not None
-        
-        if not user_exists:
-            logger.info(f"Clearing stale session for deleted user: {username}")
-            # User doesn't exist anymore - clear the session
-            session.clear()
-            session.permanent = False
-            # Invalidate cache
-            try:
-                invalidate_user_cache(username)
-            except Exception:
-                pass
-            return jsonify({'success': True, 'cleared': True, 'reason': 'user_deleted'})
-        
-        return jsonify({'success': True, 'cleared': False, 'reason': 'user_exists'})
-    except Exception as e:
-        logger.error(f"Error in api_clear_stale_session: {e}")
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/api/debug/kb_log', methods=['POST'])
-def api_debug_kb_log():
-    data = request.get_json(silent=True) or {}
-    entries = data.get('entries', [])
-    app.logger.info('KB_DEBUG_LOG: %s', json.dumps(entries))
-    return jsonify({'success': True})
-
-@app.route('/api/debug/login_test', methods=['POST'])
-@login_required
-def api_debug_login_test():
-    """Restricted debug endpoint - admin only, no password details exposed."""
-    if not is_app_admin(session.get('username')):
-        return jsonify({'success': False, 'error': 'Forbidden'}), 403
-    data = request.get_json() or {}
-    username = data.get('username', '').strip()
-    if not username:
-        return jsonify({'success': False, 'error': 'Username required'})
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT username FROM users WHERE username=?", (username,))
-            row = c.fetchone()
-            return jsonify({'success': True, 'user_exists': row is not None})
-    except Exception as e:
-        return jsonify({'success': False, 'error': 'Server error'}), 500
 # React hashed assets are served by web server static mapping (/assets -> client/dist/assets)
-@app.route('/api/community_group_feed/<int:parent_id>')
-@login_required
-def api_community_group_feed(parent_id: int):
-    """Return recent posts (last 48h) for a parent community and all its child communities.
-    
-    OPTIMIZED VERSION: Uses batch queries instead of N+1 pattern.
-    """
-    from datetime import datetime, timedelta
-    username = session.get('username')
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            
-            # 1. Get all community IDs (parent + all descendants)
-            descendant_ids = get_descendant_community_ids(c, parent_id) or []
-            if not descendant_ids:
-                return jsonify({'success': True, 'posts': [], 'username': username})
 
-            placeholders = ','.join([ph] * len(descendant_ids))
-            c.execute(
-                f"SELECT id, name FROM communities WHERE id IN ({placeholders})",
-                tuple(descendant_ids),
-            )
-            name_rows = c.fetchall()
-
-            if not name_rows:
-                return jsonify({'success': True, 'posts': [], 'username': username})
-
-            name_map = {}
-            for r in name_rows:
-                cid = r['id'] if hasattr(r, 'keys') else r[0]
-                cname = r['name'] if hasattr(r, 'keys') else r[1]
-                name_map[cid] = cname
-
-            if parent_id not in name_map:
-                return jsonify({'success': True, 'posts': [], 'username': username})
-
-            community_ids = [cid for cid in descendant_ids if cid in name_map]
-            
-            if not community_ids:
-                return jsonify({'success': True, 'posts': [], 'username': username})
-            
-            placeholders = ','.join([ph for _ in community_ids])
-            
-            # 2. Fetch posts from last 48 hours with membership check - FILTER IN SQL
-            # Use UTC for cutoff since posts are stored with datetime.utcnow()
-            cutoff = datetime.utcnow() - timedelta(hours=48)
-            cutoff_str = cutoff.strftime('%Y-%m-%d %H:%M:%S')
-            
-            c.execute(f"""
-                SELECT DISTINCT p.id, p.username, p.content, p.community_id, 
-                       p.timestamp, p.image_path, p.video_path,
-                       p.audio_path, p.audio_summary
-                FROM posts p
-                JOIN user_communities uc ON uc.community_id = p.community_id
-                JOIN users u ON u.id = uc.user_id
-                WHERE p.community_id IN ({placeholders})
-                  AND u.username = {ph}
-                  AND p.timestamp >= {ph}
-                ORDER BY p.timestamp DESC
-                LIMIT 200
-            """, tuple(community_ids) + (username, cutoff_str))
-            
-            rows = c.fetchall()
-            
-            if not rows:
-                return jsonify({'success': True, 'posts': [], 'username': username})
-            
-            # Extract post IDs for batch queries
-            post_ids = []
-            post_usernames = set()
-            for row in rows:
-                pid = row['id'] if hasattr(row, 'keys') else row[0]
-                uname = row['username'] if hasattr(row, 'keys') else row[1]
-                post_ids.append(pid)
-                if uname:
-                    post_usernames.add(uname)
-            
-            post_placeholders = ','.join([ph for _ in post_ids])
-            
-            # 3. Batch fetch all reactions for these posts
-            reaction_map = {}  # {post_id: {reaction_type: count}}
-            user_reaction_map = {}  # {post_id: reaction_type}
-            
-            if post_ids:
-                # Get reaction counts grouped by post
-                c.execute(f"""
-                    SELECT post_id, reaction_type, COUNT(*) as count
-                    FROM reactions
-                    WHERE post_id IN ({post_placeholders})
-                    GROUP BY post_id, reaction_type
-                """, tuple(post_ids))
-                for r in c.fetchall():
-                    pid = r['post_id'] if hasattr(r, 'keys') else r[0]
-                    rtype = r['reaction_type'] if hasattr(r, 'keys') else r[1]
-                    cnt = r['count'] if hasattr(r, 'keys') else r[2]
-                    if pid not in reaction_map:
-                        reaction_map[pid] = {}
-                    reaction_map[pid][rtype] = cnt
-                
-                # Get current user's reactions
-                c.execute(f"""
-                    SELECT post_id, reaction_type
-                    FROM reactions
-                    WHERE post_id IN ({post_placeholders}) AND username = {ph}
-                """, tuple(post_ids) + (username,))
-                for r in c.fetchall():
-                    pid = r['post_id'] if hasattr(r, 'keys') else r[0]
-                    rtype = r['reaction_type'] if hasattr(r, 'keys') else r[1]
-                    user_reaction_map[pid] = rtype
-            
-            # 4. Batch fetch reply counts
-            reply_count_map = {}  # {post_id: count}
-            if post_ids:
-                c.execute(f"""
-                    SELECT post_id, COUNT(*) as cnt
-                    FROM replies
-                    WHERE post_id IN ({post_placeholders})
-                    GROUP BY post_id
-                """, tuple(post_ids))
-                for r in c.fetchall():
-                    pid = r['post_id'] if hasattr(r, 'keys') else r[0]
-                    cnt = r['cnt'] if hasattr(r, 'keys') else r[1]
-                    reply_count_map[pid] = cnt
-            
-            # 5. Batch fetch profile pictures
-            pp_map = {}  # {username: profile_picture}
-            if post_usernames:
-                user_placeholders = ','.join([ph for _ in post_usernames])
-                c.execute(f"""
-                    SELECT username, profile_picture
-                    FROM user_profiles
-                    WHERE username IN ({user_placeholders})
-                """, tuple(post_usernames))
-                for r in c.fetchall():
-                    uname = r['username'] if hasattr(r, 'keys') else r[0]
-                    pp = r['profile_picture'] if hasattr(r, 'keys') else r[1]
-                    pp_map[uname] = pp
-            
-            # 6. Batch fetch polls for these posts
-            poll_map = {}  # {post_id: poll_obj}
-            if post_ids:
-                c.execute(f"""
-                    SELECT * FROM polls
-                    WHERE post_id IN ({post_placeholders}) AND is_active = 1
-                """, tuple(post_ids))
-                poll_rows = c.fetchall()
-                
-                poll_ids = []
-                poll_post_map = {}  # {poll_id: post_id}
-                for pr in poll_rows:
-                    poll_id = pr['id'] if hasattr(pr, 'keys') else pr[0]
-                    post_id = pr['post_id'] if hasattr(pr, 'keys') else pr[1]
-                    poll_ids.append(poll_id)
-                    poll_post_map[poll_id] = post_id
-                    poll_map[post_id] = dict(pr) if hasattr(pr, 'keys') else {
-                        'id': poll_id,
-                        'post_id': post_id,
-                        'question': pr[2] if len(pr) > 2 else '',
-                        'is_active': pr[3] if len(pr) > 3 else 1,
-                        'single_vote': pr[4] if len(pr) > 4 else 1,
-                        'expires_at': pr[5] if len(pr) > 5 else None,
-                    }
-                    poll_map[post_id]['options'] = []
-                
-                if poll_ids:
-                    poll_placeholders = ','.join([ph for _ in poll_ids])
-                    
-                    # Get all poll options
-                    c.execute(f"""
-                        SELECT * FROM poll_options
-                        WHERE poll_id IN ({poll_placeholders})
-                        ORDER BY poll_id, id
-                    """, tuple(poll_ids))
-                    option_rows = c.fetchall()
-                    
-                    option_ids = []
-                    option_poll_map = {}  # {option_id: poll_id}
-                    for opt in option_rows:
-                        opt_id = opt['id'] if hasattr(opt, 'keys') else opt[0]
-                        poll_id = opt['poll_id'] if hasattr(opt, 'keys') else opt[1]
-                        option_ids.append(opt_id)
-                        option_poll_map[opt_id] = poll_id
-                        post_id = poll_post_map.get(poll_id)
-                        if post_id and post_id in poll_map:
-                            opt_dict = dict(opt) if hasattr(opt, 'keys') else {
-                                'id': opt_id,
-                                'poll_id': poll_id,
-                                'option_text': opt[2] if len(opt) > 2 else '',
-                            }
-                            opt_dict['text'] = opt_dict.get('option_text', '')
-                            opt_dict['votes'] = 0
-                            opt_dict['user_voted'] = False
-                            poll_map[post_id]['options'].append(opt_dict)
-                    
-                    if option_ids:
-                        opt_placeholders = ','.join([ph for _ in option_ids])
-                        
-                        # Get vote counts per option
-                        c.execute(f"""
-                            SELECT option_id, COUNT(*) as count
-                            FROM poll_votes
-                            WHERE option_id IN ({opt_placeholders})
-                            GROUP BY option_id
-                        """, tuple(option_ids))
-                        for vc in c.fetchall():
-                            opt_id = vc['option_id'] if hasattr(vc, 'keys') else vc[0]
-                            cnt = vc['count'] if hasattr(vc, 'keys') else vc[1]
-                            poll_id = option_poll_map.get(opt_id)
-                            post_id = poll_post_map.get(poll_id) if poll_id else None
-                            if post_id and post_id in poll_map:
-                                for opt in poll_map[post_id]['options']:
-                                    if opt['id'] == opt_id:
-                                        opt['votes'] = cnt
-                                        break
-                        
-                        # Get user's votes
-                        c.execute(f"""
-                            SELECT option_id
-                            FROM poll_votes
-                            WHERE option_id IN ({opt_placeholders}) AND username = {ph}
-                        """, tuple(option_ids) + (username,))
-                        user_voted_options = set()
-                        for uv in c.fetchall():
-                            opt_id = uv['option_id'] if hasattr(uv, 'keys') else uv[0]
-                            user_voted_options.add(opt_id)
-                        
-                        # Mark user's votes and calculate totals
-                        for post_id, poll in poll_map.items():
-                            total = 0
-                            user_vote = None
-                            for opt in poll.get('options', []):
-                                total += opt.get('votes', 0)
-                                if opt['id'] in user_voted_options:
-                                    opt['user_voted'] = True
-                                    user_vote = opt['id']
-                            poll['total_votes'] = total
-                            poll['user_vote'] = user_vote
-            
-            # 7. Build final posts list
-            posts = []
-            for row in rows:
-                if hasattr(row, 'keys'):
-                    pid = row['id']
-                    uname = row.get('username')
-                    cid = row.get('community_id')
-                    post_obj = {
-                        'id': pid,
-                        'username': uname,
-                        'content': row.get('content'),
-                        'community_id': cid,
-                        'community_name': name_map.get(cid),
-                        'timestamp': row.get('timestamp'),
-                        'image_path': row.get('image_path'),
-                        'video_path': row.get('video_path'),
-                        'audio_path': row.get('audio_path'),
-                        'audio_summary': row.get('audio_summary'),
-                        'profile_picture': pp_map.get(uname),
-                        'reactions': reaction_map.get(pid, {}),
-                        'user_reaction': user_reaction_map.get(pid),
-                        'replies_count': reply_count_map.get(pid, 0),
-                        'poll': poll_map.get(pid)
-                    }
-                else:
-                    # Columns: id, username, content, community_id, timestamp, image_path, video_path, audio_path, audio_summary
-                    pid, uname, content, cid, timestamp, image_path, video_path, audio_path, audio_summary = row[:9]
-                    post_obj = {
-                        'id': pid,
-                        'username': uname,
-                        'content': content,
-                        'community_id': cid,
-                        'community_name': name_map.get(cid),
-                        'timestamp': timestamp,
-                        'image_path': image_path,
-                        'video_path': video_path,
-                        'audio_path': audio_path,
-                        'audio_summary': audio_summary,
-                        'profile_picture': pp_map.get(uname),
-                        'reactions': reaction_map.get(pid, {}),
-                        'user_reaction': user_reaction_map.get(pid),
-                        'replies_count': reply_count_map.get(pid, 0),
-                        'poll': poll_map.get(pid)
-                    }
-                posts.append(post_obj)
-            
-            logger.info(f"Community group feed (optimized): parent_id={parent_id}, returning {len(posts)} posts")
-            return jsonify({'success': True, 'posts': posts, 'username': username})
-            
-    except Exception as e:
-        logger.error(f"Error in community_group_feed for parent {parent_id}: {e}")
-        return jsonify({'success': False, 'error': 'Failed to load timeline'}), 500
 
 @app.route('/api/community_photos')
 @login_required
@@ -6462,7 +5669,7 @@ def api_community_photos():
             c = conn.cursor()
 
             # Check if user is a member of the community
-            if username != 'admin':
+            if not is_app_admin(username):
                 c.execute("""
                     SELECT 1 FROM user_communities
                     JOIN users u ON user_communities.user_id = u.id
@@ -6614,7 +5821,7 @@ def api_community_posts_search():
         with get_db_connection() as conn:
             c = conn.cursor()
             try:
-                if username != 'admin':
+                if not is_app_admin(username):
                     c.execute("""
                         SELECT 1 FROM user_communities uc
                         JOIN users u ON uc.user_id = u.id
@@ -6807,29 +6014,16 @@ def admin_profile_react():
         logger.error(f"Error serving React admin profile: {str(e)}")
         abort(500)
 
-# Admin helper functions
-def is_app_admin(username):
-    """Check if a user is an app admin (by role column or legacy username check)."""
-    try:
-        if not username:
-            return False
-        # Legacy: treat 'admin' username as admin
-        if username.lower() == 'admin':
-            return True
-        # Check role column if it exists
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            try:
-                c.execute("SELECT is_admin FROM users WHERE username = ?", (username,))
-                row = c.fetchone()
-                if row:
-                    val = row['is_admin'] if hasattr(row, 'keys') else row[0]
-                    return bool(val)
-            except Exception:
-                pass
+# Admin helper: is_app_admin imported from backend.services.community
+
+
+def is_app_admin_or_paulo(username: Optional[str]) -> bool:
+    """Product/polls/group gates: global app admin or founding user Paulo."""
+    if not username:
         return False
-    except Exception:
-        return False
+    if is_app_admin(username):
+        return True
+    return (username or "").strip().lower() == "paulo"
 
 
 def user_is_member_of_community(username: str, community_id: int) -> bool:
@@ -7094,160 +6288,7 @@ def auto_flag_content_if_needed(post_id, content, username, community_id):
                 logger.info(f"Auto-flagged post {post_id} for objectionable content: {flagged_words}")
         except Exception as e:
             logger.error(f"Error auto-flagging content: {e}")
-@app.route('/delete_account', methods=['POST'])
-@login_required
-def delete_account():
-    """Permanently delete the current user's account and related data where possible."""
-    username = session.get('username')
-    logger.info(f"Starting account deletion for user: {username}")
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            
-            # Try to find user id for FK cleanups
-            c.execute(f"SELECT id FROM users WHERE username = {ph}", (username,))
-            row = c.fetchone()
-            user_id = None
-            if row is not None:
-                user_id = row['id'] if hasattr(row, 'keys') else row[0]
-            
-            logger.info(f"Deleting data for user_id: {user_id}, username: {username}")
 
-            # Best-effort delete dependent rows with foreign keys referencing users/username/user_id
-            # Messages
-            try: 
-                c.execute(f"DELETE FROM messages WHERE sender={ph} OR receiver={ph}", (username, username))
-                logger.debug(f"Deleted messages for {username}")
-            except Exception as e: 
-                logger.debug(f"Could not delete messages: {e}")
-            
-            # Notifications (if exists)
-            try:
-                c.execute(f"DELETE FROM notifications WHERE user_id={ph} OR from_user={ph}", (username, username))
-                logger.debug(f"Deleted notifications for {username}")
-            except Exception as e: 
-                logger.debug(f"Could not delete notifications: {e}")
-            
-            # Push subscriptions
-            try: 
-                c.execute(f"DELETE FROM push_subscriptions WHERE username={ph}", (username,))
-            except Exception: pass
-            
-            # Native push tokens
-            try:
-                c.execute(f"DELETE FROM native_push_tokens WHERE username={ph}", (username,))
-            except Exception: pass
-            
-            # FCM tokens
-            try:
-                c.execute(f"DELETE FROM fcm_tokens WHERE username={ph}", (username,))
-            except Exception: pass
-            
-            # Remember tokens (FK to users.username)
-            try: 
-                c.execute(f"DELETE FROM remember_tokens WHERE username={ph}", (username,))
-            except Exception: pass
-            
-            # User profiles
-            try: 
-                c.execute(f"DELETE FROM user_profiles WHERE username={ph}", (username,))
-            except Exception: pass
-            
-            # Community stories
-            try:
-                c.execute(f"DELETE FROM community_story_reactions WHERE username={ph}", (username,))
-            except Exception: pass
-            try:
-                c.execute(f"DELETE FROM community_story_views WHERE username={ph}", (username,))
-            except Exception: pass
-            try:
-                c.execute(f"DELETE FROM community_stories WHERE username={ph}", (username,))
-            except Exception: pass
-            
-            # Follows
-            try:
-                c.execute(f"DELETE FROM follows WHERE follower_username={ph} OR followed_username={ph}", (username, username))
-            except Exception: pass
-            
-            # Group members
-            try:
-                c.execute(f"DELETE FROM group_members WHERE username={ph}", (username,))
-            except Exception: pass
-            
-            # Post reactions
-            try:
-                c.execute(f"DELETE FROM post_reactions WHERE username={ph}", (username,))
-            except Exception: pass
-            
-            # Poll votes
-            try:
-                c.execute(f"DELETE FROM poll_votes WHERE username={ph}", (username,))
-            except Exception: pass
-            
-            # Task assignments
-            try:
-                c.execute(f"DELETE FROM task_assignees WHERE username={ph}", (username,))
-            except Exception: pass
-            
-            # Event attendees
-            if user_id is not None:
-                try:
-                    c.execute(f"DELETE FROM event_attendees WHERE user_id={ph}", (user_id,))
-                except Exception: pass
-            
-            # User communities by user_id
-            if user_id is not None:
-                try: 
-                    c.execute(f"DELETE FROM user_communities WHERE user_id={ph}", (user_id,))
-                    logger.debug(f"Deleted user_communities for user_id {user_id}")
-                except Exception as e: 
-                    logger.debug(f"Could not delete user_communities: {e}")
-
-            # Reassign communities owned by this user to admin to avoid FK failures
-            try:
-                c.execute(f"UPDATE communities SET creator_username={ph} WHERE creator_username={ph}", ('admin', username))
-            except Exception as e:
-                logger.debug(f"Could not reassign communities: {e}")
-            
-            # Reassign posts to admin or delete them
-            try:
-                c.execute(f"UPDATE posts SET username={ph} WHERE username={ph}", ('admin', username))
-            except Exception as e:
-                logger.debug(f"Could not reassign posts: {e}")
-            
-            # Update community invitations
-            try:
-                c.execute(f"UPDATE community_invitations SET invited_by_username={ph} WHERE invited_by_username={ph}", ('admin', username))
-            except Exception: pass
-
-            # Finally, delete from users
-            logger.info(f"Deleting user record for {username}")
-            c.execute(f"DELETE FROM users WHERE username = {ph}", (username,))
-            conn.commit()
-            logger.info(f"Successfully deleted account for {username}")
-        # Clear session
-        session.clear()
-        
-        # Invalidate user cache in Redis
-        try:
-            from redis_cache import invalidate_user_cache
-            invalidate_user_cache(username)
-        except Exception:
-            pass
-        
-        # Return success with instruction to clear localStorage
-        resp = jsonify({'success': True, 'clear_storage': True})
-        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        resp.headers['Pragma'] = 'no-cache'
-        resp.headers['Expires'] = '0'
-        return resp
-    except Exception as e:
-        try:
-            logger.error(f"delete_account error for {username}: {e}")
-        except Exception:
-            pass
-        return jsonify({'success': False, 'error': 'server error'}), 500
 
 @app.route('/api/check_admin', methods=['GET'])
 @login_required
@@ -7331,6 +6372,8 @@ def _execute_steve_profile_analysis(
                        u.role, u.company, u.industry, u.degree,
                        u.school, u.skills, u.linkedin, u.experience,
                        u.professional_about, u.professional_interests, u.professional_company_intel,
+                       u.current_role_start_ym, u.professional_work_history, u.professional_education,
+                       u.personal_highlight_answers,
                        u.country, u.city,
                        p.display_name, p.bio AS profile_bio, p.location
                 FROM users u
@@ -8809,6 +7852,46 @@ def _build_profile_text_for_grok(
     if gv('linkedin'):
         parts.append(f"LinkedIn: {gv('linkedin')}")
 
+    try:
+        if hasattr(user_row, 'keys'):
+            crs_txt = user_row.get('current_role_start_ym')
+            if crs_txt and str(crs_txt).strip():
+                parts.append(f"Current role start (YYYY-MM): {str(crs_txt).strip()}")
+            from backend.services.profile_structured_fields import (
+                decode_work_history_db,
+                decode_education_db,
+                decode_personal_highlights_for_api,
+            )
+            for i, item in enumerate(decode_work_history_db(user_row.get('professional_work_history')), 1):
+                bits = [item.get('title'), item.get('company'), item.get('location')]
+                span = ""
+                if item.get('start') or item.get('end'):
+                    span = f"{item.get('start', '')}–{item.get('end', '')}"
+                frag = " | ".join(x for x in bits if x) + (f" ({span})" if span.strip("–") else "")
+                desc = (item.get('description') or "").strip()
+                if desc:
+                    frag += f" — {desc[:500]}"
+                if frag.strip():
+                    parts.append(f"Experience {i}: {frag}")
+            for i, item in enumerate(decode_education_db(user_row.get('professional_education')), 1):
+                bits = [item.get('school'), item.get('degree')]
+                span = ""
+                if item.get('start') or item.get('end'):
+                    span = f"{item.get('start', '')}–{item.get('end', '')}"
+                frag = " | ".join(x for x in bits if x) + (f" ({span})" if span.strip("–") else "")
+                desc = (item.get('description') or "").strip()
+                if desc:
+                    frag += f" — {desc[:500]}"
+                if frag.strip():
+                    parts.append(f"Education {i}: {frag}")
+            for hl in decode_personal_highlights_for_api(user_row.get('personal_highlight_answers')):
+                q = hl.get('question', '')
+                a = (hl.get('answer') or '').strip()
+                if a:
+                    parts.append(f"Profile question ({q}): {a[:500]}")
+    except Exception as _prof_ctx_err:
+        logger.debug(f"profile grok extra fields skipped: {_prof_ctx_err}")
+
     if onboarding_context:
         if onboarding_context.get('talkAllDay'):
             parts.append(
@@ -9606,6 +8689,68 @@ def invalidate_steve_context_cache(username: str):
         pass
 
 
+def _extract_steve_mention_usernames_from_text(text: str) -> List[str]:
+    """Parse @handles from free text; skip '@steve'; preserve first-seen casing."""
+    if not text or not isinstance(text, str):
+        return []
+    out: List[str] = []
+    seen: Set[str] = set()
+    for m in re.findall(r"@(\w+)", text):
+        key = m.lower()
+        if key == "steve" or key in seen:
+            continue
+        seen.add(key)
+        out.append(m)
+    return out
+
+
+def build_steve_gated_mention_profile_appendix_for_feed(
+    viewer_username: str,
+    community_id: Optional[Any],
+    *text_segments: str,
+    exclude_usernames_lower: Optional[Iterable[str]] = None,
+) -> str:
+    """Gated Firestore profile blocks for @mentions (see docs/STEVE_PRIVACY_GATE.md)."""
+    from backend.services.steve_profiling_gates import user_can_access_steve_kb
+
+    excluded = {"steve"}
+    if exclude_usernames_lower:
+        for x in exclude_usernames_lower:
+            if x and isinstance(x, str):
+                excluded.add(x.strip().lower())
+
+    gate_ctx = None
+    if community_id is not None:
+        try:
+            gate_ctx = {"community_id": int(community_id)}
+        except (TypeError, ValueError):
+            gate_ctx = None
+
+    combined = "\n".join(s for s in text_segments if s)
+    candidates = _extract_steve_mention_usernames_from_text(combined)
+    allowed: List[str] = []
+    for raw in candidates:
+        if raw.lower() in excluded:
+            continue
+        if not user_can_access_steve_kb(viewer_username, raw, gate_ctx):
+            continue
+        if raw not in allowed:
+            allowed.append(raw)
+    if not allowed:
+        return ""
+    ctx_map = batch_get_steve_contexts(allowed, viewer_username=viewer_username)
+    parts: List[str] = []
+    for u in allowed:
+        body = (ctx_map or {}).get(u) or ""
+        if not isinstance(body, str) or not body.strip():
+            continue
+        parts.append(
+            f"\n\nWHAT YOU KNOW ABOUT @{u} (mentioned):\n{body}\n"
+            "Only share when the user asks about this member; do not invent beyond this text."
+        )
+    return "".join(parts)
+
+
 def batch_get_steve_contexts(
     usernames: list,
     viewer_username: str = None,
@@ -9702,6 +8847,8 @@ def _trigger_background_profile_analysis(username: str):
                            u.role, u.company, u.industry, u.degree,
                            u.school, u.skills, u.linkedin, u.experience,
                            u.professional_about, u.professional_interests, u.professional_company_intel,
+                           u.current_role_start_ym, u.professional_work_history, u.professional_education,
+                           u.personal_highlight_answers,
                            u.country, u.city,
                            p.display_name, p.bio AS profile_bio, p.location
                     FROM users u
@@ -9775,55 +8922,6 @@ def keep_warm():
         'status': 'warm',
         'timestamp': datetime.now().isoformat()
     })
-
-@app.route('/api/test', methods=['GET'])
-def test_endpoint():
-    """Test endpoint to verify server is running"""
-    try:
-        # Test database connection
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT COUNT(*) as count FROM users")
-            result = c.fetchone()
-            user_count = result['count'] if hasattr(result, 'keys') else result[0]
-            
-        return jsonify({
-            'status': 'ok',
-            'database': 'MySQL' if USE_MYSQL else 'SQLite',
-            'user_count': user_count,
-            'timestamp': datetime.now().isoformat()
-        })
-    except Exception as e:
-        import traceback
-        logger.error(f"Health check error: {e}\n{traceback.format_exc()}")
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
-
-@app.route('/clear_sessions')
-def clear_sessions():
-    """Clear all old session cookies"""
-    if os.environ.get('FLASK_ENV') != 'development' and not os.environ.get('DEBUG'):
-        abort(404)
-    from flask import make_response
-    resp = make_response("""
-    <html>
-    <body style="background: black; color: white; padding: 50px; font-family: Arial;">
-        <h1>Session Cookies Cleared</h1>
-        <p>All old session cookies have been removed.</p>
-        <p><a href="/" style="color: #4db6ac;">Go to login page</a></p>
-    </body>
-    </html>
-    """)
-    # Clear the old 'session' cookies
-    resp.set_cookie('session', '', expires=0, path='/')
-    # Clear any potential domain-specific cookies
-    resp.set_cookie('session', '', expires=0, path='/', domain='.c-point.co')
-    resp.set_cookie('session', '', expires=0, path='/', domain='www.c-point.co')
-    # Also clear the new cookie name just in case
-    resp.set_cookie('cpoint_session', '', expires=0, path='/')
-    return resp
 
 @app.route('/api/debug_communities', methods=['GET'])
 @login_required
@@ -10325,279 +9423,6 @@ def admin_users_api():
         logger.error(f"admin_users error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
-def _compute_admin_metrics(c):
-    """Compute DAU, MAU, cohorts, leaderboards and return a stats dict."""
-    tf, tp = _tenant_filter()
-
-    c.execute(f"SELECT COUNT(*) as count FROM users WHERE 1=1{tf}", tp)
-    total_users = get_scalar_result(c.fetchone(), column_name='count')
-
-    c.execute(f"SELECT COUNT(*) as count FROM users WHERE subscription = 'premium'{tf}", tp)
-    premium_users = get_scalar_result(c.fetchone(), column_name='count')
-
-    c.execute(f"SELECT COUNT(*) as count FROM communities WHERE 1=1{tf}", tp)
-    total_communities = get_scalar_result(c.fetchone(), column_name='count')
-
-    c.execute(f"SELECT COUNT(*) as count FROM posts WHERE 1=1{tf}", tp)
-    total_posts = get_scalar_result(c.fetchone(), column_name='count')
-
-    from datetime import datetime, timedelta
-    today = datetime.now().date()
-    start_of_day = datetime(today.year, today.month, today.day)
-    start_of_30 = start_of_day - timedelta(days=30)
-
-    def get_unique_between(table, field, ts_field, start_ts):
-        try:
-            q = f"SELECT DISTINCT {field}, {ts_field} FROM {table} WHERE {ts_field} IS NOT NULL"
-            c.execute(q)
-            rows = c.fetchall() or []
-            vals = set()
-            for r in rows:
-                try:
-                    username_val = r[field] if hasattr(r, 'keys') else r[0]
-                    ts_val = r[ts_field] if hasattr(r, 'keys') else (r[1] if len(r) > 1 else None)
-                    if not ts_val:
-                        continue
-                    s = str(ts_val)
-                    dtv = None
-                    try:
-                        dtv = datetime.strptime(s[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
-                    except Exception:
-                        for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%d', '%m.%d.%y %H:%M'):
-                            try:
-                                dtv = datetime.strptime(s, fmt)
-                                break
-                            except Exception:
-                                continue
-                    if dtv and dtv >= start_ts:
-                        vals.add(username_val)
-                except Exception:
-                    pass
-            return vals
-        except Exception:
-            return set()
-
-    dau_sets = []
-    mau_sets = []
-    for tbl, user_field, ts_field in (
-        ('posts','username','timestamp'),
-        ('reactions','username','created_at'),
-        ('poll_votes','username','voted_at'),
-        ('community_visit_history','username','visit_time'),
-        ('messages','sender','timestamp'),
-    ):
-        dau_sets.append(get_unique_between(tbl, user_field, ts_field, start_of_day))
-        mau_sets.append(get_unique_between(tbl, user_field, ts_field, start_of_30))
-
-    dau = len(set().union(*dau_sets))
-    mau = len(set().union(*mau_sets))
-    dau_pct = round((dau / total_users) * 100, 2) if total_users else 0.0
-    mau_pct = round((mau / total_users) * 100, 2) if total_users else 0.0
-
-    def get_unique_between_window(table, field, ts_field, start_ts, end_ts):
-        try:
-            q = f"SELECT DISTINCT {field}, {ts_field} FROM {table} WHERE {ts_field} IS NOT NULL"
-            c.execute(q)
-            rows = c.fetchall() or []
-            vals = set()
-            for r in rows:
-                try:
-                    username_val = r[field] if hasattr(r, 'keys') else r[0]
-                    ts_val = r[ts_field] if hasattr(r, 'keys') else (r[1] if len(r) > 1 else None)
-                    if not ts_val:
-                        continue
-                    s = str(ts_val)
-                    dtv = None
-                    try:
-                        dtv = datetime.strptime(s[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
-                    except Exception:
-                        for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%d', '%m.%d.%y %H:%M'):
-                            try:
-                                dtv = datetime.strptime(s, fmt)
-                                break
-                            except Exception:
-                                continue
-                    if dtv and (dtv >= start_ts) and (dtv < end_ts):
-                        vals.add(username_val)
-                except Exception:
-                    pass
-            return vals
-        except Exception:
-            return set()
-
-    daily_counts = []
-    for i in range(0, 30):
-        day_start = start_of_day - timedelta(days=i)
-        day_end = day_start + timedelta(days=1)
-        day_sets = []
-        for tbl, user_field, ts_field in (
-            ('posts','username','timestamp'),
-            ('reactions','username','created_at'),
-            ('poll_votes','username','voted_at'),
-            ('community_visit_history','username','visit_time'),
-            ('messages','sender','timestamp'),
-        ):
-            day_sets.append(get_unique_between_window(tbl, user_field, ts_field, day_start, day_end))
-        daily_counts.append(len(set().union(*day_sets)))
-    avg_dau_30 = round(sum(daily_counts) / len(daily_counts), 2) if daily_counts else 0.0
-
-    def get_activity_users(start_ts, end_ts):
-        users_union = set()
-        for tbl, user_field, ts_field in (
-            ('posts','username','timestamp'),
-            ('reactions','username','created_at'),
-            ('poll_votes','username','voted_at'),
-            ('community_visit_history','username','visit_time'),
-            ('messages','sender','timestamp'),
-        ):
-            users_union |= get_unique_between_window(tbl, user_field, ts_field, start_ts, end_ts)
-        return users_union
-
-    from calendar import monthrange
-    cur_month_start = start_of_day.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    if cur_month_start.month == 1:
-        prev_month_start = cur_month_start.replace(year=cur_month_start.year-1, month=12)
-    else:
-        prev_month_start = cur_month_start.replace(month=cur_month_start.month-1)
-    days_in_prev_month = monthrange(prev_month_start.year, prev_month_start.month)[1]
-    prev_month_end = prev_month_start.replace(day=days_in_prev_month, hour=23, minute=59, second=59)
-    days_in_cur_month = monthrange(cur_month_start.year, cur_month_start.month)[1]
-    cur_month_end = cur_month_start.replace(day=days_in_cur_month, hour=23, minute=59, second=59)
-
-    users_prev_month = get_activity_users(prev_month_start, prev_month_end)
-    users_cur_month = get_activity_users(cur_month_start, cur_month_end)
-    mau_month = len(users_cur_month)
-    mru = len(users_prev_month & users_cur_month)
-    mru_repeat_rate = round((mru / mau_month) * 100, 2) if mau_month else 0.0
-
-    weekday = start_of_day.weekday()
-    start_of_week = start_of_day.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=weekday)
-    prev_week_start = start_of_week - timedelta(days=7)
-    prev_week_end = start_of_week - timedelta(seconds=1)
-    cur_week_end = start_of_week + timedelta(days=7) - timedelta(seconds=1)
-    users_prev_week = get_activity_users(prev_week_start, prev_week_end)
-    users_cur_week = get_activity_users(start_of_week, cur_week_end)
-    wau = len(users_cur_week)
-    wru = len(users_prev_week & users_cur_week)
-    wru_repeat_rate = round((wru / wau) * 100, 2) if wau else 0.0
-
-    cohorts = []
-    month_starts = []
-    ms = cur_month_start
-    for _ in range(6):
-        month_starts.append(ms)
-        if ms.month == 1:
-            ms = ms.replace(year=ms.year-1, month=12)
-        else:
-            ms = ms.replace(month=ms.month-1)
-    month_starts = list(reversed(month_starts))
-
-    c.execute(f"SELECT username, created_at FROM users WHERE 1=1{tf}", tp)
-    all_users = c.fetchall() or []
-    def in_month(dt, y, m):
-        return (dt.year == y and dt.month == m)
-    month_windows = []
-    for ms in month_starts:
-        y = ms.year; m = ms.month
-        days_in_month = monthrange(y, m)[1]
-        start = ms
-        end = ms.replace(day=days_in_month, hour=23, minute=59, second=59)
-        month_windows.append((y, m, start, end))
-
-    for i, (y, m, start, end) in enumerate(month_windows):
-        cohort_users = set()
-        for u in all_users:
-            uname = u['username'] if hasattr(u,'keys') else u[0]
-            created = u['created_at'] if hasattr(u,'keys') else (u[1] if len(u)>1 else None)
-            if not created: continue
-            try:
-                s = str(created)
-                dtc = datetime.strptime(s[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
-            except Exception:
-                try:
-                    dtc = datetime.strptime(str(created), '%Y-%m-%d')
-                except Exception:
-                    continue
-            if in_month(dtc, y, m):
-                cohort_users.add(uname)
-        cohort_size = len(cohort_users)
-        retention = []
-        if cohort_size:
-            for j in range(i, len(month_windows)):
-                ys, ms_, ws, we = month_windows[j]
-                active = get_activity_users(ws, we)
-                retained = len(active & cohort_users)
-                retention.append(round((retained / cohort_size) * 100, 2))
-        cohorts.append({
-            'month': f"{y:04d}-{m:02d}",
-            'size': cohort_size,
-            'retention': retention,
-        })
-
-    def scalar_list(query, params=()):
-        c.execute(query, params)
-        rows = c.fetchall() or []
-        out = []
-        for r in rows:
-            if hasattr(r, 'keys'):
-                out.append({'username': r['username'], 'count': r['cnt']})
-            else:
-                out.append({'username': r[0], 'count': r[1]})
-        return out
-
-    top_posters = scalar_list("SELECT username, COUNT(*) as cnt FROM posts WHERE LOWER(username) <> 'admin' GROUP BY username ORDER BY cnt DESC LIMIT 10")
-    top_reactors = scalar_list("SELECT username, COUNT(*) as cnt FROM reactions WHERE LOWER(username) <> 'admin' GROUP BY username ORDER BY cnt DESC LIMIT 10")
-    top_voters = scalar_list("SELECT username, COUNT(*) as cnt FROM poll_votes WHERE LOWER(username) <> 'admin' GROUP BY username ORDER BY cnt DESC LIMIT 10")
-
-    stats = {
-        'total_users': total_users,
-        'premium_users': premium_users,
-        'total_communities': total_communities,
-        'total_posts': total_posts,
-        'dau': dau,
-        'mau': mau,
-        'dau_pct': dau_pct,
-        'mau_pct': mau_pct,
-        'avg_dau_30': avg_dau_30,
-        'mau_month': mau_month,
-        'mru': mru,
-        'mru_repeat_rate_pct': mru_repeat_rate,
-        'wau': wau,
-        'wru': wru,
-        'wru_repeat_rate_pct': wru_repeat_rate,
-        'cohorts': cohorts,
-        'leaderboards': {
-            'top_posters': top_posters,
-            'top_reactors': top_reactors,
-            'top_voters': top_voters,
-        }
-    }
-
-    try:
-        c.execute(f"SELECT username, created_at FROM users WHERE 1=1{tf} ORDER BY created_at DESC LIMIT 1", tp)
-        last_user_row = c.fetchone()
-        if last_user_row:
-            stats['last_user'] = {
-                'username': last_user_row['username'] if hasattr(last_user_row, 'keys') else last_user_row[0],
-                'created_at': str(last_user_row['created_at'] if hasattr(last_user_row, 'keys') else last_user_row[1]) if (last_user_row['created_at'] if hasattr(last_user_row, 'keys') else last_user_row[1]) else None
-            }
-    except Exception:
-        pass
-
-    try:
-        c.execute(f"SELECT name, id FROM communities WHERE 1=1{tf} ORDER BY id DESC LIMIT 1", tp)
-        last_comm_row = c.fetchone()
-        if last_comm_row:
-            stats['last_community'] = {
-                'name': last_comm_row['name'] if hasattr(last_comm_row, 'keys') else last_comm_row[0],
-                'id': last_comm_row['id'] if hasattr(last_comm_row, 'keys') else last_comm_row[1]
-            }
-    except Exception:
-        pass
-
-    return stats
-
-
 @app.route('/api/admin/metrics', methods=['GET'])
 @login_required
 def admin_metrics_api():
@@ -10608,7 +9433,8 @@ def admin_metrics_api():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            stats = _compute_admin_metrics(c)
+            tf, tp = _tenant_filter()
+            stats = compute_admin_metrics(c, tf, tp)
             return jsonify({'success': True, 'stats': stats})
     except Exception as e:
         logger.error(f"admin_metrics error: {e}")
@@ -10994,106 +9820,8 @@ def admin_compress_images():
         'errored': errored,
     })
 
-@app.route('/api/admin/delete_user', methods=['POST'])
-@login_required
-def admin_delete_user():
-    """Delete a user as admin"""
-    username = session.get('username')
-    if not is_app_admin(username):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    
-    data = request.get_json()
-    target_username = data.get('username')
-    
-    if not target_username:
-        return jsonify({'success': False, 'error': 'Username required'}), 400
-    
-    if target_username == 'admin':
-        return jsonify({'success': False, 'error': 'Cannot delete admin user'}), 400
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
 
-            # Resolve user id
-            c.execute(f"SELECT id FROM users WHERE username={ph}", (target_username,))
-            row = c.fetchone()
-            user_id = (row['id'] if hasattr(row, 'keys') else (row[0] if row else None))
-            if not user_id:
-                return jsonify({'success': False, 'error': 'User not found'}), 404
 
-            # Delete dependent rows first to satisfy FK constraints
-            try:
-                c.execute(f"DELETE FROM notifications WHERE user_id={ph} OR from_user={ph}", (target_username, target_username))
-            except Exception:
-                pass
-            c.execute(f"DELETE FROM messages WHERE sender={ph} OR receiver={ph}", (target_username, target_username))
-            c.execute(f"DELETE FROM notifications WHERE user_id={ph} OR from_user={ph}", (target_username, target_username))
-            c.execute(f"DELETE FROM user_communities WHERE user_id={ph}", (user_id,))
-            try:
-                c.execute(f"DELETE FROM community_admins WHERE username={ph}", (target_username,))
-            except Exception:
-                pass
-            c.execute(f"DELETE FROM posts WHERE username={ph}", (target_username,))
-            c.execute(f"DELETE FROM replies WHERE username={ph}", (target_username,))
-            c.execute(f"DELETE FROM reactions WHERE username={ph}", (target_username,))
-            c.execute(f"DELETE FROM reply_reactions WHERE username={ph}", (target_username,))
-            try:
-                c.execute(f"DELETE FROM push_subscriptions WHERE username={ph}", (target_username,))
-            except Exception:
-                pass
-            try:
-                c.execute(f"DELETE FROM user_login_history WHERE username={ph}", (target_username,))
-            except Exception:
-                pass
-            try:
-                c.execute(f"DELETE FROM community_visit_history WHERE username={ph}", (target_username,))
-            except Exception:
-                pass
-            try:
-                c.execute(f"DELETE FROM typing_status WHERE user={ph} OR peer={ph}", (target_username, target_username))
-            except Exception:
-                pass
-            try:
-                c.execute(f"DELETE FROM remember_tokens WHERE username={ph}", (target_username,))
-            except Exception:
-                pass
-            # Reassign communities owned by this user to 'admin' to satisfy FK fk_comm_owner
-            try:
-                c.execute(f"UPDATE communities SET creator_username={ph} WHERE creator_username={ph}", ('admin', target_username))
-            except Exception:
-                pass
-            # Delete calendar and event related data
-            try:
-                # Delete RSVPs for events this user is involved in
-                c.execute(f"DELETE FROM event_rsvps WHERE username={ph}", (target_username,))
-                # Delete event invitations for this user
-                c.execute(f"DELETE FROM event_invitations WHERE invited_username={ph} OR invited_by={ph}", (target_username, target_username))
-                # Delete calendar events created by this user
-                c.execute(f"DELETE FROM calendar_events WHERE username={ph}", (target_username,))
-            except Exception as cal_err:
-                logger.warning(f"Error deleting calendar/event data for {target_username}: {cal_err}")
-                pass
-            
-            # Remove profile row before user to satisfy FK fk_profile_user
-            c.execute(f"DELETE FROM user_profiles WHERE username={ph}", (target_username,))
-            try:
-                c.execute(f"DELETE FROM exercises WHERE username={ph}", (target_username,))
-                c.execute(f"DELETE FROM workouts WHERE username={ph}", (target_username,))
-                c.execute(f"DELETE FROM crossfit_entries WHERE username={ph}", (target_username,))
-            except Exception:
-                pass
-
-            # Finally delete the user
-            c.execute(f"DELETE FROM users WHERE username={ph}", (target_username,))
-            
-            conn.commit()
-            return jsonify({'success': True})
-            
-    except Exception as e:
-        logger.error(f"Error deleting user: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/admin/add_user_to_community', methods=['POST'])
 @login_required
@@ -11134,73 +9862,10 @@ def admin_add_user_to_community_api():
         logger.error(f"admin_add_user_to_community error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/admin/delete_community', methods=['POST'])
-@login_required
-def admin_delete_community():
-    """Delete a community as admin"""
-    username = session.get('username')
-    if not is_app_admin(username):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    
-    data = request.get_json()
-    community_id_raw = data.get('community_id') if data else None
-    try:
-        community_id = int(community_id_raw)
-    except (TypeError, ValueError):
-        community_id = None
-    
-    if not community_id:
-        return jsonify({'success': False, 'error': 'Community ID required'}), 400
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-
-            placeholder = get_sql_placeholder()
-            c.execute(f"SELECT id FROM communities WHERE id = {placeholder}", (community_id,))
-            existing = c.fetchone()
-            if not existing:
-                return jsonify({'success': False, 'error': 'Community not found'}), 404
-
-            descendant_ids = get_descendant_community_ids(c, community_id)
-            
-            # Get all members of communities being deleted BEFORE deleting
-            affected_usernames: Set[str] = set()
-            for target_id in descendant_ids:
-                ph = get_sql_placeholder()
-                c.execute(f"""
-                    SELECT DISTINCT u.username 
-                    FROM user_communities uc
-                    JOIN users u ON uc.user_id = u.id
-                    WHERE uc.community_id = {ph}
-                """, (target_id,))
-                for row in c.fetchall():
-                    uname = row['username'] if hasattr(row, 'keys') else row[0]
-                    if uname:
-                        affected_usernames.add(uname)
-            
-            deleted_ids: List[int] = []
-            for target_id in descendant_ids:
-                delete_community_records(c, target_id)
-                deleted_ids.append(target_id)
-            
-            conn.commit()
-            
-            # Invalidate dashboard cache for ALL affected users
-            for affected_user in affected_usernames:
-                invalidate_user_cache(affected_user)
-            logger.info(f"Admin delete: Invalidated cache for {len(affected_usernames)} users")
-            
-            return jsonify({'success': True, 'deleted_ids': deleted_ids})
-            
-    except Exception as e:
-        logger.error(f"Error deleting community: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():
-    if session['username'] != 'admin':
+    if not is_app_admin(session['username']):
         return redirect(url_for('public.index'))
     
     # Serve React for all devices (mobile and desktop)
@@ -11230,7 +9895,9 @@ def api_public_profile(username):
                        u.role, u.company, u.industry, u.degree, u.school,
                        u.skills, u.linkedin, u.experience,
                        u.professional_about, u.professional_interests,
-                       u.professional_share_community_id, u.professional_company_intel
+                       u.professional_share_community_id, u.professional_company_intel,
+                       u.current_role_start_ym, u.professional_work_history, u.professional_education,
+                       u.personal_highlight_answers
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
                 WHERE LOWER(u.username) = LOWER({ph})
@@ -11278,11 +9945,20 @@ def api_public_profile(username):
                 'professional': None
             }
 
+            from backend.services.profile_structured_fields import (
+                decode_work_history_db,
+                decode_education_db,
+                decode_personal_highlights_for_api,
+            )
+            personal_highlights = decode_personal_highlights_for_api(gv('personal_highlight_answers', 33))
+            profile['personal']['highlights'] = personal_highlights
+
             if not profile['is_public'] and viewer_username != actual_username:
                 profile['personal'] = {
                     'display_name': profile['personal']['display_name'],
                     'first_name': None, 'last_name': None, 'gender': None,
                     'country': None, 'city': None, 'date_of_birth': None, 'age': None,
+                    'highlights': [],
                 }
 
             # Professional info from the same merged row (no second query needed)
@@ -11303,11 +9979,16 @@ def api_public_profile(username):
                     ]
                 interests_list = list(dict.fromkeys(interests_list))
 
+            work_hist_list = decode_work_history_db(gv('professional_work_history', 31))
+            edu_list = decode_education_db(gv('professional_education', 32))
+            crs_raw = gv('current_role_start_ym', 30)
+            crs_s = (str(crs_raw).strip() if crs_raw is not None else '')
+
             has_professional = any(gv(k, i) for k, i in [
                 ('role', 18), ('company', 19), ('industry', 20), ('degree', 21),
                 ('school', 22), ('skills', 23), ('linkedin', 24), ('experience', 25),
                 ('professional_about', 26), ('professional_company_intel', 29),
-            ]) or interests_list
+            ]) or interests_list or bool(work_hist_list) or bool(edu_list) or bool(crs_s)
             if has_professional:
                 company_intel_val = gv('professional_company_intel', 29)
                 profile['professional'] = {
@@ -11323,6 +10004,9 @@ def api_public_profile(username):
                     'interests': interests_list,
                     'share_community_id': gv('professional_share_community_id', 28),
                     'company_intel': (str(company_intel_val).strip() if company_intel_val is not None else ''),
+                    'current_role_start': crs_s if crs_s else None,
+                    'work_history': work_hist_list,
+                    'education': edu_list,
                 }
 
             profile['is_self'] = viewer_username == actual_username
@@ -12528,9 +11212,14 @@ def profile():
 def api_profile_me():
     username = session['username']
     
-    # Check cache first for faster profile loading
+    # Check cache first for faster profile loading (skip when forcing refresh)
     cache_key = f"profile:{username}"
-    cached_profile = cache.get(cache_key)
+    bypass_profile_cache = bool(
+        request.args.get("_nocache")
+        or request.args.get("nocache")
+        or request.args.get("refresh")
+    )
+    cached_profile = None if bypass_profile_cache else cache.get(cache_key)
     if cached_profile:
         logger.debug(f"🚀 Cache hit: profile for {username}")
         resp = jsonify({'success': True, 'profile': cached_profile})
@@ -12543,6 +11232,10 @@ def api_profile_me():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            from backend.services import client_ui_flags
+
+            client_ui_flags.ensure_user_ui_columns(c)
+            ensure_users_notification_show_previews_column()
             # Include professional fields in the query (notification_show_previews added in migration)
             row = None
             try:
@@ -12552,7 +11245,10 @@ def api_profile_me():
                            p.display_name, p.bio, p.location, p.website,
                            p.instagram, p.twitter, p.profile_picture, p.cover_photo,
                            u.role, u.company, u.industry, u.linkedin, u.professional_about, u.professional_interests,
-                           u.professional_company_intel, u.notification_show_previews
+                           u.professional_company_intel, u.notification_show_previews,
+                           u.current_role_start_ym, u.professional_work_history, u.professional_education,
+                           u.personal_highlight_answers,
+                           u.professional_cv_r2_key, u.professional_cv_uploaded_at, u.professional_cv_original_filename
                     FROM users u
                     LEFT JOIN user_profiles p ON u.username = p.username
                     WHERE u.username = ?
@@ -12565,7 +11261,10 @@ def api_profile_me():
                            p.display_name, p.bio, p.location, p.website,
                            p.instagram, p.twitter, p.profile_picture, p.cover_photo,
                            u.role, u.company, u.industry, u.linkedin, u.professional_about, u.professional_interests,
-                           u.professional_company_intel
+                           u.professional_company_intel,
+                           u.current_role_start_ym, u.professional_work_history, u.professional_education,
+                           u.personal_highlight_answers,
+                           u.professional_cv_r2_key, u.professional_cv_uploaded_at, u.professional_cv_original_filename
                     FROM users u
                     LEFT JOIN user_profiles p ON u.username = p.username
                     WHERE u.username = ?
@@ -12585,8 +11284,8 @@ def api_profile_me():
                     return None
             
             # Parse interests from JSON or comma-separated string
-            interests_raw = get_val('professional_interests') if hasattr(row, 'keys') else get_val(25)
-            company_intel_val = get_val('professional_company_intel') if hasattr(row, 'keys') else get_val(26)
+            interests_raw = get_val('professional_interests')
+            company_intel_val = get_val('professional_company_intel')
             interests_list = []
             if interests_raw:
                 try:
@@ -12595,7 +11294,30 @@ def api_profile_me():
                         interests_list = [str(i).strip() for i in decoded if i and str(i).strip()]
                 except (json.JSONDecodeError, TypeError):
                     interests_list = [part.strip() for part in str(interests_raw).split(',') if part and part.strip()]
-            
+
+            from backend.services.profile_structured_fields import (
+                decode_work_history_db,
+                decode_education_db,
+                decode_personal_highlights_for_api,
+            )
+            work_l = decode_work_history_db(get_val('professional_work_history'))
+            edu_l = decode_education_db(get_val('professional_education'))
+            crs_raw = get_val('current_role_start_ym')
+            crs_out = (str(crs_raw).strip() if crs_raw is not None else '') or None
+            highlights_me = decode_personal_highlights_for_api(get_val('personal_highlight_answers'))
+            if hasattr(row, 'keys'):
+                cv_key_raw = get_val('professional_cv_r2_key')
+                cv_at_raw = get_val('professional_cv_uploaded_at')
+                cv_fn_raw = get_val('professional_cv_original_filename')
+            else:
+                try:
+                    cv_key_raw, cv_at_raw, cv_fn_raw = row[-3], row[-2], row[-1]
+                except Exception:
+                    cv_key_raw = cv_at_raw = cv_fn_raw = None
+            cv_uploaded_at = (str(cv_at_raw).strip() if cv_at_raw is not None else '') or None
+            cv_original_filename = (str(cv_fn_raw).strip() if cv_fn_raw is not None else '') or None
+            has_stored_cv = bool((str(cv_key_raw).strip() if cv_key_raw is not None else ''))
+
             profile = {
                 'username': username,
                 'email': get_val('email') if hasattr(row, 'keys') else row[1],
@@ -12624,6 +11346,7 @@ def api_profile_me():
                     'gender': get_val('gender') if hasattr(row, 'keys') else row[7],
                     'country': get_val('country') if hasattr(row, 'keys') else row[8],
                     'city': get_val('city') if hasattr(row, 'keys') else row[9],
+                    'highlights': highlights_me,
                 },
                 'professional': {
                     'role': get_val('role') if hasattr(row, 'keys') else get_val(20),
@@ -12633,6 +11356,12 @@ def api_profile_me():
                     'about': get_val('professional_about') if hasattr(row, 'keys') else get_val(24),
                     'interests': interests_list,
                     'company_intel': (str(company_intel_val).strip() if company_intel_val is not None else ''),
+                    'current_role_start': crs_out,
+                    'work_history': work_l,
+                    'education': edu_l,
+                    'cv_uploaded_at': cv_uploaded_at,
+                    'cv_original_filename': cv_original_filename,
+                    'has_stored_cv': has_stored_cv,
                 },
                 'notification_show_previews': (
                     True
@@ -12640,7 +11369,28 @@ def api_profile_me():
                     else bool(int(get_val('notification_show_previews')))
                 ),
             }
-            
+            try:
+                c.execute("SELECT timezone FROM users WHERE username = ?", (username,))
+                tz_row = c.fetchone()
+                if tz_row:
+                    tz_raw = tz_row["timezone"] if hasattr(tz_row, "keys") else tz_row[0]
+                    profile["timezone"] = (str(tz_raw).strip() if tz_raw is not None else "") or None
+                else:
+                    profile["timezone"] = None
+            except Exception:
+                profile["timezone"] = None
+
+            try:
+                c.execute("SELECT communities_spotlight_tour_seen FROM users WHERE username = ?", (username,))
+                spot_row = c.fetchone()
+                if spot_row is not None:
+                    raw = spot_row["communities_spotlight_tour_seen"] if hasattr(spot_row, "keys") else spot_row[0]
+                    profile["communities_spotlight_tour_seen"] = bool(int(raw or 0))
+                else:
+                    profile["communities_spotlight_tour_seen"] = False
+            except Exception:
+                profile["communities_spotlight_tour_seen"] = False
+
             # Cache profile for faster future requests
             from redis_cache import USER_CACHE_TTL
             cache.set(cache_key, profile, USER_CACHE_TTL)  # Optimized TTL
@@ -12660,11 +11410,97 @@ def api_profile_me():
         return jsonify({ 'success': False, 'error': 'server error' }), 500
 
 
+@app.route('/api/profile/cv', methods=['GET'])
+@login_required
+def api_profile_cv_download():
+    """Download the user's last stored CV PDF (private R2; session required)."""
+    from io import BytesIO
+
+    from flask import send_file
+
+    from backend.services.r2_storage import download_bytes_from_r2
+
+    username = session['username']
+    key = None
+    fname = 'cv.pdf'
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(
+                f"SELECT professional_cv_r2_key, professional_cv_original_filename FROM users WHERE username = {ph}",
+                (username,),
+            )
+            row = c.fetchone()
+        if row:
+            if hasattr(row, 'keys'):
+                key = row.get('professional_cv_r2_key')
+                fn = row.get('professional_cv_original_filename')
+            else:
+                key, fn = row[0], row[1] if len(row) > 1 else (row[0], None)
+            if fn and str(fn).strip():
+                base = os.path.basename(str(fn).strip())
+                if base:
+                    fname = base[:180]
+    except Exception as e:
+        logger.error("api_profile_cv_download lookup failed: %s", e)
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+    if not key or not str(key).strip():
+        return jsonify({'success': False, 'error': 'No CV on file'}), 404
+
+    data = download_bytes_from_r2(str(key).strip())
+    if not data:
+        return jsonify({'success': False, 'error': 'Could not retrieve file'}), 404
+
+    return send_file(
+        BytesIO(data),
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=fname,
+    )
+
+
+@app.route('/api/account/timezone', methods=['POST'])
+@login_required
+def api_account_timezone():
+    """Persist the client device IANA timezone (e.g. Europe/Dublin) for Steve reminders and display."""
+    try:
+        from zoneinfo import ZoneInfo
+
+        data = request.get_json(silent=True) or {}
+        tz = str(data.get("timezone") or "").strip()
+        if not tz:
+            return jsonify({"success": False, "error": "timezone required"}), 400
+        try:
+            ZoneInfo(tz)
+        except Exception:
+            return jsonify({"success": False, "error": "invalid timezone"}), 400
+        username = session["username"]
+        from backend.services.steve_reminder_vault import ensure_users_timezone_column
+
+        ensure_users_timezone_column()
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(f"UPDATE users SET timezone = {ph} WHERE username = {ph}", (tz[:64], username))
+            conn.commit()
+        try:
+            cache.delete(f"profile:{username}")
+        except Exception:
+            pass
+        return jsonify({"success": True, "timezone": tz})
+    except Exception as e:
+        logger.error(f"api_account_timezone: {e}")
+        return jsonify({"success": False, "error": "server error"}), 500
+
+
 @app.route('/api/account/notification_preferences', methods=['POST'])
 @login_required
 def api_account_notification_preferences():
     """Toggle whether notification list shows a snippet of post/reply content."""
     try:
+        ensure_users_notification_show_previews_column()
         data = request.get_json(silent=True) or {}
         show = data.get('show_content_previews')
         if show is None:
@@ -12757,7 +11593,7 @@ def upload_logo():
     username = session.get('username')
     
     # Check if user is admin
-    if username != 'admin':
+    if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
     try:
@@ -12857,7 +11693,7 @@ def upload_logo():
 def upload_signup_image():
     """Upload the left-side signup image (admin only)"""
     username = session.get('username')
-    if username != 'admin':
+    if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     try:
         if 'image' not in request.files:
@@ -12880,7 +11716,7 @@ def upload_signup_image():
 def regenerate_app_icons():
     """Regenerate PWA icons from current logo - ADMIN ONLY"""
     username = session.get('username')
-    if username != 'admin':
+    if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     try:
         logo_path = os.path.join('static', 'logo.png')
@@ -13270,6 +12106,15 @@ def update_professional():
                 professional_share_community_id = share_int if share_int > 0 else None
         except Exception:
             professional_share_community_id = None
+
+        from backend.services.profile_structured_fields import (
+            normalize_yyyy_mm,
+            parse_work_history_for_storage,
+            parse_education_for_storage,
+        )
+        current_role_start_ym = normalize_yyyy_mm((request.form.get('current_role_start_ym') or '').strip())
+        work_json, _ = parse_work_history_for_storage(request.form.get('work_history_json'))
+        edu_json, _ = parse_education_for_storage(request.form.get('education_json'))
         
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -13278,12 +12123,14 @@ def update_professional():
                 UPDATE users SET 
                     role={ph}, company={ph}, industry={ph}, degree={ph}, school={ph}, 
                     skills={ph}, linkedin={ph}, experience={ph}, professional_about={ph},
-                    professional_interests={ph}, professional_company_intel={ph}, professional_share_community_id={ph}
+                    professional_interests={ph}, professional_company_intel={ph}, professional_share_community_id={ph},
+                    current_role_start_ym={ph}, professional_work_history={ph}, professional_education={ph}
                 WHERE username={ph}
             """
             c.execute(update_sql, (
                 role, company, industry, degree, school, skills, linkedin, experience, professional_about,
-                interests_payload, professional_company_intel, professional_share_community_id, username
+                interests_payload, professional_company_intel, professional_share_community_id,
+                current_role_start_ym or None, work_json, edu_json, username
             ))
             conn.commit()
         
@@ -13334,8 +12181,15 @@ def update_personal_info():
                     age_val = int(age)
                 except Exception:
                     age_val = None
-            c.execute("""UPDATE users SET first_name=?, last_name=?, age=?, gender=?, country=?, city=?, date_of_birth=? 
-                        WHERE username=?""", (first_name, last_name, age_val, gender, country, city, date_of_birth_iso, username))
+            from backend.services.profile_structured_fields import normalize_personal_highlights_payload
+            personal_blob = normalize_personal_highlights_payload(
+                request.form.get('personal_answer_five_minutes'),
+                request.form.get('personal_answer_outside_work'),
+                request.form.get('personal_answer_cpoint_goals'),
+            )
+            ph = get_sql_placeholder()
+            c.execute(f"""UPDATE users SET first_name={ph}, last_name={ph}, age={ph}, gender={ph}, country={ph}, city={ph}, date_of_birth={ph}, personal_highlight_answers={ph} 
+                        WHERE username={ph}""", (first_name, last_name, age_val, gender, country, city, date_of_birth_iso, personal_blob, username))
             
             if display_name:
                 try:
@@ -13910,6 +12764,13 @@ def get_messages():
     
     if not other_user_id:
         return jsonify({'success': False, 'error': 'Other user ID required'})
+
+    def _steve_dm_typing_for(peer_username):
+        try:
+            from backend.services.steve_dm_typing import is_dm_typing
+            return is_dm_typing(username, peer_username)
+        except Exception:
+            return False
     
     # Short-lived cache to reduce DB latency (viewer-specific; invalidated on write)
     # PERFORMANCE: Skip cache for delta fetches - they need fresh data
@@ -13947,7 +12808,12 @@ def get_messages():
                                 cached_messages = [m for m in cached_messages if m.get('time') and _dt.strptime(str(m['time'])[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S') > _del_dt]
                 except Exception:
                     pass
-                return jsonify({'success': True, 'messages': cached_messages, 'has_more': False})
+                return jsonify({
+                    'success': True,
+                    'messages': cached_messages,
+                    'has_more': False,
+                    'steve_is_typing': _steve_dm_typing_for(other_username_for_key),
+                })
     
     # --- Firestore dual-read (feature flag) ---
     try:
@@ -14001,7 +12867,13 @@ def get_messages():
                         pass
                     if not messages:
                         has_more = False
-                    return jsonify({'success': True, 'messages': messages, 'is_delta': is_delta, 'has_more': has_more})
+                    return jsonify({
+                        'success': True,
+                        'messages': messages,
+                        'is_delta': is_delta,
+                        'has_more': has_more,
+                        'steve_is_typing': _steve_dm_typing_for(peer_username),
+                    })
     except Exception as fs_err:
         logger.warning(f"Firestore DM read failed, falling back to MySQL: {fs_err}")
 
@@ -14036,15 +12908,29 @@ def get_messages():
                 pass
             deleted_at_clause = f" AND timestamp > {ph}" if deleted_at_filter else ""
             deleted_at_params = (deleted_at_filter,) if deleted_at_filter else ()
-            
+            since_clause = f" AND id > {ph}" if since_id_int else ""
+
+            try:
+                from backend.services.dm_human_thread import ensure_human_dm_thread_column, human_pair_thread_key
+
+                ensure_human_dm_thread_column(c)
+            except Exception as _htc_err:
+                logger.debug(f"human_dm_thread column ensure: {_htc_err}")
+            thr_key_peer = human_pair_thread_key(username, other_username)
+
+            where_pair_dm = (
+                f"(((sender = {ph} AND receiver = {ph}) "
+                f" OR (sender = {ph} AND receiver = {ph}))"
+                f" OR (sender = 'steve' AND human_dm_thread = {ph}))"
+            )
+
+            base_params = (username, other_username, other_username, username, thr_key_peer)
+            query_params = base_params + ((since_id_int,) if since_id_int else ()) + deleted_at_params
+
             # Get messages between users (compat: edited_at and encryption fields may not exist yet)
             # PERFORMANCE: Delta fetch support - only get messages newer than since_id
             with_edited = True
             with_encryption = True
-            since_clause = " AND id > ?" if since_id_int else ""
-            base_params = (username, other_username, other_username, username)
-            query_params = base_params + ((since_id_int,) if since_id_int else ()) + deleted_at_params
-            
             has_audio_summary = True
             has_reactions = True
             has_media_paths = True
@@ -14054,8 +12940,7 @@ def get_messages():
                     SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, 
                            is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at, audio_summary, reaction, reaction_by, media_paths
                     FROM messages
-                    WHERE ((sender = ? AND receiver = ?)
-                       OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_clause}
+                    WHERE {where_pair_dm}{since_clause}{deleted_at_clause}
                     ORDER BY timestamp ASC
                     """,
                     query_params,
@@ -14070,8 +12955,7 @@ def get_messages():
                         SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, 
                                is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at, audio_summary
                         FROM messages
-                        WHERE ((sender = ? AND receiver = ?)
-                           OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_clause}
+                        WHERE {where_pair_dm}{since_clause}{deleted_at_clause}
                         ORDER BY timestamp ASC
                         """,
                         query_params,
@@ -14084,8 +12968,7 @@ def get_messages():
                             f"""
                             SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at, audio_summary
                             FROM messages
-                            WHERE ((sender = ? AND receiver = ?)
-                               OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_clause}
+                            WHERE {where_pair_dm}{since_clause}{deleted_at_clause}
                             ORDER BY timestamp ASC
                             """,
                             query_params,
@@ -14098,8 +12981,7 @@ def get_messages():
                                 f"""
                                 SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
                                 FROM messages
-                                WHERE ((sender = ? AND receiver = ?)
-                                   OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_clause}
+                                WHERE {where_pair_dm}{since_clause}{deleted_at_clause}
                                 ORDER BY timestamp ASC
                                 """,
                                 query_params,
@@ -14110,8 +12992,7 @@ def get_messages():
                                 f"""
                                 SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp
                                 FROM messages
-                                WHERE ((sender = ? AND receiver = ?)
-                                   OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_clause}
+                                WHERE {where_pair_dm}{since_clause}{deleted_at_clause}
                                 ORDER BY timestamp ASC
                                 """,
                                 query_params,
@@ -14241,7 +13122,13 @@ def get_messages():
                 pass
             
             # Include delta indicator and pagination hint (MySQL path loads full thread; older pages use Firestore)
-            return jsonify({'success': True, 'messages': messages, 'is_delta': bool(since_id_int), 'has_more': False})
+            return jsonify({
+                'success': True,
+                'messages': messages,
+                'is_delta': bool(since_id_int),
+                'has_more': False,
+                'steve_is_typing': _steve_dm_typing_for(other_username),
+            })
             
     except Exception as e:
         logger.error(f"Error fetching messages: {str(e)}")
@@ -14446,33 +13333,63 @@ def send_message():
                     send_push_to_user(recipient_username, {
                         'title': f'Message from {username}',
                         'body': _dm_preview,
+                        'summary_body': push_privacy_summary(
+                            recipient_username, 'dm_message', author=username
+                        ),
                         'url': f'/user_chat/chat/{username}',
                         'tag': f'message-{username}-{inserted_id}',
                     })
             except Exception as _e:
                 logger.warning(f"push send_message warn: {_e}")
 
+            dm_success_payload = {
+                'success': True,
+                'message': 'Message sent successfully',
+                'message_id': inserted_id,
+                'time': inserted_time,
+            }
+
             # Trigger Steve AI reply if messaging Steve directly OR mentioning @Steve in any DM
             mentions_steve = bool(message and re.search(r'@steve\b', message, re.IGNORECASE))
             is_steve_dm = recipient_username.lower() == 'steve'
             if (is_steve_dm or mentions_steve) and username.lower() != 'steve' and not is_encrypted:
+                start_steve_dm_thread = True
                 try:
-                    import threading
-                    # Steve replies in the same DM thread
-                    # If messaging Steve directly: Steve replies to sender
-                    # If @Steve in a DM with someone else: Steve replies to sender (appears in Steve-sender thread)
-                    # but we also insert into the current thread so both users see it
-                    steve_reply_to = username
-                    steve_also_notify = recipient_username if not is_steve_dm else None
-                    thread = threading.Thread(
-                        target=_trigger_steve_dm_reply,
-                        args=(username, message, recipient_username if not is_steve_dm else None)
-                    )
-                    thread.daemon = True
-                    thread.start()
-                    logger.info(f"Triggered Steve DM reply for {username} (in chat with {recipient_username})")
-                except Exception as steve_err:
-                    logger.warning(f"Failed to trigger Steve DM reply: {steve_err}")
+                    from backend.services.feature_flags import entitlements_enforcement_enabled as _dm_ste_enforce
+                    from backend.services.entitlements_gate import check_steve_access as _check_dm_ste_access
+                    from backend.services import ai_usage as _dm_ai_usage_gate
+                    if _dm_ste_enforce():
+                        _allowed_dm, _dm_ent_payload, _, _ = _check_dm_ste_access(
+                            username, _dm_ai_usage_gate.SURFACE_DM
+                        )
+                        if not _allowed_dm:
+                            dm_success_payload['entitlements_error'] = _dm_ent_payload
+                            start_steve_dm_thread = False
+                            logger.info(
+                                "Steve DM reply skipped (entitlements): user=%s reason=%s",
+                                username,
+                                (_dm_ent_payload or {}).get('reason'),
+                            )
+                except Exception as dm_gate_err:
+                    logger.warning("Steve DM entitlement preflight failed (non-fatal): %s", dm_gate_err)
+
+                if start_steve_dm_thread:
+                    try:
+                        import threading
+                        try:
+                            from backend.services.steve_dm_typing import mark_dm_typing
+                            mark_dm_typing(username, recipient_username if not is_steve_dm else 'steve')
+                        except Exception as typing_err:
+                            logger.warning(f"Failed to mark Steve DM typing: {typing_err}")
+                        thread = threading.Thread(
+                            target=_trigger_steve_dm_reply,
+                            args=(username, message, recipient_username if not is_steve_dm else None)
+                        )
+                        thread.daemon = True
+                        thread.start()
+                        logger.info(f"Triggered Steve DM reply for {username} (in chat with {recipient_username})")
+                    except Exception as steve_err:
+                        logger.warning(f"Failed to trigger Steve DM reply: {steve_err}")
             
             # Dual-write to Firestore
             try:
@@ -14486,343 +13403,17 @@ def send_message():
             except Exception as fs_err:
                 logger.warning(f"Firestore DM dual-write failed (non-fatal): {fs_err}")
 
-            return jsonify({'success': True, 'message': 'Message sent successfully', 'message_id': inserted_id, 'time': inserted_time})
+            return jsonify(dm_success_payload)
             
     except Exception as e:
         logger.error(f"Error sending message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send message'})
 
 def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_username: str = None):
-    """Generate and send Steve's AI reply in a 1:1 DM. Runs in a background thread.
-    
-    If other_username is provided, Steve was @mentioned in a DM between sender and other_username.
-    Steve's reply goes into the same thread (sender <-> other_username) so both users see it.
-    If other_username is None, sender is chatting directly with Steve.
-    """
-    import time
-    from datetime import datetime
-    
-    time.sleep(1.5)
-    
-    if not XAI_API_KEY:
-        logger.warning("XAI_API_KEY not configured, Steve cannot reply in DM")
-        return
-    
-    # ── Entitlements gate ──
-    try:
-        from backend.services.entitlements_gate import gate_or_reason as _gate
-        from backend.services.feature_flags import entitlements_enforcement_enabled as _enforce
-        from backend.services import entitlements_errors as _errs
-        _allowed, _reason, _ent = _gate(sender_username, _ai_usage.SURFACE_DM)
-        if not _allowed and _enforce():
-            try:
-                from backend.services.content_generation.delivery import send_steve_dm as _send_dm
-                if _reason == _errs.REASON_PREMIUM_REQUIRED:
-                    blocked = (
-                        "Steve is a Premium feature. Upgrade in Settings → "
-                        "Manage Membership to keep chatting with me."
-                    )
-                elif _reason == _errs.REASON_DAILY_CAP:
-                    blocked = "You've hit today's Steve limit. It resets at midnight UTC."
-                else:
-                    blocked = (
-                        "You've used up your Steve calls for this month. "
-                        "See Settings → AI Usage."
-                    )
-                _send_dm(receiver_username=sender_username, content=blocked)
-            except Exception:
-                pass
-            return
-    except Exception as gate_err:
-        logger.warning("DM Steve gate check failed (non-fatal): %s", gate_err)
+    """Delegates to backend service (thin wrapper)."""
+    from backend.services.steve_dm_reply import run_steve_dm_reply
 
-    try:
-        # Determine the chat thread to read context from and reply into
-        if other_username:
-            chat_user_a = sender_username
-            chat_user_b = other_username
-        else:
-            chat_user_a = sender_username
-            chat_user_b = 'steve'
-        
-        def _steve_parse_dt(val):
-            """Parse Firestore Timestamp, datetime, or ISO string to naive UTC datetime."""
-            from datetime import datetime, timezone
-            if val is None:
-                return None
-            try:
-                if hasattr(val, 'timestamp') and callable(getattr(val, 'timestamp')):
-                    return datetime.utcfromtimestamp(val.timestamp())
-                if isinstance(val, datetime):
-                    if val.tzinfo is not None:
-                        return val.astimezone(timezone.utc).replace(tzinfo=None)
-                    return val
-                if isinstance(val, str):
-                    s = val.strip().replace('Z', '+00:00')
-                    dt = datetime.fromisoformat(s)
-                    if dt.tzinfo is not None:
-                        return dt.astimezone(timezone.utc).replace(tzinfo=None)
-                    return dt
-            except Exception:
-                pass
-            return None
-
-        # ── Load full conversation history from Firestore (fall back to MySQL) ──
-        recent_messages = []
-        context_reset_at = None
-        reset_dt = None
-        firestore_context_ok = False
-        try:
-            import os
-            FIRESTORE_DATABASE = os.environ.get('FIRESTORE_DATABASE', 'cpoint')
-            from google.cloud import firestore as _firestore
-            project = os.environ.get('GOOGLE_CLOUD_PROJECT') or os.environ.get('GCP_PROJECT')
-            fs = _firestore.Client(project=project, database=FIRESTORE_DATABASE) if project else _firestore.Client(database=FIRESTORE_DATABASE)
-
-            from backend.services.firestore_reads import _find_dm_conv_id
-            conv_id = _find_dm_conv_id(fs, chat_user_a, chat_user_b)
-            if conv_id:
-                try:
-                    conv_doc = fs.collection('dm_conversations').document(conv_id).get()
-                    if conv_doc.exists:
-                        cd = conv_doc.to_dict() or {}
-                        context_reset_at = cd.get('steve_context_reset_at')
-                        reset_dt = _steve_parse_dt(context_reset_at)
-                        if context_reset_at:
-                            logger.info(f"Steve DM context reset timestamp: {context_reset_at} for {chat_user_a}<->{chat_user_b}")
-                except Exception as reset_err:
-                    logger.warning(f"Failed to load DM conversation reset timestamp: {reset_err}")
-
-                msgs_ref = fs.collection('dm_conversations').document(conv_id).collection('messages')
-                docs = msgs_ref.order_by('created_at').stream()
-                for doc in docs:
-                    d = doc.to_dict() or {}
-                    sender = d.get('sender', '')
-                    text = d.get('text', '')
-                    if not text or not sender:
-                        continue
-                    msg_ts = _steve_parse_dt(d.get('created_at'))
-                    if reset_dt and msg_ts and msg_ts < reset_dt:
-                        continue
-                    # Include messages without created_at (legacy) when we have a reset (cannot prove they're old)
-                    recent_messages.append(f"{sender}: {text}")
-                firestore_context_ok = True
-                logger.info(f"Steve DM context from Firestore: {len(recent_messages)} messages for {chat_user_a}<->{chat_user_b}")
-        except Exception as fs_err:
-            logger.warning(f"Steve DM Firestore context failed, falling back to MySQL: {fs_err}")
-            recent_messages = []
-            reset_dt = None
-
-        # MySQL fallback only if Firestore did not load the thread (avoid duplicating full history after a filtered Firestore load)
-        if not firestore_context_ok:
-            with get_db_connection() as conn:
-                c = conn.cursor()
-                ph = get_sql_placeholder()
-                c.execute(f"""
-                    SELECT sender, message, timestamp FROM messages
-                    WHERE (sender = {ph} AND receiver = {ph})
-                       OR (sender = {ph} AND receiver = {ph})
-                    ORDER BY timestamp ASC
-                """, (chat_user_a, chat_user_b, chat_user_b, chat_user_a))
-                for row in c.fetchall():
-                    s = row['sender'] if hasattr(row, 'keys') else row[0]
-                    m = row['message'] if hasattr(row, 'keys') else row[1]
-                    ts_raw = row['timestamp'] if hasattr(row, 'keys') else row[2]
-                    if not m:
-                        continue
-                    row_ts = _steve_parse_dt(ts_raw) if ts_raw is not None else None
-                    if reset_dt and row_ts and row_ts < reset_dt:
-                        continue
-                    recent_messages.append(f"{s}: {m}")
-        
-        current_date = datetime.now().strftime('%A, %B %d, %Y at %H:%M UTC')
-        
-        # ── Privacy gate BEFORE any KB fetch (per docs/STEVE_PRIVACY_GATE.md) ──
-        from backend.services.steve_profiling_gates import user_can_access_steve_kb
-
-        # ── Inject Grok-analyzed profile context for the sender ──
-        if user_can_access_steve_kb(sender_username, sender_username):
-            user_profile_ctx = get_steve_context_for_user(sender_username)
-        else:
-            user_profile_ctx = ""
-
-        # ── Detect @mentions in the message and load mentioned user profiles ──
-        mentioned_profiles = []
-        mentioned_usernames = set(re.findall(r'@(\w+)', user_message)) if user_message else set()
-        mentioned_usernames.discard('steve')
-        mentioned_usernames.discard('Steve')
-        mentioned_usernames.discard(sender_username)
-        
-        for mentioned_user in mentioned_usernames:
-            if user_can_access_steve_kb(sender_username, mentioned_user):
-                profile_ctx = get_steve_context_for_user(mentioned_user, viewer_username=sender_username)
-                if profile_ctx:
-                    mentioned_profiles.append((mentioned_user, profile_ctx))
-                    continue
-            # Gate failed or no KB — do not fall back to basic profile
-            # (per privacy rules - no information leaked)
-            continue
-
-        # ── Build conversation context with recency weighting ──
-        all_messages = recent_messages[-200:]
-        CURRENT_WINDOW = 30
-        if len(all_messages) > CURRENT_WINDOW:
-            older_messages = all_messages[:-CURRENT_WINDOW]
-            current_messages = all_messages[-CURRENT_WINDOW:]
-        else:
-            older_messages = []
-            current_messages = all_messages
-        
-        context = f"Direct message conversation between {chat_user_a} and {chat_user_b}:\n"
-        if older_messages:
-            context += f"=== OLDER CONTEXT ({len(older_messages)} messages — background reference) ===\n"
-            context += "\n".join(older_messages)
-            context += "\n\n"
-        context += f"=== CURRENT CONVERSATION (last {len(current_messages)} messages — focus here) ===\n"
-        context += "\n".join(current_messages)
-        
-        if other_username:
-            context += f"\n\n{sender_username} mentioned you (@Steve). Respond helpfully."
-        else:
-            context += f"\n\n{sender_username} is chatting with you directly. Respond naturally and helpfully."
-        
-        context += f"\n\n[Current date and time: {current_date}]"
-
-        context_reset_note = ""
-        if context_reset_at:
-            context_reset_note = f"\n\nIMPORTANT: Your conversation context was reset on {context_reset_at}. Treat messages in OLDER CONTEXT that predate this reset as background only. Focus on the CURRENT CONVERSATION."
-        context += context_reset_note
-
-        is_admin = is_app_admin(sender_username)
-
-        system_prompt = f"""You are Steve, a helpful, witty, and intelligent AI assistant in a private 1:1 chat.
-
-CURRENT DATE AND TIME: {current_date}
-
-YOUR CAPABILITIES:
-- You have access to the FULL conversation history of this chat
-- You can search the web and X/Twitter for information
-- {"As an admin, you have full platform access." if is_admin else ""}
-
-CONVERSATION INTELLIGENCE:
-- You have two context sections: OLDER CONTEXT (background) and CURRENT CONVERSATION (active).
-- Always maintain full awareness of the conversation history and flow.
-- Focus on the CURRENT CONVERSATION messages when responding.
-- Reference older context only when directly relevant to the current question.
-
-COMMUNITY & PRIVACY RULES:
-- You can only share information about users if the person asking shares a community with them.
-- Never reveal information about communities the user is not a member of.
-- Only share profile information that has been provided to you below — do NOT make up details about users.
-- If you don't have information about a mentioned user, say so honestly.
-
-RESPONSE STYLE:
-- Be helpful and concise (2-5 sentences for casual, longer for detailed questions)
-- Use emojis occasionally
-- If you cannot answer, be transparent about it
-- NEVER hallucinate or make up information about users — only use the profile data provided below"""
-
-        if user_profile_ctx:
-            system_prompt += f"""
-
-WHAT YOU KNOW ABOUT @{sender_username} (the person you're chatting with):
-{user_profile_ctx}
-Use this knowledge naturally — don't announce it, but let it guide your tone and relevance."""
-
-        if mentioned_profiles:
-            for m_username, m_ctx in mentioned_profiles:
-                system_prompt += f"""
-
-WHAT YOU KNOW ABOUT @{m_username} (mentioned in the conversation):
-{m_ctx}
-Only share this information if asked. Be factual — do not embellish or invent details beyond what is listed here."""
-
-        context_for_grok = context
-
-        from openai import OpenAI
-        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": context_for_grok}
-        ]
-
-        response = client.responses.create(
-            model=GROK_MODEL_FAST,
-            input=messages,
-            tools=[{"type": "web_search"}, {"type": "x_search"}],
-            max_output_tokens=600,
-            temperature=0.7
-        )
-
-        ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
-
-        if not ai_response:
-            logger.warning("Steve DM reply: empty response from API")
-            return
-
-        ai_response = format_steve_response_links(ai_response)
-        
-        if not ai_response or not ai_response.strip():
-            logger.warning("Steve DM reply: empty response after formatting")
-            return
-        
-        # Insert Steve's reply into the correct DM thread
-        # If @Steve in a DM between two users: Steve sends to the sender,
-        # appearing in the sender's chat thread. The other user sees it on
-        # their next visit to their chat with Steve.
-        # For direct Steve chats: Steve replies to sender as normal.
-        reply_receiver = sender_username
-        
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            if USE_MYSQL:
-                c.execute("""
-                    INSERT INTO messages (sender, receiver, message, timestamp)
-                    VALUES (%s, %s, %s, NOW())
-                """, ('steve', reply_receiver, ai_response))
-            else:
-                _ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                c.execute("""
-                    INSERT INTO messages (sender, receiver, message, timestamp)
-                    VALUES (?, ?, ?, ?)
-                """, ('steve', reply_receiver, ai_response, _ts))
-            conn.commit()
-            steve_msg_id = getattr(c, 'lastrowid', None)
-            
-            # Dual-write Steve reply to Firestore
-            try:
-                from backend.services.firestore_writes import write_dm_message
-                write_dm_message(sender='steve', receiver=reply_receiver, message_id=steve_msg_id, text=ai_response)
-            except Exception:
-                pass
-
-            # Invalidate caches so the reply appears on next poll
-            try:
-                invalidate_message_cache(sender_username, 'steve')
-                cache.delete(f"chat_threads:{sender_username}")
-                if other_username:
-                    invalidate_message_cache(other_username, 'steve')
-                    cache.delete(f"chat_threads:{other_username}")
-            except Exception:
-                pass
-            
-            logger.info(f"Steve replied to DM from {sender_username}" + (f" (mentioned in chat with {other_username})" if other_username else ""))
-
-        try:
-            _ai_usage.log_usage(
-                sender_username,
-                surface=_ai_usage.SURFACE_DM,
-                request_type='steve_dm_reply',
-                model='grok-4-1-fast-reasoning',
-            )
-        except Exception:
-            pass
-
-    except Exception as e:
-        logger.error(f"Error in Steve DM reply: {e}", exc_info=True)
-
-
+    run_steve_dm_reply(sender_username, user_message, other_username)
 @app.route('/api/steve/reset_dm_context', methods=['POST'])
 @login_required
 def reset_steve_dm_context():
@@ -15058,6 +13649,9 @@ def react_to_message():
                     send_push_to_user(notify_user, {
                         'title': f'{username} reacted {emoji}',
                         'body': f'to: "{preview}"' if preview else 'to your message',
+                        'summary_body': push_privacy_summary(
+                            notify_user, 'dm_reaction', author=username
+                        ),
                         'url': notif_link,
                         'tag': f'reaction-{username}-{message_id}',
                     })
@@ -15234,6 +13828,9 @@ def send_photo_message():
                     send_push_to_user(recipient_username, {
                         'title': f'Photo from {username}',
                         'body': _photo_preview,
+                        'summary_body': push_privacy_summary(
+                            recipient_username, 'dm_photo', author=username
+                        ),
                         'url': f'/user_chat/chat/{username}',
                         'tag': f'message-{username}-{inserted_id}',  # Unique tag per message
                     })
@@ -15431,6 +14028,9 @@ def send_dm_media():
                     send_push_to_user(recipient_username, {
                         'title': f'Media from {username}',
                         'body': _dm_media_preview,
+                        'summary_body': push_privacy_summary(
+                            recipient_username, 'dm_media', author=username
+                        ),
                         'url': f'/user_chat/chat/{username}',
                         'tag': f'message-{username}-{inserted_id}',
                     })
@@ -15450,84 +14050,6 @@ def send_dm_media():
 
 
 # Message videos served via /uploads/message_videos mapping
-
-@app.route('/api/video_upload_url', methods=['POST'])
-@login_required
-def api_video_upload_url():
-    """Get a presigned URL for direct video upload to R2. Bypasses Cloud Run 32MB limit."""
-    from backend.services.r2_storage import (
-        R2_ENABLED,
-        R2_PUBLIC_URL,
-        generate_presigned_upload_url,
-        get_content_type,
-    )
-    if not R2_ENABLED or not R2_PUBLIC_URL:
-        return jsonify({'success': False, 'error': 'Direct upload not available'}), 503
-    data = request.get_json() or {}
-    recipient_id = data.get('recipient_id')
-    filename = (data.get('filename') or 'video.mp4').strip()
-    content_type = (data.get('content_type') or get_content_type(filename)).strip()
-    if not recipient_id:
-        return jsonify({'success': False, 'error': 'recipient_id required'}), 400
-    # Validate video content type
-    if not content_type.startswith('video/'):
-        return jsonify({'success': False, 'error': 'Invalid video type'}), 400
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT username FROM users WHERE id = ?", (recipient_id,))
-            if not c.fetchone():
-                return jsonify({'success': False, 'error': 'Recipient not found'}), 404
-    except Exception as e:
-        logger.error(f"video_upload_url recipient check: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-    from datetime import datetime
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'mp4'
-    if ext not in ('mp4', 'webm', 'mov', 'm4v', 'avi'):
-        ext = 'mp4'
-    name = (filename.rsplit('.', 1)[0] if '.' in filename else 'video')[:50]
-    key = f"message_videos/{name}_{ts}.{ext}"
-    upload_url = generate_presigned_upload_url(key, content_type)
-    if not upload_url:
-        return jsonify({'success': False, 'error': 'Failed to generate upload URL'}), 500
-    public_url = f"{R2_PUBLIC_URL.rstrip('/')}/{key}"
-    return jsonify({
-        'success': True,
-        'upload_url': upload_url,
-        'key': key,
-        'public_url': public_url,
-    })
-
-
-@app.route('/api/post_video_upload_url', methods=['POST'])
-@login_required
-def api_post_video_upload_url():
-    """Get a presigned URL for direct video upload to R2 for community/group posts."""
-    try:
-        from backend.services.r2_storage import R2_ENABLED, R2_PUBLIC_URL, generate_presigned_upload_url, get_content_type
-    except ImportError:
-        return jsonify({'success': False, 'error': 'Direct upload not available'}), 503
-    if not R2_ENABLED or not R2_PUBLIC_URL:
-        return jsonify({'success': False, 'error': 'Direct upload not available'}), 503
-    data = request.get_json() or {}
-    filename = (data.get('filename') or 'video.mp4').strip()
-    content_type = (data.get('content_type') or get_content_type(filename)).strip()
-    if not content_type.startswith('video/'):
-        return jsonify({'success': False, 'error': 'Invalid video type'}), 400
-    from datetime import datetime as _dt
-    ts = _dt.now().strftime("%Y%m%d_%H%M%S")
-    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'mp4'
-    if ext not in ('mp4', 'webm', 'mov', 'm4v', 'avi'):
-        ext = 'mp4'
-    name = (filename.rsplit('.', 1)[0] if '.' in filename else 'video')[:50]
-    key = f"post_videos/{name}_{ts}.{ext}"
-    upload_url = generate_presigned_upload_url(key, content_type)
-    if not upload_url:
-        return jsonify({'success': False, 'error': 'Failed to generate upload URL'}), 500
-    public_url = f"{R2_PUBLIC_URL.rstrip('/')}/{key}"
-    return jsonify({'success': True, 'upload_url': upload_url, 'key': key, 'public_url': public_url})
-
 
 @app.route('/send_video_message', methods=['POST'])
 @login_required
@@ -15649,6 +14171,9 @@ def send_video_message():
                     send_push_to_user(recipient_username, {
                         'title': f'Video from {username}',
                         'body': _video_preview,
+                        'summary_body': push_privacy_summary(
+                            recipient_username, 'dm_video', author=username
+                        ),
                         'url': f'/user_chat/chat/{username}',
                         'tag': f'message-{username}-{inserted_id}',  # Unique tag per message
                     })
@@ -15864,6 +14389,9 @@ def send_audio_message():
                     send_push_to_user(recipient_username, {
                         'title': f'Voice message from {username}',
                         'body': _audio_preview,
+                        'summary_body': push_privacy_summary(
+                            recipient_username, 'dm_voice', author=username
+                        ),
                         'url': f'/user_chat/chat/{username}',
                         'tag': f'message-{username}-audio-{int(time.time()*1000)}',  # Unique tag
                     })
@@ -16134,6 +14662,11 @@ def _networking_build_members_text(
     """
     from backend.services.embedding_service import search_similar_profiles_ranked, profile_index
     from backend.services.firestore_reads import batch_get_steve_user_profiles
+    from backend.services.networking_retrieval import (
+        NETWORKING_LEGAL_NAME_DISPLAY_MAX_CHARS,
+        NETWORKING_MEMBER_COL_FIRST_NAME,
+        NETWORKING_MEMBER_COL_LAST_NAME,
+    )
 
     _ensure_embedding_index()
 
@@ -16214,6 +14747,13 @@ def _networking_build_members_text(
         if not r:
             continue
         line = f"- {uname} | {_v(r,1)} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'}"
+        fn = str(_v(r, NETWORKING_MEMBER_COL_FIRST_NAME) or "").strip()
+        ln = str(_v(r, NETWORKING_MEMBER_COL_LAST_NAME) or "").strip()
+        legal = " ".join(p for p in (fn, ln) if p).strip()
+        if legal:
+            if len(legal) > NETWORKING_LEGAL_NAME_DISPLAY_MAX_CHARS:
+                legal = legal[: NETWORKING_LEGAL_NAME_DISPLAY_MAX_CHARS - 1] + "…"
+            line += f" | Legal: {legal}"
         count = rec_counts.get(uname, 0)
         if count > 0:
             line += f" | Recommended {count}x recently"
@@ -16256,8 +14796,6 @@ _NETWORKING_NO_MATCH_MARKERS = (
 
 
 def _networking_should_retry_multi_agent(ai_response: str, recommended: list[str]) -> bool:
-    if not STEVE_NETWORKING_MULTI_AGENT:
-        return False
     text = (ai_response or '').strip().lower()
     if not text:
         return True
@@ -16266,209 +14804,96 @@ def _networking_should_retry_multi_agent(ai_response: str, recommended: list[str
     return any(marker in text for marker in _NETWORKING_NO_MATCH_MARKERS)
 
 
-def _extract_json_object(text: str) -> dict:
-    text = (text or "").strip()
-    if not text:
-        return {}
-    try:
-        data = json.loads(text)
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        pass
-    start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        return {}
-    try:
-        data = json.loads(text[start : end + 1])
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
-
-
-def _normalize_networking_query_plan(raw_plan: dict | None) -> dict | None:
-    if not isinstance(raw_plan, dict):
-        return None
-    allowed_dimensions = (
-        "Index",
-        "LifeCareer",
-        "GeographyCulture",
-        "Expertise",
-        "CompanyIntel",
-        "Opinions",
-        "Identity",
-        "Network",
-        "UniqueFingerprint",
-        "InferredContext",
+def _run_networking_completion(
+    client,
+    *,
+    prompt_input,
+    member_names,
+    context_label: str,
+    networking_ai_config=None,
+    username: str | None = None,
+    community_id=None,
+    request_type: str = "networking_match",
+):
+    from backend.services.networking_ai_config import (
+        DEFAULT_CONFIG,
+        estimate_cost_usd,
+        usage_tokens,
     )
-    allowed_facets = (
-        "geography",
-        "industry",
-        "roles",
-        "company_builder",
-        "traits",
-        "interests",
-        "experiences",
-        "identity_life_stage",
-    )
-    facets_in = raw_plan.get("facets") or {}
-    facets_out = {}
-    for facet in allowed_facets:
-        values = facets_in.get(facet) if isinstance(facets_in, dict) else []
-        if isinstance(values, str):
-            values = [values]
-        cleaned = []
-        for value in values or []:
-            s = str(value or "").strip()
-            if s:
-                cleaned.append(s[:120])
-        if cleaned:
-            facets_out[facet] = cleaned[:8]
 
-    def _clean_dimensions(values):
-        if isinstance(values, str):
-            values = [values]
-        return [dimension for dimension in (values or []) if dimension in allowed_dimensions]
-
-    def _clean_constraints(values):
-        if isinstance(values, str):
-            values = [values]
-        return [facet for facet in (values or []) if facet in allowed_facets]
-
-    named_people = raw_plan.get("named_people") or []
-    if isinstance(named_people, str):
-        named_people = [named_people]
-    named_people = [str(v).strip()[:120] for v in named_people if str(v).strip()][:6]
-
-    plan = {
-        "facets": facets_out,
-        "hard_constraints": _clean_constraints(raw_plan.get("hard_constraints")),
-        "soft_constraints": _clean_constraints(raw_plan.get("soft_constraints")),
-        "primary_dimensions": _clean_dimensions(raw_plan.get("primary_dimensions")),
-        "secondary_dimensions": _clean_dimensions(raw_plan.get("secondary_dimensions")),
-        "hard_dimensions": _clean_dimensions(raw_plan.get("hard_dimensions")),
-        "named_people": named_people,
-        "search_rewrite": str(raw_plan.get("search_rewrite") or "").strip()[:500],
-        "needs_clarification": bool(raw_plan.get("needs_clarification")),
-        "clarifying_question": str(raw_plan.get("clarifying_question") or "").strip()[:300],
-    }
-    return plan if (
-        plan["facets"]
-        or plan["primary_dimensions"]
-        or plan["secondary_dimensions"]
-        or plan["hard_dimensions"]
-        or plan["named_people"]
-        or plan["search_rewrite"]
-    ) else None
-
-
-def _plan_networking_query(client, *, message: str, conversation_history, member_names) -> dict | None:
-    from backend.services.networking_retrieval import should_use_reasoning_planner
-
-    if not should_use_reasoning_planner(message, conversation_history):
-        return None
-
-    recent_user_turns = []
-    if isinstance(conversation_history, list):
-        for turn in conversation_history[-8:]:
-            if not isinstance(turn, dict):
-                continue
-            if str(turn.get("role") or "").strip().lower() != "user":
-                continue
-            content = str(turn.get("content") or "").strip()
-            if content:
-                recent_user_turns.append(content)
-    history_block = "\n".join(f"- {item}" for item in recent_user_turns[-4:]) or "- (none)"
-    member_block = "\n".join(f"- @{u} | {n}" for u, n in member_names[:120]) or "- (none)"
-
-    planner_input = [
-        {
-            "role": "system",
-            "content": """You are a query planner for a private professional networking search assistant.
-Return JSON only with keys:
-- facets
-- hard_constraints
-- soft_constraints
-- primary_dimensions
-- secondary_dimensions
-- hard_dimensions
-- named_people
-- search_rewrite
-- needs_clarification
-- clarifying_question
-
-Facet keys may only be:
-geography, industry, roles, company_builder, traits, interests, experiences, identity_life_stage
-
-Dimension keys may only be:
-Index, LifeCareer, GeographyCulture, Expertise, CompanyIntel, Opinions, Identity, Network, UniqueFingerprint, InferredContext
-
-Rules:
-- Preserve prior user intent for follow-up questions.
-- If the user mentions a person explicitly, include them in named_people.
-- Use hard_constraints only for facets the user clearly requires.
-- Use soft_constraints for preferences.
-- Use primary_dimensions for the main KB dimensions this query depends on.
-- Use secondary_dimensions for adjacent or broader evidence dimensions.
-- Use hard_dimensions only when a KB dimension is truly required to satisfy the ask.
-- search_rewrite should be a compact search query for retrieval.
-- For sensitive life-stage / identity asks like parent, include them only when the user explicitly asked for them.
-- If the ask is simple and single-facet, keep the JSON minimal.
-- Never mention internal reasoning. JSON only.""",
-        },
-        {
-            "role": "user",
-            "content": f"Recent user turns:\n{history_block}\n\nCurrent user message:\n{message}\n\nKnown members:\n{member_block}",
-        },
-    ]
-
-    try:
-        response = client.responses.create(
-            model=GROK_MODEL_REASONING,
-            input=planner_input,
-            max_output_tokens=350,
-            temperature=0.1,
-        )
-        planner_text = (response.output_text or "").strip() if hasattr(response, "output_text") else ""
-        plan = _normalize_networking_query_plan(_extract_json_object(planner_text))
-        if plan:
-            logger.info(
-                "Networking planner active facets=%s hard=%s named=%s",
-                sorted((plan.get("facets") or {}).keys()),
-                plan.get("hard_constraints") or [],
-                plan.get("named_people") or [],
-            )
-        return plan
-    except Exception:
-        logger.warning("Networking planner failed; falling back to direct retrieval", exc_info=True)
-        return None
-
-
-def _run_networking_completion(client, *, prompt_input, member_names, context_label: str):
+    networking_ai_config = networking_ai_config or DEFAULT_CONFIG
+    t0 = time.time()
     response = client.responses.create(
-        model=STEVE_NETWORKING_MODEL,
+        model=networking_ai_config.final_answer_model,
         input=prompt_input,
         max_output_tokens=800,
         temperature=0.5,
     )
+    response_time_ms = int((time.time() - t0) * 1000)
     ai_response = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
     recommended = _extract_recommended_usernames(ai_response, member_names)
-    model_used = STEVE_NETWORKING_MODEL
+    model_used = networking_ai_config.final_answer_model
+    try:
+        from backend.services import ai_usage as _ai_usage
 
-    if _networking_should_retry_multi_agent(ai_response, recommended):
+        tokens_in, tokens_out = usage_tokens(response)
+        _ai_usage.log_usage(
+            username or "unknown",
+            surface=_ai_usage.SURFACE_NETWORKING_STEVE,
+            request_type=request_type,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_usd=estimate_cost_usd(
+                networking_ai_config,
+                "final",
+                tokens_in,
+                tokens_out,
+            ),
+            response_time_ms=response_time_ms,
+            community_id=community_id,
+            model=model_used,
+        )
+    except Exception as usage_err:
+        logger.debug("Networking completion usage logging failed: %s", usage_err)
+
+    if networking_ai_config.fallback_enabled and _networking_should_retry_multi_agent(ai_response, recommended):
         logger.info("Networking fallback: retrying with multi-agent for %s", context_label)
+        t1 = time.time()
         retry = client.responses.create(
-            model=GROK_MODEL_MULTI_AGENT,
+            model=networking_ai_config.fallback_model,
             input=prompt_input,
             max_output_tokens=800,
             temperature=0.4,
         )
+        retry_response_time_ms = int((time.time() - t1) * 1000)
         retry_text = (retry.output_text or '').strip() if hasattr(retry, 'output_text') else ''
         retry_recommended = _extract_recommended_usernames(retry_text, member_names)
+        try:
+            from backend.services import ai_usage as _ai_usage
+
+            tokens_in, tokens_out = usage_tokens(retry)
+            _ai_usage.log_usage(
+                username or "unknown",
+                surface=_ai_usage.SURFACE_NETWORKING_STEVE,
+                request_type="networking_fallback",
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                cost_usd=estimate_cost_usd(
+                    networking_ai_config,
+                    "fallback",
+                    tokens_in,
+                    tokens_out,
+                ),
+                response_time_ms=retry_response_time_ms,
+                community_id=community_id,
+                model=networking_ai_config.fallback_model,
+            )
+        except Exception as usage_err:
+            logger.debug("Networking fallback usage logging failed: %s", usage_err)
         if retry_text:
             ai_response = retry_text
             recommended = retry_recommended
-            model_used = GROK_MODEL_MULTI_AGENT
+            model_used = networking_ai_config.fallback_model
 
     logger.info(
         "Steve networking completion context=%s model=%s recommended=%s",
@@ -16488,12 +14913,45 @@ def api_networking_steve_match():
     community_id = data.get('community_id')
     message = (data.get('message') or '').strip()
     conversation_history = data.get('history', [])
+    debug_requested = bool(data.get('debug'))
+    debug_allowed = bool(debug_requested and username and is_app_admin(username))
     if not community_id or not message:
         return jsonify({'success': False, 'error': 'community_id and message required'}), 400
+    from backend.services import ai_usage as _networking_ai_usage
+    from backend.services.networking_ai_config import get_networking_ai_config
+
+    networking_ai_config = get_networking_ai_config()
+    if not networking_ai_config.enabled:
+        _networking_ai_usage.log_block(
+            username,
+            surface=_networking_ai_usage.SURFACE_NETWORKING_STEVE,
+            reason="networking_ai_disabled",
+            community_id=community_id,
+        )
+        return jsonify({'success': False, 'error': 'Steve networking search is currently disabled.'}), 403
+    used_this_week = _networking_ai_usage.networking_prompts_last_7_days(username)
+    if used_this_week >= networking_ai_config.weekly_prompts_per_user:
+        _networking_ai_usage.log_block(
+            username,
+            surface=_networking_ai_usage.SURFACE_NETWORKING_STEVE,
+            reason="weekly_networking_prompt_cap",
+            community_id=community_id,
+        )
+        return jsonify({
+            'success': False,
+            'error': f'Weekly Steve networking limit reached ({networking_ai_config.weekly_prompts_per_user} prompts).',
+            'reason': 'weekly_networking_prompt_cap',
+            'usage': {
+                'used': used_this_week,
+                'limit': networking_ai_config.weekly_prompts_per_user,
+                'window': 'rolling_7_days',
+            },
+        }), 429
     if not XAI_API_KEY:
         return jsonify({'success': False, 'error': 'AI service not available'}), 503
     try:
         from backend.services.networking_retrieval import (
+            NETWORKING_GROK_PRIOR_MESSAGES_CAP,
             build_dimension_plan,
             build_retrieval_query,
             load_dimension_metadata_scores,
@@ -16505,6 +14963,9 @@ def api_networking_steve_match():
             structured_candidates,
             tiered_roster,
         )
+        from backend.services.networking_debug_trace import build_networking_debug_trace
+        from backend.services.networking_planner import plan_networking_query
+        from backend.services.networking_prompting import final_answer_policy_block
 
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -16539,7 +15000,7 @@ def api_networking_steve_match():
             if _ob_prompt:
                 user_profile = f"{user_profile}\nUser-stated onboarding (verbatim):\n{_ob_prompt}" if user_profile else f"User-stated onboarding (verbatim):\n{_ob_prompt}"
 
-            c.execute(f"SELECT DISTINCT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, p.location, u.professional_about FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
+            c.execute(f"SELECT DISTINCT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, p.location, u.professional_about, u.first_name, u.last_name FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
             member_rows = c.fetchall()
             all_member_usernames = [str(_v(r, 0)) for r in member_rows]
             member_names = [(str(_v(r, 0)), str(_v(r, 1))) for r in member_rows]
@@ -16547,11 +15008,17 @@ def api_networking_steve_match():
             from openai import OpenAI
             client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
-            query_plan = _plan_networking_query(
+            planner_diagnostics = {}
+            query_plan = plan_networking_query(
                 client,
                 message=message,
                 conversation_history=conversation_history,
-                member_names=member_names,
+                member_rows=member_rows,
+                member_getter=_v,
+                networking_ai_config=networking_ai_config,
+                username=username,
+                community_id=community_id,
+                diagnostics=planner_diagnostics,
             )
             retrieval_query = build_retrieval_query(
                 message,
@@ -16618,7 +15085,7 @@ def api_networking_steve_match():
                 sum(1 for tier in tiered_matches.values() if tier == "direct"),
                 sum(1 for tier in tiered_matches.values() if tier == "broader"),
                 len(forced_usernames),
-                STEVE_NETWORKING_MODEL,
+                networking_ai_config.final_answer_model,
             )
 
             members_text = _networking_build_members_text(
@@ -16643,6 +15110,23 @@ def api_networking_steve_match():
             if requester_profile_ctx:
                 enriched_user_profile += f"\nAI insight: {requester_profile_ctx}"
 
+            networking_safety_prompt = ""
+            professional_advice_question = False
+            try:
+                from backend.services.steve_platform_manual import (
+                    SURFACE_NETWORKING,
+                    is_professional_advice_intent,
+                    render_global_steve_safety_prompt,
+                )
+
+                professional_advice_question = is_professional_advice_intent(message)
+                networking_safety_prompt = render_global_steve_safety_prompt(
+                    message,
+                    surface=SURFACE_NETWORKING,
+                )
+            except Exception as safety_err:
+                logger.warning("Steve networking safety prompt failed (non-fatal): %s", safety_err)
+
         grok_input = [
             {"role": "system", "content": f"""You are Steve, a friendly and helpful networking assistant inside a private professional network. You speak like a knowledgeable friend — warm, concise, and natural. Never sound like a database or a computer.
 
@@ -16663,11 +15147,14 @@ HOW TO MATCH:
 8. Never recommend someone with zero connection to the ask. If someone shares an interest in AI but the user asked about Lisbon, that person is not relevant.
 9. CRITICAL: Your recommendations must draw from the ENTIRE network, not cluster around members from any single sub-community or cohort. Ensure diversity across the full network.
 
+{final_answer_policy_block(query_plan)}
+
 KNOWLEDGE BASE CONTEXT (when available):
 - Some members will have a [MEMBER KNOWLEDGE BASE] section in their AI insight. This is a high-quality, structured analysis of the member across multiple dimensions: life/career evolution, geographic journey, expertise depth, opinion evolution, identity traits, network relationships, and unique fingerprint.
 - ALWAYS prioritize knowledge base insights over basic profile data. The knowledge base tracks how people EVOLVE over time — opinion shifts, career transitions, geographic moves, and contradictions.
 - When matching for locations (e.g. "Miami", "UK knowledge"), look at the GEOGRAPHIC & CULTURAL JOURNEY dimension — it distinguishes between "currently lives there" vs "has lived there before" vs "has deep historical knowledge" without living there now.
 - When matching for expertise, look at EXPERTISE & DEPTH for progression and credibility signals.
+- When matching for non-professional interests, hobbies, rituals, taste, or personal capabilities (e.g. cooking, wine, sports, art), look at LIFE INTERESTS when available.
 - The UNIQUE FINGERPRINT dimension reveals rare qualities and bridging capabilities that make someone an exceptional match.
 
 LOAD BALANCING & QUALITY SIGNALS — VERY IMPORTANT:
@@ -16697,11 +15184,17 @@ RULES:
 - NEVER say "I won't recommend" or explain what you're choosing not to do. Focus on what you CAN offer.
 - Never quote or closely paraphrase private member-post wording. Use only safe, high-level evidence from the roster and AI insight.
 - This is a multi-turn conversation. Pay close attention to what was discussed previously. If the user asks a follow-up (e.g., "suggest a message to send him", "tell me more about her"), refer back to the person or topic from the prior exchange. Do NOT start a new unrelated recommendation unless the user explicitly asks for something different.
-- The requester's profile is provided as background context ONLY — so you know who they are and can craft better introductions. When the user makes a specific request, match ONLY based on what they asked for. Do NOT bring the requester's own interests, industry, or background into the recommendation rationale unless they explicitly ask for connections related to their own profile (e.g., "people in my industry", "people with similar interests"). If the user asks about race cars, recommend people connected to race cars — not people who share the requester's AI interests."""}
+- The requester's profile is provided as background context ONLY — so you know who they are and can craft better introductions. When the user makes a specific request, match ONLY based on what they asked for. Do NOT bring the requester's own interests, industry, or background into the recommendation rationale unless they explicitly ask for connections related to their own profile (e.g., "people in my industry", "people with similar interests"). If the user asks about race cars, recommend people connected to race cars — not people who share the requester's AI interests.
+
+{networking_safety_prompt}"""}
         ]
         if query_plan:
             planner_hint = json.dumps(
                 {
+                    "intent_summary": query_plan.get("intent_summary") or "",
+                    "target": query_plan.get("target") or "",
+                    "relationship_to_target": query_plan.get("relationship_to_target") or "",
+                    "dimension_analysis": query_plan.get("dimension_analysis") or {},
                     "facets": query_plan.get("facets") or {},
                     "hard_constraints": query_plan.get("hard_constraints") or [],
                     "soft_constraints": query_plan.get("soft_constraints") or [],
@@ -16710,6 +15203,10 @@ RULES:
                     "hard_dimensions": query_plan.get("hard_dimensions") or [],
                     "named_people": query_plan.get("named_people") or [],
                     "search_rewrite": query_plan.get("search_rewrite") or "",
+                    "direct_evidence_query": query_plan.get("direct_evidence_query") or "",
+                    "adjacent_evidence_query": query_plan.get("adjacent_evidence_query") or "",
+                    "deprioritized_evidence_query": query_plan.get("deprioritized_evidence_query") or "",
+                    "search_state_action": query_plan.get("search_state_action") or "retrieve",
                 },
                 ensure_ascii=True,
             )
@@ -16720,7 +15217,7 @@ RULES:
                 }
             )
         if conversation_history and isinstance(conversation_history, list):
-            for turn in conversation_history[-10:]:
+            for turn in conversation_history[-NETWORKING_GROK_PRIOR_MESSAGES_CAP:]:
                 role = turn.get('role', '')
                 content = turn.get('content', '')
                 if role in ('user', 'assistant') and content:
@@ -16731,13 +15228,45 @@ RULES:
             prompt_input=grok_input,
             member_names=member_names,
             context_label="steve_match",
+            networking_ai_config=networking_ai_config,
+            username=username,
+            community_id=community_id,
+            request_type="networking_match",
         )
         if not ai_response:
             ai_response = "I couldn't find matching members. Try refining your request."
         _record_recommendations_background(recommended, username, community_id, context=message)
+        try:
+            from backend.services.steve_platform_manual import append_professional_disclaimer_if_needed
+            ai_response = append_professional_disclaimer_if_needed(ai_response, message)
+        except Exception as safety_err:
+            logger.warning("Steve networking safety footer failed (non-fatal): %s", safety_err)
         ai_response = inject_member_mentions(ai_response, member_names)
         ai_response = _sanitize_networking_response_mentions(ai_response, member_names)
-        return jsonify({'success': True, 'response': format_steve_response_links(ai_response)})
+        response_payload = {'success': True, 'response': format_steve_response_links(ai_response)}
+        if debug_allowed:
+            response_payload['debug_trace'] = build_networking_debug_trace(
+                query_plan=query_plan,
+                dimension_plan=dimension_plan,
+                retrieval_query=retrieval_query,
+                structured_ids=structured_ids,
+                structured_details=structured_details,
+                semantic_ids=semantic_ids,
+                semantic_details=semantic_details,
+                candidate_pool=candidate_pool,
+                metadata_scores=metadata_scores,
+                ordered_usernames=ordered_usernames,
+                tiered_matches=tiered_matches,
+                forced_usernames=forced_usernames,
+                retrieval_policy=retrieval_policy,
+                all_member_usernames=all_member_usernames,
+                model_used=_model_used,
+                recommended=recommended,
+                ai_response=ai_response,
+                planner_model=networking_ai_config.planner_model,
+                planner_diagnostics=planner_diagnostics,
+            )
+        return jsonify(response_payload)
     except Exception as e:
         logger.error(f"Error in steve_match: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'AI service error'}), 500
@@ -16752,6 +15281,36 @@ def api_networking_steve_auto_match():
     community_id = data.get('community_id')
     if not community_id:
         return jsonify({'success': False, 'error': 'community_id required'}), 400
+    from backend.services import ai_usage as _networking_ai_usage
+    from backend.services.networking_ai_config import get_networking_ai_config
+
+    networking_ai_config = get_networking_ai_config()
+    if not networking_ai_config.enabled:
+        _networking_ai_usage.log_block(
+            username,
+            surface=_networking_ai_usage.SURFACE_NETWORKING_STEVE,
+            reason="networking_ai_disabled",
+            community_id=community_id,
+        )
+        return jsonify({'success': False, 'error': 'Steve networking search is currently disabled.'}), 403
+    used_this_week = _networking_ai_usage.networking_prompts_last_7_days(username)
+    if used_this_week >= networking_ai_config.weekly_prompts_per_user:
+        _networking_ai_usage.log_block(
+            username,
+            surface=_networking_ai_usage.SURFACE_NETWORKING_STEVE,
+            reason="weekly_networking_prompt_cap",
+            community_id=community_id,
+        )
+        return jsonify({
+            'success': False,
+            'error': f'Weekly Steve networking limit reached ({networking_ai_config.weekly_prompts_per_user} prompts).',
+            'reason': 'weekly_networking_prompt_cap',
+            'usage': {
+                'used': used_this_week,
+                'limit': networking_ai_config.weekly_prompts_per_user,
+                'window': 'rolling_7_days',
+            },
+        }), 429
     if not XAI_API_KEY:
         return jsonify({'success': False, 'error': 'AI service not available'}), 503
     try:
@@ -16799,7 +15358,7 @@ def api_networking_steve_auto_match():
             if requester_profile_ctx:
                 enriched_user_profile += f"\nAI insight: {requester_profile_ctx}"
 
-            c.execute(f"SELECT DISTINCT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, p.location, u.professional_about FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
+            c.execute(f"SELECT DISTINCT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, p.location, u.professional_about, u.first_name, u.last_name FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
             member_rows = c.fetchall()
             all_member_usernames = [str(_v(r, 0)) for r in member_rows]
             member_names = [(str(_v(r, 0)), str(_v(r, 1))) for r in member_rows]
@@ -16822,7 +15381,7 @@ def api_networking_steve_auto_match():
                 len(structured_ids),
                 len(semantic_ids),
                 len(ordered_usernames),
-                STEVE_NETWORKING_MODEL,
+                networking_ai_config.final_answer_model,
             )
             members_text = _networking_build_members_text(
                 member_rows, all_member_usernames, user_subcommunities,
@@ -16887,6 +15446,10 @@ RULES:
             prompt_input=auto_input,
             member_names=member_names,
             context_label="steve_auto_match",
+            networking_ai_config=networking_ai_config,
+            username=username,
+            community_id=community_id,
+            request_type="networking_auto_match",
         )
         if not ai_response:
             ai_response = "I couldn't generate matches. Please try again."
@@ -17443,7 +16006,7 @@ def user_chat():
                 is_verified = bool(row['email_verified'] if hasattr(row, 'keys') else (row[0] if row else 0))
             except Exception:
                 is_verified = False
-            if username != 'admin' and not is_verified:
+            if not is_app_admin(username) and not is_verified:
                 return redirect(url_for('verify_required'))
 
         # Serve React SPA from client/dist with cache-busting headers
@@ -17709,7 +16272,7 @@ def api_archived_chats():
 @login_required
 def update_user_password():
     username = session['username']
-    if username != 'admin':
+    if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Admin access required'})
     
     target_username = request.form.get('username')
@@ -17739,967 +16302,6 @@ def update_user_password():
     except Exception as e:
         logger.error(f"Error updating password for {target_username}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/debug_password/<username>')
-def debug_password(username):
-    """Temporary debug route to check password status - REMOVE IN PRODUCTION"""
-    # Only allow admin to access this
-    if session.get('username') != 'admin':
-        return "Unauthorized", 403
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT password FROM users WHERE username=?", (username,))
-            user = c.fetchone()
-            
-            if not user:
-                return f"User '{username}' not found"
-            
-            password = user[0] if user else None
-            
-            info = {
-                'username': username,
-                'password_exists': password is not None,
-                'password_length': len(password) if password else 0,
-                'is_hashed': False,
-                'hash_type': 'plain text'
-            }
-            
-            if password:
-                if password.startswith('$2b$') or password.startswith('$2a$') or password.startswith('$2y$'):
-                    info['is_hashed'] = True
-                    info['hash_type'] = 'bcrypt'
-                elif password.startswith('scrypt:'):
-                    info['is_hashed'] = True
-                    info['hash_type'] = 'scrypt'
-                elif password.startswith('pbkdf2:'):
-                    info['is_hashed'] = True
-                    info['hash_type'] = 'pbkdf2'
-                    
-                # Show first 20 chars for debugging (safe for hashed passwords)
-                info['password_preview'] = password[:20] + '...' if len(password) > 20 else password
-            
-            return f"""
-            <h2>Password Debug Info for {username}</h2>
-            <pre>{json.dumps(info, indent=2)}</pre>
-            <br>
-            <h3>Reset Password for {username}:</h3>
-            <form action="/reset_password_debug/{username}" method="POST">
-                <input type="password" name="new_password" placeholder="New password" required>
-                <button type="submit">Reset Password (Plain Text)</button>
-            </form>
-            <form action="/reset_password_debug_hashed/{username}" method="POST">
-                <input type="password" name="new_password" placeholder="New password" required>
-                <button type="submit">Reset Password (Hashed)</button>
-            </form>
-            """
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-@app.route('/reset_password_debug/<username>', methods=['POST'])
-def reset_password_debug(username):
-    """Reset password as plain text - TEMPORARY DEBUG"""
-    if session.get('username') != 'admin':
-        return "Unauthorized", 403
-    
-    new_password = request.form.get('new_password')
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            # Set as plain text
-            c.execute("UPDATE users SET password=? WHERE username=?", (new_password, username))
-            conn.commit()
-        return f"Password for {username} reset to plain text: '{new_password}'. <a href='/'>Go to login</a>"
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-@app.route('/reset_password_debug_hashed/<username>', methods=['POST'])
-def reset_password_debug_hashed(username):
-    """Reset password as hashed - TEMPORARY DEBUG"""
-    if session.get('username') != 'admin':
-        return "Unauthorized", 403
-    
-    new_password = request.form.get('new_password')
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            # Hash the password
-            hashed = generate_password_hash(new_password)
-            c.execute("UPDATE users SET password=? WHERE username=?", (hashed, username))
-            conn.commit()
-        return f"Password for {username} reset to hashed version of: '{new_password}'. <a href='/'>Go to login</a>"
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-@app.route('/request_password_reset', methods=['POST'])
-def request_password_reset():
-    """Handle password reset requests"""
-    try:
-        data = request.get_json(silent=True) or {}
-        username = None  # Deprecated: we now reset by email only
-        email = (data.get('email') if isinstance(data, dict) else None) or request.form.get('email') or request.args.get('email')
-        try:
-            logger.info(f"PW reset incoming: ct={request.content_type} user={username} has_email={bool(email)}")
-        except Exception:
-            pass
-        
-        if not email:
-            return jsonify({'success': True, 'message': 'If an account exists with the provided information, a reset link has been sent.'})
-        
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ensure_password_reset_table(c)
-            
-            # Find user by email
-            ph = get_sql_placeholder()
-            c.execute(f"SELECT username FROM users WHERE email = {ph}", (email,))
-            result = c.fetchone()
-            
-            # For security, always return success even if user doesn't exist
-            if result:
-                matched_username = result['username'] if hasattr(result, 'keys') else result[0]
-                # Generate secure token
-                token = secrets.token_urlsafe(32)
-                created_at = datetime.now().isoformat()
-                
-                # Rate limiting: only one active token within 10 minutes
-                try:
-                    c.execute(f"SELECT created_at FROM password_reset_tokens WHERE username={ph} AND used=0 ORDER BY id DESC LIMIT 1", (matched_username,))
-                    last = c.fetchone()
-                    if last:
-                        last_time = datetime.fromisoformat(last['created_at'] if hasattr(last, 'keys') else last[0])
-                        if datetime.now() - last_time < timedelta(minutes=10):
-                            # Still respond success without sending a new email
-                            return jsonify({'success': True, 'message': 'If an account exists, a reset link has been sent.'})
-                except Exception:
-                    pass
-                # Delete any existing unused tokens for this user (cleanup)
-                c.execute(f"DELETE FROM password_reset_tokens WHERE username = {ph} AND used = 0", (matched_username,))
-                
-                # Insert new token
-                ins_ph = ', '.join([ph, ph, ph, ph])
-                c.execute(f"""
-                    INSERT INTO password_reset_tokens (username, email, token, created_at)
-                    VALUES ({ins_ph})
-                """, (matched_username, email, token, created_at))
-                conn.commit()
-                
-                # Build reset link using canonical host
-                base = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}" if CANONICAL_HOST else request.host_url.rstrip('/')
-                reset_link = f"{base}/reset_password/{token}"
-                logger.info(f"Password reset link generated for {matched_username}")
-
-                # Send email via Resend
-                subject = "Reset your C-Point password"
-                html = f"""
-                    <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
-                      <p>We received a request to reset the password for your C-Point account.</p>
-                      <p><a href='{reset_link}' style='display:inline-block;background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none'>Reset Password</a></p>
-                      <p>Or open this link: <a href='{reset_link}'>{reset_link}</a></p>
-                      <p>This link expires in 24 hours. If you did not request this, you can ignore this email.</p>
-                    </div>
-                """
-                sent_ok = _send_email_via_resend(email, subject, html)
-                logger.info(f"PW reset email send status for {username}: {sent_ok}")
-        
-        # Always return success for security
-        return jsonify({'success': True, 'message': 'If an account exists with the provided information, a reset link has been sent.'})
-        
-    except Exception as e:
-        logger.error(f"Error in password reset request: {e}")
-        # Still return success for security
-        return jsonify({'success': True, 'message': 'If an account exists with the provided information, a reset link has been sent.'})
-
-@app.route('/reset_password/<token>', methods=['GET', 'POST'])
-def reset_password(token):
-    """Handle password reset with token"""
-    if request.method == 'GET':
-        # Verify token is valid and not expired (24 hours)
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            c.execute(f"""
-                SELECT username, created_at, used 
-                FROM password_reset_tokens 
-                WHERE token = {ph}
-            """, (token,))
-            result = c.fetchone()
-            
-            if not result:
-                flash('Invalid or expired reset link.', 'error')
-                return redirect(url_for('public.index'))
-            
-            if result['used']:
-                flash('This reset link has already been used.', 'error')
-                return redirect(url_for('public.index'))
-            
-            # Check if token is expired (24 hours)
-            created_at = datetime.fromisoformat(result['created_at'])
-            if datetime.now() - created_at > timedelta(hours=24):
-                flash('This reset link has expired.', 'error')
-                return redirect(url_for('public.index'))
-            
-            return render_template('reset_password.html', token=token, username=result['username'])
-    
-    elif request.method == 'POST':
-        new_password = request.form.get('password')
-        confirm_password = request.form.get('confirm_password')
-        
-        if not new_password or not confirm_password:
-            flash('Please fill in all fields.', 'error')
-            return redirect(url_for('reset_password', token=token))
-        
-        if new_password != confirm_password:
-            flash('Passwords do not match.', 'error')
-            return redirect(url_for('reset_password', token=token))
-        
-        if len(new_password) < 6:
-            flash('Password must be at least 6 characters long.', 'error')
-            return redirect(url_for('reset_password', token=token))
-        
-        try:
-            with get_db_connection() as conn:
-                c = conn.cursor()
-                
-                # Verify token again
-                ph = get_sql_placeholder()
-                c.execute(f"""
-                    SELECT username, created_at, used 
-                    FROM password_reset_tokens 
-                    WHERE token = {ph}
-                """, (token,))
-                result = c.fetchone()
-                
-                if not result or result['used']:
-                    flash('Invalid or expired reset link.', 'error')
-                    return redirect(url_for('public.index'))
-                
-                # Check expiration again
-                created_at = datetime.fromisoformat(result['created_at'])
-                if datetime.now() - created_at > timedelta(hours=24):
-                    flash('This reset link has expired.', 'error')
-                    return redirect(url_for('public.index'))
-                
-                # Update password
-                hashed_password = generate_password_hash(new_password)
-                c.execute(f"UPDATE users SET password = {ph} WHERE username = {ph}", 
-                         (hashed_password, result['username']))
-                
-                # Mark token as used
-                c.execute(f"UPDATE password_reset_tokens SET used = 1 WHERE token = {ph}", (token,))
-                conn.commit()
-                
-                return render_template('verification_result.html', success=True, message='Your password has been reset successfully.')
-                
-        except Exception as e:
-            logger.error(f"Error resetting password: {e}")
-            flash('An error occurred. Please try again.', 'error')
-            return redirect(url_for('reset_password', token=token))
-
-@app.route('/test_password_hash')
-def test_password_hash():
-    """Test password hashing and verification"""
-    if session.get('username') != 'admin':
-        return "Unauthorized", 403
-    
-    test_password = "test123"
-    
-    # Test different hash methods
-    from werkzeug.security import generate_password_hash, check_password_hash
-    
-    results = []
-    
-    # Test default hash
-    try:
-        hash1 = generate_password_hash(test_password)
-        verify1 = check_password_hash(hash1, test_password)
-        results.append({
-            'method': 'default',
-            'hash': hash1[:50] + '...',
-            'verify_same': verify1,
-            'verify_wrong': check_password_hash(hash1, "wrong")
-        })
-    except Exception as e:
-        results.append({'method': 'default', 'error': str(e)})
-    
-    # Test with specific method
-    try:
-        hash2 = generate_password_hash(test_password, method='pbkdf2:sha256')
-        verify2 = check_password_hash(hash2, test_password)
-        results.append({
-            'method': 'pbkdf2:sha256',
-            'hash': hash2[:50] + '...',
-            'verify_same': verify2,
-            'verify_wrong': check_password_hash(hash2, "wrong")
-        })
-    except Exception as e:
-        results.append({'method': 'pbkdf2:sha256', 'error': str(e)})
-    
-    # Test with scrypt
-    try:
-        hash3 = generate_password_hash(test_password, method='scrypt')
-        verify3 = check_password_hash(hash3, test_password)
-        results.append({
-            'method': 'scrypt',
-            'hash': hash3[:50] + '...',
-            'verify_same': verify3,
-            'verify_wrong': check_password_hash(hash3, "wrong")
-        })
-    except Exception as e:
-        results.append({'method': 'scrypt', 'error': str(e)})
-    
-    return f"""
-    <h2>Password Hash Testing</h2>
-    <p>Test password: "{test_password}"</p>
-    <pre>{json.dumps(results, indent=2)}</pre>
-    <br>
-    <h3>Test Specific Password:</h3>
-    <form method="POST" action="/test_specific_password">
-        <input type="text" name="username" placeholder="Username" required><br>
-        <input type="password" name="password" placeholder="Password to test" required><br>
-        <button type="submit">Test Login</button>
-    </form>
-    """
-@app.route('/test_specific_password', methods=['POST'])
-def test_specific_password():
-    """Test a specific username/password combination"""
-    if session.get('username') != 'admin':
-        return "Unauthorized", 403
-    
-    test_username = request.form.get('username')
-    test_password = request.form.get('password')
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT password FROM users WHERE username=?", (test_username,))
-            user = c.fetchone()
-            
-            if not user:
-                return f"User '{test_username}' not found"
-            
-            stored_password = user[0]
-            
-            result = {
-                'username': test_username,
-                'input_password': test_password,
-                'stored_password_preview': stored_password[:30] + '...' if len(stored_password) > 30 else stored_password,
-                'stored_password_length': len(stored_password),
-                'starts_with_dollar': stored_password.startswith('$'),
-                'starts_with_scrypt': stored_password.startswith('scrypt:'),
-                'starts_with_pbkdf2': stored_password.startswith('pbkdf2:'),
-            }
-            
-            # Test our login logic
-            if stored_password and (stored_password.startswith('$') or stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:')):
-                result['detected_as'] = 'hashed'
-                try:
-                    from werkzeug.security import check_password_hash
-                    password_correct = check_password_hash(stored_password, test_password)
-                    result['check_password_hash_result'] = password_correct
-                    
-                    # Try to manually verify for debugging
-                    import hashlib
-                    result['debug_info'] = {
-                        'werkzeug_version': 'checking...',
-                        'hash_method_detected': stored_password.split(':')[0] if ':' in stored_password else 'unknown'
-                    }
-                except Exception as e:
-                    result['check_password_hash_error'] = str(e)
-                    password_correct = False
-            else:
-                result['detected_as'] = 'plain text'
-                password_correct = (stored_password == test_password)
-                result['plain_text_match'] = password_correct
-            
-            result['would_login_work'] = password_correct
-            
-            return f"""
-            <h2>Password Test Results for {test_username}</h2>
-            <pre>{json.dumps(result, indent=2)}</pre>
-            <br>
-            <a href="/debug_password/{test_username}">Go to password debug/reset page</a>
-            """
-            
-    except Exception as e:
-        return f"Error: {str(e)}"
-@app.route('/migrate_passwords')
-def migrate_passwords():
-    """Migrate all plain text passwords to hashed passwords - ADMIN ONLY"""
-    if session.get('username') != 'admin':
-        return "Unauthorized", 403
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Get all users
-            c.execute("SELECT username, password FROM users")
-            users = c.fetchall()
-            
-            results = {
-                'total_users': len(users),
-                'already_hashed': 0,
-                'migrated': 0,
-                'failed': 0,
-                'details': []
-            }
-            
-            for user in users:
-                username = user[0]
-                password = user[1]
-                
-                if not password:
-                    results['failed'] += 1
-                    results['details'].append(f"{username}: No password set")
-                    continue
-                
-                # Check if already hashed
-                if password.startswith('$') or password.startswith('scrypt:') or password.startswith('pbkdf2:'):
-                    results['already_hashed'] += 1
-                    results['details'].append(f"{username}: Already hashed")
-                else:
-                    # It's plain text, hash it
-                    try:
-                        hashed_password = generate_password_hash(password)
-                        c.execute("UPDATE users SET password = ? WHERE username = ?", 
-                                (hashed_password, username))
-                        results['migrated'] += 1
-                        results['details'].append(f"{username}: Migrated successfully")
-                    except Exception as e:
-                        results['failed'] += 1
-                        results['details'].append(f"{username}: Failed - {str(e)}")
-            
-            # Commit all changes
-            conn.commit()
-            
-            # Format results for display
-            return f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Password Migration Results</title>
-                <style>
-                    body {{
-                        background: #000;
-                        color: #fff;
-                        font-family: Arial, sans-serif;
-                        padding: 20px;
-                        max-width: 800px;
-                        margin: 0 auto;
-                    }}
-                    .success {{ color: #4db6ac; }}
-                    .warning {{ color: #ffa726; }}
-                    .error {{ color: #ef5350; }}
-                    .stats {{
-                        background: #1a1a1a;
-                        padding: 20px;
-                        border-radius: 8px;
-                        margin: 20px 0;
-                    }}
-                    .details {{
-                        background: #0a0a0a;
-                        padding: 15px;
-                        border-radius: 8px;
-                        margin: 20px 0;
-                        max-height: 400px;
-                        overflow-y: auto;
-                    }}
-                    .detail-item {{
-                        padding: 5px 0;
-                        border-bottom: 1px solid #333;
-                    }}
-                    button {{
-                        background: #4db6ac;
-                        color: white;
-                        border: none;
-                        padding: 10px 20px;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        margin-top: 20px;
-                    }}
-                    button:hover {{
-                        background: #5bc7bd;
-                    }}
-                </style>
-            </head>
-            <body>
-                <h1>Password Migration Results</h1>
-                <div class="stats">
-                    <h2>Summary</h2>
-                    <p>Total Users: <strong>{results['total_users']}</strong></p>
-                    <p class="success">✓ Successfully Migrated: <strong>{results['migrated']}</strong></p>
-                    <p class="warning">⚠ Already Hashed: <strong>{results['already_hashed']}</strong></p>
-                    <p class="error">✗ Failed: <strong>{results['failed']}</strong></p>
-                </div>
-                <div class="details">
-                    <h3>Details</h3>
-                    {''.join([f'<div class="detail-item">{detail}</div>' for detail in results['details']])}
-                </div>
-                <button onclick="window.location.href='/admin'">Back to Admin Dashboard</button>
-                <button onclick="window.location.href='/test_password_hash'">Test Password Hashing</button>
-            </body>
-            </html>
-            """
-            
-    except Exception as e:
-        logger.error(f"Error during password migration: {str(e)}")
-        return f"Migration failed: {str(e)}", 500
-
-@app.route('/check_password_status')
-def check_password_status():
-    """Check the status of passwords in the database - ADMIN ONLY"""
-    if session.get('username') != 'admin':
-        return "Unauthorized", 403
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Get all users and their password status
-            c.execute("SELECT username, password FROM users")
-            users = c.fetchall()
-            
-            plain_text = []
-            hashed = []
-            no_password = []
-            
-            for user in users:
-                username = user[0]
-                password = user[1]
-                
-                if not password:
-                    no_password.append(username)
-                elif password.startswith('$') or password.startswith('scrypt:') or password.startswith('pbkdf2:'):
-                    hashed.append(username)
-                else:
-                    plain_text.append(username)
-            
-            return f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Password Status Check</title>
-                <style>
-                    body {{
-                        background: #000;
-                        color: #fff;
-                        font-family: Arial, sans-serif;
-                        padding: 20px;
-                        max-width: 800px;
-                        margin: 0 auto;
-                    }}
-                    .section {{
-                        background: #1a1a1a;
-                        padding: 20px;
-                        border-radius: 8px;
-                        margin: 20px 0;
-                    }}
-                    .plain-text {{ border-left: 4px solid #ef5350; }}
-                    .hashed {{ border-left: 4px solid #4db6ac; }}
-                    .no-password {{ border-left: 4px solid #ffa726; }}
-                    .user-list {{
-                        display: flex;
-                        flex-wrap: wrap;
-                        gap: 10px;
-                        margin-top: 10px;
-                    }}
-                    .user-item {{
-                        background: #0a0a0a;
-                        padding: 5px 10px;
-                        border-radius: 4px;
-                    }}
-                    .migrate-btn {{
-                        background: #ef5350;
-                        color: white;
-                        border: none;
-                        padding: 15px 30px;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        font-size: 16px;
-                        margin: 20px 0;
-                    }}
-                    .migrate-btn:hover {{
-                        background: #f44336;
-                    }}
-                    button {{
-                        background: #4db6ac;
-                        color: white;
-                        border: none;
-                        padding: 10px 20px;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        margin-right: 10px;
-                    }}
-                    button:hover {{
-                        background: #5bc7bd;
-                    }}
-                </style>
-            </head>
-            <body>
-                <h1>Password Security Status</h1>
-                
-                <div class="section plain-text">
-                    <h2>⚠️ Plain Text Passwords ({len(plain_text)} users)</h2>
-                    <p>These passwords are stored in plain text and need to be migrated:</p>
-                    <div class="user-list">
-                        {''.join([f'<span class="user-item">{u}</span>' for u in plain_text]) if plain_text else '<em>None</em>'}
-                    </div>
-                </div>
-                
-                <div class="section hashed">
-                    <h2>✅ Hashed Passwords ({len(hashed)} users)</h2>
-                    <p>These passwords are properly hashed and secure:</p>
-                    <div class="user-list">
-                        {''.join([f'<span class="user-item">{u}</span>' for u in hashed]) if hashed else '<em>None</em>'}
-                    </div>
-                </div>
-                
-                <div class="section no-password">
-                    <h2>❓ No Password Set ({len(no_password)} users)</h2>
-                    <p>These users have no password set:</p>
-                    <div class="user-list">
-                        {''.join([f'<span class="user-item">{u}</span>' for u in no_password]) if no_password else '<em>None</em>'}
-                    </div>
-                </div>
-                
-                {f'''
-                <button class="migrate-btn" onclick="if(confirm(&quot;This will hash all {len(plain_text)} plain text passwords. Continue?&quot;)) window.location.href=&quot;/migrate_passwords&quot;">
-                    🔒 Migrate {len(plain_text)} Plain Text Passwords to Hashed
-                </button>
-                ''' if plain_text else '<p style="color: #4db6ac; font-size: 18px;">✅ All passwords are already hashed!</p>'}
-                
-                <div style="margin-top: 30px;">
-                    <button onclick="window.location.href='/admin'">Back to Admin Dashboard</button>
-                    <button onclick="window.location.reload()">Refresh Status</button>
-                </div>
-            </body>
-            </html>
-            """
-            
-    except Exception as e:
-        logger.error(f"Error checking password status: {str(e)}")
-        return f"Error: {str(e)}", 500
-def check_duplicate_users():
-    """Check for duplicate usernames in the database - ADMIN ONLY"""
-    if session.get('username') != 'admin':
-        return "Unauthorized", 403
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Check for duplicate usernames
-            c.execute("""
-                SELECT username, COUNT(*) as count, GROUP_CONCAT(rowid) as ids, 
-                       GROUP_CONCAT(password, '|||') as passwords,
-                       GROUP_CONCAT(email, '|||') as emails,
-                       GROUP_CONCAT(subscription, '|||') as subscriptions
-                FROM users 
-                GROUP BY LOWER(username) 
-                HAVING count > 1
-            """)
-            duplicates = c.fetchall()
-            
-            # Get all admin records specifically
-            c.execute("""
-                SELECT rowid, username, email, password, subscription, created_at
-                FROM users 
-                WHERE LOWER(username) = 'admin'
-                ORDER BY rowid
-            """)
-            admin_records = c.fetchall()
-            
-            # Build the duplicates table HTML
-            duplicates_html = ""
-            if duplicates:
-                duplicates_rows = []
-                for dup in duplicates:
-                    username = str(dup[0])
-                    count = str(dup[1])
-                    row_ids = str(dup[2])
-                    password_preview = str(dup[3])[:50] if dup[3] else ""
-                    emails = str(dup[4])
-                    subscriptions = str(dup[5])
-                    
-                    row_html = f'''
-                        <tr>
-                            <td>{username}</td>
-                            <td>{count}</td>
-                            <td>{row_ids}</td>
-                            <td class="password-cell">{password_preview}...</td>
-                            <td>{emails}</td>
-                            <td>{subscriptions}</td>
-                            <td>
-                                <button class="fix-btn" onclick="if(confirm('Keep only the first record and delete duplicates for {username}?')) window.location.href='/fix_duplicate_user/{username}'">
-                                    Fix Duplicates
-                                </button>
-                            </td>
-                        </tr>'''
-                    duplicates_rows.append(row_html)
-                
-                duplicates_html = f'''
-                <div class="section duplicate">
-                    <h2>⚠️ Duplicate Usernames Found ({len(duplicates)} usernames)</h2>
-                    <table>
-                        <tr>
-                            <th>Username</th>
-                            <th>Count</th>
-                            <th>Row IDs</th>
-                            <th>Passwords</th>
-                            <th>Emails</th>
-                            <th>Subscriptions</th>
-                            <th>Action</th>
-                        </tr>
-                        {"".join(duplicates_rows)}
-                    </table>
-                </div>'''
-            else:
-                duplicates_html = '''
-                <div class="section" style="border-left: 4px solid #4db6ac;">
-                    <h2>✅ No Duplicate Usernames Found</h2>
-                    <p>All usernames in the database are unique.</p>
-                </div>'''
-            
-            # Build admin records HTML
-            admin_rows = []
-            for record in admin_records:
-                row_id = str(record[0])
-                username = str(record[1])
-                email = str(record[2]) if record[2] else 'N/A'
-                password_preview = str(record[3])[:30] if record[3] else 'N/A'
-                subscription = str(record[4]) if record[4] else 'N/A'
-                created_at = str(record[5]) if record[5] else 'N/A'
-                
-                admin_row = f'''
-                        <tr>
-                            <td>{row_id}</td>
-                            <td>{username}</td>
-                            <td>{email}</td>
-                            <td class="password-cell">{password_preview}...</td>
-                            <td>{subscription}</td>
-                            <td>{created_at}</td>
-                        </tr>'''
-                admin_rows.append(admin_row)
-            
-            admin_warning = ''
-            admin_fix_button = ''
-            if len(admin_records) > 1:
-                admin_warning = '''
-                    <div class="warning">
-                        ⚠️ Found multiple records for admin account. There should only be 1.
-                    </div>'''
-                admin_fix_button = '''
-                    <button class="fix-btn" onclick="if(confirm('This will keep the first admin record and delete the rest. Continue?')) window.location.href='/fix_duplicate_user/admin'">
-                        Fix Admin Duplicates
-                    </button>'''
-            
-            return f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Duplicate Users Check</title>
-                <style>
-                    body {{
-                        background: #000;
-                        color: #fff;
-                        font-family: Arial, sans-serif;
-                        padding: 20px;
-                        max-width: 1200px;
-                        margin: 0 auto;
-                    }}
-                    .section {{
-                        background: #1a1a1a;
-                        padding: 20px;
-                        border-radius: 8px;
-                        margin: 20px 0;
-                    }}
-                    .duplicate {{
-                        border-left: 4px solid #ef5350;
-                    }}
-                    .admin-records {{
-                        border-left: 4px solid #ffa726;
-                    }}
-                    table {{
-                        width: 100%;
-                        border-collapse: collapse;
-                        margin-top: 15px;
-                    }}
-                    th, td {{
-                        padding: 10px;
-                        text-align: left;
-                        border-bottom: 1px solid #333;
-                    }}
-                    th {{
-                        background: #0a0a0a;
-                        color: #4db6ac;
-                    }}
-                    .password-cell {{
-                        font-family: monospace;
-                        font-size: 12px;
-                        word-break: break-all;
-                    }}
-                    .fix-btn {{
-                        background: #ef5350;
-                        color: white;
-                        border: none;
-                        padding: 8px 15px;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        margin: 5px;
-                    }}
-                    .fix-btn:hover {{
-                        background: #f44336;
-                    }}
-                    button {{
-                        background: #4db6ac;
-                        color: white;
-                        border: none;
-                        padding: 10px 20px;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        margin-right: 10px;
-                    }}
-                    button:hover {{
-                        background: #5bc7bd;
-                    }}
-                    .warning {{
-                        background: rgba(255, 152, 0, 0.1);
-                        border: 1px solid #ff9800;
-                        padding: 15px;
-                        border-radius: 4px;
-                        margin: 15px 0;
-                    }}
-                </style>
-            </head>
-            <body>
-                <h1>Duplicate Users Check</h1>
-                
-                {duplicates_html}
-    
-                <div class="section admin-records">
-                    <h2>Admin Account Records ({len(admin_records)} records)</h2>
-                    {admin_warning}
-                    <table>
-                        <tr>
-                            <th>Row ID</th>
-                            <th>Username</th>
-                            <th>Email</th>
-                            <th>Password (first 30 chars)</th>
-                            <th>Subscription</th>
-                            <th>Created At</th>
-                        </tr>
-                        {"".join(admin_rows)}
-                    </table>
-                    {admin_fix_button}
-                </div>
-                
-                <div style="margin-top: 30px;">
-                    <button onclick="window.location.href='/admin'">Back to Admin Dashboard</button>
-                    <button onclick="window.location.reload()">Refresh</button>
-                    <button onclick="window.location.href='/check_password_status'">Check Password Status</button>
-                </div>
-            </body>
-            </html>
-            """
-            
-    except Exception as e:
-        logger.error(f"Error checking duplicate users: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return f"Error: {str(e)}", 500
-
-@app.route('/fix_duplicate_user/<username>')
-def fix_duplicate_user(username):
-    """Fix duplicate user records by keeping only the first one - ADMIN ONLY"""
-    if session.get('username') != 'admin':
-        return "Unauthorized", 403
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Get all records for this username
-            c.execute("""
-                SELECT rowid, username, password, email, subscription
-                FROM users 
-                WHERE LOWER(username) = LOWER(?)
-                ORDER BY rowid
-            """, (username,))
-            records = c.fetchall()
-            
-            if len(records) <= 1:
-                return f"No duplicates found for {username}. <a href='/check_duplicate_users'>Go back</a>"
-            
-            # Keep the first record, delete the rest
-            keep_record = records[0]
-            delete_ids = [str(r[0]) for r in records[1:]]
-            
-            # Delete duplicate records
-            c.execute(f"""
-                DELETE FROM users 
-                WHERE rowid IN ({','.join(['?' for _ in delete_ids])})
-            """, delete_ids)
-            
-            conn.commit()
-            
-            return f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Duplicate Fixed</title>
-                <style>
-                    body {{
-                        background: #000;
-                        color: #fff;
-                        font-family: Arial, sans-serif;
-                        padding: 20px;
-                        max-width: 800px;
-                        margin: 0 auto;
-                    }}
-                    .success {{
-                        background: rgba(77, 182, 172, 0.1);
-                        border: 1px solid #4db6ac;
-                        padding: 20px;
-                        border-radius: 8px;
-                        margin: 20px 0;
-                    }}
-                    button {{
-                        background: #4db6ac;
-                        color: white;
-                        border: none;
-                        padding: 10px 20px;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        margin-right: 10px;
-                        margin-top: 20px;
-                    }}
-                    button:hover {{
-                        background: #5bc7bd;
-                    }}
-                </style>
-            </head>
-            <body>
-                <h1>Duplicate Fixed</h1>
-                <div class="success">
-                    <h2>✅ Successfully Fixed Duplicates for {username}</h2>
-                    <p>Kept record ID: {keep_record[0]}</p>
-                    <p>Deleted {len(delete_ids)} duplicate records (IDs: {', '.join(delete_ids)})</p>
-                    <p>Email: {keep_record[3] or 'N/A'}</p>
-                    <p>Subscription: {keep_record[4] or 'N/A'}</p>
-                </div>
-                <button onclick="window.location.href='/check_duplicate_users'">Check for More Duplicates</button>
-                <button onclick="window.location.href='/admin'">Back to Admin Dashboard</button>
-            </body>
-            </html>
-            """
-            
-    except Exception as e:
-        logger.error(f"Error fixing duplicate user {username}: {str(e)}")
-        return f"Error: {str(e)}", 500
 
 @app.route('/feed')
 @login_required
@@ -19069,6 +16671,9 @@ def notify_post_reply_recipients(
                     send_push_to_user(target, {
                         'title': f'New reply from {from_user}',
                         'body': push_body,
+                        'summary_body': push_privacy_summary(
+                            target, 'community_reply', author=from_user
+                        ),
                         'url': notification_url,
                         'tag': f'post-reply-{post_id}-{target}'
                     })
@@ -19093,21 +16698,29 @@ def is_community_admin_or_owner(username: str, community_id: int) -> bool:
 @login_required
 def api_community_tasks():
     """List community-wide tasks (assigned to entire community)."""
+    username = session.get('username')
     community_id = request.args.get('community_id', type=int)
+    group_id_param = request.args.get('group_id', type=int)
     if not community_id:
         return jsonify({'success': False, 'error': 'community_id required'}), 400
     try:
         ensure_tasks_table()
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
+            if group_id_param is not None:
+                ok, err = check_group_feed_access(c, ph, username, group_id_param)
+                if not ok:
+                    return jsonify({'success': False, 'error': err or 'Forbidden'}), 403
+            scope_sql, scope_params = tasks_group_scope_sql(ph, group_id_param)
             c.execute(
-                """
-                SELECT id, community_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status
+                f"""
+                SELECT id, community_id, group_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status
                 FROM tasks
-                WHERE community_id = ? AND (assigned_to_username IS NULL OR assigned_to_username = '')
+                WHERE community_id = {ph} AND (assigned_to_username IS NULL OR assigned_to_username = '') {scope_sql}
                 ORDER BY (CASE WHEN due_date IS NULL THEN 1 ELSE 0 END), due_date ASC, id DESC
                 """,
-                (community_id,)
+                (community_id,) + scope_params,
             )
             tasks = [dict(row) for row in c.fetchall()]
         return jsonify({'success': True, 'tasks': tasks})
@@ -19122,20 +16735,27 @@ def api_my_tasks():
     """List tasks assigned to the current user for a community."""
     username = session['username']
     community_id = request.args.get('community_id', type=int)
+    group_id_param = request.args.get('group_id', type=int)
     if not community_id:
         return jsonify({'success': False, 'error': 'community_id required'}), 400
     try:
         ensure_tasks_table()
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
+            if group_id_param is not None:
+                ok, err = check_group_feed_access(c, ph, username, group_id_param)
+                if not ok:
+                    return jsonify({'success': False, 'error': err or 'Forbidden'}), 403
+            scope_sql, scope_params = tasks_group_scope_sql(ph, group_id_param)
             c.execute(
-                """
-                SELECT id, community_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status
+                f"""
+                SELECT id, community_id, group_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status
                 FROM tasks
-                WHERE community_id = ? AND assigned_to_username = ?
+                WHERE community_id = {ph} AND assigned_to_username = {ph} {scope_sql}
                 ORDER BY (CASE WHEN due_date IS NULL THEN 1 ELSE 0 END), due_date ASC, id DESC
                 """,
-                (community_id, username)
+                (community_id, username) + scope_params,
             )
             tasks = [dict(row) for row in c.fetchall()]
         return jsonify({'success': True, 'tasks': tasks})
@@ -19176,6 +16796,7 @@ def api_all_my_tasks():
                 WHERE community_id IN ({placeholders}) 
                   AND assigned_to_username = {ph}
                   AND (completed = 0 OR completed IS NULL)
+                  AND (group_id IS NULL OR COALESCE(group_id, 0) = 0)
                 ORDER BY (CASE WHEN due_date IS NULL THEN 1 ELSE 0 END), due_date ASC, id DESC
             """, (*communities.keys(), username))
             tasks = []
@@ -19263,111 +16884,7 @@ def api_all_active_polls():
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 
-@app.route('/api/all_calendar_events')
-@login_required
-def api_all_calendar_events():
-    """Get all upcoming calendar events across ALL communities the user is a member of."""
-    username = session['username']
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            
-            # Get all communities user is a member of
-            c.execute(f"""
-                SELECT uc.community_id, c.name as community_name
-                FROM user_communities uc
-                JOIN users u ON uc.user_id = u.id
-                JOIN communities c ON c.id = uc.community_id
-                WHERE LOWER(u.username) = LOWER({ph})
-            """, (username,))
-            communities = {row['community_id']: row['community_name'] for row in c.fetchall()}
-            
-            # Get calendar events where user is invited or is the creator, filtered to upcoming
-            if USE_MYSQL:
-                query = f"""
-                    SELECT DISTINCT ce.id, ce.username, ce.title, ce.date, 
-                           COALESCE(ce.end_date, ce.date) as end_date,
-                           COALESCE(ce.start_time, ce.time) as start_time,
-                           ce.end_time,
-                           ce.time, ce.description, ce.created_at, ce.community_id, ce.timezone
-                    FROM calendar_events ce
-                    LEFT JOIN event_invitations ei ON ce.id = ei.event_id
-                    WHERE (ce.username = {ph} OR ei.invited_username = {ph})
-                      AND ce.date >= CURDATE()
-                    ORDER BY ce.date ASC, COALESCE(ce.start_time, ce.time) ASC
-                """
-            else:
-                query = f"""
-                    SELECT DISTINCT ce.id, ce.username, ce.title, ce.date, 
-                           COALESCE(ce.end_date, ce.date) as end_date,
-                           COALESCE(ce.start_time, ce.time) as start_time,
-                           ce.end_time,
-                           ce.time, ce.description, ce.created_at, ce.community_id, ce.timezone
-                    FROM calendar_events ce
-                    LEFT JOIN event_invitations ei ON ce.id = ei.event_id
-                    WHERE (ce.username = {ph} OR ei.invited_username = {ph})
-                      AND ce.date >= date('now')
-                    ORDER BY ce.date ASC, COALESCE(ce.start_time, ce.time) ASC
-                """
-            c.execute(query, (username, username))
-            events_raw = c.fetchall()
-            
-            events = []
-            for event in events_raw:
-                event_id = event['id']
-                community_id = event['community_id']
-                
-                # Get RSVP counts
-                c.execute(f"""
-                    SELECT response, COUNT(*) as count
-                    FROM event_rsvps
-                    WHERE event_id = {ph}
-                    GROUP BY response
-                """, (event_id,))
-                rsvp_counts = {'going': 0, 'maybe': 0, 'not_going': 0}
-                for row in c.fetchall():
-                    rsvp_counts[row['response']] = row['count']
-                
-                # Get user's RSVP
-                c.execute(f"SELECT response FROM event_rsvps WHERE event_id = {ph} AND username = {ph}", (event_id, username))
-                result = c.fetchone()
-                user_rsvp = result['response'] if result else None
-                
-                # Extract time
-                def extract_time(dt_str):
-                    if not dt_str or dt_str == '0000-00-00 00:00:00':
-                        return None
-                    try:
-                        if ' ' in str(dt_str):
-                            return str(dt_str).split(' ')[1][:5]
-                        return dt_str
-                    except:
-                        return dt_str
-                
-                events.append({
-                    'id': event['id'],
-                    'username': event['username'],
-                    'title': event['title'],
-                    'date': event['date'],
-                    'end_date': event['end_date'],
-                    'time': event['time'],
-                    'start_time': extract_time(event['start_time']),
-                    'end_time': extract_time(event['end_time']),
-                    'timezone': event.get('timezone') if hasattr(event, 'get') else None,
-                    'description': event['description'],
-                    'community_id': community_id,
-                    'community_name': communities.get(community_id, 'Unknown'),
-                    'rsvp_counts': rsvp_counts,
-                    'user_rsvp': user_rsvp,
-                    'is_creator': event['username'] == username
-                })
-            
-            return jsonify({'success': True, 'events': events})
-    except Exception as e:
-        logger.error(f"api_all_calendar_events error: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
+# Calendar API routes now reside in backend.blueprints.community_calendar.
 
 @app.route('/api/create_task', methods=['POST'])
 @login_required
@@ -19378,6 +16895,7 @@ def api_create_task():
     description = (request.form.get('description') or '').strip()
     due_date = (request.form.get('due_date') or '').strip()  # 'YYYY-MM-DD' or empty
     community_id = request.form.get('community_id', type=int)
+    group_id = request.form.get('group_id', type=int)
     assign_all = (request.form.get('assign_all') or '').strip().lower() == 'true'
     assigned_members = request.form.getlist('assigned_members[]') or []
     status = (request.form.get('status') or 'not_started').strip().lower()
@@ -19426,7 +16944,23 @@ def api_create_task():
 
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
+            if group_id:
+                okg, errg = check_group_feed_access(c, ph, username, group_id)
+                if not okg:
+                    return jsonify({'success': False, 'error': errg or 'Forbidden'}), 403
+                g_tbl = '`groups`' if USE_MYSQL else 'groups'
+                c.execute(f"SELECT community_id FROM {g_tbl} WHERE id = {ph}", (group_id,))
+                gr = c.fetchone()
+                if not gr:
+                    return jsonify({'success': False, 'error': 'Group not found'}), 404
+                gcomm = gr['community_id'] if hasattr(gr, 'keys') else gr[0]
+                if gcomm is None or int(gcomm) != int(community_id):
+                    return jsonify({'success': False, 'error': 'Group does not belong to this community'}), 400
             created_at_sql = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            tasks_deep_link = f"/community/{community_id}/tasks_react"
+            if group_id:
+                tasks_deep_link = f"{tasks_deep_link}?group_id={group_id}"
 
             # Create tasks
             created_ids = []
@@ -19436,18 +16970,18 @@ def api_create_task():
                     if 'USE_MYSQL' in globals() and USE_MYSQL:
                         c.execute(
                             """
-                            INSERT INTO tasks (community_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
-                            VALUES (?, ?, ?, NULLIF(?, ''), NULL, ?, NOW(), 0, ?)
+                            INSERT INTO tasks (community_id, group_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
+                            VALUES (?, ?, ?, ?, NULLIF(?, ''), NULL, ?, NOW(), 0, ?)
                             """,
-                            (community_id, title, description, due_date, username, status)
+                            (community_id, group_id, title, description, due_date, username, status)
                         )
                     else:
                         c.execute(
                             """
-                            INSERT INTO tasks (community_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
-                            VALUES (?, ?, ?, NULLIF(?, ''), NULL, ?, ?, 0, ?)
+                            INSERT INTO tasks (community_id, group_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
+                            VALUES (?, ?, ?, ?, NULLIF(?, ''), NULL, ?, ?, 0, ?)
                             """,
-                            (community_id, title, description, due_date, username, created_at_sql, status)
+                            (community_id, group_id, title, description, due_date, username, created_at_sql, status)
                         )
                     task_id = c.lastrowid
                     created_ids.append(task_id)
@@ -19455,15 +16989,26 @@ def api_create_task():
                     logger.error(f"insert community task error: {ie}")
                 # Notify all members except creator
                 try:
-                    c.execute(
-                        """
-                        SELECT u.username FROM users u
-                        JOIN user_communities uc ON u.id = uc.user_id
-                        WHERE uc.community_id = ? AND u.username != ?
-                        """,
-                        (community_id, username)
-                    )
-                    members = [r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
+                    if group_id:
+                        gm_tbl = '`group_members`' if USE_MYSQL else 'group_members'
+                        c.execute(
+                            f"""
+                            SELECT username FROM {gm_tbl}
+                            WHERE group_id = {ph} AND status = {ph} AND username != {ph}
+                            """,
+                            (group_id, 'member', username),
+                        )
+                        members = [r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
+                    else:
+                        c.execute(
+                            """
+                            SELECT u.username FROM users u
+                            JOIN user_communities uc ON u.id = uc.user_id
+                            WHERE uc.community_id = ? AND u.username != ?
+                            """,
+                            (community_id, username)
+                        )
+                        members = [r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
                     # community name
                     community_name = None
                     try:
@@ -19474,7 +17019,7 @@ def api_create_task():
                     except Exception:
                         pass
                     message = f"New community task in {community_name}: {title}" if community_name else f"New community task: {title}"
-                    link = f"/community/{community_id}/tasks_react"
+                    link = tasks_deep_link
                     for m in members:
                         try:
                             if 'USE_MYSQL' in globals() and USE_MYSQL:
@@ -19516,23 +17061,23 @@ def api_create_task():
                         if 'USE_MYSQL' in globals() and USE_MYSQL:
                             c.execute(
                                 """
-                                INSERT INTO tasks (community_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
-                                VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, NOW(), 0, ?)
+                                INSERT INTO tasks (community_id, group_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
+                                VALUES (?, ?, ?, ?, NULLIF(?, ''), ?, ?, NOW(), 0, ?)
                                 """,
-                                (community_id, title, description, due_date, assignee, username, status)
+                                (community_id, group_id, title, description, due_date, assignee, username, status)
                             )
                         else:
                             c.execute(
                                 """
-                                INSERT INTO tasks (community_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
-                                VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, ?, 0, ?)
+                                INSERT INTO tasks (community_id, group_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
+                                VALUES (?, ?, ?, ?, NULLIF(?, ''), ?, ?, ?, 0, ?)
                                 """,
-                                (community_id, title, description, due_date, assignee, username, created_at_sql, status)
+                                (community_id, group_id, title, description, due_date, assignee, username, created_at_sql, status)
                             )
                         task_id = c.lastrowid
                         created_ids.append(task_id)
                         # Notify assignee (skip self-notification)
-                        link = f"/community/{community_id}/tasks_react"
+                        link = tasks_deep_link
                         # Get community name for notification
                         task_comm_name = None
                         try:
@@ -19599,11 +17144,24 @@ def api_complete_task():
         ensure_tasks_table()
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT assigned_to_username FROM tasks WHERE id = ? AND community_id = ?", (task_id, community_id))
+            ph = get_sql_placeholder()
+            c.execute(
+                f"SELECT assigned_to_username, group_id FROM tasks WHERE id = {ph} AND community_id = {ph}",
+                (task_id, community_id),
+            )
             row = c.fetchone()
             if not row:
                 return jsonify({'success': False, 'error': 'Task not found'}), 404
-            assignee = row['assigned_to_username'] if hasattr(row, 'keys') else row[0]
+            if hasattr(row, 'keys'):
+                assignee = row['assigned_to_username']
+                task_gid = row.get('group_id')
+            else:
+                assignee = row[0]
+                task_gid = row[1] if len(row) > 1 else None
+            if task_gid:
+                okt, errt = check_group_feed_access(c, ph, username, int(task_gid))
+                if not okt:
+                    return jsonify({'success': False, 'error': errt or 'Forbidden'}), 403
             admin_ok = is_community_admin_or_owner(username, community_id)
             if assignee and assignee != username and not admin_ok:
                 return jsonify({'success': False, 'error': 'Not allowed'}), 403
@@ -19638,11 +17196,24 @@ def api_edit_task():
         ensure_tasks_table()
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT created_by_username FROM tasks WHERE id=? AND community_id=?", (task_id, community_id))
+            ph = get_sql_placeholder()
+            c.execute(
+                f"SELECT created_by_username, group_id FROM tasks WHERE id={ph} AND community_id={ph}",
+                (task_id, community_id),
+            )
             row = c.fetchone()
             if not row:
                 return jsonify({'success': False, 'error': 'Task not found'}), 404
-            creator = row['created_by_username'] if hasattr(row, 'keys') else row[0]
+            if hasattr(row, 'keys'):
+                creator = row['created_by_username']
+                task_gid = row.get('group_id')
+            else:
+                creator = row[0]
+                task_gid = row[1] if len(row) > 1 else None
+            if task_gid:
+                okt, errt = check_group_feed_access(c, ph, username, int(task_gid))
+                if not okt:
+                    return jsonify({'success': False, 'error': errt or 'Forbidden'}), 403
             admin_ok = is_community_admin_or_owner(username, community_id)
             if username != creator and not admin_ok:
                 return jsonify({'success': False, 'error': 'Not allowed'}), 403
@@ -19683,11 +17254,24 @@ def api_delete_task():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT created_by_username FROM tasks WHERE id=? AND community_id=?", (task_id, community_id))
+            ph = get_sql_placeholder()
+            c.execute(
+                f"SELECT created_by_username, group_id FROM tasks WHERE id={ph} AND community_id={ph}",
+                (task_id, community_id),
+            )
             row = c.fetchone()
             if not row:
                 return jsonify({'success': False, 'error': 'Task not found'}), 404
-            creator = row['created_by_username'] if hasattr(row, 'keys') else row[0]
+            if hasattr(row, 'keys'):
+                creator = row['created_by_username']
+                task_gid = row.get('group_id')
+            else:
+                creator = row[0]
+                task_gid = row[1] if len(row) > 1 else None
+            if task_gid:
+                okt, errt = check_group_feed_access(c, ph, username, int(task_gid))
+                if not okt:
+                    return jsonify({'success': False, 'error': errt or 'Forbidden'}), 403
             admin_ok = is_community_admin_or_owner(username, community_id)
             if username != creator and not admin_ok:
                 return jsonify({'success': False, 'error': 'Not allowed'}), 403
@@ -19730,7 +17314,7 @@ def admin_grant_admin():
                 owner_username = rr['creator_username'] if hasattr(rr, 'keys') else rr[0]
 
             # Permission: app admin or owner
-            if actor != 'admin' and actor != owner_username:
+            if not is_app_admin(actor) and actor != owner_username:
                 return jsonify({'success': False, 'error': 'Not authorized'}), 403
 
             # Ensure target user exists
@@ -19822,7 +17406,7 @@ def get_logo():
 @login_required
 def remove_logo():
     """Remove the logo - admin only"""
-    if session['username'] != 'admin':
+    if not is_app_admin(session['username']):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
     try:
@@ -19848,6 +17432,50 @@ def remove_logo():
     except Exception as e:
         logger.error(f"Error removing logo: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _coerce_optional_int(raw):
+    if raw is None or raw == "":
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_post_community_id_for_steve(post_id):
+    post_id_int = _coerce_optional_int(post_id)
+    if not post_id_int:
+        return None
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT community_id FROM posts WHERE id = ?", (post_id_int,))
+            row = c.fetchone()
+            if not row:
+                return None
+            return row["community_id"] if hasattr(row, "keys") else row[0]
+    except Exception as exc:
+        logger.warning("Steve preflight could not resolve post community: %s", exc)
+        return None
+
+
+def _steve_preflight_response(username, text, community_id):
+    try:
+        from backend.services import ai_usage as _ai_usage
+        from backend.services.entitlements_gate import preflight_steve_mention
+
+        allowed, payload, status, _ent = preflight_steve_mention(
+            username,
+            text,
+            _ai_usage.SURFACE_FEED,
+            community_id=community_id,
+        )
+        if not allowed:
+            return jsonify(payload), status
+    except Exception as exc:
+        logger.warning("Steve mention preflight failed open: %s", exc)
+    return None
 
 
 @app.route('/post_status', methods=['POST'])
@@ -19877,6 +17505,10 @@ def post_status():
     
     # Debug: Log all form data
     logger.info(f"All form data: {dict(request.form)}")
+
+    preflight_resp = _steve_preflight_response(username, content, community_id)
+    if preflight_resp is not None:
+        return preflight_resp
     
     # Handle file upload (image, video, or audio)
     # Supports both single file (legacy) and multiple files (new)
@@ -19884,6 +17516,7 @@ def post_status():
     audio_path = None
     video_path = None
     media_paths = []  # For multiple media (JSON array)
+    media_asset_candidates = []
     MAX_MEDIA_PER_POST = 5
     
     files = request.files
@@ -19893,18 +17526,30 @@ def post_status():
         image_files = files.getlist('images')
         for img_file in image_files:
             if img_file and img_file.filename:
-                saved_path = save_uploaded_file(img_file)
+                saved_info = save_uploaded_file(img_file, optimize_profile='feed', return_file_info=True)
+                saved_path = saved_info.get('path') if isinstance(saved_info, dict) else saved_info
                 if saved_path:
                     media_paths.append({'type': 'image', 'path': saved_path})
+                    media_asset_candidates.append({
+                        'type': 'image',
+                        'path': saved_path,
+                        'stored_bytes': saved_info.get('stored_bytes', 0) if isinstance(saved_info, dict) else 0,
+                    })
     
     # Handle multiple videos (new format) - form upload for small videos
     if 'videos' in files:
         video_files = files.getlist('videos')
         for vid_file in video_files:
             if vid_file and vid_file.filename:
-                saved_path = save_uploaded_file(vid_file, subfolder='video')
+                saved_info = save_uploaded_file(vid_file, subfolder='video', optimize_profile='feed', transcode_video=True, return_file_info=True)
+                saved_path = saved_info.get('path') if isinstance(saved_info, dict) else saved_info
                 if saved_path:
                     media_paths.append({'type': 'video', 'path': saved_path})
+                    media_asset_candidates.append({
+                        'type': 'video',
+                        'path': saved_path,
+                        'stored_bytes': saved_info.get('stored_bytes', 0) if isinstance(saved_info, dict) else 0,
+                    })
     
     # Handle pre-uploaded video URLs (R2 direct upload for large videos)
     video_urls_raw = request.form.get('video_urls', '')
@@ -19915,6 +17560,7 @@ def post_status():
                 for vurl in video_urls:
                     if isinstance(vurl, str) and vurl.startswith('http'):
                         media_paths.append({'type': 'video', 'path': vurl})
+                        media_asset_candidates.append({'type': 'video', 'path': vurl, 'stored_bytes': 0})
         except (json.JSONDecodeError, TypeError):
             pass
     
@@ -19928,7 +17574,8 @@ def post_status():
     # Handle legacy single image upload
     if not media_paths and 'image' in files and files['image'].filename:
         file = files['image']
-        image_path = save_uploaded_file(file)
+        saved_info = save_uploaded_file(file, optimize_profile='feed', return_file_info=True)
+        image_path = saved_info.get('path') if isinstance(saved_info, dict) else saved_info
         if not image_path:
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                 return jsonify({'success': False, 'error': 'Invalid image type'}), 400
@@ -19938,6 +17585,11 @@ def post_status():
                     return redirect(url_for('community_feed', community_id=community_id) + msg)
                 else:
                     return redirect(url_for('feed') + msg)
+        media_asset_candidates.append({
+            'type': 'image',
+            'path': image_path,
+            'stored_bytes': saved_info.get('stored_bytes', 0) if isinstance(saved_info, dict) else 0,
+        })
     
     # Handle audio upload
     if 'audio' in files and files['audio'].filename:
@@ -19956,7 +17608,8 @@ def post_status():
     # Handle legacy single video upload
     if not media_paths and 'video' in files and files['video'].filename:
         vfile = files['video']
-        video_path = save_uploaded_file(vfile, subfolder='video')
+        saved_info = save_uploaded_file(vfile, subfolder='video', optimize_profile='feed', transcode_video=True, return_file_info=True)
+        video_path = saved_info.get('path') if isinstance(saved_info, dict) else saved_info
         if not video_path:
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                 return jsonify({'success': False, 'error': 'Invalid video type'}), 400
@@ -19966,6 +17619,11 @@ def post_status():
                     return redirect(url_for('community_feed', community_id=community_id) + msg)
                 else:
                     return redirect(url_for('feed') + msg)
+        media_asset_candidates.append({
+            'type': 'video',
+            'path': video_path,
+            'stored_bytes': saved_info.get('stored_bytes', 0) if isinstance(saved_info, dict) else 0,
+        })
     
     # If we have multiple media, set first image/video as primary for backwards compatibility
     if media_paths:
@@ -20016,7 +17674,7 @@ def post_status():
                     logger.warning(f"post dedupe check failed: {de}")
             
             # If community_id is provided, verify user is member (admin bypass)
-            if community_id and username != 'admin':
+            if community_id and not is_app_admin(username):
                 c.execute("""
                     SELECT 1 FROM user_communities uc
                     JOIN users u ON uc.user_id = u.id
@@ -20087,6 +17745,23 @@ def post_status():
                       (username, content_clean, image_path, video_path, audio_path, audio_summary, timestamp, community_id, media_paths_json, link_urls_json))
             conn.commit()
             post_id = c.lastrowid
+            if community_id:
+                try:
+                    from backend.services import media_assets
+                    for asset in media_asset_candidates[:MAX_MEDIA_PER_POST]:
+                        media_assets.register_asset(
+                            c,
+                            community_id=community_id,
+                            source_type='post',
+                            source_id=post_id,
+                            media_type=asset.get('type'),
+                            path=asset.get('path'),
+                            original_bytes=asset.get('stored_bytes') or 0,
+                            stored_bytes=asset.get('stored_bytes') or 0,
+                        )
+                    conn.commit()
+                except Exception as asset_err:
+                    logger.warning(f"post media asset registration failed: {asset_err}")
             logger.info(f"Post added successfully for {username} with ID: {post_id} in community: {community_id}")
 
             # Dual-write post to Firestore
@@ -20275,6 +17950,14 @@ def post_reply():
 
     if not post_id:
         return jsonify({'success': False, 'error': 'Post ID is required!'}), 400
+
+    preflight_resp = _steve_preflight_response(
+        username,
+        content,
+        _resolve_post_community_id_for_steve(post_id),
+    )
+    if preflight_resp is not None:
+        return preflight_resp
 
     # Handle file upload for reply (image, video, or audio)
     image_path = None
@@ -20555,7 +18238,7 @@ def create_poll():
             c = conn.cursor()
             
             # If community_id is provided, verify user is member (admin bypass)
-            if community_id and username != 'admin':
+            if community_id and not is_app_admin(username):
                 c.execute("""
                     SELECT 1 FROM user_communities uc
                     JOIN users u ON uc.user_id = u.id
@@ -20720,7 +18403,7 @@ def close_poll():
             
             # Only poll creator, community admin/owner, or global admin can close
             allowed = False
-            if poll_data['created_by'] == username or username == 'admin':
+            if poll_data['created_by'] == username or is_app_admin(username):
                 allowed = True
             else:
                 # Determine community of the poll via post
@@ -20729,10 +18412,7 @@ def close_poll():
                 community_id = pr['community_id'] if pr else None
                 if community_id:
                     # Check if user is community admin or owner
-                    # Owner = communities.creator_username
-                    c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
-                    cr = c.fetchone()
-                    if cr and cr['creator_username'] == username:
+                    if can_manage_community(username, community_id):
                         allowed = True
                     else:
                         # Community admin check (if you have a roles table, replace this logic)
@@ -20859,7 +18539,7 @@ def edit_poll():
             
             # Only poll creator, community admin/owner, or global admin can edit
             allowed = False
-            if poll_data['created_by'] == username or username == 'admin':
+            if poll_data['created_by'] == username or is_app_admin(username):
                 allowed = True
             else:
                 # Determine community of the poll via post
@@ -20868,9 +18548,7 @@ def edit_poll():
                 community_id = pr['community_id'] if pr else None
                 if community_id:
                     # Check if user is community admin or owner
-                    c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
-                    cr = c.fetchone()
-                    if cr and cr['creator_username'] == username:
+                    if can_manage_community(username, community_id):
                         allowed = True
                     else:
                         c.execute("""
@@ -21031,6 +18709,26 @@ def vote_poll():
                 c.execute("UPDATE poll_options SET votes = (SELECT COUNT(*) FROM poll_votes WHERE option_id = ?) WHERE id = ?", (existing_vote['option_id'], existing_vote['option_id']))
             
             conn.commit()
+
+            # Invalidate the feed cache immediately so poll counts do not
+            # appear to revert when the feed refetches after an optimistic vote.
+            try:
+                c.execute(
+                    """
+                    SELECT p.community_id
+                    FROM polls poll
+                    JOIN posts p ON p.id = poll.post_id
+                    WHERE poll.id = ?
+                    """,
+                    (poll_id,),
+                )
+                poll_community = c.fetchone()
+                if poll_community:
+                    community_id = poll_community['community_id'] if hasattr(poll_community, 'keys') else poll_community[0]
+                    if community_id:
+                        invalidate_community_cache(community_id)
+            except Exception as cache_err:
+                logger.warning(f"Failed to invalidate cache after poll vote: {cache_err}")
             
             # EVENT-DRIVEN NOTIFICATION CHECK
             # Check this poll for notifications immediately after vote
@@ -21211,7 +18909,7 @@ def get_post_reactors(post_id: int):
                     normalized = _normalize_pic(u.get('profile_picture'))
                     u['profile_picture'] = normalized
 
-            view_count = _count_post_views_excluding_admin(c, post_id) or 0
+            view_count = count_post_views_excluding_admin(c, post_id) or 0
             viewers: List[Dict[str, Any]] = []
 
             viewer_rows = []
@@ -21345,11 +19043,9 @@ def delete_poll():
             sr = c.fetchone()
             community_id = sr['community_id'] if sr else None
             # Permission: admin, poll creator, or community owner
-            allowed = username == 'admin' or username == created_by
+            allowed = is_app_admin(username) or username == created_by
             if community_id and not allowed:
-                c.execute("SELECT creator_username FROM communities WHERE id=?", (community_id,))
-                cr = c.fetchone()
-                if cr and cr['creator_username'] == username:
+                if can_manage_community(username, community_id):
                     allowed = True
             if not allowed:
                 return jsonify({'success': False, 'error': 'Not authorized'})
@@ -21395,7 +19091,7 @@ def remove_poll_option():
             if not poll_data:
                 return jsonify({'success': False, 'error': 'Option not found'})
             
-            if poll_data['created_by'] != username and username != 'admin':
+            if poll_data['created_by'] != username and not is_app_admin(username):
                 return jsonify({'success': False, 'error': 'Only poll creator can remove options'})
             
             # Check if this is the last option
@@ -21649,7 +19345,7 @@ def resolve_issue():
             if not community:
                 return jsonify({'success': False, 'error': 'Issue not found'})
             
-            if username != 'admin' and username != community['creator_username']:
+            if not is_app_admin(username) and username != community['creator_username']:
                 return jsonify({'success': False, 'error': 'Unauthorized'})
             
             # Mark issue as resolved
@@ -21784,7 +19480,7 @@ def manage_ads(community_id):
                 flash('Community not found', 'error')
                 return redirect(url_for('communities'))
             
-            if username != 'admin' and username != community['creator_username']:
+            if not is_app_admin(username) and username != community['creator_username']:
                 flash('You do not have permission to manage ads for this community', 'error')
                 return redirect(url_for('community_feed', community_id=community_id))
             
@@ -21837,7 +19533,7 @@ def add_ad(community_id):
             c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
             community = c.fetchone()
             
-            if not community or (username != 'admin' and username != community['creator_username']):
+            if not community or (not is_app_admin(username) and username != community['creator_username']):
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
             
             # Get form data
@@ -21885,7 +19581,7 @@ def toggle_ad(ad_id):
             """, (ad_id,))
             ad = c.fetchone()
             
-            if not ad or (username != 'admin' and username != ad['creator_username']):
+            if not ad or (not is_app_admin(username) and username != ad['creator_username']):
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
             
             # Toggle status
@@ -21928,7 +19624,7 @@ def update_ad(ad_id):
             """, (ad_id,))
             ad = c.fetchone()
             
-            if not ad or (username != 'admin' and username != ad['creator_username']):
+            if not ad or (not is_app_admin(username) and username != ad['creator_username']):
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
             
             # Update ad
@@ -21964,7 +19660,7 @@ def delete_ad(ad_id):
             """, (ad_id,))
             ad = c.fetchone()
             
-            if not ad or (username != 'admin' and username != ad['creator_username']):
+            if not ad or (not is_app_admin(username) and username != ad['creator_username']):
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
             
             # Delete ad
@@ -22147,7 +19843,7 @@ def delete_resource_post(post_id):
                 return jsonify({'success': False, 'message': 'Post not found'}), 404
             
             # Check permissions (post creator, admin, or community creator)
-            if username != post['username'] and username != 'admin' and username != post['creator_username']:
+            if username != post['username'] and not is_app_admin(username) and username != post['creator_username']:
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
             
             # Delete the post (cascade will handle comments and upvotes)
@@ -22240,30 +19936,6 @@ def appoint_community_admin(community_id):
     except Exception as e:
         logger.error(f"Error appointing admin: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
-
-@app.route('/migrate_user_communities_role', methods=['POST'])
-def migrate_user_communities_role():
-    """Migrate user_communities table to add role column - no login required for setup"""
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-
-            # Check if role column exists
-            c.execute("SHOW COLUMNS FROM user_communities LIKE 'role'")
-            if not c.fetchone():
-                logger.info("Adding role column to user_communities table...")
-                # TEXT columns can't have default values in MySQL
-                c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT")
-                # Set default value for existing rows
-                c.execute("UPDATE user_communities SET role = 'member' WHERE role IS NULL")
-                conn.commit()
-                logger.info("Added role column to user_communities table")
-                return jsonify({'success': True, 'message': 'Role column added successfully'})
-            else:
-                return jsonify({'success': True, 'message': 'Role column already exists'})
-    except Exception as e:
-        logger.error(f"Error adding role column: {e}")
-        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/community/<int:community_id>/remove_admin', methods=['POST'])
 @login_required
@@ -22612,7 +20284,7 @@ def get_community_members_list(community_id):
                     is_creator_val = row[4]
 
                 # Hide the global app admin from visible lists
-                if str(username_val).lower() == 'admin':
+                if is_app_admin(str(username_val)):
                     continue
                 members.append({
                     'username': username_val,
@@ -22707,185 +20379,7 @@ def event_rsvp_page(community_id, event_id):
         flash('An error occurred', 'error')
         return redirect(url_for('community_feed', community_id=community_id))
 
-@app.route('/event/<int:event_id>/rsvp', methods=['POST'])
-@login_required
-def rsvp_event(event_id):
-    """RSVP to a calendar event (accepts JSON or form), returns updated counts including no_response and user_rsvp"""
-    username = session.get('username')
-    try:
-        data = request.get_json(silent=True) or {}
-        response = (request.form.get('response') or data.get('response') or '').strip()
-        note = (request.form.get('note') or data.get('note') or '').strip()
-        if response not in ('going','maybe','not_going'):
-            return jsonify({'success': False, 'message': 'Invalid response'}), 400
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            # Ensure event exists and get community_id and creator
-            ph = get_sql_placeholder()
-            c.execute(f"SELECT community_id, username FROM calendar_events WHERE id = {ph}", (event_id,))
-            row = c.fetchone()
-            if not row:
-                return jsonify({'success': False, 'message': 'Event not found'}), 404
-            community_id_val = row['community_id'] if hasattr(row, 'keys') else row[0]
-            event_creator = row['username'] if hasattr(row, 'keys') else row[1]
-            
-            # Check if user is invited or is the event creator
-            if username != event_creator:
-                c.execute(f"SELECT 1 FROM event_invitations WHERE event_id = {ph} AND invited_username = {ph}", (event_id, username))
-                if not c.fetchone():
-                    return jsonify({'success': False, 'message': 'You are not invited to this event'}), 403
-            # Upsert RSVP
-            c.execute(f"""
-                INSERT INTO event_rsvps (event_id, username, response, note, responded_at)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
-                ON DUPLICATE KEY UPDATE response=VALUES(response), note=VALUES(note), responded_at=VALUES(responded_at)
-            """, (event_id, username, response, note, datetime.now().isoformat()))
-            # Counts
-            ph = get_sql_placeholder()
-            c.execute(f"SELECT response, COUNT(*) as count FROM event_rsvps WHERE event_id={ph} GROUP BY response", (event_id,))
-            counts = {'going': 0, 'maybe': 0, 'not_going': 0}
-            for r in c.fetchall():
-                counts[r['response']] = r['count']
-            # Calculate no_response based on invited users only
-            no_response = 0
-            total_invited = 0
-            try:
-                # Count total invited users (including creator)
-                c.execute(f"SELECT COUNT(DISTINCT invited_username) as cnt FROM event_invitations WHERE event_id={ph}", (event_id,))
-                invited_row = c.fetchone()
-                if invited_row:
-                    total_invited = invited_row['cnt'] if hasattr(invited_row, 'keys') else invited_row[0]
-                else:
-                    total_invited = 0
-                # Add 1 for event creator
-                total_invited += 1
-                
-                # Count users who responded
-                c.execute(f"SELECT COUNT(DISTINCT username) as cnt FROM event_rsvps WHERE event_id={ph}", (event_id,))
-                responded_row = c.fetchone()
-                if responded_row:
-                    responded = responded_row['cnt'] if hasattr(responded_row, 'keys') else responded_row[0]
-                else:
-                    responded = 0
-                no_response = max(0, total_invited - responded)
-            except Exception as e:
-                logger.warning(f"Error calculating no_response in RSVP endpoint for event {event_id}: {e}")
-                no_response = 0
-            counts['no_response'] = no_response
-            counts['total_invited'] = total_invited
-            conn.commit()
-        return jsonify({'success': True, 'counts': counts, 'user_rsvp': response})
-    except Exception as e:
-        logger.error(f"Error updating RSVP: {e}")
-        return jsonify({'success': False, 'message': 'Server error'}), 500
-
-@app.route('/event/<int:event_id>/rsvps')
-@login_required
-def get_event_rsvps(event_id):
-    """Get all RSVPs for an event"""
-    username = session.get('username')
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Get event details
-            c.execute("""
-                SELECT e.*, c.name as community_name
-                FROM calendar_events e
-                JOIN communities c ON e.community_id = c.id
-                WHERE e.id = ?
-            """, (event_id,))
-            
-            event = c.fetchone()
-            if not event:
-                return jsonify({'success': False, 'message': 'Event not found'}), 404
-            
-            # Get all RSVPs with user profiles
-            c.execute("""
-                SELECT r.*, up.profile_picture
-                FROM event_rsvps r
-                LEFT JOIN user_profiles up ON r.username = up.username
-                WHERE r.event_id = ?
-                ORDER BY r.response, r.responded_at DESC
-            """, (event_id,))
-            
-            rsvps = []
-            for row in c.fetchall():
-                rsvps.append({
-                    'username': row['username'],
-                    'response': row['response'],
-                    'note': row['note'],
-                    'responded_at': row['responded_at'],
-                    'profile_picture': row['profile_picture']
-                })
-            
-            # Get current user's RSVP
-            c.execute("""
-                SELECT response FROM event_rsvps
-                WHERE event_id = ? AND username = ?
-            """, (event_id, username))
-            
-            user_rsvp = c.fetchone()
-            
-            # Get counts
-            counts = {'going': 0, 'maybe': 0, 'not_going': 0}
-            for rsvp in rsvps:
-                counts[rsvp['response']] += 1
-            
-            return jsonify({
-                'success': True,
-                'event': dict(event),
-                'rsvps': rsvps,
-                'counts': counts,
-                'user_rsvp': user_rsvp['response'] if user_rsvp else None
-            })
-            
-    except Exception as e:
-        logger.error(f"Error fetching RSVPs: {e}")
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-@app.route('/event/<int:event_id>/rsvp', methods=['DELETE'])
-@login_required
-def cancel_rsvp(event_id):
-    """Cancel RSVP for an event"""
-    username = session.get('username')
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            c.execute("""
-                DELETE FROM event_rsvps
-                WHERE event_id = ? AND username = ?
-            """, (event_id, username))
-            
-            if c.rowcount == 0:
-                return jsonify({'success': False, 'message': 'No RSVP found'}), 404
-            
-            conn.commit()
-            
-            # Get updated counts
-            c.execute("""
-                SELECT response, COUNT(*) as count
-                FROM event_rsvps
-                WHERE event_id = ?
-                GROUP BY response
-            """, (event_id,))
-            
-            counts = {'going': 0, 'maybe': 0, 'not_going': 0}
-            for row in c.fetchall():
-                counts[row['response']] = row['count']
-            
-            return jsonify({
-                'success': True,
-                'message': 'RSVP cancelled',
-                'counts': counts
-            })
-            
-    except Exception as e:
-        logger.error(f"Error cancelling RSVP: {e}")
-        return jsonify({'success': False, 'message': str(e)}), 500
+# Event RSVP API routes now reside in backend.blueprints.community_calendar.
 
 @app.route('/community/<int:community_id>/feedback/view')
 @login_required
@@ -22901,7 +20395,7 @@ def view_feedback(community_id):
             c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
             community = c.fetchone()
             
-            if not community or (username != 'admin' and username != community['creator_username']):
+            if not community or (not is_app_admin(username) and username != community['creator_username']):
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
             
             # Get feedback
@@ -22930,7 +20424,7 @@ def deactivate_user(username):
     if not is_app_admin(current_user):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 403
     
-    if username == 'admin':
+    if is_app_admin(username):
         return jsonify({'success': False, 'message': 'Cannot deactivate app admin'}), 400
     
     try:
@@ -23001,68 +20495,14 @@ def admin_user_statistics():
     username = session.get('username')
     
     # Check if user is admin
-    if username != 'admin':
+    if not is_app_admin(username):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 403
     
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Ensure required tables exist
             try:
-                if USE_MYSQL:
-                    c.execute("""
-                        CREATE TABLE IF NOT EXISTS user_login_history (
-                            id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                            username VARCHAR(255) NOT NULL,
-                            login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            ip_address VARCHAR(45),
-                            user_agent TEXT,
-                            FOREIGN KEY (username) REFERENCES users (username)
-                        )
-                    """)
-                    c.execute("""
-                        CREATE TABLE IF NOT EXISTS community_visit_history (
-                            id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                            username VARCHAR(191) NOT NULL,
-                            community_id INTEGER NOT NULL,
-                            visit_time TEXT NOT NULL,
-                            FOREIGN KEY (username) REFERENCES users (username),
-                            FOREIGN KEY (community_id) REFERENCES communities (id)
-                        )
-                    """)
-                else:
-                    # SQLite
-                    c.execute("""
-                        CREATE TABLE IF NOT EXISTS user_login_history (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            username TEXT NOT NULL,
-                            login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            ip_address TEXT,
-                            user_agent TEXT,
-                            FOREIGN KEY (username) REFERENCES users (username)
-                        )
-                    """)
-                    c.execute("""
-                        CREATE TABLE IF NOT EXISTS community_visit_history (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            username TEXT NOT NULL,
-                            community_id INTEGER NOT NULL,
-                            visit_time TEXT NOT NULL,
-                            FOREIGN KEY (username) REFERENCES users (username),
-                            FOREIGN KEY (community_id) REFERENCES communities (id)
-                        )
-                    """)
-                
-                # Create indexes for both MySQL and SQLite
-                try:
-                    c.execute("CREATE INDEX IF NOT EXISTS idx_login_username ON user_login_history(username)")
-                    c.execute("CREATE INDEX IF NOT EXISTS idx_login_time ON user_login_history(login_time)")
-                    c.execute("CREATE INDEX IF NOT EXISTS idx_visit_username ON community_visit_history(username)")
-                    c.execute("CREATE INDEX IF NOT EXISTS idx_visit_community ON community_visit_history(community_id)")
-                    c.execute("CREATE INDEX IF NOT EXISTS idx_visit_time ON community_visit_history(visit_time)")
-                except Exception:
-                    pass
-                conn.commit()
+                ensure_user_activity_tables(conn)
             except Exception as ensure_err:
                 logger.warning(f"Could not ensure stats tables: {ensure_err}")
             
@@ -23134,7 +20574,7 @@ def admin_ads_overview():
     username = session.get('username')
     
     # Check if user is admin
-    if username != 'admin':
+    if not is_app_admin(username):
         flash('Access denied. Admin only.', 'error')
         return redirect(url_for('public.index'))
     
@@ -23271,449 +20711,28 @@ def admin_ads_overview():
         flash('Error loading ads overview', 'error')
         return redirect(url_for('admin'))
 
-@app.route('/api/calendar_events/<int:event_id>')
-@login_required
-def api_get_calendar_event(event_id):
-    """Get a single calendar event by ID"""
-    username = session.get('username')
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            
-            # Get the event with community info
-            c.execute(f"""
-                SELECT ce.*, c.name as community_name, c.background_color
-                FROM calendar_events ce
-                LEFT JOIN communities c ON ce.community_id = c.id
-                WHERE ce.id = {ph}
-            """, (event_id,))
-            row = c.fetchone()
-            
-            if not row:
-                return jsonify({'success': False, 'error': 'Event not found'}), 404
-            
-            # Check if user has access (is creator or invited)
-            event_creator = row['username'] if hasattr(row, 'keys') else row[1]
-            c.execute(f"SELECT 1 FROM event_invitations WHERE event_id = {ph} AND invited_username = {ph}", (event_id, username))
-            is_invited = c.fetchone() is not None
-            
-            if event_creator != username and not is_invited:
-                # Check if user is in the same community
-                community_id = row['community_id'] if hasattr(row, 'keys') else row[10]
-                if community_id:
-                    c.execute(f"SELECT 1 FROM user_communities WHERE user_id = (SELECT id FROM users WHERE username = {ph}) AND community_id = {ph}", (username, community_id))
-                    if not c.fetchone():
-                        return jsonify({'success': False, 'error': 'Access denied'}), 403
-            
-            event = {
-                'id': row['id'] if hasattr(row, 'keys') else row[0],
-                'username': row['username'] if hasattr(row, 'keys') else row[1],
-                'title': row['title'] if hasattr(row, 'keys') else row[2],
-                'date': row['date'] if hasattr(row, 'keys') else row[3],
-                'end_date': (row['end_date'] if hasattr(row, 'keys') else row[4]) or (row['date'] if hasattr(row, 'keys') else row[3]),
-                'start_time': row['start_time'] if hasattr(row, 'keys') else row[5],
-                'end_time': row['end_time'] if hasattr(row, 'keys') else row[6],
-                'time': row['time'] if hasattr(row, 'keys') else row[7],
-                'description': row['description'] if hasattr(row, 'keys') else row[8],
-                'community_id': row['community_id'] if hasattr(row, 'keys') else row[10],
-                'community_name': row['community_name'] if hasattr(row, 'keys') else row[-2],
-                'timezone': row['timezone'] if hasattr(row, 'keys') else row[11],
-            }
-            
-            return jsonify({'success': True, 'event': event})
-    except Exception as e:
-        logger.error(f"api_get_calendar_event error: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/get_calendar_events')
-@login_required
-def get_calendar_events():
-    """Get calendar events visible to the current user (invited events only)"""
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Get current user
-            username = session.get('username')
-            logger.info(f"get_calendar_events called for user: {username}")
-            if not username:
-                return jsonify({'success': True, 'events': []})
-            
-            # Get calendar events where user is invited or is the creator
-            ph = get_sql_placeholder()
-            query = f"""
-                SELECT DISTINCT ce.id, ce.username, ce.title, ce.date, 
-                       COALESCE(ce.end_date, ce.date) as end_date,
-                       COALESCE(ce.start_time, ce.time) as start_time,
-                       ce.end_time,
-                       ce.time, ce.description, ce.created_at, ce.community_id, ce.timezone
-                FROM calendar_events ce
-                LEFT JOIN event_invitations ei ON ce.id = ei.event_id
-                WHERE ce.username = {ph} OR ei.invited_username = {ph}
-                ORDER BY ce.date ASC, COALESCE(ce.start_time, ce.time) ASC
-            """
-            logger.info(f"Executing calendar query for username: {username}")
-            c.execute(query, (username, username))
-            events_raw = c.fetchall()
-            logger.info(f"Found {len(events_raw)} events for user {username}")
-            
-            events = []
-            for event in events_raw:
-                event_id = event['id']
-                
-                # Get RSVP counts for this event
-                c.execute(f"""
-                    SELECT response, COUNT(*) as count
-                    FROM event_rsvps
-                    WHERE event_id = {ph}
-                    GROUP BY response
-                """, (event_id,))
-                
-                rsvp_counts = {'going': 0, 'maybe': 0, 'not_going': 0}
-                for row in c.fetchall():
-                    rsvp_counts[row['response']] = row['count']
-                # Calculate no_response: total invited members - total responded
-                no_response = 0
-                total_invited = 0
-                try:
-                    # Count total invited users
-                    c.execute(f"SELECT COUNT(DISTINCT invited_username) as cnt FROM event_invitations WHERE event_id={ph}", (event_id,))
-                    invited_row = c.fetchone()
-                    if invited_row:
-                        total_invited = invited_row['cnt'] if hasattr(invited_row, 'keys') else invited_row[0]
-                    else:
-                        total_invited = 0
-                    
-                    # Add 1 for the event creator (they're always invited)
-                    total_invited += 1
-                    
-                    # Count users who responded
-                    c.execute(f"SELECT COUNT(DISTINCT username) as cnt FROM event_rsvps WHERE event_id={ph}", (event_id,))
-                    responded_row = c.fetchone()
-                    if responded_row:
-                        responded = responded_row['cnt'] if hasattr(responded_row, 'keys') else responded_row[0]
-                    else:
-                        responded = 0
-                    
-                    # no_response = total invited - total responded
-                    no_response = max(0, total_invited - responded)
-                except Exception as e:
-                    logger.warning(f"Error calculating no_response for event {event_id}: {e}")
-                    no_response = 0
-                
-                rsvp_counts['no_response'] = no_response
-                rsvp_counts['total_invited'] = total_invited
-                
-                # Get current user's RSVP if logged in
-                username = session.get('username')
-                user_rsvp = None
-                is_invited = False
-                if username:
-                    c.execute(f"""
-                        SELECT response FROM event_rsvps
-                        WHERE event_id = {ph} AND username = {ph}
-                    """, (event_id, username))
-                    result = c.fetchone()
-                    if result:
-                        user_rsvp = result['response']
-                    
-                    # Check if user is invited
-                    c.execute(f"""
-                        SELECT 1 FROM event_invitations
-                        WHERE event_id = {ph} AND invited_username = {ph}
-                    """, (event_id, username))
-                    is_invited = c.fetchone() is not None
-                
-                # Extract time portion from datetime fields (YYYY-MM-DD HH:MM:SS -> HH:MM)
-                def extract_time(dt_str):
-                    if not dt_str or dt_str == '0000-00-00 00:00:00':
-                        return None
-                    try:
-                        # If it's a datetime string, extract just the time portion
-                        if ' ' in str(dt_str):
-                            time_part = str(dt_str).split(' ')[1]  # Get HH:MM:SS
-                            return time_part[:5]  # Return just HH:MM
-                        return dt_str
-                    except:
-                        return dt_str
-                
-                events.append({
-                    'id': event['id'],
-                    'username': event['username'],
-                    'title': event['title'],
-                    'date': event['date'],
-                    'end_date': event['end_date'],
-                    'time': event['time'],  # Keep for backward compatibility
-                    'start_time': extract_time(event['start_time']),
-                    'end_time': extract_time(event['end_time']),
-                    'timezone': event.get('timezone') if hasattr(event, 'get') else event.get('timezone', None) if hasattr(event, 'keys') else None,
-                    'description': event['description'],
-                    'created_at': event['created_at'],
-                    'community_id': event['community_id'],
-                    'rsvp_counts': rsvp_counts,
-                    'user_rsvp': user_rsvp,
-                    'total_rsvps': sum(rsvp_counts.values()),
-                    'is_invited': is_invited,
-                    'is_creator': event['username'] == username
-                })
-            
-            logger.info(f"Returning {len(events)} events to frontend for user {username}")
-            return jsonify({'success': True, 'events': events})
-            
-    except Exception as e:
-        logger.error(f"Error getting calendar events: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/add_calendar_event', methods=['POST'])
-@login_required
-def add_calendar_event():
-    """Add a new calendar event with invitations"""
-    try:
-        username = session['username']
-        title = request.form.get('title', '').strip()
-        date = request.form.get('date', '').strip()
-        end_date = request.form.get('end_date', '').strip()
-        start_time = request.form.get('start_time', '').strip()
-        end_time = request.form.get('end_time', '').strip()
-        timezone = request.form.get('timezone', '').strip()
-        # Fall back to 'time' field for backward compatibility
-        if not start_time:
-            start_time = request.form.get('time', '').strip()
-        description = request.form.get('description', '').strip()
-        
-        # Get community_id and invited members
-        community_id = request.form.get('community_id', type=int)
-        invited_members = request.form.getlist('invited_members[]')
-        invite_all = request.form.get('invite_all') == 'true'
-        
-        # Debug logging
-        logger.info(f"Creating event: title={title}, date={date}, start_time='{start_time}', end_time='{end_time}', timezone='{timezone}', community_id={community_id}")
-        
-        # Validate required fields
-        if not title or not date:
-            return jsonify({'success': False, 'message': 'Title and start date are required'})
-        
-        # Validate date format
-        try:
-            from datetime import datetime
-            start_dt = datetime.strptime(date, '%Y-%m-%d')
-        except ValueError:
-            return jsonify({'success': False, 'message': 'Invalid start date format'})
-        
-        # Validate end date if provided
-        if end_date:
-            try:
-                end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-                if end_dt < start_dt:
-                    return jsonify({'success': False, 'message': 'End date cannot be before start date'})
-            except ValueError:
-                return jsonify({'success': False, 'message': 'Invalid end date format'})
-        
-        # Validate time formats if provided (before conversion)
-        if start_time:
-            try:
-                datetime.strptime(start_time, '%H:%M')
-            except ValueError:
-                return jsonify({'success': False, 'message': 'Invalid start time format'})
-        
-        if end_time:
-            try:
-                datetime.strptime(end_time, '%H:%M')
-            except ValueError:
-                return jsonify({'success': False, 'message': 'Invalid end time format'})
-        
-        # Convert empty strings to None for proper NULL storage
-        end_date = end_date if end_date else None
-        description = description if description else None
-        timezone = timezone if timezone else None
-        notification_preferences = request.form.get('notification_preferences', 'all').strip()
-        
-        # Convert time (HH:MM) to datetime (YYYY-MM-DD HH:MM:00) for DATETIME columns
-        start_time_original = start_time
-        end_time_original = end_time
-        
-        if start_time:
-            start_time = f"{date} {start_time}:00"
-        else:
-            start_time = None
-            
-        if end_time:
-            # Use end_date if provided, otherwise use start date
-            time_date = end_date if end_date else date
-            end_time = f"{time_date} {end_time}:00"
-        else:
-            end_time = None
-        
-        # Validate end_time is after start_time if both provided
-        if start_time and end_time and end_time < start_time:
-            return jsonify({'success': False, 'message': 'End time cannot be before start time'})
-        
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Insert the event (keeping 'time' field for backward compatibility)
-            ph = get_sql_placeholder()
-            created_at_utc = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-            logger.info(f"📅 Creating event (UTC): created_at={created_at_utc}, start_time='{start_time}', end_time='{end_time}', end_date={end_date}, timezone={timezone}, notifications={notification_preferences}")
-            c.execute(f"""
-                INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id, timezone, notification_preferences)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-            """, (username, title, date, end_date, 
-                  start_time_original,  # Keep time field as HH:MM for backward compatibility
-                  start_time,           # start_time as DATETIME
-                  end_time,             # end_time as DATETIME
-                  description,
-                  created_at_utc,       # created_at in UTC
-                  community_id,
-                  timezone,
-                  notification_preferences))
-            
-            event_id = c.lastrowid
-            
-            # Handle invitations
-            if community_id:
-                invited_users = []
-                
-                if invite_all:
-                    # Get all members of the community
-                    c.execute(f"""
-                        SELECT DISTINCT u.username 
-                        FROM user_communities uc
-                        JOIN users u ON uc.user_id = u.id
-                        WHERE uc.community_id = {ph} AND u.username != {ph}
-                    """, (community_id, username))
-                    invited_users = [row['username'] for row in c.fetchall()]
-                else:
-                    # Use selected members
-                    invited_users = invited_members
-                
-                # Get community name for notification messages
-                event_comm_name = ""
-                if community_id:
-                    try:
-                        c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
-                        cn_row = c.fetchone()
-                        if cn_row:
-                            event_comm_name = cn_row["name"] if hasattr(cn_row, "keys") else cn_row[0]
-                    except Exception:
-                        pass
-                
-                # Insert invitations and create notifications
-                for invited_user in invited_users:
-                    try:
-                        c.execute(f"""
-                            INSERT INTO event_invitations (event_id, invited_username, invited_by, invited_at)
-                            VALUES ({ph}, {ph}, {ph}, {ph})
-                        """, (event_id, invited_user, username, datetime.now().isoformat()))
-                        
-                        notification_message = f"{username} invited you to an event in {event_comm_name}: {title}" if event_comm_name else f"{username} invited you to the event: {title}"
-                        notification_link = f"/event/{event_id}"
-                        
-                        c.execute(f"""
-                            INSERT INTO notifications (user_id, from_user, message, created_at, is_read, link, type, community_id)
-                            VALUES ({ph}, {ph}, {ph}, {ph}, 0, {ph}, 'event_invitation', {ph})
-                        """, (invited_user, username, notification_message, datetime.now().isoformat(), notification_link, community_id))
-                        
-                        try:
-                            send_push_to_user(invited_user, {
-                                'title': f'{event_comm_name} - Event Invitation' if event_comm_name else 'Event Invitation',
-                                'body': f'{username} invited you to: {title}',
-                                'url': notification_link,
-                                'tag': f'event-invite-{event_id}-{invited_user}'
-                            })
-                            logger.info(f"📅 Sent event invitation push to {invited_user} for event {event_id}")
-                        except Exception as push_err:
-                            logger.warning(f"Failed to send push notification for event invite to {invited_user}: {push_err}")
-                        
-                    except Exception as inv_err:
-                        # Skip if already invited or other error
-                        logger.warning(f"Failed to invite {invited_user}: {inv_err}")
-                        pass
-            
-            conn.commit()
-            
-            return jsonify({
-                'success': True, 
-                'message': f'Event added successfully. {len(invited_users) if community_id else 0} members invited.',
-                'event_id': event_id
-            })
-            
-    except Exception as e:
-        logger.error(f"Error adding calendar event: {str(e)}")
-        return jsonify({'success': False, 'message': str(e)})
+# Calendar event API routes now reside in backend.blueprints.community_calendar.
 
 @app.route('/get_links')
 @login_required
 def get_links():
-    """Get all links for a community or main feed"""
+    """Get all links for a community or main feed (optional group scope)."""
     try:
+        from backend.services.useful_links_read import fetch_useful_links_payload
+
         username = session['username']
         community_id = request.args.get('community_id')
-        
+        group_id_param = request.args.get('group_id')
+
         with get_db_connection() as conn:
             c = conn.cursor()
-            
-            if community_id:
-                # Get links for specific community
-                c.execute("""
-                    SELECT id, username, url, description, created_at
-                    FROM useful_links
-                    WHERE community_id = ?
-                    ORDER BY created_at DESC
-                """, (community_id,))
-            else:
-                # Get links for main feed (community_id is NULL)
-                c.execute("""
-                    SELECT id, username, url, description, created_at
-                    FROM useful_links
-                    WHERE community_id IS NULL
-                    ORDER BY created_at DESC
-                """)
-            
-            links_raw = c.fetchall()
-            links = []
-            
-            for link in links_raw:
-                links.append({
-                    'id': link['id'],
-                    'username': link['username'],
-                    'url': link['url'],
-                    'description': link['description'],
-                    'created_at': link['created_at'],
-                    'can_delete': link['username'] == username or username == 'admin'
-                })
-            
-            # Also return docs (PDFs)
-            docs = []
-            try:
-                if community_id:
-                    c.execute("""
-                        SELECT id, username, file_path, description, created_at
-                        FROM useful_docs
-                        WHERE community_id = ?
-                        ORDER BY created_at DESC
-                    """, (community_id,))
-                else:
-                    c.execute("""
-                        SELECT id, username, file_path, description, created_at
-                        FROM useful_docs
-                        WHERE community_id IS NULL
-                        ORDER BY created_at DESC
-                    """)
-                for d in c.fetchall() or []:
-                    docs.append({
-                        'id': d['id'] if hasattr(d,'keys') else d[0],
-                        'username': d['username'] if hasattr(d,'keys') else d[1],
-                        'file_path': d['file_path'] if hasattr(d,'keys') else d[2],
-                        'description': d['description'] if hasattr(d,'keys') else d[3],
-                        'created_at': d['created_at'] if hasattr(d,'keys') else d[4]
-                    })
-            except Exception as de:
-                logger.warning(f"get_docs error: {de}")
-            return jsonify({'success': True, 'links': links, 'docs': docs})
-            
+            ph = get_sql_placeholder()
+            payload = fetch_useful_links_payload(c, username, community_id, group_id_param, ph)
+            if not payload.get("success"):
+                code = 400 if (payload.get("error") or "") == "Invalid group_id" else 403
+                return jsonify(payload), code
+            return jsonify(payload)
+
     except Exception as e:
         logger.error(f"Error getting links: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
@@ -23793,6 +20812,13 @@ def add_link():
         url = request.form.get('url', '').strip()
         description = request.form.get('description', '').strip()
         community_id = request.form.get('community_id')
+        group_id_raw = (request.form.get('group_id') or '').strip()
+        group_id_int = None
+        if group_id_raw:
+            try:
+                group_id_int = int(group_id_raw)
+            except Exception:
+                return jsonify({'success': False, 'message': 'Invalid group_id'})
         
         if not url or not description:
             return jsonify({'success': False, 'message': 'URL and description are required'})
@@ -23803,15 +20829,20 @@ def add_link():
         
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
+            if group_id_int is not None:
+                ok, err = check_group_feed_access(c, ph, username, group_id_int)
+                if not ok:
+                    return jsonify({'success': False, 'error': err or 'Forbidden'}), 403
             
-            c.execute("""
-                INSERT INTO useful_links (community_id, username, url, description, created_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (community_id if community_id else None, username, url, description, 
+            c.execute(f"""
+                INSERT INTO useful_links (community_id, group_id, username, url, description, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """, (community_id if community_id else None, group_id_int, username, url, description, 
                   datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             
-            # Send notifications to community members
-            if community_id:
+            # Send notifications to community members (community-wide resources only)
+            if community_id and group_id_int is None:
                 notify_community_new_resource(community_id, username, 'link', description, conn)
             
             conn.commit()
@@ -23831,6 +20862,13 @@ def upload_doc():
         
         username = session['username']
         community_id = request.form.get('community_id')
+        group_id_raw = (request.form.get('group_id') or '').strip()
+        group_id_int = None
+        if group_id_raw:
+            try:
+                group_id_int = int(group_id_raw)
+            except Exception:
+                return jsonify({'success': False, 'error': 'Invalid group_id'})
         description = (request.form.get('description') or '').strip()
         if 'file' not in request.files:
             return jsonify({'success': False, 'error': 'No file provided'})
@@ -23879,13 +20917,18 @@ def upload_doc():
         
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("""
-                INSERT INTO useful_docs (community_id, username, file_path, description, created_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (community_id if community_id else None, username, file_path, description, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            ph = get_sql_placeholder()
+            if group_id_int is not None:
+                ok, err = check_group_feed_access(c, ph, username, group_id_int)
+                if not ok:
+                    return jsonify({'success': False, 'error': err or 'Forbidden'}), 403
+            c.execute(f"""
+                INSERT INTO useful_docs (community_id, group_id, username, file_path, description, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """, (community_id if community_id else None, group_id_int, username, file_path, description, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             
-            # Send notifications to community members
-            if community_id:
+            # Send notifications to community members (community-wide resources only)
+            if community_id and group_id_int is None:
                 doc_description = description or orig  # Use filename if no description
                 notify_community_new_resource(community_id, username, 'doc', doc_description, conn)
             
@@ -23918,7 +20961,7 @@ def delete_doc():
                 return jsonify({'success': False, 'error': 'Document not found'})
             owner = row['username'] if hasattr(row, 'keys') else row[0]
             path = row['file_path'] if hasattr(row, 'keys') else row[1]
-            if username != owner and username != 'admin':
+            if username != owner and not is_app_admin(username):
                 return jsonify({'success': False, 'error': 'Forbidden'})
             # Delete DB row
             c.execute("DELETE FROM useful_docs WHERE id = ?", (doc_id,))
@@ -23960,7 +21003,7 @@ def rename_doc():
             if not row:
                 return jsonify({'success': False, 'error': 'Document not found'})
             owner = row['username'] if hasattr(row, 'keys') else row[0]
-            if username != owner and username != 'admin':
+            if username != owner and not is_app_admin(username):
                 return jsonify({'success': False, 'error': 'Only the uploader can rename this document'})
             
             # Update description
@@ -23995,7 +21038,7 @@ def delete_link():
             if not link:
                 return jsonify({'success': False, 'message': 'Link not found'})
             
-            if link['username'] != username and username != 'admin':
+            if link['username'] != username and not is_app_admin(username):
                 return jsonify({'success': False, 'message': 'You can only delete your own links'})
             
             # Delete the link
@@ -24008,289 +21051,7 @@ def delete_link():
         logger.error(f"Error deleting link: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/edit_calendar_event', methods=['POST'])
-@login_required
-def edit_calendar_event():
-    """Edit a calendar event"""
-    try:
-        username = session.get('username')
-        if not username:
-            return jsonify({'success': False, 'message': 'User not logged in'})
-        
-        # Get event details from form
-        event_id = request.form.get('event_id')
-        title = request.form.get('title', '').strip()
-        date = request.form.get('date', '').strip()
-        end_date = request.form.get('end_date', '').strip()
-        start_time = request.form.get('start_time', '').strip()
-        end_time = request.form.get('end_time', '').strip()
-        timezone = request.form.get('timezone', '').strip()
-        description = request.form.get('description', '').strip()
-        
-        if not all([event_id, title, date]):
-            return jsonify({'success': False, 'message': 'Event ID, title, and date are required'})
-        
-        # Convert empty strings to None
-        end_date = end_date if end_date else None
-        description = description if description else None
-        timezone = timezone if timezone else None
-        
-        # Convert time (HH:MM) to datetime (YYYY-MM-DD HH:MM:00) for DATETIME columns
-        start_time_original = start_time
-        if start_time:
-            start_time = f"{date} {start_time}:00"
-        else:
-            start_time = None
-            
-        if end_time:
-            time_date = end_date if end_date else date
-            end_time = f"{time_date} {end_time}:00"
-        else:
-            end_time = None
-        
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Get event details and community info
-            ph = get_sql_placeholder()
-            c.execute(f"""
-                SELECT e.username, e.community_id, c.creator_username
-                FROM calendar_events e
-                LEFT JOIN communities c ON e.community_id = c.id
-                WHERE e.id = {ph}
-            """, (event_id,))
-            event = c.fetchone()
-            
-            if not event:
-                return jsonify({'success': False, 'message': 'Event not found'})
-            
-            event_owner = event['username']
-            community_id = event['community_id']
-            community_owner = event['creator_username'] if event['creator_username'] else None
-            
-            # Check if user is community admin
-            is_community_admin = False
-            if community_id:
-                c.execute(f"SELECT 1 FROM community_admins WHERE community_id = {ph} AND username = {ph}",
-                         (community_id, username))
-                is_community_admin = c.fetchone() is not None
-            
-            # Check permissions: user can edit if they're the event owner, app admin, community owner, or community admin
-            can_edit = (
-                event_owner == username or 
-                username == 'admin' or 
-                (community_owner and username == community_owner) or
-                is_community_admin
-            )
-            
-            if not can_edit:
-                return jsonify({'success': False, 'message': 'You do not have permission to edit this event'})
-            
-            # Update the event
-            c.execute(f"""
-                UPDATE calendar_events 
-                SET title = {ph}, date = {ph}, end_date = {ph}, start_time = {ph}, end_time = {ph}, 
-                    time = {ph}, description = {ph}, timezone = {ph}
-                WHERE id = {ph}
-            """, (title, date, end_date, 
-                  start_time, end_time,
-                  start_time_original,  # Keep time field for compatibility
-                  description, timezone, event_id))
-            
-            conn.commit()
-            
-            return jsonify({'success': True, 'message': 'Event updated successfully'})
-            
-    except Exception as e:
-        logger.error(f"Error editing calendar event: {str(e)}")
-        return jsonify({'success': False, 'message': str(e)})
-
-@app.route('/get_calendar_event/<int:event_id>')
-@login_required
-def get_calendar_event(event_id):
-    """Get details of a specific calendar event with RSVP data"""
-    try:
-        username = session.get('username')
-        
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            
-            # Get event details with community name
-            c.execute(f"""
-                SELECT e.*, c.creator_username, c.name as community_name
-                FROM calendar_events e
-                LEFT JOIN communities c ON e.community_id = c.id
-                WHERE e.id = {ph}
-            """, (event_id,))
-            
-            event = c.fetchone()
-            
-            if not event:
-                return jsonify({'success': False, 'message': 'Event not found'})
-            
-            # Get RSVP counts
-            c.execute(f"""
-                SELECT response, COUNT(*) as count
-                FROM event_rsvps
-                WHERE event_id = {ph}
-                GROUP BY response
-            """, (event_id,))
-            
-            rsvp_counts = {'going': 0, 'maybe': 0, 'not_going': 0}
-            for row in c.fetchall():
-                rsvp_counts[row['response']] = row['count']
-            
-            # Calculate no_response
-            c.execute(f"SELECT COUNT(DISTINCT invited_username) as cnt FROM event_invitations WHERE event_id={ph}", (event_id,))
-            invited_row = c.fetchone()
-            if invited_row:
-                total_invited = (invited_row['cnt'] if hasattr(invited_row, 'keys') else invited_row[0]) + 1  # +1 for creator
-            else:
-                total_invited = 1  # Just the creator
-            
-            c.execute(f"SELECT COUNT(DISTINCT username) as cnt FROM event_rsvps WHERE event_id={ph}", (event_id,))
-            responded_row = c.fetchone()
-            if responded_row:
-                responded = responded_row['cnt'] if hasattr(responded_row, 'keys') else responded_row[0]
-            else:
-                responded = 0
-            rsvp_counts['no_response'] = max(0, total_invited - responded)
-            
-            # Get current user's RSVP
-            c.execute(f"""
-                SELECT response FROM event_rsvps
-                WHERE event_id = {ph} AND username = {ph}
-            """, (event_id, username))
-            user_rsvp_row = c.fetchone()
-            user_rsvp = user_rsvp_row['response'] if user_rsvp_row else None
-            
-            # Check if user is community admin
-            is_community_admin = False
-            if event['community_id']:
-                c.execute(f"SELECT 1 FROM community_admins WHERE community_id = {ph} AND username = {ph}",
-                         (event['community_id'], username))
-                is_community_admin = c.fetchone() is not None
-            
-            # Check if user can edit
-            can_edit = (
-                event['username'] == username or 
-                username == 'admin' or 
-                (event['creator_username'] and username == event['creator_username']) or
-                is_community_admin
-            )
-            
-            # Extract time portion from datetime
-            def extract_time(dt_str):
-                if not dt_str or dt_str == '0000-00-00 00:00:00':
-                    return None
-                try:
-                    if ' ' in str(dt_str):
-                        return str(dt_str).split(' ')[1][:5]  # HH:MM
-                    return dt_str
-                except:
-                    return dt_str
-            
-            return jsonify({
-                'success': True,
-                'event': {
-                    'id': event['id'],
-                    'title': event['title'],
-                    'date': event['date'],
-                    'end_date': event['end_date'],
-                    'start_time': extract_time(event['start_time']),
-                    'end_time': extract_time(event['end_time']),
-                    'timezone': event.get('timezone') if hasattr(event, 'get') else event.get('timezone', None) if hasattr(event, 'keys') else None,
-                    'description': event['description'],
-                    'username': event['username'],
-                    'community_id': event['community_id'],
-                    'community_name': event['community_name'],
-                    'user_rsvp': user_rsvp,
-                    'rsvp_counts': rsvp_counts,
-                    'can_edit': can_edit
-                }
-            })
-            
-    except Exception as e:
-        logger.error(f"Error getting calendar event: {str(e)}")
-        return jsonify({'success': False, 'message': str(e)})
-@app.route('/test_color_detection')
-def test_color_detection():
-    """Test page for color detection"""
-    return '''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Color Detection Test</title>
-        <style>
-            body { font-family: Arial; padding: 20px; background: #f0f0f0; }
-            .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
-            input { width: 100%; padding: 10px; margin: 10px 0; }
-            button { padding: 10px 20px; background: #4CAF50; color: white; border: none; cursor: pointer; }
-            #result { margin-top: 20px; padding: 20px; background: #f9f9f9; border-radius: 4px; }
-            #preview { max-width: 300px; margin: 20px 0; }
-            #colorBox { width: 100px; height: 100px; border: 2px solid #333; margin: 10px 0; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>Image Color Detection Test</h1>
-            <input type="text" id="imageUrl" placeholder="Enter image URL" value="">
-            <button onclick="testColor()">Test Color Detection</button>
-            <div id="result"></div>
-            <img id="preview" style="display:none;">
-            <div id="colorBox" style="display:none;"></div>
-        </div>
-        <script>
-            function testColor() {
-                const url = document.getElementById('imageUrl').value;
-                if (!url) {
-                    alert('Please enter an image URL');
-                    return;
-                }
-                
-                // Show preview
-                const preview = document.getElementById('preview');
-                preview.src = url;
-                preview.style.display = 'block';
-                
-                // Fetch color
-                fetch(`/get_image_color?url=${encodeURIComponent(url)}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        console.log('Full response:', data);
-                        
-                        let html = '<h3>Detection Results:</h3>';
-                        if (data.success) {
-                            const color = data.color;
-                            const rgbStr = `rgb(${color.r}, ${color.g}, ${color.b})`;
-                            
-                            html += `<p><strong>Detected Background Color:</strong> ${rgbStr}</p>`;
-                            
-                            // Show color box
-                            const colorBox = document.getElementById('colorBox');
-                            colorBox.style.backgroundColor = rgbStr;
-                            colorBox.style.display = 'block';
-                            
-                            if (data.debug) {
-                                html += '<h4>Debug Info:</h4>';
-                                html += `<p><strong>Corner Colors:</strong><br>${data.debug.corner_colors.join('<br>')}</p>`;
-                                html += `<p><strong>Top Colors Overall:</strong><br>${data.debug.top_colors.join('<br>')}</p>`;
-                            }
-                        } else {
-                            html += '<p>Color detection failed</p>';
-                        }
-                        
-                        document.getElementById('result').innerHTML = html;
-                    })
-                    .catch(error => {
-                        document.getElementById('result').innerHTML = `<p>Error: ${error}</p>`;
-                    });
-            }
-        </script>
-    </body>
-    </html>
-    '''
+# Calendar event edit/detail API routes now reside in backend.blueprints.community_calendar.
 @app.route('/get_image_color')
 def get_image_color():
     """Extract background color from an image URL using simple border detection"""
@@ -24383,209 +21144,7 @@ def get_image_color():
             'color': {'r': 255, 'g': 255, 'b': 255}
         })
 
-@app.route('/get_event_rsvp_details')
-@login_required
-def get_event_rsvp_details():
-    """Get detailed RSVP information including non-responders"""
-    try:
-        event_id = request.args.get('event_id', type=int)
-        if not event_id:
-            return jsonify({'success': False, 'message': 'Event ID required'}), 400
-            
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Get all RSVPs for the event
-            c.execute("""
-                SELECT r.username, r.response, u.username as display_name
-                FROM event_rsvps r
-                JOIN users u ON r.username = u.username
-                WHERE r.event_id = ?
-                ORDER BY r.response, u.username
-            """, (event_id,))
-            
-            rsvps = c.fetchall()
-            
-            # Get event creator
-            c.execute("SELECT username FROM calendar_events WHERE id = ?", (event_id,))
-            event_row = c.fetchone()
-            event_creator = event_row['username'] if event_row else None
-            
-            # Get all invited users
-            c.execute("""
-                SELECT i.invited_username, u.username as display_name
-                FROM event_invitations i
-                JOIN users u ON i.invited_username = u.username
-                WHERE i.event_id = ?
-                ORDER BY u.username
-            """, (event_id,))
-            
-            invited_users = c.fetchall()
-            
-            # Add event creator to invited users if not already in the list
-            if event_creator:
-                invited_usernames = [u['invited_username'] for u in invited_users]
-                if event_creator not in invited_usernames:
-                    invited_users = list(invited_users) + [{'invited_username': event_creator, 'display_name': event_creator}]
-            
-            # Organize attendees by response
-            attendees = {
-                'going': [],
-                'maybe': [],
-                'not_going': [],
-                'no_response': []
-            }
-            
-            # Track who has responded
-            responded_users = set()
-            
-            # Categorize RSVPs
-            for rsvp in rsvps:
-                user_info = {
-                    'username': rsvp['display_name'] or rsvp['username']
-                }
-                attendees[rsvp['response']].append(user_info)
-                responded_users.add(rsvp['username'])
-            
-            # Find non-responders from invited users
-            for invitation in invited_users:
-                if invitation['invited_username'] not in responded_users:
-                    attendees['no_response'].append({
-                        'username': invitation['display_name'] or invitation['invited_username']
-                    })
-            
-            # If no specific invitations, check if it was an "invite all" event
-            if not invited_users:
-                c.execute("""
-                    SELECT e.*, c.id as community_id
-                    FROM calendar_events e
-                    LEFT JOIN communities c ON e.community_id = c.id
-                    WHERE e.id = ?
-                """, (event_id,))
-                
-                event = c.fetchone()
-                
-                # If it's a community event, get all community members who haven't responded
-                if event and event['community_id']:
-                    c.execute("""
-                        SELECT u.username
-                        FROM user_communities uc
-                        JOIN users u ON uc.user_id = u.id
-                        WHERE uc.community_id = ?
-                        AND u.username NOT IN (
-                            SELECT username FROM event_rsvps WHERE event_id = ?
-                        )
-                        ORDER BY u.username
-                    """, (event['community_id'], event_id))
-                    
-                    non_responders = c.fetchall()
-                    for user in non_responders:
-                        attendees['no_response'].append({
-                            'username': user['username']
-                        })
-            
-            return jsonify({
-                'success': True,
-                'attendees': attendees,
-                'total_invited': len(invited_users) if invited_users else len(attendees['no_response']) + len(responded_users),
-                'total_responded': len(responded_users)
-            })
-            
-    except Exception as e:
-        logger.error(f"Error getting RSVP details: {str(e)}")
-        return jsonify({'success': False, 'message': str(e)}), 500
-@app.route('/delete_calendar_event', methods=['POST'])
-@login_required
-def delete_calendar_event():
-    """Delete a calendar event"""
-    try:
-        username = session.get('username')
-        if not username:
-            return jsonify({'success': False, 'message': 'User not logged in'})
-            
-        event_id = request.form.get('event_id', type=int)
-        
-        logger.info(f"Delete request from {username} for event ID: {event_id}")
-        
-        if not event_id:
-            return jsonify({'success': False, 'message': 'Event ID is required'})
-        
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Get event details and community info
-            c.execute("""
-                SELECT e.username, e.community_id, c.creator_username
-                FROM calendar_events e
-                LEFT JOIN communities c ON e.community_id = c.id
-                WHERE e.id = ?
-            """, (event_id,))
-            event = c.fetchone()
-            
-            if not event:
-                logger.warning(f"Event {event_id} not found")
-                return jsonify({'success': False, 'message': 'Event not found'})
-            
-            event_owner = event['username']
-            community_id = event['community_id']
-            community_owner = event['creator_username'] if event['creator_username'] else None
-            
-            # Check if user is community admin
-            is_community_admin = False
-            if community_id:
-                c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?",
-                         (community_id, username))
-                is_community_admin = c.fetchone() is not None
-            
-            # Check permissions: user can delete if they're the event owner, app admin, community owner, or community admin
-            can_delete = (
-                event_owner == username or 
-                username == 'admin' or 
-                (community_owner and username == community_owner) or
-                is_community_admin
-            )
-            
-            if not can_delete:
-                logger.warning(f"User {username} tried to delete event owned by {event_owner}")
-                return jsonify({'success': False, 'message': 'You do not have permission to delete this event'})
-            
-            # Delete related data first
-            # Delete RSVPs
-            try:
-                c.execute("DELETE FROM event_rsvps WHERE event_id = ?", (event_id,))
-                logger.info(f"Deleted RSVPs for event {event_id}")
-            except Exception as rsvp_err:
-                logger.warning(f"Error deleting RSVPs for event {event_id}: {rsvp_err}")
-            
-            # Delete invitations
-            try:
-                c.execute("DELETE FROM event_invitations WHERE event_id = ?", (event_id,))
-                logger.info(f"Deleted invitations for event {event_id}")
-            except Exception as inv_err:
-                logger.warning(f"Error deleting invitations for event {event_id}: {inv_err}")
-            
-            # Delete related notifications (event_invitation type with link pointing to this event)
-            try:
-                event_link = f"/event/{event_id}"
-                c.execute("DELETE FROM notifications WHERE type = 'event_invitation' AND link = ?", (event_link,))
-                logger.info(f"Deleted event_invitation notifications for event {event_id}")
-            except Exception as notif_err:
-                logger.warning(f"Error deleting notifications for event {event_id}: {notif_err}")
-            
-            # Delete the event
-            c.execute("DELETE FROM calendar_events WHERE id = ?", (event_id,))
-            deleted_count = c.rowcount
-            conn.commit()
-            
-            if deleted_count > 0:
-                logger.info(f"Successfully deleted event {event_id}")
-                return jsonify({'success': True, 'message': 'Event deleted successfully'})
-            else:
-                return jsonify({'success': False, 'message': 'Event could not be deleted'})
-            
-    except Exception as e:
-        logger.error(f"Error deleting calendar event: {str(e)}", exc_info=True)
-        return jsonify({'success': False, 'message': f'Server error: {str(e)}'})
+# Calendar RSVP details and delete APIs now reside in backend.blueprints.community_calendar.
 
 @app.route('/delete_post', methods=['POST'])
 @login_required
@@ -24601,14 +21160,40 @@ def delete_post():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT username, image_path, video_path, community_id FROM posts WHERE id= ?", (post_id,))
-            post = c.fetchone()
+            try:
+                c.execute(
+                    "SELECT username, image_path, video_path, community_id, is_system_post, timestamp FROM posts WHERE id= ?",
+                    (post_id,),
+                )
+                post = c.fetchone()
+            except Exception:
+                # Fallback for environments where is_system_post hasn't been
+                # backfilled yet — re-run the legacy projection.
+                c.execute(
+                    "SELECT username, image_path, video_path, community_id FROM posts WHERE id= ?",
+                    (post_id,),
+                )
+                post = c.fetchone()
             if not post:
                 return jsonify({'success': False, 'error': 'Post not found!'}), 404
             
             # Use proper permission check that allows community owners/admins
             if not has_post_delete_permission(username, post['username'], post['community_id']):
                 return jsonify({'success': False, 'error': 'Post not found or unauthorized!'}), 403
+
+            # Steve welcome posts are locked from delete for the first 7 days
+            # so brand-new owners can't accidentally erase the community
+            # manual before they've had a chance to read it.
+            try:
+                from backend.services.steve_community_welcome import is_within_delete_lock
+                post_dict = dict(post) if hasattr(post, 'keys') else {}
+                if is_within_delete_lock(post_dict):
+                    return jsonify({
+                        'success': False,
+                        'error': "Steve's welcome post is locked from delete for the first 7 days. You can delete it after that if you'd rather.",
+                    }), 403
+            except Exception as lock_err:
+                logger.warning("delete_post: welcome lock check failed (non-fatal): %s", lock_err)
             
             # Get community_id for cache invalidation before deleting
             post_community_id = post['community_id'] if post else None
@@ -25368,7 +21953,7 @@ def edit_post():
             old_image_path = row['image_path'] if hasattr(row, 'keys') else row[2]
             old_video_path = row['video_path'] if hasattr(row, 'keys') else row[3]
             
-            if owner != username and username != 'admin':
+            if owner != username and not is_app_admin(username):
                 return jsonify({'success': False, 'error': 'Unauthorized!'}), 403
             
             # Handle new media upload
@@ -25477,7 +22062,7 @@ def update_audio_summary():
             if not row:
                 return jsonify({'success': False, 'error': 'Reply not found'}), 404
             author = row['username'] if hasattr(row, 'keys') else row[0]
-            if author != username and username != 'admin':
+            if author != username and not is_app_admin(username):
                 return jsonify({'success': False, 'error': 'Not authorized to edit this summary'}), 403
             try:
                 c.execute(f"ALTER TABLE replies ADD COLUMN audio_summary TEXT")
@@ -25497,7 +22082,7 @@ def update_audio_summary():
 
         post_owner = row[0] if isinstance(row, tuple) else row['username']
 
-        if post_owner != username and username != 'admin':
+        if post_owner != username and not is_app_admin(username):
             return jsonify({'success': False, 'error': 'Not authorized to edit this summary'}), 403
 
         c.execute(f"UPDATE posts SET audio_summary = {ph} WHERE id = {ph}", (new_summary, post_id))
@@ -25517,16 +22102,32 @@ def update_audio_summary():
 @login_required
 def translate_summary():
     """Translate an AI summary to a target language."""
-    data = request.get_json()
+    from backend.services import ai_usage as _ai_usage
+    from backend.services.entitlements_gate import check_steve_access
+    from backend.services.feature_flags import entitlements_enforcement_enabled
+
+    data = request.get_json() or {}
     summary = (data.get('summary') or '').strip()
     target_language = (data.get('target_language') or '').strip()
-    
+    context = (data.get('context') or 'voice_summary').strip().lower()
+    username = session.get('username')
+
     if not summary:
         return jsonify({'success': False, 'error': 'Summary is required'}), 400
-    
+
     if not target_language:
         return jsonify({'success': False, 'error': 'Target language is required'}), 400
-    
+
+    surface = (
+        _ai_usage.SURFACE_TRANSLATION
+        if context == 'profile'
+        else _ai_usage.SURFACE_VOICE_SUMMARY
+    )
+
+    allowed, block_payload, block_status, _ent = check_steve_access(username, surface)
+    if not allowed and entitlements_enforcement_enabled():
+        return jsonify(block_payload), block_status
+
     # Language mapping
     language_map = {
         'pt': 'European Portuguese (Portugal)',
@@ -25537,21 +22138,23 @@ def translate_summary():
         'it': 'Italian',
         'zh': 'Mandarin Chinese (Simplified)'
     }
-    
+
     target_lang_name = language_map.get(target_language)
     if not target_lang_name:
         return jsonify({'success': False, 'error': 'Invalid target language'}), 400
-    
+
     if not OPENAI_AVAILABLE:
         return jsonify({'success': False, 'error': 'Translation service not available'}), 503
-    
+
     if not OPENAI_API_KEY:
         return jsonify({'success': False, 'error': 'Translation service not configured'}), 503
-    
+
+    import time as _time
+    _started = _time.monotonic()
     try:
-        logger.info(f"Translating summary to {target_lang_name}")
+        logger.info(f"Translating summary to {target_lang_name} for {username} ({surface})")
         client = OpenAI(api_key=OPENAI_API_KEY)
-        
+
         system_prompt = f"""You are a professional translator. Translate the given text to {target_lang_name}.
 Rules:
 - Maintain the meaning and tone of the original text
@@ -25559,7 +22162,7 @@ Rules:
 - If translating to European Portuguese, use Portugal vocabulary and grammar, NOT Brazilian Portuguese
 - Keep proper names unchanged
 - Preserve any technical terms that don't need translation"""
-        
+
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -25575,17 +22178,41 @@ Rules:
             max_tokens=200,
             temperature=0.3
         )
-        
+
         translated = response.choices[0].message.content.strip()
+        usage = getattr(response, 'usage', None)
+        tokens_in = getattr(usage, 'prompt_tokens', None) if usage else None
+        tokens_out = getattr(usage, 'completion_tokens', None) if usage else None
+        elapsed_ms = int((_time.monotonic() - _started) * 1000)
+
+        _ai_usage.log_usage(
+            username,
+            surface=surface,
+            request_type='translate_summary',
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            success=True,
+            response_time_ms=elapsed_ms,
+            model='gpt-4o-mini',
+        )
         logger.info(f"Translation successful: {translated[:50]}...")
-        
+
         return jsonify({
             'success': True,
             'translated_summary': translated,
             'target_language': target_language
         })
-        
+
     except Exception as e:
+        elapsed_ms = int((_time.monotonic() - _started) * 1000)
+        _ai_usage.log_usage(
+            username,
+            surface=surface,
+            request_type='translate_summary',
+            success=False,
+            response_time_ms=elapsed_ms,
+            model='gpt-4o-mini',
+        )
         logger.error(f"Error translating summary: {str(e)}")
         return jsonify({'success': False, 'error': 'Translation failed'}), 500
 
@@ -25883,7 +22510,7 @@ def delete_reply():
             can_delete = False
             if reply_owner == username:
                 can_delete = True
-            elif username == 'admin':
+            elif is_app_admin(username):
                 can_delete = True
             elif reply_community_id:
                 # Check if user is admin of this community
@@ -26139,13 +22766,15 @@ def inject_member_mentions(text: str, member_names: list) -> str:
 
 def format_steve_response_links(response_text: str) -> str:
     """
-    Clean up URLs in Steve's responses for proper frontend rendering.
-    
-    Grok's web_search returns real URLs, but in citation format like:
-      [[1]](https://rtp.pt/article)[[2]](https://bbc.com/news)
-    
-    The double brackets and lack of spacing breaks standard markdown parsers.
-    This function normalizes everything into clean [domain](url) format.
+    Normalise URLs in Steve replies for client Markdown rendering.
+
+    - Citation-style ``[[1]](https://...)`` from hosted search is rewritten to
+      ``[hostname](https://...)`` so parsers accept it (prompts discourage this for sources).
+    - Standard ``[visible text](url)`` is preserved when ``visible text`` looks intentional:
+      article headlines, words, etc. Only purely numeric labels or labels starting with
+      ``source`` are replaced with the URL hostname for readability.
+    - Bare ``https://...`` URLs become ``[hostname](url)`` so they become tappable; prefer
+      prompting Steve to emit ``[Headline](url)`` first so headlines are not stripped here.
     """
     import re
     from urllib.parse import urlparse
@@ -26164,8 +22793,7 @@ def format_steve_response_links(response_text: str) -> str:
         except Exception:
             return "link"
     
-    # Step 1: Convert citation-style [[N]](url) to [domain](url)
-    # Matches [[1]], [[2]], etc. followed by (url)
+    # Step 1: Convert citation-style [[N]](url) to [domain](url). Prefer model output of [Headline](url) instead.
     citation_pattern = r'\[\[(\d+)\]\]\((https?://[^)]+)\)'
     def replace_citation(match):
         url = match.group(2).rstrip('.,;:!?')
@@ -26174,8 +22802,7 @@ def format_steve_response_links(response_text: str) -> str:
     
     formatted = re.sub(citation_pattern, replace_citation, response_text)
     
-    # Step 2: Convert standard markdown links [text](url) — keep URL, use domain as display
-    # Only replace if display text is a number or generic (keeps intentional display text)
+    # Step 2: Normalize [text](url) when text is only a citation label; keep real headlines & labels.
     std_md_pattern = r'\[([^\]]+)\]\((https?://[^)]+)\)'
     def clean_markdown_link(match):
         display = match.group(1)
@@ -26225,15 +22852,16 @@ IMPORTANT LANGUAGE RULE: You MUST reply in the SAME language the user writes in.
 
 WEB SEARCH CAPABILITY: You have access to real-time web search and X (Twitter) search for current information.
 
-When users ask about news, weather, or current events:
-- You CAN search the web for real, current information
-- Include source URLs when available — they will be auto-formatted as clickable links
-- Include dates when the information was published if available
-- If search returns no results, be honest about it
+When users ask about news, weather, sports, politics, markets, or current events:
+- Search the web (and X only when the user explicitly cares about X/Twitter) for real, current information.
+- Follow STEVE RESPONSE POLICY **news_current_events** when that mode applies: opening paragraph, ## Key developments, ## Why it matters, ## Sources.
+- In ## Sources, each line must be `[Exact article headline](URL)` Markdown — no bare URLs, no [[n]](url) citation style in the final reply.
+- Prefer reputable outlets (wires and established nationals). For Portugal / PT-PT topics, prioritise RTP Notícias, Público, Expresso, Observador, ECO, and official .gov.pt where relevant; avoid thin aggregators unless cross-checked against a tier-one source.
+- Include publication dates when sources provide them. If search returns nothing useful, say so honestly.
 
 CONVERSATION INTELLIGENCE:
 Read the full post and comment thread carefully. Adapt your response based on what's happening:
-1. If someone is asking about news, weather, sports, or current events — search the web and provide real, up-to-date information with source links.
+1. If someone is asking about news, weather, sports, or current events — search as needed and deliver a substantive briefing per STEVE RESPONSE POLICY news_current_events; sources as `[Headline](URL)` Markdown in ## Sources.
 2. If the conversation is casual banter or fun — join in naturally. Be witty, keep it light.
 3. If a problem or challenge is being discussed and NO solution has been proposed — proactively suggest practical, actionable solutions with brief reasoning.
 4. If a solution IS already being discussed — briefly analyze it: what's good about it, any risks or blind spots, and suggest improvements or alternatives if relevant.
@@ -26290,17 +22918,42 @@ def extract_pdf_text_for_steve(file_path: str, max_chars: int = 4000):
         return None
 
 
-def _build_steve_community_context(c, community_id, placeholder, max_doc_chars_total=12000):
+def _build_steve_community_context(
+    c,
+    community_id,
+    placeholder,
+    max_doc_chars_total=2000,
+    *,
+    events_limit=10,
+    links_limit=10,
+    docs_limit=10,
+    polls_limit=5,
+):
     """Build community context string: calendar + links/docs + polls."""
     from backend.services.database import USE_MYSQL
     parts = []
+    events_limit = max(0, int(events_limit or 0))
+    links_limit = max(0, int(links_limit or 0))
+    docs_limit = max(0, int(docs_limit or 0))
+    polls_limit = max(0, int(polls_limit or 0))
+
+    try:
+        from backend.services.steve_community_memory import get_compact_community_memory
+
+        memory = get_compact_community_memory(int(community_id))
+        if memory:
+            parts.append("Compact community memory:\n" + memory)
+    except Exception as e:
+        logger.debug("Steve community memory context failed: %s", e)
     
     # Calendar events
     try:
+        if events_limit <= 0:
+            raise ValueError("events disabled by context budget")
         if USE_MYSQL:
-            c.execute(f"SELECT title, date, start_time, end_time, description FROM calendar_events WHERE community_id = {placeholder} AND date >= CURDATE() ORDER BY date ASC LIMIT 15", (community_id,))
+            c.execute(f"SELECT title, date, start_time, end_time, description FROM calendar_events WHERE community_id = {placeholder} AND date >= CURDATE() ORDER BY date ASC LIMIT {events_limit}", (community_id,))
         else:
-            c.execute(f"SELECT title, date, start_time, end_time, description FROM calendar_events WHERE community_id = {placeholder} AND date >= date('now') ORDER BY date ASC LIMIT 15", (community_id,))
+            c.execute(f"SELECT title, date, start_time, end_time, description FROM calendar_events WHERE community_id = {placeholder} AND date >= date('now') ORDER BY date ASC LIMIT {events_limit}", (community_id,))
         events = c.fetchall()
         if events:
             lines = []
@@ -26311,12 +22964,16 @@ def _build_steve_community_context(c, community_id, placeholder, max_doc_chars_t
                 desc = (evt['description'] if hasattr(evt, 'keys') else evt[4]) or ''
                 lines.append(f"- {t} | Date: {d}" + (f" | Time: {st}" if st else "") + (f" | {desc[:100]}" if desc else ""))
             parts.append("Upcoming events in this community:\n" + "\n".join(lines))
+    except ValueError:
+        pass
     except Exception as e:
         logger.warning(f"Steve calendar context failed: {e}")
     
     # Useful links
     try:
-        c.execute(f"SELECT url, description FROM useful_links WHERE community_id = {placeholder} ORDER BY created_at DESC LIMIT 20", (community_id,))
+        if links_limit <= 0:
+            raise ValueError("links disabled by context budget")
+        c.execute(f"SELECT url, description FROM useful_links WHERE community_id = {placeholder} ORDER BY created_at DESC LIMIT {links_limit}", (community_id,))
         links = c.fetchall()
         if links:
             lines = []
@@ -26325,12 +22982,16 @@ def _build_steve_community_context(c, community_id, placeholder, max_doc_chars_t
                 desc = (lnk['description'] if hasattr(lnk, 'keys') else lnk[1]) or url
                 lines.append(f"- {desc} ({url})")
             parts.append("Useful links in this community:\n" + "\n".join(lines))
+    except ValueError:
+        pass
     except Exception as e:
         logger.warning(f"Steve links context failed: {e}")
     
     # Documents with PDF text
     try:
-        c.execute(f"SELECT file_path, description FROM useful_docs WHERE community_id = {placeholder} ORDER BY created_at DESC LIMIT 10", (community_id,))
+        if docs_limit <= 0 or max_doc_chars_total <= 0:
+            raise ValueError("documents disabled by context budget")
+        c.execute(f"SELECT file_path, description FROM useful_docs WHERE community_id = {placeholder} ORDER BY created_at DESC LIMIT {docs_limit}", (community_id,))
         docs = c.fetchall()
         if docs:
             doc_lines = []
@@ -26346,15 +23007,19 @@ def _build_steve_community_context(c, community_id, placeholder, max_doc_chars_t
                 if chars_remaining <= 0:
                     break
             parts.append("Community documents:\n" + "\n\n---\n\n".join(doc_lines))
+    except ValueError:
+        pass
     except Exception as e:
         logger.warning(f"Steve docs context failed: {e}")
     
     # Active polls
     try:
+        if polls_limit <= 0:
+            raise ValueError("polls disabled by context budget")
         if USE_MYSQL:
-            c.execute(f"SELECT p.id, p.question FROM polls p JOIN posts po ON p.post_id = po.id WHERE po.community_id = {placeholder} AND p.is_active = 1 ORDER BY po.timestamp DESC LIMIT 10", (community_id,))
+            c.execute(f"SELECT p.id, p.question FROM polls p JOIN posts po ON p.post_id = po.id WHERE po.community_id = {placeholder} AND p.is_active = 1 ORDER BY po.timestamp DESC LIMIT {polls_limit}", (community_id,))
         else:
-            c.execute(f"SELECT p.id, p.question FROM polls p JOIN posts po ON p.post_id = po.id WHERE po.community_id = {placeholder} AND p.is_active = 1 ORDER BY po.timestamp DESC LIMIT 10", (community_id,))
+            c.execute(f"SELECT p.id, p.question FROM polls p JOIN posts po ON p.post_id = po.id WHERE po.community_id = {placeholder} AND p.is_active = 1 ORDER BY po.timestamp DESC LIMIT {polls_limit}", (community_id,))
         polls = c.fetchall()
         if polls:
             poll_lines = []
@@ -26369,9 +23034,182 @@ def _build_steve_community_context(c, community_id, placeholder, max_doc_chars_t
                 except Exception:
                     poll_lines.append(f"- Poll: {q}")
             parts.append("Active polls in this community:\n" + "\n".join(poll_lines))
+    except ValueError:
+        pass
     except Exception as e:
         logger.warning(f"Steve polls context failed: {e}")
     
+    return "\n\n".join(parts)
+
+
+def _build_steve_group_resource_context(
+    c,
+    group_id: int,
+    placeholder,
+    max_doc_chars_total=2000,
+    *,
+    events_limit=10,
+    links_limit=10,
+    docs_limit=10,
+    polls_limit=5,
+):
+    """Links, document excerpts, calendar, polls for one exclusive group (``group_id`` only).
+
+    Does not load community memory or parent-community-only rows (no ``group_id`` on those rows).
+    """
+    from backend.services.database import USE_MYSQL
+    from backend.services.group_polls_data import ensure_group_poll_tables, poll_expired
+
+    parts = []
+    gid = int(group_id)
+    events_limit = max(0, int(events_limit or 0))
+    links_limit = max(0, int(links_limit or 0))
+    docs_limit = max(0, int(docs_limit or 0))
+    polls_limit = max(0, int(polls_limit or 0))
+
+    try:
+        if events_limit <= 0:
+            raise ValueError("events disabled by context budget")
+        if USE_MYSQL:
+            c.execute(
+                f"""
+                SELECT title, date, start_time, end_time, description
+                FROM calendar_events
+                WHERE group_id = {placeholder} AND date >= CURDATE()
+                ORDER BY date ASC
+                LIMIT {events_limit}
+                """,
+                (gid,),
+            )
+        else:
+            c.execute(
+                f"""
+                SELECT title, date, start_time, end_time, description
+                FROM calendar_events
+                WHERE group_id = {placeholder} AND date >= date('now')
+                ORDER BY date ASC
+                LIMIT {events_limit}
+                """,
+                (gid,),
+            )
+        events = c.fetchall()
+        if events:
+            lines = []
+            for evt in events:
+                t = evt["title"] if hasattr(evt, "keys") else evt[0]
+                d = evt["date"] if hasattr(evt, "keys") else evt[1]
+                st = evt["start_time"] if hasattr(evt, "keys") else evt[2]
+                desc = (evt["description"] if hasattr(evt, "keys") else evt[4]) or ""
+                lines.append(
+                    f"- {t} | Date: {d}" + (f" | Time: {st}" if st else "") + (f" | {desc[:100]}" if desc else "")
+                )
+            parts.append("Upcoming events in this group:\n" + "\n".join(lines))
+    except ValueError:
+        pass
+    except Exception as e:
+        logger.warning(f"Steve group calendar context failed: {e}")
+
+    try:
+        if links_limit <= 0:
+            raise ValueError("links disabled by context budget")
+        c.execute(
+            f"""
+            SELECT url, description FROM useful_links
+            WHERE group_id = {placeholder}
+            ORDER BY created_at DESC
+            LIMIT {links_limit}
+            """,
+            (gid,),
+        )
+        links = c.fetchall()
+        if links:
+            lines = []
+            for lnk in links:
+                url = lnk["url"] if hasattr(lnk, "keys") else lnk[0]
+                desc = (lnk["description"] if hasattr(lnk, "keys") else lnk[1]) or url
+                lines.append(f"- {desc} ({url})")
+            parts.append("Useful links in this group:\n" + "\n".join(lines))
+    except ValueError:
+        pass
+    except Exception as e:
+        logger.warning(f"Steve group links context failed: {e}")
+
+    try:
+        if docs_limit <= 0 or max_doc_chars_total <= 0:
+            raise ValueError("documents disabled by context budget")
+        c.execute(
+            f"""
+            SELECT file_path, description FROM useful_docs
+            WHERE group_id = {placeholder}
+            ORDER BY created_at DESC
+            LIMIT {docs_limit}
+            """,
+            (gid,),
+        )
+        docs = c.fetchall()
+        if docs:
+            doc_lines = []
+            chars_remaining = max_doc_chars_total
+            for doc in docs:
+                fp = doc["file_path"] if hasattr(doc, "keys") else doc[0]
+                desc = (doc["description"] if hasattr(doc, "keys") else doc[1]) or fp
+                text = extract_pdf_text_for_steve(fp, max_chars=min(4000, chars_remaining))
+                excerpt = text if text else "(Could not read document.)"
+                doc_lines.append(f"Document: {desc}\nContent (excerpt): {excerpt}")
+                if text:
+                    chars_remaining -= len(text)
+                if chars_remaining <= 0:
+                    break
+            parts.append("Group documents:\n" + "\n\n---\n\n".join(doc_lines))
+    except ValueError:
+        pass
+    except Exception as e:
+        logger.warning(f"Steve group docs context failed: {e}")
+
+    try:
+        if polls_limit <= 0:
+            raise ValueError("polls disabled by context budget")
+        ensure_group_poll_tables(c)
+        gp_t = "`group_polls`" if USE_MYSQL else "group_polls"
+        gpo_t = "`group_poll_options`" if USE_MYSQL else "group_poll_options"
+        c.execute(
+            f"""
+            SELECT id, question, expires_at FROM {gp_t}
+            WHERE group_id = {placeholder} AND is_active = 1
+            ORDER BY created_at DESC
+            LIMIT {polls_limit}
+            """,
+            (gid,),
+        )
+        polls = c.fetchall()
+        if polls:
+            poll_lines = []
+            for poll in polls:
+                pid = poll["id"] if hasattr(poll, "keys") else poll[0]
+                q = poll["question"] if hasattr(poll, "keys") else poll[1]
+                exp_raw = poll["expires_at"] if hasattr(poll, "keys") else poll[2]
+                if poll_expired(exp_raw):
+                    continue
+                try:
+                    c.execute(
+                        f"SELECT option_text, votes FROM {gpo_t} WHERE group_poll_id = {placeholder} ORDER BY id",
+                        (pid,),
+                    )
+                    opts = c.fetchall()
+                    opt_strs = [
+                        f"{(o['option_text'] if hasattr(o, 'keys') else o[0])} ({(o['votes'] if hasattr(o, 'keys') else o[1])} votes)"
+                        for o in opts
+                    ]
+                    poll_lines.append(f"- Poll: {q} | Options: {', '.join(opt_strs)}")
+                except Exception:
+                    poll_lines.append(f"- Poll: {q}")
+            if poll_lines:
+                parts.append("Active polls in this group:\n" + "\n".join(poll_lines))
+    except ValueError:
+        pass
+    except Exception as e:
+        logger.warning(f"Steve group polls context failed: {e}")
+
     return "\n\n".join(parts)
 
 
@@ -26413,16 +23251,32 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
     """
     from datetime import datetime
     import json
+    from backend.services.steve_community_config import (
+        get_paid_steve_package_config,
+        response_usage_tokens,
+    )
+    from backend.services.steve_model_config import estimate_response_cost_usd, output_cap_for_surface
+    from backend.services.steve_prompt_policy import (
+        append_response_policy,
+        should_include_community_resources,
+        should_include_user_profile,
+    )
     
     logger.info(f"Steve replying to post {post_id} in community {community_id}")
     
     # ── Entitlements gate ──
     _enforcement_on = False
+    _ent = {}
+    steve_config = get_paid_steve_package_config()
     try:
         from backend.services.entitlements_gate import gate_or_reason as _gate
         from backend.services.feature_flags import entitlements_enforcement_enabled as _enforce
         _enforcement_on = _enforce()
-        _allowed, _reason, _ent = _gate(author_username, _ai_usage.SURFACE_FEED)
+        _allowed, _reason, _ent = _gate(
+            author_username,
+            _ai_usage.SURFACE_FEED,
+            community_id=community_id,
+        )
         if not _allowed and _enforcement_on:
             logger.info(
                 "Steve post-reply blocked by entitlements: user=%s reason=%s",
@@ -26439,7 +23293,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
 
             # Legacy daily-limit check — only runs when the entitlements flag
             # is off. With the flag on, the gate above already did this.
-            if not _enforcement_on and author_username.lower() not in AI_UNLIMITED_USERS:
+            if not _enforcement_on and author_username.lower() not in AI_UNLIMITED_USERS and not is_app_admin(author_username):
                 today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
                 c.execute(f"""
                     SELECT COUNT(*) as cnt FROM ai_usage_log 
@@ -26523,20 +23377,31 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]"
             ]
             
-            # Community context: calendar, links, documents (with PDF content), polls
-            try:
-                community_context = _build_steve_community_context(c, community_id, placeholder)
-                if community_context and community_context.strip():
-                    context_parts.append(
-                        "Community context (use this to answer questions about events, links, documents, and polls):\n"
-                        + community_context
+            if should_include_community_resources(post_content):
+                try:
+                    community_context = _build_steve_community_context(
+                        c,
+                        community_id,
+                        placeholder,
+                        max_doc_chars_total=steve_config.doc_excerpt_chars_default,
+                        events_limit=steve_config.events_limit,
+                        links_limit=steve_config.links_limit,
+                        docs_limit=steve_config.docs_limit,
+                        polls_limit=steve_config.polls_limit,
                     )
-            except Exception as ctx_err:
-                logger.warning("Steve community context failed: %s", ctx_err)
+                    if community_context and community_context.strip():
+                        context_parts.append(
+                            "Community context (use this to answer questions about events, links, documents, and polls):\n"
+                            + community_context
+                        )
+                except Exception as ctx_err:
+                    logger.warning("Steve community context failed: %s", ctx_err)
 
             # Privacy gate BEFORE KB fetch (per docs/STEVE_PRIVACY_GATE.md and community rule)
             from backend.services.steve_profiling_gates import user_can_access_steve_kb
-            if not user_can_access_steve_kb(username, author_username, {"community_id": community_id}):
+            if not should_include_user_profile(post_content):
+                author_profile_ctx = ""
+            elif not user_can_access_steve_kb(author_username, author_username, {"community_id": community_id}):
                 author_profile_ctx = ""
             else:
                 author_profile_ctx = get_steve_context_for_user(author_username)
@@ -26555,16 +23420,63 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             )
             if author_profile_ctx:
                 system_prompt += f"\n\nWHAT YOU KNOW ABOUT @{author_username}:\n{author_profile_ctx}\nUse this knowledge naturally — don't announce it, but let it guide your tone and relevance."
+            _mention_apx = build_steve_gated_mention_profile_appendix_for_feed(
+                author_username,
+                community_id,
+                post_content,
+                exclude_usernames_lower={author_username.lower(), "steve"},
+            )
+            if _mention_apx:
+                system_prompt += _mention_apx
+            system_prompt = append_response_policy(system_prompt, post_content, surface=_ai_usage.SURFACE_FEED)
+
+            platform_question = False
+            professional_advice_question = False
+            try:
+                from backend.services.steve_platform_manual import (
+                    SURFACE_FEED,
+                    is_professional_advice_intent,
+                    is_platform_question,
+                    render_global_steve_safety_prompt,
+                    render_platform_manual_prompt,
+                    select_platform_manual_cards,
+                )
+
+                platform_question = is_platform_question(post_content)
+                professional_advice_question = is_professional_advice_intent(post_content)
+                manual_prompt = render_platform_manual_prompt(
+                    select_platform_manual_cards(post_content, surface=SURFACE_FEED)
+                )
+                safety_prompt = render_global_steve_safety_prompt(post_content, surface=SURFACE_FEED)
+                if manual_prompt:
+                    system_prompt += f"\n\n{manual_prompt}"
+                if safety_prompt:
+                    system_prompt += f"\n\n{safety_prompt}"
+            except Exception as manual_err:
+                logger.warning("Steve feed platform manual load failed (non-fatal): %s", manual_err)
             
             ai_response = None
             try:
-                logger.info(f"Steve post reply using Grok 4.1 Fast Reasoning with web+X search ({ai_personality} mode)")
+                _feed_tools = _resolve_steve_hosted_tools(
+                    post_content,
+                    username=author_username,
+                    surface=_ai_usage.SURFACE_FEED,
+                    platform_question=platform_question,
+                    professional_advice_question=professional_advice_question,
+                    config=steve_config,
+                    community_id=int(community_id) if community_id is not None else None,
+                )
+                logger.info(
+                    "Steve post reply Grok call tools=%s (%s mode)",
+                    _steve_tool_names_for_log(_feed_tools),
+                    ai_personality,
+                )
                 client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
                 
                 # Build user content - include images if present (Grok supports vision)
                 if has_images:
                     user_content = [{"type": "input_text", "text": context}]
-                    for img_url in post_image_urls[:4]:
+                    for img_url in post_image_urls[:steve_config.images_limit]:
                         user_content.append({"type": "input_image", "image_url": img_url})
                     if has_video:
                         user_content[0]["text"] += "\n\n[Note: This post also contains a video that you cannot view, but you can see the images above.]"
@@ -26574,22 +23486,30 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                     user_content = context
                     effective_system = system_prompt
                 
+                started = time.perf_counter()
+                entitlement_cap = output_cap_for_surface(
+                    _ent,
+                    _ai_usage.SURFACE_FEED,
+                    steve_config.max_output_tokens,
+                )
+                if (_ent or {}).get("steve_billing_source") == "community_pool":
+                    max_output_tokens = min(entitlement_cap, int(steve_config.max_output_tokens or entitlement_cap))
+                else:
+                    max_output_tokens = entitlement_cap
                 response = client.responses.create(
-                    model="grok-4-1-fast-reasoning",
+                    model=steve_config.model,
                     input=[
                         {"role": "system", "content": effective_system},
                         {"role": "user", "content": user_content}
                     ],
-                    tools=[
-                        {"type": "web_search"},
-                        {"type": "x_search"}
-                    ],
-                    max_output_tokens=600
+                    tools=_feed_tools,
+                    max_output_tokens=max_output_tokens
                 )
+                response_time_ms = int((time.perf_counter() - started) * 1000)
                 
                 ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
                 if ai_response:
-                    logger.info("Steve post reply Grok 4.1 Fast successful")
+                    logger.info("Steve post reply Grok succeeded tools=%s", _steve_tool_names_for_log(_feed_tools))
                     
             except Exception as ai_err:
                 logger.error(f"AI error in Steve post reply: {ai_err}")
@@ -26598,6 +23518,12 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             if not ai_response:
                 logger.warning("No AI response for Steve post reply")
                 return
+
+            try:
+                from backend.services.steve_platform_manual import append_professional_disclaimer_if_needed
+                ai_response = append_professional_disclaimer_if_needed(ai_response, post_content)
+            except Exception as safety_err:
+                logger.warning("Steve feed safety footer failed (non-fatal): %s", safety_err)
             
             # Format URLs in response as clickable links with readable text
             ai_response = format_steve_response_links(ai_response)
@@ -26616,12 +23542,27 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             
             # MIGRATED to backend/services/ai_usage.py — safe to delete when monolith-split runs
             try:
+                from backend.services.steve_credit_weights import tools_flags_from_hosted_tools
+
+                tokens_in, tokens_out = response_usage_tokens(response)
+                billing_community_id = (
+                    community_id
+                    if (_ent or {}).get("steve_billing_source") == "community_pool"
+                    else None
+                )
+                web_t, x_t = tools_flags_from_hosted_tools(_feed_tools)
                 _ai_usage.log_usage(
                     author_username,
                     surface=_ai_usage.SURFACE_FEED,
                     request_type='steve_post_reply',
-                    community_id=community_id,
-                    model='grok-4-1-fast-reasoning',
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    cost_usd=estimate_response_cost_usd(response, steve_config),
+                    response_time_ms=response_time_ms if "response_time_ms" in locals() else None,
+                    community_id=billing_community_id,
+                    model=steve_config.model,
+                    tools_web_search=web_t,
+                    tools_x_search=x_t,
                 )
             except Exception:
                 pass
@@ -26654,7 +23595,7 @@ def community_ai_personality(community_id: int):
             placeholder = get_sql_placeholder()
             
             # Platform admin (username: admin) can manage any community
-            is_platform_admin = username == 'admin'
+            is_platform_admin = is_app_admin(username)
             
             if not is_platform_admin:
                 # Check if user is admin of this community
@@ -26703,6 +23644,641 @@ def community_ai_personality(community_id: int):
         logger.error(f"Error in community_ai_personality: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+@app.route('/api/ai/steve_preflight', methods=['POST'])
+@login_required
+def ai_steve_preflight():
+    """Preflight a pending @Steve community post/reply before it is saved."""
+    username = session.get('username')
+    data = request.get_json(silent=True) or {}
+    user_message = (data.get('user_message') or data.get('text') or '').strip()
+    community_id = _coerce_optional_int(data.get('community_id'))
+    if community_id is None:
+        community_id = _resolve_post_community_id_for_steve(data.get('post_id'))
+
+    preflight_resp = _steve_preflight_response(username, user_message, community_id)
+    if preflight_resp is not None:
+        return preflight_resp
+    return jsonify({'success': True})
+
+
+def _steve_ai_reply_for_group_post(
+    conn,
+    c,
+    placeholder,
+    username: str,
+    group_post_id: int,
+    parent_reply_id,
+    user_message: str,
+    community_id,
+    steve_config,
+    is_unlimited: bool,
+    usage_count: int,
+    _enforcement_on: bool,
+    _ent: dict,
+    *,
+    agent_mode: str | None = None,
+    consume_auto_budget: bool = False,
+    log_request_type: str = "steve_group_reply",
+):
+    """Handle @Steve in group feed: LLM reply persisted as a group_replies row."""
+    from backend.services.steve_community_config import response_usage_tokens
+    from backend.services.steve_model_config import estimate_response_cost_usd, output_cap_for_surface
+    from backend.services.steve_prompt_policy import (
+        append_response_policy,
+        render_hosted_search_capability_instructions,
+        should_include_user_profile,
+    )
+    from backend.services.steve_profiling_gates import user_can_access_steve_kb
+    from backend.services.group_steve_agent import CAREER_EXPERT_OUTPUT_CAP, PRESET_CAREER_EXPERT
+
+    gp_t = '`group_posts`' if USE_MYSQL else 'group_posts'
+    gr_t = '`group_replies`' if USE_MYSQL else 'group_replies'
+    c.execute(
+        f"SELECT content, username, image_path, group_id FROM {gp_t} WHERE id = {placeholder}",
+        (group_post_id,),
+    )
+    prow = c.fetchone()
+    if not prow:
+        return jsonify({'success': False, 'error': 'Post not found'}), 404
+    if consume_auto_budget:
+        try:
+            c.execute(
+                f"SELECT COALESCE(auto_steve_used_count, 0) FROM {gp_t} WHERE id = {placeholder}",
+                (group_post_id,),
+            )
+            _bc = c.fetchone()
+            _ac = int(_bc[0] if _bc and not hasattr(_bc, "keys") else (_bc.get("auto_steve_used_count", 0) if _bc else 0))
+            if _ac >= 5:
+                return jsonify(
+                    {
+                        'success': False,
+                        'error': 'Automatic reply cap reached for this post. Mention @Steve to continue.',
+                    }
+                ), 429
+        except Exception:
+            pass
+    post_content = prow['content'] if hasattr(prow, 'keys') else prow[0]
+    post_author = prow['username'] if hasattr(prow, 'keys') else prow[1]
+    post_image_path = prow['image_path'] if hasattr(prow, 'keys') else prow[2]
+    group_id_raw = prow['group_id'] if hasattr(prow, 'keys') else prow[3]
+    try:
+        exclusive_group_id = int(group_id_raw) if group_id_raw is not None else None
+    except (TypeError, ValueError):
+        exclusive_group_id = None
+
+    base_url = os.environ.get('PUBLIC_BASE_URL', 'https://app.c-point.co')
+    media_base = os.environ.get('CLOUDFLARE_R2_PUBLIC_URL', '')
+
+    def _media_url(path):
+        if not path:
+            return None
+        path = str(path).strip()
+        if path.startswith('http'):
+            return path
+        if media_base and not path.startswith('/'):
+            return f"{media_base}/{path}"
+        if path.startswith('/uploads') or path.startswith('/static'):
+            return f"{base_url}{path}"
+        return f"{base_url}/uploads/{path}"
+
+    post_image_urls = []
+    if post_image_path:
+        u = _media_url(post_image_path)
+        if u:
+            post_image_urls.append(u)
+    has_images = len(post_image_urls) > 0
+
+    parent_content = None
+    parent_author = None
+    pr_raw = parent_reply_id
+    pr_int = None
+    if pr_raw is not None and pr_raw != "":
+        try:
+            pr_int = int(pr_raw)
+        except (TypeError, ValueError):
+            pr_int = None
+    if pr_int is not None:
+        c.execute(
+            f"SELECT content, username FROM {gr_t} WHERE id = {placeholder}",
+            (pr_int,),
+        )
+        pr = c.fetchone()
+        if pr:
+            parent_content = pr['content'] if hasattr(pr, 'keys') else pr[0]
+            parent_author = pr['username'] if hasattr(pr, 'keys') else pr[1]
+
+    ai_personality = 'friendly'
+    if community_id:
+        try:
+            c.execute(f"SELECT ai_personality FROM communities WHERE id = {placeholder}", (int(community_id),))
+            comm_row = c.fetchone()
+            if comm_row:
+                ai_personality = (
+                    comm_row['ai_personality'] if hasattr(comm_row, 'keys') else comm_row[0]
+                ) or 'friendly'
+        except Exception:
+            pass
+
+    limit_n = max(1, min(50, int(steve_config.recent_comments_limit or 20)))
+    c.execute(
+        f"""
+        SELECT username, content, id, parent_reply_id, created_at FROM {gr_t}
+        WHERE group_post_id = {placeholder}
+        ORDER BY id ASC LIMIT {limit_n}
+        """,
+        (group_post_id,),
+    )
+    all_comments = c.fetchall() or []
+    context_parts = []
+    desc = f"Original group post by {post_author}: {post_content}"
+    if has_images:
+        desc += f"\n[This post includes {len(post_image_urls)} image(s)]"
+    context_parts.append(desc)
+    if all_comments:
+        context_parts.append("\n--- All comments on this group post ---")
+        for comment in all_comments:
+            cu = comment['username'] if hasattr(comment, 'keys') else comment[0]
+            cc = comment['content'] if hasattr(comment, 'keys') else comment[1]
+            if cc:
+                if str(cu).lower() == 'steve':
+                    context_parts.append(f"[Steve (AI) replied]: {cc}")
+                else:
+                    context_parts.append(f"{cu}: {cc}")
+        context_parts.append("--- End of comments ---\n")
+    context_parts.append(f"User {username} now says: {user_message}")
+    current_datetime = datetime.utcnow()
+    context_parts.append(
+        f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]"
+    )
+    if exclusive_group_id:
+        try:
+            grp_ctx = _build_steve_group_resource_context(
+                c,
+                exclusive_group_id,
+                placeholder,
+                max_doc_chars_total=steve_config.doc_excerpt_chars_default,
+                events_limit=steve_config.events_limit,
+                links_limit=steve_config.links_limit,
+                docs_limit=steve_config.docs_limit,
+                polls_limit=steve_config.polls_limit,
+            )
+            if grp_ctx and grp_ctx.strip():
+                context_parts.append(
+                    "Group resources for this exclusive group (events, links, documents, polls in this group only):\n"
+                    + grp_ctx
+                )
+        except Exception as grp_ctx_err:
+            logger.warning("Steve group resource context failed: %s", grp_ctx_err)
+
+    if not should_include_user_profile(user_message):
+        commenter_profile_ctx = ""
+    elif not user_can_access_steve_kb(username, username, {"community_id": community_id}):
+        commenter_profile_ctx = ""
+    else:
+        commenter_profile_ctx = get_steve_context_for_user(username)
+
+    context = "\n\n".join(context_parts)
+    system_prompt = get_ai_personality_prompt(ai_personality)
+    if agent_mode == PRESET_CAREER_EXPERT:
+        system_prompt += (
+            "\n\nYou are this group's Career Expert agent. Lead with empathy; use a short TL;DR when the answer is long. "
+            "Use clear headings and bullets; a brief illustrative story is welcome when it helps everyone reading the thread. "
+            "Invite others in the group to share lived experience when relevant. "
+            "For real job postings at external companies, follow THIRD-PARTY JOBS / EMPLOYERS in the policy appended below—verify or say you cannot."
+        )
+    system_prompt += (
+        "\nBase your answer on this group thread, the optional \"Group resources\" block in the user message "
+        "(this group's calendar, links, document excerpts, and polls), "
+        "and any user/mention context below. Prefer facts from those excerpts over guessing; "
+        "if an excerpt is missing or unreadable, say so. "
+        "Do not rely on parent-community resources that are not present in that block or the thread."
+    )
+    if commenter_profile_ctx:
+        system_prompt += (
+            f"\n\nWHAT YOU KNOW ABOUT @{username}:\n{commenter_profile_ctx}\n"
+            "Use this knowledge naturally — don't announce it, but let it guide your tone and relevance."
+        )
+    mention_apx = build_steve_gated_mention_profile_appendix_for_feed(
+        username,
+        community_id,
+        post_content,
+        user_message,
+        exclude_usernames_lower={username.lower(), "steve"},
+    )
+    if mention_apx:
+        system_prompt += mention_apx
+    system_prompt = append_response_policy(system_prompt, user_message, surface=_ai_usage.SURFACE_GROUP)
+    model_to_use = steve_config.model
+    client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+    if has_images:
+        user_content = [{"type": "input_text", "text": context}]
+        for img_url in post_image_urls[: steve_config.images_limit]:
+            user_content.append({"type": "input_image", "image_url": img_url})
+        effective_system = (
+            system_prompt
+            + "\n\nYou can see images attached to this post. Describe what you see and respond accordingly."
+        )
+    else:
+        user_content = context
+        effective_system = system_prompt
+    entitlement_cap = output_cap_for_surface(
+        _ent,
+        _ai_usage.SURFACE_GROUP,
+        steve_config.max_output_tokens,
+    )
+    if (_ent or {}).get("steve_billing_source") == "community_pool":
+        max_output_tokens = min(entitlement_cap, int(steve_config.max_output_tokens or entitlement_cap))
+    else:
+        max_output_tokens = entitlement_cap
+    if agent_mode == PRESET_CAREER_EXPERT:
+        max_output_tokens = min(max_output_tokens, CAREER_EXPERT_OUTPUT_CAP)
+    platform_question_grp = False
+    professional_grp = False
+    try:
+        from backend.services.steve_platform_manual import (
+            is_professional_advice_intent,
+            is_platform_question,
+        )
+
+        platform_question_grp = bool(is_platform_question(user_message))
+        professional_grp = bool(is_professional_advice_intent(user_message))
+    except Exception as _pf_err:
+        logger.warning("Steve group-post platform/manual gate failed: %s", _pf_err)
+    _reply_tools = _resolve_steve_hosted_tools(
+        user_message,
+        username=username,
+        surface=_ai_usage.SURFACE_GROUP,
+        platform_question=platform_question_grp,
+        professional_advice_question=professional_grp,
+        config=steve_config,
+        community_id=int(community_id) if community_id is not None else None,
+    )
+    _reply_has_x = any(
+        isinstance(t, dict) and (t.get("type") or "").strip().lower() == "x_search"
+        for t in (_reply_tools or [])
+    )
+    _hosted_caps_grp = render_hosted_search_capability_instructions(
+        has_hosted_search_tools=bool(_reply_tools),
+        has_x_search=_reply_has_x,
+    )
+    effective_system = f"{effective_system}\n\nHOSTED WEB / X (this turn):\n{_hosted_caps_grp}\n"
+    started = time.perf_counter()
+    response = client.responses.create(
+        model=model_to_use,
+        input=[
+            {"role": "system", "content": effective_system},
+            {"role": "user", "content": user_content},
+        ],
+        tools=_reply_tools,
+        max_output_tokens=max_output_tokens,
+    )
+    response_time_ms = int((time.perf_counter() - started) * 1000)
+    ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
+    if not ai_response:
+        return jsonify({'success': False, 'error': 'AI service returned empty response'}), 503
+    ai_response = format_steve_response_links(ai_response)
+    now = datetime.utcnow()
+    timestamp_db = now.strftime('%Y-%m-%d %H:%M:%S')
+    steve_parent = int(parent_reply_id) if parent_reply_id else None
+    c.execute(
+        f"""
+        INSERT INTO {gr_t} (group_post_id, parent_reply_id, username, content, created_at)
+        VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+        """,
+        (group_post_id, steve_parent, AI_USERNAME, ai_response, timestamp_db),
+    )
+    steve_reply_id = c.lastrowid
+    try:
+        from backend.services.steve_credit_weights import tools_flags_from_hosted_tools
+
+        tokens_in, tokens_out = response_usage_tokens(response)
+        billing_community_id = (
+            int(community_id)
+            if (_ent or {}).get("steve_billing_source") == "community_pool" and community_id
+            else None
+        )
+        web_t, x_t = tools_flags_from_hosted_tools(_reply_tools)
+        _ai_usage.log_usage(
+            username,
+            surface=_ai_usage.SURFACE_GROUP,
+            request_type=log_request_type,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_usd=estimate_response_cost_usd(response, steve_config),
+            response_time_ms=response_time_ms,
+            community_id=billing_community_id,
+            model=model_to_use,
+            tools_web_search=web_t,
+            tools_x_search=x_t,
+        )
+    except Exception as log_err:
+        logger.warning("Could not log AI usage (group steve): %s", log_err)
+    if consume_auto_budget:
+        try:
+            c.execute(
+                f"UPDATE {gp_t} SET auto_steve_used_count = COALESCE(auto_steve_used_count, 0) + 1 WHERE id = {placeholder}",
+                (group_post_id,),
+            )
+            c.execute(
+                f"SELECT COALESCE(auto_steve_used_count, 0), COALESCE(agent_cap_notice_shown, 0) FROM {gp_t} WHERE id = {placeholder}",
+                (group_post_id,),
+            )
+            br = c.fetchone()
+            if br:
+                ac = int(br["auto_steve_used_count"] if hasattr(br, "keys") else br[0] or 0)
+                notice = int(br["agent_cap_notice_shown"] if hasattr(br, "keys") else br[1] or 0)
+                if ac >= 5 and not notice:
+                    cap_txt = "Cap reached for automatic replies on this post — mention @Steve to continue."
+                    c.execute(
+                        f"""
+                        INSERT INTO {gr_t} (group_post_id, parent_reply_id, username, content, created_at)
+                        VALUES ({placeholder}, NULL, {placeholder}, {placeholder}, {placeholder})
+                        """,
+                        (group_post_id, AI_USERNAME, cap_txt, timestamp_db),
+                    )
+                    c.execute(
+                        f"UPDATE {gp_t} SET agent_cap_notice_shown = 1 WHERE id = {placeholder}",
+                        (group_post_id,),
+                    )
+        except Exception as _cap_err:
+            logger.warning("agent auto budget update failed: %s", _cap_err)
+    conn.commit()
+    steve_profile_pic = None
+    try:
+        c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {placeholder}", (AI_USERNAME,))
+        steve_pp_row = c.fetchone()
+        steve_profile_pic = (
+            steve_pp_row['profile_picture']
+            if steve_pp_row and hasattr(steve_pp_row, 'keys')
+            else (steve_pp_row[0] if steve_pp_row else None)
+        )
+    except Exception:
+        pass
+    return jsonify(
+        {
+            'success': True,
+            'reply': {
+                'id': steve_reply_id,
+                'username': AI_USERNAME,
+                'content': ai_response,
+                'timestamp': timestamp_db,
+                'parent_reply_id': steve_parent,
+                'reactions': {},
+                'user_reaction': None,
+                'profile_picture': steve_profile_pic,
+                'reply_count': 0,
+                'children': [],
+            },
+            'remaining_today': 'unlimited' if is_unlimited else AI_DAILY_LIMIT - usage_count - 1,
+        }
+    )
+
+
+def _group_steve_agent_thread_runner(
+    app,
+    group_post_id: int,
+    parent_reply_id: int,
+    acting_username: str,
+    user_message: str,
+):
+    with app.app_context():
+        try:
+            _dispatch_group_steve_agent_turn(
+                group_post_id,
+                parent_reply_id,
+                acting_username,
+                user_message,
+                consume_auto_budget=True,
+                log_request_type="steve_group_agent_auto",
+            )
+        except Exception as exc:
+            logger.warning("group steve agent thread: %s", exc)
+
+
+def _dispatch_group_steve_agent_turn(
+    group_post_id: int,
+    parent_reply_id,
+    acting_username: str,
+    user_message: str,
+    *,
+    consume_auto_budget: bool,
+    log_request_type: str,
+):
+    """Background/cron entrypoint for gated Career Expert group agent replies."""
+    from backend.services.steve_community_config import get_paid_steve_package_config
+    from backend.services.group_steve_agent import (
+        PRESET_CAREER_EXPERT,
+        ensure_group_steve_agent_schema,
+        load_post_group_agent_state,
+    )
+
+    steve_config = get_paid_steve_package_config()
+    if not XAI_API_KEY:
+        logger.warning("group steve agent: XAI_API_KEY missing")
+        return None
+
+    _enforcement_on = False
+    _ent: dict = {}
+    try:
+        from backend.services.entitlements_gate import check_steve_access
+        from backend.services.feature_flags import entitlements_enforcement_enabled as _enforce
+
+        _enforcement_on = _enforce()
+    except Exception:
+        pass
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        placeholder = get_sql_placeholder()
+        ensure_group_steve_agent_schema(c)
+        ctx = load_post_group_agent_state(c, int(group_post_id))
+        if not ctx or ctx[0] is None:
+            return None
+        _community_id, _gid, agent_en, preset = ctx
+        if not agent_en or (preset or "").strip().lower() != PRESET_CAREER_EXPERT:
+            return None
+
+        cid_int = int(_community_id) if _community_id is not None else None
+        try:
+            _allowed, _err_payload, _err_status, _ent = check_steve_access(
+                acting_username,
+                _ai_usage.SURFACE_GROUP,
+                community_id=cid_int,
+            )
+            if not _allowed and _enforcement_on:
+                try:
+                    _ai_usage.log_block(
+                        acting_username,
+                        surface=_ai_usage.SURFACE_GROUP,
+                        request_type=log_request_type,
+                        reason_blocked=(_err_payload or {}).get("error") or "blocked",
+                        community_id=cid_int,
+                    )
+                except Exception:
+                    pass
+                return None
+        except Exception as gate_err:
+            logger.warning("group steve agent gate failed: %s", gate_err)
+
+        usage_count = 0
+        is_unlimited = acting_username.lower() in AI_UNLIMITED_USERS or is_app_admin(acting_username)
+
+        if not _enforcement_on and not is_unlimited:
+            try:
+                if USE_MYSQL:
+                    c.execute(
+                        f"""
+                        SELECT COUNT(*) as cnt FROM ai_usage_log
+                        WHERE username = {placeholder}
+                        AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                        """,
+                        (acting_username,),
+                    )
+                else:
+                    c.execute(
+                        f"""
+                        SELECT COUNT(*) as cnt FROM ai_usage_log
+                        WHERE username = {placeholder}
+                        AND datetime(created_at) > datetime('now', '-24 hours')
+                        """,
+                        (acting_username,),
+                    )
+                row = c.fetchone()
+                usage_count = row["cnt"] if row and hasattr(row, "keys") else (row[0] if row else 0)
+                if usage_count >= AI_DAILY_LIMIT:
+                    return None
+            except Exception:
+                usage_count = 0
+
+        return _steve_ai_reply_for_group_post(
+            conn,
+            c,
+            placeholder,
+            acting_username,
+            int(group_post_id),
+            parent_reply_id,
+            user_message,
+            _community_id,
+            steve_config,
+            is_unlimited,
+            usage_count,
+            _enforcement_on,
+            _ent,
+            agent_mode=PRESET_CAREER_EXPERT,
+            consume_auto_budget=consume_auto_budget,
+            log_request_type=log_request_type,
+        )
+
+
+def _group_steve_agent_cron_eligible(c, ph: str, group_post_id: int) -> bool:
+    from backend.services.group_steve_agent import (
+        PRESET_CAREER_EXPERT,
+        load_post_group_agent_state,
+        post_qualifies_for_ask_steve_schedule,
+        root_may_enable_agent,
+        steve_reply_count_for_post,
+    )
+
+    ctx = load_post_group_agent_state(c, int(group_post_id))
+    if not ctx or ctx[0] is None:
+        return False
+    community_id, _gid, agent_en, preset = ctx
+    if not agent_en or (preset or "").strip().lower() != PRESET_CAREER_EXPERT:
+        return False
+    if not root_may_enable_agent(int(community_id)):
+        return False
+    gp_t = "`group_posts`" if USE_MYSQL else "group_posts"
+    c.execute(
+        f"""
+        SELECT ask_steve, content, image_path, video_path, audio_path, media_paths,
+               COALESCE(auto_steve_used_count, 0) AS ac
+        FROM {gp_t} WHERE id = {ph} LIMIT 1
+        """,
+        (int(group_post_id),),
+    )
+    row = c.fetchone()
+    if not row:
+        return False
+    ask_on = row["ask_steve"] if hasattr(row, "keys") else row[0]
+    if not bool(ask_on):
+        return False
+    pcontent = row["content"] if hasattr(row, "keys") else row[1]
+    image_path = row["image_path"] if hasattr(row, "keys") else row[2]
+    video_path = row["video_path"] if hasattr(row, "keys") else row[3]
+    audio_path = row["audio_path"] if hasattr(row, "keys") else row[4]
+    media_paths_raw = row["media_paths"] if hasattr(row, "keys") else row[5]
+    ac = row["ac"] if hasattr(row, "keys") else row[6]
+    if int(ac or 0) >= 5:
+        return False
+    if steve_reply_count_for_post(c, int(group_post_id)) > 0:
+        return False
+    has_media = bool(image_path or video_path or audio_path)
+    if media_paths_raw:
+        try:
+            mp = json.loads(media_paths_raw) if isinstance(media_paths_raw, str) else media_paths_raw
+            if isinstance(mp, list) and len(mp) > 0:
+                has_media = True
+        except Exception:
+            pass
+    return post_qualifies_for_ask_steve_schedule(pcontent, has_media)
+
+
+@app.route("/api/cron/group-steve-agent-due", methods=["POST"])
+def cron_group_steve_agent_due():
+    """Claim and run delayed first-reply jobs for the group Steve agent."""
+    expected = os.environ.get("CRON_SHARED_SECRET") or ""
+    provided = request.headers.get("X-Cron-Secret") or ""
+    if not expected or provided != expected:
+        return jsonify({"success": False, "error": "forbidden"}), 403
+
+    dry_run = (request.args.get("dry_run") or "").strip().lower() in {"1", "true", "yes", "on"}
+    from backend.services.group_steve_agent import (
+        ensure_group_steve_agent_schema,
+        fetch_due_agent_schedules,
+        pop_group_steve_agent_schedule,
+    )
+
+    processed = 0
+    scanned = 0
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            ensure_group_steve_agent_schema(c)
+            rows = fetch_due_agent_schedules(c, limit=25)
+            for row in rows:
+                scanned += 1
+                sid = int(row["id"] if hasattr(row, "keys") else row[0])
+                gpid = int(row["group_post_id"] if hasattr(row, "keys") else row[1])
+                author = row["author_username"] if hasattr(row, "keys") else row[2]
+                eligible = _group_steve_agent_cron_eligible(c, ph, gpid)
+                if dry_run:
+                    if eligible:
+                        processed += 1
+                    continue
+                if not pop_group_steve_agent_schedule(c, sid):
+                    continue
+                if not eligible:
+                    continue
+                msg = (
+                    "The author enabled Ask Steve on this post. Share your Career Expert perspective "
+                    "in a helpful, scannable reply grounded in the thread above."
+                )
+                _dispatch_group_steve_agent_turn(
+                    gpid,
+                    None,
+                    author,
+                    msg,
+                    consume_auto_budget=True,
+                    log_request_type="steve_group_agent_auto",
+                )
+                processed += 1
+        return jsonify({"success": True, "scanned": scanned, "processed": processed, "dry_run": dry_run})
+    except Exception as exc:
+        logger.error("cron_group_steve_agent_due: %s", exc)
+        return jsonify({"success": False, "error": "server_error"}), 500
+
+
 @app.route('/api/ai/steve_reply', methods=['POST'])
 @login_required
 def ai_steve_reply():
@@ -26717,17 +24293,54 @@ def ai_steve_reply():
         return jsonify({'success': False, 'error': 'AI cannot reply to itself'}), 400
     
     try:
+        from backend.services.steve_community_config import (
+            get_paid_steve_package_config,
+            response_usage_tokens,
+        )
+        from backend.services.steve_model_config import estimate_response_cost_usd, output_cap_for_surface
+        from backend.services.steve_prompt_policy import (
+            append_response_policy,
+            should_include_community_resources,
+            should_include_user_profile,
+        )
+
+        steve_config = get_paid_steve_package_config()
         data = request.get_json() or {}
         post_id = data.get('post_id')
         parent_reply_id = data.get('parent_reply_id')  # The comment being replied to
         user_message = (data.get('user_message') or '').strip()
         community_id = data.get('community_id')
-        
-        logger.info(f"[Steve AI] Request from {username}: post_id={post_id}, parent_reply_id={parent_reply_id}, community_id={community_id}, message_len={len(user_message) if user_message else 0}")
+        is_group_post = bool(data.get('is_group_post'))
+
+        logger.info(
+            f"[Steve AI] Request from {username}: post_id={post_id}, parent_reply_id={parent_reply_id}, "
+            f"community_id={community_id}, is_group_post={is_group_post}, message_len={len(user_message) if user_message else 0}"
+        )
         
         if not post_id:
             return jsonify({'success': False, 'error': 'Post ID is required'}), 400
-        
+
+        try:
+            post_id = int(post_id)
+        except Exception:
+            return jsonify({'success': False, 'error': 'Invalid post_id'}), 400
+
+        if is_group_post:
+            with get_db_connection() as _rconn:
+                _rc = _rconn.cursor()
+                _rph = get_sql_placeholder()
+                okg, errg, _gid = check_group_feed_access_for_group_post(_rc, _rph, username, post_id)
+                if not okg:
+                    code = 404 if errg and 'not found' in (errg or '').lower() else 403
+                    return jsonify({'success': False, 'error': errg or 'Forbidden'}), code
+                _rc.execute(
+                    f"SELECT g.community_id FROM {'`group_posts`' if USE_MYSQL else 'group_posts'} gp "
+                    f"JOIN {'`groups`' if USE_MYSQL else 'groups'} g ON g.id = gp.group_id WHERE gp.id = {_rph}",
+                    (post_id,),
+                )
+                cr = _rc.fetchone()
+                community_id = cr['community_id'] if cr and hasattr(cr, 'keys') else (cr[0] if cr else None)
+
         if not user_message:
             return jsonify({'success': False, 'error': 'Message is required'}), 400
         
@@ -26737,12 +24350,21 @@ def ai_steve_reply():
 
         # ── Entitlements gate (flag-aware) ──
         _enforcement_on = False
+        _ent = {}
         try:
             from backend.services.entitlements_gate import check_steve_access
             from backend.services.feature_flags import entitlements_enforcement_enabled as _enforce
             _enforcement_on = _enforce()
+            _cid_int = None
+            if community_id is not None:
+                try:
+                    _cid_int = int(community_id)
+                except (TypeError, ValueError):
+                    _cid_int = None
             _allowed, _err_payload, _err_status, _ent = check_steve_access(
-                username, _ai_usage.SURFACE_FEED
+                username,
+                _ai_usage.SURFACE_GROUP if is_group_post else _ai_usage.SURFACE_FEED,
+                community_id=_cid_int,
             )
             if not _allowed and _enforcement_on:
                 return jsonify(_err_payload), _err_status
@@ -26755,7 +24377,7 @@ def ai_steve_reply():
 
             # Legacy daily-limit fallback when entitlements enforcement is off.
             usage_count = 0
-            is_unlimited = username.lower() in AI_UNLIMITED_USERS
+            is_unlimited = username.lower() in AI_UNLIMITED_USERS or is_app_admin(username)
 
             if not _enforcement_on and not is_unlimited:
                 try:
@@ -26808,6 +24430,60 @@ def ai_steve_reply():
                     except Exception as create_err:
                         logger.warning(f"Could not create ai_usage_log table: {create_err}")
             
+            if is_group_post:
+                from backend.services.group_steve_agent import (
+                    PRESET_CAREER_EXPERT,
+                    cancel_pending_agent_first_reply,
+                    ensure_group_steve_agent_schema,
+                    mentions_steve,
+                )
+
+                ensure_group_steve_agent_schema(c)
+                if mentions_steve(user_message):
+                    cancel_pending_agent_first_reply(c, post_id)
+                gp_t = '`group_posts`' if USE_MYSQL else 'group_posts'
+                g_t = '`groups`' if USE_MYSQL else 'groups'
+                c.execute(
+                    f"""
+                    SELECT g.steve_agent_enabled, g.steve_agent_preset
+                    FROM {gp_t} gp JOIN {g_t} g ON g.id = gp.group_id
+                    WHERE gp.id = {placeholder}
+                    LIMIT 1
+                    """,
+                    (post_id,),
+                )
+                ag_row = c.fetchone()
+                _agent_mode = None
+                if ag_row:
+                    _en = ag_row["steve_agent_enabled"] if hasattr(ag_row, "keys") else ag_row[0]
+                    _pr = ag_row["steve_agent_preset"] if hasattr(ag_row, "keys") else ag_row[1]
+                    _prs = str(_pr or "").strip().lower()
+                    if bool(_en) and _prs == PRESET_CAREER_EXPERT:
+                        _agent_mode = PRESET_CAREER_EXPERT
+                _log_rt = (
+                    "steve_group_agent_mention"
+                    if mentions_steve(user_message) and _agent_mode == PRESET_CAREER_EXPERT
+                    else "steve_group_reply"
+                )
+                return _steve_ai_reply_for_group_post(
+                    conn,
+                    c,
+                    placeholder,
+                    username,
+                    post_id,
+                    parent_reply_id,
+                    user_message,
+                    community_id,
+                    steve_config,
+                    is_unlimited,
+                    usage_count,
+                    _enforcement_on,
+                    _ent,
+                    agent_mode=_agent_mode,
+                    consume_auto_budget=False,
+                    log_request_type=_log_rt,
+                )
+
             # Get post content for context (including media)
             c.execute(f"SELECT content, username, image_path, video_path, media_paths FROM posts WHERE id = {placeholder}", (post_id,))
             post_row = c.fetchone()
@@ -26913,7 +24589,7 @@ def ai_steve_reply():
                 c.execute(f"""
                     SELECT username, content, id, parent_reply_id, timestamp FROM replies 
                     WHERE post_id = {placeholder} 
-                    ORDER BY timestamp ASC LIMIT 20
+                    ORDER BY timestamp ASC LIMIT {max(0, int(steve_config.recent_comments_limit or 0))}
                 """, (post_id,))
                 all_comments = c.fetchall()
                 
@@ -26943,10 +24619,19 @@ def ai_steve_reply():
             context_parts.append(f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]")
             context_parts.append("\nNote: If the user asks you to respond to or help another user, look through the comments above to find that user's question or message and address it directly.")
             
-            # Community context: same as post @Steve — calendar, links, PDF excerpts, polls
-            if community_id:
+            # Community context: same as post @Steve — calendar, links, PDF excerpts, polls (not for exclusive group posts)
+            if community_id and should_include_community_resources(user_message) and not is_group_post:
                 try:
-                    community_context = _build_steve_community_context(c, community_id, placeholder)
+                    community_context = _build_steve_community_context(
+                        c,
+                        community_id,
+                        placeholder,
+                        max_doc_chars_total=steve_config.doc_excerpt_chars_default,
+                        events_limit=steve_config.events_limit,
+                        links_limit=steve_config.links_limit,
+                        docs_limit=steve_config.docs_limit,
+                        polls_limit=steve_config.polls_limit,
+                    )
                     if community_context and community_context.strip():
                         context_parts.append(
                             "Community context (use this to answer questions about events, links, documents, and polls):\n"
@@ -26957,7 +24642,9 @@ def ai_steve_reply():
             
             # Privacy gate BEFORE KB fetch (per docs/STEVE_PRIVACY_GATE.md and community rule)
             from backend.services.steve_profiling_gates import user_can_access_steve_kb
-            if not user_can_access_steve_kb(username, username, {"community_id": community_id}):
+            if not should_include_user_profile(user_message):
+                commenter_profile_ctx = ""
+            elif not user_can_access_steve_kb(username, username, {"community_id": community_id}):
                 commenter_profile_ctx = ""
             else:
                 commenter_profile_ctx = get_steve_context_for_user(username)
@@ -26976,22 +24663,58 @@ def ai_steve_reply():
                 )
             if commenter_profile_ctx:
                 system_prompt += f"\n\nWHAT YOU KNOW ABOUT @{username}:\n{commenter_profile_ctx}\nUse this knowledge naturally — don't announce it, but let it guide your tone and relevance."
+            _mention_apx = build_steve_gated_mention_profile_appendix_for_feed(
+                username,
+                community_id,
+                post_content or "",
+                user_message or "",
+                exclude_usernames_lower={username.lower(), "steve"},
+            )
+            if _mention_apx:
+                system_prompt += _mention_apx
+            system_prompt = append_response_policy(system_prompt, user_message, surface=_ai_usage.SURFACE_FEED)
             ai_response = None
             
-            # Intelligent routing: use multi-agent only for community analysis queries
-            needs_analysis = _needs_community_analysis(user_message)
-            model_to_use = GROK_MODEL_MULTI_AGENT if needs_analysis else GROK_MODEL_REASONING
+            # Community feed Steve uses the KB-configured package model. Multi-agent
+            # is intentionally disabled here so the add-on has predictable economics.
+            model_to_use = steve_config.model
             
-            logger.info(f"Steve routing: {'MULTI-AGENT' if needs_analysis else 'REASONING'} model for: {user_message[:60]}...")
+            logger.info(f"Steve routing: community feed model {model_to_use} for: {user_message[:60]}...")
             
             try:
-                logger.info(f"Steve using {model_to_use} with web+X search ({ai_personality} mode)")
+                platform_question_feed_r = False
+                professional_feed_r = False
+                try:
+                    from backend.services.steve_platform_manual import (
+                        is_professional_advice_intent,
+                        is_platform_question,
+                    )
+
+                    platform_question_feed_r = bool(is_platform_question(user_message))
+                    professional_feed_r = bool(is_professional_advice_intent(user_message))
+                except Exception as _pfr_err:
+                    logger.warning("Steve comment-reply platform gate failed (non-fatal): %s", _pfr_err)
+                _reply_tools = _resolve_steve_hosted_tools(
+                    user_message,
+                    username=username,
+                    surface=_ai_usage.SURFACE_FEED,
+                    platform_question=platform_question_feed_r,
+                    professional_advice_question=professional_feed_r,
+                    config=steve_config,
+                    community_id=int(community_id) if community_id is not None else None,
+                )
+                logger.info(
+                    "Steve reply Grok model=%s tools=%s (%s mode)",
+                    model_to_use,
+                    _steve_tool_names_for_log(_reply_tools),
+                    ai_personality,
+                )
                 client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
                 
                 # Build user content - include images if present (Grok supports vision)
                 if has_images:
                     user_content = [{"type": "input_text", "text": context}]
-                    for img_url in post_image_urls[:4]:
+                    for img_url in post_image_urls[:steve_config.images_limit]:
                         user_content.append({"type": "input_image", "image_url": img_url})
                     if has_video:
                         user_content[0]["text"] += "\n\n[Note: This post also contains a video that you cannot view, but you can see the images above.]"
@@ -27001,25 +24724,33 @@ def ai_steve_reply():
                     user_content = context
                     effective_system = system_prompt
                 
+                started = time.perf_counter()
+                entitlement_cap = output_cap_for_surface(
+                    _ent,
+                    _ai_usage.SURFACE_FEED,
+                    steve_config.max_output_tokens,
+                )
+                if (_ent or {}).get("steve_billing_source") == "community_pool":
+                    max_output_tokens = min(entitlement_cap, int(steve_config.max_output_tokens or entitlement_cap))
+                else:
+                    max_output_tokens = entitlement_cap
                 response = client.responses.create(
                     model=model_to_use,
                     input=[
                         {"role": "system", "content": effective_system},
                         {"role": "user", "content": user_content}
                     ],
-                    tools=[
-                        {"type": "web_search"},
-                        {"type": "x_search"}
-                    ],
-                    max_output_tokens=600
+                    tools=_reply_tools,
+                    max_output_tokens=max_output_tokens
                 )
+                response_time_ms = int((time.perf_counter() - started) * 1000)
                 
                 ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
                 if ai_response:
-                    logger.info("Steve Grok 4.1 Fast with web+X search successful")
+                    logger.info("Steve reply Grok call completed tools=%s", _steve_tool_names_for_log(_reply_tools))
                 
                 if ai_response is None:
-                    logger.error("Grok 4.1 Fast returned empty response")
+                    logger.error("Grok reasoning returned empty response")
                     return jsonify({'success': False, 'error': 'AI service returned empty response'}), 503
                 
             except Exception as ai_err:
@@ -27054,12 +24785,27 @@ def ai_steve_reply():
             
             # MIGRATED to backend/services/ai_usage.py — safe to delete when monolith-split runs
             try:
+                from backend.services.steve_credit_weights import tools_flags_from_hosted_tools
+
+                tokens_in, tokens_out = response_usage_tokens(response)
+                billing_community_id = (
+                    community_id
+                    if (_ent or {}).get("steve_billing_source") == "community_pool"
+                    else None
+                )
+                web_t, x_t = tools_flags_from_hosted_tools(_reply_tools)
                 _ai_usage.log_usage(
                     username,
                     surface=_ai_usage.SURFACE_FEED,
                     request_type='steve_reply',
-                    community_id=community_id if community_id else None,
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    cost_usd=estimate_response_cost_usd(response, steve_config),
+                    response_time_ms=response_time_ms if "response_time_ms" in locals() else None,
+                    community_id=billing_community_id,
                     model=model_to_use,
+                    tools_web_search=web_t,
+                    tools_x_search=x_t,
                 )
             except Exception as log_err:
                 logger.warning(f"Could not log AI usage: {log_err}")
@@ -27703,7 +25449,7 @@ Keep the summary to 3-5 sentences maximum. Be objective and informative."""
             )
             
             response = client.chat.completions.create(
-                model="grok-4-1-fast-non-reasoning",
+                model=GROK_MODEL_FAST,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": context}
@@ -27909,7 +25655,7 @@ def test_sub_permissions():
         
         result['can_create'] = (
             result.get('is_app_admin') or
-            (result.get('parent', {}).get('creator') == username) or
+            (parent_id and can_manage_community(username, parent_id)) or
             (result.get('role_in_parent') == 'admin')
         )
         
@@ -28003,7 +25749,7 @@ def create_community():
                 except Exception as bypass_err:
                     logger.warning(f"Error checking Business admin bypass: {bypass_err}")
             
-            raw_type = str(requested_type or '').strip().lower() or 'general'
+            raw_type = coerce_community_type_for_create(username, requested_type)
 
             # Determine if user should be treated as free-plan creator
             parent_is_none = parent_community_id_check is None
@@ -28011,7 +25757,6 @@ def create_community():
                 if not is_premium_user:
                     if parent_is_none:
                         is_free_creator = True
-                        raw_type = 'general'
         
         name = request.form.get('name')
         description = request.form.get('description', '')
@@ -28079,7 +25824,7 @@ def create_community():
                             return jsonify({'success': False, 'error': 'Business sub-communities can only be created under Business parent communities'}), 403
                         
                         # Check if user is owner
-                        if username == parent_creator or is_app_admin(username):
+                        if can_manage_community(username, parent_community_id):
                             # Owner or app admin - allowed
                             logger.info(f"Business sub-community creation allowed: {username} is owner/admin of parent {parent_community_id}")
                         else:
@@ -28200,11 +25945,23 @@ def create_community():
 
             # If creating a sub-community, enforce premium-only for creators as well
             # (Already enforced above for community creation, but keep guard explicit)
-            placeholders = ', '.join([get_sql_placeholder()] * 14)
-            c.execute(f"""
-                INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id)
-                VALUES ({placeholders})
-            """, (name, normalized_type, username, join_code, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_id_int))
+            insert_new_community_row(
+                c,
+                name=name,
+                community_type=normalized_type,
+                creator_username=username,
+                join_code=join_code,
+                created_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                description=description,
+                location=location,
+                background_path=background_path,
+                template=template,
+                background_color=background_color,
+                text_color=text_color,
+                accent_color=accent_color,
+                card_color=card_color,
+                parent_community_id=parent_id_int,
+            )
             
             community_id = c.lastrowid
             
@@ -28241,12 +25998,28 @@ def create_community():
             # Invalidate dashboard cache so new community appears immediately
             invalidate_user_cache(username)
             logger.info(f"Invalidated dashboard cache for {username} after community creation")
-            
-            return jsonify({
-                'success': True, 
-                'community_id': community_id,
-                'message': f'Community "{name}" created successfully!'
-            })
+
+        # Steve community welcome flow (welcome post + owner DM). Best-effort —
+        # the create-community response must never fail because the welcome
+        # post or DM hit a snag. See docs/STEVE_COMMUNITY_WELCOME.md.
+        try:
+            from backend.services.steve_community_welcome import welcome_for_new_community
+            welcome_summary = welcome_for_new_community(community_id, is_brand_new=True)
+            logger.info(
+                "create_community: steve welcome summary for community %s: %s",
+                community_id, welcome_summary,
+            )
+        except Exception as welcome_err:
+            logger.warning(
+                "create_community: steve welcome flow failed for community %s (non-fatal): %s",
+                community_id, welcome_err,
+            )
+
+        return jsonify({
+            'success': True,
+            'community_id': community_id,
+            'message': f'Community "{name}" created successfully!'
+        })
             
     except Exception as e:
         logger.error(f"Error creating community: {str(e)}")
@@ -28268,29 +26041,45 @@ def get_available_parent_communities():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            
+            ph = get_sql_placeholder()
+
             # Get all communities that the user has access to or created
             # Exclude the current community and its children to prevent circular references
-            if current_community_id:
-                c.execute("""
+            if is_app_admin(username):
+                if current_community_id:
+                    c.execute(f"""
+                        SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id
+                        FROM communities c
+                        WHERE c.id != {ph}
+                        AND (c.parent_community_id IS NULL OR c.parent_community_id != {ph})
+                        ORDER BY c.name
+                    """, (current_community_id, current_community_id))
+                else:
+                    c.execute("""
+                        SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id
+                        FROM communities c
+                        ORDER BY c.name
+                    """)
+            elif current_community_id:
+                c.execute(f"""
                     SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id
                     FROM communities c
                     LEFT JOIN user_communities uc ON c.id = uc.community_id
                     LEFT JOIN users u ON uc.user_id = u.id
-                    WHERE (u.username = ? OR c.creator_username = ? OR ? = 'admin')
-                    AND c.id != ?
-                    AND (c.parent_community_id IS NULL OR c.parent_community_id != ?)
+                    WHERE (u.username = {ph} OR c.creator_username = {ph})
+                    AND c.id != {ph}
+                    AND (c.parent_community_id IS NULL OR c.parent_community_id != {ph})
                     ORDER BY c.name
-                """, (username, username, username, current_community_id, current_community_id))
+                """, (username, username, current_community_id, current_community_id))
             else:
-                c.execute("""
+                c.execute(f"""
                     SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id
                     FROM communities c
                     LEFT JOIN user_communities uc ON c.id = uc.community_id
                     LEFT JOIN users u ON uc.user_id = u.id
-                    WHERE u.username = ? OR c.creator_username = ? OR ? = 'admin'
+                    WHERE u.username = {ph} OR c.creator_username = {ph}
                     ORDER BY c.name
-                """, (username, username, username))
+                """, (username, username))
             
             communities = []
             for row in c.fetchall():
@@ -28379,7 +26168,7 @@ def get_user_communities_with_members():
                         'id': community['id'],
                         'name': community['name'],
                         'type': community['type'],
-                        'is_creator': community['creator_username'] == username,
+                        'is_creator': str(community['creator_username'] or '').strip().lower() == str(username or '').strip().lower(),
                         'members': members
                     })
                 except Exception as ce:
@@ -28434,7 +26223,7 @@ def get_user_communities():
                     'name': row['name'],
                     'type': row['type'],
                     'created_at': row['created_at'],
-                    'is_creator': row['creator_username'] == username,
+                    'is_creator': str(row['creator_username'] or '').strip().lower() == str(username or '').strip().lower(),
                     'is_active': row['is_active'] if row['is_active'] is not None else True
                 })
             
@@ -28466,7 +26255,7 @@ def edit_community():
             if not community:
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
             
-            if community['creator_username'] != username:
+            if not can_manage_community(username, community_id):
                 return jsonify({'success': False, 'error': 'Only the community creator can edit the community'}), 403
             
             # Update the community name
@@ -28511,7 +26300,7 @@ def update_community():
                 if 'USE_MYSQL' in globals() and USE_MYSQL:
                     c.execute("SHOW COLUMNS FROM communities LIKE 'notify_on_new_member'")
                     if not c.fetchone():
-                        c.execute("ALTER TABLE communities ADD COLUMN notify_on_new_member TINYINT(1) DEFAULT 0")
+                        c.execute("ALTER TABLE communities ADD COLUMN notify_on_new_member TINYINT(1) DEFAULT 1")
                         conn.commit()
                     c.execute("SHOW COLUMNS FROM communities LIKE 'max_members'")
                     if not c.fetchone():
@@ -28525,7 +26314,7 @@ def update_community():
                     c.execute("PRAGMA table_info(communities)")
                     cols = [row[1] if isinstance(row, (list, tuple)) else row['name'] for row in c.fetchall()]
                     if 'notify_on_new_member' not in cols:
-                        c.execute("ALTER TABLE communities ADD COLUMN notify_on_new_member INTEGER DEFAULT 0")
+                        c.execute("ALTER TABLE communities ADD COLUMN notify_on_new_member INTEGER DEFAULT 1")
                         conn.commit()
                     if 'max_members' not in cols:
                         c.execute("ALTER TABLE communities ADD COLUMN max_members INTEGER NULL")
@@ -28560,15 +26349,17 @@ def update_community():
             else:
                 owner_username = community[0]
                 current_type = (community[1] if len(community) > 1 else '') or ''
-            effective_type = community_type if community_type else current_type
-            is_owner = (owner_username == username)
-            is_app_admin = (username == 'admin')
+            effective_type = effective_community_type_for_update(
+                username, community_type, current_type
+            )
+            is_owner = str(owner_username or '').strip().lower() == str(username or '').strip().lower()
+            is_platform_admin = is_app_admin(username)
             # Allow community admins to edit general fields
             try:
                 admin_ok = is_community_admin_or_owner(username, community_id)
             except Exception:
                 admin_ok = False
-            if not (admin_ok or is_app_admin):
+            if not (admin_ok or is_platform_admin):
                 return jsonify({'success': False, 'error': 'Only community admins or owner can edit the community'}), 403
 
             # Stricter permission for network_type: only Parent Network owner or @Admin
@@ -28577,27 +26368,32 @@ def update_community():
                 c.execute(f"SELECT parent_community_id FROM communities WHERE id = {ph}", (community_id,))
                 parent_row = c.fetchone()
                 is_parent = not parent_row or (parent_row['parent_community_id'] if hasattr(parent_row, 'keys') else parent_row[0]) is None
-                if not (is_parent and (is_owner or is_app_admin)):
+                if not (is_parent and (is_owner or is_platform_admin)):
                     return jsonify({'success': False, 'error': 'Only Parent Network owners or platform admin (@Admin) can set network_type'}), 403
             
             # Handle background file upload or removal (restrict to owner or app admin)
             background_path = None
+            background_media_bytes = 0
             remove_background = request.form.get('remove_background', '').lower() in ('true', '1', 'yes')
             
-            if (is_owner or is_app_admin) and ('background_file' in request.files):
+            if (is_owner or is_platform_admin) and ('background_file' in request.files):
                 file = request.files['background_file']
                 if file and file.filename:
                     # Save the uploaded file using R2-enabled media service
-                    stored_path = save_uploaded_file(
+                    stored_info = save_uploaded_file(
                         file,
                         subfolder='community_backgrounds',
-                        allowed_extensions={'png', 'jpg', 'jpeg', 'gif', 'webp'}
+                        allowed_extensions={'png', 'jpg', 'jpeg', 'gif', 'webp'},
+                        optimize_profile='background',
+                        return_file_info=True,
                     )
+                    stored_path = stored_info.get('path') if isinstance(stored_info, dict) else stored_info
                     if stored_path:
                         background_path = stored_path
+                        background_media_bytes = stored_info.get('stored_bytes', 0) if isinstance(stored_info, dict) else 0
             
             # Update the community details
-            if remove_background and (is_owner or is_app_admin):
+            if remove_background and (is_owner or is_platform_admin):
                 # Remove the background image
                 c.execute(
                     f"""
@@ -28660,6 +26456,22 @@ def update_community():
                 )
             
             conn.commit()
+            if background_path:
+                try:
+                    from backend.services import media_assets
+                    media_assets.register_asset(
+                        c,
+                        community_id=community_id,
+                        source_type='background',
+                        source_id=community_id,
+                        media_type='image',
+                        path=background_path,
+                        original_bytes=background_media_bytes,
+                        stored_bytes=background_media_bytes,
+                    )
+                    conn.commit()
+                except Exception as asset_err:
+                    logger.warning(f"community background media asset registration failed: {asset_err}")
             
             # Cascade network_type to all direct sub-communities when parent network_type changes
             if network_type and network_type.strip():
@@ -28676,111 +26488,25 @@ def update_community():
                 invalidate_community_cache(community_id)
             except Exception as cache_err:
                 logger.warning(f"Failed to invalidate cache after community update for {community_id}: {cache_err}")
-            
+            try:
+                invalidate_dashboard_caches_for_community_subtree(int(community_id))
+            except Exception as dash_err:
+                logger.warning(
+                    "Dashboard subtree invalidate after community update: %s", dash_err
+                )
+
             return jsonify({'success': True, 'message': 'Community updated successfully'})
             
     except Exception as e:
         logger.error(f"Error updating community: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to update community'}), 500
 
-@app.route('/delete_community', methods=['POST'])
-@login_required
-def delete_community():
-    """Delete a community and all its posts"""
-    username = session.get('username')
-    community_id = request.form.get('community_id', type=int)
-    
-    if not community_id:
-        return jsonify({'success': False, 'error': 'Community ID is required'}), 400
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Check if user is the creator of this community
-            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
-            community = c.fetchone()
-            
-            if not community:
-                return jsonify({'success': False, 'error': 'Community not found'}), 404
-            
-            if community['creator_username'] != username:
-                return jsonify({'success': False, 'error': 'Only the community creator can delete the community'}), 403
-
-            descendant_ids = get_descendant_community_ids(c, community_id)
-            placeholder = get_sql_placeholder()
-            for target_id in descendant_ids:
-                c.execute(f"SELECT creator_username FROM communities WHERE id = {placeholder}", (target_id,))
-                owner_row = c.fetchone()
-                owner_username = None
-                if owner_row:
-                    if hasattr(owner_row, 'keys'):
-                        owner_username = owner_row.get('creator_username')
-                    elif isinstance(owner_row, (list, tuple)):
-                        owner_username = owner_row[0]
-                if owner_username and owner_username != username:
-                    return jsonify({
-                        'success': False,
-                        'error': 'This community has nested communities you do not own. Please contact an admin to remove them first.'
-                    }), 403
-
-            # Get all members of communities being deleted BEFORE deleting
-            affected_usernames: Set[str] = set()
-            # Always include the current user (who is deleting)
-            affected_usernames.add(username)
-            
-            for target_id in descendant_ids:
-                placeholder = get_sql_placeholder()
-                # Get members from user_communities
-                c.execute(f"""
-                    SELECT DISTINCT u.username 
-                    FROM user_communities uc
-                    JOIN users u ON uc.user_id = u.id
-                    WHERE uc.community_id = {placeholder}
-                """, (target_id,))
-                for row in c.fetchall():
-                    uname = row['username'] if hasattr(row, 'keys') else row[0]
-                    if uname:
-                        affected_usernames.add(uname)
-                
-                # Also get the creator of the community (may not be in user_communities)
-                c.execute(f"SELECT creator_username FROM communities WHERE id = {placeholder}", (target_id,))
-                creator_row = c.fetchone()
-                if creator_row:
-                    creator = creator_row['creator_username'] if hasattr(creator_row, 'keys') else creator_row[0]
-                    if creator:
-                        affected_usernames.add(creator)
-            
-            deleted_ids: List[int] = []
-            for target_id in descendant_ids:
-                delete_community_records(c, target_id)
-                deleted_ids.append(target_id)
-            
-            conn.commit()
-            
-            # Invalidate ALL caches related to deleted communities and affected users
-            # 1. Invalidate community-specific caches
-            for target_id in deleted_ids:
-                invalidate_community_cache(target_id)
-            logger.info(f"Invalidated community cache for {len(deleted_ids)} communities: {deleted_ids}")
-            
-            # 2. Invalidate dashboard cache for ALL affected users (members + creators + current user)
-            for affected_user in affected_usernames:
-                invalidate_user_cache(affected_user)
-            logger.info(f"Invalidated user cache for {len(affected_usernames)} users: {list(affected_usernames)}")
-            
-            return jsonify({'success': True, 'message': 'Community deleted successfully', 'deleted_ids': deleted_ids})
-            
-    except Exception as e:
-        logger.error(f"Error deleting community: {str(e)}")
-        return jsonify({'success': False, 'error': 'Failed to delete community'}), 500
-
 @app.route('/migrate_parent_communities')
 @login_required
 def migrate_parent_communities():
     """Migrate KW28 parent community relationship"""
     username = session.get('username')
-    if username != 'admin':
+    if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Admin access required'}), 403
     
     try:
@@ -28840,7 +26566,7 @@ def migrate_parent_communities():
 def fix_database_issues():
     """Fix database issues: missing tables, parent community memberships, and timestamps"""
     username = session.get('username')
-    if username != 'admin':
+    if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Admin access required'}), 403
     
     try:
@@ -28968,205 +26694,6 @@ def fix_database_issues():
     except Exception as e:
         logger.error(f"Error fixing database issues: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/migrate_database')
-def migrate_database():
-    """Manual database migration endpoint"""
-    try:
-        add_missing_tables()
-        return jsonify({'success': True, 'message': 'Database migration completed successfully'})
-    except Exception as e:
-        logger.error(f"Database migration failed: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/migrate_key_posts', methods=['POST'])
-def migrate_key_posts():
-    """Create key_posts table if it doesn't exist - no login required for setup"""
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-
-            # Check if table exists
-            if USE_MYSQL:
-                c.execute("SHOW TABLES LIKE 'key_posts'")
-                table_exists = c.fetchone() is not None
-            else:
-                c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='key_posts'")
-                table_exists = c.fetchone() is not None
-
-            if not table_exists:
-                logger.info("Creating key_posts table...")
-                c.execute('''CREATE TABLE IF NOT EXISTS key_posts
-                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                              username VARCHAR(191) NOT NULL,
-                              post_id INTEGER NOT NULL,
-                              community_id INTEGER NOT NULL,
-                              created_at TEXT NOT NULL,
-                              FOREIGN KEY (post_id) REFERENCES posts(id),
-                              FOREIGN KEY (username) REFERENCES users(username),
-                              FOREIGN KEY (community_id) REFERENCES communities(id),
-                              UNIQUE(username, post_id))''')
-                conn.commit()
-                logger.info("Created key_posts table successfully")
-                return jsonify({'success': True, 'message': 'Key Posts table created successfully'})
-            else:
-                return jsonify({'success': True, 'message': 'Key Posts table already exists'})
-    except Exception as e:
-        logger.error(f"Error creating key_posts table: {e}")
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/migrate_username_types', methods=['POST'])
-def migrate_username_types():
-    """Migrate username columns from TEXT to VARCHAR(191) for MySQL compatibility - no login required"""
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-
-            # Check current username column types
-            try:
-                if USE_MYSQL:
-                    # Check users table username type
-                    c.execute("SHOW COLUMNS FROM users WHERE Field='username'")
-                    users_col = c.fetchone()
-                    users_username_type = users_col['Type'] if users_col else None
-
-                    # Check messages table sender type
-                    c.execute("SHOW COLUMNS FROM messages WHERE Field='sender'")
-                    messages_col = c.fetchone()
-                    messages_sender_type = messages_col['Type'] if messages_col else None
-
-                    # Check if key_posts table exists
-                    c.execute("SHOW TABLES LIKE 'key_posts'")
-                    key_posts_exists = c.fetchone() is not None
-
-                    logger.info(f"Current username types - Users: {users_username_type}, Messages sender: {messages_sender_type}, Key Posts exists: {key_posts_exists}")
-
-                    needs_migration = False
-                    if users_username_type and 'text' in users_username_type.lower():
-                        needs_migration = True
-                        logger.info("Found TEXT username in users table, migration needed")
-
-                    if messages_sender_type and 'text' in messages_sender_type.lower():
-                        needs_migration = True
-                        logger.info("Found TEXT username in messages table, migration needed")
-
-                    if needs_migration:
-                        logger.info("Starting username column migration...")
-
-                        # Step 1: Drop key_posts table if it exists (we'll recreate it)
-                        if key_posts_exists:
-                            logger.info("Dropping existing key_posts table...")
-                            c.execute("DROP TABLE key_posts")
-                            logger.info("key_posts table dropped")
-
-                        # Step 2: Drop foreign key constraints temporarily
-                        logger.info("Dropping foreign key constraints...")
-                        try:
-                            c.execute("ALTER TABLE messages DROP FOREIGN KEY messages_ibfk_1")
-                        except:
-                            logger.info("messages_ibfk_1 constraint not found or already dropped")
-
-                        try:
-                            c.execute("ALTER TABLE messages DROP FOREIGN KEY messages_ibfk_2")
-                        except:
-                            logger.info("messages_ibfk_2 constraint not found or already dropped")
-
-                        try:
-                            c.execute("ALTER TABLE password_reset_tokens DROP FOREIGN KEY password_reset_tokens_ibfk_1")
-                        except:
-                            logger.info("password_reset_tokens_ibfk_1 constraint not found or already dropped")
-
-                        # Step 3: Alter username columns to VARCHAR(191)
-                        logger.info("Altering username columns to VARCHAR(191)...")
-
-                        # Alter users table
-                        if users_username_type and 'text' in users_username_type.lower():
-                            c.execute("ALTER TABLE users MODIFY COLUMN username VARCHAR(191) NOT NULL")
-
-                        # Alter messages table
-                        if messages_sender_type and 'text' in messages_sender_type.lower():
-                            c.execute("ALTER TABLE messages MODIFY COLUMN sender VARCHAR(191) NOT NULL")
-                            c.execute("ALTER TABLE messages MODIFY COLUMN receiver VARCHAR(191) NOT NULL")
-
-                        # Alter other tables
-                        c.execute("ALTER TABLE api_usage MODIFY COLUMN username VARCHAR(191)")
-                        c.execute("ALTER TABLE saved_data MODIFY COLUMN username VARCHAR(191)")
-                        c.execute("ALTER TABLE push_subscriptions MODIFY COLUMN username VARCHAR(191) NOT NULL")
-                        c.execute("ALTER TABLE remember_tokens MODIFY COLUMN username VARCHAR(191) NOT NULL")
-                        c.execute("ALTER TABLE password_reset_tokens MODIFY COLUMN username VARCHAR(191) NOT NULL")
-
-                        # Step 4: Recreate foreign key constraints
-                        logger.info("Recreating foreign key constraints...")
-                        c.execute("ALTER TABLE messages ADD CONSTRAINT messages_ibfk_1 FOREIGN KEY (sender) REFERENCES users(username)")
-                        c.execute("ALTER TABLE messages ADD CONSTRAINT messages_ibfk_2 FOREIGN KEY (receiver) REFERENCES users(username)")
-                        c.execute("ALTER TABLE password_reset_tokens ADD CONSTRAINT password_reset_tokens_ibfk_1 FOREIGN KEY (username) REFERENCES users(username)")
-
-                        # Step 5: Recreate key_posts table
-                        logger.info("Recreating key_posts table...")
-                        c.execute('''CREATE TABLE key_posts
-                                     (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                                      username VARCHAR(191) NOT NULL,
-                                      post_id INTEGER NOT NULL,
-                                      community_id INTEGER NOT NULL,
-                                      created_at TEXT NOT NULL,
-                                      FOREIGN KEY (post_id) REFERENCES posts(id),
-                                      FOREIGN KEY (username) REFERENCES users(username),
-                                      FOREIGN KEY (community_id) REFERENCES communities(id),
-                                      UNIQUE(username, post_id))''')
-
-                        conn.commit()
-                        logger.info("Username column migration completed successfully")
-                        return jsonify({'success': True, 'message': 'Username columns migrated and key_posts table recreated successfully'})
-
-                    else:
-                        # Check if we need to create key_posts table
-                        if not key_posts_exists:
-                            logger.info("Creating key_posts table...")
-                            c.execute('''CREATE TABLE key_posts
-                                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                                          username VARCHAR(191) NOT NULL,
-                                          post_id INTEGER NOT NULL,
-                                          community_id INTEGER NOT NULL,
-                                          created_at TEXT NOT NULL,
-                                          FOREIGN KEY (post_id) REFERENCES posts(id),
-                                          FOREIGN KEY (username) REFERENCES users(username),
-                                          FOREIGN KEY (community_id) REFERENCES communities(id),
-                                          UNIQUE(username, post_id))''')
-                            conn.commit()
-                            logger.info("key_posts table created successfully")
-                            return jsonify({'success': True, 'message': 'Key Posts table created successfully'})
-
-                        return jsonify({'success': True, 'message': 'All username columns are already VARCHAR(191) and tables are properly configured'})
-
-                else:
-                    logger.info("Using SQLite - no migration needed for username types")
-                    # For SQLite, just create key_posts table if it doesn't exist
-                    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='key_posts'")
-                    if not c.fetchone():
-                        logger.info("Creating key_posts table for SQLite...")
-                        c.execute('''CREATE TABLE key_posts
-                                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                      username VARCHAR(191) NOT NULL,
-                                      post_id INTEGER NOT NULL,
-                                      community_id INTEGER NOT NULL,
-                                      created_at TEXT NOT NULL,
-                                      FOREIGN KEY (post_id) REFERENCES posts(id),
-                                      FOREIGN KEY (username) REFERENCES users(username),
-                                      FOREIGN KEY (community_id) REFERENCES communities(id),
-                                      UNIQUE(username, post_id))''')
-                        conn.commit()
-                        logger.info("key_posts table created successfully")
-                        return jsonify({'success': True, 'message': 'Key Posts table created for SQLite'})
-
-                    return jsonify({'success': True, 'message': 'Key Posts table already exists in SQLite'})
-
-            except Exception as inner_e:
-                logger.error(f"Error during username migration: {inner_e}")
-                return jsonify({'success': False, 'error': str(inner_e)})
-
-    except Exception as e:
-        logger.error(f"Error in username migration: {e}")
-        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/debug_community/<int:community_id>')
 @login_required
@@ -29305,7 +26832,7 @@ def invite_landing(token):
     # can open the app (via the verified https App Link) or fall back to the Play
     # Store natively — no confirm() dialog, no JS timer required. iOS / desktop
     # fall back to the custom cpoint:// scheme, which Safari routes through the
-    # system "Open in C.Point?" sheet or Universal Links.
+    # system "Open in C-Point?" sheet or Universal Links.
     if is_android:
         android_fallback = quote(play_store_url, safe='')
         app_url = (
@@ -29331,7 +26858,7 @@ def invite_landing(token):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="apple-itunes-app" content="app-id=6755534074, app-argument=https://app.c-point.co/invite/{token}">
-    <title>Join {community_name} on C.Point</title>
+    <title>Join {community_name} on C-Point</title>
     <style>
         * {{ margin:0; padding:0; box-sizing:border-box; }}
         body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#000; color:#fff; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }}
@@ -29351,15 +26878,15 @@ def invite_landing(token):
 </head>
 <body>
     <div class="container">
-        <div class="logo"><img src="{logo_url}" alt="C.Point" /></div>
+        <div class="logo"><img src="{logo_url}" alt="C-Point" /></div>
         <h1>You're Invited!</h1>
         <p class="invite-info">Join <strong>{community_name}</strong></p>
         <p class="invited-by">Invited by {invited_by}</p>
-        <a href="{app_url}" class="btn btn-primary" id="openAppBtn">Open in C.Point App</a>
+        <a href="{app_url}" class="btn btn-primary" id="openAppBtn">Open in C-Point App</a>
         <p style="color:#555; font-size:12px; margin:14px 0 10px;">Don't have the app yet?</p>
         {store_btn}
         <button type="button" class="btn btn-tertiary" id="copyInviteLinkBtn">Copy invite link</button>
-        <p class="hint">After you install, open the app from your home screen — we save your invite automatically when you tap Download above. If you don&apos;t land in the right community, open this page again and tap &quot;Open in C.Point App&quot;, or on Sign in use &quot;Use invite from clipboard&quot;.</p>
+        <p class="hint">After you install, open the app from your home screen — we save your invite automatically when you tap Download above. If you don&apos;t land in the right community, open this page again and tap &quot;Open in C-Point App&quot;, or on Sign in use &quot;Use invite from clipboard&quot;.</p>
     </div>
     <script>
 (function() {{
@@ -29394,7 +26921,7 @@ def invite_landing(token):
                 if (IS_ANDROID) return;
 
                 // iOS / desktop: let the anchor trigger cpoint://. If the app is
-                // installed, Safari shows the system "Open in C.Point?" sheet and
+                // installed, Safari shows the system "Open in C-Point?" sheet and
                 // the page goes hidden when it launches. If the app is not
                 // installed, nothing happens — after a short delay we silently
                 // redirect to the App Store. visibilitychange is the reliable
@@ -29478,1162 +27005,9 @@ def verify_invitation():
         logger.error(f"Error verifying invitation: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
-@app.route('/api/community/<int:community_id>/invite_settings', methods=['GET', 'POST'])
-@login_required
-def community_invite_settings(community_id):
-    """Get or set invite link settings for a community."""
-    username = session.get('username')
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            _ensure_invite_single_use_column(c)
-            
-            if request.method == 'GET':
-                c.execute("SELECT invite_single_use FROM communities WHERE id = ?", (community_id,))
-                row = c.fetchone()
-                if not row:
-                    return jsonify({'success': False, 'error': 'Community not found'}), 404
-                val = row['invite_single_use'] if hasattr(row, 'keys') else row[0]
-                return jsonify({'success': True, 'invite_single_use': bool(val)})
-            
-            # POST - admin only
-            if not is_community_admin(username, community_id):
-                return jsonify({'success': False, 'error': 'Admin access required'}), 403
-            data = request.get_json() or {}
-            single_use = bool(data.get('invite_single_use', False))
-            c.execute("UPDATE communities SET invite_single_use = ? WHERE id = ?", (1 if single_use else 0, community_id))
-            conn.commit()
-            return jsonify({'success': True, 'invite_single_use': single_use})
-    except Exception as e:
-        logger.error(f"Error in community_invite_settings: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
+# Community invite API routes now reside in backend.blueprints.community_invites.
+from backend.services.community_invites import notify_community_new_member
 
-@app.route('/api/community/invite_link', methods=['POST'])
-@login_required
-def generate_invite_link():
-    """Generate an invitation link for QR code sharing (admin only)"""
-    username = session.get('username')
-    data = request.get_json() or {}
-    
-    community_id = data.get('community_id')
-    
-    if not community_id:
-        return jsonify({'success': False, 'error': 'Community ID required'}), 400
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Check if user is admin of this community
-            c.execute("SELECT id FROM users WHERE username = ?", (username,))
-            user_row = c.fetchone()
-            if not user_row:
-                return jsonify({'success': False, 'error': 'User not found'}), 404
-            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
-            
-            c.execute("""
-                SELECT c.name, c.creator_username, uc.role, c.parent_community_id
-                FROM communities c
-                LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.user_id = ?
-                WHERE c.id = ?
-            """, (user_id, community_id))
-            
-            community = c.fetchone()
-            if not community:
-                return jsonify({'success': False, 'error': 'Community not found'}), 404
-            
-            community_name = community['name'] if hasattr(community, 'keys') else community[0]
-            parent_community_id = community['parent_community_id'] if hasattr(community, 'keys') else community[3]
-            if parent_community_id:
-                return jsonify({'success': False, 'error': 'Invites can only be created from root communities'}), 400
-            
-            try:
-                cid = int(community_id)
-            except (TypeError, ValueError):
-                return jsonify({'success': False, 'error': 'Invalid community ID'}), 400
-            if not has_community_management_permission(username, cid):
-                return jsonify({'success': False, 'error': 'Only community admins can generate invite links'}), 403
-            
-            # Generate unique token (use generic email for QR code invites)
-            import secrets
-            token = secrets.token_urlsafe(32)
-            
-            # Store invitation with placeholder email
-            c.execute("""
-                INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token, include_nested_ids, include_parent_ids)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                community_id,
-                f'qr-invite-{token[:8]}@placeholder.local',
-                username,
-                token,
-                json.dumps([]),
-                json.dumps([])
-            ))
-            conn.commit()
-            
-            # Generate invitation URL (smart redirect that detects iOS)
-            base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
-            invite_url = f"{base_url}/invite/{token}"
-            
-            return jsonify({
-                'success': True, 
-                'invite_url': invite_url,
-                'community_name': community_name
-            })
-            
-    except Exception as e:
-        logger.error(f"Error generating invite link: {str(e)}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-def _community_invite_join_ids(cursor, community_id: int, raw_nested_values=None, raw_parent_values=None) -> List[int]:
-    """Return the root community for username invite acceptance."""
-    try:
-        return [int(community_id)]
-    except (TypeError, ValueError):
-        return []
-
-
-def _fetch_manageable_communities(cursor, username: str, target_username: Optional[str] = None) -> List[Dict[str, Any]]:
-    """List communities the current user can manage, optionally annotated for a target user."""
-    ph = get_sql_placeholder()
-    params: List[Any] = []
-    target_join = ""
-    target_select = "0 AS target_is_member"
-    if target_username:
-        target_select = "CASE WHEN tuc.user_id IS NULL THEN 0 ELSE 1 END AS target_is_member"
-        target_join = f"""
-            LEFT JOIN users tu ON LOWER(tu.username) = LOWER({ph})
-            LEFT JOIN user_communities tuc ON tuc.community_id = c.id AND tuc.user_id = tu.id
-        """
-        params.append(target_username)
-
-    if is_app_admin(username):
-        cursor.execute(
-            f"""
-            SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id, c.creator_username,
-                   {target_select}
-            FROM communities c
-            {target_join}
-            WHERE c.parent_community_id IS NULL
-            ORDER BY c.name
-            """,
-            tuple(params),
-        )
-    else:
-        params.extend([username, username])
-        cursor.execute(
-            f"""
-            SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id, c.creator_username,
-                   {target_select}
-            FROM communities c
-            {target_join}
-            LEFT JOIN user_communities uc ON uc.community_id = c.id
-            LEFT JOIN users u ON u.id = uc.user_id
-            WHERE c.parent_community_id IS NULL
-              AND (
-                c.creator_username = {ph}
-                OR (LOWER(u.username) = LOWER({ph}) AND LOWER(COALESCE(uc.role, '')) IN ('admin', 'owner'))
-              )
-            ORDER BY c.name
-            """,
-            tuple(params),
-        )
-
-    communities: List[Dict[str, Any]] = []
-    for row in cursor.fetchall() or []:
-        target_is_member = row['target_is_member'] if hasattr(row, 'keys') else row[5]
-        communities.append({
-            'id': row['id'] if hasattr(row, 'keys') else row[0],
-            'name': row['name'] if hasattr(row, 'keys') else row[1],
-            'type': row['type'] if hasattr(row, 'keys') else row[2],
-            'parent_community_id': row['parent_community_id'] if hasattr(row, 'keys') else row[3],
-            'creator_username': row['creator_username'] if hasattr(row, 'keys') else row[4],
-            'target_is_member': bool(target_is_member),
-        })
-    return communities
-
-
-@app.route('/api/community/manageable', methods=['GET'])
-@login_required
-def list_manageable_communities():
-    """Return communities the current user can manage, for username invites."""
-    username = session.get('username')
-    target_username = (request.args.get('target_username') or '').strip() or None
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            communities = _fetch_manageable_communities(c, username, target_username)
-        return jsonify({'success': True, 'communities': communities})
-    except Exception as e:
-        logger.error(f"Error listing manageable communities for {username}: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/community/invite_username', methods=['POST'])
-@login_required
-def invite_username_to_community():
-    """Create a pending invite for an existing C.Point username."""
-    inviter_username = session.get('username')
-    data = request.get_json(silent=True) or {}
-    target_username = (data.get('username') or '').strip().lstrip('@')
-    community_id_raw = data.get('community_id')
-
-    if not community_id_raw:
-        return jsonify({'success': False, 'error': 'Community ID required'}), 400
-    if not target_username:
-        return jsonify({'success': False, 'error': 'Username is required'}), 400
-    if target_username.lower() == (inviter_username or '').lower():
-        return jsonify({'success': False, 'error': 'You cannot invite yourself'}), 400
-
-    try:
-        community_id = int(community_id_raw)
-    except (TypeError, ValueError):
-        return jsonify({'success': False, 'error': 'Invalid community ID'}), 400
-
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ensure_community_invitations_table(c)
-
-            if not has_community_management_permission(inviter_username, community_id):
-                return jsonify({'success': False, 'error': 'Only community owners or admins can invite members'}), 403
-
-            c.execute("SELECT id, username FROM users WHERE LOWER(username) = LOWER(?)", (target_username,))
-            target_row = c.fetchone()
-            if not target_row:
-                return jsonify({'success': False, 'error': 'User not found'}), 404
-            target_user_id = target_row['id'] if hasattr(target_row, 'keys') else target_row[0]
-            resolved_target_username = target_row['username'] if hasattr(target_row, 'keys') else target_row[1]
-
-            c.execute("SELECT name, parent_community_id FROM communities WHERE id = ?", (community_id,))
-            community_row = c.fetchone()
-            if not community_row:
-                return jsonify({'success': False, 'error': 'Community not found'}), 404
-            community_name = community_row['name'] if hasattr(community_row, 'keys') else community_row[0]
-            parent_community_id = community_row['parent_community_id'] if hasattr(community_row, 'keys') else community_row[1]
-            if parent_community_id:
-                return jsonify({'success': False, 'error': 'Invites can only be created from root communities'}), 400
-
-            c.execute(
-                "SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?",
-                (target_user_id, community_id),
-            )
-            if c.fetchone():
-                return jsonify({'success': False, 'error': 'User is already a member of this community'}), 400
-
-            c.execute(
-                """
-                SELECT id, token
-                FROM community_invitations
-                WHERE community_id = ? AND LOWER(invited_username) = LOWER(?) AND used = 0 AND COALESCE(status, 'pending') = 'pending'
-                LIMIT 1
-                """,
-                (community_id, resolved_target_username),
-            )
-            existing_invite = c.fetchone()
-            token = secrets.token_urlsafe(32)
-            placeholder_email = f"username-invite-{resolved_target_username.lower()}@placeholder.local"
-
-            if existing_invite:
-                invite_id = existing_invite['id'] if hasattr(existing_invite, 'keys') else existing_invite[0]
-                c.execute(
-                    """
-                    UPDATE community_invitations
-                    SET invited_by_username = ?, invited_email = ?, token = ?, invited_at = CURRENT_TIMESTAMP,
-                        include_nested_ids = ?, include_parent_ids = ?, status = 'pending', responded_at = NULL
-                    WHERE id = ?
-                    """,
-                    (
-                        inviter_username,
-                        placeholder_email,
-                        token,
-                        json.dumps([]),
-                        json.dumps([]),
-                        invite_id,
-                    ),
-                )
-            else:
-                c.execute(
-                    """
-                    INSERT INTO community_invitations
-                        (community_id, invited_email, invited_username, invited_by_username, token, include_nested_ids, include_parent_ids, status, used)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0)
-                    """,
-                    (
-                        community_id,
-                        placeholder_email,
-                        resolved_target_username,
-                        inviter_username,
-                        token,
-                        json.dumps([]),
-                        json.dumps([]),
-                    ),
-                )
-                invite_id = c.lastrowid
-
-            message = f"You've been invited to community {community_name} by username {inviter_username}"
-            create_notification(
-                resolved_target_username,
-                inviter_username,
-                'community_invite',
-                community_id=community_id,
-                message=message,
-                link='/notifications',
-            )
-            try:
-                send_push_to_user(resolved_target_username, {
-                    'title': 'Community invite',
-                    'body': message,
-                    'url': '/notifications',
-                    'tag': f'community-invite-{community_id}-{resolved_target_username}',
-                })
-            except Exception as push_err:
-                logger.warning(f"Failed to send username invite push to {resolved_target_username}: {push_err}")
-
-            conn.commit()
-            return jsonify({
-                'success': True,
-                'invite_id': invite_id,
-                'community_name': community_name,
-                'username': resolved_target_username,
-                'message': f'Invite sent to @{resolved_target_username}',
-            })
-    except Exception as e:
-        logger.error(f"Error creating username invite: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/community/invites/pending', methods=['GET'])
-@login_required
-def list_pending_username_invites():
-    """List pending community username invites for the current user."""
-    username = session.get('username')
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ensure_community_invitations_table(c)
-            c.execute(
-                """
-                SELECT ci.id, ci.community_id, ci.invited_by_username, ci.invited_at,
-                       ci.include_nested_ids, ci.include_parent_ids, c.name as community_name
-                FROM community_invitations ci
-                JOIN communities c ON c.id = ci.community_id
-                WHERE LOWER(ci.invited_username) = LOWER(?) AND ci.used = 0 AND COALESCE(ci.status, 'pending') = 'pending'
-                ORDER BY ci.invited_at DESC
-                """,
-                (username,),
-            )
-            invites = []
-            for row in c.fetchall() or []:
-                raw_nested = row['include_nested_ids'] if hasattr(row, 'keys') else row[4]
-                raw_parent = row['include_parent_ids'] if hasattr(row, 'keys') else row[5]
-                invites.append({
-                    'id': row['id'] if hasattr(row, 'keys') else row[0],
-                    'community_id': row['community_id'] if hasattr(row, 'keys') else row[1],
-                    'invited_by_username': row['invited_by_username'] if hasattr(row, 'keys') else row[2],
-                    'invited_at': str(row['invited_at'] if hasattr(row, 'keys') else row[3]),
-                    'community_name': row['community_name'] if hasattr(row, 'keys') else row[6],
-                    'include_nested_ids': normalize_id_list(raw_nested) if raw_nested else [],
-                    'include_parent_ids': normalize_id_list(raw_parent) if raw_parent else [],
-                })
-        return jsonify({'success': True, 'invites': invites})
-    except Exception as e:
-        logger.error(f"Error listing pending username invites for {username}: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/community/invites/<int:invite_id>/accept', methods=['POST'])
-@login_required
-def accept_username_invite(invite_id):
-    """Accept a pending username invite and create memberships."""
-    username = session.get('username')
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ensure_community_invitations_table(c)
-            c.execute("SELECT id, email FROM users WHERE username = ?", (username,))
-            user_row = c.fetchone()
-            if not user_row:
-                return jsonify({'success': False, 'error': 'User not found'}), 404
-            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
-
-            c.execute(
-                """
-                SELECT ci.id, ci.community_id, ci.invited_username, ci.used, ci.status,
-                       ci.include_nested_ids, ci.include_parent_ids, c.name as community_name,
-                       ci.invited_by_username
-                FROM community_invitations ci
-                JOIN communities c ON c.id = ci.community_id
-                WHERE ci.id = ?
-                """,
-                (invite_id,),
-            )
-            invite = c.fetchone()
-            if not invite:
-                return jsonify({'success': False, 'error': 'Invite not found'}), 404
-
-            invited_username = invite['invited_username'] if hasattr(invite, 'keys') else invite[2]
-            used = invite['used'] if hasattr(invite, 'keys') else invite[3]
-            status = invite['status'] if hasattr(invite, 'keys') else invite[4]
-            if not invited_username or invited_username.lower() != username.lower():
-                return jsonify({'success': False, 'error': 'Invite not found'}), 404
-            if used or (status and status != 'pending'):
-                return jsonify({'success': False, 'error': 'Invite is no longer pending'}), 400
-
-            community_id = invite['community_id'] if hasattr(invite, 'keys') else invite[1]
-            raw_nested = invite['include_nested_ids'] if hasattr(invite, 'keys') else invite[5]
-            raw_parent = invite['include_parent_ids'] if hasattr(invite, 'keys') else invite[6]
-            community_name = invite['community_name'] if hasattr(invite, 'keys') else invite[7]
-
-            for comm_id in _community_invite_join_ids(c, int(community_id), raw_nested, raw_parent):
-                c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (user_id, comm_id))
-                if not c.fetchone():
-                    try:
-                        add_user_to_community(c, user_id, int(comm_id), role='member', username=username)
-                    except CommunityMembershipLimitError as limit_err:
-                        conn.rollback()
-                        from backend.services.community import render_member_cap_error
-                        payload, status_code = render_member_cap_error(limit_err, session_username=username)
-                        return jsonify(payload), status_code
-
-            now_value = datetime.now().isoformat()
-            c.execute(
-                "UPDATE community_invitations SET used = 1, used_at = ?, status = 'accepted', responded_at = ? WHERE id = ?",
-                (now_value, now_value, invite_id),
-            )
-            c.execute(
-                """
-                UPDATE notifications
-                SET is_read = 1
-                WHERE user_id = ? AND type = 'community_invite' AND community_id = ? AND is_read = 0
-                """,
-                (username, community_id),
-            )
-            notify_community_new_member(community_id, username, conn)
-            conn.commit()
-            invalidate_user_cache(username)
-
-        return jsonify({
-            'success': True,
-            'community_id': community_id,
-            'community_name': community_name,
-            'message': f'Joined {community_name}',
-        })
-    except Exception as e:
-        logger.error(f"Error accepting username invite {invite_id}: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/community/invites/<int:invite_id>/decline', methods=['POST'])
-@login_required
-def decline_username_invite(invite_id):
-    """Decline a pending username invite."""
-    username = session.get('username')
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ensure_community_invitations_table(c)
-            c.execute(
-                """
-                SELECT id, community_id, invited_username, used, status
-                FROM community_invitations
-                WHERE id = ?
-                """,
-                (invite_id,),
-            )
-            invite = c.fetchone()
-            if not invite:
-                return jsonify({'success': False, 'error': 'Invite not found'}), 404
-            invited_username = invite['invited_username'] if hasattr(invite, 'keys') else invite[2]
-            used = invite['used'] if hasattr(invite, 'keys') else invite[3]
-            status = invite['status'] if hasattr(invite, 'keys') else invite[4]
-            community_id = invite['community_id'] if hasattr(invite, 'keys') else invite[1]
-            if not invited_username or invited_username.lower() != username.lower():
-                return jsonify({'success': False, 'error': 'Invite not found'}), 404
-            if used or (status and status != 'pending'):
-                return jsonify({'success': False, 'error': 'Invite is no longer pending'}), 400
-
-            now_value = datetime.now().isoformat()
-            c.execute(
-                "UPDATE community_invitations SET status = 'declined', responded_at = ? WHERE id = ?",
-                (now_value, invite_id),
-            )
-            c.execute(
-                """
-                UPDATE notifications
-                SET is_read = 1
-                WHERE user_id = ? AND type = 'community_invite' AND community_id = ? AND is_read = 0
-                """,
-                (username, community_id),
-            )
-            conn.commit()
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"Error declining username invite {invite_id}: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-def notify_community_new_member(community_id, new_username, conn):
-    """Send notifications to all community members when a new member joins (if enabled)"""
-    try:
-        from backend.services.notifications import send_push_to_user
-        
-        c = conn.cursor()
-        
-        # Check if community has notify_on_new_member enabled
-        c.execute(f"SELECT name, notify_on_new_member FROM communities WHERE id = {get_sql_placeholder()}", (community_id,))
-        comm_row = c.fetchone()
-        if not comm_row:
-            return
-        
-        community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
-        should_notify = comm_row['notify_on_new_member'] if hasattr(comm_row, 'keys') else comm_row[1]
-        
-        if not should_notify:
-            logger.info(f"Notifications disabled for community {community_id}, skipping new member notification")
-            return
-        
-        # Get all existing members of the community (excluding the new joiner)
-        c.execute(f"""
-            SELECT DISTINCT u.username
-            FROM user_communities uc
-            JOIN users u ON uc.user_id = u.id
-            WHERE uc.community_id = {get_sql_placeholder()} AND u.username != {get_sql_placeholder()}
-        """, (community_id, new_username))
-        
-        existing_members = c.fetchall()
-        
-        notification_message = f'{new_username} just joined "{community_name}". Say hi! 👋'
-        notification_link = f'/community_feed/{community_id}'
-        
-        # Send notification to each existing member
-        notif_ph = ', '.join([get_sql_placeholder()] * 6)
-        for member in existing_members:
-            member_username = member['username'] if hasattr(member, 'keys') else member[0]
-            try:
-                # Create in-app notification
-                c.execute(f"""
-                    INSERT INTO notifications (user_id, from_user, type, community_id, message, link)
-                    VALUES ({notif_ph})
-                """, (
-                    member_username,
-                    new_username,
-                    'new_member',
-                    community_id,
-                    notification_message,
-                    notification_link
-                ))
-            except Exception as member_notify_err:
-                logger.warning(f"Failed to notify {member_username} about new member: {member_notify_err}")
-            
-            # Send push notification
-            try:
-                send_push_to_user(member_username, {
-                    'title': f'New member in {community_name}',
-                    'body': notification_message,
-                    'url': notification_link,
-                    'tag': f'new_member_{community_id}_{new_username}'
-                })
-            except Exception as push_err:
-                logger.warning(f"Failed to send push notification to {member_username} about new member: {push_err}")
-        
-        logger.info(f"Sent new member notifications to {len(existing_members)} members in {community_name}")
-        
-    except Exception as e:
-        logger.error(f"Error sending new member notifications: {e}", exc_info=True)
-
-
-@app.route('/api/join_with_invite', methods=['POST'])
-@login_required
-def join_with_invite():
-    """Join a community using an invitation token (for existing users)"""
-    username = session.get('username')
-    data = request.get_json() or {}
-    invite_token = data.get('invite_token', '').strip()
-    
-    if not invite_token:
-        return jsonify({'success': False, 'error': 'Invitation token required'}), 400
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Get user ID and email
-            c.execute("SELECT id, email FROM users WHERE username = ?", (username,))
-            user_row = c.fetchone()
-            if not user_row:
-                return jsonify({'success': False, 'error': 'User not found'}), 404
-            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
-            user_email = user_row['email'] if hasattr(user_row, 'keys') else user_row[1]
-            
-            # Get invitation with invited email
-            c.execute("""
-                SELECT ci.id, ci.community_id, ci.used, ci.invited_email, c.name as community_name,
-                       ci.include_nested_ids, ci.include_parent_ids
-                FROM community_invitations ci
-                JOIN communities c ON ci.community_id = c.id
-                WHERE ci.token = ?
-            """, (invite_token,))
-            
-            invitation = c.fetchone()
-            if not invitation:
-                return jsonify({'success': False, 'error': 'Invalid invitation'}), 404
-            
-            invitation_id = invitation['id'] if hasattr(invitation, 'keys') else invitation[0]
-            community_id = invitation['community_id'] if hasattr(invitation, 'keys') else invitation[1]
-            used = invitation['used'] if hasattr(invitation, 'keys') else invitation[2]
-            invited_email = invitation['invited_email'] if hasattr(invitation, 'keys') else invitation[3]
-            community_name = invitation['community_name'] if hasattr(invitation, 'keys') else invitation[4]
-            raw_nested_values = invitation['include_nested_ids'] if hasattr(invitation, 'keys') else (invitation[5] if len(invitation) > 5 else None)
-            raw_parent_values = invitation['include_parent_ids'] if hasattr(invitation, 'keys') else (invitation[6] if len(invitation) > 6 else None)
-            
-            if used:
-                return jsonify({'success': False, 'error': 'Invitation already used'}), 400
-            
-            # Security check: verify the logged-in user's email matches the invited email
-            # Skip check for QR code invitations (placeholder emails)
-            is_qr_invite = invited_email and invited_email.startswith('qr-invite-') and invited_email.endswith('@placeholder.local')
-            if not is_qr_invite:
-                if user_email.lower() != invited_email.lower():
-                    return jsonify({'success': False, 'error': 'This invitation was sent to a different email address'}), 403
-            
-            # Check if already a member
-            c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", 
-                     (user_id, community_id))
-            if c.fetchone():
-                return jsonify({'success': False, 'error': 'You are already a member of this community'}), 400
-            
-            nested_ids = normalize_id_list(raw_nested_values) if raw_nested_values else []
-            parent_ids_to_join = normalize_id_list(raw_parent_values) if raw_parent_values is not None else get_parent_chain_ids(c, community_id)
-
-            communities_to_join: List[int] = []
-            seen: Set[int] = set()
-
-            def add_community(target_id: Optional[int]):
-                if not target_id:
-                    return
-                if target_id not in seen:
-                    seen.add(target_id)
-                    communities_to_join.append(target_id)
-
-            add_community(community_id)
-            for pid in parent_ids_to_join:
-                add_community(pid)
-            for nid in nested_ids:
-                add_community(nid)
-                for ancestor_id in get_parent_chain_ids(c, nid):
-                    add_community(ancestor_id)
-
-            # Join all communities (primary + selected extras)
-            for comm_id in communities_to_join:
-                # Check if already a member
-                c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (user_id, comm_id))
-                if not c.fetchone():
-                    try:
-                        add_user_to_community(c, user_id, int(comm_id), role='member', username=username)
-                    except CommunityMembershipLimitError as limit_err:
-                        conn.rollback()
-                        from backend.services.community import render_member_cap_error
-                        payload, status = render_member_cap_error(limit_err, session_username=username)
-                        return jsonify(payload), status
-            
-            # Check if community uses single-use invites
-            _ensure_invite_single_use_column(c)
-            c.execute(f"SELECT invite_single_use FROM communities WHERE id = {ph}", (community_id,))
-            su_row = c.fetchone()
-            is_single_use = bool((su_row['invite_single_use'] if hasattr(su_row, 'keys') else su_row[0]) if su_row else False)
-            
-            if is_single_use:
-                # Mark invitation as used
-                c.execute("""
-                    UPDATE community_invitations 
-                    SET used = 1, used_at = ?
-                    WHERE id = ?
-                """, (datetime.now().isoformat(), invitation_id))
-            
-            # Send notifications to community admins/owners
-            notify_community_new_member(community_id, username, conn)
-            
-            conn.commit()
-            
-            # Invalidate dashboard cache so new community appears immediately
-            invalidate_user_cache(username)
-            logger.info(f"Invalidated dashboard cache for {username} after joining via invite")
-            
-            return jsonify({
-                'success': True, 
-                'community_id': community_id,
-                'community_name': community_name,
-                'message': f'Successfully joined {community_name}'
-            })
-            
-    except Exception as e:
-        logger.error(f"Error joining with invite: {str(e)}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/invite_info', methods=['POST'])
-@login_required
-def get_invite_info():
-    """Get information about an invitation token (without joining)"""
-    data = request.get_json() or {}
-    invite_token = data.get('invite_token', '').strip()
-    
-    if not invite_token:
-        return jsonify({'success': False, 'error': 'Invitation token required'}), 400
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Get invitation info
-            c.execute("""
-                SELECT ci.community_id, c.name as community_name, ci.used
-                FROM community_invitations ci
-                JOIN communities c ON ci.community_id = c.id
-                WHERE ci.token = ?
-            """, (invite_token,))
-            
-            invitation = c.fetchone()
-            if not invitation:
-                return jsonify({'success': False, 'error': 'Invalid invitation'}), 404
-            
-            community_id = invitation['community_id'] if hasattr(invitation, 'keys') else invitation[0]
-            community_name = invitation['community_name'] if hasattr(invitation, 'keys') else invitation[1]
-            
-            return jsonify({
-                'success': True,
-                'community_id': community_id,
-                'community_name': community_name
-            })
-            
-    except Exception as e:
-        logger.error(f"Error getting invite info: {str(e)}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/community/invite', methods=['POST'])
-@login_required
-def invite_to_community():
-    """Send email invitation to join a community (admin only)"""
-    username = session.get('username')
-    data = request.get_json() or {}
-    
-    community_id = data.get('community_id')
-    invited_email = data.get('email', '').strip().lower()
-    
-    if not community_id or not invited_email:
-        return jsonify({'success': False, 'error': 'Community ID and email are required'}), 400
-    
-    # Validate email format
-    import re
-    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    if not re.match(email_pattern, invited_email):
-        return jsonify({'success': False, 'error': 'Invalid email format'}), 400
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Check if user is admin of this community
-            # First get user_id
-            c.execute("SELECT id FROM users WHERE username = ?", (username,))
-            user_row = c.fetchone()
-            if not user_row:
-                return jsonify({'success': False, 'error': 'User not found'}), 404
-            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
-            
-            c.execute("""
-                SELECT c.name, c.creator_username, uc.role, c.parent_community_id
-                FROM communities c
-                LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.user_id = ?
-                WHERE c.id = ?
-            """, (user_id, community_id))
-            
-            community = c.fetchone()
-            if not community:
-                return jsonify({'success': False, 'error': 'Community not found'}), 404
-            
-            community_name = community['name'] if hasattr(community, 'keys') else community[0]
-            parent_community_id = community['parent_community_id'] if hasattr(community, 'keys') else community[3]
-            if parent_community_id:
-                return jsonify({'success': False, 'error': 'Invites can only be created from root communities'}), 400
-            
-            try:
-                cid = int(community_id)
-            except (TypeError, ValueError):
-                return jsonify({'success': False, 'error': 'Invalid community ID'}), 400
-            if not has_community_management_permission(username, cid):
-                return jsonify({'success': False, 'error': 'Only community admins can send invitations'}), 403
-            
-            include_nested_ids: List[int] = []
-
-            # Check if user already exists
-            c.execute("SELECT id, username FROM users WHERE email = ?", (invited_email,))
-            existing_user = c.fetchone()
-            
-            if existing_user:
-                # User exists - add them directly to the community
-                existing_user_id = existing_user['id'] if hasattr(existing_user, 'keys') else existing_user[0]
-                existing_username = existing_user['username'] if hasattr(existing_user, 'keys') else existing_user[1]
-                
-                # Check if already a member
-                c.execute("SELECT 1 FROM user_communities WHERE community_id = ? AND user_id = ?", 
-                         (community_id, existing_user_id))
-                if c.fetchone():
-                    return jsonify({'success': False, 'error': 'User is already a member of this community'}), 400
-                
-                communities_to_join: List[int] = [int(community_id)]
-
-                # Get the username for the existing user first (needed for welcome posts and notifications)
-                c.execute("SELECT username FROM users WHERE id = ?", (existing_user_id,))
-                existing_user_row = c.fetchone()
-                existing_username = existing_user_row['username'] if hasattr(existing_user_row, 'keys') else existing_user_row[0] if existing_user_row else None
-                
-                # Join all communities (primary + selected extras)
-                for comm_id in communities_to_join:
-                    # Check if already a member
-                    c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (existing_user_id, comm_id))
-                    if not c.fetchone():
-                        try:
-                            add_user_to_community(c, existing_user_id, int(comm_id), role='member', username=existing_username)
-                        except CommunityMembershipLimitError as limit_err:
-                            conn.rollback()
-                            from backend.services.community import render_member_cap_error
-                            payload, status = render_member_cap_error(limit_err, session_username=existing_username)
-                            return jsonify(payload), status
-                
-                conn.commit()
-                
-                # Send notifications to community members about new member
-                if existing_username:
-                    notify_community_new_member(community_id, existing_username, conn)
-                
-                nested_names = fetch_community_names(c, include_nested_ids)
-                nested_html_section = ""
-                nested_text_section = ""
-                if nested_names:
-                    nested_items = ''.join(f"<li style='margin-bottom: 6px;'>{name}</li>" for name in nested_names)
-                    nested_html_section = (
-                        "<div style=\"margin: 24px 0; padding: 18px; background-color: rgba(77, 182, 172, 0.08); "
-                        "border: 1px solid rgba(77, 182, 172, 0.35); border-radius: 12px;\">"
-                        "<div style=\"font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; "
-                        "color: #4db6ac; margin-bottom: 10px;\">You're also joining</div>"
-                        f"<ul style=\"margin: 0; padding-left: 20px; color: #d0d0d0; font-size: 14px; line-height: 1.55;\">{nested_items}</ul>"
-                        "</div>"
-                    )
-                    nested_text_section = "\nYou're also joining:\n" + ''.join(f"- {name}\n" for name in nested_names)
-
-                # Build logo URL for email
-                email_logo_url = get_invite_logo_url() if 'get_invite_logo_url' in dir() else None
-                if not email_logo_url or not email_logo_url.startswith('http'):
-                    email_base = PUBLIC_BASE_URL or request.host_url.rstrip('/')
-                    email_logo_url = f"{email_base}/static/cpoint-logo.svg"
-                
-                # Send notification email (not signup invitation)
-                html = f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                </head>
-                <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #000000;">
-                    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #000000;">
-                        <tr>
-                            <td align="center" style="padding: 40px 20px;">
-                                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 12px; overflow: hidden; max-width: 100%;">
-                                    <tr>
-                                        <td style="background: linear-gradient(135deg, #4db6ac 0%, #26a69a 100%); padding: 30px; text-align: center;">
-                                            <img src="{email_logo_url}" alt="C.Point" style="max-width: 160px; max-height: 60px; margin-bottom: 12px;" />
-                                            <h1 style="margin: 0; color: #000000; font-size: 28px; font-weight: 700;">
-                                                You've Been Added!
-                                            </h1>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td style="padding: 40px 30px; color: #ffffff;">
-                                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6;">
-                                                <strong>{username}</strong> has added you to <strong style="color: #4db6ac;">{community_name}</strong> on C.Point.
-                                            </p>
-                                             {nested_html_section}
-                                             <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #b0b0b0;">
-                                                You can now access this community and start connecting with other members.
-                                            </p>
-                                            <table width="100%" cellpadding="0" cellspacing="0">
-                                                <tr>
-                                                    <td align="center" style="padding: 10px 0;">
-                                                        <a href="https://www.c-point.co/login" style="display: inline-block; padding: 16px 40px; background-color: #4db6ac; color: #000000; text-decoration: none; font-weight: 600; font-size: 16px; border-radius: 8px;">
-                                                            Go to C.Point
-                                                        </a>
-                                                    </td>
-                                                </tr>
-                                            </table>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td style="padding: 20px 30px; border-top: 1px solid #2a2a2a; text-align: center;">
-                                            <p style="margin: 0; font-size: 12px; color: #808080;">
-                                                © 2025 C.Point. All rights reserved.
-                                            </p>
-                                        </td>
-                                    </tr>
-                                </table>
-                            </td>
-                        </tr>
-                    </table>
-                </body>
-                </html>
-                """
-                
-                text = f"""
-You've Been Added to {community_name}
-
-  {username} has added you to {community_name} on C.Point.{nested_text_section}
- 
-You can now access this community and start connecting with other members.
-
-Go to C.Point: https://www.c-point.co/login
-
-© 2025 C.Point. All rights reserved.
-                """
-                
-                # Send notification email
-                success = _send_email_via_resend(
-                    to_email=invited_email,
-                    subject=f"You've been added to {community_name} on C.Point",
-                    html=html,
-                    text=text
-                )
-                
-                if not success:
-                    return jsonify({'success': False, 'error': 'Failed to send notification email'}), 500
-                
-                return jsonify({'success': True, 'message': f'User added to {community_name} and notified'})
-            
-            else:
-                # User doesn't exist - send signup invitation
-                # Clean up any old unused invitations for this email (from deleted accounts)
-                c.execute("""
-                    DELETE FROM community_invitations 
-                    WHERE community_id = ? AND invited_email = ? AND used = 0
-                """, (community_id, invited_email))
-                conn.commit()
-                
-                # Generate unique token
-                import secrets
-                token = secrets.token_urlsafe(32)
-                
-                nested_names = fetch_community_names(c, include_nested_ids)
-                nested_html_section = ""
-                nested_text_section = ""
-                if nested_names:
-                    nested_items = ''.join(f"<li style='margin-bottom: 6px;'>{name}</li>" for name in nested_names)
-                    nested_html_section = (
-                        "<div style=\"margin: 24px 0; padding: 18px; background-color: rgba(77, 182, 172, 0.08); "
-                        "border: 1px solid rgba(77, 182, 172, 0.35); border-radius: 12px;\">"
-                        "<div style=\"font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; "
-                        "color: #4db6ac; margin-bottom: 10px;\">You'll also join</div>"
-                        f"<ul style=\"margin: 0; padding-left: 20px; color: #d0d0d0; font-size: 14px; line-height: 1.55;\">{nested_items}</ul>"
-                        "</div>"
-                    )
-                    nested_text_section = "\nYou'll also join:\n" + ''.join(f"- {name}\n" for name in nested_names)
-                
-                # Store invitation
-                c.execute("""
-                    INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token, include_nested_ids, include_parent_ids)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (community_id, invited_email, username, token, json.dumps([]), json.dumps([])))
-                conn.commit()
-                
-                # Send invitation email with smart redirect URL (detects iOS)
-                # Use current domain or configured base URL
-                base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
-                invite_url = f"{base_url}/invite/{token}"
-                
-                # Logo URL for email
-                inv_logo_url = get_invite_logo_url() if 'get_invite_logo_url' in dir() else None
-                if not inv_logo_url or not inv_logo_url.startswith('http'):
-                    inv_logo_url = f"{base_url}/static/cpoint-logo.svg"
-            
-            html = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            </head>
-            <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #000000;">
-                <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #000000;">
-                    <tr>
-                        <td align="center" style="padding: 40px 20px;">
-                            <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 12px; overflow: hidden; max-width: 100%;">
-                                <!-- Header -->
-                                <tr>
-                                    <td style="background: linear-gradient(135deg, #4db6ac 0%, #26a69a 100%); padding: 30px; text-align: center;">
-                                        <img src="{inv_logo_url}" alt="C.Point" style="max-width: 160px; max-height: 60px; margin-bottom: 12px;" />
-                                        <h1 style="margin: 0; color: #000000; font-size: 28px; font-weight: 700;">
-                                            Welcome to C.Point
-                                        </h1>
-                                    </td>
-                                </tr>
-                                
-                                <!-- Body -->
-                                <tr>
-                                    <td style="padding: 40px 30px; color: #ffffff;">
-                                        <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6;">
-                                            You have been invited to join <strong style="color: #4db6ac;">{community_name}</strong> by <strong>{username}</strong>.
-                                        </p>
-                                        
-                                        {nested_html_section}
-                                        <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #b0b0b0;">
-                                            C.Point is a community network where you can connect, share ideas, and engage in meaningful conversations.
-                                        </p>
-                                        
-                                        <!-- Button -->
-                                        <table width="100%" cellpadding="0" cellspacing="0">
-                                            <tr>
-                                                <td align="center" style="padding: 10px 0;">
-                                                    <a href="{invite_url}" style="display: inline-block; padding: 16px 40px; background-color: #4db6ac; color: #000000; text-decoration: none; font-weight: 600; font-size: 16px; border-radius: 8px;">
-                                                        Join {community_name}
-                                                    </a>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                        
-                                        <p style="margin: 30px 0 0 0; font-size: 14px; line-height: 1.6; color: #808080;">
-                                            If the button doesn't work, copy and paste this link into your browser:
-                                        </p>
-                                        <p style="margin: 10px 0 0 0; font-size: 13px; word-break: break-all; color: #4db6ac;">
-                                            {invite_url}
-                                        </p>
-                                        
-                                        <!-- Download App Section -->
-                                        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #2a2a2a;">
-                                            <p style="margin: 0 0 15px 0; font-size: 14px; color: #b0b0b0;">
-                                                Get the best experience with our iOS app:
-                                            </p>
-                                            <a href="https://apps.apple.com/us/app/cpoint/id6755534074" style="display: inline-block; padding: 12px 24px; background-color: #000000; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 14px; border-radius: 8px; border: 1px solid #333333;">
-                                                &#63743; Download CPoint
-                                            </a>
-                                        </div>
-                                    </td>
-                                </tr>
-                                
-                                <!-- Footer -->
-                                <tr>
-                                    <td style="padding: 20px 30px; border-top: 1px solid #2a2a2a; text-align: center;">
-                                        <p style="margin: 0; font-size: 12px; color: #808080;">
-                                            This invitation was sent by {username} from C.Point
-                                        </p>
-                                        <p style="margin: 10px 0 0 0; font-size: 12px; color: #606060;">
-                                            © 2025 C.Point. All rights reserved.
-                                        </p>
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-                </table>
-            </body>
-            </html>
-            """
-            
-            text = f"""
-Welcome to C.Point
-
-  You have been invited to join {community_name} by {username}.{nested_text_section}
- 
-C.Point is a community network where you can connect, share ideas, and engage in meaningful conversations.
-
-Click here to join: {invite_url}
-
-Or copy and paste this link into your browser: {invite_url}
-
-This invitation was sent by {username} from C.Point.
-            """
-            
-            # Send email
-            success = _send_email_via_resend(
-                to_email=invited_email,
-                subject=f"You're invited to join {community_name} on C.Point",
-                html=html,
-                text=text
-            )
-            
-            if not success:
-                return jsonify({'success': False, 'error': 'Failed to send invitation email'}), 500
-            
-            return jsonify({'success': True, 'message': 'Invitation sent successfully'})
-            
-    except Exception as e:
-        logger.error(f"Error sending invitation: {str(e)}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-@app.route('/api/community/invite_bulk', methods=['POST'])
-@login_required
-def invite_to_community_bulk():
-    """Bulk invite by comma/newline-separated emails."""
-    username = session.get('username')
-    data = request.get_json() or {}
-    community_id = data.get('community_id')
-    emails_raw = data.get('emails', '')
-    if not community_id:
-        return jsonify({'success': False, 'error': 'community_id required'}), 400
-    try:
-        bulk_cid = int(community_id)
-    except (TypeError, ValueError):
-        return jsonify({'success': False, 'error': 'Invalid community_id'}), 400
-    if not has_community_management_permission(username, bulk_cid):
-        return jsonify({'success': False, 'error': 'Only community admins can send invitations'}), 403
-    
-    import re
-    emails = [e.strip().lower() for e in re.split(r'[,;\n\r]+', str(emails_raw)) if e.strip()]
-    valid_emails = [e for e in emails if '@' in e and '.' in e.split('@')[-1]]
-    
-    if not valid_emails:
-        return jsonify({'success': False, 'error': 'No valid emails provided'}), 400
-    
-    sent = 0
-    failed = 0
-    errors = []
-    
-    for email in valid_emails:
-        try:
-            import secrets
-            token = secrets.token_urlsafe(32)
-            ph = get_sql_placeholder()
-            with get_db_connection() as conn:
-                c = conn.cursor()
-                c.execute(f"SELECT id FROM community_invitations WHERE community_id = {ph} AND invited_email = {ph} AND used = 0", (community_id, email))
-                if c.fetchone():
-                    errors.append({'email': email, 'error': 'Already invited'})
-                    failed += 1
-                    continue
-                
-                c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
-                comm = c.fetchone()
-                community_name = (comm['name'] if hasattr(comm,'keys') else comm[0]) if comm else 'Community'
-                
-                ensure_community_invitations_table(c)
-                c.execute(f"INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token) VALUES ({ph},{ph},{ph},{ph})", (community_id, email, username, token))
-                conn.commit()
-                
-                base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
-                invite_url = f"{base_url}/invite/{token}"
-                subject = f"You're invited to join {community_name} on C.Point"
-                html = f'<p>You have been invited to join <strong>{community_name}</strong> on C.Point.</p><p><a href="{invite_url}">Join now</a></p>'
-                try:
-                    _send_email_via_resend(email, subject, html)
-                except Exception:
-                    pass
-                sent += 1
-        except Exception as e:
-            errors.append({'email': email, 'error': str(e)})
-            failed += 1
-    
-    return jsonify({'success': True, 'sent': sent, 'failed': failed, 'errors': errors if errors else None})
 
 @app.route('/api/community/mute', methods=['POST'])
 @login_required
@@ -30726,7 +27100,7 @@ def leave_community():
             # Check if user is the creator (creators cannot leave their own community)
             c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
             community = c.fetchone()
-            if community and community['creator_username'] == username:
+            if community and str(community['creator_username'] or '').strip().lower() == str(username or '').strip().lower():
                 return jsonify({'success': False, 'error': 'Community creators cannot leave their own community. Delete the community instead.'})
             
             # Remove user from community
@@ -30740,6 +27114,13 @@ def leave_community():
             # Invalidate dashboard cache so left community disappears immediately
             invalidate_user_cache(username)
             logger.info(f"Invalidated dashboard cache for {username} after leaving community")
+
+        try:
+            invalidate_dashboard_caches_for_community_subtree(int(community_id))
+        except Exception as leave_subtree_err:
+            logger.warning(
+                "Dashboard subtree invalidate after leave_community: %s", leave_subtree_err
+            )
 
         # Enterprise seat lifecycle: close any active seat and offer winback
         # if eligible. Best-effort — a lifecycle-hook error must not prevent
@@ -30767,6 +27148,21 @@ def leave_community():
                     logger.warning("[SEAT] winback offer failed (non-fatal)", exc_info=True)
         except Exception:
             logger.warning("[SEAT] end_seat hook failed (non-fatal)", exc_info=True)
+
+        # Auto-unfreeze if the community was frozen due to subscription
+        # expiration and now fits within the Free-tier cap. Best-effort.
+        try:
+            from backend.services import community_lifecycle as _lifecycle
+            from backend.services import subscription_audit as _audit
+            if _lifecycle.maybe_auto_unfreeze(int(community_id)):
+                _audit.log(
+                    username=username or "",
+                    action="community_auto_unfrozen_member_removed",
+                    source="leave_community",
+                    metadata={"community_id": int(community_id)},
+                )
+        except Exception:
+            logger.warning("[FREEZE] auto-unfreeze hook failed (non-fatal)", exc_info=True)
 
         return jsonify({'success': True, 'message': 'Successfully left the community', 'winback_offer': winback_offer})
         
@@ -30938,6 +27334,9 @@ def api_community_feed(community_id):
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            from backend.services import client_ui_flags
+
+            client_ui_flags.ensure_community_ui_columns(c)
 
             # Community info
             c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
@@ -30946,6 +27345,12 @@ def api_community_feed(community_id):
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
             community = dict(community_row)
             community['allow_nsfw_imagine'] = bool(community.get('allow_nsfw_imagine')) if community.get('allow_nsfw_imagine') is not None else False
+            community['owner_feed_setup_intro_seen'] = bool(
+                int(community.get('owner_feed_setup_intro_seen') or 0)
+            )
+            frozen_payload = _community_lifecycle.frozen_access_payload(username or '', community)
+            if frozen_payload:
+                return jsonify(frozen_payload), 423
 
             # Parent community (optional) and root parent ID
             parent_community = None
@@ -30972,6 +27377,21 @@ def api_community_feed(community_id):
                 # This community is already a root
                 root_parent_id = community_id
 
+            # Direct child communities (sub-communities) for owner intro / clients
+            try:
+                c.execute(
+                    "SELECT COUNT(*) AS cnt FROM communities WHERE parent_community_id = ?",
+                    (community_id,),
+                )
+                _child_row = c.fetchone()
+                if _child_row is not None:
+                    _cnt = _child_row['cnt'] if hasattr(_child_row, 'keys') else (_child_row[0] if _child_row else 0)
+                    community['child_community_count'] = int(_cnt or 0)
+                else:
+                    community['child_community_count'] = 0
+            except Exception:
+                community['child_community_count'] = 0
+
             # Current user's profile picture
             try:
                 c.execute("SELECT display_name, profile_picture FROM user_profiles WHERE username = ?", (username,))
@@ -30985,7 +27405,7 @@ def api_community_feed(community_id):
             # Enforce membership to view this community
             # Allow: app admin, community creator, direct members, or admins of parent/ancestor communities
             try:
-                if username != 'admin' and username != community.get('creator_username'):
+                if not is_app_admin(username) and username != community.get('creator_username'):
                     # Check if direct member
                     c.execute("""
                         SELECT 1 FROM user_communities uc
@@ -31031,43 +27451,14 @@ def api_community_feed(community_id):
                 return jsonify({'success': False, 'error': 'Access check failed'}), 500
 
             # Track visit as an activity (counts towards DAU/MAU)
-            try:
-                c.execute(
-                    "INSERT INTO community_visit_history (username, community_id, visit_time) VALUES (?, ?, ?)",
-                    (username, community_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-                )
-                conn.commit()
-            except Exception:
-                pass
+            record_community_feed_visit(conn, username, community_id)
 
             # Posts - OPTIMIZED with batch queries to avoid N+1 problem
             # Limit initial posts returned to reduce payload; clients can paginate if needed
             # Exclude posts with pending videos (talking avatar still generating)
             # Exclude posts hidden by the current user
             # Exclude posts from blocked users
-            
-            # First ensure blocked_users table exists (use appropriate syntax for MySQL vs SQLite)
-            try:
-                if USE_MYSQL:
-                    c.execute('''CREATE TABLE IF NOT EXISTS blocked_users
-                                 (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                                  blocker_username VARCHAR(191) NOT NULL,
-                                  blocked_username VARCHAR(191) NOT NULL,
-                                  reason TEXT,
-                                  blocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                  UNIQUE KEY unique_block (blocker_username, blocked_username))''')
-                else:
-                    c.execute('''CREATE TABLE IF NOT EXISTS blocked_users
-                                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                  blocker_username TEXT NOT NULL,
-                                  blocked_username TEXT NOT NULL,
-                                  reason TEXT,
-                                  blocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                  UNIQUE(blocker_username, blocked_username))''')
-                conn.commit()
-            except Exception as table_err:
-                logger.warning(f"Could not ensure blocked_users table: {table_err}")
-            
+
             # Try query with blocked_users filter, fall back to simpler query if table doesn't exist
             try:
                 c.execute(
@@ -31138,7 +27529,10 @@ def api_community_feed(community_id):
                 user_viewed: Set[int] = set()
                 try:
                     params = list(post_ids) + [username]
-                    c.execute(f"SELECT post_id FROM post_views WHERE post_id IN ({placeholders}) AND username = {get_sql_placeholder()}", tuple(params))
+                    c.execute(
+                        f"SELECT post_id FROM post_views WHERE post_id IN ({placeholders}) AND LOWER(username) = LOWER({get_sql_placeholder()})",
+                        tuple(params),
+                    )
                     for row in c.fetchall() or []:
                         pid = row['post_id'] if hasattr(row, 'keys') else row[0]
                         user_viewed.add(int(pid))
@@ -31398,1173 +27792,7 @@ def api_community_feed(community_id):
         logger.error(f"Error in api_community_feed for {community_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
-@app.route('/api/post_view', methods=['POST'])
-@login_required
-def api_post_view():
-    username = session.get('username')
-    try:
-        payload = request.get_json(silent=True) or {}
-    except Exception:
-        payload = {}
-    post_id = payload.get('post_id')
-    if not post_id:
-        post_id = request.form.get('post_id', type=int)
-    try:
-        post_id = int(post_id)
-    except Exception:
-        return jsonify({'success': False, 'error': 'post_id required'}), 400
-
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT community_id, username FROM posts WHERE id = ?", (post_id,))
-            row = c.fetchone()
-            if not row:
-                return jsonify({'success': False, 'error': 'Post not found'}), 404
-            community_id = row['community_id'] if hasattr(row, 'keys') else row[0]
-            post_owner = row['username'] if hasattr(row, 'keys') else row[1]
-            if community_id:
-                if username not in ('admin', post_owner):
-                    placeholder = get_sql_placeholder()
-                    c.execute(f"""
-                        SELECT 1 FROM user_communities uc
-                        JOIN users u ON uc.user_id = u.id
-                        WHERE u.username = {placeholder} AND uc.community_id = {placeholder}
-                        LIMIT 1
-                    """, (username, community_id))
-                    if not c.fetchone():
-                        return jsonify({'success': False, 'error': 'Forbidden'}), 403
-            try:
-                view_count = upsert_post_view(c, post_id, username)
-                conn.commit()
-            except Exception as view_err:
-                logger.warning(f"Failed to record post view for {post_id}: {view_err}")
-                view_count = None
-            try:
-                c.execute(
-                    "UPDATE notifications SET is_read = 1 WHERE user_id = ? AND post_id = ? AND is_read = 0",
-                    (username, post_id),
-                )
-                conn.commit()
-            except Exception as notif_err:
-                logger.debug("post_view notif clear for %s/%s: %s", username, post_id, notif_err)
-            try:
-                if community_id:
-                    invalidate_community_cache(community_id)
-            except Exception as e:
-                logger.warning(f"Failed to invalidate cache for community {community_id}: {e}")
-            return jsonify({'success': True, 'view_count': int(view_count or 0), 'post_id': post_id})
-    except Exception as e:
-        logger.error(f"Error saving post view for {post_id}: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-@app.route('/api/community_stories/<int:community_id>')
-@login_required
-def api_community_stories(community_id: int):
-    username = session.get('username')
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ensure_story_tables(c)
-            ph = get_sql_placeholder()
-            c.execute(
-                f"SELECT id, name, creator_username, parent_community_id FROM communities WHERE id = {ph}",
-                (community_id,),
-            )
-            community_row = c.fetchone()
-            if not community_row:
-                return jsonify({'success': False, 'error': 'Community not found'}), 404
-            community_name = (
-                community_row["name"]
-                if hasattr(community_row, "keys")
-                else (community_row[1] if len(community_row) > 1 else None)
-            )
-            creator_username = (
-                community_row["creator_username"]
-                if hasattr(community_row, "keys")
-                else (community_row[2] if len(community_row) > 2 else None)
-            )
-            if not user_has_story_access(c, username, community_id, creator_username):
-                return jsonify({'success': False, 'error': 'Forbidden'}), 403
-
-            now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-            c.execute(
-                f"""
-                SELECT cs.id, cs.community_id, cs.username, cs.media_path, cs.media_type,
-                       cs.caption, cs.duration_seconds, cs.status, cs.created_at,
-                       cs.expires_at, cs.view_count, cs.last_viewed_at, up.profile_picture,
-                       cs.text_overlays, cs.location_data, cs.story_group_id, cs.description
-                FROM community_stories cs
-                LEFT JOIN user_profiles up ON up.username = cs.username
-                WHERE cs.community_id = {ph}
-                  AND cs.status = 'active'
-                  AND cs.expires_at > {ph}
-                ORDER BY cs.created_at DESC
-                LIMIT 200
-                """,
-                (community_id, now_str),
-            )
-            rows = c.fetchall() or []
-            story_ids = []
-            for row in rows:
-                if hasattr(row, "keys"):
-                    story_ids.append(row.get("id"))
-                else:
-                    story_ids.append(row[0] if row else None)
-            story_ids = [int(sid) for sid in story_ids if sid]
-
-            viewed_ids: Set[int] = set()
-            if story_ids:
-                placeholders = ",".join([ph] * len(story_ids))
-                params = list(story_ids) + [username]
-                c.execute(
-                    f"""
-                    SELECT story_id FROM community_story_views
-                    WHERE story_id IN ({placeholders}) AND LOWER(username) = LOWER({ph})
-                    """,
-                    tuple(params),
-                )
-                viewed_rows = c.fetchall() or []
-                for vr in viewed_rows:
-                    if hasattr(vr, "keys"):
-                        viewed_ids.add(int(vr.get("story_id")))
-                    else:
-                        viewed_ids.add(int(vr[0]))
-
-            reaction_counts, user_reactions = fetch_story_reaction_maps(c, story_ids, username)
-
-            def _coerce_timestamp(value):
-                if not value:
-                    return None
-                if isinstance(value, datetime):
-                    return value.isoformat()
-                return str(value)
-
-            def _public_url(raw_path):
-                if not raw_path:
-                    return None
-                # If already a full URL (CDN), return as-is
-                if str(raw_path).startswith(('http://', 'https://')):
-                    return raw_path
-                norm = normalize_upload_reference(raw_path)
-                return get_public_upload_url(norm) if norm else None
-
-            groups_map: Dict[str, Dict[str, Any]] = {}
-            stories_payload: List[Dict[str, Any]] = []
-            for row in rows:
-                if hasattr(row, "keys"):
-                    story_id = row.get("id")
-                    author = row.get("username")
-                    media_path = row.get("media_path")
-                    media_type = row.get("media_type")
-                    caption = row.get("caption")
-                    duration_seconds = row.get("duration_seconds")
-                    created_at = row.get("created_at")
-                    expires_at = row.get("expires_at")
-                    view_count = row.get("view_count")
-                    profile_picture = row.get("profile_picture")
-                    text_overlays_raw = row.get("text_overlays")
-                    location_data_raw = row.get("location_data")
-                    story_group_id_val = row.get("story_group_id")
-                    description_val = row.get("description")
-                else:
-                    story_id = row[0]
-                    author = row[2] if len(row) > 2 else None
-                    media_path = row[3] if len(row) > 3 else None
-                    media_type = row[4] if len(row) > 4 else None
-                    caption = row[5] if len(row) > 5 else None
-                    duration_seconds = row[6] if len(row) > 6 else None
-                    created_at = row[8] if len(row) > 8 else None
-                    expires_at = row[9] if len(row) > 9 else None
-                    view_count = row[10] if len(row) > 10 else 0
-                    profile_picture = row[12] if len(row) > 12 else None
-                    text_overlays_raw = row[13] if len(row) > 13 else None
-                    location_data_raw = row[14] if len(row) > 14 else None
-                    story_group_id_val = row[15] if len(row) > 15 else None
-                    description_val = row[16] if len(row) > 16 else None
-                if not story_id or not author:
-                    continue
-                story_id = int(story_id)
-                has_viewed = story_id in viewed_ids
-                
-                # Parse JSON fields
-                text_overlays = None
-                if text_overlays_raw:
-                    try:
-                        text_overlays = json.loads(text_overlays_raw) if isinstance(text_overlays_raw, str) else text_overlays_raw
-                    except Exception:
-                        pass
-                location_data = None
-                if location_data_raw:
-                    try:
-                        location_data = json.loads(location_data_raw) if isinstance(location_data_raw, str) else location_data_raw
-                    except Exception:
-                        pass
-                
-                story_payload = {
-                    'id': story_id,
-                    'community_id': community_id,
-                    'username': author,
-                    'media_type': media_type or 'image',
-                    'media_path': media_path,
-                    'media_url': _public_url(media_path),
-                    'caption': caption,
-                    'duration_seconds': duration_seconds,
-                    'created_at': _coerce_timestamp(created_at),
-                    'expires_at': _coerce_timestamp(expires_at),
-                    'view_count': int(view_count or 0),
-                    'has_viewed': has_viewed,
-                    'profile_picture': _public_url(profile_picture),
-                    'reactions': reaction_counts.get(story_id, {}),
-                    'user_reaction': user_reactions.get(story_id),
-                    'text_overlays': text_overlays,
-                    'location_data': location_data,
-                    'story_group_id': story_group_id_val,
-                    'description': description_val,
-                }
-                stories_payload.append(story_payload)
-                group = groups_map.setdefault(
-                    author,
-                    {
-                        'username': author,
-                        'profile_picture': story_payload['profile_picture'],
-                        'stories': [],
-                        'has_unseen': False,
-                    },
-                )
-                group['stories'].append(story_payload)
-                if not has_viewed:
-                    group['has_unseen'] = True
-
-            groups = list(groups_map.values())
-            groups.sort(
-                key=lambda g: g['stories'][0]['created_at'] if g['stories'] else '',
-                reverse=True,
-            )
-            return jsonify({
-                'success': True,
-                'community': {
-                    'id': community_id,
-                    'name': community_name,
-                },
-                'has_new': any(not story['has_viewed'] for story in stories_payload),
-                'groups': groups,
-                'stories': stories_payload,
-            })
-    except Exception as e:
-        logger.error(f"Error loading community stories for {community_id}: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/community_stories', methods=['POST'])
-@login_required
-def create_community_story():
-    username = session.get('username')
-    community_id = request.form.get('community_id', type=int)
-    if not community_id:
-        return jsonify({'success': False, 'error': 'community_id required'}), 400
-    
-    # Support multiple file uploads - check for 'media' (single) and 'media[]' (multiple)
-    media_files = request.files.getlist('media') or request.files.getlist('media[]')
-    single_media = request.files.get('media')
-    if single_media and single_media.filename and not media_files:
-        media_files = [single_media]
-    
-    if not media_files or all(not f.filename for f in media_files):
-        return jsonify({'success': False, 'error': 'Media file(s) required'}), 400
-    
-    # Filter out empty files
-    media_files = [f for f in media_files if f and f.filename]
-    if not media_files:
-        return jsonify({'success': False, 'error': 'Media file(s) required'}), 400
-    
-    # Parse shared metadata (caption, text_overlays, location_data)
-    caption = (request.form.get('caption') or '').strip()
-    if caption and len(caption) > STORY_MAX_CAPTION_LENGTH:
-        caption = caption[:STORY_MAX_CAPTION_LENGTH]
-    
-    # Text overlays: JSON array of {text, x, y, fontSize, color, fontFamily, rotation}
-    text_overlays_raw = request.form.get('text_overlays', '')
-    text_overlays = None
-    if text_overlays_raw:
-        try:
-            text_overlays = json.loads(text_overlays_raw)
-            if not isinstance(text_overlays, list):
-                text_overlays = None
-        except Exception:
-            text_overlays = None
-    
-    # Location data: JSON object {name, x, y}
-    location_data_raw = request.form.get('location_data', '')
-    location_data = None
-    if location_data_raw:
-        try:
-            location_data = json.loads(location_data_raw)
-            if not isinstance(location_data, dict):
-                location_data = None
-        except Exception:
-            location_data = None
-    
-    # Per-file metadata (optional, JSON array matching files order)
-    per_file_meta_raw = request.form.get('per_file_metadata', '')
-    per_file_meta = []
-    if per_file_meta_raw:
-        try:
-            per_file_meta = json.loads(per_file_meta_raw)
-            if not isinstance(per_file_meta, list):
-                per_file_meta = []
-        except Exception:
-            per_file_meta = []
-    
-    duration_seconds = request.form.get('duration_seconds', type=int)
-    if isinstance(duration_seconds, int) and duration_seconds < 0:
-        duration_seconds = None
-
-    # Story-level description (shared across all media in this batch)
-    description = (request.form.get('description') or '').strip()
-    if description and len(description) > STORY_MAX_DESCRIPTION_LENGTH:
-        description = description[:STORY_MAX_DESCRIPTION_LENGTH]
-
-    # Generate a unique group id so all media in this upload are linked
-    import uuid as _uuid
-    story_group_id = str(_uuid.uuid4())
-
-    created_stories = []
-    upload_errors = []
-    base_created_at = datetime.utcnow()
-
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ensure_story_tables(c)
-
-            ph = get_sql_placeholder()
-            c.execute(
-                f"SELECT creator_username FROM communities WHERE id = {ph}",
-                (community_id,),
-            )
-            row = c.fetchone()
-            if not row:
-                return jsonify({'success': False, 'error': 'Community not found'}), 404
-            creator_username = (
-                row["creator_username"]
-                if hasattr(row, "keys")
-                else (row[0] if row else None)
-            )
-            if not user_has_story_access(c, username, community_id, creator_username):
-                return jsonify({'success': False, 'error': 'Forbidden'}), 403
-
-            for idx, media_file in enumerate(media_files):
-                try:
-                    ext = os.path.splitext(media_file.filename)[1].lower().lstrip('.')
-                    if ext not in STORY_ALLOWED_EXTENSIONS:
-                        upload_errors.append(f"File {idx+1} ({media_file.filename}): unsupported format '{ext}'")
-                        continue
-
-                    media_type = 'image' if ext in STORY_IMAGE_EXTENSIONS else 'video'
-
-                    stored_path = save_uploaded_file(
-                        media_file,
-                        subfolder='community_stories',
-                        allowed_extensions=STORY_ALLOWED_EXTENSIONS,
-                    )
-                    if not stored_path:
-                        upload_errors.append(f"File {idx+1} ({media_file.filename}): failed to save")
-                        continue
-
-                    file_caption = caption
-                    file_text_overlays = text_overlays
-                    file_location_data = location_data
-                    file_duration = duration_seconds
-
-                    if idx < len(per_file_meta) and isinstance(per_file_meta[idx], dict):
-                        meta = per_file_meta[idx]
-                        if 'caption' in meta:
-                            file_caption = str(meta['caption'])[:STORY_MAX_CAPTION_LENGTH]
-                        if 'text_overlays' in meta and isinstance(meta['text_overlays'], list):
-                            file_text_overlays = meta['text_overlays']
-                        if 'location_data' in meta and isinstance(meta['location_data'], dict):
-                            file_location_data = meta['location_data']
-                        if 'duration_seconds' in meta:
-                            try:
-                                file_duration = int(meta['duration_seconds'])
-                            except Exception:
-                                pass
-
-                    created_at = base_created_at + timedelta(milliseconds=idx * 100)
-                    expires_at = created_at + timedelta(hours=STORY_DEFAULT_LIFESPAN_HOURS)
-
-                    text_overlays_str = json.dumps(file_text_overlays) if file_text_overlays else None
-                    location_data_str = json.dumps(file_location_data) if file_location_data else None
-
-                    c.execute(
-                        f"""
-                        INSERT INTO community_stories
-                        (community_id, username, media_path, media_type, caption, duration_seconds, status, created_at, expires_at, text_overlays, location_data, story_group_id, description)
-                        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-                        """,
-                        (
-                            community_id,
-                            username,
-                            stored_path,
-                            media_type,
-                            file_caption if file_caption else None,
-                            file_duration,
-                            'active',
-                            created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                            expires_at.strftime('%Y-%m-%d %H:%M:%S'),
-                            text_overlays_str,
-                            location_data_str,
-                            story_group_id,
-                            description if description else None,
-                        ),
-                    )
-                    story_id = getattr(c, 'lastrowid', None)
-
-                    created_stories.append({
-                        'id': story_id,
-                        'community_id': community_id,
-                        'username': username,
-                        'media_type': media_type,
-                        'media_path': stored_path,
-                        'media_url': get_public_upload_url(normalize_upload_reference(stored_path)),
-                        'caption': file_caption,
-                        'text_overlays': file_text_overlays,
-                        'location_data': file_location_data,
-                        'duration_seconds': file_duration,
-                        'story_group_id': story_group_id,
-                        'description': description if description else None,
-                        'created_at': created_at.isoformat(),
-                        'expires_at': expires_at.isoformat(),
-                        'view_count': 0,
-                        'has_viewed': True,
-                    })
-                except Exception as file_err:
-                    logger.error(f"Error processing story file {idx+1} ({media_file.filename}): {file_err}")
-                    upload_errors.append(f"File {idx+1} ({media_file.filename}): {str(file_err)[:100]}")
-
-            conn.commit()
-
-        if not created_stories:
-            error_detail = '; '.join(upload_errors) if upload_errors else 'No valid media files were uploaded'
-            return jsonify({'success': False, 'error': error_detail}), 400
-        
-        logger.info(f"Successfully created {len(created_stories)} stories for community {community_id}")
-        invalidate_community_cache(community_id)
-        
-        # Send notifications to community members (matching post notification pattern)
-        logger.info(f"Starting story notification process for community {community_id}")
-        try:
-            with get_db_connection() as conn:
-                c = conn.cursor()
-                
-                # Get all members of the community (excluding author)
-                logger.info(f"Story posted by {username} in community {community_id}")
-                c.execute(
-                    """
-                    SELECT DISTINCT u.username
-                    FROM users u
-                    JOIN user_communities uc ON u.id = uc.user_id
-                    WHERE uc.community_id = ? AND u.username != ?
-                    """,
-                    (community_id, username)
-                )
-                members = [row['username'] if hasattr(row, 'keys') else row[0] for row in c.fetchall()]
-                logger.info(f"Sending story notifications to {len(members)} members: {members}")
-
-                # Resolve community name for nicer message
-                community_name = None
-                try:
-                    c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
-                    r = c.fetchone()
-                    if r:
-                        community_name = r['name'] if hasattr(r, 'keys') else r[0]
-                except Exception:
-                    pass
-
-                story_count = len(created_stories)
-                notif_message = (
-                    f"{username} shared {story_count} new {'story' if story_count == 1 else 'stories'}" 
-                    + (f" in {community_name}" if community_name else "")
-                )
-                notif_link = f"/community_feed_react/{community_id}"
-                first_story_id = created_stories[0]['id'] if created_stories else None
-                logger.info(f"Story notification message: {notif_message}")
-
-                for member in members:
-                    logger.info(f"Attempting to notify member: {member}")
-                    # In-app notification row (dedupe by unique key if present)
-                    try:
-                        if USE_MYSQL:
-                            c.execute(
-                                """
-                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
-                                VALUES (?, ?, 'new_story', ?, ?, ?, NOW(), 0, ?)
-                                ON DUPLICATE KEY UPDATE
-                                  created_at = NOW(),
-                                  message = VALUES(message),
-                                  is_read = 0,
-                                  link = VALUES(link)
-                                """,
-                                (member, username, first_story_id, community_id, notif_message, notif_link),
-                            )
-                        else:
-                            c.execute(
-                                """
-                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
-                                VALUES (?, ?, 'new_story', ?, ?, ?, datetime('now'), 0, ?)
-                                ON CONFLICT(user_id, from_user, type, post_id, community_id)
-                                DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link
-                                """,
-                                (member, username, first_story_id, community_id, notif_message, notif_link),
-                            )
-                        conn.commit()
-                    except Exception as ne:
-                        logger.warning(f"Story notification db error for {member}: {ne}")
-
-                    # Push notification (non-blocking)
-                    try:
-                        send_push_to_user(
-                            member,
-                            {
-                                'title': f'New story in {community_name}' if community_name else 'New story',
-                                'body': notif_message,
-                                'url': notif_link,
-                                'tag': f"community-story-{community_id}-{first_story_id}",  # Unique tag per story
-                            },
-                        )
-                    except Exception as pe:
-                        logger.warning(f"Push notify story error for {member}: {pe}")
-        except Exception as notify_err:
-            logger.warning(f"Story notification block error: {notify_err}")
-        
-        resp = {
-            'success': True,
-            'story': created_stories[0] if created_stories else None,
-            'stories': created_stories,
-            'count': len(created_stories),
-            'story_group_id': story_group_id,
-        }
-        if upload_errors:
-            resp['warnings'] = upload_errors
-        return jsonify(resp)
-    except Exception as e:
-        logger.error(f"Error creating community story for community {community_id}: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/community_stories/view', methods=['POST'])
-@login_required
-def api_mark_story_view():
-    username = session.get('username')
-    try:
-        payload = request.get_json(silent=True) or {}
-    except Exception:
-        payload = {}
-    story_id = payload.get('story_id') or request.form.get('story_id')
-    try:
-        story_id = int(story_id)
-    except Exception:
-        return jsonify({'success': False, 'error': 'story_id required'}), 400
-
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ensure_story_tables(c)
-            ph = get_sql_placeholder()
-            c.execute(
-                f"""
-                SELECT cs.id, cs.community_id, c.creator_username
-                FROM community_stories cs
-                JOIN communities c ON c.id = cs.community_id
-                WHERE cs.id = {ph}
-                """,
-                (story_id,),
-            )
-            row = c.fetchone()
-            if not row:
-                return jsonify({'success': False, 'error': 'Story not found'}), 404
-            community_id = row["community_id"] if hasattr(row, "keys") else row[1]
-            creator_username = row["creator_username"] if hasattr(row, "keys") else row[2]
-            if not user_has_story_access(c, username, community_id, creator_username):
-                return jsonify({'success': False, 'error': 'Forbidden'}), 403
-            view_count = record_story_view(c, story_id, username)
-            conn.commit()
-            return jsonify({'success': True, 'story_id': story_id, 'view_count': view_count})
-    except Exception as e:
-        logger.error(f"Error recording view for story {story_id}: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/community_stories/<int:story_id>/viewers', methods=['GET'])
-@login_required
-def api_get_story_viewers(story_id: int):
-    username = session.get('username')
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ensure_story_tables(c)
-            ph = get_sql_placeholder()
-            c.execute(
-                f"""
-                SELECT cs.community_id, c.creator_username
-                FROM community_stories cs
-                JOIN communities c ON c.id = cs.community_id
-                WHERE cs.id = {ph}
-                """,
-                (story_id,),
-            )
-            row = c.fetchone()
-            if not row:
-                return jsonify({'success': False, 'error': 'Story not found'}), 404
-            community_id = row["community_id"] if hasattr(row, "keys") else row[0]
-            creator_username = row["creator_username"] if hasattr(row, "keys") else (row[1] if len(row) > 1 else None)
-            if not user_has_story_access(c, username, community_id, creator_username):
-                return jsonify({'success': False, 'error': 'Forbidden'}), 403
-
-            c.execute(
-                f"""
-                SELECT csv.username, csv.viewed_at, up.profile_picture
-                FROM community_story_views csv
-                LEFT JOIN user_profiles up ON up.username = csv.username
-                WHERE csv.story_id = {ph}
-                ORDER BY csv.viewed_at DESC
-                LIMIT 500
-                """,
-                (story_id,),
-            )
-            rows = c.fetchall() or []
-            viewers: List[Dict[str, Any]] = []
-            for viewer in rows:
-                viewer_username = viewer["username"] if hasattr(viewer, "keys") else viewer[0]
-                viewed_at = viewer["viewed_at"] if hasattr(viewer, "keys") else (viewer[1] if len(viewer) > 1 else None)
-                profile_pic = viewer["profile_picture"] if hasattr(viewer, "keys") else (viewer[2] if len(viewer) > 2 else None)
-                viewers.append(
-                    {
-                        'username': viewer_username,
-                        'profile_picture': get_public_upload_url(normalize_upload_reference(profile_pic)) if profile_pic else None,
-                        'viewed_at': viewed_at,
-                    }
-                )
-            return jsonify({'success': True, 'story_id': story_id, 'viewers': viewers})
-    except Exception as e:
-        logger.error(f"Error fetching viewers for story {story_id}: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/story/<int:story_id>', methods=['GET'])
-@login_required
-def get_community_story(story_id: int):
-    """Get details of a specific story including its community_id."""
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ensure_story_tables(c)
-            ph = get_sql_placeholder()
-            
-            c.execute(
-                f"""
-                SELECT cs.id, cs.username, cs.community_id, cs.media_type, cs.media_url, 
-                       cs.media_path, cs.caption, cs.created_at, cs.expires_at
-                FROM community_stories cs
-                WHERE cs.id = {ph}
-                """,
-                (story_id,),
-            )
-            row = c.fetchone()
-            if not row:
-                return jsonify({'success': False, 'error': 'Story not found'}), 404
-            
-            if hasattr(row, "keys"):
-                story = {
-                    'id': row['id'],
-                    'username': row['username'],
-                    'community_id': row['community_id'],
-                    'media_type': row['media_type'],
-                    'media_url': _public_url(row['media_url']),
-                    'media_path': _public_url(row['media_path']),
-                    'caption': row['caption'],
-                    'created_at': row['created_at'],
-                    'expires_at': row['expires_at'],
-                }
-            else:
-                story = {
-                    'id': row[0],
-                    'username': row[1],
-                    'community_id': row[2],
-                    'media_type': row[3],
-                    'media_url': _public_url(row[4]),
-                    'media_path': _public_url(row[5]),
-                    'caption': row[6],
-                    'created_at': row[7],
-                    'expires_at': row[8],
-                }
-            
-            return jsonify({'success': True, 'story': story})
-            
-    except Exception as e:
-        logger.error(f"Error fetching story {story_id}: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/community_stories/<int:story_id>', methods=['DELETE'])
-@login_required
-def delete_community_story(story_id: int):
-    """Delete a community story. Only the story owner or community admin can delete."""
-    username = session.get('username')
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ensure_story_tables(c)
-            ph = get_sql_placeholder()
-            
-            # Get story info
-            c.execute(
-                f"""
-                SELECT cs.id, cs.username as story_owner, cs.community_id, c.creator_username
-                FROM community_stories cs
-                JOIN communities c ON c.id = cs.community_id
-                WHERE cs.id = {ph}
-                """,
-                (story_id,),
-            )
-            row = c.fetchone()
-            if not row:
-                return jsonify({'success': False, 'error': 'Story not found'}), 404
-            
-            story_owner = row["story_owner"] if hasattr(row, "keys") else row[1]
-            community_id = row["community_id"] if hasattr(row, "keys") else row[2]
-            community_creator = row["creator_username"] if hasattr(row, "keys") else row[3]
-            
-            # Check permission: must be story owner, community creator, or admin
-            is_story_owner = username.lower() == story_owner.lower()
-            is_community_creator = username.lower() == (community_creator or '').lower()
-            is_app_admin = username.lower() == 'admin'
-            
-            if not (is_story_owner or is_community_creator or is_app_admin):
-                return jsonify({'success': False, 'error': 'You can only delete your own stories'}), 403
-            
-            # Delete related data first (foreign key constraints)
-            c.execute(f"DELETE FROM community_story_views WHERE story_id = {ph}", (story_id,))
-            c.execute(f"DELETE FROM community_story_reactions WHERE story_id = {ph}", (story_id,))
-            c.execute(f"DELETE FROM community_story_comments WHERE story_id = {ph}", (story_id,))
-            
-            # Delete the story
-            c.execute(f"DELETE FROM community_stories WHERE id = {ph}", (story_id,))
-            conn.commit()
-            
-            logger.info(f"Story {story_id} deleted by {username}")
-            return jsonify({'success': True, 'message': 'Story deleted'})
-            
-    except Exception as e:
-        logger.error(f"Error deleting story {story_id}: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/community_stories/group/<story_group_id>', methods=['DELETE'])
-@login_required
-def delete_community_story_group(story_group_id: str):
-    """Delete all stories in a group. Only the story owner or community admin can delete."""
-    username = session.get('username')
-    if not story_group_id:
-        return jsonify({'success': False, 'error': 'story_group_id required'}), 400
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ensure_story_tables(c)
-            ph = get_sql_placeholder()
-
-            c.execute(
-                f"""
-                SELECT cs.id, cs.username, cs.community_id, c.creator_username
-                FROM community_stories cs
-                JOIN communities c ON c.id = cs.community_id
-                WHERE cs.story_group_id = {ph}
-                LIMIT 1
-                """,
-                (story_group_id,),
-            )
-            row = c.fetchone()
-            if not row:
-                return jsonify({'success': False, 'error': 'Story group not found'}), 404
-
-            story_owner = row["username"] if hasattr(row, "keys") else row[1]
-            community_creator = row["creator_username"] if hasattr(row, "keys") else row[3]
-
-            is_owner = username.lower() == story_owner.lower()
-            is_community_creator = username.lower() == (community_creator or '').lower()
-            is_admin = username.lower() == 'admin'
-            if not (is_owner or is_community_creator or is_admin):
-                return jsonify({'success': False, 'error': 'You can only delete your own stories'}), 403
-
-            # Collect all story ids in this group
-            c.execute(f"SELECT id FROM community_stories WHERE story_group_id = {ph}", (story_group_id,))
-            story_ids = [r["id"] if hasattr(r, "keys") else r[0] for r in c.fetchall()]
-
-            if story_ids:
-                id_placeholders = ', '.join([ph] * len(story_ids))
-                c.execute(f"DELETE FROM community_story_views WHERE story_id IN ({id_placeholders})", tuple(story_ids))
-                c.execute(f"DELETE FROM community_story_reactions WHERE story_id IN ({id_placeholders})", tuple(story_ids))
-                c.execute(f"DELETE FROM community_story_comments WHERE story_id IN ({id_placeholders})", tuple(story_ids))
-                c.execute(f"DELETE FROM community_stories WHERE story_group_id = {ph}", (story_group_id,))
-
-            conn.commit()
-            logger.info(f"Story group {story_group_id} ({len(story_ids)} stories) deleted by {username}")
-            return jsonify({'success': True, 'message': f'Deleted {len(story_ids)} stories', 'deleted_ids': story_ids})
-
-    except Exception as e:
-        logger.error(f"Error deleting story group {story_group_id}: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/community_stories/react', methods=['POST'])
-@login_required
-def api_story_reaction():
-    username = session.get('username')
-    try:
-        payload = request.get_json(silent=True) or {}
-    except Exception:
-        payload = {}
-    story_id = payload.get('story_id') or request.form.get('story_id')
-    reaction = payload.get('reaction')
-    try:
-        story_id = int(story_id)
-    except Exception:
-        return jsonify({'success': False, 'error': 'story_id required'}), 400
-
-    normalized_reaction = normalize_story_reaction(reaction) if reaction else None
-    if reaction and not normalized_reaction:
-        return jsonify({'success': False, 'error': 'Invalid reaction'}), 400
-
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ensure_story_tables(c)
-            ph = get_sql_placeholder()
-            c.execute(
-                f"""
-                SELECT cs.community_id, cs.username AS story_username, c.creator_username
-                FROM community_stories cs
-                JOIN communities c ON c.id = cs.community_id
-                WHERE cs.id = {ph}
-                """,
-                (story_id,),
-            )
-            row = c.fetchone()
-            if not row:
-                return jsonify({'success': False, 'error': 'Story not found'}), 404
-            community_id = row["community_id"] if hasattr(row, "keys") else row[0]
-            story_author = row["story_username"] if hasattr(row, "keys") else (row[1] if len(row) > 1 else None)
-            creator_username = row["creator_username"] if hasattr(row, "keys") else (row[2] if len(row) > 2 else None)
-            if not user_has_story_access(c, username, community_id, creator_username):
-                return jsonify({'success': False, 'error': 'Forbidden'}), 403
-
-            now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-            should_notify_author = False
-            c.execute(
-                f"""
-                SELECT reaction FROM community_story_reactions
-                WHERE story_id = {ph} AND LOWER(username) = LOWER({ph})
-                """,
-                (story_id, username),
-            )
-            existing_row = c.fetchone()
-            existing_reaction = (
-                existing_row["reaction"]
-                if hasattr(existing_row, "keys")
-                else (existing_row[0] if existing_row else None)
-            )
-
-            if not normalized_reaction:
-                if existing_reaction:
-                    c.execute(
-                        f"DELETE FROM community_story_reactions WHERE story_id = {ph} AND LOWER(username) = LOWER({ph})",
-                        (story_id, username),
-                    )
-            else:
-                if existing_reaction and existing_reaction == normalized_reaction:
-                    c.execute(
-                        f"DELETE FROM community_story_reactions WHERE story_id = {ph} AND LOWER(username) = LOWER({ph})",
-                        (story_id, username),
-                    )
-                else:
-                    if USE_MYSQL:
-                        c.execute(
-                            """
-                            INSERT INTO community_story_reactions (story_id, username, reaction, created_at)
-                            VALUES (%s, %s, %s, %s)
-                            ON DUPLICATE KEY UPDATE reaction = VALUES(reaction), created_at = VALUES(created_at)
-                            """,
-                            (story_id, username, normalized_reaction, now_str),
-                        )
-                    else:
-                        c.execute(
-                            """
-                            INSERT INTO community_story_reactions (story_id, username, reaction, created_at)
-                            VALUES (?, ?, ?, ?)
-                            ON CONFLICT(story_id, username)
-                            DO UPDATE SET reaction = excluded.reaction, created_at = excluded.created_at
-                            """,
-                            (story_id, username, normalized_reaction, now_str),
-                        )
-                    should_notify_author = True
-
-            conn.commit()
-            if should_notify_author and story_author and story_author.lower() != username.lower():
-                notif_link = f"/community_feed_react/{community_id}"
-                notif_message = f"{username} reacted to your story"
-                try:
-                    create_notification(
-                        story_author,
-                        username,
-                        'story_reaction',
-                        post_id=story_id,
-                        community_id=community_id,
-                        message=notif_message,
-                        link=notif_link,
-                    )
-                except Exception as notify_err:
-                    logger.warning(f"Story reaction notification error for {story_author}: {notify_err}")
-                try:
-                    send_push_to_user(
-                        story_author,
-                        {
-                            'title': f'New reaction from {username}',
-                            'body': notif_message,
-                            'url': notif_link,
-                            'tag': f'story-reaction-{story_id}-{story_author}',
-                        },
-                    )
-                except Exception as push_err:
-                    logger.warning(f"Story reaction push error for {story_author}: {push_err}")
-            reaction_counts, user_reactions = fetch_story_reaction_maps(c, [story_id], username)
-            return jsonify(
-                {
-                    'success': True,
-                    'story_id': story_id,
-                    'reactions': reaction_counts.get(story_id, {}),
-                    'user_reaction': user_reactions.get(story_id),
-                }
-            )
-    except Exception as e:
-        logger.error(f"Error reacting to story {story_id}: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/community_stories/<int:story_id>/comments')
-@login_required
-def api_get_story_comments(story_id: int):
-    """Get public comments for a story."""
-    username = session.get('username')
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ensure_story_tables(c)
-            ph = get_sql_placeholder()
-            c.execute(
-                f"""
-                SELECT cs.community_id, co.creator_username
-                FROM community_stories cs
-                JOIN communities co ON co.id = cs.community_id
-                WHERE cs.id = {ph}
-                """,
-                (story_id,),
-            )
-            row = c.fetchone()
-            if not row:
-                return jsonify({'success': False, 'error': 'Story not found'}), 404
-            community_id = row['community_id'] if hasattr(row, 'keys') else row[0]
-            creator = row['creator_username'] if hasattr(row, 'keys') else (row[1] if len(row) > 1 else None)
-            if not user_has_story_access(c, username, community_id, creator):
-                return jsonify({'success': False, 'error': 'Forbidden'}), 403
-            c.execute(
-                f"""
-                SELECT sc.id, sc.username, sc.content, sc.created_at, up.profile_picture
-                FROM community_story_comments sc
-                LEFT JOIN user_profiles up ON up.username = sc.username
-                WHERE sc.story_id = {ph}
-                ORDER BY sc.created_at ASC
-                LIMIT 200
-                """,
-                (story_id,),
-            )
-            comments = []
-            for r in (c.fetchall() or []):
-                if hasattr(r, 'keys'):
-                    pp = r.get('profile_picture')
-                    if pp and not str(pp).startswith(('http://', 'https://')):
-                        pp = get_public_upload_url(normalize_upload_reference(pp))
-                    comments.append({
-                        'id': r['id'], 'username': r['username'],
-                        'content': r['content'], 'created_at': str(r['created_at']),
-                        'profile_picture': pp,
-                    })
-                else:
-                    pp = r[4] if len(r) > 4 else None
-                    if pp and not str(pp).startswith(('http://', 'https://')):
-                        pp = get_public_upload_url(normalize_upload_reference(pp))
-                    comments.append({
-                        'id': r[0], 'username': r[1],
-                        'content': r[2], 'created_at': str(r[3]),
-                        'profile_picture': pp,
-                    })
-            return jsonify({'success': True, 'comments': comments, 'count': len(comments)})
-    except Exception as e:
-        logger.error(f"Error fetching story comments for {story_id}: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/community_stories/<int:story_id>/comments', methods=['POST'])
-@login_required
-def api_add_story_comment(story_id: int):
-    """Add a public comment to a story."""
-    username = session.get('username')
-    try:
-        payload = request.get_json(silent=True) or {}
-    except Exception:
-        payload = {}
-    content = (payload.get('content') or '').strip()
-    if not content:
-        return jsonify({'success': False, 'error': 'Comment content required'}), 400
-    if len(content) > STORY_MAX_COMMENT_LENGTH:
-        content = content[:STORY_MAX_COMMENT_LENGTH]
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ensure_story_tables(c)
-            ph = get_sql_placeholder()
-            c.execute(
-                f"""
-                SELECT cs.community_id, cs.username AS story_username, co.creator_username
-                FROM community_stories cs
-                JOIN communities co ON co.id = cs.community_id
-                WHERE cs.id = {ph} AND cs.status = 'active'
-                """,
-                (story_id,),
-            )
-            row = c.fetchone()
-            if not row:
-                return jsonify({'success': False, 'error': 'Story not found'}), 404
-            community_id = row['community_id'] if hasattr(row, 'keys') else row[0]
-            story_author = row['story_username'] if hasattr(row, 'keys') else (row[1] if len(row) > 1 else None)
-            creator = row['creator_username'] if hasattr(row, 'keys') else (row[2] if len(row) > 2 else None)
-            if not user_has_story_access(c, username, community_id, creator):
-                return jsonify({'success': False, 'error': 'Forbidden'}), 403
-            now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-            c.execute(
-                f"""
-                INSERT INTO community_story_comments (story_id, username, content, created_at)
-                VALUES ({ph}, {ph}, {ph}, {ph})
-                """,
-                (story_id, username, content, now_str),
-            )
-            comment_id = getattr(c, 'lastrowid', None)
-            conn.commit()
-            recipients = set()
-            if story_author and story_author.lower() != username.lower():
-                recipients.add(story_author)
-            try:
-                c.execute(
-                    f"""
-                    SELECT DISTINCT username
-                    FROM community_story_comments
-                    WHERE story_id = {ph} AND LOWER(username) != LOWER({ph})
-                    """,
-                    (story_id, username),
-                )
-                for recipient_row in c.fetchall() or []:
-                    recipient = recipient_row['username'] if hasattr(recipient_row, 'keys') else recipient_row[0]
-                    if recipient and recipient.lower() != username.lower():
-                        recipients.add(recipient)
-            except Exception as recipient_err:
-                logger.warning(f"Story comment recipient lookup failed for {story_id}: {recipient_err}")
-
-            notif_link = f"/community_feed_react/{community_id}"
-            preview_snip = truncate_notification_preview(content)
-            for recipient in recipients:
-                is_story_author = bool(story_author and recipient.lower() == story_author.lower())
-                notif_message = (
-                    f"{username} commented on your story"
-                    if is_story_author
-                    else f"{username} also commented on a story you commented on"
-                )
-                try:
-                    create_notification(
-                        recipient,
-                        username,
-                        'story_comment',
-                        post_id=story_id,
-                        community_id=community_id,
-                        message=notif_message,
-                        link=notif_link,
-                        preview_text=preview_snip or None,
-                    )
-                except Exception as notify_err:
-                    logger.warning(f"Story comment notification error for {recipient}: {notify_err}")
-                try:
-                    send_push_to_user(
-                        recipient,
-                        {
-                            'title': f'New story comment from {username}',
-                            'body': preview_snip or notif_message,
-                            'url': notif_link,
-                            'tag': f'story-comment-{story_id}-{recipient}',
-                        },
-                    )
-                except Exception as push_err:
-                    logger.warning(f"Story comment push error for {recipient}: {push_err}")
-            pp_row = c.execute(
-                f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (username,)
-            ) if False else None
-            profile_picture = None
-            try:
-                c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (username,))
-                pp_r = c.fetchone()
-                if pp_r:
-                    pp = pp_r['profile_picture'] if hasattr(pp_r, 'keys') else pp_r[0]
-                    if pp and not str(pp).startswith(('http://', 'https://')):
-                        pp = get_public_upload_url(normalize_upload_reference(pp))
-                    profile_picture = pp
-            except Exception:
-                pass
-            return jsonify({
-                'success': True,
-                'comment': {
-                    'id': comment_id,
-                    'username': username,
-                    'content': content,
-                    'created_at': now_str,
-                    'profile_picture': profile_picture,
-                },
-            })
-    except Exception as e:
-        logger.error(f"Error adding story comment for {story_id}: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/community_stories/comments/<int:comment_id>', methods=['DELETE'])
-@login_required
-def api_delete_story_comment(comment_id: int):
-    """Delete a story comment. Only comment author or admin can delete."""
-    username = session.get('username')
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ensure_story_tables(c)
-            ph = get_sql_placeholder()
-            c.execute(f"SELECT username FROM community_story_comments WHERE id = {ph}", (comment_id,))
-            row = c.fetchone()
-            if not row:
-                return jsonify({'success': False, 'error': 'Comment not found'}), 404
-            comment_author = row['username'] if hasattr(row, 'keys') else row[0]
-            if comment_author.lower() != username.lower() and username.lower() != 'admin':
-                return jsonify({'success': False, 'error': 'Forbidden'}), 403
-            c.execute(f"DELETE FROM community_story_comments WHERE id = {ph}", (comment_id,))
-            conn.commit()
-            return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"Error deleting story comment {comment_id}: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
+# Community story routes now reside in backend.blueprints.community_stories.
 
 
 @app.route('/api/community_member_suggest')
@@ -32844,7 +28072,7 @@ def api_create_product_post():
     if not content:
         return jsonify({'success': False, 'error': 'content required'}), 400
     # Only Admin/Paulo can post to updates
-    if section == 'updates' and username not in ('admin','Paulo','paulo'):
+    if section == 'updates' and not is_app_admin_or_paulo(username):
         return jsonify({'success': False, 'error': 'Forbidden'}), 403
     try:
         with get_db_connection() as conn:
@@ -32898,7 +28126,7 @@ def api_edit_product_post():
                 return jsonify({'success': False, 'error': 'Post not found'}), 404
             owner = row['username'] if hasattr(row,'keys') else row[0]
             # Restrict edits to Admin/Paulo only (owners cannot edit unless they are admin/Paulo)
-            if (username or '').lower() not in ('admin','paulo'):
+            if not is_app_admin_or_paulo(username):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
             c.execute(f"UPDATE product_posts SET content={ph} WHERE id={ph}", (content, post_id))
             conn.commit()
@@ -32924,7 +28152,7 @@ def api_delete_product_post():
                 return jsonify({'success': False, 'error': 'Post not found'}), 404
             owner = row['username'] if hasattr(row,'keys') else row[0]
             # Restrict deletes to Admin/Paulo only (owners cannot delete unless they are admin/Paulo)
-            if (username or '').lower() not in ('admin','paulo'):
+            if not is_app_admin_or_paulo(username):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
             # Delete post (replies should cascade if FK set; otherwise explicit delete)
             try:
@@ -32957,7 +28185,7 @@ def api_edit_product_reply():
                 return jsonify({'success': False, 'error': 'Reply not found'}), 404
             owner = row['username'] if hasattr(row,'keys') else row[0]
             # Restrict edits to Admin/Paulo only
-            if (username or '').lower() not in ('admin','paulo'):
+            if not is_app_admin_or_paulo(username):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
             c.execute(f"UPDATE product_replies SET content={ph} WHERE id={ph}", (content, reply_id))
             conn.commit()
@@ -32983,7 +28211,7 @@ def api_delete_product_reply():
                 return jsonify({'success': False, 'error': 'Reply not found'}), 404
             owner = row['username'] if hasattr(row,'keys') else row[0]
             # Restrict deletes to Admin/Paulo only
-            if (username or '').lower() not in ('admin','paulo'):
+            if not is_app_admin_or_paulo(username):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
             c.execute(f"DELETE FROM product_replies WHERE id={ph}", (reply_id,))
             conn.commit()
@@ -33029,7 +28257,7 @@ def api_product_polls():
 @login_required
 def api_create_product_poll():
     username = session.get('username')
-    if (username or '').lower() not in ('admin','paulo'):
+    if not is_app_admin_or_paulo(username):
         return jsonify({'success': False, 'error': 'Forbidden'}), 403
     question = (request.form.get('question') or '').strip()
     raw_options = request.form.getlist('options') or []
@@ -33117,8 +28345,8 @@ def api_product_poll_vote():
 @app.route('/api/product_poll_close', methods=['POST'])
 @login_required
 def api_product_poll_close():
-    username = (session.get('username') or '').lower()
-    if username not in ('admin','paulo'):
+    username = session.get('username')
+    if not is_app_admin_or_paulo(username):
         return jsonify({'success': False, 'error': 'Forbidden'}), 403
     poll_id = request.form.get('poll_id', type=int)
     if not poll_id:
@@ -33136,8 +28364,8 @@ def api_product_poll_close():
 @app.route('/api/product_poll_delete', methods=['POST'])
 @login_required
 def api_product_poll_delete():
-    username = (session.get('username') or '').lower()
-    if username not in ('admin','paulo'):
+    username = session.get('username')
+    if not is_app_admin_or_paulo(username):
         return jsonify({'success': False, 'error': 'Forbidden'}), 403
     poll_id = request.form.get('poll_id', type=int)
     if not poll_id:
@@ -33174,7 +28402,7 @@ def edit_reply():
             if not row:
                 return jsonify({'success': False, 'error': 'Reply not found'}), 404
             owner = row['username'] if hasattr(row, 'keys') else row[0]
-            if username != owner and username != 'admin':
+            if username != owner and not is_app_admin(username):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
 
             # Update content
@@ -34060,449 +29288,8 @@ def get_all_communities_debug():
     except Exception as e:
         logger.error(f"Debug all communities error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
-@app.route('/api/user_parent_community')
-@login_required
-def get_user_parent_community():
-    """Get communities to display on dashboard - SIMPLIFIED"""
-    username = session.get('username')
-    logger.info(f"Getting dashboard communities for user: {username}")
-    
-    # Allow cache bypass with ?_nocache or ?refresh parameter
-    bypass_cache = request.args.get('_nocache') or request.args.get('refresh')
-    
-    cache_key = user_parent_dashboard_cache_key(username)
-    if cache_key and not bypass_cache:
-        cached = cache.get(cache_key)
-        if cached:
-            resp = jsonify(cached)
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            return resp
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Simple approach: Just get all parent communities (those without parent_community_id)
-            # Admins see all, regular users see only theirs
-            placeholder = get_sql_placeholder()
-
-            # Determine admin using application logic to avoid DB column dependency
-            is_admin = is_app_admin(username)
-            logger.info(f"User {username} is_admin: {is_admin}")
-
-            if is_admin:
-                # Admin: return ALL top-level parent communities
-                c.execute("""
-                    SELECT id, name, type
-                    FROM communities
-                    WHERE parent_community_id IS NULL
-                    ORDER BY name
-                """)
-                parent_rows = c.fetchall()
-                logger.info("Admin: fetched all top-level parent communities")
-                communities_list = []
-                for row in parent_rows:
-                    if hasattr(row, 'keys'):
-                        communities_list.append({'id': row['id'], 'name': row['name'], 'type': row['type']})
-                    else:
-                        communities_list.append({'id': row[0], 'name': row[1], 'type': row[2]})
-            else:
-                # User: gather communities by membership OR creator OR admin role (run separately for robust cross-DB behavior)
-                # 1) Memberships via user_communities
-                c.execute(f"SELECT id FROM users WHERE username = {placeholder}", (username,))
-                user_row = c.fetchone()
-                user_id = user_row['id'] if hasattr(user_row, 'keys') else (user_row[0] if user_row else None)
-                if not user_id:
-                    logger.warning(f"Dashboard: user_id not found for {username}")
-                community_ids = set()
-                if user_id:
-                    c.execute(f"SELECT community_id FROM user_communities WHERE user_id = {placeholder}", (user_id,))
-                    uc_rows = c.fetchall()
-                    for r in uc_rows:
-                        cid = r['community_id'] if hasattr(r, 'keys') else (r[0] if len(r) > 0 else None)
-                        if cid:
-                            community_ids.add(cid)
-                    logger.info(f"Dashboard: membership communities for {username}: {len(uc_rows)} rows, {len(community_ids)} unique IDs")
-
-                # 2) Communities created by user
-                c.execute(f"SELECT id FROM communities WHERE creator_username = {placeholder}", (username,))
-                created_rows = c.fetchall()
-                for r in created_rows:
-                    cid = r['id'] if hasattr(r, 'keys') else (r[0] if len(r) > 0 else None)
-                    if cid:
-                        community_ids.add(cid)
-                logger.info(f"Dashboard: created communities for {username}: {len(created_rows)} rows, total IDs now {len(community_ids)}")
-
-                # 3) Communities where user is admin
-                c.execute(f"SELECT community_id FROM community_admins WHERE username = {placeholder}", (username,))
-                admin_rows = c.fetchall()
-                for r in admin_rows:
-                    cid = r['community_id'] if hasattr(r, 'keys') else (r[0] if len(r) > 0 else None)
-                    if cid:
-                        community_ids.add(cid)
-                logger.info(f"Dashboard: admin communities for {username}: {len(admin_rows)} rows, total IDs now {len(community_ids)}")
-
-                if not community_ids:
-                    logger.info(f"Dashboard: no direct communities found for {username}")
-
-                # Fetch full rows for these community IDs
-                member_rows = []
-                if community_ids:
-                    # Build placeholder list safely
-                    ph = get_sql_placeholder()
-                    placeholders = ','.join([ph for _ in community_ids])
-                    c.execute(f"SELECT id, name, type, parent_community_id FROM communities WHERE id IN ({placeholders})", tuple(community_ids))
-                    member_rows = c.fetchall()
-                logger.info(f"Dashboard: resolved {len(member_rows)} community rows for {username}")
-
-                # Helper to fetch a community by id
-                def fetch_comm(comm_id):
-                    ph = get_sql_placeholder()
-                    c.execute(f"SELECT id, name, type, parent_community_id FROM communities WHERE id = {ph}", (comm_id,))
-                    return c.fetchone()
-
-                top_parents = {}
-                for row in member_rows:
-                    if hasattr(row, 'keys'):
-                        current_id = row['id']
-                        parent_id = row['parent_community_id']
-                        current_name = row['name']
-                        current_type = row['type']
-                    else:
-                        current_id = row[0]
-                        parent_id = row[3]
-                        current_name = row[1]
-                        current_type = row[2]
-
-                    seen_chain = set()
-                    top_name = current_name
-                    top_type = current_type
-                    # Walk up parent chain until root
-                    while parent_id is not None and parent_id not in seen_chain:
-                        seen_chain.add(parent_id)
-                        parent_row = fetch_comm(parent_id)
-                        if not parent_row:
-                            break
-                        if hasattr(parent_row, 'keys'):
-                            current_id = parent_row['id']
-                            parent_id = parent_row['parent_community_id']
-                            top_name = parent_row['name']
-                            top_type = parent_row['type']
-                        else:
-                            current_id = parent_row[0]
-                            parent_id = parent_row[3]
-                            top_name = parent_row[1]
-                            top_type = parent_row[2]
-
-                    # current_id now points to the top-most parent (or original if no parent)
-                    if current_id not in top_parents:
-                        top_parents[current_id] = {
-                            'id': current_id,
-                            'name': top_name,
-                            'type': top_type
-                        }
-
-                communities_list = list(top_parents.values())
-                communities_list.sort(key=lambda x: (x.get('name') or '').lower())
-
-                # Ensure Gym community appears for users with gym access (e.g., Paulo)
-                try:
-                    has_gym_access = (username and username.lower() == 'paulo')
-                    if not has_gym_access:
-                        ph = get_sql_placeholder()
-                        c.execute(f"""
-                            SELECT 1
-                            FROM communities c
-                            JOIN user_communities uc ON c.id = uc.community_id
-                            JOIN users u ON uc.user_id = u.id
-                            WHERE u.username = {ph} AND c.type = 'gym'
-                            LIMIT 1
-                        """, (username,))
-                        has_gym_access = c.fetchone() is not None
-
-                    if has_gym_access:
-                        # Add any gym communities by climbing to their top-level parent
-                        c.execute("""
-                            SELECT id, name, type, parent_community_id
-                            FROM communities
-                            WHERE LOWER(type) = 'gym'
-                        """)
-                        gym_rows = c.fetchall()
-                        seen_ids = {item['id'] if hasattr(item, 'keys') else item[0] for item in communities_list}
-                        added = 0
-                        for row in gym_rows:
-                            if hasattr(row, 'keys'):
-                                cid, name, gtype, parent_id = row['id'], row['name'], row['type'], row['parent_community_id']
-                            else:
-                                cid, name, gtype, parent_id = row[0], row[1], row[2], row[3]
-
-                            # climb to top parent
-                            top_id, top_name, top_type = cid, name, gtype
-                            visited = set()
-                            while parent_id is not None and parent_id not in visited:
-                                visited.add(parent_id)
-                                ph = get_sql_placeholder()
-                                c.execute(f"SELECT id, name, type, parent_community_id FROM communities WHERE id = {ph}", (parent_id,))
-                                prow = c.fetchone()
-                                if not prow:
-                                    break
-                                if hasattr(prow, 'keys'):
-                                    top_id, top_name, top_type = prow['id'], prow['name'], prow['type']
-                                    parent_id = prow['parent_community_id']
-                                else:
-                                    top_id, top_name, top_type = prow[0], prow[1], prow[2]
-                                    parent_id = prow[3]
-
-                            if top_id not in seen_ids:
-                                communities_list.append({'id': top_id, 'name': top_name, 'type': top_type})
-                                seen_ids.add(top_id)
-                                added += 1
-                        if added:
-                            logger.info(f"Dashboard: added {added} gym parent communities for {username}")
-                except Exception as gym_err:
-                    logger.warning(f"Dashboard: failed to ensure gym community for {username}: {gym_err}")
-                try:
-                    logger.info(f"Dashboard: top-level parent communities for {username} -> {len(communities_list)} items: " + 
-                                ", ".join([f"{c.get('id')}:{c.get('name')}" for c in communities_list]))
-                except Exception:
-                    pass
-            
-            logger.info(f"Returning {len(communities_list)} communities for dashboard")
-            
-            response_payload = {
-                'success': True,
-                'communities': communities_list,
-                'parentCommunity': communities_list[0] if communities_list else None  # Keep backward compatibility
-            }
-            # Only use cache if not explicitly bypassed
-            bypass_cache = request.args.get('_nocache') or request.args.get('refresh')
-            if cache_key and not bypass_cache:
-                try:
-                    cache.set(cache_key, response_payload, COMMUNITY_CACHE_TTL)
-                except Exception:
-                    pass
-            
-            # Add no-cache headers to prevent browser caching
-            resp = jsonify(response_payload)
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            resp.headers['Pragma'] = 'no-cache'
-            resp.headers['Expires'] = '0'
-            return resp
-                
-    except Exception as e:
-        logger.error(f"Error getting parent community for {username}: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/user_communities_hierarchical')
-@login_required
-def get_user_communities_hierarchical():
-    """Get user's communities organized in parent-child hierarchy"""
-    username = session.get('username')
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            placeholder = '%s' if USE_MYSQL else '?'
-            
-            # Check if user is admin
-            if is_app_admin(username):
-                # Admin sees all communities
-                c.execute("""
-                    SELECT DISTINCT 
-                        c.id,
-                        c.name,
-                        c.type,
-                        c.parent_community_id,
-                        c.creator_username,
-                        pc.name as parent_name
-                    FROM communities c
-                    LEFT JOIN communities pc ON c.parent_community_id = pc.id
-                    ORDER BY 
-                        CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
-                        COALESCE(pc.name, c.name),
-                        c.name
-                """)
-            else:
-                # Get communities user is directly a member of
-                c.execute(f"""
-                    SELECT DISTINCT 
-                        c.id,
-                        c.name,
-                        c.type,
-                        c.parent_community_id,
-                        c.creator_username,
-                        pc.name as parent_name,
-                        uc.role
-                    FROM communities c
-                    JOIN user_communities uc ON c.id = uc.community_id
-                    JOIN users u ON uc.user_id = u.id
-                    LEFT JOIN communities pc ON c.parent_community_id = pc.id
-                    WHERE u.username = {placeholder}
-                    ORDER BY 
-                        CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
-                        COALESCE(pc.name, c.name),
-                        c.name
-                """, (username,))
-                
-                user_communities = c.fetchall()
-                
-                # Find communities where user is owner or admin (can see descendants)
-                admin_community_ids = []
-                for comm in user_communities:
-                    comm_id = comm['id'] if hasattr(comm, 'keys') else comm[0]
-                    creator = comm['creator_username'] if hasattr(comm, 'keys') else comm[4]
-                    role = comm['role'] if hasattr(comm, 'keys') else comm[6]
-                    
-                    # If user is owner or admin of this community, they can see all descendants
-                    if username == creator or role == 'admin' or role == 'owner':
-                        admin_community_ids.append(comm_id)
-                
-                # Start with communities user is a member of
-                all_accessible_ids = set()
-                for comm in user_communities:
-                    all_accessible_ids.add(comm['id'] if hasattr(comm, 'keys') else comm[0])
-                
-                # Add ALL descendant communities where user is admin/owner
-                if admin_community_ids:
-                    # Get all communities
-                    c.execute("""
-                        SELECT id, name, type, parent_community_id, creator_username
-                        FROM communities
-                    """)
-                    all_comms = c.fetchall()
-                    
-                    # Recursively get all descendants
-                    def get_all_descendants(comm_id, all_comms_list):
-                        descendants = []
-                        for comm in all_comms_list:
-                            parent_id = comm['parent_community_id'] if hasattr(comm, 'keys') else comm[3]
-                            if parent_id == comm_id:
-                                child_id = comm['id'] if hasattr(comm, 'keys') else comm[0]
-                                descendants.append(child_id)
-                                # Recursively get this child's descendants
-                                descendants.extend(get_all_descendants(child_id, all_comms_list))
-                        return descendants
-                    
-                    # For each admin community, get ALL its descendants
-                    for admin_id in admin_community_ids:
-                        descendants = get_all_descendants(admin_id, all_comms)
-                        all_accessible_ids.update(descendants)
-                
-                # Get full details of accessible communities
-                if all_accessible_ids:
-                    id_list = ','.join([str(x) for x in all_accessible_ids])
-                    c.execute(f"""
-                        SELECT DISTINCT 
-                            c.id,
-                            c.name,
-                            c.type,
-                            c.parent_community_id,
-                            c.creator_username,
-                            pc.name as parent_name
-                        FROM communities c
-                        LEFT JOIN communities pc ON c.parent_community_id = pc.id
-                        WHERE c.id IN ({id_list})
-                        ORDER BY 
-                            CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
-                            COALESCE(pc.name, c.name),
-                            c.name
-                    """)
-                else:
-                    return jsonify({'success': True, 'communities': []})
-            
-            communities = c.fetchall()
-            
-            # Organize into N-level hierarchy
-            all_communities_dict = {}
-            already_added_as_child = set()  # Track which communities are already children to prevent duplicates
-            
-            # First pass: create all community objects
-            for community in communities:
-                community_data = {
-                    'id': community['id'],
-                    'name': community['name'],
-                    'type': community['type'],
-                    'parent_community_id': community['parent_community_id'],
-                    'creator_username': community.get('creator_username') if hasattr(community, 'get') else community['creator_username'],
-                    'children': []
-                }
-                all_communities_dict[community['id']] = community_data
-            
-            # Second pass: build hierarchy - only add each community as a child once
-            for comm_id, comm_data in list(all_communities_dict.items()):
-                parent_id = comm_data['parent_community_id']
-                if parent_id and parent_id in all_communities_dict:
-                    # Parent exists in our dict, add this as a child
-                    # Check if this child is not already in the parent's children list (prevent duplicates)
-                    parent_children_ids = [ch['id'] for ch in all_communities_dict[parent_id]['children']]
-                    if comm_id not in parent_children_ids and comm_id not in already_added_as_child:
-                        all_communities_dict[parent_id]['children'].append(comm_data)
-                        already_added_as_child.add(comm_id)
-            
-            # Find root communities
-            parent_communities = {}
-            for comm_id, comm_data in all_communities_dict.items():
-                if not comm_data['parent_community_id']:
-                    # This is a root community
-                    parent_communities[comm_id] = comm_data
-                elif comm_data['parent_community_id'] not in all_communities_dict:
-                    # Edge case: User owns a sub-community but doesn't have access to parent
-                    # Get parent info and create a placeholder parent
-                    placeholder_parent = '%s' if USE_MYSQL else '?'
-                    c.execute(f"SELECT id, name, type, creator_username FROM communities WHERE id = {placeholder_parent}", (comm_data['parent_community_id'],))
-                    parent_info = c.fetchone()
-                    if parent_info:
-                        parent_id = parent_info['id'] if hasattr(parent_info, 'keys') else parent_info[0]
-                        if parent_id not in parent_communities:
-                            parent_data = {
-                                'id': parent_id,
-                                'name': parent_info['name'] if hasattr(parent_info, 'keys') else parent_info[1],
-                                'type': parent_info['type'] if hasattr(parent_info, 'keys') else parent_info[2],
-                                'creator_username': parent_info.get('creator_username') if hasattr(parent_info, 'get') else (parent_info['creator_username'] if hasattr(parent_info, 'keys') else parent_info[3]),
-                                'parent_community_id': None,
-                                'children': [],
-                                'is_parent_only': True  # User is not directly member of parent
-                            }
-                            # Add this sub-community as a child only if not already added
-                            if comm_id not in already_added_as_child:
-                                parent_data['children'].append(comm_data)
-                                already_added_as_child.add(comm_id)
-                            parent_communities[parent_id] = parent_data
-            
-            # Convert to list and validate no circular references
-            result = list(parent_communities.values())
-            
-            # Safety check: ensure no community appears multiple times in the tree
-            def validate_no_duplicates(communities, seen_ids=None):
-                if seen_ids is None:
-                    seen_ids = set()
-                for comm in communities:
-                    if comm['id'] in seen_ids:
-                        logger.warning(f"Duplicate community detected in hierarchy: {comm['id']} - {comm['name']}")
-                        return False
-                    seen_ids.add(comm['id'])
-                    if comm.get('children'):
-                        if not validate_no_duplicates(comm['children'], seen_ids):
-                            return False
-                return True
-            
-            if not validate_no_duplicates(result):
-                logger.error(f"Circular reference detected in hierarchy for user {username}")
-                # Fallback: just return flat list without hierarchy
-                return jsonify({
-                    'success': True,
-                    'communities': [{'id': c['id'], 'name': c['name'], 'type': c['type'], 'children': []} 
-                                   for c in all_communities_dict.values()]
-                })
-            
-            return jsonify({
-                'success': True,
-                'communities': result
-            })
-                
-    except Exception as e:
-        logger.error(f"Error getting hierarchical communities for {username}: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+# /api/user_parent_community moved to backend/blueprints/communities.py
+# Logic lives in backend/services/community.get_user_dashboard_communities.
 
 # ----------------------
 # Groups (horizontal) APIs
@@ -34718,8 +29505,7 @@ def api_groups_create():
     approval_required = approval_required_raw in ('1', 'true', 'True', 'yes', 'on')
     try:
         # Restrict creators to app admin or Paulo only
-        allowed_creators = { 'admin', 'paulo' }
-        if not (username and username.lower() in allowed_creators):
+        if not is_app_admin_or_paulo(username):
             return jsonify({'success': False, 'error': 'Only admin or Paulo can create groups'}), 403
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -34734,23 +29520,97 @@ def api_groups_create():
             top_creator = top_info.get('creator_username') if top_info else None
             if community_parent_id:
                 subscription_value = fetch_user_subscription(c, top_creator) if top_creator else ''
-                if top_creator and top_creator.lower() != 'admin' and is_free_subscription(subscription_value):
+                if top_creator and not is_app_admin(top_creator) and is_free_subscription(subscription_value):
                     return jsonify({'success': False, 'error': 'Groups for free plan communities are only available at the parent community level.'}), 403
+            from backend.services.group_steve_agent import (
+                PRESET_CAREER_EXPERT,
+                ensure_group_steve_agent_schema,
+                root_may_enable_agent,
+            )
+
+            ensure_group_steve_agent_schema(c)
+            steve_agent_enabled = request.form.get('steve_agent_enabled', '').strip().lower() in (
+                '1', 'true', 'yes', 'on',
+            )
+            steve_agent_preset_raw = (request.form.get('steve_agent_preset') or '').strip().lower()
+            steve_proactive_enabled = request.form.get('steve_proactive_enabled', '').strip().lower() in (
+                '1', 'true', 'yes', 'on',
+            )
+            steve_agent_preset = steve_agent_preset_raw or None
+            if steve_agent_enabled:
+                if steve_agent_preset and steve_agent_preset != PRESET_CAREER_EXPERT:
+                    return jsonify({'success': False, 'error': 'Invalid agent type'}), 400
+                if not root_may_enable_agent(community_id):
+                    return (
+                        jsonify(
+                            {
+                                'success': False,
+                                'error': 'Steve Community Package required. Open Manage Community to add the Steve add-on.',
+                            }
+                        ),
+                        400,
+                    )
+                steve_agent_preset = steve_agent_preset or PRESET_CAREER_EXPERT
+            else:
+                steve_agent_preset = None
+                steve_proactive_enabled = False
             # Insert group
             if USE_MYSQL:
-                c.execute("""
-                    INSERT INTO `groups` (community_id, name, approval_required, created_by)
-                    VALUES (%s, %s, %s, %s)
-                """, (community_id, name, 1 if approval_required else 0, username))
+                c.execute(
+                    """
+                    INSERT INTO `groups` (community_id, name, approval_required, created_by,
+                        steve_agent_enabled, steve_agent_preset, steve_proactive_enabled)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        community_id,
+                        name,
+                        1 if approval_required else 0,
+                        username,
+                        1 if steve_agent_enabled else 0,
+                        steve_agent_preset,
+                        1 if steve_proactive_enabled else 0,
+                    ),
+                )
                 gid = c.lastrowid
             else:
-                c.execute("""
-                    INSERT INTO groups (community_id, name, approval_required, created_by, created_at)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (community_id, name, 1 if approval_required else 0, username, datetime.now().isoformat()))
+                c.execute(
+                    """
+                    INSERT INTO groups (community_id, name, approval_required, created_by, created_at,
+                        steve_agent_enabled, steve_agent_preset, steve_proactive_enabled)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        community_id,
+                        name,
+                        1 if approval_required else 0,
+                        username,
+                        datetime.now().isoformat(),
+                        1 if steve_agent_enabled else 0,
+                        steve_agent_preset,
+                        1 if steve_proactive_enabled else 0,
+                    ),
+                )
                 gid = c.lastrowid
+            welcome_group_post_id: int | None = None
+            if steve_agent_enabled and steve_agent_preset:
+                try:
+                    from backend.services.group_steve_agent import insert_group_agent_welcome_post
+
+                    welcome_group_post_id = insert_group_agent_welcome_post(
+                        c,
+                        group_id=int(gid),
+                        group_name=name,
+                        preset=steve_agent_preset,
+                        creator_username=username,
+                    )
+                except Exception as wpost_err:
+                    logger.warning("group create: agent welcome post failed (non-fatal): %s", wpost_err)
             conn.commit()
-            return jsonify({'success': True, 'group_id': int(gid)})
+            payload = {"success": True, "group_id": int(gid)}
+            if welcome_group_post_id is not None:
+                payload["welcome_group_post_id"] = welcome_group_post_id
+            return jsonify(payload)
     except Exception as e:
         logger.error(f"api_groups_create error: {e}")
         return jsonify({'success': False, 'error': 'Failed to create group'})
@@ -34949,6 +29809,111 @@ def api_groups_delete():
         logger.error(f"api_groups_delete error: {e}")
         return jsonify({'success': False, 'error': 'Failed to delete group'})
 
+
+@app.route('/api/groups/<int:group_id>/steve_agent', methods=['PATCH'])
+@login_required
+def api_groups_steve_agent_patch(group_id: int):
+    """Update Steve group agent flags (owner / community admin / app admin)."""
+    username = session.get('username')
+    payload = request.get_json(silent=True) or {}
+    try:
+        from backend.services.group_steve_agent import (
+            PRESET_CAREER_EXPERT,
+            ensure_group_steve_agent_schema,
+            load_group_agent_flags,
+            root_may_enable_agent,
+        )
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            g_t = '`groups`' if USE_MYSQL else 'groups'
+            c.execute(
+                f"SELECT community_id, created_by FROM {g_t} WHERE id = {ph} LIMIT 1",
+                (int(group_id),),
+            )
+            grow = c.fetchone()
+            if not grow:
+                return jsonify({'success': False, 'error': 'Group not found'}), 404
+            community_id = grow['community_id'] if hasattr(grow, 'keys') else grow[0]
+            created_by = grow['created_by'] if hasattr(grow, 'keys') else grow[1]
+            cid_int = int(community_id) if community_id is not None else None
+            allowed = bool(
+                username == created_by
+                or is_app_admin(username)
+                or (cid_int is not None and is_community_owner(username, cid_int))
+                or (cid_int is not None and is_community_admin(username, cid_int))
+            )
+            if not allowed:
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            ensure_group_steve_agent_schema(c)
+            cur_en, cur_pr, cur_pro = load_group_agent_flags(c, int(group_id))
+            if 'steve_agent_enabled' in payload:
+                steve_agent_enabled = bool(payload.get('steve_agent_enabled'))
+            else:
+                steve_agent_enabled = cur_en
+            if 'steve_agent_preset' in payload:
+                raw_pr = payload.get('steve_agent_preset')
+                steve_agent_preset = str(raw_pr).strip().lower() if raw_pr else None
+            else:
+                steve_agent_preset = cur_pr
+            if 'steve_proactive_enabled' in payload:
+                steve_proactive_enabled = bool(payload.get('steve_proactive_enabled'))
+            else:
+                steve_proactive_enabled = cur_pro
+            if steve_agent_enabled:
+                if steve_agent_preset and steve_agent_preset != PRESET_CAREER_EXPERT:
+                    return jsonify({'success': False, 'error': 'Invalid agent type'}), 400
+                if cid_int is None or not root_may_enable_agent(cid_int):
+                    return (
+                        jsonify(
+                            {
+                                'success': False,
+                                'error': 'Steve Community Package required. Open Manage Community to add the Steve add-on.',
+                            }
+                        ),
+                        400,
+                    )
+                steve_agent_preset = steve_agent_preset or PRESET_CAREER_EXPERT
+            else:
+                steve_agent_preset = None
+                steve_proactive_enabled = False
+            if USE_MYSQL:
+                c.execute(
+                    f"""
+                    UPDATE {g_t}
+                    SET steve_agent_enabled = {ph}, steve_agent_preset = {ph}, steve_proactive_enabled = {ph}
+                    WHERE id = {ph}
+                    """,
+                    (
+                        1 if steve_agent_enabled else 0,
+                        steve_agent_preset,
+                        1 if steve_proactive_enabled else 0,
+                        int(group_id),
+                    ),
+                )
+            else:
+                c.execute(
+                    f"""
+                    UPDATE {g_t}
+                    SET steve_agent_enabled = {ph}, steve_agent_preset = {ph}, steve_proactive_enabled = {ph}
+                    WHERE id = {ph}
+                    """,
+                    (
+                        1 if steve_agent_enabled else 0,
+                        steve_agent_preset,
+                        1 if steve_proactive_enabled else 0,
+                        int(group_id),
+                    ),
+                )
+            if not USE_MYSQL:
+                conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"api_groups_steve_agent_patch error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to update agent settings'})
+
+
 @app.route('/api/groups/available_count', methods=['GET'])
 @login_required
 def api_groups_available_count():
@@ -35075,124 +30040,7 @@ def api_groups_my():
         logger.error(f"api_groups_my error: {e}")
         return jsonify({'success': False, 'error': 'Failed to load groups'})
 
-# Group feed API: returns posts scoped to group membership
-@app.route('/api/group_feed')
-@login_required
-def api_group_feed():
-    username = session.get('username')
-    try:
-        group_id = int(request.args.get('group_id', '0'))
-    except Exception:
-        return jsonify({'success': False, 'error': 'Invalid group_id'})
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            # Load group and owning community
-            c.execute(f"SELECT g.id, g.name, g.community_id, g.created_by FROM {'`groups`' if USE_MYSQL else 'groups'} g WHERE g.id = {get_sql_placeholder()}", (group_id,))
-            g = c.fetchone()
-            if not g:
-                return jsonify({'success': False, 'error': 'Group not found'}), 404
-            community_id = g['community_id'] if hasattr(g, 'keys') else g[2]
-            group_name = g['name'] if hasattr(g, 'keys') else g[1]
-            group_owner = g['created_by'] if hasattr(g, 'keys') else (g[3] if len(g) > 3 else None)
-            # Community meta
-            c.execute("SELECT name, type FROM communities WHERE id = ?", (community_id,))
-            cm = c.fetchone() or {}
-            community_name = cm['name'] if hasattr(cm, 'keys') else (cm[0] if cm else None)
-            community_type = cm['type'] if hasattr(cm, 'keys') else (cm[1] if cm else None)
-
-            # Verify user is member of community (or parent)
-            ph = get_sql_placeholder()
-            c.execute(f"SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE u.username={ph} AND uc.community_id={ph}", (username, community_id))
-            if not c.fetchone():
-                # allow if member of parent
-                c.execute("SELECT parent_community_id FROM communities WHERE id=?", (community_id,))
-                row = c.fetchone()
-                pid = (row['parent_community_id'] if hasattr(row, 'keys') else row[0]) if row else None
-                if not pid:
-                    return jsonify({'success': False, 'error': 'Not a member'}), 403
-                c.execute(f"SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE u.username={ph} AND uc.community_id={ph}", (username, pid))
-                if not c.fetchone():
-                    return jsonify({'success': False, 'error': 'Not a member'}), 403
-
-            # Permission baseline for group managers
-            is_manager = (
-                is_app_admin(username)
-                or is_community_owner(username, community_id)
-                or is_community_admin(username, community_id)
-                or (group_owner is not None and username == group_owner)
-            )
-
-            # Load latest group posts
-            c.execute(f"""
-                SELECT gp.id, gp.username, gp.content, gp.image_path, gp.created_at,
-                       up.profile_picture
-                FROM {'`group_posts`' if USE_MYSQL else 'group_posts'} gp
-                LEFT JOIN user_profiles up ON up.username = gp.username
-                WHERE gp.group_id = {get_sql_placeholder()}
-                ORDER BY gp.id DESC
-                LIMIT 50
-            """, (group_id,))
-            rows = c.fetchall() or []
-            posts = []
-            for r in rows:
-                pid = r['id'] if hasattr(r, 'keys') else r[0]
-                uname = r['username'] if hasattr(r, 'keys') else r[1]
-                # Reactions
-                c.execute(f"SELECT reaction, COUNT(*) as c FROM {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} WHERE group_post_id = {get_sql_placeholder()} GROUP BY reaction", (pid,))
-                rx = c.fetchall() or []
-                reactions = { (row['reaction'] if hasattr(row, 'keys') else row[0]): (row['c'] if hasattr(row, 'keys') else row[1]) for row in rx }
-                c.execute(f"SELECT reaction FROM {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} WHERE group_post_id = {get_sql_placeholder()} AND username = {get_sql_placeholder()}", (pid, username))
-                urr = c.fetchone()
-                user_reaction = urr['reaction'] if hasattr(urr, 'keys') else (urr[0] if urr else None)
-                # Replies (latest 25)
-                c.execute(f"""
-                    SELECT gr.id, gr.username, gr.content, gr.image_path, gr.created_at,
-                           up.profile_picture
-                    FROM {'`group_replies`' if USE_MYSQL else 'group_replies'} gr
-                    LEFT JOIN user_profiles up ON up.username = gr.username
-                    WHERE gr.group_post_id = {get_sql_placeholder()}
-                    ORDER BY gr.id DESC
-                    LIMIT 25
-                """, (pid,))
-                rep_rows = c.fetchall() or []
-                replies = []
-                for rr in rep_rows:
-                    rid = rr['id'] if hasattr(rr, 'keys') else rr[0]
-                    c.execute(f"SELECT reaction, COUNT(*) as c FROM {'`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'} WHERE group_reply_id = {get_sql_placeholder()} GROUP BY reaction", (rid,))
-                    rrx = c.fetchall() or []
-                    rreactions = { (row['reaction'] if hasattr(row, 'keys') else row[0]): (row['c'] if hasattr(row, 'keys') else row[1]) for row in rrx }
-                    c.execute(f"SELECT reaction FROM {'`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'} WHERE group_reply_id = {get_sql_placeholder()} AND username = {get_sql_placeholder()}", (rid, username))
-                    rur = c.fetchone()
-                    reply_user_reaction = rur['reaction'] if hasattr(rur, 'keys') else (rur[0] if rur else None)
-                    replies.append({
-                        'id': rid,
-                        'username': rr['username'] if hasattr(rr, 'keys') else rr[1],
-                        'content': rr['content'] if hasattr(rr, 'keys') else rr[2],
-                        'image_path': rr['image_path'] if hasattr(rr, 'keys') else rr[3],
-                        'timestamp': rr['created_at'] if hasattr(rr, 'keys') else rr[4],
-                        'profile_picture': rr['profile_picture'] if hasattr(rr, 'keys') else rr[5],
-                        'reactions': rreactions,
-                        'user_reaction': reply_user_reaction,
-                    })
-                can_manage = bool(is_manager or (uname == username))
-                posts.append({
-                    'id': pid,
-                    'username': uname,
-                    'content': r['content'] if hasattr(r, 'keys') else r[2],
-                    'image_path': r['image_path'] if hasattr(r, 'keys') else r[3],
-                    'timestamp': r['created_at'] if hasattr(r, 'keys') else r[4],
-                    'reactions': reactions,
-                    'user_reaction': user_reaction,
-                    'profile_picture': r['profile_picture'] if hasattr(r, 'keys') else r[5],
-                    'replies': replies,
-                    'can_edit': can_manage,
-                    'can_delete': can_manage,
-                })
-            return jsonify({'success': True, 'group': { 'id': group_id, 'name': group_name }, 'community': { 'id': community_id, 'name': community_name, 'type': community_type }, 'posts': posts})
-    except Exception as e:
-        logger.error(f"api_group_feed error: {e}")
-        return jsonify({'success': False, 'error': 'Server error'})
+# Group feed API: ``GET /api/group_feed`` is implemented in ``backend.blueprints.group_feed``.
 
 # Single group post API
 @app.route('/api/group_post')
@@ -35203,18 +30051,6 @@ def api_group_post():
         post_id = int(request.args.get('post_id', '0'))
     except Exception:
         return jsonify({'success': False, 'error': 'Invalid post_id'})
-
-    # --- Firestore dual-read ---
-    try:
-        from backend.services.firestore_reads import USE_FIRESTORE_READS
-        if USE_FIRESTORE_READS:
-            from backend.services.firestore_reads import get_group_post_detail as fs_get_gp
-            post = fs_get_gp(post_id, username)
-            if post:
-                logger.info(f"Firestore group post read: post {post_id}")
-                return jsonify({'success': True, 'post': post, 'group': {'id': post.get('group_id'), 'name': ''}, 'community_id': None})
-    except Exception as fs_err:
-        logger.warning(f"Firestore group post read failed, falling back to MySQL: {fs_err}")
 
     try:
         with get_db_connection() as conn:
@@ -35234,17 +30070,11 @@ def api_group_post():
             community_id = row['community_id'] if hasattr(row, 'keys') else row[7]
             group_owner = row['created_by'] if hasattr(row, 'keys') else (row[8] if len(row) > 8 else None)
 
-            # Membership check
             ph = get_sql_placeholder()
-            c.execute(f"SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE u.username={ph} AND uc.community_id={ph}", (username, community_id))
-            if not c.fetchone():
-                c.execute("SELECT parent_community_id FROM communities WHERE id=?", (community_id,))
-                r = c.fetchone(); pid = r['parent_community_id'] if hasattr(r, 'keys') else (r[0] if r else None)
-                if not pid:
-                    return jsonify({'success': False, 'error': 'Not a member'}), 403
-                c.execute(f"SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE u.username={ph} AND uc.community_id={ph}", (username, pid))
-                if not c.fetchone():
-                    return jsonify({'success': False, 'error': 'Not a member'}), 403
+            ok_access, err_access = check_group_feed_access(c, ph, username, int(group_id))
+            if not ok_access:
+                code = 404 if (err_access or "").lower().find("not found") >= 0 else 403
+                return jsonify({'success': False, 'error': err_access or 'Forbidden'}), code
 
             # Build post
             pid = row['id'] if hasattr(row, 'keys') else row[0]
@@ -35359,7 +30189,34 @@ def api_group_post():
                 'can_delete': bool(is_manager or (uname == username)),
                 'is_group_post': True,
                 'group_id': group_id,
+                'community_id': community_id,
             }
+            can_toggle_community_key = bool(is_app_admin(username))
+            if community_id is not None:
+                can_toggle_community_key = can_toggle_community_key or is_community_owner(
+                    username, int(community_id)
+                ) or is_community_admin(username, int(community_id))
+            if group_owner is not None and username == group_owner:
+                can_toggle_community_key = True
+            post['can_toggle_community_key'] = can_toggle_community_key
+
+            post['is_starred'] = False
+            post['is_community_starred'] = False
+            try:
+                gck_tbl = "`group_community_key_posts`" if USE_MYSQL else "group_community_key_posts"
+                guk_tbl = "`group_user_key_posts`" if USE_MYSQL else "group_user_key_posts"
+                c.execute(
+                    f"SELECT id FROM {gck_tbl} WHERE group_id = {get_sql_placeholder()} AND group_post_id = {get_sql_placeholder()}",
+                    (int(group_id), int(pid)),
+                )
+                post["is_community_starred"] = c.fetchone() is not None
+                c.execute(
+                    f"SELECT id FROM {guk_tbl} WHERE username = {get_sql_placeholder()} AND group_id = {get_sql_placeholder()} AND group_post_id = {get_sql_placeholder()}",
+                    (username, int(group_id), int(pid)),
+                )
+                post["is_starred"] = c.fetchone() is not None
+            except Exception:
+                pass
             allow_nsfw_imagine = False
             if community_id:
                 try:
@@ -35370,6 +30227,8 @@ def api_group_post():
                 except Exception as allow_err:
                     logger.warning(f"Failed to fetch allow_nsfw_imagine for community {community_id}: {allow_err}")
             post['allow_nsfw_imagine'] = allow_nsfw_imagine
+            post['reply_count'] = len(all_replies)
+            post['view_count'] = count_group_post_views_excluding_admin(c, ph, int(pid))
             return jsonify({'success': True, 'post': post, 'group': { 'id': group_id, 'name': group_name }, 'community_id': community_id})
     except Exception as e:
         logger.error(f"api_group_post error: {e}")
@@ -35386,27 +30245,192 @@ def api_group_posts_create():
         group_id = int(group_id_raw)
     except Exception:
         return jsonify({'success': False, 'error': 'Invalid group_id'})
-    if not content and 'image' not in request.files:
-        return jsonify({'success': False, 'error': 'Content or image is required'})
-    # Check membership
+
+    def _group_post_request_has_attachments() -> bool:
+        files = request.files
+        if files.get('image') and files['image'].filename:
+            return True
+        if files.get('video') and files['video'].filename:
+            return True
+        if files.get('audio') and files['audio'].filename:
+            return True
+        for key in ('images', 'videos'):
+            if key in files:
+                for f in files.getlist(key):
+                    if f and f.filename:
+                        return True
+        raw = (request.form.get('video_urls') or '').strip()
+        if raw:
+            try:
+                urls = json.loads(raw)
+                if isinstance(urls, list) and any(isinstance(u, str) and u.startswith('http') for u in urls):
+                    return True
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return False
+
+    if not content and not _group_post_request_has_attachments():
+        return jsonify({'success': False, 'error': 'Content, image, video, or audio is required'})
+    # Exclusive: must be a member of the group (helper includes moderation bypasses)
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
-            c.execute(f"SELECT 1 FROM group_members WHERE group_id={ph} AND username={ph}", (group_id, username))
-            if not c.fetchone():
-                # Also allow community-level members
-                c.execute(f"SELECT community_id FROM {'`groups`' if USE_MYSQL else 'groups'} WHERE id={ph}", (group_id,))
-                gr = c.fetchone(); comm_id = gr['community_id'] if hasattr(gr, 'keys') else (gr[0] if gr else None)
-                if not comm_id:
-                    return jsonify({'success': False, 'error': 'Group not found'}), 404
-                c.execute(f"SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE u.username={ph} AND uc.community_id={ph}", (username, comm_id))
-                if not c.fetchone():
-                    return jsonify({'success': False, 'error': 'Not a member'}), 403
-            # Save file if any
+            ok, err = check_group_feed_access(c, ph, username, group_id)
+            if not ok:
+                return jsonify({'success': False, 'error': err or 'Forbidden'}), 403
+
+            gp_t = '`group_posts`' if USE_MYSQL else 'group_posts'
+            for alter in (
+                f"ALTER TABLE {gp_t} ADD COLUMN video_path TEXT",
+                f"ALTER TABLE {gp_t} ADD COLUMN media_paths TEXT",
+                f"ALTER TABLE {gp_t} ADD COLUMN link_urls TEXT",
+                f"ALTER TABLE {gp_t} ADD COLUMN audio_path TEXT",
+                f"ALTER TABLE {gp_t} ADD COLUMN audio_summary TEXT",
+            ):
+                try:
+                    c.execute(alter)
+                except Exception:
+                    pass
+            from backend.services.group_steve_agent import ensure_group_steve_agent_schema
+
+            ensure_group_steve_agent_schema(c)
+            ask_steve_flag = request.form.get('ask_steve', '').strip().lower() in (
+                '1', 'true', 'yes', 'on',
+            )
+            ask_steve_val = 1 if ask_steve_flag else 0
+
+            community_id_for_audio = None
+            try:
+                gr_tbl = '`groups`' if USE_MYSQL else 'groups'
+                c.execute(f"SELECT community_id FROM {gr_tbl} WHERE id = {ph} LIMIT 1", (group_id,))
+                grow = c.fetchone()
+                if grow:
+                    community_id_for_audio = int(
+                        grow['community_id'] if hasattr(grow, 'keys') else grow[0]
+                    )
+            except Exception:
+                pass
+
+            files = request.files
             image_path = None
-            if 'image' in request.files and request.files['image'].filename:
-                image_path = save_uploaded_file(request.files['image'])
+            audio_path = None
+            video_path = None
+            media_paths: list[dict] = []
+            media_asset_candidates: list[dict] = []
+            MAX_MEDIA_PER_POST = 5
+
+            if 'images' in files:
+                for img_file in files.getlist('images'):
+                    if img_file and img_file.filename:
+                        saved_info = save_uploaded_file(
+                            img_file, optimize_profile='feed', return_file_info=True
+                        )
+                        saved_path = saved_info.get('path') if isinstance(saved_info, dict) else saved_info
+                        if saved_path:
+                            media_paths.append({'type': 'image', 'path': saved_path})
+                            media_asset_candidates.append({
+                                'type': 'image',
+                                'path': saved_path,
+                                'stored_bytes': saved_info.get('stored_bytes', 0) if isinstance(saved_info, dict) else 0,
+                            })
+
+            if 'videos' in files:
+                for vid_file in files.getlist('videos'):
+                    if vid_file and vid_file.filename:
+                        saved_info = save_uploaded_file(
+                            vid_file,
+                            subfolder='video',
+                            optimize_profile='feed',
+                            transcode_video=True,
+                            return_file_info=True,
+                        )
+                        saved_path = saved_info.get('path') if isinstance(saved_info, dict) else saved_info
+                        if saved_path:
+                            media_paths.append({'type': 'video', 'path': saved_path})
+                            media_asset_candidates.append({
+                                'type': 'video',
+                                'path': saved_path,
+                                'stored_bytes': saved_info.get('stored_bytes', 0) if isinstance(saved_info, dict) else 0,
+                            })
+
+            video_urls_raw = request.form.get('video_urls', '')
+            if video_urls_raw:
+                try:
+                    video_urls = json.loads(video_urls_raw)
+                    if isinstance(video_urls, list):
+                        for vurl in video_urls:
+                            if isinstance(vurl, str) and vurl.startswith('http'):
+                                media_paths.append({'type': 'video', 'path': vurl})
+                                media_asset_candidates.append({'type': 'video', 'path': vurl, 'stored_bytes': 0})
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            if len(media_paths) > MAX_MEDIA_PER_POST:
+                media_paths = media_paths[:MAX_MEDIA_PER_POST]
+                media_asset_candidates = media_asset_candidates[:MAX_MEDIA_PER_POST]
+
+            if not media_paths and files.get('image') and files['image'].filename:
+                file = files['image']
+                saved_info = save_uploaded_file(file, optimize_profile='feed', return_file_info=True)
+                image_path = saved_info.get('path') if isinstance(saved_info, dict) else saved_info
+                if image_path:
+                    media_asset_candidates.append({
+                        'type': 'image',
+                        'path': image_path,
+                        'stored_bytes': saved_info.get('stored_bytes', 0) if isinstance(saved_info, dict) else 0,
+                    })
+
+            if files.get('audio') and files['audio'].filename:
+                afile = files['audio']
+                audio_path = save_uploaded_file(afile, subfolder='audio')
+
+            if not media_paths and files.get('video') and files['video'].filename:
+                vfile = files['video']
+                saved_info = save_uploaded_file(
+                    vfile,
+                    subfolder='video',
+                    optimize_profile='feed',
+                    transcode_video=True,
+                    return_file_info=True,
+                )
+                video_path = saved_info.get('path') if isinstance(saved_info, dict) else saved_info
+                if video_path:
+                    media_asset_candidates.append({
+                        'type': 'video',
+                        'path': video_path,
+                        'stored_bytes': saved_info.get('stored_bytes', 0) if isinstance(saved_info, dict) else 0,
+                    })
+
+            if media_paths:
+                for m in media_paths:
+                    if m['type'] == 'image' and not image_path:
+                        image_path = m['path']
+                    elif m['type'] == 'video' and not video_path:
+                        video_path = m['path']
+
+            if (
+                not content
+                and not image_path
+                and not audio_path
+                and not video_path
+                and not media_paths
+            ):
+                return jsonify({'success': False, 'error': 'Content, image, video, or audio is required'})
+
+            audio_summary = None
+            if audio_path and community_id_for_audio is not None:
+                try:
+                    audio_summary = process_audio_for_summary(
+                        audio_path,
+                        username=username,
+                        community_id=community_id_for_audio,
+                    )
+                except Exception as audio_exc:
+                    logger.warning("group post audio summary failed: %s", audio_exc)
+            media_paths_json = json.dumps(media_paths) if media_paths else None
+            ts = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+
             # Dedupe (best effort)
             if dedupe_token:
                 try:
@@ -35418,10 +30442,76 @@ def api_group_posts_create():
                     c.execute("INSERT INTO recent_group_post_tokens (token, username, created_at) VALUES (?, ?, ?)", (dedupe_token, username, datetime.now().isoformat()))
                 except Exception:
                     pass
-            # Insert
-            c.execute(f"INSERT INTO {'`group_posts`' if USE_MYSQL else 'group_posts'} (group_id, username, content, image_path, created_at) VALUES ({ph}, {ph}, {ph}, {ph}, {ph})",
-                      (group_id, username, content, image_path, datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')))
-            if not USE_MYSQL: conn.commit()
+            c.execute(
+                f"INSERT INTO {gp_t} (group_id, username, content, image_path, video_path, audio_path, audio_summary, created_at, media_paths, link_urls, ask_steve) "
+                f"VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})",
+                (
+                    group_id,
+                    username,
+                    content,
+                    image_path,
+                    video_path,
+                    audio_path,
+                    audio_summary,
+                    ts,
+                    media_paths_json,
+                    None,
+                    ask_steve_val,
+                ),
+            )
+            post_id = c.lastrowid
+            if community_id_for_audio is not None and post_id:
+                try:
+                    from backend.services import media_assets
+
+                    for asset in media_asset_candidates[:MAX_MEDIA_PER_POST]:
+                        media_assets.register_asset(
+                            c,
+                            community_id=community_id_for_audio,
+                            source_type='group_post',
+                            source_id=int(post_id),
+                            media_type=asset.get('type'),
+                            path=asset.get('path'),
+                            original_bytes=asset.get('stored_bytes') or 0,
+                            stored_bytes=asset.get('stored_bytes') or 0,
+                        )
+                except Exception as asset_err:
+                    logger.warning(f"group post media asset registration failed: {asset_err}")
+            has_media = bool(
+                image_path or video_path or audio_path or (media_paths and len(media_paths) > 0)
+            )
+            if ask_steve_flag and community_id_for_audio is not None and post_id:
+                from backend.services.group_steve_agent import (
+                    PRESET_CAREER_EXPERT,
+                    load_group_agent_flags,
+                    post_qualifies_for_ask_steve_schedule,
+                    root_may_enable_agent,
+                    schedule_agent_first_reply,
+                    steve_reply_count_for_post,
+                )
+
+                ag_en, ag_pr, _ = load_group_agent_flags(c, int(group_id))
+                if (
+                    ag_en
+                    and (ag_pr or '').lower() == PRESET_CAREER_EXPERT
+                    and root_may_enable_agent(int(community_id_for_audio))
+                    and post_qualifies_for_ask_steve_schedule(content, has_media)
+                    and steve_reply_count_for_post(c, int(post_id)) == 0
+                ):
+                    schedule_agent_first_reply(c, int(post_id), username)
+            try:
+                from backend.services.group_feed_notifications import fanout_group_post_notifications
+
+                fanout_group_post_notifications(
+                    group_id=int(group_id),
+                    group_post_id=int(post_id),
+                    author_username=username,
+                    content=content,
+                    community_id=community_id_for_audio,
+                )
+            except Exception as fan_e:
+                logger.warning("group post notification fanout failed: %s", fan_e)
+            conn.commit()
             return jsonify({'success': True})
     except Exception as e:
         logger.error(f"api_group_posts_create error: {e}")
@@ -35443,6 +30533,16 @@ def api_group_posts_react():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
+            gp_t = '`group_posts`' if USE_MYSQL else 'group_posts'
+            c.execute(f"SELECT group_id FROM {gp_t} WHERE id = {ph}", (post_id,))
+            gr = c.fetchone()
+            if not gr:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            gid = gr['group_id'] if hasattr(gr, 'keys') else gr[0]
+            ok, err = check_group_feed_access(c, ph, username, int(gid))
+            if not ok:
+                return jsonify({'success': False, 'error': err or 'Forbidden'}), 403
             # Insert/Toggle
             try:
                 c.execute(f"INSERT INTO {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} (group_post_id, username, reaction) VALUES ({get_sql_placeholder()}, {get_sql_placeholder()}, {get_sql_placeholder()})",
@@ -35501,6 +30601,9 @@ def api_group_posts_edit():
                 or is_community_admin(username, community_id)
                 or (username == group_owner)
             )
+            ok_access, err_access = check_group_feed_access(c, ph, username, int(group_id))
+            if not ok_access:
+                return jsonify({'success': False, 'error': err_access or 'Forbidden'}), 403
             if not allowed:
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
 
@@ -35538,6 +30641,7 @@ def api_group_posts_delete():
             if not row:
                 return jsonify({'success': False, 'error': 'Post not found'}), 404
             author = row['username'] if hasattr(row, 'keys') else row[0]
+            group_id = row['group_id'] if hasattr(row, 'keys') else row[1]
             community_id = row['community_id'] if hasattr(row, 'keys') else row[2]
             group_owner = row['created_by'] if hasattr(row, 'keys') else row[3]
             allowed = (
@@ -35547,6 +30651,9 @@ def api_group_posts_delete():
                 or is_community_admin(username, community_id)
                 or (username == group_owner)
             )
+            ok_access, err_access = check_group_feed_access(c, ph, username, int(group_id))
+            if not ok_access:
+                return jsonify({'success': False, 'error': err_access or 'Forbidden'}), 403
             if not allowed:
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
             c.execute(f"DELETE FROM {'`group_posts`' if USE_MYSQL else 'group_posts'} WHERE id={ph}", (post_id,))
@@ -35582,10 +30689,26 @@ def api_group_replies_create():
     has_audio = 'audio' in request.files and bool(request.files['audio'].filename)
     if not content and not has_image and not has_audio:
         return jsonify({'success': False, 'error': 'Content, image, or audio is required'})
+    thread_payload = None
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
+            ok_feed, err_feed, _ = check_group_feed_access_for_group_post(c, ph, username, post_id)
+            if not ok_feed:
+                return jsonify({'success': False, 'error': err_feed or 'Forbidden'}), 403
+            from backend.services.group_steve_agent import (
+                PRESET_CAREER_EXPERT,
+                cancel_pending_agent_first_reply,
+                ensure_group_steve_agent_schema,
+                load_group_agent_flags,
+                mentions_steve,
+                root_may_enable_agent,
+            )
+
+            ensure_group_steve_agent_schema(c)
+            if mentions_steve(content):
+                cancel_pending_agent_first_reply(c, post_id)
             image_path = None
             video_path = None
             audio_path = None
@@ -35642,6 +30765,40 @@ def api_group_replies_create():
                     logger.warning(f"group reply audio summary failed: {sum_err}")
                     audio_summary = None
 
+            reply_group_id = None
+            try:
+                gp_t_rid = '`group_posts`' if USE_MYSQL else 'group_posts'
+                c.execute(f"SELECT group_id FROM {gp_t_rid} WHERE id = {ph}", (post_id,))
+                prow_gid = c.fetchone()
+                if prow_gid:
+                    reply_group_id = int(
+                        prow_gid['group_id'] if hasattr(prow_gid, 'keys') else prow_gid[0]
+                    )
+            except Exception:
+                reply_group_id = None
+            parent_author = None
+            if parent_id:
+                c.execute(f"SELECT username FROM {gr_table} WHERE id = {ph}", (parent_id,))
+                pa = c.fetchone()
+                if pa:
+                    parent_author = pa['username'] if hasattr(pa, 'keys') else pa[0]
+            if (
+                parent_id
+                and parent_author
+                and str(parent_author).lower() == AI_USERNAME.lower()
+                and not mentions_steve(content)
+                and content.strip()
+                and reply_group_id is not None
+                and community_id is not None
+            ):
+                ag_en, ag_pr, _ = load_group_agent_flags(c, reply_group_id)
+                if (
+                    ag_en
+                    and (ag_pr or '').lower() == PRESET_CAREER_EXPERT
+                    and root_may_enable_agent(int(community_id))
+                ):
+                    thread_payload = (post_id, parent_id, username, content.strip())
+
             now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
             legacy_image_slot = image_path or video_path
             try:
@@ -35673,7 +30830,7 @@ def api_group_replies_create():
                 schedule_steve_profiling_snapshot_refresh(username)
             except Exception:
                 pass
-            return jsonify({
+            resp_body = {
                 'success': True,
                 'reply': {
                     'id': reply_id,
@@ -35691,7 +30848,36 @@ def api_group_replies_create():
                     'children': [],
                     'reply_count': 0,
                 },
-            })
+            }
+            try:
+                from backend.services.group_feed_notifications import notify_group_post_reply_recipients
+
+                if reply_group_id is not None and reply_id:
+                    notify_group_post_reply_recipients(
+                        group_post_id=post_id,
+                        group_id=int(reply_group_id),
+                        from_user=username,
+                        community_id=int(community_id) if community_id is not None else None,
+                        parent_reply_id=parent_id,
+                        reply_id=int(reply_id),
+                        reply_content=content,
+                    )
+            except Exception as nre:
+                logger.warning("group reply notification failed: %s", nre)
+        if thread_payload:
+            app_obj = current_app._get_current_object()
+            threading.Thread(
+                target=_group_steve_agent_thread_runner,
+                args=(
+                    app_obj,
+                    thread_payload[0],
+                    thread_payload[1],
+                    thread_payload[2],
+                    thread_payload[3],
+                ),
+                daemon=True,
+            ).start()
+        return jsonify(resp_body)
     except Exception as e:
         logger.error(f"api_group_replies_create error: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
@@ -35712,6 +30898,13 @@ def api_group_replies_react():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
+            gid = fetch_group_id_for_group_reply(c, ph, reply_id)
+            if gid is None:
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
+            ok_feed, err_feed = check_group_feed_access(c, ph, username, gid)
+            if not ok_feed:
+                return jsonify({'success': False, 'error': err_feed or 'Forbidden'}), 403
             try:
                 c.execute(f"INSERT INTO {'`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'} (group_reply_id, username, reaction) VALUES ({get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()})",
                           (reply_id, username, reaction))
@@ -37969,7 +33162,7 @@ def create_workout():
     
     if 'username' not in session:
         print(f"Debug: User not logged in")
-        return jsonify({'success': False, 'error': 'Not logged in'})
+        return _api_errors.auth_required()
     
     try:
         name = request.form.get('name')
@@ -38029,7 +33222,7 @@ def create_workout():
 @app.route('/get_workouts', methods=['GET'])
 def get_workouts():
     if 'username' not in session:
-        return jsonify({'success': False, 'error': 'Not logged in'})
+        return _api_errors.auth_required()
     
     try:
         conn = get_db_connection()
@@ -38066,7 +33259,7 @@ def get_workouts():
 @app.route('/get_workout_details', methods=['GET'])
 def get_workout_details():
     if 'username' not in session:
-        return jsonify({'success': False, 'error': 'Not logged in'})
+        return _api_errors.auth_required()
     
     try:
         workout_id = request.args.get('workout_id')
@@ -38124,7 +33317,7 @@ def get_workout_details():
 @app.route('/add_exercise_to_workout', methods=['POST'])
 def add_exercise_to_workout():
     if 'username' not in session:
-        return jsonify({'success': False, 'error': 'Not logged in'})
+        return _api_errors.auth_required()
     
     try:
         workout_id = request.form.get('workout_id')
@@ -38178,7 +33371,7 @@ def add_exercise_to_workout():
 @app.route('/remove_exercise_from_workout', methods=['POST'])
 def remove_exercise_from_workout():
     if 'username' not in session:
-        return jsonify({'success': False, 'error': 'Not logged in'})
+        return _api_errors.auth_required()
     
     try:
         workout_exercise_id = request.form.get('workout_exercise_id')
@@ -38226,7 +33419,7 @@ def remove_exercise_from_workout():
 @app.route('/delete_workout', methods=['POST'])
 def delete_workout():
     if 'username' not in session:
-        return jsonify({'success': False, 'error': 'Not logged in'})
+        return _api_errors.auth_required()
     
     try:
         workout_id = request.form.get('workout_id')
@@ -38588,7 +33781,7 @@ def simple_test_route():
 def save_community_info():
     try:
         if 'username' not in session:
-            return jsonify({'success': False, 'error': 'Not logged in'})
+            return _api_errors.auth_required()
         
         community_id = request.form.get('community_id')
         info = request.form.get('info', '')
@@ -38606,7 +33799,7 @@ def save_community_info():
         if not community:
             return jsonify({'success': False, 'error': 'Community not found'})
         
-        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+        if not can_manage_community(session.get('username'), community_id):
             return jsonify({'success': False, 'error': 'Unauthorized'})
         
         # Save announcement to announcements table
@@ -38635,7 +33828,7 @@ def save_community_info():
 def upload_community_files():
     try:
         if 'username' not in session:
-            return jsonify({'success': False, 'error': 'Not logged in'})
+            return _api_errors.auth_required()
         
         community_id = request.form.get('community_id')
         
@@ -38652,7 +33845,7 @@ def upload_community_files():
         if not community:
             return jsonify({'success': False, 'error': 'Community not found'})
         
-        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+        if not can_manage_community(session.get('username'), community_id):
             return jsonify({'success': False, 'error': 'Unauthorized'})
         
         # Create community files directory
@@ -38743,7 +33936,7 @@ def download_community_file(filename):
 def delete_community_file():
     try:
         if 'username' not in session:
-            return jsonify({'success': False, 'error': 'Not logged in'})
+            return _api_errors.auth_required()
         
         community_id = request.form.get('community_id')
         file_id = request.form.get('file_id')
@@ -38761,7 +33954,7 @@ def delete_community_file():
         if not community:
             return jsonify({'success': False, 'error': 'Community not found'})
         
-        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+        if not can_manage_community(session.get('username'), community_id):
             return jsonify({'success': False, 'error': 'Unauthorized'})
         
         # Get file info first
@@ -38798,7 +33991,7 @@ def delete_community_file():
 def save_community_announcement():
     try:
         if 'username' not in session:
-            return jsonify({'success': False, 'error': 'Not logged in'})
+            return _api_errors.auth_required()
         
         content = request.form.get('content')
         community_id_raw = request.form.get('community_id')
@@ -39025,7 +34218,7 @@ def get_community_announcements():
 def delete_community_announcement():
     try:
         if 'username' not in session:
-            return jsonify({'success': False, 'error': 'Not logged in'})
+            return _api_errors.auth_required()
         
         announcement_id = request.form.get('announcement_id')
         community_id_raw = request.form.get('community_id')
@@ -39121,31 +34314,11 @@ def download_announcement_file(file_id):
         logger.error(f"Error downloading community file: {e}")
         return "Error downloading file", 500
 
-@app.route('/debug_table_structure')
-def debug_table_structure():
-    """Debug route to check table structure"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Check community_files table structure
-        cursor.execute("SHOW COLUMNS FROM community_files")
-        columns = cursor.fetchall()
-        
-        conn.close()
-        
-        return jsonify({
-            'success': True,
-            'community_files_columns': [{'name': col[1], 'type': col[2], 'notnull': col[3]} for col in columns]
-        })
-        
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
 @app.route('/cleanup_missing_images')
 @login_required
 def cleanup_missing_images():
     """Clean up database references to missing image files"""
-    if session.get('username') != 'admin':
+    if not is_app_admin(session.get('username')):
         return "Access denied", 403
     
     try:
@@ -39185,7 +34358,7 @@ def seed_dummy_data():
     try:
         # Only allow admin to seed
         username = session.get('username')
-        if username != 'admin':
+        if not is_app_admin(username):
             return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
         import random
@@ -39922,18 +35095,6 @@ def get_active_chat_counts():
     except Exception as e:
         logger.error(f"Error in get_active_chat_counts: {e}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
-
-# Register encryption endpoints for E2E encryption
-try:
-    register_encryption_endpoints(app, get_db_connection, logger)
-except Exception as e:
-    logger.error(f"Failed to register encryption endpoints: {e}")
-
-try:
-    register_signal_endpoints(app, get_db_connection, logger)
-except Exception as e:
-    logger.error(f"Failed to register signal endpoints: {e}")
-
 
 @app.route('/api/admin/embeddings/backfill', methods=['POST'])
 @login_required

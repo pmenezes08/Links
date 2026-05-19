@@ -198,3 +198,26 @@ def test_manageable_communities_lists_roots_only(mysql_dsn):
     community_ids = {community["id"] for community in resp.get_json()["communities"]}
     assert root_id in community_ids
     assert child_id not in community_ids
+
+
+def test_hierarchical_communities_include_creator_owned_without_membership(mysql_dsn):
+    import bodybuilding_app
+
+    make_user("JohnDoe", subscription="premium")
+    root_id = make_community(
+        "johndoe-owned-without-membership",
+        tier="free",
+        creator_username="JohnDoe",
+    )
+
+    client = bodybuilding_app.app.test_client()
+    _login(client, "JohnDoe")
+
+    resp = client.get("/api/user_communities_hierarchical")
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["success"] is True
+    assert body["username"] == "JohnDoe"
+    community_ids = {community["id"] for community in body["communities"]}
+    assert root_id in community_ids

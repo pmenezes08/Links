@@ -10,11 +10,11 @@ Three orthogonal invariants this page is in charge of:
    mode's price ID. Test mode (``sk_test_*`` key) emits ``*_test`` IDs,
    live mode emits ``*_live`` IDs. This is the admin's safety rail
    against accidental live-mode charges on staging.
-3. **Purchasability** — cards without a populated price ID come back
-   ``purchasable: False`` so the client renders a disabled CTA instead
-   of surfacing a cryptic Stripe error post-click. The two "Coming
-   soon" cards (``steve_package`` / ``networking``) are always
-   ``purchasable: False`` regardless of whether the KB has an ID yet.
+3. **Purchasability** — SKUs without a populated Stripe price ID for the
+   active API mode return ``purchasable: False``. ``networking`` remains in
+   ``coming_soon`` until that checkout path ships; ``steve_package`` mirrors
+   Premium / Paid tiers (``coming_soon`` flips off when the KB has a mode-
+   appropriate price ID).
 
 We deliberately don't test the admin KB CRUD path here — that lives in
 ``test_steve_knowledge_base.py``. We only verify the commerce-facing read.
@@ -73,6 +73,8 @@ def _seed_pricing_kb(
     paid_l2_live: str = "price_l2_live",
     paid_l3_test: str = "price_l3_test",
     paid_l3_live: str = "price_l3_live",
+    steve_test: str = "",
+    steve_live: str = "",
     networking_test: str = "price_net_test",
     networking_live: str = "price_net_live",
 ) -> None:
@@ -113,6 +115,8 @@ def _seed_pricing_kb(
         "paid_l2_stripe_price_id_live": paid_l2_live,
         "paid_l3_stripe_price_id_test": paid_l3_test,
         "paid_l3_stripe_price_id_live": paid_l3_live,
+        "paid_steve_package_stripe_price_id_test": steve_test,
+        "paid_steve_package_stripe_price_id_live": steve_live,
     })
     _override("networking-page", {
         "networking_page_stripe_price_id_test": networking_test,
@@ -162,6 +166,9 @@ class TestShape:
         assert premium["currency"] == "EUR"
         assert isinstance(premium["features"], list) and premium["features"]
         assert "cta_label" in premium
+        assert float(premium["price_eur"]) == 7.99
+        assert float(premium["early_price_eur"]) == 4.99
+        assert int(premium["early_adoption_duration_months"]) == 3
 
         # Community tier card — three sub-tiers.
         ct = sku["community_tier"]
@@ -173,9 +180,12 @@ class TestShape:
             assert "price_eur" in tier
             assert "stripe_price_id" in tier
 
-        # Coming soon cards — flagged.
-        assert sku["steve_package"]["coming_soon"] is True
-        assert sku["steve_package"]["purchasable"] is False
+        steve_card = sku["steve_package"]
+        assert steve_card["sku"] == "steve_package"
+        steve_ready = bool(steve_card.get("stripe_price_id"))
+        assert steve_card["purchasable"] is steve_ready
+        assert steve_card["coming_soon"] is (not steve_ready)
+
         assert sku["networking"]["coming_soon"] is True
         assert sku["networking"]["purchasable"] is False
 
@@ -194,6 +204,8 @@ class TestModeFiltering:
             premium_live="price_only_live_xyz",
             paid_l1_test="price_l1_test_abc",
             paid_l1_live="price_l1_live_xyz",
+            steve_test="price_steve_test_abc",
+            steve_live="price_steve_live_xyz",
         )
         _login(client, "mode_test_user")
 
@@ -203,12 +215,14 @@ class TestModeFiltering:
         l1 = next(t for t in body["sku"]["community_tier"]["tiers"]
                   if t["tier_code"] == "paid_l1")
         assert l1["stripe_price_id"] == "price_l1_test_abc"
+        assert body["sku"]["steve_package"]["stripe_price_id"] == "price_steve_test_abc"
 
         # The raw live IDs must not be leaked anywhere in the payload.
         import json
         serialized = json.dumps(body)
         assert "price_only_live_xyz" not in serialized
         assert "price_l1_live_xyz" not in serialized
+        assert "price_steve_live_xyz" not in serialized
 
     def test_live_mode_emits_live_ids(self, client, monkeypatch):
         _set_stripe_mode(monkeypatch, "live")
@@ -218,6 +232,8 @@ class TestModeFiltering:
             premium_live="price_only_live_xyz",
             paid_l1_test="price_l1_test_abc",
             paid_l1_live="price_l1_live_xyz",
+            steve_test="price_steve_test_abc",
+            steve_live="price_steve_live_xyz",
         )
         _login(client, "mode_live_user")
 
@@ -227,11 +243,13 @@ class TestModeFiltering:
         l1 = next(t for t in body["sku"]["community_tier"]["tiers"]
                   if t["tier_code"] == "paid_l1")
         assert l1["stripe_price_id"] == "price_l1_live_xyz"
+        assert body["sku"]["steve_package"]["stripe_price_id"] == "price_steve_live_xyz"
 
         import json
         serialized = json.dumps(body)
         assert "price_only_test_abc" not in serialized
         assert "price_l1_test_abc" not in serialized
+        assert "price_steve_test_abc" not in serialized
 
 
 # ── 4. Graceful fallback ────────────────────────────────────────────────
@@ -242,6 +260,7 @@ class TestGracefulFallback:
 
     def test_unseeded_kb_returns_coming_soon_cards(self, client, monkeypatch):
         _set_stripe_mode(monkeypatch, "test")
+        monkeypatch.setenv("STRIPE_PRICE_PREMIUM_MONTHLY", "price_legacy_env_should_not_leak")
         make_user("empty_kb_user", subscription="free")
         # No seed call — KB is empty.
         _login(client, "empty_kb_user")

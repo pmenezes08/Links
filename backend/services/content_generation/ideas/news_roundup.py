@@ -14,6 +14,8 @@ from backend.services.content_generation.ideas.roundup_format import (
     filter_section_items,
     filter_sources,
     merge_source_links,
+    news_recency_min_date_for_job,
+    news_recency_prompt_clause,
     render_sections_markdown,
     render_sources_section,
     strip_feed_markdown_emphasis,
@@ -111,6 +113,9 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
     if topic_mode not in {"manual", "auto"}:
         raise ValueError("Topic mode must be manual or auto")
 
+    min_date, recency_tz, recency_cadence = news_recency_min_date_for_job(job)
+    recency_instructions = news_recency_prompt_clause(min_date, recency_tz, recency_cadence)
+
     topic = str(payload.get("topic") or "").strip()
     topic_seed = str(payload.get("topic_seed") or "").strip()
     community_name = _community_name(int(job.get("community_id") or 0))
@@ -118,6 +123,9 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
         "topic_mode": topic_mode,
         "topic_seed": topic_seed,
         "community_name": community_name,
+        "recency_min_date": min_date.isoformat(),
+        "recency_timezone": recency_tz,
+        "recency_cadence": recency_cadence,
     }
 
     if topic_mode == "auto":
@@ -127,6 +135,7 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             topic_seed=topic_seed,
             community_name=community_name,
             community_context_enabled=_is_enabled(payload.get("community_context_enabled"), default=True),
+            recency_instructions=recency_instructions,
         )
         topic = str(plan.get("topic") or "").strip()
         topic_meta.update(
@@ -139,6 +148,20 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
     elif not topic:
         raise ValueError("A topic is required for news roundups when topic mode is manual")
 
+    safety_prompt = ""
+    professional_advice_topic = False
+    try:
+        from backend.services.steve_platform_manual import (
+            SURFACE_CONTENT,
+            is_professional_advice_intent,
+            render_global_steve_safety_prompt,
+        )
+
+        professional_advice_topic = is_professional_advice_intent(topic)
+        safety_prompt = render_global_steve_safety_prompt(topic, surface=SURFACE_CONTENT)
+    except Exception:
+        safety_prompt = ""
+
     allowed_list = ", ".join(sorted(domain for domain in NEWS_PUBLIC_DOMAINS if not domain.startswith("www.")))
     result = generate_web_search_json(
         system_prompt=(
@@ -146,11 +169,11 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             "Only use public, non-paywalled news sources from this allowlist: "
             f"{allowed_list}. "
             f"{_NEWS_MIXED_OUTLET_GUIDANCE} "
+            f"{recency_instructions} "
+            "Still avoid articles whose original publication is more than about three years old "
+            "unless the topic is explicitly historical. "
             "Return JSON with keys: hook, sections, cta, sources, source_links. "
             "hook: 1-2 natural, human-sounding sentences that set up the topic without hype, slang, or snark. "
-            "RECENCY: Prefer stories published within the last few weeks or months; avoid articles whose original "
-            "publication is more than about three years old unless the topic is explicitly historical. "
-            "Set published_date from each article page when available. "
             "sections: array of 3-5 objects, each with "
             '"title" (short section heading that fits THIS topic — e.g. Economy, Policy, World, Tech, Science, Sports, Infrastructure — pick labels that match the story set, not a generic laundry list) '
             'and "items" (array of 1-3 story objects per section). '
@@ -158,7 +181,7 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             '"title" (short readable headline), '
             '"url" (full https URL from the allowlist), '
             '"outlet" (e.g. Reuters, BBC, AP), '
-            '"published_date" (e.g. 14 Apr 2026 or March 2026), '
+            '"published_date" (ISO YYYY-MM-DD or DD Mon YYYY; required for recency), '
             '"why_it_matters" (exactly one clear sentence), '
             '"key_stat" (one striking number or fact, or empty string if none), '
             '"source_label" (short source line label for the SOURCES section, e.g. Portugal deficit cap). '
@@ -168,12 +191,13 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
             "Do not mention email newsletters or subscribing. "
             'sources: array of objects with "title", "outlet", "published_date", and "url" for the bottom SOURCES section. '
             "source_links: array of every article URL you used (must match allowlist). "
-            "Do not use markdown emphasis markers (** or *) in text fields — plain sentences only."
+            "Do not use markdown emphasis markers (** or *) in text fields — plain sentences only. "
+            f"{safety_prompt}"
         ),
         user_prompt=(
             f"Topic: {topic}\n"
             "Write a community-friendly news update. Lead with the hook, then grouped sections. "
-            "Prioritize recent reporting; avoid decade-old articles unless the topic is historical. "
+            "Obey the RECENCY rule in the system message for every story. "
             "Every url in sections must appear in source_links. "
             "The final prose should read like a smart human briefing, not AI output. "
             "Do not cite paywalled sources. No XML, markdown emphasis markers, or citation tags in text fields."
@@ -182,13 +206,24 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
         temperature=0.35,
     )
 
+    raw_sections = result.get("sections")
+    had_structured_sections = isinstance(raw_sections, list) and len(raw_sections) > 0
+
     min_year = default_min_publication_year()
     filtered_sections = filter_section_items(
         result.get("sections"),
         NEWS_PUBLIC_DOMAINS,
         min_publication_year=min_year,
+        min_publication_date=min_date,
     )
-    structured_sources = filter_sources(result.get("sources"), NEWS_PUBLIC_DOMAINS)
+    structured_sources = filter_sources(
+        result.get("sources"), NEWS_PUBLIC_DOMAINS, min_publication_date=min_date
+    )
+
+    if had_structured_sections and not filtered_sections:
+        raise ValueError(
+            "No on-allowlist stories within this job's recency window; widen the topic, adjust schedule, or retry."
+        )
 
     if filtered_sections:
         hook = strip_feed_markdown_emphasis(str(result.get("hook") or "").strip())
@@ -232,6 +267,13 @@ def execute(job: Dict[str, Any]) -> IdeaExecutionResult:
 
     if not links:
         raise ValueError("No valid public news source links were returned")
+
+    if professional_advice_topic:
+        try:
+            from backend.services.steve_platform_manual import append_professional_disclaimer_if_needed
+            body = append_professional_disclaimer_if_needed(body, topic)
+        except Exception:
+            pass
 
     topic_meta["roundup_format"] = "structured" if filtered_sections else "legacy"
 

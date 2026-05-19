@@ -43,6 +43,17 @@ ACTIONS = {
     "community_tier_updated",
     "community_tier_cancelled",
     "community_tier_past_due",
+    # Platform-admin community actions
+    "community_admin_deleted",
+    "community_admin_frozen",
+    "community_admin_unfrozen",
+    "community_admin_tier_upgraded",
+    "community_admin_tier_downgraded",
+    "community_admin_stripe_cancelled",
+    # System auto-actions (webhook + lifecycle hooks)
+    "community_auto_frozen_subscription_expired",
+    "community_auto_unfrozen_member_removed",
+    "community_auto_unfrozen_subscription_active",
     # Enterprise seats
     "enterprise_seat_joined",
     "enterprise_seat_left",
@@ -63,6 +74,7 @@ ACTIONS = {
     # Admin overrides
     "admin_seat_end_override",
     "admin_grace_extended",
+    "trial_revoked_by_admin",
     # Usage cycle notifications (queued by cron, delivered by push/email layer)
     "usage_cycle_warning_80",
     "usage_cycle_warning_95",

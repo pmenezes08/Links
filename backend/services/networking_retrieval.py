@@ -10,8 +10,24 @@ This module keeps the retrieval logic deterministic and cheap:
 from __future__ import annotations
 
 import re
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
+
+# Caps for Networking /api/networking/steve_match conversation context.
+# Client: send >= NETWORKING_GROK_PRIOR_MESSAGES_CAP turns (Networking.tsx NETWORKING_CHAT_HISTORY_SEND_CAP).
+NETWORKING_RETRIEVAL_PRIOR_USER_MESSAGES = 10
+NETWORKING_PLANNER_PRIOR_USER_LINES = 10
+NETWORKING_PLANNER_CONVERSATION_TURNS_SCAN = 40
+NETWORKING_GROK_PRIOR_MESSAGES_CAP = 30
+
+# Member roster SQL column indices (0-based). See steve_match SELECT: first_name/last_name appended after professional_about.
+NETWORKING_MEMBER_COL_USERNAME = 0
+NETWORKING_MEMBER_COL_DISPLAY_NAME = 1
+NETWORKING_MEMBER_COL_FIRST_NAME = 11
+NETWORKING_MEMBER_COL_LAST_NAME = 12
+
+NETWORKING_PLANNER_MEMBER_CAP = 120
+NETWORKING_LEGAL_NAME_DISPLAY_MAX_CHARS = 80
 
 _RRF_K = 60
 _STRUCTURED_WEIGHT = 1.75
@@ -78,6 +94,13 @@ _FOLLOW_UP_PREFIXES = (
     "tell me more about",
     "more on",
     "what about @",
+    "yes",
+    "yeah",
+    "yep",
+    "i mean",
+    "i meant",
+    "to clarify",
+    "specifically",
 )
 
 _FOLLOW_UP_EXACT = {
@@ -97,6 +120,25 @@ _PLANNER_LEAD_PHRASES = (
     "anyone who",
     "someone who",
     "people who",
+    "introduce me to someone who",
+)
+
+_GOAL_SEEKING_PHRASES = (
+    "i want to",
+    "i would like to",
+    "help me",
+    "can help me",
+    "achieve",
+    "learn",
+    "become",
+    "try",
+    "dream",
+    "mentor",
+    "advise",
+    "advice",
+    "guide me",
+    "teach me",
+    "get into",
 )
 
 _INDUSTRY_ALIASES = {
@@ -172,6 +214,7 @@ KB_DIMENSIONS = (
     "Network",
     "UniqueFingerprint",
     "InferredContext",
+    "LifeInterests",
 )
 
 _FACET_DIMENSION_MAP = {
@@ -180,8 +223,8 @@ _FACET_DIMENSION_MAP = {
     "roles": ("LifeCareer", "Expertise", "CompanyIntel", "Index"),
     "company_builder": ("LifeCareer", "UniqueFingerprint", "CompanyIntel", "Identity"),
     "traits": ("Identity", "UniqueFingerprint", "Index"),
-    "interests": ("Identity", "InferredContext", "UniqueFingerprint"),
-    "experiences": ("InferredContext", "LifeCareer", "GeographyCulture", "UniqueFingerprint"),
+    "interests": ("LifeInterests", "Identity", "InferredContext", "UniqueFingerprint"),
+    "experiences": ("LifeCareer", "Expertise", "InferredContext", "UniqueFingerprint"),
     "identity_life_stage": ("Identity", "InferredContext", "UniqueFingerprint"),
 }
 
@@ -191,8 +234,8 @@ _FACET_HARD_DIMENSION_MAP = {
     "roles": ("LifeCareer",),
     "company_builder": ("LifeCareer",),
     "traits": ("Identity",),
-    "interests": ("Identity",),
-    "experiences": ("InferredContext",),
+    "interests": ("LifeInterests",),
+    "experiences": ("LifeCareer",),
     "identity_life_stage": ("Identity",),
 }
 
@@ -202,8 +245,8 @@ _FACET_STRUCTURED_DIMENSION_MAP = {
     "roles": ("LifeCareer",),
     "company_builder": ("LifeCareer",),
     "traits": ("Identity",),
-    "interests": ("Identity",),
-    "experiences": ("InferredContext",),
+    "interests": ("LifeInterests", "Identity", "InferredContext"),
+    "experiences": ("LifeCareer", "Expertise", "InferredContext"),
     "identity_life_stage": ("Identity",),
 }
 
@@ -218,6 +261,7 @@ _DIMENSION_WEIGHT = {
     "Network": 0.95,
     "UniqueFingerprint": 1.1,
     "InferredContext": 1.1,
+    "LifeInterests": 1.2,
 }
 
 _STRUCTURED_DIMENSION_FIELDS = {
@@ -231,6 +275,7 @@ _STRUCTURED_DIMENSION_FIELDS = {
     "Network": ("interests", "bio", "professional_about"),
     "UniqueFingerprint": ("bio", "professional_about", "company", "role", "interests"),
     "InferredContext": ("bio", "interests", "professional_about", "profile_location", "company"),
+    "LifeInterests": ("interests", "bio", "professional_about"),
 }
 
 
@@ -300,6 +345,42 @@ def _normalize_constraint_keys(values: Any) -> list[str]:
     return out
 
 
+def _query_has_goal_seeking_intent(message_norm: str) -> bool:
+    if not message_norm:
+        return False
+    return any(phrase in message_norm for phrase in _GOAL_SEEKING_PHRASES)
+
+
+def _query_terms_from_plan(query_plan: dict[str, Any] | None, *field_names: str) -> list[str]:
+    if not isinstance(query_plan, dict):
+        return []
+    terms: list[str] = []
+    for field_name in field_names:
+        terms.extend(_query_keywords(_normalize_text(query_plan.get(field_name) or ""))[:16])
+    return _dedupe_keep_order(terms)
+
+
+def _dimension_analysis_priorities(query_plan: dict[str, Any] | None) -> dict[str, str]:
+    if not isinstance(query_plan, dict):
+        return {}
+    analysis = query_plan.get("dimension_analysis") or {}
+    if not isinstance(analysis, dict):
+        return {}
+    out: dict[str, str] = {}
+    for dimension, info in analysis.items():
+        if dimension not in KB_DIMENSIONS:
+            continue
+        if isinstance(info, dict):
+            priority = str(info.get("priority") or "").strip().lower()
+        else:
+            priority = str(info or "").strip().lower()
+        if priority == "ignore":
+            priority = "ignored"
+        if priority in {"primary", "secondary", "hard", "ignored"}:
+            out[dimension] = priority
+    return out
+
+
 def _dimension_terms_from_facets(query_plan: dict[str, Any] | None) -> dict[str, list[str]]:
     out = {dimension: [] for dimension in KB_DIMENSIONS}
     if not isinstance(query_plan, dict):
@@ -326,10 +407,15 @@ def build_dimension_plan(query_plan: dict[str, Any] | None = None) -> dict[str, 
     primary = _normalize_dimension_list(query_plan.get("primary_dimensions"))
     secondary = _normalize_dimension_list(query_plan.get("secondary_dimensions"))
     hard = _normalize_dimension_list(query_plan.get("hard_dimensions"))
+    analysis_priorities = _dimension_analysis_priorities(query_plan)
 
     if not primary and not secondary:
+        if analysis_priorities:
+            primary = [d for d, p in analysis_priorities.items() if p in {"primary", "hard"}]
+            secondary = [d for d, p in analysis_priorities.items() if p == "secondary"]
+            hard = hard or [d for d, p in analysis_priorities.items() if p == "hard"]
         facets = query_plan.get("facets") or {}
-        if isinstance(facets, dict):
+        if not primary and not secondary and isinstance(facets, dict):
             for facet, dimensions in _FACET_DIMENSION_MAP.items():
                 if _normalize_phrase_list(facets.get(facet)):
                     for idx, dimension in enumerate(dimensions):
@@ -338,8 +424,8 @@ def build_dimension_plan(query_plan: dict[str, Any] | None = None) -> dict[str, 
                             target.append(dimension)
 
     if not primary and query_plan.get("search_rewrite"):
-        primary = ["Index", "Expertise", "LifeCareer"]
-        secondary = ["Identity", "UniqueFingerprint", "InferredContext"]
+        primary = ["LifeCareer", "Expertise", "InferredContext", "UniqueFingerprint"]
+        secondary = ["Index", "Identity", "GeographyCulture", "CompanyIntel", "Network", "Opinions"]
 
     if not hard:
         legacy_hard = _normalize_constraint_keys(query_plan.get("hard_constraints"))
@@ -350,19 +436,30 @@ def build_dimension_plan(query_plan: dict[str, Any] | None = None) -> dict[str, 
 
     dimension_terms = _dimension_terms_from_facets(query_plan)
     fallback_terms = _query_keywords(_normalize_text(query_plan.get("search_rewrite") or ""))
+    direct_terms = _query_terms_from_plan(query_plan, "direct_evidence_query")
+    adjacent_terms = _query_terms_from_plan(query_plan, "adjacent_evidence_query")
+    deprioritized_terms = _query_terms_from_plan(query_plan, "deprioritized_evidence_query")
     for dimension in primary + secondary + hard:
         if not dimension_terms.get(dimension):
-            dimension_terms[dimension] = fallback_terms[:8]
+            if dimension in primary or dimension in hard:
+                dimension_terms[dimension] = _dedupe_keep_order(direct_terms + fallback_terms)[:12]
+            else:
+                dimension_terms[dimension] = _dedupe_keep_order(adjacent_terms + fallback_terms)[:12]
 
     plan = {
         "primary_dimensions": _dedupe_keep_order(primary),
         "secondary_dimensions": [d for d in _dedupe_keep_order(secondary) if d not in primary],
         "hard_dimensions": _dedupe_keep_order(hard),
         "dimension_terms": {d: terms for d, terms in dimension_terms.items() if terms},
+        "direct_evidence_terms": direct_terms,
+        "adjacent_evidence_terms": adjacent_terms,
+        "deprioritized_evidence_terms": deprioritized_terms,
+        "dimension_analysis": query_plan.get("dimension_analysis") or {},
         "named_people": [str(v).strip() for v in (query_plan.get("named_people") or []) if str(v).strip()],
         "search_rewrite": str(query_plan.get("search_rewrite") or "").strip(),
         "needs_clarification": bool(query_plan.get("needs_clarification")),
         "clarifying_question": str(query_plan.get("clarifying_question") or "").strip(),
+        "search_state_action": str(query_plan.get("search_state_action") or "retrieve").strip(),
     }
     relevant = plan["primary_dimensions"] or plan["secondary_dimensions"] or plan["hard_dimensions"]
     return plan if relevant or plan["named_people"] or plan["search_rewrite"] else None
@@ -418,35 +515,119 @@ def _structural_constraint_count(message: str) -> int:
 
 
 def should_use_reasoning_planner(message: str, conversation_history: Any = None) -> bool:
-    """Use the extra planner only when the query is complex enough to justify it."""
-    norm = _normalize_text(message)
-    if not norm:
-        return False
-    if _looks_like_follow_up(message) and _history_user_messages(conversation_history):
-        return True
-    if "@" in message:
-        return True
-    keyword_count = len(_query_keywords(norm))
-    if keyword_count >= 3 and any(norm.startswith(prefix) for prefix in _PLANNER_LEAD_PHRASES):
-        return True
-    if _structural_constraint_count(message) >= 2 and keyword_count >= 3:
-        return True
-    if keyword_count >= 7:
-        return True
-    return False
+    """Run the reasoning planner for every non-empty manual Steve search."""
+    return bool(_normalize_text(message))
 
 
 def build_retrieval_query(message: str, conversation_history: Any = None, query_plan: dict[str, Any] | None = None) -> str:
     """Build a retrieval-oriented query, preserving follow-up context when needed."""
-    current = str((query_plan or {}).get("search_rewrite") or message or "").strip()
+    if query_plan:
+        planned_parts = [
+            str(query_plan.get("search_rewrite") or "").strip(),
+            str(query_plan.get("direct_evidence_query") or "").strip(),
+        ]
+        current = re.sub(r"\s+", " ", " ".join(part for part in planned_parts if part)).strip()
+    else:
+        current = ""
+    current = current or str(message or "").strip()
     if not current:
         return ""
     prior_user_messages = _history_user_messages(conversation_history)
     if not _looks_like_follow_up(message) or not prior_user_messages:
         return current
-    prior_context = prior_user_messages[-2:]
+    prior_context = prior_user_messages[-NETWORKING_RETRIEVAL_PRIOR_USER_MESSAGES:]
     merged = " ".join(m for m in prior_context + [current] if str(m).strip())
     return re.sub(r"\s+", " ", merged).strip()
+
+
+_NAME_TOKEN_BLOCKLIST = _STOPWORDS | frozenset(
+    {
+        "steve",
+        "admin",
+    }
+)
+
+
+def networking_planner_member_block(
+    member_rows: Sequence[Any],
+    getter: Callable[[Any, int], Any],
+    *,
+    cap: int = NETWORKING_PLANNER_MEMBER_CAP,
+) -> str:
+    """One line per roster member for the reasoning planner (display + optional legal name)."""
+    lines: list[str] = []
+    for row in member_rows[:cap]:
+        username = _row_value(row, getter, NETWORKING_MEMBER_COL_USERNAME).strip()
+        display_name = _row_value(row, getter, NETWORKING_MEMBER_COL_DISPLAY_NAME).strip()
+        if not username:
+            continue
+        fn = (_row_value(row, getter, NETWORKING_MEMBER_COL_FIRST_NAME) or "").strip()
+        ln = (_row_value(row, getter, NETWORKING_MEMBER_COL_LAST_NAME) or "").strip()
+        legal = " ".join(part for part in (fn, ln) if part).strip()
+        if legal:
+            lines.append(f"- @{username} | {display_name} | {legal}")
+        else:
+            lines.append(f"- @{username} | {display_name}")
+    return "\n".join(lines) if lines else "- (none)"
+
+
+def _usernames_from_message_legal_tokens(
+    message: str,
+    given_unique: dict[str, str],
+    by_full: dict[str, str],
+) -> list[str]:
+    """Map unambiguous legal first names and unique full names appearing in *message*."""
+    out: list[str] = []
+    msg_norm = _normalize_text(message or "")
+    if msg_norm:
+        for full_key, uname in by_full.items():
+            if _contains_term(msg_norm, full_key):
+                out.append(uname)
+    for tok in re.findall(r"[A-Za-z][A-Za-z0-9']{2,}", message or ""):
+        tlow = tok.lower()
+        if tlow in _NAME_TOKEN_BLOCKLIST:
+            continue
+        wf = _normalize_text(tok)
+        if len(wf) < 3:
+            continue
+        if wf in given_unique:
+            out.append(given_unique[wf])
+    return _dedupe_keep_order(out)
+
+
+def _networking_resolver_maps(
+    member_rows: Sequence[Any],
+    getter: Callable[[Any, int], Any],
+) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
+    """by_username_norm, by_display_norm, given_unique_norm -> username, full_unique_norm -> username."""
+    by_username: dict[str, str] = {}
+    by_display: dict[str, str] = {}
+    first_groups: dict[str, list[str]] = {}
+    full_groups: dict[str, list[str]] = {}
+    for row in member_rows:
+        username = _row_value(row, getter, NETWORKING_MEMBER_COL_USERNAME).strip()
+        display_name = _row_value(row, getter, NETWORKING_MEMBER_COL_DISPLAY_NAME).strip()
+        if not username:
+            continue
+        uname_norm = _normalize_text(username)
+        if uname_norm:
+            by_username[uname_norm] = username
+        display_norm = _normalize_text(display_name)
+        if display_norm:
+            by_display[display_norm] = username
+
+        raw_fn = (_row_value(row, getter, NETWORKING_MEMBER_COL_FIRST_NAME) or "").strip()
+        raw_ln = (_row_value(row, getter, NETWORKING_MEMBER_COL_LAST_NAME) or "").strip()
+        uf = _normalize_text(raw_fn)
+        ul = _normalize_text(raw_ln)
+        if uf:
+            first_groups.setdefault(uf, []).append(username)
+        if uf and ul:
+            full_groups.setdefault(f"{uf} {ul}", []).append(username)
+
+    given_unique = {k: v[0] for k, v in first_groups.items() if len(v) == 1}
+    by_full = {k: v[0] for k, v in full_groups.items() if len(v) == 1}
+    return by_username, by_display, given_unique, by_full
 
 
 def resolve_named_people(
@@ -457,24 +638,13 @@ def resolve_named_people(
     query_plan: dict[str, Any] | None = None,
 ) -> list[str]:
     """Resolve explicit names/@mentions to usernames so they are always evaluated."""
-    by_username: dict[str, str] = {}
-    by_display: dict[str, str] = {}
-    for row in member_rows:
-        username = _row_value(row, getter, 0).strip()
-        display_name = _row_value(row, getter, 1).strip()
-        if not username:
-            continue
-        uname_norm = _normalize_text(username)
-        if uname_norm:
-            by_username[uname_norm] = username
-        display_norm = _normalize_text(display_name)
-        if display_norm:
-            by_display[display_norm] = username
+    by_username, by_display, given_unique, by_full = _networking_resolver_maps(member_rows, getter)
 
     raw_names: list[str] = []
     raw_names.extend(re.findall(r"@([A-Za-z0-9_]{1,40})", message or ""))
     qp = query_plan or {}
     raw_names.extend(str(v).strip() for v in (qp.get("named_people") or []) if str(v).strip())
+    raw_names.extend(_usernames_from_message_legal_tokens(message or "", given_unique, by_full))
 
     resolved: list[str] = []
     for raw in raw_names:
@@ -483,6 +653,12 @@ def resolve_named_people(
             continue
         if norm in by_username:
             resolved.append(by_username[norm])
+            continue
+        if norm in by_full:
+            resolved.append(by_full[norm])
+            continue
+        if norm in given_unique:
+            resolved.append(given_unique[norm])
             continue
         if norm in by_display:
             resolved.append(by_display[norm])
@@ -537,6 +713,68 @@ def _structured_dimension_texts_from_row(
     return texts
 
 
+def _flatten_kb_value(value: Any, *, depth: int = 0) -> list[str]:
+    if depth > 5 or value is None:
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    if isinstance(value, (int, float, bool)):
+        return [str(value)]
+    if isinstance(value, Mapping):
+        parts: list[str] = []
+        for key, item in list(value.items())[:40]:
+            key_text = str(key or "").strip()
+            child = _flatten_kb_value(item, depth=depth + 1)
+            if not child:
+                continue
+            if key_text:
+                parts.append(key_text)
+            parts.extend(child)
+        return parts
+    if isinstance(value, (list, tuple, set)):
+        parts: list[str] = []
+        for item in list(value)[:40]:
+            parts.extend(_flatten_kb_value(item, depth=depth + 1))
+        return parts
+    return [str(value)]
+
+
+def _kb_dimension_texts_for_users(
+    usernames: Sequence[str],
+    dimensions: Sequence[str],
+) -> dict[str, dict[str, str]]:
+    planned_dimensions = _dedupe_keep_order([dimension for dimension in dimensions if dimension in KB_DIMENSIONS])
+    planned_usernames = _dedupe_keep_order([str(username).strip() for username in usernames if str(username).strip()])
+    if not planned_dimensions or not planned_usernames:
+        return {}
+    try:
+        from backend.services.steve_knowledge_base import batch_get_member_knowledge
+    except Exception:
+        return {}
+
+    try:
+        docs_by_user = batch_get_member_knowledge(planned_usernames, planned_dimensions)
+    except Exception:
+        return {}
+
+    out: dict[str, dict[str, str]] = {}
+    for username in planned_usernames:
+        docs = (docs_by_user or {}).get(username) or {}
+        user_texts: dict[str, str] = {}
+        for dimension in planned_dimensions:
+            doc = (docs or {}).get(dimension) or {}
+            if not isinstance(doc, Mapping):
+                continue
+            content = doc.get("content") or {}
+            parts = _flatten_kb_value(content)
+            if parts:
+                user_texts[dimension] = _normalize_text(" ".join(parts)[:5000])
+        if user_texts:
+            out[username] = user_texts
+    return out
+
+
 def _dimension_terms_for_plan(dimension_plan: dict[str, Any], dimension: str) -> list[str]:
     terms = _normalize_phrase_list((dimension_plan.get("dimension_terms") or {}).get(dimension))
     if terms:
@@ -556,14 +794,25 @@ def _structured_match_details_from_plan(
     secondary_dimensions = dimension_plan.get("secondary_dimensions") or []
     hard_dimensions = set(dimension_plan.get("hard_dimensions") or [])
     relevant_dimensions = _dedupe_keep_order(primary_dimensions + secondary_dimensions + list(hard_dimensions))
+    direct_evidence_terms = _normalize_phrase_list(dimension_plan.get("direct_evidence_terms"))
+    adjacent_evidence_terms = _normalize_phrase_list(dimension_plan.get("adjacent_evidence_terms"))
+    deprioritized_evidence_terms = _normalize_phrase_list(dimension_plan.get("deprioritized_evidence_terms"))
+    hard_constraints = _normalize_constraint_keys(retrieval_plan.get("hard_constraints"))
     if not relevant_dimensions:
         return {}
     details: dict[str, dict[str, Any]] = {}
+    row_usernames = [_row_value(row, getter, 0).strip() for row in member_rows]
+    kb_dimension_texts = _kb_dimension_texts_for_users(row_usernames, relevant_dimensions)
     for row in member_rows:
         username = _row_value(row, getter, 0).strip()
         if not username:
             continue
         dimension_texts = _structured_dimension_texts_from_row(row, getter)
+        for dimension, kb_text in (kb_dimension_texts.get(username) or {}).items():
+            if kb_text:
+                dimension_texts[dimension] = " ".join(
+                    part for part in (dimension_texts.get(dimension, ""), kb_text) if part
+                )
         dimension_scores: dict[str, float] = {}
         for dimension in relevant_dimensions:
             terms = _dimension_terms_for_plan(dimension_plan, dimension)
@@ -576,8 +825,27 @@ def _structured_match_details_from_plan(
         matched_dimensions = {dimension for dimension, score in dimension_scores.items() if score > 0}
         if not matched_dimensions:
             continue
+        primary_blob = " ".join(dimension_texts.get(dimension, "") for dimension in primary_dimensions + list(hard_dimensions))
+        secondary_blob = " ".join(dimension_texts.get(dimension, "") for dimension in secondary_dimensions)
+        all_relevant_blob = " ".join(dimension_texts.get(dimension, "") for dimension in relevant_dimensions)
+        direct_evidence_hits = _match_any_terms(primary_blob, direct_evidence_terms)
+        if not direct_evidence_hits:
+            direct_evidence_hits = _match_any_terms(all_relevant_blob, direct_evidence_terms)
+        adjacent_evidence_hits = _match_any_terms(secondary_blob or all_relevant_blob, adjacent_evidence_terms)
+        deprioritized_evidence_hits = _match_any_terms(all_relevant_blob, deprioritized_evidence_terms)
         hard_hits = sum(1 for dimension in hard_dimensions if dimension in matched_dimensions)
         hard_misses = sum(1 for dimension in hard_dimensions if dimension not in matched_dimensions)
+        hard_facet_hits = 0
+        hard_facet_misses = 0
+        for facet in hard_constraints:
+            terms = _facet_terms_with_aliases(facet, _plan_facet_terms(retrieval_plan, facet))
+            if not terms:
+                continue
+            dimensions = _FACET_STRUCTURED_DIMENSION_MAP.get(facet, _FACET_DIMENSION_MAP.get(facet, ()))
+            if any(_match_any_terms(dimension_texts.get(dimension, ""), terms) for dimension in dimensions):
+                hard_facet_hits += 1
+            else:
+                hard_facet_misses += 1
         primary_hits = sum(1 for dimension in primary_dimensions if dimension in matched_dimensions)
         secondary_hits = sum(1 for dimension in secondary_dimensions if dimension in matched_dimensions)
         score = (
@@ -585,7 +853,12 @@ def _structured_match_details_from_plan(
             + primary_hits * 3.0
             + secondary_hits * 1.25
             + hard_hits * 5.0
+            + hard_facet_hits * 4.0
+            + direct_evidence_hits * 4.0
+            + adjacent_evidence_hits * 1.0
             - hard_misses * 3.0
+            - hard_facet_misses * 8.0
+            - deprioritized_evidence_hits * 2.0
         )
         details[username] = {
             "username": username,
@@ -594,8 +867,13 @@ def _structured_match_details_from_plan(
             "matched_dimensions_count": len(matched_dimensions),
             "hard_hits": hard_hits,
             "hard_misses": hard_misses,
+            "hard_facet_hits": hard_facet_hits,
+            "hard_facet_misses": hard_facet_misses,
             "primary_hits": primary_hits,
             "secondary_hits": secondary_hits,
+            "direct_evidence_hits": direct_evidence_hits,
+            "adjacent_evidence_hits": adjacent_evidence_hits,
+            "deprioritized_evidence_hits": deprioritized_evidence_hits,
             "structured_score": score,
             "semantic_score": 0.0,
             "metadata_score": 0.0,
@@ -608,7 +886,14 @@ def _structured_match_details_from_plan(
     if cap and len(details) > cap:
         ranked = sorted(
             details.values(),
-            key=lambda item: (-item["hard_hits"], -item["primary_hits"], -item["matched_dimensions_count"], -item["score"], item["username"]),
+            key=lambda item: (
+                -item["hard_hits"],
+                -item["direct_evidence_hits"],
+                -item["primary_hits"],
+                -item["matched_dimensions_count"],
+                -item["score"],
+                item["username"],
+            ),
         )[:cap]
         return {item["username"]: item for item in ranked}
     return details
@@ -629,7 +914,14 @@ def _structured_candidates_from_plan(
     )
     ranked = sorted(
         details.values(),
-        key=lambda item: (-item["hard_hits"], -item["primary_hits"], -item["matched_dimensions_count"], -item["score"], item["username"]),
+        key=lambda item: (
+            -item["hard_hits"],
+            -item["direct_evidence_hits"],
+            -item["primary_hits"],
+            -item["matched_dimensions_count"],
+            -item["score"],
+            item["username"],
+        ),
     )
     return [item["username"] for item in ranked[:cap]]
 
@@ -1046,10 +1338,16 @@ def _merge_match_details(
         secondary_hits = sum(1 for dimension in secondary_dimensions if dimension in matched_dimensions)
         hard_hits = sum(1 for dimension in hard_dimensions if dimension in matched_dimensions)
         hard_misses = sum(1 for dimension in hard_dimensions if dimension not in matched_dimensions)
+        direct_evidence_hits = int(structured.get("direct_evidence_hits") or 0)
+        adjacent_evidence_hits = int(structured.get("adjacent_evidence_hits") or 0)
+        deprioritized_evidence_hits = int(structured.get("deprioritized_evidence_hits") or 0)
         combined_score = (
             float(structured.get("structured_score") or 0.0) * _STRUCTURED_WEIGHT
             + float(semantic.get("semantic_score") or 0.0) * _SEMANTIC_WEIGHT
             + sum(dimension_scores.values()) * 0.35
+            + direct_evidence_hits * 2.0
+            + adjacent_evidence_hits * 0.4
+            - deprioritized_evidence_hits * 1.0
             + metadata_score
         )
         merged[username] = {
@@ -1061,6 +1359,9 @@ def _merge_match_details(
             "secondary_hits": secondary_hits,
             "hard_hits": hard_hits,
             "hard_misses": hard_misses,
+            "direct_evidence_hits": direct_evidence_hits,
+            "adjacent_evidence_hits": adjacent_evidence_hits,
+            "deprioritized_evidence_hits": deprioritized_evidence_hits,
             "structured_score": float(structured.get("structured_score") or 0.0),
             "semantic_score": float(semantic.get("semantic_score") or 0.0),
             "metadata_score": metadata_score,
@@ -1107,7 +1408,10 @@ def _tiered_matches_from_details(
         primary_dimensions = info.get("primary_dimensions") or []
         hard_dimensions = info.get("hard_dimensions") or []
         direct_required = len(hard_dimensions) if hard_dimensions else (2 if len(primary_dimensions) >= 2 else 1)
-        if info.get("hard_misses", 0) == 0 and info.get("primary_hits", 0) >= max(1, direct_required):
+        if info.get("hard_misses", 0) == 0 and (
+            info.get("primary_hits", 0) >= max(1, direct_required)
+            or info.get("direct_evidence_hits", 0) > 0
+        ):
             tier_map[username] = "direct"
         elif info.get("primary_hits", 0) > 0 or info.get("secondary_hits", 0) > 0:
             tier_map[username] = "broader"

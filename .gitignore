@@ -1,3 +1,7 @@
+cloud-sql-proxy.exe
+
+node_modules/
+
 __pycache__/
 *.db
 users.db

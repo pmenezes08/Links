@@ -1,33 +1,140 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { useHeader } from '../contexts/HeaderContext'
 import { useUserProfile } from '../contexts/UserProfileContext'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { readDeviceCacheStale, writeDeviceCache } from '../utils/deviceCache'
-import { cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
+import { cacheKeyVal, deleteCachedKeyVal, getCachedKeyVal } from '../utils/offlineDb'
 import {
   DASHBOARD_CACHE_TTL_MS,
   DASHBOARD_CACHE_VERSION,
   DASHBOARD_DEVICE_CACHE_KEY,
+  invalidateDashboardCache,
   refreshDashboardCommunities,
 } from '../utils/dashboardCache'
 import type { DashboardCachePayload } from '../utils/dashboardCache'
 import { triggerDashboardServerPull } from '../utils/serverPull'
-import { handleLogoutClick } from '../utils/logout'
+import { useLogoutRequest } from '../contexts/LogoutPromptContext'
 import OnboardingChat from './OnboardingChat'
+import OnboardingIntroGate from '../components/onboarding/OnboardingIntroGate'
+import DashboardBottomNav, { isPremiumDashboardPath } from '../components/DashboardBottomNav'
+import AboutCPointModal from '../components/about/AboutCPointModal'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
 const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
-// type Community = { id: number; name: string; type: string }
+
+type Community = {
+  id: number
+  name: string
+  type: string
+  description?: string | null
+  member_count?: number
+  last_activity?: string | null
+  is_owner?: boolean
+  is_admin?: boolean
+  unread_posts_count?: number
+}
+
+type OnboardingStateSummary = {
+  profileDeferUntil?: string | null
+  serverTime?: string | null
+  requiresOnboardingResume?: boolean
+  onboardingComplete?: boolean
+  onboardingProgress?: {
+    personalSectionComplete?: boolean
+    professionalSectionComplete?: boolean
+    nextStage?: string
+  }
+}
+
+function formatOnboardingRemaining(
+  profileDeferUntil: string | null | undefined,
+  serverTime: string | null | undefined,
+  t: TFunction,
+): string {
+  if (!profileDeferUntil) return ''
+  const end = new Date(profileDeferUntil).getTime()
+  const server = serverTime ? new Date(serverTime).getTime() : Date.now()
+  if (Number.isNaN(end) || Number.isNaN(server)) return ''
+  const diffMs = end - server
+  if (diffMs <= 0) return t('dashboard.onboarding_ready')
+  const hours = Math.ceil(diffMs / 3600000)
+  const days = Math.floor(hours / 24)
+  const remHours = hours % 24
+  if (days > 0 && remHours > 0) {
+    const daysLabel = t(days === 1 ? 'dashboard.onboarding_day_one' : 'dashboard.onboarding_day_other')
+    const hoursLabel = t(remHours === 1 ? 'dashboard.onboarding_hour_one' : 'dashboard.onboarding_hour_other')
+    return t('dashboard.onboarding_remaining_days_hours', { days, hours: remHours, daysLabel, hoursLabel })
+  }
+  if (days > 0) {
+    const label = t(days === 1 ? 'dashboard.onboarding_day_one' : 'dashboard.onboarding_day_other')
+    return t('dashboard.onboarding_remaining_days', { count: days, label })
+  }
+  const label = t(hours === 1 ? 'dashboard.onboarding_hour_one' : 'dashboard.onboarding_hour_other')
+  return t('dashboard.onboarding_remaining_hours', { count: hours, label })
+}
+
+function formatLastActive(timestamp: string | null | undefined, t: TFunction): string {
+  if (!timestamp) return ''
+  try {
+    const date = new Date(timestamp)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (diffMins < 1) return t('dashboard.just_now')
+    if (diffMins < 60) return t('dashboard.minutes_ago_short', { count: diffMins })
+    if (diffHours < 24) return t('dashboard.hours_ago_short', { count: diffHours })
+    if (diffDays < 7) return t('dashboard.days_ago_short', { count: diffDays })
+    return date.toLocaleDateString()
+  } catch {
+    return ''
+  }
+}
+
+function dashboardDeviceCacheMatchesSession(c: DashboardCachePayload): boolean {
+  const pu = c.profile?.username?.trim()
+  if (!pu) return true
+  try {
+    const hint = localStorage.getItem('current_username')?.trim() ?? ''
+    if (!hint) return false
+    return pu === hint
+  } catch {
+    return false
+  }
+}
+
+function sortCommunitiesByRole(communities: Community[]): Community[] {
+  return [...communities].sort((a, b) => {
+    // Owner first
+    if (a.is_owner && !b.is_owner) return -1
+    if (!a.is_owner && b.is_owner) return 1
+    // Then admin
+    if (a.is_admin && !b.is_admin) return -1
+    if (!a.is_admin && b.is_admin) return 1
+    // Then alphabetically
+    return (a.name || '').localeCompare(b.name || '')
+  })
+}
 
 export default function PremiumDashboard() {
-  const { profile: contextProfile } = useUserProfile()
+  const { t } = useTranslation()
+  const requestLogout = useLogoutRequest()
+  const { applyProfileFromServer } = useUserProfile()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [hasGymAccess, setHasGymAccess] = useState(false)
-  const [communities, setCommunities] = useState<Array<{id: number, name: string, type: string}>>([])
+  const [communities, setCommunities] = useState<Community[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [joinCode, setJoinCode] = useState('')
+  const [showAboutCPointModal, setShowAboutCPointModal] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newCommName, setNewCommName] = useState('')
   const [newCommType, setNewCommType] = useState<'Gym'|'University'|'General'|'Business'>('General')
@@ -41,6 +148,8 @@ export default function PremiumDashboard() {
   const [initialLoading, setInitialLoading] = useState(true)
   // Onboarding
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const [showOnboardingWelcome, setShowOnboardingWelcome] = useState(false)
+  const [onboardingGateRequired, setOnboardingGateRequired] = useState(false)
   const [onboardingMode, setOnboardingMode] = useState<'fresh' | 'profile_builder'>('fresh')
   const [onboardingLaunching, setOnboardingLaunching] = useState(false)
   const [displayName, setDisplayName] = useState('')
@@ -52,9 +161,11 @@ export default function PremiumDashboard() {
   const [existingProfilePic, setExistingProfilePic] = useState<string>('')
   const [emailVerifiedAt, setEmailVerifiedAt] = useState<string | null>(null)
   const [isRecentlyVerified, setIsRecentlyVerified] = useState(false)
+  const [onboardingStateSummary, setOnboardingStateSummary] = useState<OnboardingStateSummary | null>(null)
   const onboardingTriggeredRef = useRef(false)  // Track if onboarding was already triggered
   const refreshInFlightRef = useRef(false)
   const lastScrollRefreshRef = useRef(0)
+  const prevPathnameForDashboardRef = useRef<string | null>(null)
   const [pullHint, setPullHint] = useState<'idle' | 'ready' | 'refreshing'>('idle')
   const [pullPx, setPullPx] = useState(0)
   const [joinedCommunityName, setJoinedCommunityName] = useState<string | null>(null)
@@ -62,15 +173,71 @@ export default function PremiumDashboard() {
   const [pendingInviteTarget, setPendingInviteTarget] = useState<{ communityId: number; communityName?: string | null } | null>(null)
   const [showSuccessModal, setShowSuccessModal] = useState(false)  // Success modal for join
   const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done'
-  const { setTitle, setHeaderHidden } = useHeader()
-  useEffect(() => { setTitle('Dashboard') }, [setTitle])
+  const { setTitle, setHeaderHidden, setTitleAccessory } = useHeader()
   useEffect(() => {
-    const hideHeaderForOnboarding = showOnboarding || onboardingLaunching
+    setTitle('')
+    return () => setTitle('')
+  }, [setTitle])
+  useEffect(() => {
+    const hideHeaderForOnboarding = showOnboarding || showOnboardingWelcome || onboardingLaunching || onboardingGateRequired
     setHeaderHidden(hideHeaderForOnboarding)
     return () => setHeaderHidden(false)
-  }, [showOnboarding, onboardingLaunching, setHeaderHidden])
+  }, [showOnboarding, showOnboardingWelcome, onboardingLaunching, onboardingGateRequired, setHeaderHidden])
+
+  useEffect(() => {
+    // Once Steve is mounted, the bridging overlay is no longer needed; clear it so it never
+    // lingers behind the dashboard if the user later exits onboarding.
+    if (showOnboarding && onboardingLaunching) {
+      setOnboardingLaunching(false)
+    }
+  }, [showOnboarding, onboardingLaunching])
+
+  useEffect(() => {
+    if (communities.length === 0) {
+      setTitleAccessory(null)
+      return
+    }
+    setTitleAccessory(
+      <button
+        type="button"
+        className="shrink-0 px-3 py-1.5 rounded-lg bg-[#4db6ac] text-black text-xs sm:text-sm font-semibold hover:brightness-110 transition-all touch-manipulation whitespace-nowrap"
+        onClick={() => {
+          setNewCommType('General')
+          setShowCreateModal(true)
+        }}
+      >
+        {t('dashboard.create_community_short')}
+      </button>,
+    )
+    return () => setTitleAccessory(null)
+  }, [communities.length, setTitleAccessory, t])
   const navigate = useNavigate()
+  const location = useLocation()
   const isWeb = Capacitor.getPlatform() === 'web'
+
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search)
+    let changed = false
+    if (sp.get('open_create') === '1') {
+      setNewCommType('General')
+      setShowCreateModal(true)
+      sp.delete('open_create')
+      changed = true
+    }
+    if (sp.get('open_search') === '1') {
+      setSearchOpen(true)
+      sp.delete('open_search')
+      changed = true
+    }
+    if (changed) {
+      const next = sp.toString()
+      navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: true })
+    }
+  }, [location.search, location.pathname, navigate])
+
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus()
+  }, [searchOpen])
   const isPremium = (subscription || 'free').toLowerCase() === 'premium'
   const handleCloseCreateModal = () => {
     setShowCreateModal(false)
@@ -93,15 +260,31 @@ export default function PremiumDashboard() {
   }
 
   useEffect(() => {
+    let cancelled = false
     const { data: cached } = readDeviceCacheStale<DashboardCachePayload>(DASHBOARD_DEVICE_CACHE_KEY, DASHBOARD_CACHE_VERSION)
     if (cached) {
-      applyDashboardCache(cached)
-      return
+      if (!dashboardDeviceCacheMatchesSession(cached)) {
+        invalidateDashboardCache()
+        void deleteCachedKeyVal('dashboard-data')
+      } else {
+        applyDashboardCache(cached)
+        return () => {
+          cancelled = true
+        }
+      }
     }
-    // Fallback: try IndexedDB
     getCachedKeyVal<DashboardCachePayload>('dashboard-data').then(idbCached => {
-      if (idbCached) applyDashboardCache(idbCached)
+      if (cancelled || !idbCached) return
+      if (!dashboardDeviceCacheMatchesSession(idbCached)) {
+        invalidateDashboardCache()
+        void deleteCachedKeyVal('dashboard-data')
+        return
+      }
+      applyDashboardCache(idbCached)
     })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   function applyDashboardCache(cached: DashboardCachePayload) {
@@ -219,23 +402,27 @@ export default function PremiumDashboard() {
   }
 
   const loadUserData = useCallback(async (forceRefresh = false) => {
+    invalidateDashboardCache() // Clear stale/ghost profile cache on login/new build (ties to firestore_reads.get_steve_user_profile)
     let profileSnapshot: DashboardCachePayload['profile'] | null = null
     let cachedCommunities: Array<{ id: number; name: string; type: string }> = []
     let hasGymAccessFlag = false
     let isAdminFlag = false
     try {
-      const [profileResult, gymData, adminCheck, parentData] = await Promise.all([
+      const [profileBundle, gymData, adminCheck, parentData] = await Promise.all([
         (async () => {
-          if (!forceRefresh && contextProfile) return { success: true, profile: contextProfile }
           const profileUrl = forceRefresh ? `/api/profile_me?_nocache=${Date.now()}` : '/api/profile_me'
           const r = await fetch(profileUrl, { credentials:'include', headers: { 'Accept': 'application/json' }, cache: forceRefresh ? 'no-store' : 'default' })
-          if (r.status === 403) return { _forbidden: true } as any
-          return await r.json().catch(() => null)
-        })().catch(() => null),
+          if (r.status === 403) return { profileResult: { _forbidden: true } as any, hydratedFromNetwork: false }
+          const profileResult = await r.json().catch(() => null)
+          return { profileResult, hydratedFromNetwork: true }
+        })().catch(() => ({ profileResult: null as any, hydratedFromNetwork: false })),
         fetchJson('/api/check_gym_membership', forceRefresh),
         fetchJson('/api/check_admin', forceRefresh).catch(() => null),
         fetchJson('/api/user_parent_community', forceRefresh),
       ])
+
+      const profileResult = profileBundle.profileResult
+      const hydratedFromNetwork = profileBundle.hydratedFromNetwork
 
       if (profileResult?._forbidden) {
         navigate('/verify_required', { replace: true })
@@ -243,6 +430,9 @@ export default function PremiumDashboard() {
       }
 
       const me = profileResult
+      if (me?.success && me.profile && hydratedFromNetwork) {
+        applyProfileFromServer(me.profile as Record<string, unknown>)
+      }
       if (me?.success && me.profile) {
         setEmailVerified(!!me.profile.email_verified)
         setEmailVerifiedAt(me.profile.email_verified_at || null)
@@ -296,7 +486,7 @@ export default function PremiumDashboard() {
     } finally {
       setInitialLoading(false)
     }
-  }, [navigate, contextProfile])
+  }, [navigate, applyProfileFromServer])
 
   const refreshDashboardSilently = useCallback(async () => {
     if (refreshInFlightRef.current) return
@@ -320,6 +510,18 @@ export default function PremiumDashboard() {
   useEffect(() => {
     loadUserData()
   }, [loadUserData])
+
+  // Refetch when returning to the dashboard from another route (fresh unread counts / server cache bypass).
+  useEffect(() => {
+    const prev = prevPathnameForDashboardRef.current
+    const path = location.pathname
+    const onDashboard = isPremiumDashboardPath(path)
+    const wasOnDashboard = prev !== null && isPremiumDashboardPath(prev)
+    prevPathnameForDashboardRef.current = path
+    if (onDashboard && prev !== null && !wasOnDashboard) {
+      void loadUserData(true)
+    }
+  }, [location.pathname, loadUserData])
 
   // Touch-based pull-to-refresh for iOS Capacitor
   useEffect(() => {
@@ -411,7 +613,10 @@ export default function PremiumDashboard() {
           setSubscription((pj.profile.subscription || 'free') as string)
         }
         // Also refresh communities snapshot
-        const parentDataResp = await fetch('/api/user_parent_community', { credentials:'include', headers: { 'Accept': 'application/json' } }).catch(() => null)
+        const parentDataResp = await fetch(
+          '/api/user_parent_community?refresh=1',
+          { credentials: 'include', headers: { Accept: 'application/json' } },
+        ).catch(() => null)
         const parentData = parentDataResp ? await parentDataResp.json().catch(()=>null) : null
         if (cancelled) return
         if (parentData?.success && Array.isArray(parentData.communities)) {
@@ -439,7 +644,6 @@ export default function PremiumDashboard() {
       const now = Date.now()
       const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000) // 24 hours in milliseconds
       const isRecent = verifiedTime > twentyFourHoursAgo
-      console.log('Onboarding check:', { emailVerifiedAt, verifiedTime, now, twentyFourHoursAgo, isRecent, diff: (now - verifiedTime) / 1000 + 's ago' })
       setIsRecentlyVerified(isRecent)
     } catch (err) {
       console.error('Error parsing email_verified_at:', err)
@@ -447,7 +651,46 @@ export default function PremiumDashboard() {
     }
   }, [emailVerifiedAt, emailVerified])
 
-  // Auto-prompt conversational onboarding for newly verified users
+  const previousUsernameForOnboardingRef = useRef<string | null>(null)
+  useEffect(() => {
+    const prev = previousUsernameForOnboardingRef.current
+    const current = username || null
+    previousUsernameForOnboardingRef.current = current
+    if (!prev || !current || prev === current) return
+    onboardingTriggeredRef.current = false
+    setOnboardingStateSummary(null)
+    setOnboardingGateRequired(false)
+    setShowOnboardingWelcome(false)
+  }, [username])
+
+  const openOnboardingResume = useCallback(() => {
+    setOnboardingGateRequired(false)
+    setShowOnboardingWelcome(false)
+    setOnboardingMode('fresh')
+    setOnboardingLaunching(true)
+    setShowOnboarding(true)
+  }, [])
+
+  const refreshOnboardingStateSummary = useCallback(async () => {
+    try {
+      const r = await fetch('/api/onboarding/state', { credentials: 'include' })
+      const j = await r.json().catch(() => null)
+      if (j?.success) {
+        setOnboardingStateSummary({
+          profileDeferUntil: j.profileDeferUntil,
+          serverTime: j.serverTime,
+          requiresOnboardingResume: j.requiresOnboardingResume,
+          onboardingComplete: j.onboardingComplete || (j.state && (j.state.stage === 'complete' || j.state.completed_at)),
+          onboardingProgress: j.onboardingProgress,
+        })
+      } else if (r.status === 401 || r.status === 404 || j?.success === false) {
+        setOnboardingStateSummary(null)
+        setOnboardingGateRequired(false)
+      }
+    } catch {}
+  }, [])
+
+  // Auto-prompt conversational onboarding; server state (defer / resume) runs even when not "recently verified"
   useEffect(() => {
     if (onboardingTriggeredRef.current) return
     if (!communitiesLoaded) return
@@ -455,41 +698,82 @@ export default function PremiumDashboard() {
     if (!Array.isArray(communities)) return
     if (!username) return
     if (showOnboarding) return
+    if (showOnboardingWelcome) return
 
     try { if (localStorage.getItem(doneKey) === '1') return } catch {}
 
-    if (!isRecentlyVerified) return
-
-    // Check server-side completion AND profile completeness before triggering
     ;(async () => {
-      setOnboardingLaunching(true)
       try {
         const r = await fetch('/api/onboarding/state', { credentials: 'include' })
         const j = await r.json().catch(() => null)
         if (j?.success) {
-          if (j.state && (j.state.stage === 'complete' || j.state.completed_at)) {
-            try { localStorage.setItem(doneKey, '1') } catch {}
+          setOnboardingStateSummary({
+            profileDeferUntil: j.profileDeferUntil,
+            serverTime: j.serverTime,
+            requiresOnboardingResume: j.requiresOnboardingResume,
+            onboardingComplete: j.onboardingComplete || (j.state && (j.state.stage === 'complete' || j.state.completed_at)),
+            onboardingProgress: j.onboardingProgress,
+          })
+          if (j.requiresOnboardingResume) {
+            setOnboardingGateRequired(true)
+            onboardingTriggeredRef.current = true
             return
           }
-          if (j.profileComplete) {
+          if (j.onboardingComplete || (j.state && (j.state.stage === 'complete' || j.state.completed_at))) {
             try { localStorage.setItem(doneKey, '1') } catch {}
+            onboardingTriggeredRef.current = true
             return
           }
+          if (j.profileDeferUntil) {
+            const end = new Date(j.profileDeferUntil).getTime()
+            if (!Number.isNaN(end) && Date.now() < end) {
+              onboardingTriggeredRef.current = true
+              return
+            }
+          }
+          if (j.profileCompleteEffective) {
+            try { localStorage.setItem(doneKey, '1') } catch {}
+            onboardingTriggeredRef.current = true
+            return
+          }
+        } else if (r.status === 401 || r.status === 404 || j?.success === false) {
+          setOnboardingStateSummary(null)
+          setOnboardingGateRequired(false)
         }
       } catch {}
+
+      if (!isRecentlyVerified) {
+        // Stable "no auto-prompt" for established accounts: do not re-fetch on every communities refresh
+        // (focus/visibility refetch replaces the array and was retriggering this effect).
+        if (emailVerifiedAt != null) {
+          onboardingTriggeredRef.current = true
+        }
+        return
+      }
+
+      // Only flip the launching overlay on right when we are actually about to mount Steve.
       onboardingTriggeredRef.current = true
-      setShowOnboarding(true)
-      setOnboardingLaunching(false)
-      return
-    })().finally(() => {
-      if (!onboardingTriggeredRef.current) setOnboardingLaunching(false)
-    })
-  }, [communitiesLoaded, emailVerified, communities, username, showOnboarding, doneKey, isRecentlyVerified])
+      setShowOnboardingWelcome(true)
+    })()
+    // Intentionally omit `communities`: array identity changes on every parent-community refetch and caused
+    // a one-shot "Starting onboarding..." flicker for users who exit without auto-opening Steve.
+  }, [communitiesLoaded, emailVerified, emailVerifiedAt, username, showOnboarding, showOnboardingWelcome, doneKey, isRecentlyVerified])
 
   // Parent-only creation: skip loading parent communities
 
 
   const hasAnyCommunity = communities.length > 0
+  const showOnboardingCompletionCard = !!(
+    onboardingStateSummary &&
+    !onboardingStateSummary.onboardingComplete &&
+    (onboardingStateSummary.profileDeferUntil || onboardingStateSummary.requiresOnboardingResume)
+  )
+  const onboardingRemaining = formatOnboardingRemaining(
+    onboardingStateSummary?.profileDeferUntil,
+    onboardingStateSummary?.serverTime,
+    t,
+  )
+  const communityFallback = t('dashboard.community_fallback')
   const resolvedCommunityName = (() => {
     if (pendingInviteTarget?.communityName) return pendingInviteTarget.communityName
     if (joinedCommunityName) return joinedCommunityName
@@ -498,7 +782,7 @@ export default function PremiumDashboard() {
       const found = communities.find(c => c.id === targetId)
       if (found?.name) return found.name
     }
-    return communities[0]?.name || 'your community'
+    return communities[0]?.name || communityFallback
   })()
   // Show loading screen while initial data loads
   if (initialLoading) {
@@ -506,7 +790,17 @@ export default function PremiumDashboard() {
       <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="relative">
-            <img src="/static/logo.png" alt="Logo" className="w-16 h-16 rounded-2xl object-contain" />
+            <img
+              src="/api/public/logo"
+              alt="C-Point"
+              className="w-16 h-16 rounded-2xl object-contain"
+              onError={(e) => {
+                const img = e.currentTarget
+                if (img.src.includes('cpoint-logo.svg')) return
+                img.onerror = null
+                img.src = '/static/cpoint-logo.svg'
+              }}
+            />
             <div className="absolute -inset-2">
               <svg className="w-20 h-20 animate-spin" viewBox="0 0 24 24">
                 <circle 
@@ -528,7 +822,7 @@ export default function PremiumDashboard() {
               </svg>
             </div>
           </div>
-          <p className="text-white/60 text-sm">Loading...</p>
+          <p className="text-white/60 text-sm">{t('common.loading')}</p>
         </div>
       </div>
     )
@@ -541,14 +835,14 @@ export default function PremiumDashboard() {
       /* Desktop sidebar - only for native platforms (iOS/Android) */
       <div className="fixed left-0 top-14 bottom-0 w-52 hidden md:flex flex-col z-30 liquid-glass-surface border border-white/10 rounded-r-3xl shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
         <nav className="flex-1 overflow-y-auto py-3">
-          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/premium_dashboard">Dashboard</a>
-          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/profile">Profile</a>
-          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/user_chat">Messages</a>
-          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/followers">Followers</a>
-          {hasGymAccess && <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/your_sports">Your Sports</a>}
-          <button className="block w-full text-left px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" onClick={handleLogoutClick}>Logout</button>
+          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/premium_dashboard">{t('navigation.dashboard')}</a>
+          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/profile">{t('navigation.profile')}</a>
+          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/user_chat">{t('navigation.messages')}</a>
+          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/followers">{t('navigation.followers')}</a>
+          {hasGymAccess && <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/your_sports">{t('dashboard.your_sports')}</a>}
+          <button className="block w-full text-left px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" onClick={requestLogout}>{t('navigation.logout')}</button>
           <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/account_settings">
-            <i className="fa-solid fa-cog mr-2" />Settings
+            <i className="fa-solid fa-cog mr-2" />{t('navigation.settings')}
           </a>
         </nav>
         {!isPremium && (
@@ -558,7 +852,7 @@ export default function PremiumDashboard() {
               className="w-full rounded-lg bg-gradient-to-r from-teal-400 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white hover:from-teal-500 hover:to-teal-600 transition"
               onClick={() => navigate('/subscription_plans')}
             >
-              Upgrade to Premium
+              {t('dashboard.upgrade_to_premium')}
             </button>
           </div>
         )}
@@ -571,13 +865,13 @@ export default function PremiumDashboard() {
         {mobileMenuOpen && (
           <div className="fixed top-14 left-0 right-0 bottom-0 z-40 md:hidden flex flex-col px-3">
             <nav className="flex-1 overflow-y-auto flex flex-col liquid-glass-surface border border-white/10 rounded-3xl mt-3">
-              <a className="px-5 py-3 border-b border-white/10" href="/dashboard" onClick={() => setMobileMenuOpen(false)}>Dashboard</a>
-              <a className="px-5 py-3 border-b border-white/10" href="/profile" onClick={() => setMobileMenuOpen(false)}>Profile</a>
-                <a className="px-5 py-3 border-b border-white/10" href="/user_chat" onClick={() => setMobileMenuOpen(false)}>Messages</a>
-                <a className="px-5 py-3 border-b border-white/10" href="/followers" onClick={() => setMobileMenuOpen(false)}>Followers</a>
-              {hasGymAccess && <a className="px-5 py-3 border-b border-white/10" href="/your_sports" onClick={() => setMobileMenuOpen(false)}>Your Sports</a>}
-              <button className="w-full text-left px-5 py-3 border-b border-white/10" onClick={(e) => { setMobileMenuOpen(false); handleLogoutClick(e) }}>Logout</button>
-              <a className="px-5 py-3" href="/account_settings" onClick={() => setMobileMenuOpen(false)}><i className="fa-solid fa-cog mr-2" />Settings</a>
+              <a className="px-5 py-3 border-b border-white/10" href="/dashboard" onClick={() => setMobileMenuOpen(false)}>{t('navigation.dashboard')}</a>
+              <a className="px-5 py-3 border-b border-white/10" href="/profile" onClick={() => setMobileMenuOpen(false)}>{t('navigation.profile')}</a>
+                <a className="px-5 py-3 border-b border-white/10" href="/user_chat" onClick={() => setMobileMenuOpen(false)}>{t('navigation.messages')}</a>
+                <a className="px-5 py-3 border-b border-white/10" href="/followers" onClick={() => setMobileMenuOpen(false)}>{t('navigation.followers')}</a>
+              {hasGymAccess && <a className="px-5 py-3 border-b border-white/10" href="/your_sports" onClick={() => setMobileMenuOpen(false)}>{t('dashboard.your_sports')}</a>}
+              <button className="w-full text-left px-5 py-3 border-b border-white/10" onClick={(e) => { setMobileMenuOpen(false); requestLogout(e) }}>{t('navigation.logout')}</button>
+              <a className="px-5 py-3" href="/account_settings" onClick={() => setMobileMenuOpen(false)}><i className="fa-solid fa-cog mr-2" />{t('navigation.settings')}</a>
             </nav>
             <div className="px-4 py-4">
               <button
@@ -588,15 +882,49 @@ export default function PremiumDashboard() {
                   navigate('/subscription_plans')
                 }}
               >
-                Premium
+                {t('dashboard.premium')}
               </button>
             </div>
           </div>
         )}
 
       {/* Main content area with proper positioning */}
-      <div className={`min-h-screen pb-20 ${isWeb ? 'lg:ml-64' : 'md:ml-52'}`}>
+      <div
+        className={`min-h-screen pb-[calc(3.5rem+env(safe-area-inset-bottom,0px)+12px)] ${isWeb ? 'lg:ml-64' : 'md:ml-52'}`}
+      >
         <div className="app-content max-w-5xl mx-auto px-3 py-6">
+          {showOnboardingCompletionCard && (
+            <div className="mb-4 rounded-2xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 p-4 shadow-[0_16px_45px_rgba(0,0,0,0.28)]">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-base font-semibold text-white">{t('dashboard.complete_onboarding_title')}</div>
+                  <p className="mt-1 text-sm leading-relaxed text-white/70">
+                    {onboardingStateSummary?.requiresOnboardingResume
+                      ? t('dashboard.complete_onboarding_resume_body')
+                      : t('dashboard.complete_onboarding_saved_body')}
+                  </p>
+                  {onboardingRemaining && (
+                    <div className="mt-2 text-xs font-medium text-[#d5fffb]">{onboardingRemaining}</div>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                    <span className={`rounded-full border px-2.5 py-1 ${onboardingStateSummary?.onboardingProgress?.personalSectionComplete ? 'border-[#4db6ac]/35 bg-[#4db6ac]/10 text-[#d5fffb]' : 'border-white/10 bg-white/5 text-white/55'}`}>
+                      {onboardingStateSummary?.onboardingProgress?.personalSectionComplete ? t('dashboard.personal_complete') : t('dashboard.personal_pending')}
+                    </span>
+                    <span className={`rounded-full border px-2.5 py-1 ${onboardingStateSummary?.onboardingProgress?.professionalSectionComplete ? 'border-[#4db6ac]/35 bg-[#4db6ac]/10 text-[#d5fffb]' : 'border-white/10 bg-white/5 text-white/55'}`}>
+                      {onboardingStateSummary?.onboardingProgress?.professionalSectionComplete ? t('dashboard.professional_complete') : t('dashboard.professional_pending')}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={openOnboardingResume}
+                  className="shrink-0 rounded-xl bg-[#4db6ac] px-4 py-2.5 text-sm font-semibold text-black transition hover:brightness-110"
+                >
+                  {t('dashboard.continue_onboarding')}
+                </button>
+              </div>
+            </div>
+          )}
           <div 
             className="sticky top-0 z-20 mb-3 flex justify-center pointer-events-none transition-transform duration-150"
             style={{ transform: `translateY(${Math.min(pullPx * 0.5, 30)}px)` }}
@@ -612,71 +940,233 @@ export default function PremiumDashboard() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  Refreshing…
+                  {t('feed.refreshing')}
                 </>
               ) : pullHint === 'ready' ? (
                 <>
                   <i className="fa-solid fa-arrow-down text-[10px]" />
-                  Release to refresh
+                  {t('feed.release_to_refresh')}
                 </>
               ) : (
                 <>
                   <i className="fa-solid fa-arrow-down text-[10px]" />
-                  Pull down to refresh
+                  {t('feed.pull_down_to_refresh')}
                 </>
               )}
             </span>
           </div>
             {communities.length === 0 ? (
-              <div className="px-3 py-10">
-                <div className="mx-auto max-w-xl liquid-glass-surface border border-white/10 rounded-2xl p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
-                  <div className="text-sm font-bold text-white">Your new world awaits you</div>
-                  <div className="mt-2 text-sm text-[#9fb0b5]">
-                    Enter an invite code to join a community or create your own. Welcome to C-Point, the network where ideas connect people.
+              <div className="px-3 py-6">
+                <div className="mx-auto max-w-xl space-y-4">
+                  <div className="liquid-glass-surface overflow-hidden rounded-3xl border border-white/10 p-5 text-center shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]">
+                      {t('dashboard.welcome_badge')}
+                    </div>
+                    <h2 className="mt-2 text-xl font-semibold leading-tight tracking-[-0.025em] text-white sm:text-[22px]">
+                      {t('dashboard.welcome_headline')}
+                    </h2>
+                    <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-[#9fb0b5]">
+                      {t('dashboard.welcome_body')}
+                    </p>
+                    <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
+                      <button
+                        className="rounded-full bg-[#4db6ac] px-5 py-2.5 font-semibold text-black shadow-lg transition-transform hover:brightness-110 active:scale-95 touch-manipulation"
+                        onClick={() => { setNewCommType('General'); setShowCreateModal(true) }}
+                        style={{ WebkitTapHighlightColor: 'transparent' }}
+                      >
+                        {t('dashboard.create_first_community')}
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full border border-white/15 px-5 py-2.5 font-medium text-white/80 transition hover:bg-white/5 touch-manipulation"
+                        onClick={() => setShowAboutCPointModal(true)}
+                      >
+                        {t('dashboard.how_it_works')}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { icon: 'fa-solid fa-lock', titleKey: 'dashboard.tile_private_feeds_title', textKey: 'dashboard.tile_private_feeds_text' },
+                      { icon: 'fa-regular fa-comments', titleKey: 'dashboard.tile_member_chats_title', textKey: 'dashboard.tile_member_chats_text' },
+                      { icon: 'fa-solid fa-wand-magic-sparkles', titleKey: 'dashboard.tile_steve_title', textKey: 'dashboard.tile_steve_text' },
+                      { icon: 'fa-solid fa-user-group', titleKey: 'dashboard.tile_networking_title', textKey: 'dashboard.tile_networking_text' },
+                    ].map((tile) => (
+                      <div key={tile.titleKey} className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                        <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-[#4db6ac]/10 text-[#4db6ac]">
+                          <i className={`${tile.icon} text-sm`} />
+                        </div>
+                        <div className="text-sm font-semibold text-white">{t(tile.titleKey)}</div>
+                        <div className="mt-1 text-xs text-[#9fb0b5]">{t(tile.textKey)}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-white">{t('dashboard.meet_steve')}</div>
+                      <div className="text-xs text-[#9fb0b5]">{t('dashboard.ask_try_first')}</div>
+                    </div>
+                    <button
+                      className="shrink-0 rounded-full border border-[#4db6ac]/40 px-4 py-2 text-sm font-medium text-[#4db6ac] transition hover:bg-[#4db6ac]/10 active:scale-95 touch-manipulation"
+                      onClick={() => navigate('/user_chat/chat/Steve')}
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                    >
+                      {t('steve.talk_to_steve')}
+                    </button>
                   </div>
                 </div>
               </div>
             ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {/* Show all communities */}
-              {communities.map(community => {
-              // Desktop HTML communities page now provides the unified view
-              const onCardClick = () => {
-                navigate(`/communities?parent_id=${community.id}`)
-              }
-              return (
-                <Card 
-                  key={community.id}
-                  iconClass="fa-solid fa-house" 
-                  title={community.name} 
-                  onClick={onCardClick} 
-                />
-              )
-              })}
-            </div>
+            <>
+              {/* Welcome Header */}
+              <div className="mb-4 text-sm text-[#9fb0b5]">
+                {t('dashboard.welcome_populated')}
+              </div>
+
+              {searchOpen && (
+                <div className="mb-4">
+                  <div className="relative w-full max-w-xl">
+                    <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[#9fb0b5] text-sm pointer-events-none" />
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      placeholder={t('navigation.search_communities')}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-[#9fb0b5] focus:outline-none focus:border-[#4db6ac]/40"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Communities Grid */}
+              {(() => {
+                const sorted = sortCommunitiesByRole(communities)
+                const filtered = searchQuery.trim()
+                  ? sorted.filter((c) => {
+                      const q = searchQuery.toLowerCase()
+                      if (c.name.toLowerCase().includes(q)) return true
+                      const desc = (c.description ?? '').toLowerCase()
+                      return desc.includes(q)
+                    })
+                  : sorted
+                const ownedOrAdmin = filtered.filter(c => c.is_owner || c.is_admin)
+                const memberOnly = filtered.filter(c => !c.is_owner && !c.is_admin)
+
+                return (
+                  <div className="space-y-4">
+                    {/* Owner/Admin Section */}
+                    {ownedOrAdmin.length > 0 && (
+                      <>
+                        {/* Separator - Owner/Admin of */}
+                        <div className="flex items-center gap-3 py-1">
+                          <div className="h-px flex-1 bg-white/10" />
+                          <span className="text-[10px] uppercase tracking-wider text-[#9fb0b5]/60 font-medium">{t('dashboard.owner_admin_section')}</span>
+                          <div className="h-px flex-1 bg-white/10" />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {ownedOrAdmin.map((community) => (
+                            <CommunityCard
+                              key={community.id}
+                              name={community.name}
+                              description={community.description}
+                              memberCount={community.member_count}
+                              lastActivity={community.last_activity}
+                              isOwner={community.is_owner}
+                              isAdmin={community.is_admin}
+                              unreadPostsCount={community.unread_posts_count}
+                              onClick={() =>
+                                navigate(`/communities?parent_id=${community.id}`)
+                              }
+                            />
+                          ))}
+                        </div>
+                      </>
+                    )}
+
+                    {/* Member Section */}
+                    {memberOnly.length > 0 && (
+                      <>
+                        {/* Separator - Member of */}
+                        <div className="flex items-center gap-3 py-1">
+                          <div className="h-px flex-1 bg-white/10" />
+                          <span className="text-[10px] uppercase tracking-wider text-[#9fb0b5]/60 font-medium">{t('dashboard.member_of_section')}</span>
+                          <div className="h-px flex-1 bg-white/10" />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {memberOnly.map((community) => (
+                            <CommunityCard
+                              key={community.id}
+                              name={community.name}
+                              description={community.description}
+                              memberCount={community.member_count}
+                              lastActivity={community.last_activity}
+                              isOwner={community.is_owner}
+                              isAdmin={community.is_admin}
+                              unreadPostsCount={community.unread_posts_count}
+                              onClick={() =>
+                                navigate(`/communities?parent_id=${community.id}`)
+                              }
+                            />
+                          ))}
+                        </div>
+                      </>
+                    )}
+
+                    {/* No results message */}
+                    {filtered.length === 0 && searchQuery.trim() && (
+                      <div className="text-center py-8 text-[#9fb0b5] text-sm">
+                        {t('dashboard.no_search_results', { query: searchQuery })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+            </>
             )}
         </div>
 
-        {/* Create Community Button */}
-        <div className="fixed bottom-0 left-0 right-0 z-50 flex justify-center pb-safe" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 24px)' }}>
-          <button 
-            className="px-6 py-3 rounded-full bg-[#4db6ac] text-black font-semibold shadow-lg hover:brightness-110 active:scale-95 transition-transform touch-manipulation flex items-center gap-2"
-            onClick={()=> { setNewCommType('General'); setShowCreateModal(true) }}
-            style={{ WebkitTapHighlightColor: 'transparent' }}
-          >
-            Create Your Community
-            <i className="fa-solid fa-arrow-right" />
-          </button>
-        </div>
+        <DashboardBottomNav show searchOpen={searchOpen} onToggleSearch={() => setSearchOpen((v) => !v)} />
       </div>
 
       {/* Conversational Onboarding with Steve */}
-      {onboardingLaunching && !showOnboarding && (
+      {showOnboardingWelcome && !showOnboarding && !onboardingGateRequired && (
+        <OnboardingIntroGate
+          onStart={() => {
+            setShowOnboardingWelcome(false)
+            setOnboardingLaunching(true)
+            setShowOnboarding(true)
+          }}
+        />
+      )}
+      {onboardingGateRequired && !showOnboarding && (
+        <div className="fixed inset-0 z-[1101] bg-black/90 backdrop-blur-md flex items-center justify-center px-6">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0d1214] p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.55)]">
+            <img src="/api/public/logo" alt="C-Point" className="w-14 h-14 rounded-2xl object-contain mx-auto mb-4" />
+            <h2 className="text-lg font-semibold text-white mb-2">{t('dashboard.finish_profile_title')}</h2>
+            <p className="text-sm text-[#9fb0b5] mb-6">
+              {t('dashboard.finish_profile_body')}
+            </p>
+            <button
+              type="button"
+              className="w-full rounded-xl bg-[#4db6ac] text-black font-semibold py-3 text-sm hover:brightness-110 transition"
+              onClick={openOnboardingResume}
+            >
+              {t('dashboard.continue_with_steve')}
+            </button>
+          </div>
+        </div>
+      )}
+      {onboardingLaunching && !showOnboarding && !onboardingGateRequired && (
         <div className="fixed inset-0 z-[1100] bg-black/80 backdrop-blur-sm flex items-center justify-center px-6">
           <div className="flex flex-col items-center gap-4 text-center">
             <img src="/api/public/logo" alt="C-Point" className="w-14 h-14 rounded-2xl object-contain" />
             <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-[#4db6ac] animate-spin" />
-            <div className="text-sm text-white/65">Starting onboarding...</div>
+            <div className="text-sm text-white/65">{t('dashboard.opening_steve')}</div>
           </div>
         </div>
       )}
@@ -686,25 +1176,35 @@ export default function PremiumDashboard() {
           lastName={lastName}
           username={username}
           displayName={displayName}
-          communityName={resolvedCommunityName !== 'your community' ? resolvedCommunityName : null}
+          communityName={resolvedCommunityName !== communityFallback ? resolvedCommunityName : null}
           hasCommunity={hasAnyCommunity}
           existingProfilePic={existingProfilePic}
           mode={onboardingMode}
           onComplete={() => {
             setShowOnboarding(false)
+            setShowOnboardingWelcome(false)
+            setOnboardingLaunching(false)
+            setOnboardingGateRequired(false)
             onboardingTriggeredRef.current = false
             window.location.href = '/premium_dashboard'
           }}
           onCreateCommunity={() => {
             setShowOnboarding(false)
+            setShowOnboardingWelcome(false)
+            setOnboardingLaunching(false)
             setShowCreateModal(true)
           }}
           onGoToCommunity={() => {
             setShowOnboarding(false)
+            setShowOnboardingWelcome(false)
+            setOnboardingLaunching(false)
             handleGoToCommunity()
           }}
           onExit={() => {
             setShowOnboarding(false)
+            setShowOnboardingWelcome(false)
+            setOnboardingLaunching(false)
+            setTimeout(() => { void refreshOnboardingStateSummary() }, 900)
           }}
         />
       )}
@@ -714,7 +1214,7 @@ export default function PremiumDashboard() {
         <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[60] pointer-events-none">
           <div className="px-6 py-3 rounded-full border border-[#4db6ac]/40 bg-black/90 backdrop-blur-sm shadow-lg animate-fade-in">
             <div className="text-sm font-medium text-white">
-              Joined <span className="text-[#4db6ac]">{joinedCommunityName}</span>
+              {t('dashboard.joined_community', { name: joinedCommunityName ?? '' })}
             </div>
           </div>
         </div>
@@ -723,56 +1223,58 @@ export default function PremiumDashboard() {
       {showVerifyFirstModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowVerifyFirstModal(false)}>
           <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-black p-4">
-            <div className="font-semibold text-sm mb-2">Verify your email</div>
-            <div className="text-sm text-[#9fb0b5]">Please verify your email before joining a community.</div>
+            <div className="font-semibold text-sm mb-2">{t('dashboard.verify_email_title')}</div>
+            <div className="text-sm text-[#9fb0b5]">{t('dashboard.verify_email_body')}</div>
             <div className="flex items-center justify-end gap-2 mt-3">
-              <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowVerifyFirstModal(false)}>Close</button>
-              <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=>{ try{ await fetch('/resend_verification', { method:'POST', credentials:'include' }) }catch{} alert('Verification email sent (if not rate limited).'); setShowVerifyFirstModal(false) }}>Resend email</button>
+              <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowVerifyFirstModal(false)}>{t('common.close')}</button>
+              <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=>{ try{ await fetch('/resend_verification', { method:'POST', credentials:'include' }) }catch{} alert(t('dashboard.verification_sent_rate_limit')); setShowVerifyFirstModal(false) }}>{t('dashboard.resend_email')}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Communities modal removed; button links to /communities */}
+      <AboutCPointModal open={showAboutCPointModal} onClose={() => setShowAboutCPointModal(false)} />
+
+      {/* Communities modal removed; dashboard links use /communities?parent_id= */}
         {showCreateModal && (
           <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> { if (e.currentTarget===e.target) handleCloseCreateModal() }}>
           <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-black p-4">
             <div className="flex items-center justify-between mb-3">
-              <div className="font-semibold text-sm">Create Community</div>
-                <button className="p-2 rounded-md hover:bg:white/5" onClick={handleCloseCreateModal} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+              <div className="font-semibold text-sm">{t('dashboard.create_community_title')}</div>
+                <button className="p-2 rounded-md hover:bg:white/5" onClick={handleCloseCreateModal} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-[#9fb0b5] mb-1">Community Name (Parent)</label>
-                <input value={newCommName} onChange={e=> setNewCommName(e.target.value)} placeholder="e.g., My Parent Community" className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm" />
+                <label className="block text-xs text-[#9fb0b5] mb-1">{t('dashboard.community_name_parent_label')}</label>
+                <input value={newCommName} onChange={e=> setNewCommName(e.target.value)} placeholder={t('dashboard.community_name_parent_placeholder')} className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm" />
               </div>
                 <div>
-                  <label className="block text-xs text-[#9fb0b5] mb-1">Community Type</label>
-                  <select value={newCommType} onChange={e=> setNewCommType(e.target.value as any)} className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm">
-                    <option value="General">General</option>
-                    {isPremium && (
-                      <>
-                        <option value="Gym">Gym</option>
-                        <option value="University">University</option>
-                        {isAppAdmin && <option value="Business">Business</option>}
-                      </>
-                    )}
-                  </select>
+                  <label className="block text-xs text-[#9fb0b5] mb-1">{t('dashboard.community_type_label')}</label>
+                  {isAppAdmin ? (
+                    <select value={newCommType} onChange={e=> setNewCommType(e.target.value as any)} className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm">
+                      <option value="General">{t('dashboard.type_general')}</option>
+                      <option value="Gym">{t('dashboard.type_gym')}</option>
+                      <option value="University">{t('dashboard.type_university')}</option>
+                      <option value="Business">{t('dashboard.type_business')}</option>
+                    </select>
+                  ) : (
+                    <div className="w-full px-3 py-2 rounded-md bg-black/50 border border-white/10 text-sm text-[#9fb0b5]">
+                      {t('dashboard.type_general')}
+                    </div>
+                  )}
                 </div>
-              {/* For parent-only creation: remove parent selector and always create top-level */}
-              <div className="text-xs text-[#9fb0b5]">This will create a parent community.</div>
+              <div className="text-xs text-[#9fb0b5]">{t('dashboard.create_parent_hint')}</div>
                 <div className="flex items-center justify-end gap-2">
-                  <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={handleCloseCreateModal} disabled={isCreatingCommunity}>Cancel</button>
+                  <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={handleCloseCreateModal} disabled={isCreatingCommunity}>{t('common.cancel')}</button>
                     <button 
                       className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" 
                       disabled={isCreatingCommunity}
                       onClick={async()=> {
-                        if (isCreatingCommunity) return // Extra guard
-                        if (!newCommName.trim()) { alert('Please provide a name'); return }
+                        if (isCreatingCommunity) return
+                        if (!newCommName.trim()) { alert(t('dashboard.name_required')); return }
                         setIsCreatingCommunity(true)
                         try{
-                          const fd = new URLSearchParams({ name: newCommName.trim(), type: newCommType })
-                          // Force parent community creation: do not include parent_community_id
+                          const fd = new URLSearchParams({ name: newCommName.trim(), type: isAppAdmin ? newCommType : 'General' })
                           const r = await fetch('/create_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                           const j = await r.json().catch(()=>null)
                           if (j?.success){
@@ -786,15 +1288,15 @@ export default function PremiumDashboard() {
                               setCommunitiesLoaded(true)
                             }
                           } else {
-                            alert(j?.error || 'Failed to create community')
+                            alert(j?.error || t('dashboard.create_community_failed'))
                             setIsCreatingCommunity(false)
                           }
                         }catch{ 
-                          alert('Failed to create community')
+                          alert(t('dashboard.create_community_failed'))
                           setIsCreatingCommunity(false)
                         }
                       }}
-                    >{isCreatingCommunity ? 'Creating…' : 'Create'}</button>
+                    >{isCreatingCommunity ? t('dashboard.creating') : t('communities.create')}</button>
               </div>
             </div>
           </div>
@@ -804,15 +1306,15 @@ export default function PremiumDashboard() {
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowJoinModal(false)}>
           <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-black p-4">
             <div className="flex items-center justify-between mb-3">
-              <div className="font-semibold text-sm">Join Community</div>
-              <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowJoinModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+              <div className="font-semibold text-sm">{t('dashboard.join_community_title')}</div>
+              <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowJoinModal(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
             </div>
             <div className="space-y-3">
-              <input value={joinCode} onChange={e=> setJoinCode(e.target.value)} placeholder="Enter community code" className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm" />
+              <input value={joinCode} onChange={e=> setJoinCode(e.target.value)} placeholder={t('dashboard.join_code_placeholder')} className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm" />
               <div className="flex items-center justify-end gap-2">
-                <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowJoinModal(false)}>Cancel</button>
+                <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowJoinModal(false)}>{t('common.cancel')}</button>
                 <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=> {
-                  if (!joinCode.trim()) { alert('Please enter a code'); return }
+                  if (!joinCode.trim()) { alert(t('dashboard.code_required')); return }
                   // If not verified, gate join with verification
                   if (emailVerified === false){
                     setShowJoinModal(false)
@@ -838,11 +1340,11 @@ export default function PremiumDashboard() {
                         setCommunitiesLoaded(true)
                       }
                     }
-                      else alert(j?.error || 'Failed to join community')
+                      else alert(j?.error || t('dashboard.join_community_failed'))
                   }catch{ 
-                    alert('Failed to join community') 
+                    alert(t('dashboard.join_community_failed')) 
                   }
-                }}>Join</button>
+                }}>{t('dashboard.join_action')}</button>
               </div>
             </div>
           </div>
@@ -852,20 +1354,95 @@ export default function PremiumDashboard() {
   )
 }
 
-function Card({ iconClass, title, onClick }:{ iconClass:string; title:string; onClick:()=>void }){
+function CommunityCard({
+  name,
+  description,
+  memberCount,
+  lastActivity,
+  isOwner,
+  isAdmin,
+  unreadPostsCount,
+  onClick,
+}: {
+  name: string
+  description?: string | null
+  memberCount?: number
+  lastActivity?: string | null
+  isOwner?: boolean
+  isAdmin?: boolean
+  unreadPostsCount?: number
+  onClick: () => void
+}) {
+  const { t } = useTranslation()
+  const lastActiveText = formatLastActive(lastActivity, t)
+  const badge = isOwner ? t('feed.owner') : isAdmin ? t('feed.admin') : null
+  const descText = typeof description === 'string' ? description.trim() : ''
+  const unread = unreadPostsCount ?? 0
+
   return (
     <button
       onClick={onClick}
-      aria-label={title}
-      className="group relative w-full h-40 rounded-2xl overflow-hidden text-white transition-all duration-300 liquid-glass-surface border border-white/15 hover:border-teal-400/40 shadow-[0_20px_50px_rgba(0,0,0,0.45)] hover:shadow-[0_30px_60px_rgba(0,0,0,0.55)] hover:-translate-y-0.5"
+      aria-label={name}
+      className="group relative flex min-h-[8.5rem] w-full rounded-2xl overflow-hidden text-white transition-all duration-300 liquid-glass-surface border border-white/15 hover:border-teal-400/40 shadow-[0_24px_56px_rgba(0,0,0,0.48)] hover:shadow-[0_32px_64px_rgba(0,0,0,0.58)] hover:-translate-y-0.5 text-left"
     >
-      <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-           style={{ background: 'radial-gradient(600px circle at var(--x,50%) var(--y,50%), rgba(77,182,172,0.18), transparent 45%)' }} />
+      <div
+        className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+        style={{
+          background:
+            'radial-gradient(600px circle at var(--x,50%) var(--y,50%), rgba(77,182,172,0.18), transparent 45%)',
+        }}
+      />
 
-      <div className="absolute inset-0 flex flex-row items-center justify-start gap-3 px-6">
-        <i className={iconClass} style={{ fontSize: 24, color: '#7fe7df' }} />
-        <div className="text-[15px] font-semibold tracking-tight text-white/90">{title}</div>
+      <div className="relative flex flex-col gap-3 p-6 sm:p-7">
+        <div className="w-full min-w-0">
+          <div
+            className={`text-[17px] font-semibold tracking-tight text-white/90 leading-tight${badge ? ' pr-16 sm:pr-20' : ''}`}
+          >
+            {name}
+          </div>
+        </div>
+
+        {descText.length > 0 ? (
+          <p className="text-[11.5px] text-[#9fb0b5]/85 leading-relaxed line-clamp-3">
+            {descText}
+          </p>
+        ) : isOwner || isAdmin ? (
+          <p className="text-[11.5px] text-[#9fb0b5]/70 leading-relaxed italic">
+            {t('dashboard.no_description_add_manage')}
+          </p>
+        ) : (
+          <p className="text-[11.5px] text-[#9fb0b5]/70 leading-relaxed">
+            {t('dashboard.no_description_yet')}
+          </p>
+        )}
+
+        <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#9fb0b5] pt-1">
+          {typeof memberCount === 'number' && (
+            <span className="flex items-center gap-1.5">
+              <i className="fa-solid fa-users text-[10px] text-[#4db6ac] drop-shadow-[0_0_8px_rgba(77,182,172,0.45)]" aria-hidden />
+              {memberCount}
+            </span>
+          )}
+          {lastActiveText && (
+            <span className="flex items-center gap-1.5">
+              <i className="fa-regular fa-clock text-[10px]" />
+              {lastActiveText}
+            </span>
+          )}
+        </div>
       </div>
+
+      {badge && (
+        <span className="pointer-events-none absolute top-4 right-4 sm:top-5 sm:right-5 z-10 flex-shrink-0 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide rounded-full bg-[#4db6ac]/20 text-[#4db6ac] border border-[#4db6ac]/30">
+          {badge}
+        </span>
+      )}
+
+      {unread > 0 && (
+        <span className="pointer-events-none absolute bottom-4 right-4 sm:bottom-5 sm:right-5 z-10 flex-shrink-0 px-2 py-0.5 text-[10px] font-medium rounded-full bg-[#4db6ac]/20 text-[#4db6ac] border border-[#4db6ac]/30">
+          {t('dashboard.new_posts', { count: unread })}
+        </span>
+      )}
 
       <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-teal-300/60 to-transparent opacity-80" />
     </button>

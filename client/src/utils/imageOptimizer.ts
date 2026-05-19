@@ -6,8 +6,23 @@
 // Your domain for Cloudflare transformations
 const CF_DOMAIN = 'https://c-point.co'
 
-// R2 CDN domains that already serve optimized content
-const R2_DOMAINS = ['media.c-point.co', 'pub-']
+// R2 / direct object hosts — skip CF Image Resize (wrong zone pulls break thumbnails).
+const R2_DOMAINS = [
+  'media.c-point.co',
+  'pub-',
+  'r2.dev',
+  'r2.cloudflarestorage.com',
+]
+
+/** CF /cdn-cgi/image must only pull URLs on our zone; staging/local/external hosts load raw. */
+function cfResizeAllowedForOrigin(imageUrl: string): boolean {
+  try {
+    const host = new URL(imageUrl).hostname.toLowerCase()
+    return host === 'c-point.co' || host.endsWith('.c-point.co')
+  } catch {
+    return false
+  }
+}
 
 interface ImageOptions {
   width?: number
@@ -33,7 +48,7 @@ export function optimizeImage(originalUrl: string | null | undefined, options: I
   // - SVGs (don't need optimization)
   // - GIFs (preserve animation)
   // - R2 CDN URLs (already on edge)
-  const isR2Url = R2_DOMAINS.some(domain => originalUrl.includes(domain))
+  const isR2Url = R2_DOMAINS.some((domain) => originalUrl.includes(domain))
   if (
     originalUrl.startsWith('blob:') ||
     originalUrl.startsWith('data:') ||
@@ -65,15 +80,16 @@ export function optimizeImage(originalUrl: string | null | undefined, options: I
   
   // Handle different URL formats
   let imageUrl = originalUrl
-  
-  // If it's a relative URL, make it absolute
+
   if (originalUrl.startsWith('/')) {
+    if (typeof window === 'undefined') return originalUrl
     imageUrl = `${window.location.origin}${originalUrl}`
   }
-  
-  // If it's already on media.c-point.co, use it directly
-  // Otherwise, use the full URL
-  
+
+  if (!cfResizeAllowedForOrigin(imageUrl)) {
+    return originalUrl.startsWith('/') ? imageUrl : originalUrl
+  }
+
   return `${CF_DOMAIN}/cdn-cgi/image/${paramString}/${imageUrl}`
 }
 

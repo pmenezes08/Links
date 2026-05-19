@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import type { EntitlementsError } from '../../utils/entitlementsError'
 
@@ -7,17 +8,72 @@ interface Props {
   onClose: () => void
 }
 
+/** Keep aligned with `backend/blueprints/subscriptions.py` `_PREMIUM_FEATURE_BULLETS` / Personal card on Subscription Plans. */
+const PREMIUM_BULLET_KEYS = [
+  'entitlements.limit_modal.premium_bullet_1',
+  'entitlements.limit_modal.premium_bullet_2',
+  'entitlements.limit_modal.premium_bullet_3',
+  'entitlements.limit_modal.premium_bullet_4',
+] as const
+
+/** Confirms current plan for Steve upgrade prompts (aligned with `err.tier` from the API). */
+function planTierNotice(err: EntitlementsError, tr: (key: string) => string): string | null {
+  if (err.reason !== 'premium_required') return null
+  const tier = (err.tier || '').toLowerCase()
+  if (tier === 'trial') return tr('entitlements.limit_modal.tier_trial')
+  if (!tier || tier === 'free' || tier === 'anonymous' || tier === 'unknown') {
+    return tr('entitlements.limit_modal.tier_free')
+  }
+  return null
+}
+
+function PremiumBenefitsList({ err }: { err: EntitlementsError }) {
+  const { t } = useTranslation()
+  if (err.reason !== 'premium_required') return null
+  return (
+    <div style={{ marginTop: 14, textAlign: 'left' }}>
+      <div
+        style={{
+          fontSize: 11,
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+          color: 'rgba(255,255,255,0.45)',
+          marginBottom: 8,
+        }}
+      >
+        {t('entitlements.limit_modal.with_premium')}
+      </div>
+      <ul
+        style={{
+          margin: 0,
+          paddingLeft: 18,
+          fontSize: 13,
+          color: 'rgba(255,255,255,0.82)',
+          lineHeight: 1.55,
+        }}
+      >
+        {PREMIUM_BULLET_KEYS.map((key) => (
+          <li key={key} style={{ marginBottom: 6 }}>
+            {t(key)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 /**
  * Full-screen modal shown when a user triggers an action via a button
  * (feed reply, post summary, voice summary) and the backend denies it
  * due to entitlements. This is the "hard" surface — contrast with
  * `LimitReachedBubble` used inside ongoing chats.
  *
- * Maps each `reason` to a title + icon while the body text and CTA are
- * pulled straight from the backend so operators can edit them from the
- * Knowledge Base without a client deploy.
+ * Maps each `reason` to a title + icon. Body copy comes from the backend
+ * (KB-editable) except `premium_required`, where we show your plan line plus the
+ * subscription-aligned bullet list instead of the long default message.
  */
 export default function LimitReachedModal({ err, onClose }: Props) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -49,21 +105,21 @@ export default function LimitReachedModal({ err, onClose }: Props) {
   const titleForReason = (): string => {
     switch (err.reason) {
       case 'premium_required':
-        return 'Steve is a Premium feature'
+        return t('entitlements.limit_modal.title_premium_required')
       case 'daily_cap':
-        return '24-hour limit reached'
+        return t('entitlements.limit_modal.title_daily_cap')
       case 'monthly_steve_cap':
-        return 'Monthly Steve allowance reached'
+        return t('entitlements.limit_modal.title_monthly_steve_cap')
       case 'monthly_whisper_cap':
-        return 'Voice transcription limit reached'
+        return t('entitlements.limit_modal.title_monthly_whisper_cap')
       case 'community_pool_exhausted':
-        return 'Community Steve pool exhausted'
+        return t('entitlements.limit_modal.title_community_pool_exhausted')
       case 'community_suspended':
-        return 'Community temporarily paused'
+        return t('entitlements.limit_modal.title_community_suspended')
       case 'grace_expired':
-        return 'Enterprise seat ended'
+        return t('entitlements.limit_modal.title_grace_expired')
       default:
-        return "You've hit a limit"
+        return t('entitlements.limit_modal.title_default')
     }
   }
 
@@ -88,25 +144,26 @@ export default function LimitReachedModal({ err, onClose }: Props) {
   }
 
   const renderUsage = () => {
+    if (err.reason === 'premium_required') return null
     const u = err.usage || {}
     const rows: { label: string; used: number | null; cap: number | null }[] = []
     if (u.monthly_steve_used != null || u.monthly_steve_cap != null) {
       rows.push({
-        label: 'Steve uses this month',
+        label: t('entitlements.limit_modal.usage_steve_month'),
         used: u.monthly_steve_used ?? 0,
         cap: u.monthly_steve_cap ?? null,
       })
     }
     if (u.daily_used != null || u.daily_cap != null) {
       rows.push({
-        label: 'Steve uses (last 24h)',
+        label: t('entitlements.limit_modal.usage_steve_24h'),
         used: u.daily_used ?? 0,
         cap: u.daily_cap ?? null,
       })
     }
     if (u.whisper_minutes_used != null || u.whisper_minutes_cap != null) {
       rows.push({
-        label: 'Voice minutes this month',
+        label: t('entitlements.limit_modal.usage_voice_month'),
         used: Math.round(u.whisper_minutes_used ?? 0),
         cap: u.whisper_minutes_cap ?? null,
       })
@@ -146,7 +203,7 @@ export default function LimitReachedModal({ err, onClose }: Props) {
                     width: `${pct}%`,
                     height: '100%',
                     borderRadius: 999,
-                    background: pct >= 100 ? '#e57373' : pct >= 80 ? '#ffb74d' : '#4db6ac',
+                    background: pct >= 100 ? '#e57373' : pct >= 80 ? '#ef5350' : '#4db6ac',
                   }}
                 />
               </div>
@@ -156,6 +213,8 @@ export default function LimitReachedModal({ err, onClose }: Props) {
       </div>
     )
   }
+
+  const tierLine = planTierNotice(err, t)
 
   return (
     <div
@@ -190,11 +249,11 @@ export default function LimitReachedModal({ err, onClose }: Props) {
           width: '100%',
           maxWidth: 400,
           borderRadius: 16,
-          border: '1px solid rgba(255,255,255,0.1)',
-          background: '#111',
+          border: '1px solid #4db6ac',
+          background: '#000',
           padding: 24,
           color: '#fff',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+          boxShadow: 'none',
         }}
         onClick={e => e.stopPropagation()}
       >
@@ -216,23 +275,43 @@ export default function LimitReachedModal({ err, onClose }: Props) {
           <h3 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>{titleForReason()}</h3>
         </div>
 
-        <p
-          style={{
-            fontSize: 14,
-            color: 'rgba(255,255,255,0.78)',
-            textAlign: 'center',
-            margin: '0 0 8px',
-            lineHeight: 1.55,
-          }}
-        >
-          {err.message}
-        </p>
+        {tierLine ? (
+          <p
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: 'rgba(255,255,255,0.92)',
+              textAlign: 'center',
+              margin: '0 0 12px',
+              lineHeight: 1.45,
+            }}
+          >
+            {tierLine}
+          </p>
+        ) : null}
+
+        {err.reason !== 'premium_required' ? (
+          <p
+            style={{
+              fontSize: 14,
+              color: 'rgba(255,255,255,0.78)',
+              textAlign: 'center',
+              margin: '0 0 8px',
+              lineHeight: 1.55,
+            }}
+          >
+            {err.message}
+          </p>
+        ) : null}
+
+        <PremiumBenefitsList err={err} />
 
         {renderUsage()}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 18 }}>
           {err.cta?.label ? (
             <button
+              type="button"
               onClick={handleCta}
               style={{
                 width: '100%',
@@ -250,6 +329,7 @@ export default function LimitReachedModal({ err, onClose }: Props) {
             </button>
           ) : null}
           <button
+            type="button"
             onClick={onClose}
             style={{
               width: '100%',
@@ -262,7 +342,7 @@ export default function LimitReachedModal({ err, onClose }: Props) {
               cursor: 'pointer',
             }}
           >
-            Not now
+            {t('entitlements.limit_modal.not_now')}
           </button>
         </div>
       </div>

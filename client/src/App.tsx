@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { App as CapacitorApp } from '@capacitor/app'
@@ -20,16 +20,13 @@ import { HeaderContext } from './contexts/HeaderContext'
 import { UserProfileContext, type UserProfile } from './contexts/UserProfileContext'
 import PushInit from './components/PushInit'
 import NotificationPrompt from './components/NotificationPrompt'
+import { EntitlementsProvider } from './contexts/EntitlementsContext'
 import { NetworkProvider } from './contexts/NetworkContext'
 import { BadgeProvider } from './contexts/BadgeContext'
-import { EntitlementsProvider } from './contexts/EntitlementsContext'
-import MembershipAIUsage from './pages/MembershipAIUsage'
 import OfflineBanner from './components/OfflineBanner'
 import OutboxDrainer from './components/OutboxDrainer'
-// NativePushInit disabled (clear logic now centralized in BadgeContext with resume listener + always-on-native clear in poll for robustness)
 import BrandAssetsInit from './components/BrandAssetsInit'
-import { VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES } from './utils/chatThreadsCache'
-// Encryption removed — not in use
+import LocaleBootstrap from './components/LocaleBootstrap'
 import CrossfitExact from './pages/CrossfitExact'
 import CommunityFeed from './pages/CommunityFeed'
 import CommunityCalendar from './pages/CommunityCalendar'
@@ -56,7 +53,6 @@ import GroupChatThread from './pages/GroupChatThread'
 import GroupChatMedia from './pages/GroupChatMedia'
 import ChatMedia from './pages/ChatMedia'
 import Profile from './pages/Profile'
-import SteveKnowsMe from './pages/SteveKnowsMe'
 import PublicProfile from './pages/PublicProfile'
 import AccountSettings from './pages/AccountSettings'
 import AccountSecurity from './pages/AccountSecurity'
@@ -68,20 +64,26 @@ import Notifications from './pages/Notifications'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminProfile from './pages/AdminProfile'
 import KeyPosts from './pages/KeyPosts'
+import AboutCPoint from './pages/AboutCPoint'
 import OnboardingWelcome from './pages/OnboardingWelcome'
 import VerifyOverlay from './components/VerifyOverlay'
 import EventDetail from './pages/EventDetail'
 import GroupFeed from './pages/GroupFeed'
 import EditGroup from './pages/EditGroup'
-// EncryptionSettings removed — not in use
 import CommentReply from './pages/CommentReply'
-import ShareIncoming from './pages/ShareIncoming'
-import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from './constants/googleOAuth'
+import ShareIncomingRouteRedirect from './pages/ShareIncomingRouteRedirect'
+import { ensureAccountIsolationForUsername } from './utils/accountStateReset'
+import {
+  GOOGLE_ANDROID_CLIENT_ID,
+  GOOGLE_IOS_CLIENT_ID,
+  GOOGLE_WEB_CLIENT_ID,
+} from './constants/googleOAuth'
 
 const queryClient = new QueryClient()
 
 function AppRoutes(){
   const [title, setTitle] = useState('')
+  const [titleAccessory, setTitleAccessory] = useState<ReactNode>(null)
   const [headerHiddenOverride, setHeaderHiddenOverride] = useState(false)
   const [userMeta, setUserMeta] = useState<{ username?:string; displayName?:string|null; avatarUrl?:string|null }>({})
   const location = useLocation()
@@ -89,7 +91,6 @@ function AppRoutes(){
   const navigate = useNavigate()
   const [authLoaded, setAuthLoaded] = useState(false)
   const [isVerified, setIsVerified] = useState<boolean | null>(null)
-  // const [hasCommunities, setHasCommunities] = useState<boolean | null>(null)
   const [requireVerification] = useState(() => (import.meta as any).env?.VITE_REQUIRE_VERIFICATION_CLIENT === 'true')
   const [profileData, setProfileData] = useState<UserProfile>(null)
   const [profileLoading, setProfileLoading] = useState(true)
@@ -97,7 +98,6 @@ function AppRoutes(){
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const isChatRoute = location.pathname.startsWith('/user_chat/chat/') || location.pathname.startsWith('/group_chat/')
 
-  const locationRef = useRef(location.pathname)
   const scrollRegionRef = useRef<HTMLDivElement | null>(null)
   const publicPaths = useMemo(
     () =>
@@ -113,6 +113,49 @@ function AppRoutes(){
       ]),
     [],
   )
+
+  const applyProfileFromServer = useCallback(async (profile: Record<string, unknown>) => {
+    setProfileData(profile)
+    setIsVerified(!!(profile as any)?.email_verified)
+    setProfileError(null)
+
+    const username = (profile as any)?.username as string | undefined
+    if (username) {
+      try {
+        await ensureAccountIsolationForUsername(username)
+      } catch (e) {
+        console.warn('Error clearing account-scoped state for user change:', e)
+      }
+    }
+
+    try {
+      localStorage.setItem('cached_profile', JSON.stringify(profile))
+    } catch { /* ignore */ }
+
+    if (username) {
+      try {
+        localStorage.setItem('current_username', username)
+      } catch { /* ignore */ }
+    }
+
+
+    if (!sessionStorage.getItem('geo_countries')) {
+      fetch('/api/geo/countries', { credentials: 'include' })
+        .then(r => r.json())
+        .then(d => {
+          if (d?.success && Array.isArray(d.countries)) {
+            const names = d.countries
+              .map((item: any) => (typeof item?.name === 'string' ? item.name : null))
+              .filter(Boolean)
+            try {
+              sessionStorage.setItem('geo_countries', JSON.stringify(names))
+            } catch { /* ignore */ }
+          }
+        })
+        .catch(() => {})
+    }
+  }, [])
+
   const applyKeyboardOffset = useCallback((nextOffset: number) => {
     setKeyboardOffset(prev => (Math.abs(prev - nextOffset) < 1 ? prev : nextOffset))
     document.documentElement.style.setProperty('--keyboard-offset', `${nextOffset}px`)
@@ -191,17 +234,11 @@ function AppRoutes(){
     }
   }, [applyKeyboardOffset, isChatRoute])
 
-  // State for deep link join modal
   const [deepLinkJoin, setDeepLinkJoin] = useState<{ name: string; id: number } | null>(null)
-  
-  // Track processed URLs to prevent infinite loops - use sessionStorage for persistence across page reloads
   const processedUrlsRef = useRef<Set<string>>(new Set())
-  /** One attempt per session to read deferred invite from clipboard (install-then-open flow). */
   const clipboardInviteAttemptedRef = useRef(false)
-  /** Share extension opens cpoint:// before /api/profile_me finishes; queue until authLoaded. */
   const pendingShareUrlRef = useRef<string | null>(null)
   
-  // Initialize from sessionStorage on first render
   useEffect(() => {
     try {
       const stored = sessionStorage.getItem('cpoint_processed_deep_links')
@@ -214,7 +251,6 @@ function AppRoutes(){
     }
   }, [])
   
-  // Helper to mark URL as processed (persists in sessionStorage)
   const markUrlProcessed = useCallback((url: string) => {
     processedUrlsRef.current.add(url)
     try {
@@ -224,9 +260,7 @@ function AppRoutes(){
     }
   }, [])
   
-  // Helper to check if URL was already processed
   const isUrlProcessed = useCallback((url: string): boolean => {
-    // Also check sessionStorage in case ref wasn't initialized
     if (processedUrlsRef.current.has(url)) return true
     try {
       const stored = sessionStorage.getItem('cpoint_processed_deep_links')
@@ -313,8 +347,6 @@ function AppRoutes(){
     [navigate, profileData, isUrlProcessed, markUrlProcessed],
   )
 
-  // Handle deep links (Universal Links) when app is opened from external sources
-  // Share extension can fire cpoint://share/... before authLoaded; queue and flush below.
   useEffect(() => {
     if (Capacitor.getPlatform() === 'web') return
 
@@ -345,8 +377,6 @@ function AppRoutes(){
       console.log(`🔗 Deep link received (${source}):`, url)
 
       if (isShareIncomingUrl(url)) {
-        // iOS can deliver the same URL multiple times; ignore repeats so we don't navigate away
-        // from Messages/compose after the user already picked a destination (store may be empty).
         if (isUrlProcessed(url)) {
           console.log('🔗 Share deep link already handled, skipping duplicate:', url)
           return
@@ -379,7 +409,6 @@ function AppRoutes(){
       }
     }
 
-    // Listen for app URL open events (Universal Links) — register immediately so share is not dropped
     CapacitorApp.addListener('appUrlOpen', (event: { url: string }) => {
       console.log('🔗 appUrlOpen event:', event.url)
       handleDeepLink(event.url, 'appUrlOpen')
@@ -387,8 +416,6 @@ function AppRoutes(){
       listenerHandle = handle
     })
 
-    // Defer getLaunchUrl until auth is known — otherwise non-share links (e.g. invites) would be
-    // skipped on cold start. Share links still work via appUrlOpen queue or this call once ready.
     if (authLoaded) {
       CapacitorApp.getLaunchUrl()
         .then((result) => {
@@ -405,7 +432,6 @@ function AppRoutes(){
     }
   }, [authLoaded, applyInviteTokenFromDeepLink, navigate, markUrlProcessed])
 
-  // Deferred invite: clipboard payload from invite landing page (install-then-open flow)
   useEffect(() => {
     if (Capacitor.getPlatform() === 'web') return
     if (!authLoaded) return
@@ -498,7 +524,7 @@ function AppRoutes(){
   }, [])
 
   const loadProfile = useCallback(async (path?: string): Promise<UserProfile> => {
-    const currentPath = path ?? locationRef.current
+    const currentPath = path ?? location.pathname
     setProfileLoading(true)
     setProfileError(null)
 
@@ -541,6 +567,7 @@ function AppRoutes(){
       if (response.status === 403) {
         setProfileData(null)
         setIsVerified(false)
+        setProfileError('Email verification required')
         return null
       }
       if (!response.ok) {
@@ -548,110 +575,16 @@ function AppRoutes(){
       }
       const json = await response.json().catch(() => null)
       if (json?.success && json.profile) {
-        const profile = json.profile as UserProfile
-        const username = (profile as any)?.username as string | undefined
-
-        let cachedProfileUsername: string | null = null
-        try {
-          const raw = localStorage.getItem('cached_profile')
-          if (raw) {
-            const parsed = JSON.parse(raw) as { username?: string }
-            cachedProfileUsername = parsed?.username ?? null
-          }
-        } catch {
-          /* ignore */
-        }
-
-        const previousUsername = localStorage.getItem('current_username')
-        const accountChanged =
-          !!username &&
-          ((!!previousUsername && previousUsername !== username) ||
-            (!!cachedProfileUsername && cachedProfileUsername !== username))
-
-        if (accountChanged) {
-          const keysToRemove = ['home-timeline', 'communityManagementShowNested']
-          const prefixesToClear = [
-            'community_',
-            'chat_',
-            'dashboard-',
-            'community-feed:',
-            'group-feed:',
-            ...VIEWER_SCOPED_LOCAL_STORAGE_PREFIXES,
-          ]
-
-          try {
-            keysToRemove.forEach((key) => {
-              try {
-                localStorage.removeItem(key)
-              } catch {}
-            })
-            Object.keys(localStorage).forEach((key) => {
-              if (prefixesToClear.some((prefix) => key.startsWith(prefix))) {
-                try {
-                  localStorage.removeItem(key)
-                } catch {}
-              }
-            })
-          } catch (e) {
-            console.warn('Error clearing localStorage for user change:', e)
-          }
-
-          if ('caches' in window) {
-            caches.keys().then((names) => {
-              names.forEach((name) => {
-                if (name.includes('runtime') || name.includes('cp-')) {
-                  caches.delete(name)
-                }
-              })
-            }).catch(() => {})
-          }
-
-          try {
-            import('./utils/avatarCache').then(({ clearAllAvatarCache }) => clearAllAvatarCache()).catch(() => {})
-          } catch {}
-
-          try {
-            import('./utils/offlineDb').then(({ deleteCpointOfflineDatabase }) => deleteCpointOfflineDatabase()).catch(() => {})
-          } catch {}
-        }
-
-        setProfileData(profile)
-        setIsVerified(!!(profile as any)?.email_verified)
-        setProfileError(null)
-        try {
-          localStorage.setItem('cached_profile', JSON.stringify(profile))
-        } catch {}
-
-        if (username) {
-          localStorage.setItem('current_username', username)
-        }
-
-        // Prefetch countries list so Edit Profile loads instantly
-        if (!sessionStorage.getItem('geo_countries')) {
-          fetch('/api/geo/countries', { credentials: 'include' })
-            .then(r => r.json())
-            .then(d => {
-              if (d?.success && Array.isArray(d.countries)) {
-                const names = d.countries
-                  .map((item: any) => typeof item?.name === 'string' ? item.name : null)
-                  .filter(Boolean)
-                try { sessionStorage.setItem('geo_countries', JSON.stringify(names)) } catch {}
-              }
-            })
-            .catch(() => {})
-        }
-
-        return profile
+        const profile = json.profile as Record<string, unknown>
+        await applyProfileFromServer(profile)
+        return profile as UserProfile
       }
 
       throw new Error(json?.error || 'Profile response invalid')
     } catch (err) {
       try {
         const cached = JSON.parse(localStorage.getItem('cached_profile') || '')
-        const cu = localStorage.getItem('current_username')
-        if (cached && cu && (cached as any).username !== cu) {
-          // Do not restore another user's cached profile when session expects a different user
-        } else if (cached) {
+        if (cached) {
           setProfileData(cached)
           setIsVerified(!!(cached as any)?.email_verified)
           setProfileError(null)
@@ -665,11 +598,7 @@ function AppRoutes(){
       setProfileLoading(false)
       setAuthLoaded(true)
     }
-  }, [navigate, publicPaths])
-
-  useEffect(() => {
-    locationRef.current = location.pathname
-  }, [location.pathname])
+  }, [publicPaths, applyProfileFromServer])
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'scrollRestoration' in window.history) {
@@ -678,7 +607,7 @@ function AppRoutes(){
   }, [])
 
   useEffect(() => {
-    loadProfile(locationRef.current)
+    loadProfile()
   }, [loadProfile])
 
   useLayoutEffect(() => {
@@ -694,8 +623,7 @@ function AppRoutes(){
       const username = (profileData as any)?.username
       const displayName = (profileData as any)?.display_name || username
       const rawAvatarUrl = (profileData as any)?.profile_picture || null
-      // Cache-bust by username + timestamp so switching accounts always shows correct avatar
-      const avatarUrl = rawAvatarUrl 
+      const avatarUrl = rawAvatarUrl
         ? (rawAvatarUrl.includes('?') ? rawAvatarUrl : `${rawAvatarUrl}?u=${username}&v=${Date.now()}`)
         : null
       setUserMeta({ username, displayName, avatarUrl })
@@ -708,11 +636,12 @@ function AppRoutes(){
     () => ({
       profile: profileData,
       setProfile: setProfileData,
+      applyProfileFromServer,
       loading: profileLoading,
       error: profileError,
       refresh: () => loadProfile(),
     }),
-    [profileData, profileLoading, profileError, loadProfile],
+    [profileData, profileLoading, profileError, loadProfile, applyProfileFromServer],
   )
 
   useEffect(() => {
@@ -729,20 +658,22 @@ function AppRoutes(){
     return <OnboardingWelcome />
   })()
 
-  const currentPath = location.pathname
+  const currentPathName = location.pathname
   const hideHeader =
     isFirstPage ||
-    currentPath === '/welcome' ||
-    currentPath === '/onboarding' ||
-    currentPath === '/login' ||
-    currentPath === '/signup' ||
-    currentPath === '/signup_react' ||
-    currentPath.startsWith('/user_chat/chat/') ||  // Chat thread has its own header
-    currentPath.startsWith('/group_chat/') ||  // Group chat has its own header
-    currentPath.startsWith('/post/') ||  // Post detail has its own header
-    currentPath.startsWith('/reply/') ||  // Reply/thread page has its own header
-    currentPath.startsWith('/community_feed_react/') ||  // Community feed has its own header
-    currentPath.startsWith('/community/') && currentPath.includes('/feed')  // Community feed alternate route
+    currentPathName === '/welcome' ||
+    currentPathName === '/onboarding' ||
+    currentPathName === '/login' ||
+    currentPathName === '/signup' ||
+    currentPathName === '/signup_react' ||
+    currentPathName.startsWith('/user_chat/chat/') ||
+    currentPathName.startsWith('/group_chat/') ||
+    currentPathName.startsWith('/post/') ||
+    currentPathName.startsWith('/reply/') ||
+    currentPathName.startsWith('/group_reply/') ||
+    currentPathName.startsWith('/community_feed_react/') ||
+    currentPathName.startsWith('/group_feed_react/') ||
+    currentPathName.startsWith('/community/') && currentPathName.includes('/feed')
   const showHeader = authLoaded && !hideHeader && !headerHiddenOverride
   const headerHeightValue = showHeader ? 'calc(56px + env(safe-area-inset-top, 0px))' : 'env(safe-area-inset-top, 0px)'
   const contentOffsetValue = headerHiddenOverride ? '0px' : headerHeightValue
@@ -757,15 +688,12 @@ function AppRoutes(){
     '--app-content-gap': '8px',
   } as CSSProperties
 
-  // ProtectedRoute no longer used after simplifying guards
-
   return (
     <UserProfileContext.Provider value={userProfileValue}>
       <BadgeProvider>
-      <EntitlementsProvider>
-      <HeaderContext.Provider value={{ setTitle, setHeaderHidden: setHeaderHiddenOverride }}>
+      <HeaderContext.Provider value={{ setTitle, setHeaderHidden: setHeaderHiddenOverride, setTitleAccessory }}>
         {showHeader && (
-          <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} />
+          <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} titleAccessory={titleAccessory} />
         )}
         <main
           ref={scrollRegionRef}
@@ -799,23 +727,12 @@ function AppRoutes(){
                   <Route path="/group_chat/:group_id/media" element={<GroupChatMedia />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/profile_react" element={<Profile />} />
-                  <Route path="/steve-knows-me" element={<SteveKnowsMe />} />
                   <Route path="/profile/:username" element={<PublicProfile />} />
                 <Route path="/account_settings" element={<AccountSettings />} />
-                <Route path="/settings" element={<AccountSettings />} />
-                <Route path="/settings/membership" element={<AccountSettings />} />
-                <Route path="/account_settings/membership" element={<AccountSettings />} />
-                {/*
-                 * The modal-based Manage Membership lives inside AccountSettings and
-                 * is opened via a ?tab= query param, but we keep these legacy paths
-                 * pointed at the read-only MembershipAIUsage page so bookmarks /
-                 * "See my usage" CTAs that landed here in Wave 4 keep working.
-                 */}
-                <Route path="/settings/membership/ai-usage" element={<MembershipAIUsage />} />
-                <Route path="/account_settings/membership/ai-usage" element={<MembershipAIUsage />} />
                 <Route path="/account_settings_react" element={<AccountSettings />} />
                 <Route path="/account_settings/security" element={<AccountSecurity />} />
                 <Route path="/account_settings/danger" element={<AccountDangerZone />} />
+                <Route path="/about_cpoint" element={<AboutCPoint />} />
                   <Route path="/subscription_plans" element={<SubscriptionPlans />} />
                 <Route path="/success" element={<Success />} />
                 <Route path="/notifications" element={<Notifications />} />
@@ -824,6 +741,7 @@ function AppRoutes(){
                 <Route path="/admin_dashboard_react" element={<AdminDashboard />} />
                 <Route path="/admin_profile_react" element={<AdminProfile />} />
                 <Route path="/home" element={<HomeTimeline />} />
+                <Route path="/feed" element={<HomeTimeline mode="dashboard_feed" />} />
                 <Route path="/workout_tracking" element={<WorkoutTracking />} />
                 <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
                 <Route path="/community/:community_id/calendar_react" element={<CommunityCalendar />} />
@@ -838,7 +756,8 @@ function AppRoutes(){
                 <Route path="/event/:event_id" element={<EventDetail />} />
                 <Route path="/post/:post_id" element={<PostDetail />} />
                 <Route path="/reply/:reply_id" element={<CommentReply />} />
-                <Route path="/share/incoming" element={<ShareIncoming />} />
+                <Route path="/group_reply/:reply_id" element={<CommentReply />} />
+                <Route path="/share/incoming" element={<ShareIncomingRouteRedirect />} />
                 <Route path="/compose" element={<CreatePost />} />
                 <Route path="/group_feed_react/:group_id" element={<GroupFeed />} />
                 <Route path="/group/:group_id/edit" element={<EditGroup />} />
@@ -857,7 +776,6 @@ function AppRoutes(){
           }} />
         )}
 
-        {/* Deep Link Join Success Modal */}
         {deepLinkJoin && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
             <div className="mx-4 w-full max-w-sm rounded-2xl border border-[#4db6ac]/30 bg-[#0a0a0a] p-6 shadow-2xl animate-fade-in">
@@ -875,7 +793,6 @@ function AppRoutes(){
           </div>
         )}
       </HeaderContext.Provider>
-      </EntitlementsProvider>
       </BadgeProvider>
     </UserProfileContext.Provider>
   )
@@ -883,38 +800,42 @@ function AppRoutes(){
 
 export default function App() {
   useEffect(() => {
-    // Web uses Google Identity Services (gsi/client) in MobileLogin — not Codetrix web shims
-    // (deprecated; new OAuth clients get access_denied from iframerpc).
     if (!Capacitor.isNativePlatform()) {
       window.__googleAuthReady = true
       return
     }
+
+    const platform = Capacitor.getPlatform()
+    console.log(`[GoogleAuth] Initializing on platform: ${platform}`)
+
     import('@codetrix-studio/capacitor-google-auth')
       .then(({ GoogleAuth }) => {
         const opts: Record<string, unknown> = {
           scopes: ['profile', 'email'],
           grantOfflineAccess: false,
         }
-        // Android Sign-In ID tokens come from requestIdToken(Web client id); do not use the
-        // Android-type OAuth client id here (plugin/androidClientId resolution can mis-route).
-        // iOS branch must not catch Android — use an explicit platform string (Capacitor is lowercase).
-        const platform = String(Capacitor.getPlatform() ?? '').toLowerCase()
+
+        // IMPORTANT: On Android, it MUST use the Android OAuth Client ID (linked to SHA-1)
+        // as the clientId to identify the specific app to Google Play Services.
+        // It MUST use the Web OAuth Client ID as the serverClientId to return an ID Token.
         if (platform === 'android') {
-          opts.clientId = GOOGLE_WEB_CLIENT_ID
+          console.log('[GoogleAuth] Using Android + Web Client IDs for Android initialization')
+          opts.clientId = GOOGLE_ANDROID_CLIENT_ID
           opts.serverClientId = GOOGLE_WEB_CLIENT_ID
-        } else if (platform === 'ios') {
+        } else {
+          console.log('[GoogleAuth] Using iOS Client ID for iOS initialization')
           opts.clientId = GOOGLE_IOS_CLIENT_ID
           opts.iosClientId = GOOGLE_IOS_CLIENT_ID
         }
+
         return GoogleAuth.initialize(opts as any)
       })
       .then(() => {
+        console.log('[GoogleAuth] Initialization complete')
         window.__googleAuthReady = true
       })
       .catch((err) => {
-        if (String(Capacitor.getPlatform() ?? '').toLowerCase() === 'android') {
-          console.error('[GoogleAuth Android] initialize failed:', err)
-        }
+        console.error('[GoogleAuth] Initialization failed:', err)
         window.__googleAuthReady = true
       })
   }, [])
@@ -923,12 +844,15 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <NetworkProvider>
         <BrowserRouter>
-          <OfflineBanner />
-          <OutboxDrainer />
-          <BrandAssetsInit />
-          <PushInit />
-          <NotificationPrompt />
-          <AppRoutes />
+          <EntitlementsProvider>
+            <OfflineBanner />
+            <OutboxDrainer />
+            <BrandAssetsInit />
+            <LocaleBootstrap />
+            <PushInit />
+            <NotificationPrompt />
+            <AppRoutes />
+          </EntitlementsProvider>
         </BrowserRouter>
       </NetworkProvider>
     </QueryClientProvider>

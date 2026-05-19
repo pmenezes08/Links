@@ -2,8 +2,10 @@ import { useEffect, useState, useCallback } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import ManageMembershipModal, { type MembershipTab } from '../components/membership/ManageMembershipModal'
 import RequestMyDataModal from '../components/privacy/RequestMyDataModal'
+import LanguagePicker from '../components/settings/LanguagePicker'
 
 type ProfileData = {
   username: string
@@ -24,6 +26,7 @@ type ProfileData = {
 export default function AccountSettings(){
   const { setTitle } = useHeader()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [profile, setProfile] = useState<ProfileData|null>(null)
   const [loading, setLoading] = useState(true)
   // Removed saving state since only email updates are handled here now
@@ -39,13 +42,13 @@ export default function AccountSettings(){
   const closeMembership = useCallback(() => setMembershipTab(null), [])
 
   // Honor /account_settings/membership and /settings/membership with optional
-  // ?tab=ai|billing|payment|notifications|plan to open the modal directly.
+  // ?tab=ai|billing|payment|plan to open the modal directly.
   useEffect(() => {
     const path = window.location.pathname
     if (!/membership/.test(path)) return
     const params = new URLSearchParams(window.location.search)
     const tab = params.get('tab') as MembershipTab | null
-    const allowed: MembershipTab[] = ['plan', 'ai', 'billing', 'payment', 'notifications']
+    const allowed: MembershipTab[] = ['plan', 'ai', 'billing', 'payment']
     const initial = tab && allowed.includes(tab) ? tab : 'plan'
     setMembershipTab(initial)
   }, [])
@@ -76,7 +79,7 @@ export default function AccountSettings(){
       })
       const j = await r.json().catch(() => null)
       if (!j?.success) {
-        setMessage({ type: 'error', text: j?.error || 'Could not update notification preferences' })
+        setMessage({ type: 'error', text: j?.error || t('account.messages.notification_update_failed') })
         setProfile(prev =>
           prev ? { ...prev, notification_show_previews: previousValue } : null
         )
@@ -91,13 +94,14 @@ export default function AccountSettings(){
             }
           : null
       )
+      loadProfile({ silent: true, refresh: true })
     } catch {
-      setMessage({ type: 'error', text: 'Network error updating preferences' })
+      setMessage({ type: 'error', text: t('account.messages.notification_update_network') })
       setProfile(prev =>
         prev ? { ...prev, notification_show_previews: previousValue } : null
       )
     }
-  }, [])
+  }, [t])
 
   const openDeviceSettings = useCallback(async () => {
     try {
@@ -110,36 +114,38 @@ export default function AccountSettings(){
         const { App: CapApp } = await import('@capacitor/app')
         // @ts-ignore
         if (CapApp.openUrl) await CapApp.openUrl({ url: 'android.settings.APP_NOTIFICATION_SETTINGS' })
-        else alert('Please open your device Settings > Apps > C-Point > Notifications to enable them.')
+        else alert(t('account.notifications.android_settings_alert'))
       } else {
-        alert('Please enable notifications in your browser settings for this site.')
+        alert(t('account.notifications.browser_settings_alert'))
       }
     } catch {
-      alert('Please open your device Settings and enable notifications for C-Point.')
+      alert(t('account.notifications.device_settings_alert'))
     }
-  }, [])
+  }, [t])
 
-  useEffect(() => { setTitle('Account Settings') }, [setTitle])
+  useEffect(() => { setTitle(t('account.settings')) }, [setTitle, t])
   useEffect(() => { checkNotifPermission() }, [checkNotifPermission])
 
   useEffect(() => {
     loadProfile()
   }, [])
 
-  function loadProfile(opts?: { silent?: boolean }) {
+  function loadProfile(opts?: { silent?: boolean; refresh?: boolean }) {
     const silent = !!opts?.silent
+    const refresh = !!opts?.refresh
     if (!silent) setLoading(true)
-    fetch('/api/profile_me', { credentials: 'include', headers: { 'Accept': 'application/json' } })
+    const url = refresh ? '/api/profile_me?refresh=1' : '/api/profile_me'
+    fetch(url, { credentials: 'include', headers: { Accept: 'application/json' } })
       .then(r => r.json())
       .then(j => {
         if (j?.success && j.profile) {
           setProfile(j.profile)
         } else if (!silent) {
-          setMessage({ type: 'error', text: 'Failed to load profile' })
+          setMessage({ type: 'error', text: t('account.messages.profile_load_failed') })
         }
       })
       .catch(() => {
-        if (!silent) setMessage({ type: 'error', text: 'Error loading profile' })
+        if (!silent) setMessage({ type: 'error', text: t('account.messages.profile_load_error') })
       })
       .finally(() => {
         if (!silent) setLoading(false)
@@ -172,12 +178,12 @@ export default function AccountSettings(){
         .then(j=>{
           if (j?.success) {
             setShowVerifyModal(true)
-            setMessage({ type: 'success', text: 'Email updated. Please verify your new email.' })
+            setMessage({ type: 'success', text: t('account.messages.email_updated') })
           } else if (j?.error) {
             setMessage({ type: 'error', text: j.error })
           }
         })
-        .catch(()=> setMessage({ type:'error', text:'Error updating email' }))
+        .catch(()=> setMessage({ type:'error', text:t('account.messages.email_update_error') }))
         .finally(()=> {})
     } else {
       // no-op
@@ -194,7 +200,7 @@ export default function AccountSettings(){
       <div className="h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center">
           <i className="fa-solid fa-spinner fa-spin text-2xl mb-4" />
-          <div>Loading profile...</div>
+          <div>{t('account.info.loading_profile')}</div>
         </div>
       </div>
     )
@@ -205,12 +211,12 @@ export default function AccountSettings(){
       <div className="h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center">
           <i className="fa-solid fa-exclamation-triangle text-2xl mb-4 text-red-400" />
-          <div>Failed to load profile</div>
+          <div>{t('account.messages.profile_load_failed')}</div>
           <button 
             className="mt-4 px-4 py-2 bg-[#4db6ac] text-black rounded-lg hover:bg-[#45a99c]"
             onClick={() => loadProfile()}
           >
-            Try Again
+            {t('account.info.try_again')}
           </button>
         </div>
       </div>
@@ -236,28 +242,28 @@ export default function AccountSettings(){
           {/* Account Information */}
         <div className="glass-section space-y-4">
             <div>
-              <h2 className="text-lg font-semibold">Account Information</h2>
-              <p className="text-sm text-white/60">Update the email tied to your account.</p>
+              <h2 className="text-lg font-semibold">{t('account.info.section_title')}</h2>
+              <p className="text-sm text-white/60">{t('account.info.helper')}</p>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="mb-2 block text-sm font-medium">Username</label>
+                <label className="mb-2 block text-sm font-medium">{t('account.info.username')}</label>
                 <input
                   type="text"
                   value={profile.username}
                   disabled
                   className="w-full cursor-not-allowed rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-white/60"
                 />
-                <div className="mt-1 text-xs text-white/50">Username cannot be changed</div>
+                <div className="mt-1 text-xs text-white/50">{t('account.info.username_locked')}</div>
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium">Email</label>
+                <label className="mb-2 block text-sm font-medium">{t('account.info.email')}</label>
                 <input
                   type="email"
                   value={profile.email || ''}
                   onChange={e => handleInputChange('email', e.target.value)}
-                  placeholder="your@email.com"
+                  placeholder={t('account.info.email_placeholder')}
                   className="w-full rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-white focus:border-[#4db6ac] focus:outline-none"
                 />
               </div>
@@ -268,18 +274,33 @@ export default function AccountSettings(){
                   className="inline-flex items-center gap-2 rounded-lg bg-[#4db6ac] px-4 py-2 font-semibold text-black hover:bg-[#3da398]"
                 >
                   <i className="fa-solid fa-floppy-disk" />
-                  Save Changes
+                  {t('account.info.save_changes')}
                 </button>
               </div>
             </div>
           </div>
 
+        <div className="glass-section space-y-2">
+          <div>
+            <h2 className="text-lg font-semibold">{t('account.about.section_title')}</h2>
+            <p className="text-sm text-white/60">{t('account.about.helper')}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/about_cpoint')}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-white hover:border-[#4db6ac]/50"
+          >
+            <i className="fa-solid fa-circle-info" />
+            {t('account.about.open')}
+          </button>
+        </div>
+
           {/* Privacy & Security summary */}
         <div className="glass-section">
             <div className="space-y-2">
-              <h2 className="text-lg font-semibold">Privacy &amp; Security</h2>
+              <h2 className="text-lg font-semibold">{t('account.privacy.section_title')}</h2>
               <p className="text-sm text-white/60">
-                Update your password and adjust privacy controls from a dedicated workspace.
+                {t('account.privacy.helper')}
               </p>
             </div>
             <button
@@ -288,7 +309,7 @@ export default function AccountSettings(){
               className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-white hover:border-white/40"
             >
               <i className="fa-solid fa-shield"></i>
-              Open Privacy &amp; Security
+              {t('account.privacy.open')}
             </button>
             <button
               type="button"
@@ -296,23 +317,22 @@ export default function AccountSettings(){
               className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 px-4 py-2 text-sm font-medium text-white/80 hover:border-white/30"
             >
               <i className="fa-solid fa-download"></i>
-              Request my data
+              {t('account.privacy.request_data')}
             </button>
             <p className="mt-2 text-xs text-white/40">
-              Ask us for a copy of the personal data we hold about you. We
-              respond within 30 days.
+              {t('account.privacy.request_data_helper')}
             </p>
           </div>
 
           {/* Subscription Management */}
         <div className="glass-section">
-            <h2 className="text-lg font-semibold mb-4">Subscription Management</h2>
+            <h2 className="text-lg font-semibold mb-4">{t('account.subscription.section_title')}</h2>
             <p className="text-sm text-white/60 mb-4">
-              View your current status and manage upgrades or downgrades.
+              {t('account.subscription.helper')}
             </p>
             <div className="space-y-4">
               <div>
-                <label className="mb-2 block text-sm font-medium">Subscription</label>
+                <label className="mb-2 block text-sm font-medium">{t('account.subscription.label')}</label>
                 <div
                   className={`rounded-lg border px-4 py-3 ${
                     profile.subscription === 'premium'
@@ -320,7 +340,7 @@ export default function AccountSettings(){
                       : 'bg-white/5 border-white/20 text-white/60'
                   }`}
                 >
-                  {profile.subscription === 'premium' ? '⭐ Premium' : '🆓 Free'}
+                  {profile.subscription === 'premium' ? t('account.subscription.premium') : t('account.subscription.free')}
                 </div>
               </div>
               <button
@@ -329,7 +349,7 @@ export default function AccountSettings(){
                 className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-white hover:border-white/40"
               >
                 <i className="fa-regular fa-credit-card" />
-                Manage Membership
+                {t('account.subscription.manage_membership')}
               </button>
               <button
                 type="button"
@@ -337,7 +357,7 @@ export default function AccountSettings(){
                 className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 px-4 py-2 text-xs font-medium text-white/80 hover:border-white/30"
               >
                 <i className="fa-solid fa-robot" />
-                View AI usage
+                {t('account.subscription.view_ai_usage')}
               </button>
             </div>
           </div>
@@ -348,17 +368,17 @@ export default function AccountSettings(){
           {/* Notifications — outside the account form so the preview toggle cannot submit the form or conflict with Enter-to-save */}
           <div className="glass-section space-y-4">
             <div>
-              <h2 className="text-lg font-semibold">Notifications</h2>
-              <p className="text-sm text-white/60">Manage push notification settings.</p>
+              <h2 className="text-lg font-semibold">{t('account.notifications.section_title')}</h2>
+              <p className="text-sm text-white/60">{t('account.notifications.helper')}</p>
             </div>
             {notifStatus === 'loading' ? (
-              <div className="text-sm text-white/40">Checking...</div>
+              <div className="text-sm text-white/40">{t('account.notifications.checking')}</div>
             ) : notifStatus === 'granted' ? (
               <div className="flex items-center gap-3 rounded-lg bg-green-500/10 border border-green-500/20 px-4 py-3">
                 <i className="fa-solid fa-bell text-green-400" />
                 <div>
-                  <div className="text-sm font-medium text-green-400">Notifications Enabled</div>
-                  <div className="text-xs text-white/50">You'll receive push notifications for messages, events, and updates.</div>
+                  <div className="text-sm font-medium text-green-400">{t('account.notifications.enabled')}</div>
+                  <div className="text-xs text-white/50">{t('account.notifications.enabled_helper')}</div>
                 </div>
               </div>
             ) : (
@@ -366,8 +386,8 @@ export default function AccountSettings(){
                 <div className="flex items-center gap-3 rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-3">
                   <i className="fa-solid fa-bell-slash text-amber-400" />
                   <div>
-                    <div className="text-sm font-medium text-amber-400">Notifications Disabled</div>
-                    <div className="text-xs text-white/50">You're missing messages, event reminders, and community updates.</div>
+                    <div className="text-sm font-medium text-amber-400">{t('account.notifications.disabled')}</div>
+                    <div className="text-xs text-white/50">{t('account.notifications.disabled_helper')}</div>
                   </div>
                 </div>
                 <button
@@ -376,12 +396,12 @@ export default function AccountSettings(){
                   className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:bg-[#3da398]"
                 >
                   <i className="fa-solid fa-gear" />
-                  Open Notification Settings
+                  {t('account.notifications.open_settings')}
                 </button>
                 <p className="text-xs text-white/40 text-center">
                   {Capacitor.isNativePlatform()
-                    ? "This will open your device settings where you can enable notifications for C-Point."
-                    : "Please allow notifications when your browser prompts you."}
+                    ? t('account.notifications.native_helper')
+                    : t('account.notifications.browser_helper')}
                 </p>
               </div>
             )}
@@ -390,10 +410,7 @@ export default function AccountSettings(){
                 <input
                   type="checkbox"
                   className="mt-1 h-4 w-4 shrink-0 rounded border-white/30 bg-black/40 text-[#4db6ac] [accent-color:#4db6ac] focus:ring-[#4db6ac]"
-                  checked={(() => {
-                    const raw = profile.notification_show_previews as boolean | number | string | undefined
-                    return raw !== false && raw !== 0 && raw !== '0'
-                  })()}
+                  checked={profile.notification_show_previews !== false}
                   onChange={e => {
                     const v = e.target.checked
                     const previousValue = profile.notification_show_previews
@@ -402,21 +419,24 @@ export default function AccountSettings(){
                   }}
                 />
                 <div>
-                  <div className="text-sm font-medium text-white">Show content previews in notifications</div>
+                  <div className="text-sm font-medium text-white">{t('account.notifications.preview_label')}</div>
                   <div className="text-xs text-white/50 mt-0.5">
-                    When enabled, the notifications list includes a short snippet of the related post or reply. Turn off for a more private summary (who did what, without the text).
+                    {t('account.notifications.preview_helper')}
                   </div>
                 </div>
               </label>
             </div>
           </div>
 
+          {/* Language picker -- locked decision: lives between Notifications and
+              Danger Zone (docs/I18N_ROADMAP.md § 3). */}
+          <LanguagePicker />
+
           {/* Danger Zone */}
           <div className="rounded-xl border border-red-500/40 bg-red-500/5 p-6">
-            <h2 className="text-lg font-semibold text-red-300">Danger Zone</h2>
+            <h2 className="text-lg font-semibold text-red-300">{t('account.danger.section_title')}</h2>
             <p className="text-sm text-red-200/80 mt-2">
-              Permanently delete your account and all associated data. You’ll be asked to confirm this action on a
-              dedicated page.
+              {t('account.danger.summary')}
             </p>
             <button
               type="button"
@@ -424,7 +444,7 @@ export default function AccountSettings(){
               className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-red-300/40 px-4 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/10"
             >
               <i className="fa-solid fa-skull"></i>
-              Go to Danger Zone
+              {t('account.danger.go')}
             </button>
           </div>
         </div>
@@ -432,13 +452,13 @@ export default function AccountSettings(){
         {showVerifyModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
             <div className="w-[90%] max-w-md rounded-xl border border-white/10 bg-[#0b0b0b] p-4">
-              <div className="text-lg font-semibold mb-1">Verify your new email</div>
+              <div className="text-lg font-semibold mb-1">{t('account.verify.title')}</div>
               <div className="text-sm text-white/80">
-                We sent a verification link to your new email. Please verify to complete the change.
+                {t('account.verify.body')}
               </div>
               <div className="mt-3 flex items-center gap-2">
                 <button className="rounded-md bg-[#4db6ac] px-3 py-2 text-black" onClick={() => setShowVerifyModal(false)}>
-                  OK
+                  {t('common.ok')}
                 </button>
                 <button
                   className="rounded-md border border-white/10 px-3 py-2"
@@ -446,14 +466,14 @@ export default function AccountSettings(){
                     try {
                       const r = await fetch('/resend_verification', { method: 'POST', credentials: 'include' })
                       const j = await r.json().catch(() => null)
-                      if (!j?.success) alert(j?.error || 'Failed to resend')
-                      else alert('Verification email sent')
+                      if (!j?.success) alert(j?.error || t('account.messages.resend_failed'))
+                      else alert(t('account.messages.verification_sent'))
                     } catch {
-                      alert('Network error')
+                      alert(t('account.messages.network_error'))
                     }
                   }}
                 >
-                  Resend email
+                  {t('account.verify.resend')}
                 </button>
               </div>
             </div>

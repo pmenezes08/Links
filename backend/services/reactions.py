@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from backend.services.database import get_sql_placeholder
+from backend.services.database import USE_MYSQL, get_sql_placeholder
+
+_GRR = "`group_reply_reactions`" if USE_MYSQL else "group_reply_reactions"
 
 
 def _rows_to_counts(rows) -> dict[str, int]:
@@ -66,4 +68,66 @@ def get_reply_reaction_summary(cursor, reply_id: int, username: str | None = Non
     user_reaction = None
     if username:
         user_reaction = _fetch_user_reaction(cursor, "reply_reactions", "reply_id", reply_id, username)
+    return counts, user_reaction
+
+
+def _rows_group_reply_to_counts(rows) -> dict[str, int]:
+    """``group_reply_reactions`` stores ``reaction`` instead of ``reaction_type``."""
+    counts: dict[str, int] = {}
+    for row in rows:
+        if hasattr(row, "keys"):
+            reaction = row.get("reaction")
+            count = row.get("count", 0)
+        else:
+            reaction = row[0] if row else None
+            count = row[1] if len(row) > 1 else 0
+        if reaction:
+            counts[reaction] = count
+    return counts
+
+
+def _fetch_group_reply_counts(cursor, group_reply_id: int) -> dict[str, int]:
+    placeholder = get_sql_placeholder()
+    cursor.execute(
+        f"""
+        SELECT reaction, COUNT(*) as count
+        FROM {_GRR}
+        WHERE group_reply_id = {placeholder}
+        GROUP BY reaction
+        """,
+        (group_reply_id,),
+    )
+    return _rows_group_reply_to_counts(cursor.fetchall() or [])
+
+
+def _fetch_user_group_reply_reaction(
+    cursor, group_reply_id: int, username: str
+) -> str | None:
+    placeholder = get_sql_placeholder()
+    cursor.execute(
+        f"""
+        SELECT reaction
+        FROM {_GRR}
+        WHERE group_reply_id = {placeholder} AND username = {placeholder}
+        """,
+        (group_reply_id, username),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    if hasattr(row, "keys"):
+        return row.get("reaction")
+    return row[0]
+
+
+def get_group_reply_reaction_summary(
+    cursor, group_reply_id: int, username: str | None = None
+):
+    """Return (counts_dict, user_reaction) for a group feed reply."""
+    counts = _fetch_group_reply_counts(cursor, group_reply_id)
+    user_reaction = None
+    if username:
+        user_reaction = _fetch_user_group_reply_reaction(
+            cursor, group_reply_id, username
+        )
     return counts, user_reaction

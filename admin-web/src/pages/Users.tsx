@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { apiJson, apiPost } from '../utils/api'
+import { apiJson, apiPost, formatApiErrorMessage } from '../utils/api'
 
 type EffectiveTier = 'special' | 'premium' | 'trial' | 'free' | 'anonymous' | 'unknown' | string
 
@@ -54,6 +54,7 @@ interface AuditEntry {
 interface ManageResponse {
   success: boolean
   username: string
+  trial_revoked_at?: string | null
   entitlements: Record<string, unknown>
   usage: UsageSummary
   audit: AuditEntry[]
@@ -187,6 +188,19 @@ export default function Users() {
       fetchUsers(page, search)
       if (manageUser?.username === u.username) openManage(u)
     } catch { flash('Failed to revoke Special') }
+  }
+
+  const handleEndTrial = async (u: User) => {
+    const reason = prompt(`End trial for @${u.username}?\n\nReason (required):`, '')
+    if (!reason || !reason.trim()) return
+    try {
+      await apiPost(`/api/admin/users/${encodeURIComponent(u.username)}/trial/revoke`, { reason: reason.trim() })
+      flash(`Trial ended for @${u.username}`)
+      fetchUsers(page, search)
+      if (manageUser?.username === u.username) openManage(u)
+    } catch (e) {
+      flash(formatApiErrorMessage(e, 'Failed to end trial'))
+    }
   }
 
   const openManage = async (u: User) => {
@@ -355,6 +369,7 @@ export default function Users() {
           onClose={() => { setManageUser(null); setManageData(null) }}
           onGrant={handleGrantSpecial}
           onRevoke={handleRevokeSpecial}
+          onEndTrial={handleEndTrial}
         />
       )}
     </div>
@@ -391,7 +406,7 @@ function UsageBar({ used, cap, label, unit }: { used: number; cap: number | null
 }
 
 function ManageDrawer({
-  user, data, loading, onClose, onGrant, onRevoke,
+  user, data, loading, onClose, onGrant, onRevoke, onEndTrial,
 }: {
   user: User
   data: ManageResponse | null
@@ -399,9 +414,11 @@ function ManageDrawer({
   onClose: () => void
   onGrant: (u: User) => void
   onRevoke: (u: User) => void
+  onEndTrial: (u: User) => void
 }) {
   const ent = (data?.entitlements || {}) as Record<string, unknown>
   const usage = data?.usage
+  const resolvedTier = typeof ent.tier === 'string' ? ent.tier.toLowerCase() : ''
   return (
     <>
       <div className="fixed inset-0 bg-black/60 z-50" onClick={onClose} />
@@ -425,7 +442,7 @@ function ManageDrawer({
                 <span className="text-xs text-muted">subscription: {user.subscription ?? 'free'}</span>
                 {user.is_admin && <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">admin</span>}
               </div>
-              <div className="mt-3 flex gap-2">
+              <div className="mt-3 flex gap-2 flex-wrap">
                 {user.is_special ? (
                   <button onClick={() => onRevoke(user)} className="text-xs px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-200 border border-purple-500/30 hover:bg-purple-500/30">
                     Revoke Special
@@ -435,7 +452,17 @@ function ManageDrawer({
                     Grant Special
                   </button>
                 )}
+                {resolvedTier === 'trial' && (
+                  <button onClick={() => onEndTrial(user)} className="text-xs px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-200 border border-blue-500/40 hover:bg-blue-500/30">
+                    End trial
+                  </button>
+                )}
               </div>
+              {data.trial_revoked_at && (
+                <p className="mt-2 text-xs text-muted">
+                  Trial revoked at {new Date(data.trial_revoked_at).toLocaleString()}
+                </p>
+              )}
             </section>
 
             {usage && (

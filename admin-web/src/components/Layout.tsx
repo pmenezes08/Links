@@ -5,6 +5,7 @@ import { api, apiJson } from '../utils/api'
 const navItems = [
   { to: '/', icon: 'fa-chart-line', label: 'Overview' },
   { to: '/users', icon: 'fa-users', label: 'Users' },
+  { to: '/network-insights', icon: 'fa-diagram-project', label: 'Network Insights' },
   { to: '/communities', icon: 'fa-people-group', label: 'Communities' },
   { to: '/profiles', icon: 'fa-brain', label: 'AI Profiles' },
   { to: '/metrics', icon: 'fa-chart-bar', label: 'Metrics' },
@@ -16,6 +17,7 @@ const navItems = [
   { to: '/kb', icon: 'fa-book', label: 'Knowledge Base' },
   { to: '/calculator', icon: 'fa-calculator', label: 'Calculator' },
   { to: '/enterprise', icon: 'fa-building-columns', label: 'Enterprise' },
+  { to: '/subscriptions', icon: 'fa-credit-card', label: 'Subscriptions' },
   { to: '/settings', icon: 'fa-gear', label: 'Settings' },
   { to: '/tenants', icon: 'fa-building', label: 'Tenants' },
 ]

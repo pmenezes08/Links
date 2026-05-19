@@ -6,10 +6,10 @@ import os
 import re
 import secrets
 import traceback
-from datetime import datetime, timedelta
+from datetime import datetime
+from functools import wraps
 from typing import List, Optional, Set
 from urllib.parse import urlencode, quote
-from hashlib import sha256
 
 from flask import (
     Blueprint,
@@ -28,11 +28,23 @@ from flask import (
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from backend.services.native_push import associate_install_tokens_with_user
-from backend.services import disposable_email
+from backend.services.native_push import (
+    associate_fcm_tokens_for_install,
+    associate_install_tokens_with_user,
+    deactivate_all_push_for_user,
+    deactivate_for_install,
+)
+from backend.services import auth_session, disposable_email, remember_tokens, session_identity
+from backend.services import api_errors
+from backend.services.account_deletion import AccountDeletionMode, delete_user_in_connection
+from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.email_normalization import (
     canonicalize_with_policy,
     is_well_formed as _email_is_well_formed,
+)
+from backend.services.oauth_email_verification import (
+    apply_oauth_email_verified,
+    first_oauth_verified_at_iso,
 )
 
 
@@ -41,77 +53,57 @@ auth_bp = Blueprint("auth", __name__)
 MOBILE_UA_KEYWORDS = ("Mobi", "Android", "iPhone", "iPad")
 
 
+def _session_required_api(view_func):
+    """Require a logged-in session for JSON API handlers (no monolith import cycle)."""
+
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        if "username" not in session:
+            return api_errors.auth_required()
+        return view_func(*args, **kwargs)
+
+    return wrapper
+
+
+def _apply_login_persistence(resp, username: str) -> int:
+    """Revoke any prior remember-me row for this browser, then issue a fresh token + install id."""
+    stale = remember_tokens.revoke_by_cookie(request)
+    remember_tokens.issue(resp, username)
+    auth_session.set_install_cookie(resp, secrets.token_urlsafe(24))
+    return stale
+
+
+def _invalidate_profile_and_dashboard_caches(username: str) -> None:
+    """Bust Redis profile/dashboard payloads so the next API read matches MySQL."""
+    if not username:
+        return
+    try:
+        from redis_cache import cache, invalidate_user_parent_dashboard
+
+        cache.delete(f"profile:{username}")
+        invalidate_user_parent_dashboard(username)
+    except Exception:
+        pass
+
+
 def _is_mobile_request() -> bool:
     ua = request.headers.get("User-Agent", "")
     return any(token in ua for token in MOBILE_UA_KEYWORDS)
 
 
-def _get_auth_session_lifetime_days() -> int:
-    try:
-        return max(30, int(current_app.config.get("AUTH_SESSION_LIFETIME_DAYS", 365)))
-    except Exception:
-        return 365
-
-
-def _issue_remember_token(response, username: str) -> None:
-    """Create a persistent remember-me token and attach it to the response."""
-    from bodybuilding_app import get_db_connection
-
-    logger = current_app.logger
-    try:
-        lifetime_days = _get_auth_session_lifetime_days()
-        raw = secrets.token_urlsafe(48)
-        token_hash = sha256(raw.encode()).hexdigest()
-        now = datetime.utcnow()
-        expires = now + timedelta(days=lifetime_days)
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute(
-                "INSERT INTO remember_tokens (username, token_hash, created_at, expires_at) VALUES (?,?,?,?)",
-                (username, token_hash, now.isoformat(), expires.isoformat()),
-            )
-            conn.commit()
-        response.set_cookie(
-            "remember_token",
-            raw,
-            max_age=lifetime_days * 24 * 60 * 60,
-            secure=True,
-            httponly=True,
-            samesite="Lax",
-            domain=current_app.config.get("SESSION_COOKIE_DOMAIN") or None,
-            path="/",
-        )
-    except Exception as exc:
-        logger.warning("Failed to issue remember token: %s", exc)
-
-
 @auth_bp.before_app_request
 def auto_login_from_remember_token():
     """Restore sessions from remember_token cookies when possible."""
-    from bodybuilding_app import get_db_connection
-
     try:
         if "username" in session:
             return
-        raw = request.cookies.get("remember_token")
-        if not raw:
+        if "pending_username" in session:
+            current_app.logger.info("auth.auto_login_skipped reason=pending_username")
             return
-        token_hash = sha256(raw.encode()).hexdigest()
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute(
-                "SELECT username, expires_at FROM remember_tokens WHERE token_hash=? ORDER BY id DESC LIMIT 1",
-                (token_hash,),
-            )
-            row = c.fetchone()
-        if not row:
+        token_hash = remember_tokens.cookie_hash(request)
+        username = remember_tokens.restore_session(request, session)
+        if not username or not token_hash:
             return
-        username = row["username"] if hasattr(row, "keys") else row[0]
-        expires_at = row["expires_at"] if hasattr(row, "keys") else row[1]
-        if datetime.fromisoformat(expires_at) < datetime.utcnow():
-            return
-        session.permanent = True
-        session["username"] = username
         g.remember_token_rotation_username = username
         g.remember_token_rotation_old_hash = token_hash
     except Exception as exc:
@@ -127,28 +119,22 @@ def rotate_remember_token_after_auto_login(response):
         return response
 
     try:
-        _issue_remember_token(response, username)
+        remember_tokens.revoke_by_token_hash(old_hash)
+    except Exception as exc:
+        current_app.logger.warning("Failed deleting old remember token for %s: %s", username, exc)
+
+    try:
+        remember_tokens.issue(response, username)
+        auth_session.set_install_cookie(response, secrets.token_urlsafe(24))
     except Exception as exc:
         current_app.logger.warning("Failed rotating remember token for %s: %s", username, exc)
         return response
-
-    try:
-        from bodybuilding_app import get_db_connection
-
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("DELETE FROM remember_tokens WHERE token_hash=?", (old_hash,))
-            conn.commit()
-    except Exception as exc:
-        current_app.logger.warning("Failed deleting old remember token for %s: %s", username, exc)
     return response
 
 
 @auth_bp.route("/login", methods=["GET", "POST"], endpoint="login")
 def login():
     """Username entry stage of the login flow."""
-    from bodybuilding_app import get_db_connection, get_sql_placeholder
-
     logger = current_app.logger
     try:
         if request.method == "GET":
@@ -237,9 +223,7 @@ def signup():
         _send_email_via_resend,
         ensure_pending_signups_table,
         generate_pending_signup_token,
-        get_db_connection,
         get_parent_chain_ids,
-        get_sql_placeholder,
         normalize_id_list,
         notify_community_new_member,
     )
@@ -287,9 +271,11 @@ def signup():
                     is_qr_invite = invited_email.startswith("qr-invite-") and invited_email.endswith("@placeholder.local")
                     if not is_qr_invite:
                         if email and email.lower() != invited_email.lower():
-                            error_msg = "Email does not match invitation"
                             if _is_mobile_request():
-                                return jsonify({"success": False, "error": error_msg}), 400
+                                return api_errors.error_response(
+                                    "auth.signup.email_does_not_match_invitation", 400
+                                )
+                            error_msg = "Email does not match invitation"
                             return render_template("signup.html", error=error_msg)
                         if not email:
                             email = invited_email
@@ -304,26 +290,53 @@ def signup():
     elif first_name and last_name:
         full_name = f"{first_name} {last_name}".strip()
 
-    def _react_error(error_msg: str):
+    def _react_error(key: str, *, fallback_text: str):
+        """Return an i18n error for mobile clients, HTML for desktop browsers.
+
+        ``key`` is the i18n key used for mobile JSON; ``fallback_text`` is
+        the English string rendered into the HTML signup template (which
+        still expects raw text) until that template is migrated.
+        """
         if _is_mobile_request() or (
             request.headers.get("Content-Type") == "application/x-www-form-urlencoded" and _is_mobile_request()
         ):
-            return jsonify({"success": False, "error": error_msg}), 400
-        return render_template("signup.html", error=error_msg, full_name=full_name, email=email, mobile=mobile)
+            return api_errors.error_response(key, 400)
+        return render_template(
+            "signup.html",
+            error=fallback_text,
+            full_name=full_name,
+            email=email,
+            mobile=mobile,
+        )
 
     if not all([first_name, email, password, confirm_password]):
-        return _react_error("All required fields must be filled")
+        return _react_error(
+            "auth.signup.missing_required_fields",
+            fallback_text="All required fields must be filled",
+        )
     if password != confirm_password:
-        return _react_error("Passwords do not match")
+        return _react_error(
+            "auth.signup.passwords_do_not_match",
+            fallback_text="Passwords do not match",
+        )
     if len(password) < 6:
-        return _react_error("Password must be at least 6 characters long")
+        return _react_error(
+            "auth.signup.password_too_short",
+            fallback_text="Password must be at least 6 characters long",
+        )
     if not _email_is_well_formed(email):
-        return _react_error("Please enter a valid email address")
+        return _react_error(
+            "auth.signup.invalid_email",
+            fallback_text="Please enter a valid email address",
+        )
     if disposable_email.should_block(email):
         logger.info("Blocked signup from disposable domain: %s", email)
         return _react_error(
-            "This email provider isn't supported. Please use a permanent "
-            "email address (not a disposable / temporary one)."
+            "auth.signup.disposable_email_blocked",
+            fallback_text=(
+                "This email provider isn't supported. Please use a permanent "
+                "email address (not a disposable / temporary one)."
+            ),
         )
     canonical = canonicalize_with_policy(email)
 
@@ -340,15 +353,18 @@ def signup():
                 (canonical, email),
             )
             if c.fetchone():
-                return _react_error("Email already registered")
+                return _react_error(
+                    "auth.signup.email_already_registered",
+                    fallback_text="Email already registered",
+                )
 
             if desired_username:
                 candidate = re.sub(r"[^a-z0-9_]", "", desired_username.lower())
                 if not candidate:
-                    return jsonify({"success": False, "error": "Invalid username"}), 400
+                    return api_errors.error_response("auth.signup.invalid_username", 400)
                 c.execute("SELECT 1 FROM users WHERE username = ?", (candidate,))
                 if c.fetchone():
-                    return jsonify({"success": False, "error": "Username already taken"}), 400
+                    return api_errors.error_response("auth.signup.username_taken", 400)
                 username = candidate
             else:
                 base_username = (email.split("@")[0] if email else (first_name + last_name)).lower()
@@ -532,7 +548,7 @@ def signup():
         logger.error("Error during user registration: %s", exc)
         logger.error("Registration error traceback: %s", traceback.format_exc())
         if _is_mobile_request():
-            return jsonify({"success": False, "error": "An error occurred during registration. Please try again."}), 500
+            return api_errors.error_response("auth.signup.registration_failed", 500)
         return render_template(
             "signup.html",
             error="An error occurred during registration. Please try again.",
@@ -546,39 +562,101 @@ def signup():
 def logout():
     """Clear session and remember-me cookies."""
     logger = current_app.logger
-    logger.info("Logout requested - clearing session and cookies")
-    
+    username = session.get("username")
+    install_id = (request.cookies.get(auth_session.INSTALL_COOKIE_NAME) or "").strip()
+    push_counts = deactivate_all_push_for_user(username) if username else {
+        "native_push_tokens": 0,
+        "fcm_tokens": 0,
+        "push_subscriptions": 0,
+    }
+    if install_id:
+        install_counts = deactivate_for_install(install_id)
+        for key in ("native_push_tokens", "fcm_tokens"):
+            push_counts[key] = max(push_counts.get(key, 0), install_counts.get(key, 0))
+    tokens_revoked = remember_tokens.revoke_by_cookie(request)
+
     session.clear()
     session.permanent = False
-    
-    # Redirect to welcome page (root)
-    resp = make_response(redirect("/"))
-    
-    # Clear remember token cookie
-    resp.set_cookie(
-        "remember_token",
-        "",
-        max_age=0,
-        path="/",
-        domain=current_app.config.get("SESSION_COOKIE_DOMAIN") or None,
+
+    resp = make_response(redirect("/welcome"))
+    remember_tokens.clear_cookie(resp)
+    auth_session.clear_session_cookie(resp)
+    auth_session.clear_install_cookie(resp)
+
+    if username:
+        try:
+            from redis_cache import invalidate_user_cache
+
+            invalidate_user_cache(username)
+        except Exception as exc:
+            logger.warning("auth.logout cache invalidation failed: %s", exc)
+
+    current_app.session_interface.save_session(current_app, session, resp)
+    auth_session.no_store(resp)
+    logger.info(
+        "auth.logout pre_username=%s tokens_revoked=%d push_native=%d push_fcm=%d push_web=%d",
+        username or "-",
+        tokens_revoked,
+        push_counts.get("native_push_tokens", 0),
+        push_counts.get("fcm_tokens", 0),
+        push_counts.get("push_subscriptions", 0),
     )
-    
-    # Also try to clear session cookie explicitly
-    session_cookie_name = current_app.config.get("SESSION_COOKIE_NAME", "session")
-    resp.set_cookie(
-        session_cookie_name,
-        "",
-        max_age=0,
-        path="/",
-        domain=current_app.config.get("SESSION_COOKIE_DOMAIN") or None,
-    )
-    
-    # Set cache control headers to prevent caching of logged-out state
+    return resp
+
+
+@auth_bp.route("/delete_account", methods=["POST"])
+@_session_required_api
+def delete_account_post():
+    """Permanently delete the current user's account (FK-safe)."""
+    logger = current_app.logger
+    username = session.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+    logger.info("Starting account deletion for user: %s", username)
+    try:
+        with get_db_connection() as conn:
+            former = delete_user_in_connection(conn, username, AccountDeletionMode.SELF_SERVICE)
+            conn.commit()
+        logger.info("Successfully deleted account for %s", username)
+    except ValueError as e:
+        if str(e) == "user_not_found":
+            return jsonify({"success": False, "error": "User not found"}), 404
+        logger.exception("delete_account ValueError for %s", username)
+        return jsonify({"success": False, "error": "server error"}), 500
+    except Exception:
+        logger.exception("delete_account error for %s", username)
+        return jsonify({"success": False, "error": "server error"}), 500
+
+    session.clear()
+    try:
+        from redis_cache import invalidate_user_cache
+
+        invalidate_user_cache(username)
+    except Exception:
+        pass
+
+    try:
+        from backend.services import community_lifecycle as _lifecycle
+        from backend.services import subscription_audit as _audit
+
+        for cid in former:
+            try:
+                if _lifecycle.maybe_auto_unfreeze(cid):
+                    _audit.log(
+                        username=username or "",
+                        action="community_auto_unfrozen_member_removed",
+                        source="delete_account",
+                        metadata={"community_id": cid},
+                    )
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    resp = jsonify({"success": True, "clear_storage": True})
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     resp.headers["Pragma"] = "no-cache"
     resp.headers["Expires"] = "0"
-    
-    logger.info("Logout completed - redirecting to /")
     return resp
 
 
@@ -586,9 +664,7 @@ def logout():
 def login_password():
     """Password entry stage for staged logins."""
     from bodybuilding_app import (
-        get_db_connection,
         get_parent_chain_ids,
-        get_sql_placeholder,
         normalize_id_list,
     )
 
@@ -687,12 +763,18 @@ def login_password():
                         install_cookie = request.cookies.get("native_push_install_id")
                         if install_cookie:
                             associate_install_tokens_with_user(install_cookie, username)
+                            try:
+                                associate_fcm_tokens_for_install(install_cookie, username)
+                            except Exception as fcm_exc:
+                                logger.warning("fcm_tokens install association failed: %s", fcm_exc)
                     except Exception as exc:
                         logger.warning("native push install association failed: %s", exc)
                     try:
                         session.pop("pending_username", None)
                     except Exception:
                         pass
+
+                    _invalidate_profile_and_dashboard_caches(username)
 
                     invite_token = session.pop("pending_invite_token", None)
                     if invite_token:
@@ -734,7 +816,9 @@ def login_password():
                                             resp = make_response(
                                                 redirect("/login?error=" + quote("This invitation was sent to a different email address"))
                                             )
-                                            _issue_remember_token(resp, username)
+                                            stale = _apply_login_persistence(resp, username)
+                                            logger.info("login_password invite_email_mismatch remember_stale_revoked=%d", stale)
+                                            auth_session.no_store(resp)
                                             return resp
 
                                         c.execute(
@@ -799,13 +883,17 @@ def login_password():
                                             conn2.commit()
 
                                         resp = make_response(redirect(f"/community_feed_react/{community_id}"))
-                                        _issue_remember_token(resp, username)
+                                        stale = _apply_login_persistence(resp, username)
+                                        logger.info("login_password invite_ok remember_stale_revoked=%d", stale)
+                                        auth_session.no_store(resp)
                                         return resp
                         except Exception as exc:
                             logger.error("Error auto-joining via invite token: %s", exc)
 
                     resp = make_response(redirect("/premium_dashboard"))
-                    _issue_remember_token(resp, username)
+                    stale = _apply_login_persistence(resp, username)
+                    logger.info("login_password ok remember_stale_revoked=%d username=%s", stale, username)
+                    auth_session.no_store(resp)
                     return resp
                 # Incorrect password - redirect back to React with error
                 return redirect("/login?step=password&error=" + quote("Incorrect password. Please try again."))
@@ -828,6 +916,38 @@ def login_back():
     except Exception:
         pass
     return redirect(url_for("auth.login"))
+
+
+@auth_bp.route("/api/check_pending_login", methods=["GET"])
+def api_check_pending_login():
+    """Two-step login: expose pending_username only (no cookie/session debug)."""
+    logger = current_app.logger
+    try:
+        pending_username = session.get("pending_username")
+        if pending_username:
+            return jsonify({"success": True, "pending_username": pending_username})
+        return jsonify({"success": False, "pending_username": None})
+    except Exception as exc:
+        logger.error("api_check_pending_login: %s", exc)
+        return jsonify({"success": False, "pending_username": None}), 500
+
+
+@auth_bp.route("/api/clear_stale_session", methods=["POST"])
+def api_clear_stale_session():
+    """Clear session when stored username no longer exists."""
+    logger = current_app.logger
+    try:
+        username = session_identity.current_session_username(session)
+        if not username:
+            return jsonify({"success": True, "cleared": False, "reason": "no_session"})
+        if not session_identity.user_exists(username):
+            session_identity.clear_invalid_session(session, username)
+            logger.info("api_clear_stale_session cleared session for missing user")
+            return jsonify({"success": True, "cleared": True, "reason": "user_deleted"})
+        return jsonify({"success": True, "cleared": False, "reason": "user_exists"})
+    except Exception as exc:
+        logger.error("api_clear_stale_session: %s", exc)
+        return jsonify({"success": False, "error": "server_error"}), 500
 
 
 # --- Google Sign-In ---
@@ -894,7 +1014,6 @@ def google_sign_in():
     Google Sign-In endpoint for iOS/Android.
     Body: { id_token, platform: 'ios'|'android', invite_token? }
     """
-    from bodybuilding_app import get_db_connection, get_sql_placeholder, add_user_to_community
     logger = current_app.logger
     data = request.get_json() or {}
     id_token_str = (data.get('id_token') or '').strip()
@@ -910,6 +1029,7 @@ def google_sign_in():
 
     google_id = payload.get('sub')
     email = (payload.get('email') or '').lower().strip()
+    canonical = canonicalize_with_policy(email) if email else ""
     first_name = payload.get('given_name') or ''
     last_name = payload.get('family_name') or ''
     email_verified = payload.get('email_verified', False)
@@ -918,6 +1038,9 @@ def google_sign_in():
         return jsonify({'success': False, 'error': 'Incomplete Google profile'}), 400
 
     try:
+        # Drop any prior session keys (pending_username, stale username, etc.) before binding identity.
+        session.clear()
+        session.permanent = False
         ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -928,35 +1051,44 @@ def google_sign_in():
             row = c.fetchone()
             if row:
                 username = row['username'] if hasattr(row, 'keys') else row[0]
-                session['username'] = username
-                session.permanent = True
-                logger.info(f"Google sign-in: returning user {username}")
-                return jsonify({'success': True, 'username': username, 'is_new': False})
-
-            # 2. Look up by email (link existing account)
-            c.execute(f"SELECT username FROM users WHERE LOWER(email) = LOWER({ph})", (email,))
-            row = c.fetchone()
-            if row:
-                username = row['username'] if hasattr(row, 'keys') else row[0]
-                c.execute(f"UPDATE users SET google_id = {ph} WHERE username = {ph}", (google_id, username))
-                if email_verified:
-                    c.execute(f"UPDATE users SET email_verified = 1 WHERE username = {ph}", (username,))
+                apply_oauth_email_verified(c, ph, username, bool(email_verified))
                 conn.commit()
                 session['username'] = username
                 session.permanent = True
-                # Set display name if not already set
-                try:
-                    c.execute(f"SELECT display_name FROM user_profiles WHERE username = {ph}", (username,))
-                    dp = c.fetchone()
-                    display_name_val = (dp['display_name'] if hasattr(dp, 'keys') else dp[0]) if dp else None
-                    if not display_name_val or display_name_val == username:
-                        full_name = f"{first_name} {last_name}".strip() or username
-                        c.execute(f"UPDATE user_profiles SET display_name = {ph} WHERE username = {ph}", (full_name, username))
-                        conn.commit()
-                except Exception:
-                    pass
+                _invalidate_profile_and_dashboard_caches(username)
+                logger.info(f"Google sign-in: returning user {username}")
+                resp = make_response(jsonify({'success': True, 'username': username, 'is_new': False}))
+                stale = _apply_login_persistence(resp, username)
+                logger.info("Google sign-in persistence stale_revoked=%d user=%s", stale, username)
+                auth_session.no_store(resp)
+                return resp
+
+            # 2. Look up by email (link existing account)
+            c.execute(
+                f"SELECT username FROM users WHERE canonical_email = {ph} OR LOWER(email) = LOWER({ph})",
+                (canonical, email),
+            )
+            row = c.fetchone()
+            if row:
+                username = row['username'] if hasattr(row, 'keys') else row[0]
+                c.execute(
+                    f"UPDATE users SET google_id = {ph}, canonical_email = COALESCE(canonical_email, {ph}) WHERE username = {ph}",
+                    (google_id, canonical, username),
+                )
+                apply_oauth_email_verified(c, ph, username, bool(email_verified))
+                conn.commit()
+                session['username'] = username
+                session.permanent = True
+                # Display name is intentionally NOT touched on link: established users keep
+                # whatever they already had in user_profiles. Auto-fill happens only on the
+                # new-user creation branch below.
+                _invalidate_profile_and_dashboard_caches(username)
                 logger.info(f"Google sign-in: linked {username} to Google ID")
-                return jsonify({'success': True, 'username': username, 'is_new': False})
+                resp = make_response(jsonify({'success': True, 'username': username, 'is_new': False}))
+                stale = _apply_login_persistence(resp, username)
+                logger.info("Google sign-in linked persistence stale_revoked=%d user=%s", stale, username)
+                auth_session.no_store(resp)
+                return resp
 
             # 3. Create new user
             base_username = re.sub(r'[^a-z0-9_]', '', email.split('@')[0].lower()) or 'user'
@@ -971,10 +1103,22 @@ def google_sign_in():
 
             random_password = generate_password_hash(secrets.token_urlsafe(32))
             now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            verified_at = first_oauth_verified_at_iso() if email_verified else None
             c.execute(f"""
-                INSERT INTO users (username, email, password, first_name, last_name, google_id, email_verified, created_at)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-            """, (username, email, random_password, first_name, last_name, google_id, 1 if email_verified else 0, now))
+                INSERT INTO users (username, email, canonical_email, password, first_name, last_name, google_id, email_verified, email_verified_at, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """, (
+                username,
+                email,
+                canonical,
+                random_password,
+                first_name,
+                last_name,
+                google_id,
+                1 if email_verified else 0,
+                verified_at,
+                now,
+            ))
             conn.commit()
 
             # Create profile with display name
@@ -998,8 +1142,13 @@ def google_sign_in():
 
             session['username'] = username
             session.permanent = True
+            _invalidate_profile_and_dashboard_caches(username)
             logger.info(f"Google sign-in: created new user {username}")
-            return jsonify({'success': True, 'username': username, 'is_new': True})
+            resp = make_response(jsonify({'success': True, 'username': username, 'is_new': True}))
+            stale = _apply_login_persistence(resp, username)
+            logger.info("Google sign-in new user persistence stale_revoked=%d user=%s", stale, username)
+            auth_session.no_store(resp)
+            return resp
 
     except Exception as e:
         logger.error(f"Google sign-in error: {e}")

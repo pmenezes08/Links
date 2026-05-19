@@ -1,768 +1,835 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Capacitor } from '@capacitor/core'
+import type { PluginListenerHandle } from '@capacitor/core'
+import { Keyboard } from '@capacitor/keyboard'
+import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useHeader } from '../contexts/HeaderContext'
+import i18n, { normalizeLocale } from '../i18n'
+import { exportEventToDeviceCalendar, removeNativeCalendarMirrorForCpointEvent, syncNativeCalendarAfterServerChange } from '../utils/calendarExport'
+import type { CalendarExportEventFields } from '../utils/calendarExportTypes'
+
+function calendarLocale() {
+  return normalizeLocale(i18n.language)
+}
 
 type EventItem = {
   id: number
   title: string
   date: string
-  end_date?: string|null
-  start_time?: string|null
-  end_time?: string|null
-  timezone?: string|null
-  description?: string|null
-  user_rsvp?: string|null
-  rsvp_counts?: { going: number; maybe: number; not_going: number; no_response?: number }
+  community_id?: number | string
+  end_date?: string | null
+  start_time?: string | null
+  end_time?: string | null
+  timezone?: string | null
+  description?: string | null
+  user_rsvp?: RSVPResponse | null
+  rsvp_counts?: {
+    going: number
+    maybe: number
+    not_going: number
+    no_response?: number
+  }
 }
 
-type RSVPDetails = {
-  going: { username: string }[]
-  maybe: { username: string }[]
-  not_going: { username: string }[]
-  no_response: { username: string }[]
+type RSVPResponse = 'going' | 'maybe' | 'not_going'
+type CalendarTab = 'upcoming' | 'archive'
+type CreateStep = 'details' | 'invite'
+
+function eventItemToExportFields(event: EventItem): CalendarExportEventFields {
+  return {
+    id: event.id,
+    title: event.title,
+    date: event.date,
+    end_date: event.end_date ?? null,
+    start_time: event.start_time ?? null,
+    end_time: event.end_time ?? null,
+    description: event.description ?? null,
+    community_name: null,
+  }
 }
 
-export default function CommunityCalendar(){
+type Member = {
+  username: string
+  profile_picture?: string | null
+}
+
+const TIMEZONE_OPTIONS = [
+  ['EST', 'EST (Eastern Time)'],
+  ['CST', 'CST (Central Time)'],
+  ['MST', 'MST (Mountain Time)'],
+  ['PST', 'PST (Pacific Time)'],
+  ['GMT', 'GMT (Greenwich Mean Time)'],
+  ['CET', 'CET (Central European Time)'],
+  ['IST', 'IST (India Standard Time)'],
+  ['JST', 'JST (Japan Standard Time)'],
+  ['AEST', 'AEST (Australian Eastern Time)'],
+  ['UTC', 'UTC (Coordinated Universal Time)'],
+] as const
+
+const INPUT_CLASS = 'mt-1 w-full rounded-xl border border-white/10 bg-black/70 px-3 py-2 text-[16px] text-white outline-none transition focus:border-[#4db6ac]/80 focus:ring-2 focus:ring-[#4db6ac]/20'
+const LABEL_CLASS = 'text-xs font-medium text-[#9fb0b5]'
+
+function isBlankTime(value?: string | null) {
+  return !value || value === 'None' || value === '00:00' || value === '00:00:00' || value === '0000-00-00 00:00:00'
+}
+
+function isBlankDate(value?: string | null) {
+  return !value || value === 'None' || value === '0000-00-00'
+}
+
+function normalizeTime(value?: string | null) {
+  if (isBlankTime(value)) return ''
+  const raw = String(value)
+  if (raw.includes(' ')) return raw.split(' ')[1]?.slice(0, 5) || ''
+  return raw.slice(0, 5)
+}
+
+function buildEventDateTime(event: EventItem, preferEnd = false) {
+  const date = preferEnd && !isBlankDate(event.end_date) ? event.end_date! : event.date
+  const time = preferEnd ? normalizeTime(event.end_time) || normalizeTime(event.start_time) : normalizeTime(event.start_time)
+  const iso = time ? `${date}T${time}:00` : `${date}T${preferEnd ? '23:59:59' : '00:00:00'}`
+  const parsed = new Date(iso)
+  return Number.isNaN(parsed.getTime()) ? new Date(`${event.date}T23:59:59`) : parsed
+}
+
+function isPastEvent(event: EventItem) {
+  return buildEventDateTime(event, true).getTime() < Date.now()
+}
+
+function formatDateLabel(date: string, variant: 'short' | 'long' = 'long') {
+  const parsed = new Date(`${date}T12:00:00`)
+  if (Number.isNaN(parsed.getTime())) return date
+  return new Intl.DateTimeFormat(calendarLocale(), {
+    weekday: variant === 'long' ? 'long' : 'short',
+    month: variant === 'long' ? 'long' : 'short',
+    day: 'numeric',
+  }).format(parsed)
+}
+
+function formatMonth(date: string) {
+  const parsed = new Date(`${date}T12:00:00`)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return new Intl.DateTimeFormat(calendarLocale(), { month: 'short' }).format(parsed).toUpperCase()
+}
+
+function formatDay(date: string) {
+  const parsed = new Date(`${date}T12:00:00`)
+  if (Number.isNaN(parsed.getTime())) return '--'
+  return new Intl.DateTimeFormat(calendarLocale(), { day: '2-digit' }).format(parsed)
+}
+
+function formatTimeRange(event: EventItem) {
+  const start = normalizeTime(event.start_time)
+  const end = normalizeTime(event.end_time)
+  const range = [start, end].filter(Boolean).join(' - ')
+  return range && event.timezone ? `${range} ${event.timezone}` : range || i18n.t('calendar.all_day')
+}
+
+function formatDateRange(event: EventItem) {
+  if (!isBlankDate(event.end_date) && event.end_date !== event.date) {
+    return `${formatDateLabel(event.date, 'short')} - ${formatDateLabel(event.end_date!, 'short')}`
+  }
+  return formatDateLabel(event.date)
+}
+
+function getCountdownLabel(event?: EventItem | null) {
+  if (!event) return ''
+  const diff = buildEventDateTime(event).getTime() - Date.now()
+  if (diff <= 0) return i18n.t('calendar.starting_soon')
+  const minutes = Math.ceil(diff / 60000)
+  if (minutes < 60) return i18n.t('calendar.countdown_minutes', { count: minutes })
+  const hours = Math.ceil(minutes / 60)
+  if (hours < 48) return i18n.t('calendar.countdown_hours', { count: hours })
+  return i18n.t('calendar.countdown_days', { count: Math.ceil(hours / 24) })
+}
+
+function toUtcFormFields(formData: FormData) {
+  const params = new URLSearchParams()
+  const append = (name: string, value?: string | null) => {
+    if (value) params.append(name, value)
+  }
+
+  const title = String(formData.get('title') || '').trim()
+  const date = String(formData.get('date') || '')
+  const endDate = String(formData.get('end_date') || '')
+  const startTime = String(formData.get('start_time') || '')
+  const endTime = String(formData.get('end_time') || '')
+
+  append('title', title)
+  append('description', String(formData.get('description') || '').trim())
+  append('timezone', String(formData.get('timezone') || ''))
+  append('notification_preferences', String(formData.get('notification_preferences') || 'all'))
+
+  if (date && startTime) {
+    try {
+      const utc = new Date(`${date}T${startTime}`)
+      append('date', utc.toISOString().slice(0, 10))
+      append('start_time', utc.toISOString().slice(11, 16))
+    } catch {
+      append('date', date)
+      append('start_time', startTime)
+    }
+  } else {
+    append('date', date)
+    append('start_time', startTime)
+  }
+
+  if (endDate && endTime) {
+    try {
+      const utc = new Date(`${endDate}T${endTime}`)
+      append('end_date', utc.toISOString().slice(0, 10))
+      append('end_time', utc.toISOString().slice(11, 16))
+    } catch {
+      append('end_date', endDate)
+      append('end_time', endTime)
+    }
+  } else {
+    append('end_date', endDate)
+    append('end_time', endTime)
+  }
+
+  return params
+}
+
+function EventFormFields({ event }: { event?: EventItem }) {
+  const { t } = useTranslation()
+  return (
+    <div className="grid grid-cols-2 gap-2.5">
+      <label className={`col-span-2 ${LABEL_CLASS}`}>{t('calendar.title_label')}
+        <input name="title" defaultValue={event?.title || ''} className={INPUT_CLASS} required placeholder={t('calendar.title_placeholder')} />
+      </label>
+      <label className={LABEL_CLASS}>{t('calendar.start_date')}
+        <input name="date" type="date" defaultValue={event?.date || ''} className={INPUT_CLASS} required />
+      </label>
+      <label className={LABEL_CLASS}>{t('calendar.end_date')}
+        <input name="end_date" type="date" defaultValue={event?.end_date || ''} className={INPUT_CLASS} />
+      </label>
+      <label className={LABEL_CLASS}>{t('calendar.start_time')}
+        <input name="start_time" type="time" defaultValue={normalizeTime(event?.start_time)} className={INPUT_CLASS} />
+      </label>
+      <label className={LABEL_CLASS}>{t('calendar.end_time')}
+        <input name="end_time" type="time" defaultValue={normalizeTime(event?.end_time)} className={INPUT_CLASS} />
+      </label>
+      <label className={`col-span-2 ${LABEL_CLASS}`}>{t('calendar.timezone')}
+        <select name="timezone" defaultValue={event?.timezone || 'UTC'} className={INPUT_CLASS} required>
+          <option value="">{t('calendar.select_timezone')}</option>
+          {TIMEZONE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+      </label>
+      <label className={`col-span-2 ${LABEL_CLASS}`}>{t('calendar.description')}
+        <textarea name="description" defaultValue={event?.description || ''} rows={3} className={INPUT_CLASS} placeholder={t('calendar.description_placeholder')} />
+      </label>
+      {!event ? (
+        <label className={`col-span-2 ${LABEL_CLASS}`}>{t('calendar.reminders')}
+          <select name="notification_preferences" defaultValue="all" className={INPUT_CLASS}>
+            <option value="none">{t('calendar.reminder_none')}</option>
+            <option value="1_week">{t('calendar.reminder_1_week')}</option>
+            <option value="1_day">{t('calendar.reminder_1_day')}</option>
+            <option value="1_hour">{t('calendar.reminder_1_hour')}</option>
+            <option value="all">{t('calendar.reminder_all')}</option>
+          </select>
+          <span className="mt-2 block text-[11px] font-normal normal-case tracking-normal text-[#8fa3a8]">{t('calendar.reminders_hint')}</span>
+        </label>
+      ) : null}
+    </div>
+  )
+}
+
+type EventCardProps = {
+  event: EventItem
+  archived?: boolean
+  onOpen: (event: EventItem) => void
+  onRsvp: (eventId: number, response: RSVPResponse) => void
+  onShowDetails: (event: EventItem) => void
+  onEdit: (event: EventItem) => void
+  onDelete: (event: EventItem) => void
+  onNativeCalendarSaved?: () => void
+}
+
+function EventCard({ event, archived = false, onOpen, onRsvp, onShowDetails, onEdit, onDelete, onNativeCalendarSaved }: EventCardProps) {
+  const { t } = useTranslation()
+  return (
+    <article className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] p-3 shadow-[0_12px_34px_rgba(0,0,0,0.32)] backdrop-blur-xl transition hover:border-[#4db6ac]/45 hover:bg-white/[0.065]">
+      <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[#4db6ac]/70 to-transparent" />
+      <button type="button" className="w-full text-left" onClick={() => onOpen(event)}>
+        <div className="flex items-start gap-2.5">
+          <div className="grid h-12 w-11 shrink-0 place-items-center rounded-xl border border-[#4db6ac]/35 bg-[#4db6ac]/10 text-center">
+            <div>
+              <div className="text-[9px] font-bold tracking-[0.16em] text-[#4db6ac]">{formatMonth(event.date)}</div>
+              <div className="text-lg font-semibold leading-tight text-white">{formatDay(event.date)}</div>
+            </div>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-[#8fa3a8]">
+              <span>{formatTimeRange(event)}</span>
+              {archived ? <span className="rounded-full border border-white/10 px-2 py-0.5 normal-case tracking-normal">{t('calendar.archived')}</span> : null}
+            </div>
+            <h3 className="mt-0.5 line-clamp-2 text-base font-semibold text-white">{event.title}</h3>
+            <p className="mt-0.5 text-xs text-[#b7c7ca]">{formatDateRange(event)}</p>
+            {event.description ? <p className="mt-2 line-clamp-2 text-xs leading-5 text-[#d7e1e3]/85">{event.description}</p> : null}
+          </div>
+        </div>
+      </button>
+      <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-[#b7c7ca]" onClick={clickEvent => clickEvent.stopPropagation()}>
+        <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'going' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => onRsvp(event.id, 'going')}>
+          {t('calendar.going')} {event.rsvp_counts?.going || 0}
+        </button>
+        <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'maybe' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => onRsvp(event.id, 'maybe')}>
+          {t('calendar.maybe')} {event.rsvp_counts?.maybe || 0}
+        </button>
+        <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'not_going' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => onRsvp(event.id, 'not_going')}>
+          {t('calendar.not_going')} {event.rsvp_counts?.not_going || 0}
+        </button>
+        <button type="button" className="ml-auto rounded-full border border-white/10 px-2.5 py-1 hover:border-[#4db6ac]/45 hover:text-white" onClick={() => onShowDetails(event)}>
+          {t('calendar.details')}
+        </button>
+        <button
+          type="button"
+          className="rounded-full border border-white/10 px-2.5 py-1 hover:border-[#4db6ac]/45 hover:text-white"
+          onClick={(e) => {
+            e.stopPropagation()
+            void (async () => {
+              try {
+                const outcome = await exportEventToDeviceCalendar(event.id, eventItemToExportFields(event))
+                if (outcome.via === 'native') onNativeCalendarSaved?.()
+              } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : t('calendar.could_not_export')
+                alert(msg)
+              }
+            })()
+          }}
+          aria-label={t('calendar.add_to_device_calendar')}
+          title={t('calendar.add_to_device_calendar')}
+        >
+          <i className="fa-regular fa-calendar-plus" />
+        </button>
+        {!archived ? (
+          <>
+            <button type="button" className="rounded-full border border-white/10 px-2.5 py-1 hover:border-[#4db6ac]/45 hover:text-white" onClick={() => onEdit(event)} aria-label={t('calendar.edit_event_aria')}>
+              <i className="fa-regular fa-pen-to-square" />
+            </button>
+            <button type="button" className="rounded-full border border-red-400/45 px-2.5 py-1 text-red-200 hover:bg-red-500/10" onClick={() => onDelete(event)} aria-label={t('calendar.delete_event_card_aria')}>
+              <i className="fa-regular fa-trash-can" />
+            </button>
+          </>
+        ) : null}
+      </div>
+    </article>
+  )
+}
+
+export default function CommunityCalendar() {
+  const { t } = useTranslation()
   const { community_id } = useParams()
   const [searchParams] = useSearchParams()
   const groupId = searchParams.get('group_id')
   const navigate = useNavigate()
   const { setTitle } = useHeader()
+  const createFormRef = useRef<HTMLFormElement | null>(null)
+
   const [events, setEvents] = useState<EventItem[]>([])
   const [archivedEvents, setArchivedEvents] = useState<EventItem[]>([])
+  const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
-  const [members, setMembers] = useState<Array<{ username:string; profile_picture?:string|null }>>([])
+  const [activeTab, setActiveTab] = useState<CalendarTab>('upcoming')
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createStep, setCreateStep] = useState<CreateStep>('details')
   const [inviteAll, setInviteAll] = useState(false)
-  const [selected, setSelected] = useState<Record<string, boolean>>({})
-  const [activeTab, setActiveTab] = useState<'calendar'|'archive'|'create'>('calendar')
-  const [inviteOpen, setInviteOpen] = useState(false)
-  const [successMsg, setSuccessMsg] = useState<string| null>(null)
-  const [modalEvent, setModalEvent] = useState<EventItem| null>(null)
-  const [modalDetails, setModalDetails] = useState<RSVPDetails| null>(null)
-  const [editingEvent, setEditingEvent] = useState<EventItem| null>(null)
-  const formRef = useRef<HTMLFormElement|null>(null)
-  const scrollRef = useRef<HTMLDivElement|null>(null)
-  const [moreOpen, setMoreOpen] = useState(false)
-  const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
+  const [selectedMembers, setSelectedMembers] = useState<Record<string, boolean>>({})
+  const [rsvpEvent, setRsvpEvent] = useState<EventItem | null>(null)
+  const [editingEvent, setEditingEvent] = useState<EventItem | null>(null)
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const keyboardOffsetRef = useRef(0)
+  const focusedFieldRef = useRef<HTMLElement | null>(null)
+  const isNativePlatform = useMemo(() => typeof window !== 'undefined' && Capacitor.getPlatform() !== 'web', [])
 
-  useEffect(() => { setTitle('Calendar') }, [setTitle])
+  useEffect(() => { setTitle(t('calendar.page_title')) }, [setTitle, t])
+
+  const updateKeyboardOffset = useCallback((next: number) => {
+    const clamped = Math.max(0, Math.round(next))
+    if (Math.abs(keyboardOffsetRef.current - clamped) < 2) return
+    keyboardOffsetRef.current = clamped
+    setKeyboardOffset(clamped)
+  }, [])
 
   useEffect(() => {
-    let mounted = true
-    async function check(){
-      try{
-        const r = await fetch(`/get_community_announcements?community_id=${community_id}`, { credentials:'include' })
-        const j = await r.json()
-        if (!mounted) return
-        if (j?.success){
-          const key = `ann_last_seen_${community_id}`
-          const lastSeenStr = localStorage.getItem(key)
-          const lastSeen = lastSeenStr ? Date.parse(lastSeenStr) : 0
-          const hasNew = (j.announcements || []).some((a:any) => Date.parse(a.created_at) > lastSeen)
-          setHasUnseenAnnouncements(hasNew)
-        }
-      }catch{}
+    if (isNativePlatform) return
+    if (typeof window === 'undefined') return
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    let baseHeight: number | null = null
+    let rafId: number | null = null
+
+    const update = () => {
+      const current = viewport.height
+      if (baseHeight === null || current > baseHeight - 4) baseHeight = current
+      const offset = (baseHeight ?? current) - current - viewport.offsetTop
+      updateKeyboardOffset(offset)
     }
-    check()
-    return () => { mounted = false }
-  }, [community_id])
 
-  async function fetchAnnouncements(){
-    try{
-      const r = await fetch(`/get_community_announcements?community_id=${community_id}`, { credentials:'include' })
-      const j = await r.json()
-      if (j?.success){
-        try{
-          const key = `ann_last_seen_${community_id}`
-          localStorage.setItem(key, new Date().toISOString())
-          setHasUnseenAnnouncements(false)
-        }catch{}
-        alert('No UI here: announcements viewed.')
-      }
-    }catch{}
-  }
+    const onChange = () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(update)
+    }
 
-  async function reloadEvents(){
-    try{
-      const url = groupId
-        ? `/api/group_calendar/${groupId}`
-        : '/get_calendar_events'
-      const r = await fetch(url, { credentials:'include' })
-      const j = await r.json()
-      if (j?.success && Array.isArray(j.events)){
+    viewport.addEventListener('resize', onChange)
+    viewport.addEventListener('scroll', onChange)
+    update()
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      viewport.removeEventListener('resize', onChange)
+      viewport.removeEventListener('scroll', onChange)
+    }
+  }, [isNativePlatform, updateKeyboardOffset])
+
+  useEffect(() => {
+    if (!isNativePlatform) return
+    let showSub: PluginListenerHandle | undefined
+    let changeSub: PluginListenerHandle | undefined
+    let hideSub: PluginListenerHandle | undefined
+
+    const handleShow = (info: KeyboardInfo) => updateKeyboardOffset(info?.keyboardHeight ?? 0)
+    const handleHide = () => updateKeyboardOffset(0)
+
+    Keyboard.addListener('keyboardWillShow', handleShow).then(handle => { showSub = handle })
+    Keyboard.addListener('keyboardDidShow', handleShow).then(handle => { changeSub = handle })
+    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => { hideSub = handle })
+
+    return () => {
+      showSub?.remove()
+      changeSub?.remove()
+      hideSub?.remove()
+    }
+  }, [isNativePlatform, updateKeyboardOffset])
+
+  const trackFocusedField = useCallback((event: FocusEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement | null
+    if (!target) return
+    const tag = target.tagName
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') return
+    focusedFieldRef.current = target
+    if (typeof target.scrollIntoView === 'function') {
+      requestAnimationFrame(() => {
+        try { target.scrollIntoView({ block: 'center', behavior: 'smooth' }) } catch {}
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    if (keyboardOffset <= 0) return
+    const target = focusedFieldRef.current
+    if (!target || typeof target.scrollIntoView !== 'function') return
+    const id = window.setTimeout(() => {
+      try { target.scrollIntoView({ block: 'center', behavior: 'smooth' }) } catch {}
+    }, 80)
+    return () => window.clearTimeout(id)
+  }, [keyboardOffset])
+
+  const reloadEvents = useCallback(async () => {
+    try {
+      const url = groupId ? `/api/group_calendar/${groupId}` : '/get_calendar_events'
+      const response = await fetch(url, { credentials: 'include' })
+      const payload = await response.json()
+      if (payload?.success && Array.isArray(payload.events)) {
         const filtered = groupId
-          ? (j.events as any[])
-          : (j.events as any[]).filter(e => `${e.community_id||''}` === `${community_id}`)
-        
-        // Split events into upcoming and archived (past events)
-        const now = new Date()
+          ? payload.events
+          : payload.events.filter((event: EventItem) => `${event.community_id || ''}` === `${community_id}`)
+
         const upcoming: EventItem[] = []
         const archived: EventItem[] = []
-        
-        console.log('🔍 Archive filtering debug:')
-        console.log('Now (local):', now)
-        console.log('Now (UTC):', now.toISOString())
-        
-        filtered.forEach((event: any) => {
-          try {
-            // Determine event end datetime
-            let eventDateTime: Date
-            let timeSource = ''
-            
-            // Log raw event data for debugging
-            console.log(`🔍 RAW event data for "${event.title}":`, {
-              start_time: event.start_time,
-              end_time: event.end_time,
-              date: event.date,
-              end_date: event.end_date
-            })
-            
-            if (event.end_time && event.end_time !== '0000-00-00 00:00:00' && event.end_time !== 'None') {
-              // end_time might be full datetime (YYYY-MM-DD HH:MM:SS) or just time (HH:MM)
-              let timeStr = String(event.end_time)
-              
-              // Check if it's a full datetime or just time
-              if (timeStr.includes(' ')) {
-                // Full datetime like "2025-10-25 10:06:00"
-                timeStr = timeStr.replace(' ', 'T') + 'Z'
-              } else if (timeStr.match(/^\d{2}:\d{2}/)) {
-                // Just time like "10:06" - combine with end_date or date
-                const dateToUse = event.end_date || event.date
-                timeStr = `${dateToUse}T${timeStr}:00Z`
-              }
-              
-              eventDateTime = new Date(timeStr)
-            } else if (event.start_time && event.start_time !== '0000-00-00 00:00:00' && event.start_time !== 'None') {
-              // start_time might be full datetime (YYYY-MM-DD HH:MM:SS) or just time (HH:MM)
-              let timeStr = String(event.start_time)
-              
-              // Check if it's a full datetime or just time
-              if (timeStr.includes(' ')) {
-                // Full datetime like "2025-10-25 10:02:00"
-                timeStr = timeStr.replace(' ', 'T') + 'Z'
-              } else if (timeStr.match(/^\d{2}:\d{2}/)) {
-                // Just time like "10:02" - combine with date
-                timeStr = `${event.date}T${timeStr}:00Z`
-              }
-              
-              eventDateTime = new Date(timeStr)
-              timeSource = `start_time: ${event.start_time} → ${timeStr}`
-            } else if (event.end_date && event.end_date !== '0000-00-00') {
-              // Use end_date at end of day (UTC)
-              eventDateTime = new Date(event.end_date + 'T23:59:59Z')
-              timeSource = `end_date: ${event.end_date}`
-            } else {
-              // Use start date at end of day (UTC)
-              eventDateTime = new Date(event.date + 'T23:59:59Z')
-              timeSource = `date: ${event.date}`
-            }
-            
-            const isPast = eventDateTime < now
-            console.log(`📅 Event "${event.title}":`, {
-              source: timeSource,
-              parsed: eventDateTime.toISOString(),
-              isPast,
-              decision: isPast ? 'ARCHIVE' : 'ACTIVE'
-            })
-            
-            // Event is archived if it's in the past
-            if (isPast) {
-              archived.push(event)
-            } else {
-              upcoming.push(event)
-            }
-          } catch (e) {
-            // If parsing fails, treat as upcoming
-            console.error('Failed to parse event datetime:', e, event)
-            upcoming.push(event)
-          }
+        filtered.forEach((event: EventItem) => {
+          if (isPastEvent(event)) archived.push(event)
+          else upcoming.push(event)
         })
-        
-        console.log(`✅ Split complete: ${upcoming.length} active, ${archived.length} archived`)
-        
-        setEvents(upcoming as any)
-        setArchivedEvents(archived as any)
+        upcoming.sort((a, b) => buildEventDateTime(a).getTime() - buildEventDateTime(b).getTime())
+        archived.sort((a, b) => buildEventDateTime(b).getTime() - buildEventDateTime(a).getTime())
+        setEvents(upcoming)
+        setArchivedEvents(archived)
+        setSelectedDate(current => current && upcoming.some(event => event.date === current) ? current : upcoming[0]?.date || null)
       }
-    }catch{}
-  }
+    } catch {
+      setEvents([])
+      setArchivedEvents([])
+    }
+  }, [community_id, groupId])
 
   useEffect(() => {
     let mounted = true
     setLoading(true)
-    reloadEvents().finally(()=> mounted && setLoading(false))
+    reloadEvents().finally(() => mounted && setLoading(false))
     ;(async () => {
-      try{
-        const membersUrl = groupId
-          ? `/api/group_members/${groupId}`
-          : `/community/${community_id}/members/list`
-        const r = await fetch(membersUrl, { credentials:'include' })
-        const j = await r.json()
-        if (j?.success && Array.isArray(j.members)){
-          setMembers(j.members)
-        }
-      }catch{}
+      try {
+        const membersUrl = groupId ? `/api/group_members/${groupId}` : `/community/${community_id}/members/list`
+        const response = await fetch(membersUrl, { credentials: 'include' })
+        const payload = await response.json()
+        if (mounted && payload?.success && Array.isArray(payload.members)) setMembers(payload.members)
+      } catch {}
     })()
     return () => { mounted = false }
-  }, [community_id])
+  }, [community_id, groupId, reloadEvents])
 
-  const grouped = useMemo(() => {
-    const map = new Map<string, EventItem[]>()
-    events.forEach(ev => {
-      const key = ev.date
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(ev)
-    })
-    return Array.from(map.entries()).sort(([a],[b]) => a.localeCompare(b))
+  const dateStrip = useMemo(() => {
+    const unique = Array.from(new Map(events.map(event => [event.date, event])).values())
+    return unique.slice(0, 14)
   }, [events])
 
-  const groupedArchived = useMemo(() => {
-    const map = new Map<string, EventItem[]>()
-    archivedEvents.forEach(ev => {
-      const key = ev.date
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(ev)
-    })
-    return Array.from(map.entries()).sort(([a],[b]) => b.localeCompare(a)) // Reverse order for archive
-  }, [archivedEvents])
+  const visibleEvents = useMemo(() => {
+    if (activeTab === 'archive') return archivedEvents
+    if (!selectedDate) return events
+    return events.filter(event => event.date === selectedDate)
+  }, [activeTab, archivedEvents, events, selectedDate])
 
-  async function createEvent(formData: FormData){
-    const params = new URLSearchParams()
-    
-    // Get form values
-    const title = (formData.get('title') as string) || ''
-    const date = (formData.get('date') as string) || ''
-    const end_date = (formData.get('end_date') as string) || ''
-    const start_time = (formData.get('start_time') as string) || ''
-    const end_time = (formData.get('end_time') as string) || ''
-    const timezone = (formData.get('timezone') as string) || ''
-    const description = (formData.get('description') as string) || ''
-    const notification_preferences = (formData.get('notification_preferences') as string) || 'all'
-    
-    // Basic fields
-    if (title) params.append('title', title)
-    if (description) params.append('description', description)
-    if (timezone) params.append('timezone', timezone)
-    params.append('notification_preferences', notification_preferences)
-    
-    // Convert dates/times from local to UTC (like polls do)
-    if (date && start_time) {
-      try {
-        // Combine date + start_time into local datetime, then convert to UTC
-        const localDateTime = new Date(`${date}T${start_time}`)
-        const utcDate = localDateTime.toISOString().slice(0, 10) // YYYY-MM-DD
-        const utcTime = localDateTime.toISOString().slice(11, 16) // HH:MM
-        console.log(`📅 Converting event start: Local=${date} ${start_time} → UTC=${utcDate} ${utcTime}`)
-        params.append('date', utcDate)
-        params.append('start_time', utcTime)
-      } catch (e) {
-        console.error('Failed to convert start time to UTC:', e)
-        params.append('date', date)
-        params.append('start_time', start_time)
-      }
-    } else {
-      if (date) params.append('date', date)
-      if (start_time) params.append('start_time', start_time)
-    }
-    
-    // Convert end date/time
-    if (end_date && end_time) {
-      try {
-        const localEndDateTime = new Date(`${end_date}T${end_time}`)
-        const utcEndDate = localEndDateTime.toISOString().slice(0, 10)
-        const utcEndTime = localEndDateTime.toISOString().slice(11, 16)
-        console.log(`📅 Converting event end: Local=${end_date} ${end_time} → UTC=${utcEndDate} ${utcEndTime}`)
-        params.append('end_date', utcEndDate)
-        params.append('end_time', utcEndTime)
-      } catch (e) {
-        console.error('Failed to convert end time to UTC:', e)
-        if (end_date) params.append('end_date', end_date)
-        if (end_time) params.append('end_time', end_time)
-      }
-    } else {
-      if (end_date) params.append('end_date', end_date)
-      if (end_time) params.append('end_time', end_time)
-    }
-    
+  const nextEvent = events[0] || null
+  const selectedCount = Object.values(selectedMembers).filter(Boolean).length
+
+  const notifyNativeCalendarSaved = useCallback(() => {
+    setSuccessMsg(t('calendar.event_added_to_calendar'))
+    setTimeout(() => setSuccessMsg(null), 2200)
+  }, [t])
+
+  async function createEvent(formData: FormData) {
+    const params = toUtcFormFields(formData)
     if (community_id) params.append('community_id', String(community_id))
     if (groupId) params.append('group_id', groupId)
     params.append('invite_all', inviteAll ? 'true' : 'false')
-    if (!inviteAll){
-      Object.keys(selected).filter(u => selected[u]).forEach(u => params.append('invited_members[]', u))
+    if (!inviteAll) {
+      Object.entries(selectedMembers)
+        .filter(([, checked]) => checked)
+        .forEach(([username]) => params.append('invited_members[]', username))
     }
-    const r = await fetch('/add_calendar_event', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: params })
-    const j = await r.json().catch(()=>null)
-    if (j?.success){
+
+    const response = await fetch('/add_calendar_event', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params,
+    })
+    const payload = await response.json().catch(() => null)
+    if (payload?.success) {
       await reloadEvents()
-      setSuccessMsg('Event created')
-      setActiveTab('calendar')
-      try { formRef.current?.reset(); setInviteAll(false); setSelected({}); setInviteOpen(false) } catch {}
-      setTimeout(() => setSuccessMsg(null), 2000)
+      setSuccessMsg(t('calendar.event_created'))
+      setCreateOpen(false)
+      setCreateStep('details')
+      setInviteAll(false)
+      setSelectedMembers({})
+      createFormRef.current?.reset()
+      setTimeout(() => setSuccessMsg(null), 2200)
     } else {
-      alert(j?.message || 'Failed to create event')
+      alert(payload?.message || t('calendar.create_failed'))
     }
   }
 
-  async function rsvp(eventId:number, response:'going'|'maybe'|'not_going'){
-    try{
-      const r = await fetch(`/event/${eventId}/rsvp`, { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ response }) })
-      const j = await r.json().catch(()=>null)
-      if (j?.success){
-        await reloadEvents()
-      }
-    }catch{}
-  }
-
-  // Removed invite details trigger; modal remains for future use if needed
-
-  async function deleteEvent(ev: EventItem){
-    if (!confirm('Delete this event?')) return
-    try{
-      const body = new URLSearchParams({ event_id: String(ev.id) })
-      const r = await fetch('/delete_calendar_event', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body })
-      const j = await r.json().catch(()=>null)
-      if (j?.success){
-        await reloadEvents()
-        setModalEvent(null)
-        setModalDetails(null)
-      } else {
-        alert(j?.message || 'Could not delete')
-      }
-    }catch{}
-  }
-
-  async function saveEditedEvent(formData: FormData){
+  async function saveEditedEvent(formData: FormData) {
     if (!editingEvent) return
-    const params = new URLSearchParams()
-    params.append('event_id', String(editingEvent.id))
-    
-    // Get form values
-    const title = (formData.get('title') as string) || ''
-    const date = (formData.get('date') as string) || ''
-    const end_date = (formData.get('end_date') as string) || ''
-    const start_time = (formData.get('start_time') as string) || ''
-    const end_time = (formData.get('end_time') as string) || ''
-    const timezone = (formData.get('timezone') as string) || ''
-    const description = (formData.get('description') as string) || ''
-    
-    // Basic fields
-    if (title) params.append('title', title)
-    if (description) params.append('description', description)
-    if (timezone) params.append('timezone', timezone)
-    
-    // Convert dates/times from local to UTC
-    if (date && start_time) {
-      try {
-        const localDateTime = new Date(`${date}T${start_time}`)
-        const utcDate = localDateTime.toISOString().slice(0, 10)
-        const utcTime = localDateTime.toISOString().slice(11, 16)
-        console.log(`📅 Converting edited start: Local=${date} ${start_time} → UTC=${utcDate} ${utcTime}`)
-        params.append('date', utcDate)
-        params.append('start_time', utcTime)
-      } catch (e) {
-        console.error('Failed to convert start time to UTC:', e)
-        params.append('date', date)
-        params.append('start_time', start_time)
-      }
-    } else {
-      if (date) params.append('date', date)
-      if (start_time) params.append('start_time', start_time)
-    }
-    
-    if (end_date && end_time) {
-      try {
-        const localEndDateTime = new Date(`${end_date}T${end_time}`)
-        const utcEndDate = localEndDateTime.toISOString().slice(0, 10)
-        const utcEndTime = localEndDateTime.toISOString().slice(11, 16)
-        console.log(`📅 Converting edited end: Local=${end_date} ${end_time} → UTC=${utcEndDate} ${utcEndTime}`)
-        params.append('end_date', utcEndDate)
-        params.append('end_time', utcEndTime)
-      } catch (e) {
-        console.error('Failed to convert end time to UTC:', e)
-        if (end_date) params.append('end_date', end_date)
-        if (end_time) params.append('end_time', end_time)
-      }
-    } else {
-      if (end_date) params.append('end_date', end_date)
-      if (end_time) params.append('end_time', end_time)
-    }
-    
-    const r = await fetch('/edit_calendar_event', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: params })
-    const j = await r.json().catch(()=>null)
-    if (j?.success){
+    const params = toUtcFormFields(formData)
+    params.set('event_id', String(editingEvent.id))
+    const response = await fetch('/edit_calendar_event', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params,
+    })
+    const payload = await response.json().catch(() => null)
+    if (payload?.success) {
+      const eid = editingEvent.id
       await reloadEvents()
       setEditingEvent(null)
-      setSuccessMsg('Event updated')
-      setTimeout(() => setSuccessMsg(null), 2000)
+      setSuccessMsg(t('calendar.event_updated'))
+      setTimeout(() => setSuccessMsg(null), 2200)
+      void (async () => {
+        try {
+          const r = await fetch(`/api/calendar_events/${eid}`, {
+            credentials: 'include',
+            headers: { Accept: 'application/json' },
+          })
+          const j = await r.json().catch(() => null)
+          if (j?.success && j.event) {
+            const e = j.event
+            await syncNativeCalendarAfterServerChange({
+              id: Number(e.id),
+              title: String(e.title ?? ''),
+              date: String(e.date ?? ''),
+              end_date: e.end_date ?? null,
+              start_time: e.start_time ?? null,
+              end_time: e.end_time ?? null,
+              description: e.description ?? null,
+              community_name: e.community_name ?? null,
+            })
+          }
+        } catch (e) {
+          console.warn('[calendar] syncNativeCalendarAfterServerChange failed', e)
+        }
+      })()
     } else {
-      alert(j?.message || 'Failed to update event')
+      alert(payload?.message || t('calendar.update_failed'))
     }
+  }
+
+  async function rsvp(eventId: number, response: RSVPResponse) {
+    try {
+      const result = await fetch(`/event/${eventId}/rsvp`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ response }),
+      })
+      const payload = await result.json().catch(() => null)
+      if (payload?.success) {
+        await reloadEvents()
+        setRsvpEvent(current => current?.id === eventId ? { ...current, user_rsvp: response } : current)
+      }
+    } catch {}
+  }
+
+  async function deleteEvent(event: EventItem) {
+    if (!confirm(t('calendar.delete_confirm_short'))) return
+    try {
+      const response = await fetch('/delete_calendar_event', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ event_id: String(event.id) }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (payload?.success) {
+        try {
+          await removeNativeCalendarMirrorForCpointEvent(event.id)
+        } catch {
+          /* best effort */
+        }
+        await reloadEvents()
+        setRsvpEvent(null)
+      } else {
+        alert(payload?.message || t('calendar.could_not_delete'))
+      }
+    } catch {}
   }
 
   return (
     <div className="min-h-screen bg-black text-white">
+      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(77,182,172,0.22),transparent_34%),radial-gradient(circle_at_15%_20%,rgba(77,182,172,0.10),transparent_28%)]" />
       <div
-        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
-        style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
+        className="relative mx-auto max-w-3xl px-3 pt-2 pb-28"
+        style={{ WebkitOverflowScrolling: 'touch' as any } as CSSProperties}
       >
-        <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label="Back">
+        <header className="mb-0 flex items-center">
+          <button className="rounded-full p-2 text-[#cfe7e4] hover:bg-white/5" onClick={() => navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label={t('common.back')}>
             <i className="fa-solid fa-arrow-left" />
           </button>
-          <div className="flex-1 h-full flex">
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='calendar' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('calendar')}>
-              <div className="pt-2">Calendar</div>
-              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='calendar' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
-            </button>
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='archive' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('archive')}>
-              <div className="pt-2">Archive</div>
-              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='archive' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
-            </button>
-            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='create' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('create')}>
-              <div className="pt-2">Create Event</div>
-              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='create' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
-            </button>
+        </header>
+
+        {successMsg ? <div className="mb-2 rounded-xl border border-[#4db6ac]/25 bg-[#4db6ac]/10 px-3 py-2 text-xs text-[#9ff8ef]">{successMsg}</div> : null}
+
+        <section className="mb-2.5 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] p-3 shadow-[0_14px_46px_rgba(0,0,0,0.36)] backdrop-blur-xl">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-[#8fa3a8]">{t('calendar.next_up')}</p>
+              <h2 className="mt-1 truncate text-lg font-semibold text-white">{nextEvent?.title || t('calendar.no_upcoming_yet')}</h2>
+              <p className="mt-1 line-clamp-2 text-xs text-[#b7c7ca]">{nextEvent ? `${formatDateRange(nextEvent)} • ${formatTimeRange(nextEvent)}` : t('calendar.create_first_hint')}</p>
+            </div>
+            <div className="shrink-0 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 px-2.5 py-1.5 text-right">
+              <div className="text-[11px] text-[#8ff4e9]">{nextEvent ? getCountdownLabel(nextEvent) : t('calendar.ready')}</div>
+            </div>
           </div>
+          {nextEvent ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-black hover:bg-[#e9fffd]" onClick={() => setRsvpEvent(nextEvent)}>{t('calendar.rsvp_now')}</button>
+              <button className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-[#d7e1e3] hover:border-[#4db6ac]/45" onClick={() => navigate(`/event/${nextEvent.id}`)}>{t('calendar.open_details')}</button>
+              <button
+                className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-[#d7e1e3] hover:border-[#4db6ac]/45"
+                onClick={() =>
+                  void (async () => {
+                    try {
+                      const outcome = await exportEventToDeviceCalendar(nextEvent.id, eventItemToExportFields(nextEvent))
+                      if (outcome.via === 'native') notifyNativeCalendarSaved()
+                    } catch (err: unknown) {
+                      const msg = err instanceof Error ? err.message : t('calendar.could_not_export')
+                      alert(msg)
+                    }
+                  })()
+                }
+              >
+                {t('calendar.add_to_calendar')}
+              </button>
+            </div>
+          ) : null}
+        </section>
+
+        <div className="mb-3 flex rounded-full border border-white/10 bg-white/[0.04] p-1">
+          <button className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${activeTab === 'upcoming' ? 'bg-[#4db6ac] text-black' : 'text-[#9fb0b5] hover:text-white'}`} onClick={() => setActiveTab('upcoming')}>{t('calendar.upcoming')}</button>
+          <button className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${activeTab === 'archive' ? 'bg-[#4db6ac] text-black' : 'text-[#9fb0b5] hover:text-white'}`} onClick={() => setActiveTab('archive')}>{t('calendar.archive')}</button>
         </div>
+
+        {activeTab === 'upcoming' && dateStrip.length > 0 ? (
+          <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+            {dateStrip.map(event => (
+              <button key={event.date} className={`min-w-[58px] rounded-xl border px-2 py-2 text-center transition ${selectedDate === event.date ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-white' : 'border-white/10 bg-white/[0.035] text-[#9fb0b5]'}`} onClick={() => setSelectedDate(event.date)}>
+                <div className="text-[9px] font-bold tracking-[0.16em] text-[#4db6ac]">{formatMonth(event.date)}</div>
+                <div className="text-lg font-semibold leading-tight">{formatDay(event.date)}</div>
+                <div className="text-[10px]">{t('calendar.events_on_date', { count: events.filter(item => item.date === event.date).length })}</div>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        <main className="space-y-2.5">
+          {loading ? (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-[#9fb0b5]">{t('calendar.loading_events')}</div>
+          ) : visibleEvents.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.035] p-5 text-center">
+              <div className="mx-auto grid h-11 w-11 place-items-center rounded-xl bg-[#4db6ac]/10 text-[#4db6ac]"><i className="fa-regular fa-calendar" /></div>
+              <h3 className="mt-3 text-base font-semibold">{activeTab === 'archive' ? t('calendar.no_archived_events') : t('calendar.nothing_scheduled')}</h3>
+              <p className="mt-1.5 text-xs text-[#9fb0b5]">{activeTab === 'archive' ? t('calendar.archive_empty_hint') : t('calendar.upcoming_empty_hint')}</p>
+              {activeTab !== 'archive' ? <button className="mt-4 rounded-full bg-[#4db6ac] px-4 py-1.5 text-xs font-semibold text-black" onClick={() => setCreateOpen(true)}>{t('calendar.create_event')}</button> : null}
+            </div>
+          ) : (
+            visibleEvents.map(event => (
+              <EventCard
+                key={event.id}
+                event={event}
+                archived={activeTab === 'archive'}
+                onOpen={item => navigate(`/event/${item.id}`)}
+                onRsvp={rsvp}
+                onShowDetails={setRsvpEvent}
+                onEdit={setEditingEvent}
+                onDelete={deleteEvent}
+                onNativeCalendarSaved={notifyNativeCalendarSaved}
+              />
+            ))
+          )}
+        </main>
       </div>
 
-      <div
-        ref={scrollRef}
-        className="app-subnav-offset max-w-2xl mx-auto pb-20 px-3 overflow-y-auto no-scrollbar"
-        style={{
-          WebkitOverflowScrolling: 'touch' as any,
-          minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))',
-          '--app-subnav-height': '40px',
-        } as CSSProperties}
-      >
-        {successMsg && (
-          <div className="mb-3 text-sm px-3 py-2 rounded-md bg-teal-700/15 text-teal-300 border border-teal-700/30">{successMsg}</div>
-        )}
+      {activeTab !== 'archive' ? (
+        <button
+          type="button"
+          className="fixed bottom-[5.25rem] left-1/2 z-40 inline-flex w-[88%] max-w-sm -translate-x-1/2 items-center justify-center gap-2 rounded-full bg-[#4db6ac] px-5 py-3 text-sm font-semibold text-black shadow-[0_0_28px_rgba(77,182,172,0.45)] hover:brightness-110"
+          onClick={() => setCreateOpen(true)}
+        >
+          <i className="fa-solid fa-plus text-xs" />
+          <span>{t('calendar.new_event')}</span>
+        </button>
+      ) : null}
 
-        {activeTab === 'create' ? (
-          <form ref={formRef} className="rounded-2xl border border-white/10 p-3 bg-white/[0.035] space-y-3" onSubmit={(e)=> { e.preventDefault(); createEvent(new FormData(e.currentTarget)) }}>
-            <div className="text-sm font-medium">Create Event</div>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="col-span-2 text-xs text-[#9fb0b5]">Title
-                <input name="title" placeholder="Title" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required />
-              </label>
-              <label className="text-xs text-[#9fb0b5]">Start date
-                <input name="date" type="date" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required />
-              </label>
-              <label className="text-xs text-[#9fb0b5]">End date
-                <input name="end_date" type="date" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
-              </label>
-              <label className="text-xs text-[#9fb0b5]">Start time
-                <input name="start_time" type="time" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
-              </label>
-              <label className="text-xs text-[#9fb0b5]">End time
-                <input name="end_time" type="time" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
-              </label>
-              <label className="col-span-2 text-xs text-[#9fb0b5]">Timezone
-                <select name="timezone" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required>
-                  <option value="">Select timezone</option>
-                  <option value="EST">EST (Eastern Time)</option>
-                  <option value="CST">CST (Central Time)</option>
-                  <option value="MST">MST (Mountain Time)</option>
-                  <option value="PST">PST (Pacific Time)</option>
-                  <option value="GMT">GMT (Greenwich Mean Time)</option>
-                  <option value="CET">CET (Central European Time)</option>
-                  <option value="IST">IST (India Standard Time)</option>
-                  <option value="JST">JST (Japan Standard Time)</option>
-                  <option value="AEST">AEST (Australian Eastern Time)</option>
-                  <option value="UTC">UTC (Coordinated Universal Time)</option>
-                </select>
-              </label>
-              <label className="col-span-2 text-xs text-[#9fb0b5]">Description
-                <input name="description" placeholder="Description" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
-              </label>
-              <label className="col-span-2 text-xs text-[#9fb0b5]">📬 Send reminders
-                <select name="notification_preferences" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none">
-                  <option value="none">No reminders</option>
-                  <option value="1_week">1 week before</option>
-                  <option value="1_day">1 day before</option>
-                  <option value="1_hour">1 hour before</option>
-                  <option value="all" selected>All reminders (1 week + 1 day + 1 hour)</option>
-                </select>
-                <div className="text-[10px] text-[#9fb0b5] mt-1">⚡ Reminders sent automatically based on event start time</div>
-              </label>
+      {createOpen ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/70 px-3 backdrop-blur"
+          style={{
+            paddingTop: keyboardOffset > 0
+              ? '8px'
+              : 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + 8px)',
+            paddingBottom: `${keyboardOffset + 16}px`,
+            transition: 'padding 180ms ease',
+          } as CSSProperties}
+          onClick={event => event.currentTarget === event.target && setCreateOpen(false)}
+          onFocusCapture={trackFocusedField}
+        >
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#050606] p-3.5 shadow-2xl">
+            <div className="mb-2.5 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold">{t('calendar.create_event_title')}</h2>
+                <p className="mt-0.5 text-xs text-[#8fa3a8]">{t('calendar.step_of', { current: createStep === 'details' ? 1 : 2, total: 2 })}</p>
+              </div>
+              <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setCreateOpen(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark" /></button>
             </div>
-
-            <div className="flex items-center gap-2">
-              <button type="button" className={`px-2 py-1 rounded-md border text-xs hover:bg-white/5 ${inviteAll ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-white/10'}`} onClick={()=> { setInviteAll(v=> { const newVal = !v; if (newVal) setInviteOpen(false); return newVal; }) }}>
-                Invite all members
-              </button>
-              <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs hover:bg-white/5" onClick={()=> { setInviteAll(false); setInviteOpen(true) }}>
-                Select members
-              </button>
-            </div>
-
-            {inviteOpen && !inviteAll && (
-              <div className="max-h-48 overflow-y-auto border border-white/10 rounded-md p-2 space-y-1">
-                {members.length === 0 ? (
-                  <div className="text-sm text-[#9fb0b5]">No members</div>
-                ) : members.map(m => (
-                  <label key={m.username} className="flex items-center justify-between gap-2 py-1 px-2 rounded hover:bg-white/5 cursor-pointer">
-                    <span className="text-sm">{m.username}</span>
-                    <div 
-                      className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${selected[m.username] ? 'border-[#6c757d] bg-black' : 'border-[#6c757d] bg-black'}`}
-                      onClick={(e)=> { e.preventDefault(); setSelected(s => ({ ...s, [m.username]: !s[m.username] })) }}
-                    >
-                      {selected[m.username] && (
-                        <i className="fa-solid fa-check text-[#4db6ac] text-xs" />
-                      )}
+            <form ref={createFormRef} onSubmit={event => { event.preventDefault(); createEvent(new FormData(event.currentTarget)) }}>
+              <div className={createStep === 'details' ? 'block' : 'hidden'}>
+                <EventFormFields />
+                <div className="mt-3 flex justify-end">
+                  <button type="button" className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110" onClick={() => setCreateStep('invite')}>{t('calendar.continue')}</button>
+                </div>
+              </div>
+              <div className={createStep === 'invite' ? 'block' : 'hidden'}>
+                <div className="rounded-xl border border-white/10 bg-white/[0.035] p-2.5">
+                  <div className="flex gap-1.5">
+                    <button type="button" className={`flex-1 rounded-lg border px-3 py-2 text-sm ${inviteAll ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca]'}`} onClick={() => setInviteAll(true)}>{t('calendar.invite_all')}</button>
+                    <button type="button" className={`flex-1 rounded-lg border px-3 py-2 text-sm ${!inviteAll ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca]'}`} onClick={() => setInviteAll(false)}>{t('calendar.choose_members')}</button>
+                  </div>
+                  {!inviteAll ? (
+                    <div className="mt-2.5 max-h-52 space-y-1 overflow-y-auto pr-1">
+                      {members.length === 0 ? <div className="text-sm text-[#9fb0b5]">{t('calendar.no_members_found')}</div> : members.map(member => (
+                        <label key={member.username} className="flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 hover:bg-white/5">
+                          <span className="text-sm">{member.username}</span>
+                          <input type="checkbox" checked={!!selectedMembers[member.username]} onChange={() => setSelectedMembers(current => ({ ...current, [member.username]: !current[member.username] }))} className="h-5 w-5 accent-[#4db6ac]" />
+                        </label>
+                      ))}
                     </div>
-                  </label>
-                ))}
-              </div>
-            )}
-
-            <div className="flex justify-end">
-              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">Add</button>
-            </div>
-          </form>
-        ) : activeTab === 'archive' ? (
-          <div className="space-y-3">
-            {loading ? (
-              <div className="text-[#9fb0b5]">Loading archived events…</div>
-            ) : groupedArchived.length === 0 ? (
-              <div className="text-[#9fb0b5]">No archived events yet.</div>
-            ) : (
-              groupedArchived.map(([date, items]) => (
-                <div key={date} className="rounded-2xl border border-white/10 bg-white/[0.035] overflow-hidden opacity-75">
-                  <div className="px-3 py-2 bg-[#6c757d] text-xs text-black font-medium flex items-center gap-2">
-                    <span>🔒 Past Event</span>
-                    <span>•</span>
-                    <span>
-                      {(() => {
-                        const firstWithEndDate = items.find(ev => ev.end_date && ev.end_date !== date && ev.end_date !== '0000-00-00')
-                        return firstWithEndDate ? `${date} → ${firstWithEndDate.end_date}` : date
-                      })()}
-                    </span>
-                  </div>
-                  <div className="divide-y divide-white/10">
-                    {items.map(ev => (
-                      <div key={ev.id} className="px-3 py-2 cursor-pointer hover:bg-white/5" onClick={()=> navigate(`/event/${ev.id}`)}>
-                        <div className="flex items-center gap-2">
-                          <div className="font-medium flex-1">{ev.title}</div>
-                          <div className="text-xs text-[#9fb0b5]">
-                            {(() => {
-                              const times = [ev.start_time, ev.end_time]
-                                .filter(t => t && t !== '0000-00-00 00:00:00' && t !== '00:00:00' && t !== '00:00')
-                              const timeStr = times.length > 0 ? times.join(' - ') : ''
-                              return timeStr && ev.timezone ? `${timeStr} ${ev.timezone}` : timeStr
-                            })()}
-                          </div>
-                        </div>
-                        {ev.description ? (<div className="text-sm text-[#cfd8dc] mt-1">{ev.description}</div>) : null}
-                        <div className="text-xs text-[#9fb0b5] mt-2 flex items-center gap-2 flex-wrap">
-                          <span className="px-2 py-1 rounded-full border border-white/10">Going {ev.rsvp_counts?.going||0}</span>
-                          <span className="px-2 py-1 rounded-full border border-white/10">Maybe {ev.rsvp_counts?.maybe||0}</span>
-                          <span className="px-2 py-1 rounded-full border border-white/10">Not going {ev.rsvp_counts?.not_going||0}</span>
-                          {typeof ev.rsvp_counts?.no_response === 'number' && ev.rsvp_counts.no_response > 0 && (
-                            <span className="px-2 py-1 rounded-full border border-white/10">No response {ev.rsvp_counts.no_response}</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  ) : <p className="mt-2.5 text-sm text-[#9fb0b5]">{t('calendar.invite_all_hint')}</p>}
                 </div>
-              ))
-            )}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {loading ? (
-              <div className="text-[#9fb0b5]">Loading events…</div>
-            ) : grouped.length === 0 ? (
-              <div className="text-[#9fb0b5]">No events yet.</div>
-            ) : (
-              grouped.map(([date, items]) => (
-                <div key={date} className="rounded-2xl border border-white/10 bg-white/[0.035] overflow-hidden">
-                  <div className="px-3 py-2 bg-[#4db6ac] text-xs text-black font-medium">
-                    {(() => {
-                      // Show end date if any event in this group has a different end date
-                      const firstWithEndDate = items.find(ev => ev.end_date && ev.end_date !== date && ev.end_date !== '0000-00-00')
-                      return firstWithEndDate ? `${date} → ${firstWithEndDate.end_date}` : date
-                    })()}
-                  </div>
-                  <div className="divide-y divide-white/10">
-                    {items.map(ev => (
-                      <div key={ev.id} className="px-3 py-2 hover:bg-white/5 cursor-pointer" onClick={()=> navigate(`/event/${ev.id}`)}>
-                        <div className="flex items-center gap-2">
-                          <div className="font-medium flex-1">{ev.title}</div>
-                          <div className="text-xs text-[#9fb0b5]">
-                            {(() => {
-                              const times = [ev.start_time, ev.end_time]
-                                .filter(t => t && t !== '0000-00-00 00:00:00' && t !== '00:00:00' && t !== '00:00')
-                              const timeStr = times.length > 0 ? times.join(' - ') : ''
-                              return timeStr && ev.timezone ? `${timeStr} ${ev.timezone}` : timeStr
-                            })()}
-                          </div>
-                        </div>
-                        {ev.description ? (<div className="text-sm text-[#cfd8dc] mt-1">{ev.description}</div>) : null}
-                        <div className="text-xs text-[#9fb0b5] mt-2 flex items-center gap-2 flex-wrap" onClick={(e)=> e.stopPropagation()}>
-                          <button className={`px-2 py-1 rounded-full border ${ev.user_rsvp==='going'?'border-teal-500 text-teal-300 bg-teal-700/15':'border-white/10'}`} onClick={(e)=> { e.stopPropagation(); rsvp(ev.id, 'going') }}>Going {ev.rsvp_counts?.going||0}</button>
-                          <button className={`px-2 py-1 rounded-full border ${ev.user_rsvp==='maybe'?'border-teal-500 text-teal-300 bg-teal-700/15':'border-white/10'}`} onClick={(e)=> { e.stopPropagation(); rsvp(ev.id, 'maybe') }}>Maybe {ev.rsvp_counts?.maybe||0}</button>
-                          <button className={`px-2 py-1 rounded-full border ${ev.user_rsvp==='not_going'?'border-teal-500 text-teal-300 bg-teal-700/15':'border-white/10'}`} onClick={(e)=> { e.stopPropagation(); rsvp(ev.id, 'not_going') }}>Not going {ev.rsvp_counts?.not_going||0}</button>
-                          {typeof ev.rsvp_counts?.no_response === 'number' && ev.rsvp_counts.no_response > 0 && (
-                            <span className="px-2 py-1 rounded-full border border-white/10">No response {ev.rsvp_counts.no_response}</span>
-                          )}
-                          <button title="Edit event" className="ml-auto px-2 py-1 rounded-md border border-white/10 hover:bg-white/5" onClick={(e)=> { e.stopPropagation(); setEditingEvent(ev) }}>
-                            <i className="fa-regular fa-pen-to-square" />
-                          </button>
-                          <button title="Delete event" className="px-2 py-1 rounded-md border border-red-400 text-red-300 hover:bg-red-500/10" onClick={(e)=> { e.stopPropagation(); deleteEvent(ev) }}>
-                            <i className="fa-regular fa-trash-can" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm hover:bg-white/5" onClick={() => setCreateStep('details')}>{t('common.back')}</button>
+                  <button type="submit" className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110">
+                    {inviteAll ? t('calendar.create_for_everyone') : selectedCount ? t('calendar.create_for_count', { count: selectedCount }) : t('calendar.create_event_submit')}
+                  </button>
                 </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Bottom navigation bar - floating (same as community) */}
-      <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-[94%] max-w-[1200px] rounded-2xl border border-white/10 bg-black/80 backdrop-blur shadow-lg">
-        <div className="h-14 px-6 flex items-center justify-between text-[#cfd8dc]">
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <i className="fa-solid fa-house" />
-          </button>
-          <button className="p-2 rounded-full hover:bg:white/5" aria-label="Members" onClick={()=> navigate(`/community/${community_id}/members`)}>
-            <i className="fa-solid fa-users" />
-          </button>
-          <button className="w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center" aria-label="New Post" onClick={()=> navigate(`/compose?community_id=${community_id}`)}>
-            <i className="fa-solid fa-plus" />
-          </button>
-          <button className="relative p-2 rounded-full hover:bg-white/5" aria-label="Announcements" onClick={()=> { fetchAnnouncements() }}>
-            <span className="relative inline-block">
-              <i className="fa-solid fa-bullhorn" style={hasUnseenAnnouncements ? { color:'#4db6ac' } : undefined} />
-              {hasUnseenAnnouncements ? (<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />) : null}
-            </span>
-          </button>
-          <button className="p-2 rounded-full hover:bg:white/5" aria-label="More" onClick={()=> setMoreOpen(true)}>
-            <i className="fa-solid fa-ellipsis" />
-          </button>
-        </div>
-      </div>
-
-      {moreOpen && (
-        <div className="fixed inset-0 z-[95] bg-black/30 flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
-          <div className="w-[75%] max-w-sm mr-2 mb-2 bg-black/80 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0">
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/polls_react`) }}>Polls</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/calendar_react`) }}>Calendar</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Forum</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Useful Links</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/issues` }}>Report Issue</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/anonymous_feedback` }}>Anonymous feedback</button>
-          </div>
-        </div>
-      )}
-
-      {modalEvent && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur flex items-end justify-center" onClick={(e)=> e.currentTarget===e.target && setModalEvent(null)}>
-          <div className="w-[96%] max-w-[560px] mb-4 rounded-2xl border border-white/10 bg-black p-3">
-            <div className="mb-2">
-              <div className="font-semibold text-white">{modalEvent.title}</div>
-              <div className="text-xs text-[#9fb0b5]">
-                {modalEvent.date}{modalEvent.end_date && modalEvent.end_date !== modalEvent.date && modalEvent.end_date !== '0000-00-00' ? ` → ${modalEvent.end_date}` : ''}
-                {modalEvent.start_time && modalEvent.start_time !== '0000-00-00 00:00:00' && modalEvent.start_time !== '00:00:00' && modalEvent.start_time !== '00:00' ? ` • ${modalEvent.start_time}` : ''}
-                {modalEvent.end_time && modalEvent.end_time !== '0000-00-00 00:00:00' && modalEvent.end_time !== '00:00:00' && modalEvent.end_time !== '00:00' ? ` - ${modalEvent.end_time}` : ''}
-              </div>
-              {modalEvent.description ? (<div className="text-sm text-[#cfd8dc] mt-1">{modalEvent.description}</div>) : null}
-            </div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-sm text-[#9fb0b5]">Invite details</div>
-              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setModalEvent(null)}>✕</button>
-            </div>
-            {!modalDetails ? (
-              <div className="text-[#9fb0b5] text-sm">Loading…</div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <div className="font-medium text-teal-300 mb-1">Going ({modalDetails.going.length})</div>
-                  <ul className="space-y-1">
-                    {modalDetails.going.map((u,idx)=> (<li key={`g-${idx}`}>{u.username}</li>))}
-                  </ul>
-                </div>
-                <div>
-                  <div className="font-medium text-[#cfd8dc] mb-1">Maybe ({modalDetails.maybe.length})</div>
-                  <ul className="space-y-1">
-                    {modalDetails.maybe.map((u,idx)=> (<li key={`m-${idx}`}>{u.username}</li>))}
-                  </ul>
-                </div>
-                <div>
-                  <div className="font-medium text-red-300 mb-1">Not going ({modalDetails.not_going.length})</div>
-                  <ul className="space-y-1">
-                    {modalDetails.not_going.map((u,idx)=> (<li key={`n-${idx}`}>{u.username}</li>))}
-                  </ul>
-                </div>
-                <div>
-                  <div className="font-medium text-[#9fb0b5] mb-1">No response ({modalDetails.no_response.length})</div>
-                  <ul className="space-y-1">
-                    {modalDetails.no_response.map((u,idx)=> (<li key={`r-${idx}`}>{u.username}</li>))}
-                  </ul>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {editingEvent && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setEditingEvent(null)}>
-          <div className="w-[96%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
-            <div className="flex items-center justify-between mb-3">
-              <div className="font-semibold">Edit Event</div>
-              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setEditingEvent(null)}>✕</button>
-            </div>
-            <form className="space-y-3" onSubmit={(e)=> { e.preventDefault(); saveEditedEvent(new FormData(e.currentTarget)) }}>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="col-span-2 text-xs text-[#9fb0b5]">Title
-                  <input name="title" defaultValue={editingEvent.title} placeholder="Title" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required />
-                </label>
-                <label className="text-xs text-[#9fb0b5]">Start date
-                  <input name="date" type="date" defaultValue={editingEvent.date} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required />
-                </label>
-                <label className="text-xs text-[#9fb0b5]">End date
-                  <input name="end_date" type="date" defaultValue={editingEvent.end_date || ''} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
-                </label>
-                <label className="text-xs text-[#9fb0b5]">Start time
-                  <input name="start_time" type="time" defaultValue={editingEvent.start_time || ''} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
-                </label>
-                <label className="text-xs text-[#9fb0b5]">End time
-                  <input name="end_time" type="time" defaultValue={editingEvent.end_time || ''} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
-                </label>
-                <label className="col-span-2 text-xs text-[#9fb0b5]">Timezone
-                  <select name="timezone" defaultValue={editingEvent.timezone || ''} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required>
-                    <option value="">Select timezone</option>
-                    <option value="EST">EST (Eastern Time)</option>
-                    <option value="CST">CST (Central Time)</option>
-                    <option value="MST">MST (Mountain Time)</option>
-                    <option value="PST">PST (Pacific Time)</option>
-                    <option value="GMT">GMT (Greenwich Mean Time)</option>
-                    <option value="CET">CET (Central European Time)</option>
-                    <option value="IST">IST (India Standard Time)</option>
-                    <option value="JST">JST (Japan Standard Time)</option>
-                    <option value="AEST">AEST (Australian Eastern Time)</option>
-                    <option value="UTC">UTC (Coordinated Universal Time)</option>
-                  </select>
-                </label>
-                <label className="col-span-2 text-xs text-[#9fb0b5]">Description
-                  <input name="description" defaultValue={editingEvent.description || ''} placeholder="Description" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
-                </label>
-              </div>
-              <div className="flex justify-end gap-2">
-                <button type="button" className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm" onClick={()=> setEditingEvent(null)}>Cancel</button>
-                <button type="submit" className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">Save Changes</button>
               </div>
             </form>
           </div>
         </div>
-      )}
+      ) : null}
+
+      {rsvpEvent ? (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 backdrop-blur" onClick={event => event.currentTarget === event.target && setRsvpEvent(null)}>
+          <div className="w-full max-w-xl rounded-t-2xl border border-white/10 bg-[#050606] p-3.5 sm:mb-4 sm:rounded-2xl">
+            <div className="mb-3 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-medium text-[#4db6ac]">{t('calendar.rsvp_label')}</p>
+                <h2 className="text-base font-semibold">{rsvpEvent.title}</h2>
+                <p className="mt-1 text-xs text-[#9fb0b5]">{formatDateRange(rsvpEvent)} • {formatTimeRange(rsvpEvent)}</p>
+              </div>
+              <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setRsvpEvent(null)} aria-label={t('common.close')}><i className="fa-solid fa-xmark" /></button>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                ['going', t('calendar.going'), rsvpEvent.rsvp_counts?.going || 0],
+                ['maybe', t('calendar.maybe'), rsvpEvent.rsvp_counts?.maybe || 0],
+                ['not_going', t('calendar.not_going'), rsvpEvent.rsvp_counts?.not_going || 0],
+              ] as const).map(([value, label, count]) => (
+                <button key={value} className={`rounded-xl border px-2 py-3 text-xs transition ${rsvpEvent.user_rsvp === value ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca] hover:border-[#4db6ac]/45'}`} onClick={() => rsvp(rsvpEvent.id, value)}>
+                  <span className="block font-semibold">{label}</span>
+                  <span className="text-xs text-[#8fa3a8]">{count}</span>
+                </button>
+              ))}
+            </div>
+            {typeof rsvpEvent.rsvp_counts?.no_response === 'number' ? <p className="mt-4 text-center text-xs text-[#8fa3a8]">{t('calendar.no_response_yet', { count: rsvpEvent.rsvp_counts.no_response })}</p> : null}
+          </div>
+        </div>
+      ) : null}
+
+      {editingEvent ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/70 px-3 backdrop-blur"
+          style={{
+            paddingTop: keyboardOffset > 0
+              ? '8px'
+              : 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + 8px)',
+            paddingBottom: `${keyboardOffset + 16}px`,
+            transition: 'padding 180ms ease',
+          } as CSSProperties}
+          onClick={event => event.currentTarget === event.target && setEditingEvent(null)}
+          onFocusCapture={trackFocusedField}
+        >
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#050606] p-3.5">
+            <div className="mb-2.5 flex items-center justify-between">
+              <h2 className="text-base font-semibold">{t('calendar.edit_event')}</h2>
+              <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setEditingEvent(null)} aria-label={t('common.close')}><i className="fa-solid fa-xmark" /></button>
+            </div>
+            <form onSubmit={event => { event.preventDefault(); saveEditedEvent(new FormData(event.currentTarget)) }}>
+              <EventFormFields event={editingEvent} />
+              <div className="mt-3 flex justify-end gap-2">
+                <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm hover:bg-white/5" onClick={() => setEditingEvent(null)}>{t('common.cancel')}</button>
+                <button type="submit" className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110">{t('calendar.save_changes')}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
-

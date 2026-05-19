@@ -22,6 +22,8 @@ Plus two cross-cutting invariants:
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from backend.services.entitlements import (
     TIER_FREE,
     TIER_PREMIUM,
@@ -58,6 +60,18 @@ class TestTierResolution:
         assert ent["tier"] == TIER_TRIAL
         assert ent["can_use_steve"] is True
         assert ent["steve_uses_per_month"] > 0
+
+    def test_trial_revoked_early_is_free(self, mysql_dsn):
+        """Admin ``trial_revoked_at`` forces FREE even inside the signup window."""
+        make_user(
+            "trial_cut",
+            subscription="free",
+            created_at=days_ago(7),
+            trial_revoked_at=datetime.utcnow(),
+        )
+        ent = resolve_entitlements("trial_cut")
+        assert ent["tier"] == TIER_FREE
+        assert ent["can_use_steve"] is False
 
     def test_trial_expired_falls_back_to_free(self, mysql_dsn):
         """30-day trial cutoff — at day 31 user must be FREE again."""
@@ -184,6 +198,29 @@ class TestKBDrivenConfiguration:
         make_user("paying", subscription="premium", created_at=days_ago(30))
         ent = resolve_entitlements("paying")
         assert ent["ai_daily_limit"] == 25
+
+    def test_output_token_caps_come_from_kb(self, mysql_dsn):
+        from tests.fixtures import seed_kb
+        seed_kb([
+            {
+                "slug": "hard-limits",
+                "title": "Hard Limits",
+                "category": "policy",
+                "fields": [
+                    {"name": "max_output_tokens_dm", "type": "integer",
+                     "label": "max_output_tokens_dm", "value": 1234},
+                    {"name": "max_output_tokens_feed", "type": "integer",
+                     "label": "max_output_tokens_feed", "value": 1345},
+                    {"name": "max_output_tokens_group", "type": "integer",
+                     "label": "max_output_tokens_group", "value": 1456},
+                ],
+            },
+        ])
+        make_user("token_paying", subscription="premium", created_at=days_ago(30))
+        ent = resolve_entitlements("token_paying")
+        assert ent["max_output_tokens_dm"] == 1234
+        assert ent["max_output_tokens_feed"] == 1345
+        assert ent["max_output_tokens_group"] == 1456
 
     def test_special_daily_limit_is_distinct_from_premium(self, mysql_dsn):
         """Special users get ``ai_daily_limit_special`` (technical cap, still > Premium)."""

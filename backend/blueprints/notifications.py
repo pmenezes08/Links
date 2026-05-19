@@ -19,14 +19,32 @@ from flask import (
     url_for,
 )
 
+from backend.services import auth_session, session_identity
 from backend.services.database import USE_MYSQL, get_db_connection
 from backend.services.notifications import (
     check_single_event_notifications,
     check_single_poll_notifications,
+    ensure_users_notification_show_previews_column,
 )
 
 
 notifications_bp = Blueprint("notifications", __name__)
+
+
+@notifications_bp.after_request
+def _no_store_user_scoped_responses(response):
+    return auth_session.no_store(response)
+
+
+def _cron_authed() -> bool:
+    expected = os.environ.get("CRON_SHARED_SECRET") or ""
+    if not expected:
+        return False
+    return (request.headers.get("X-Cron-Secret") or "") == expected
+
+
+def _bool_arg(name: str) -> bool:
+    return (request.args.get(name) or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _handle_broken_pipe(f):
@@ -53,7 +71,7 @@ def _login_required(view_func):
 
     @wraps(view_func)
     def wrapper(*args, **kwargs):
-        if "username" not in session:
+        if not session_identity.valid_session_username(session):
             try:
                 current_app.logger.info("No username in session for %s", request.path)
             except Exception:
@@ -474,6 +492,7 @@ def get_notifications():
             # fetching notification rows (otherwise the notifications result set is discarded).
             show_content_previews = True
             try:
+                ensure_users_notification_show_previews_column()
                 c.execute(
                     "SELECT notification_show_previews FROM users WHERE username = ? LIMIT 1",
                     (username,),
@@ -1135,7 +1154,7 @@ def admin_broadcast_notification():
                         target_email = (email_row["email"] if hasattr(email_row, "keys") else email_row[0]) if email_row else None
                         if target_email:
                             from bodybuilding_app import _send_email_via_resend
-                            subject = title or "Notification from C.Point"
+                            subject = title or "Notification from C-Point"
                             html = f"<p>{composite_message.replace(chr(10), '<br>')}</p>"
                             if link_value:
                                 html += f'<p><a href="{link_value}">View details</a></p>'
@@ -1225,14 +1244,19 @@ def api_poll_notification_check():
 
 
 @notifications_bp.route("/api/event_notification_check", methods=["POST"], endpoint="api_event_notification_check")
+@notifications_bp.route("/api/cron/events/reminders", methods=["POST"], endpoint="api_cron_event_reminders")
 def api_event_notification_check():
     """
     Cron job endpoint that checks upcoming events and sends reminders.
-    Public endpoint invoked by cron.
+    Invoked by Cloud Scheduler with X-Cron-Secret.
     """
+    if not _cron_authed():
+        return jsonify({"success": False, "error": "forbidden"}), 403
+
     try:
         logger = current_app.logger
         logger.info("🔍 Event notification check starting - USE_MYSQL=%s", USE_MYSQL)
+        dry_run = _bool_arg("dry_run")
 
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -1257,6 +1281,18 @@ def api_event_notification_check():
 
             all_events = c.fetchall()
             logger.info("🔍 Found %d upcoming events to check", len(all_events))
+            if dry_run:
+                event_ids = [
+                    event_row["id"] if hasattr(event_row, "keys") else event_row[0]
+                    for event_row in all_events
+                ]
+                return jsonify({
+                    "success": True,
+                    "dry_run": True,
+                    "candidate_events": len(event_ids),
+                    "event_ids": event_ids[:100],
+                })
+
             notifications_sent = 0
 
             for event_row in all_events:
@@ -1274,5 +1310,23 @@ def api_event_notification_check():
         import traceback
 
         logger = current_app.logger
-        logger.error(traceback.format_exc())
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@notifications_bp.route(
+    "/api/cron/steve/reminder-vault-dispatch",
+    methods=["POST"],
+    endpoint="api_cron_steve_reminder_vault_dispatch",
+)
+def api_cron_steve_reminder_vault_dispatch():
+    """Dispatch due Steve Reminder Vault DMs via Cloud Scheduler (X-Cron-Secret)."""
+    if not _cron_authed():
+        return jsonify({"success": False, "error": "forbidden"}), 403
+    try:
+        from backend.services.steve_reminder_vault import dispatch_due_reminders
+
+        out = dispatch_due_reminders()
+        return jsonify({"success": True, **out})
+    except Exception as exc:
+        current_app.logger.exception("reminder vault dispatch: %s", exc)
         return jsonify({"success": False, "error": str(exc)}), 500

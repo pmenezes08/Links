@@ -1,0 +1,49 @@
+---
+description: Keep the C-Point Notion team hub in sync from Cursor (no manual Notion editing).
+alwaysApply: true
+---
+
+# C-Point Notion team hub (Cursor-only maintenance)
+
+The **Notion** space documents onboarding, architecture, roadmap narrative, and glossary for **humans**. **Product roadmap** rows are **paired** with the in-app KB: same **title/Name** as `knowledge_base.py` → slug **`product-roadmap`** → **`roadmap_items`** (see **`docs/AGENT_TASK_CHECKLIST.md` § Product roadmap (KB ↔ Notion)**). Notion does **not** replace the KB for **pricing, caps, or policy** text — see `AGENTS.md`.
+
+## Hub URL (project owner — set once)
+
+Paste your **single canonical hub** (top-level page the team opens for C-Point docs). Replace the placeholder on first setup only.
+
+- **NOTION_HUB_URL:** `https://www.notion.so/35c43dca8b6f811ea3efc440a3697c47`  
+  (**Product roadmap** database lives under this page; add rows there for shipped/planned work.)
+
+If this URL 404s or you replace the hub, update this line to the new page URL.
+
+Standard sections to maintain under that hub (pages or DB views): **Onboarding checklist**, **Where is truth**, **Local development & testing**, **Architecture**, **Project memory** (ADRs), **Glossary**, **Product roadmap** (table/board as you prefer).
+
+## MCP
+
+- Server: **`plugin-notion-workspace-notion`** (Notion official MCP).
+- **Before any tool call:** read that tool’s JSON schema under the project’s MCP tools folder — do not guess argument names.
+- If tools are unavailable or auth is required: call **`mcp_auth`** with `{}` once, then retry.
+
+## When to write to Notion
+
+After **substantive** work in this repo (new routes/services, schema/migration, deploy/infra change, new AI surface, or product-shipping feature), **before ending the turn**:
+
+1. **Roadmap** — When **`product-roadmap`** / **`roadmap_items`** changes in the repo, **update Notion Product roadmap in the same session** (matching **Name** = KB `title`, **Area**, **Status** per status mapping in **`docs/AGENT_TASK_CHECKLIST.md`**). For non-roadmap shipped work, still add or update a row with PR/issue/commit if useful.
+2. **Architecture (repo docs first)** — Keep **`AGENTS.md` § Living engineering docs** in sync with the code in the **same change**:
+   - Topology, services, **Cloud Run / Cloud Build / domains / CSRF pairing:** **`docs/DEPLOYMENT_INSTANCES.md`** (and **`docs/cloud-scheduler-cron.md`** if Scheduler URLs or secrets change).
+   - **Material cross-system flows** (Stripe path, AI usage, seats, onboarding, chat persistence): **`docs/PRODUCT_JOURNEYS.md`**.
+   - Notable DB/domain or integration seams: **`docs/C_POINT_ARCHITECTURE.md`**. Routes: **`python scripts/generate_route_inventory.py`** → **`docs/BACKEND_ROUTES.md`**. Tables/collections: **`docs/MYSQL_AND_FIRESTORE.md`**. Monolith reduction priorities: **`docs/MONOLITH_REDUCTION_ROADMAP.md`** (if an epic shipped or scope changed).
+3. **Project memory** — Meaningful **decision** (tradeoff, rejected approach): short ADR (problem → decision → consequence).
+4. **Glossary** — New internal/product term.
+5. **Local dev & testing** — If run/test instructions meaningfully changed.
+6. **Where is truth / Onboarding** — If ownership of “source of truth” or first-run steps changed.
+
+Skip Notion updates for typos, comments-only, or trivial refactors unless the user asks.
+
+## User-triggered sync
+
+If the user says **sync Notion**, **update the Notion hub**, or similar, apply the same mapping for **this session’s** changes.
+
+## Output hygiene
+
+Prefer **scannable** Notion updates (bullets, database properties). Do **not** dump raw API JSON into the chat unless debugging.

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import logging
 import os
-from io import BytesIO
 from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+# Private object key prefix for user CVs (no public ACL; serve via authenticated backend only).
+CV_R2_KEY_PREFIX = "private/cv"
 
 # R2 Configuration from environment
 R2_ACCESS_KEY = os.environ.get('CLOUDFLARE_R2_ACCESS_KEY')
@@ -129,7 +131,8 @@ def upload_to_r2(
             Key=key,
             Body=file_data,
             ContentType=content_type,
-            CacheControl='public, max-age=31536000'  # 1 year cache
+            CacheControl='public, max-age=31536000',  # 1 year cache
+            ACL='public-read'
         )
         
         # Build public URL
@@ -141,6 +144,58 @@ def upload_to_r2(
     except Exception as e:
         logger.error(f"Failed to upload to R2: {e}")
         return False, None
+
+
+def upload_private_bytes_to_r2(
+    file_data: bytes,
+    key: str,
+    content_type: Optional[str] = None,
+) -> bool:
+    """Upload bytes without public-read ACL. For PII (e.g. CVs); access via server-side get only."""
+    if not R2_ENABLED:
+        logger.debug("R2 not enabled, skipping private upload")
+        return False
+    client = get_s3_client()
+    if not client:
+        return False
+    try:
+        if not content_type:
+            content_type = get_content_type(key)
+        client.put_object(
+            Bucket=R2_BUCKET,
+            Key=key,
+            Body=file_data,
+            ContentType=content_type,
+            CacheControl="private, max-age=0, no-store",
+        )
+        logger.info("Successfully uploaded private object to R2: %s", key)
+        return True
+    except Exception as e:
+        logger.error("Failed private upload to R2: %s", e)
+        return False
+
+
+def download_bytes_from_r2(key: str) -> Optional[bytes]:
+    """Read full object body from R2. Returns None if missing or error."""
+    if not R2_ENABLED or not key:
+        return None
+    client = get_s3_client()
+    if not client:
+        return None
+    try:
+        resp = client.get_object(Bucket=R2_BUCKET, Key=key)
+        body = resp.get("Body")
+        if body is None:
+            return None
+        data = body.read()
+        try:
+            body.close()
+        except Exception:
+            pass
+        return data
+    except Exception as e:
+        logger.error("Failed to download from R2 key=%s: %s", key, e)
+        return None
 
 
 def upload_file_to_r2(
@@ -195,6 +250,20 @@ def delete_from_r2(key: str) -> bool:
     except Exception as e:
         logger.error(f"Failed to delete from R2: {e}")
         return False
+
+
+def head_object(key: str) -> Optional[dict]:
+    """Return object metadata from R2, or None when unavailable."""
+    if not R2_ENABLED:
+        return None
+    client = get_s3_client()
+    if not client:
+        return None
+    try:
+        return client.head_object(Bucket=R2_BUCKET, Key=key)
+    except Exception as e:
+        logger.error(f"Failed to read R2 object metadata: {e}")
+        return None
 
 
 def get_r2_public_url(key: str) -> Optional[str]:

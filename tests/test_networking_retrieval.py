@@ -6,10 +6,12 @@ import unittest
 from unittest.mock import patch
 
 from backend.services.networking_retrieval import (
+    NETWORKING_RETRIEVAL_PRIOR_USER_MESSAGES,
     build_dimension_plan,
     build_retrieval_query,
     fuse_roster,
     load_dimension_metadata_scores,
+    networking_planner_member_block,
     networking_policy_for_size,
     resolve_named_people,
     semantic_match_details,
@@ -22,8 +24,21 @@ from backend.services.networking_retrieval import (
 
 
 class TestNetworkingRetrieval(unittest.TestCase):
+    def setUp(self):
+        self._kb_batch_patcher = patch(
+            "backend.services.steve_knowledge_base.batch_get_member_knowledge",
+            side_effect=lambda usernames, dimensions: {username: {} for username in usernames},
+        )
+        self._kb_batch_patcher.start()
+
+    def tearDown(self):
+        self._kb_batch_patcher.stop()
+
     def _getter(self, row, idx):
-        return row[idx]
+        try:
+            return row[idx] if idx < len(row) else ""
+        except Exception:
+            return ""
 
     def test_structured_candidates_prioritize_members_matching_both_facets(self):
         rows = [
@@ -143,7 +158,9 @@ class TestNetworkingRetrieval(unittest.TestCase):
                 [],
             )
         )
-        self.assertFalse(should_use_reasoning_planner("Who is in Austin?", []))
+        self.assertTrue(should_use_reasoning_planner("Who is in Austin?", []))
+        self.assertTrue(should_use_reasoning_planner("gardening", []))
+        self.assertFalse(should_use_reasoning_planner("", []))
 
     def test_build_retrieval_query_merges_prior_user_context_for_follow_ups(self):
         history = [
@@ -153,6 +170,20 @@ class TestNetworkingRetrieval(unittest.TestCase):
         query = build_retrieval_query("What about @member123?", history)
         self.assertIn("experience in Southern Europe", query)
         self.assertIn("@member123", query)
+
+    def test_build_retrieval_query_includes_many_prior_user_turns_on_follow_up(self):
+        """Regression: follow-up merged query should use more than two prior user utterances."""
+        history = []
+        for i in range(15):
+            history.append({"role": "user", "content": f"user turn marker IX{i}Z end"})
+            if i < 14:
+                history.append({"role": "assistant", "content": "ok"})
+        query = build_retrieval_query("What about @memberxyz?", history)
+        for i in range(15 - NETWORKING_RETRIEVAL_PRIOR_USER_MESSAGES):
+            self.assertNotIn(f"IX{i}Z", query)
+        for i in range(15 - NETWORKING_RETRIEVAL_PRIOR_USER_MESSAGES, 15):
+            self.assertIn(f"IX{i}Z", query)
+        self.assertIn("@memberxyz?", query)
 
     def test_build_dimension_plan_maps_legacy_facets_to_kb_dimensions(self):
         plan = build_dimension_plan(
@@ -188,6 +219,42 @@ class TestNetworkingRetrieval(unittest.TestCase):
             query_plan={"named_people": ["Hugo Silva Durao"]},
         )
         self.assertEqual(resolved_from_plan, ["hugosdurao"])
+
+    def test_networking_planner_member_block_includes_legal_name(self):
+        rows = [("susu", "Susu", "", "", "", "", "", "", "", "", "", "Suren", "Kumar")]
+        block = networking_planner_member_block(rows, self._getter)
+        self.assertIn("@susu", block)
+        self.assertIn("Suren", block)
+        self.assertIn("Kumar", block)
+
+    def test_resolve_named_people_unique_first_name_token(self):
+        rows = [("susu", "Susu", "", "", "", "", "", "", "", "", "", "Suren", "Kumar")]
+        out = resolve_named_people(rows, self._getter, message="Is Suren goal driven?")
+        self.assertEqual(out, ["susu"])
+
+    def test_resolve_named_people_ambiguous_first_name_not_auto_resolved(self):
+        rows = [
+            ("susu", "Susu", "", "", "", "", "", "", "", "", "", "Suren", "Kumar"),
+            ("suren2", "S2", "", "", "", "", "", "", "", "", "", "Suren", "Smith"),
+        ]
+        out = resolve_named_people(rows, self._getter, message="Is Suren goal driven?")
+        self.assertEqual(out, [])
+
+    def test_resolve_named_people_unique_full_name_phrase(self):
+        rows = [
+            ("susu", "Susu", "", "", "", "", "", "", "", "", "", "Suren", "Kumar"),
+            ("bob", "Bob", "", "", "", "", "", "", "", "", "", "Bob", "Jones"),
+        ]
+        out = resolve_named_people(rows, self._getter, message="Tell me about Suren Kumar")
+        self.assertEqual(out, ["susu"])
+
+    def test_resolve_named_people_duplicate_full_name_not_auto_resolved(self):
+        rows = [
+            ("a", "A", "", "", "", "", "", "", "", "", "", "Suren", "Kumar"),
+            ("b", "B", "", "", "", "", "", "", "", "", "", "Suren", "Kumar"),
+        ]
+        out = resolve_named_people(rows, self._getter, message="Suren Kumar in tech")
+        self.assertEqual(out, [])
 
     def test_fuse_roster_force_includes_named_usernames(self):
         fused = fuse_roster(
@@ -288,6 +355,238 @@ class TestNetworkingRetrieval(unittest.TestCase):
 
         self.assertEqual(ranked[0], "founder_parent")
         self.assertNotEqual(ranked[0], "founder_not_parent")
+
+    def test_goal_seeking_prompt_uses_reasoning_planner(self):
+        self.assertTrue(
+            should_use_reasoning_planner(
+                "I want to fly a fighter jet and need someone who can help me achieve this dream",
+                [],
+            )
+        )
+        self.assertTrue(should_use_reasoning_planner("I am looking for investment", []))
+        self.assertTrue(should_use_reasoning_planner("angel investor to invest in C-Point", []))
+
+    def test_search_rewrite_fallback_prefers_practitioner_dimensions(self):
+        plan = build_dimension_plan(
+            {
+                "search_rewrite": "pilot commercial pilot flying aircraft flight experience gliding",
+                "facets": {},
+            }
+        )
+
+        self.assertEqual(
+            plan["primary_dimensions"],
+            ["LifeCareer", "Expertise", "InferredContext", "UniqueFingerprint"],
+        )
+        self.assertIn("Index", plan["secondary_dimensions"])
+        self.assertIn("GeographyCulture", plan["secondary_dimensions"])
+
+    def test_dimension_plan_uses_life_interests_from_planner_analysis(self):
+        plan = build_dimension_plan(
+            {
+                "dimension_analysis": {
+                    "LifeInterests": {"priority": "primary", "reason": "Cooking is a personal recurring interest."},
+                    "InferredContext": {"priority": "primary", "reason": "Posts can imply rituals."},
+                    "UniqueFingerprint": {"priority": "secondary", "reason": "May be distinctive."},
+                    "LifeCareer": {"priority": "ignored", "reason": "Only relevant if professional cooking."},
+                },
+                "direct_evidence_query": "personally cooks recipes weekly cooking hosts dinners",
+                "adjacent_evidence_query": "food restaurants wine hospitality",
+                "search_rewrite": "people who know how to cook",
+            }
+        )
+
+        self.assertEqual(plan["primary_dimensions"], ["LifeInterests", "InferredContext"])
+        self.assertEqual(plan["secondary_dimensions"], ["UniqueFingerprint"])
+        self.assertIn("personally", plan["dimension_terms"]["LifeInterests"])
+        self.assertIn("restaurants", plan["dimension_terms"]["UniqueFingerprint"])
+
+    def test_location_and_trait_facets_keep_targeted_dimensions_primary(self):
+        location_plan = build_dimension_plan(
+            {
+                "facets": {"geography": ["Lisbon"]},
+                "search_rewrite": "Lisbon current location",
+            }
+        )
+        trait_plan = build_dimension_plan(
+            {
+                "facets": {"traits": ["goal-driven", "collaborative"]},
+                "search_rewrite": "goal-driven collaborative traits",
+            }
+        )
+
+        self.assertEqual(location_plan["primary_dimensions"][:2], ["GeographyCulture", "InferredContext"])
+        self.assertEqual(trait_plan["primary_dimensions"][:2], ["Identity", "UniqueFingerprint"])
+
+    def test_generic_direct_evidence_ranks_cooking_practitioner_above_adjacent(self):
+        rows = [
+            (
+                "cook",
+                "Cook",
+                "Hosts weekly cooking nights with wine.",
+                "",
+                "",
+                "Technology",
+                "Product Manager",
+                "AppCo",
+                "cooking, wine, hosting dinners",
+                "",
+                "Personally cooks every week, develops recipes, and hosts dinner gatherings with wine.",
+            ),
+            (
+                "food_adjacent",
+                "Food Adjacent",
+                "Investor in restaurant technology.",
+                "",
+                "",
+                "Food Tech",
+                "Investor",
+                "Food Ventures",
+                "restaurants, hospitality",
+                "",
+                "Invests in food-tech and restaurant software but has no evidence of personal cooking practice.",
+            ),
+        ]
+        plan = {
+            "dimension_analysis": {
+                "LifeInterests": {"priority": "primary", "reason": "Cooking is a non-professional personal capability."},
+                "InferredContext": {"priority": "primary", "reason": "Rituals and posts may imply practice."},
+                "UniqueFingerprint": {"priority": "secondary", "reason": "May be distinctive."},
+            },
+            "primary_dimensions": ["LifeInterests", "InferredContext"],
+            "secondary_dimensions": ["UniqueFingerprint"],
+            "direct_evidence_query": "personally cooks recipes weekly cooking hosts dinners",
+            "adjacent_evidence_query": "food restaurants hospitality",
+            "deprioritized_evidence_query": "food tech investor without personal cooking",
+            "search_rewrite": "people who know how to cook",
+        }
+
+        ranked = structured_candidates(
+            rows,
+            "I want people who know how to cook",
+            self._getter,
+            retrieval_plan=plan,
+        )
+        details = structured_match_details(rows, self._getter, retrieval_plan=plan)
+
+        self.assertEqual(ranked[0], "cook")
+        self.assertGreater(details["cook"]["direct_evidence_hits"], details["food_adjacent"]["direct_evidence_hits"])
+
+    def test_generic_direct_evidence_ranks_angel_investor_above_finance_adjacent(self):
+        rows = [
+            (
+                "direct_investor",
+                "Direct Investor",
+                "Family office investor and acquisition backer.",
+                "",
+                "",
+                "Investing",
+                "Managing Director",
+                "JSS Invest",
+                "startup investing",
+                "",
+                "JSS Invest Geschäftsführer and key investor backing a 2025 ICEA acquisition through Lynx Trail.",
+            ),
+            (
+                "finance_adjacent",
+                "Finance Adjacent",
+                "Finance operator.",
+                "",
+                "",
+                "Finance",
+                "Banker",
+                "BankCo",
+                "fundraising",
+                "",
+                "Works in corporate finance and advises companies on banking relationships.",
+            ),
+        ]
+        plan = {
+            "primary_dimensions": ["LifeCareer", "Expertise", "CompanyIntel", "InferredContext"],
+            "secondary_dimensions": ["Network", "UniqueFingerprint", "Index"],
+            "direct_evidence_query": "angel investor startup investor private investor key investor family office acquisition backer invested companies",
+            "adjacent_evidence_query": "finance venture capital banking startup fundraising advisor investor network",
+            "deprioritized_evidence_query": "generic finance background without direct investing backing evidence",
+            "search_rewrite": "angel investor to invest in C-Point",
+        }
+
+        ranked = structured_candidates(
+            rows,
+            "angel investor to invest in C-Point",
+            self._getter,
+            retrieval_plan=plan,
+        )
+        details = structured_match_details(rows, self._getter, retrieval_plan=plan)
+
+        self.assertEqual(ranked[0], "direct_investor")
+        self.assertGreater(
+            details["direct_investor"]["direct_evidence_hits"],
+            details["finance_adjacent"]["direct_evidence_hits"],
+        )
+
+    def test_planned_dimension_scoring_reads_synthesized_kb_generically(self):
+        rows = [
+            (
+                "kb_direct",
+                "KB Direct",
+                "",
+                "",
+                "",
+                "Technology",
+                "Founder",
+                "BuildCo",
+                "",
+                "",
+                "",
+            ),
+            (
+                "profile_adjacent",
+                "Profile Adjacent",
+                "Works on enterprise software compliance.",
+                "",
+                "",
+                "Technology",
+                "Policy Lead",
+                "PolicyCo",
+                "",
+                "",
+                "Professional background in software compliance.",
+            ),
+        ]
+        plan = {
+            "primary_dimensions": ["Opinions"],
+            "secondary_dimensions": ["Expertise"],
+            "direct_evidence_query": "strong opinions AI regulation public policy",
+            "adjacent_evidence_query": "software compliance professional background",
+            "search_rewrite": "people with strong opinions on AI regulation",
+        }
+        fake_docs = {
+            "Opinions": {
+                "content": {
+                    "consistentBeliefs": [
+                        "Has strong opinions on AI regulation and public policy tradeoffs.",
+                    ],
+                    "evidence": "Repeatedly writes about AI regulation.",
+                }
+            }
+        }
+
+        def fake_batch_get_member_knowledge(usernames, dimensions):
+            return {username: (fake_docs if username == "kb_direct" else {}) for username in usernames}
+
+        with patch("backend.services.steve_knowledge_base.batch_get_member_knowledge", side_effect=fake_batch_get_member_knowledge):
+            ranked = structured_candidates(
+                rows,
+                "Who has strong opinions on AI regulation?",
+                self._getter,
+                retrieval_plan=plan,
+            )
+            details = structured_match_details(rows, self._getter, retrieval_plan=plan)
+
+        self.assertEqual(ranked[0], "kb_direct")
+        self.assertIn("Opinions", details["kb_direct"]["matched_dimensions"])
+        self.assertGreater(details["kb_direct"]["direct_evidence_hits"], 0)
+        self.assertGreater(details["kb_direct"]["score"], details["profile_adjacent"]["score"])
 
     def test_tiered_roster_separates_direct_and_broader_matches(self):
         rows = [

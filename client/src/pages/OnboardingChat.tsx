@@ -1,10 +1,34 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
+import {
+  b2bNetworkSizeLabel,
+  b2bNetworkSizeOptions,
+  b2bTierGuidanceText,
+  getPersonalSectionSteps,
+  getProfessionalSectionSteps,
+  getTourSteps,
+  isEnterpriseSize,
+  oc,
+  ocOpt,
+  onboardingGreeting,
+  pbFieldLabel,
+  profileSummaryBlock,
+  reactionMessage,
+  validateLinkedInProfileUrl,
+} from '../i18n/onboardingChatHelpers'
 
 type Stage =
+  | 'intent_fork'
+  | 'b2b_value'
+  | 'b2b_network_size'
+  | 'b2b_tier_guidance'
+  | 'b2b_org_type'
+  | 'b2b_parent_name'
+  | 'b2b_sub_names'
   | 'welcome'
   | 'profile_builder_summary'
   | 'pb_confirm_field'
@@ -14,23 +38,43 @@ type Stage =
   | 'location_confirm'
   | 'location_city'
   | 'photo'
+  | 'section_picker'
+  | 'personal_section_intro'
   | 'talk_all_day'
   | 'reach_out'
+  | 'personal_bio_review'
+  | 'professional_section_intro'
+  | 'cv_upload'
+  | 'cv_review'
   | 'professional'
   | 'professional_confirm'
   | 'fix_role'
   | 'fix_company'
-  | 'recommend'
+  | 'professional_associations'
+  | 'professional_strengths'
   | 'linkedin'
+  | 'professional_bio_review'
+  | 'profile_review'
+  | 'recommend'
   | 'optional_social'
   | 'journey'
-  | 'compose'
+  | 'manual_bio_edit'
   | 'gibberish_check'
   | 'enriching'
   | 'review'
   | 'complete'
 
 type PbFieldKey = 'city' | 'country' | 'role' | 'company'
+type ProfileSection = 'personal' | 'professional'
+
+type WorkHistoryRow = {
+  title: string
+  company: string
+  location: string
+  start: string
+  end: string
+  description: string
+}
 
 interface ChatMessage {
   from: 'steve' | 'user'
@@ -38,9 +82,27 @@ interface ChatMessage {
   options?: { label: string; value: string; icon?: string }[]
   cards?: EnrichmentCard[]
   photoUpload?: boolean
+  cvUpload?: boolean
   inputType?: 'text' | 'url' | 'textarea'
   inputPlaceholder?: string
   composedBio?: string
+  composedBioKind?: 'personal' | 'professional'
+  composedCompanyIntel?: string
+  sectionCard?: {
+    title: string
+    subtitle: string
+    steps: string[]
+  }
+  profileReview?: {
+    personalBio: string
+    professionalBio: string
+    linkedinAdded?: boolean
+    companyIntelAdded?: boolean
+  }
+  sectionPicker?: {
+    personalStatus: string
+    professionalStatus: string
+  }
 }
 
 interface EnrichmentCard {
@@ -52,6 +114,24 @@ interface EnrichmentCard {
   status?: 'pending' | 'accepted' | 'dismissed'
 }
 
+type B2BTierCode = 'free' | 'paid_l1' | 'paid_l2' | 'paid_l3' | 'enterprise'
+
+interface CommunityTierHint {
+  label: string
+  min_members?: number | null
+  max_members?: number | null
+  price_eur_monthly?: number | string | null
+  pricing?: string | null
+}
+
+interface OnboardingTierHints {
+  communities_max?: number | null
+  members_per_owned_community?: number | null
+  free_community_media_gb?: number | string | null
+  can_use_steve?: boolean
+  community_tiers?: Partial<Record<B2BTierCode, CommunityTierHint>>
+}
+
 interface Collected {
   firstName: string
   lastName: string
@@ -60,26 +140,30 @@ interface Collected {
   city: string
   country: string
   linkedin: string
+  /** True after user submits or skips optional LinkedIn step */
+  linkedinDone?: boolean
   bio: string
+  professionalBio: string
+  professionalAssociations: string
+  professionalStrengths: string
   talkAllDay: string
   recommend: string
   reachOut: string
   journey: string
+  companyIntel?: string
+  /** YYYY-MM for current role from CV / profile structured fields */
+  currentRoleStartYm?: string
+  /** Prior roles from CV import (maps to users.professional_work_history) */
+  workHistory?: WorkHistoryRow[]
+  personalSectionComplete?: boolean
+  professionalSectionComplete?: boolean
+  activeProfileSection?: ProfileSection
+  profileSectionOrder?: ProfileSection[]
+  /** B2B onboarding — persisted in Firestore for resume */
+  b2bNetworkSize?: string
+  b2bOrgTypeHint?: string
+  b2bParentName?: string
 }
-
-interface TourStep {
-  icon: string
-  title: string
-  description: string
-}
-
-const TOUR_STEPS: TourStep[] = [
-  { icon: 'fa-solid fa-house', title: 'Dashboard', description: 'Your home base — see your communities, notifications, and quick actions all in one place.' },
-  { icon: 'fa-solid fa-user', title: 'My Profile', description: "Where others learn about you. Keep it fresh and it'll power better connections." },
-  { icon: 'fa-solid fa-users', title: 'Followers', description: 'See who follows you and who you follow across your communities.' },
-  { icon: 'fa-solid fa-network-wired', title: 'Networking', description: 'Discover people in your networks — Steve helps match you with relevant connections.' },
-  { icon: 'fa-solid fa-cog', title: 'Account Settings', description: 'Manage your email, notifications, and privacy preferences.' },
-]
 
 interface OnboardingChatProps {
   firstName: string
@@ -96,9 +180,18 @@ interface OnboardingChatProps {
   onExit: () => void
 }
 
-  const USER_FACING_STEPS = 8
+const USER_FACING_STEPS = 8
+const SALES_EMAIL = 'sales@c-point.co'
+
 function stageProgress(stage: Stage): number {
   const stepMap: Record<Stage, number> = {
+    intent_fork: 0,
+    b2b_value: 0,
+    b2b_network_size: 0,
+    b2b_tier_guidance: 0,
+    b2b_org_type: 0,
+    b2b_parent_name: 0,
+    b2b_sub_names: 0,
     welcome: 0,
     profile_builder_summary: 0,
     pb_confirm_field: 0,
@@ -108,17 +201,27 @@ function stageProgress(stage: Stage): number {
     location_confirm: 2,
     location_city: 2,
     photo: 3,
+    section_picker: 3,
+    personal_section_intro: 3,
     talk_all_day: 4,
-    reach_out: 5,
+    reach_out: 4,
+    journey: 5,
+    recommend: 5,
+    optional_social: 5,
+    personal_bio_review: 6,
+    professional_section_intro: 6,
+    cv_upload: 6,
+    cv_review: 6,
     professional: 6,
     professional_confirm: 6,
     fix_role: 6,
     fix_company: 6,
+    professional_associations: 7,
+    professional_strengths: 7,
     linkedin: 7,
-    optional_social: 7,
-    journey: 8,
-    recommend: 9,
-    compose: 9,
+    professional_bio_review: 8,
+    profile_review: 8,
+    manual_bio_edit: 8,
     gibberish_check: 0,
     enriching: 8,
     review: 8,
@@ -128,8 +231,68 @@ function stageProgress(stage: Stage): number {
   return Math.round((step / USER_FACING_STEPS) * 100)
 }
 
+function firstUnansweredStageForSection(section: ProfileSection, c: Collected): Stage {
+  if (section === 'personal') {
+    if (!c.talkAllDay?.trim()) return 'talk_all_day'
+    if (!c.reachOut?.trim()) return 'reach_out'
+    if (!c.journey?.trim()) return 'journey'
+    if (!c.recommend?.trim()) return 'recommend'
+    if (!c.bio?.trim()) return 'optional_social'
+    return 'personal_bio_review'
+  }
+  if (!c.role?.trim()) return 'professional'
+  if (!c.professionalAssociations?.trim()) return 'professional_associations'
+  if (!c.professionalStrengths?.trim()) return 'professional_strengths'
+  return 'professional_bio_review'
+}
+
+function sectionHasStarted(section: ProfileSection, c: Collected): boolean {
+  if (section === 'personal') {
+    return !!(c.talkAllDay?.trim() || c.reachOut?.trim() || c.journey?.trim() || c.recommend?.trim() || c.bio?.trim())
+  }
+  return !!(c.role?.trim() || c.professionalAssociations?.trim() || c.professionalStrengths?.trim() || c.linkedinDone || c.professionalBio?.trim())
+}
+
+function startOrResumeSection(section: ProfileSection, c: Collected): Stage {
+  if (section === 'personal') {
+    if (c.personalSectionComplete) return c.professionalSectionComplete ? 'profile_review' : 'section_picker'
+    return sectionHasStarted('personal', c) ? firstUnansweredStageForSection('personal', c) : 'personal_section_intro'
+  }
+  if (c.professionalSectionComplete) return c.personalSectionComplete ? 'profile_review' : 'section_picker'
+  return sectionHasStarted('professional', c) ? firstUnansweredStageForSection('professional', c) : 'professional_section_intro'
+}
+
+function nextIncompleteProfileStage(c: Collected): Stage {
+  if (!c.personalSectionComplete && !c.professionalSectionComplete) return 'section_picker'
+  if (c.personalSectionComplete && !c.professionalSectionComplete) return startOrResumeSection('professional', c)
+  if (c.professionalSectionComplete && !c.personalSectionComplete) return startOrResumeSection('personal', c)
+  return 'profile_review'
+}
+
+function nextSectionAfterCompletion(c: Collected): Stage {
+  return nextIncompleteProfileStage(c)
+}
+
+function normalizeResumeStage(savedStage: Stage, c: Collected): Stage {
+  if (savedStage === 'complete') return 'complete'
+  if (savedStage === 'personal_section_intro' || savedStage === 'professional_section_intro') return savedStage
+  if (savedStage === 'talk_all_day' || savedStage === 'reach_out' || savedStage === 'journey' || savedStage === 'recommend' || savedStage === 'optional_social' || savedStage === 'personal_bio_review') {
+    return c.personalSectionComplete ? nextIncompleteProfileStage(c) : firstUnansweredStageForSection('personal', c)
+  }
+  if (savedStage === 'professional' || savedStage === 'professional_confirm' || savedStage === 'fix_role' || savedStage === 'fix_company' || savedStage === 'professional_associations' || savedStage === 'professional_strengths' || savedStage === 'linkedin' || savedStage === 'professional_bio_review' || savedStage === 'cv_upload' || savedStage === 'cv_review') {
+    return c.professionalSectionComplete ? nextIncompleteProfileStage(c) : firstUnansweredStageForSection('professional', c)
+  }
+  if (savedStage === 'section_picker') {
+    return nextIncompleteProfileStage(c)
+  }
+  if (savedStage === 'profile_review') {
+    return c.personalSectionComplete && c.professionalSectionComplete ? 'profile_review' : nextIncompleteProfileStage(c)
+  }
+  return savedStage || 'section_picker'
+}
+
 const STAGES_REQUIRING_VALIDATION: Stage[] = [
-  'talk_all_day', 'reach_out', 'professional', 'recommend', 'journey', 'pb_edit_field',
+  'talk_all_day', 'reach_out', 'professional', 'professional_associations', 'professional_strengths', 'linkedin', 'recommend', 'journey', 'pb_edit_field',
 ]
 
 const PB_FIELD_ORDER: PbFieldKey[] = ['city', 'country', 'role', 'company']
@@ -141,39 +304,15 @@ function buildProfileBuilderConfirmQueue(c: Collected): PbFieldKey[] {
   })
 }
 
-function pbFieldLabel(field: PbFieldKey): string {
-  switch (field) {
-    case 'city':
-      return 'city'
-    case 'country':
-      return 'country'
-    case 'role':
-      return 'role / title'
-    case 'company':
-      return 'company'
-    default:
-      return field
-  }
+/** Map free-text org description to API parent_type (bootstrap normalizes free tier). */
+function mapOrgHintToParentType(hint: string): string {
+  const h = hint.toLowerCase()
+  if (/\b(gym|fitness|studio|crossfit|yoga|pilates)\b/.test(h)) return 'gym'
+  if (/\b(university|college|alumni|school|campus|faculty|student)\b/.test(h)) return 'university'
+  return 'general'
 }
 
-function profileSummaryBlock(c: Collected): string {
-  const lines: string[] = []
-  const name = `${c.firstName} ${c.lastName}`.trim()
-  if (name) lines.push(`• **Name:** ${name}`)
-  if (c.city?.trim()) lines.push(`• **City:** ${c.city.trim()}`)
-  if (c.country?.trim()) lines.push(`• **Country:** ${c.country.trim()}`)
-  if (c.role?.trim()) lines.push(`• **Role:** ${c.role.trim()}`)
-  if (c.company?.trim()) lines.push(`• **Company:** ${c.company.trim()}`)
-  if (c.bio?.trim()) {
-    const t = c.bio.trim()
-    lines.push(`• **Bio:** ${t.length > 220 ? `${t.slice(0, 217)}…` : t}`)
-  }
-  if (c.linkedin?.trim()) lines.push('• **LinkedIn:** on file')
-  if (lines.length === 0) return 'Nothing is on your public profile yet — we’ll build it together.'
-  return lines.join('\n')
-}
-
-/** Parse optional social URLs (Instagram / TikTok / Snapchat / Facebook) for Firestore onboardingIdentity.socialProvidedLinks. */
+/** Parse optional personal social URLs for Firestore onboardingIdentity.socialProvidedLinks. */
 function parseSocialUrlsFromInput(raw: string): { platform: string; url: string }[] {
   const out: { platform: string; url: string }[] = []
   for (const line of raw.split(/\n/).map(l => l.trim()).filter(Boolean)) {
@@ -183,8 +322,7 @@ function parseSocialUrlsFromInput(raw: string): { platform: string; url: string 
       let platform = ''
       if (host.includes('instagram')) platform = 'Instagram'
       else if (host.includes('tiktok')) platform = 'TikTok'
-      else if (host.includes('snapchat')) platform = 'Snapchat'
-      else if (host.includes('facebook') || host === 'fb.com' || host.endsWith('.facebook.com')) platform = 'Facebook'
+      else if (host === 'x.com' || host.endsWith('.x.com') || host.includes('twitter')) platform = 'X'
       else continue
       out.push({ platform, url: u.toString() })
     } catch {
@@ -212,7 +350,7 @@ export default function OnboardingChat({
   lastName: initLast,
   username,
   communityName,
-  hasCommunity: _hasCommunity,
+  hasCommunity,
   existingProfilePic,
   onComplete,
   onCreateCommunity,
@@ -220,6 +358,10 @@ export default function OnboardingChat({
   onExit,
   mode = 'fresh',
 }: OnboardingChatProps) {
+  const { t } = useTranslation()
+  const tourSteps = useMemo(() => getTourSteps(t), [t])
+  const personalSectionSteps = useMemo(() => getPersonalSectionSteps(t), [t])
+  const professionalSectionSteps = useMemo(() => getProfessionalSectionSteps(t), [t])
   const [stage, setStage] = useState<Stage>('welcome')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputValue, setInputValue] = useState('')
@@ -231,14 +373,25 @@ export default function OnboardingChat({
     city: '',
     country: '',
     linkedin: '',
+    linkedinDone: false,
     bio: '',
+    professionalBio: '',
+    professionalAssociations: '',
+    professionalStrengths: '',
     talkAllDay: '',
     recommend: '',
     reachOut: '',
     journey: '',
+    companyIntel: '',
+    personalSectionComplete: false,
+    professionalSectionComplete: false,
+    activeProfileSection: undefined,
+    profileSectionOrder: [],
   })
   const [isTyping, setIsTyping] = useState(false)
   const [picFile, setPicFile] = useState<File | null>(null)
+  const [cvFile, setCvFile] = useState<File | null>(null)
+  const [cvUploading, setCvUploading] = useState(false)
   const [picPreview, setPicPreview] = useState(existingProfilePic || '')
   const [uploadingPic, setUploadingPic] = useState(false)
   const [enrichmentCards, setEnrichmentCards] = useState<EnrichmentCard[]>([])
@@ -249,16 +402,23 @@ export default function OnboardingChat({
   const pbConfirmQueueRef = useRef<PbFieldKey[]>([])
   const pbEditFieldRef = useRef<PbFieldKey | null>(null)
   const originalPublicBioRef = useRef('')
+  const originalProfessionalBioRef = useRef('')
   const profileBuilderPostPbRef = useRef<{ skipLocation: boolean; skipProfessional: boolean }>({
     skipLocation: false,
     skipProfessional: false,
   })
   const stageHistory = useRef<Stage[]>([])
+  const lastComposedCompanyIntelRef = useRef('')
   const [composingBio, setComposingBio] = useState(false)
   const [tourStep, setTourStep] = useState<number | null>(null)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const [headerLogoSrc, setHeaderLogoSrc] = useState('/api/public/logo')
   const [safeBottomPx, setSafeBottomPx] = useState(0)
+  const [tierHints, setTierHints] = useState<OnboardingTierHints | null>(null)
+  const [showDeferConfirm, setShowDeferConfirm] = useState(false)
+  const [deferringProfile, setDeferringProfile] = useState(false)
+  const [deferError, setDeferError] = useState('')
+  const [bioDraftingKind, setBioDraftingKind] = useState<'personal' | 'professional' | null>(null)
 
   const NATIVE_KEYBOARD_MIN_HEIGHT = 60
   const KEYBOARD_OFFSET_EPSILON = 6
@@ -266,9 +426,14 @@ export default function OnboardingChat({
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const cvFileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const keyboardOffsetRef = useRef(0)
+  const onboardingIntentRef = useRef<'b2b' | 'b2c' | null>(null)
+  const b2bOrgRef = useRef('')
+  const b2bParentRef = useRef('')
+  const tierHintsRef = useRef<OnboardingTierHints | null>(null)
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
@@ -392,11 +557,17 @@ export default function OnboardingChat({
 
   const saveState = useCallback(async (s: Stage, c: Collected) => {
     try {
+      const body: Record<string, unknown> = {
+        stage: s,
+        collected: c,
+        onboarding_auto_open_suppressed: false,
+      }
+      if (onboardingIntentRef.current) body.onboarding_intent = onboardingIntentRef.current
       await fetch('/api/onboarding/state', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stage: s, collected: c }),
+        body: JSON.stringify(body),
       })
     } catch {}
   }, [])
@@ -406,6 +577,17 @@ export default function OnboardingChat({
     if (initialized) return
     setInitialized(true)
     ;(async () => {
+      try {
+        const tr = await fetch('/api/onboarding/tier_hints', {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+        })
+        const tj = await tr.json().catch(() => null)
+        if (tj?.success && tj.hints) {
+          tierHintsRef.current = tj.hints as OnboardingTierHints
+          setTierHints(tj.hints as OnboardingTierHints)
+        }
+      } catch {}
       if (mode === 'profile_builder') {
         profileBuilderPostPbRef.current = { skipLocation: false, skipProfessional: false }
         try {
@@ -421,13 +603,23 @@ export default function OnboardingChat({
               city: (p.personal?.city || p.city || '').trim(),
               country: (p.personal?.country || p.country || '').trim(),
               linkedin: (p.professional?.linkedin || p.linkedin || '').trim(),
+              linkedinDone: !!(p.professional?.linkedin || p.linkedin || '').trim(),
               bio: (p.personal?.bio || p.bio || '').trim(),
+              professionalBio: (p.professional?.about || p.professional_about || '').trim(),
+              companyIntel: (p.professional?.company_intel || '').trim(),
+              professionalAssociations: '',
+              professionalStrengths: '',
               talkAllDay: '',
               recommend: '',
               reachOut: '',
               journey: '',
+              personalSectionComplete: false,
+              professionalSectionComplete: false,
+              activeProfileSection: undefined,
+              profileSectionOrder: [],
             }
             originalPublicBioRef.current = next.bio
+            originalProfessionalBioRef.current = next.professionalBio
             setCollected(next)
             startStage('welcome', next)
             setBooting(false)
@@ -435,6 +627,7 @@ export default function OnboardingChat({
           }
         } catch {}
         originalPublicBioRef.current = ''
+        originalProfessionalBioRef.current = ''
         startStage('welcome', collected)
         setBooting(false)
         return
@@ -444,16 +637,60 @@ export default function OnboardingChat({
         const j = await r.json().catch(() => null)
         if (j?.success && j.state && j.state.stage && j.state.stage !== 'complete') {
           const saved = j.state
-          if (saved.collected) {
-            setCollected(prev => ({ ...prev, ...saved.collected }))
+          const stagesAfterLinkedin = new Set([
+            'professional_bio_review',
+            'profile_review',
+            'manual_bio_edit',
+            'enriching',
+            'review',
+            'complete',
+          ])
+          if (saved.onboarding_intent === 'b2b' || saved.onboarding_intent === 'b2c') {
+            onboardingIntentRef.current = saved.onboarding_intent
           }
-          setStage(saved.stage)
-          startStage(saved.stage, saved.collected || collected)
+          const rawMerged = saved.collected ? ({ ...collected, ...saved.collected } as Collected) : collected
+          const savedCollected: Collected = {
+            ...rawMerged,
+            linkedinDone:
+              !!(rawMerged.linkedinDone || (rawMerged.linkedin && rawMerged.linkedin.trim())) ||
+              stagesAfterLinkedin.has(String(saved.stage)),
+          }
+          if (saved.collected) {
+            setCollected(savedCollected)
+            const sc = savedCollected
+            if (sc.b2bOrgTypeHint) b2bOrgRef.current = String(sc.b2bOrgTypeHint)
+            if (sc.b2bParentName) b2bParentRef.current = String(sc.b2bParentName)
+          }
+          const resumeStage = normalizeResumeStage(saved.stage as Stage, savedCollected)
+          setStage(resumeStage)
+          if (!saved.resume_welcome_shown) {
+            setMessages([{ from: 'steve', text: oc(t, 'messages.resume_welcome') }])
+            try {
+              await fetch('/api/onboarding/state', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  stage: resumeStage,
+                  collected: savedCollected,
+                  resume_welcome_shown: true,
+                  onboarding_auto_open_suppressed: false,
+                  onboarding_intent: onboardingIntentRef.current || undefined,
+                }),
+              })
+            } catch {}
+          }
+          startStage(resumeStage, savedCollected)
           setBooting(false)
           return
         }
       } catch {}
-      startStage('welcome', collected)
+      if (hasCommunity || communityName) {
+        onboardingIntentRef.current = 'b2c'
+        startStage('welcome', collected)
+      } else {
+        startStage('intent_fork', collected)
+      }
       setBooting(false)
     })()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -462,31 +699,88 @@ export default function OnboardingChat({
   function startStage(s: Stage, c?: Collected) {
     const data = c || collected
     switch (s) {
-      case 'welcome': {
-        const greeting = data.firstName
-          ? `Hey ${data.firstName}! 👋`
-          : 'Hey there! 👋'
-        let welcomeText: string
-        if (mode === 'profile_builder') {
-          welcomeText = `${greeting} Let's update your profile together.\n\nI'll walk you through a few quick questions — anything you've already filled in, we can skip. Ready?`
-        } else {
-          welcomeText = `${greeting} I'm Steve here at C-Point.`
-          if (communityName) {
-            welcomeText += ` I see you were invited to ${communityName} — exciting!`
-          }
-          welcomeText += `\n\nA great profile attracts the right connections and lets you control your narrative. I'll walk you through ${USER_FACING_STEPS} quick steps — it takes about 3 minutes. Ready?`
-        }
-        addSteveMessage(welcomeText, {
-          options: [{ label: "Let's go!", value: 'start', icon: '🚀' }],
+      case 'intent_fork': {
+        const greeting = onboardingGreeting(t, data.firstName)
+        addSteveMessage(
+          oc(t, 'messages.intent_fork', {
+            greeting,
+            intentQuestion: oc(t, 'copy.intent_question'),
+          }),
+          {
+            options: [
+              ocOpt(t, 'intent_b2c', 'intent_b2c'),
+              ocOpt(t, 'intent_b2b', 'intent_b2b'),
+              ocOpt(t, 'finish_later', 'open_defer_modal'),
+            ],
+          },
+        )
+        break
+      }
+      case 'b2b_value': {
+        addSteveMessage(oc(t, 'messages.b2b_value'), {
+          options: [ocOpt(t, 'continue', 'b2b_value_continue')],
         })
         break
       }
+      case 'b2b_network_size': {
+        addSteveMessage(oc(t, 'messages.b2b_network_size'), {
+          options: b2bNetworkSizeOptions(t, tierHintsRef.current || tierHints),
+        })
+        break
+      }
+      case 'b2b_tier_guidance': {
+        const sizeValue = data.b2bNetworkSize || ''
+        const options: ChatMessage['options'] = [ocOpt(t, 'continue_creating_network', 'b2b_tier_continue')]
+        if (isEnterpriseSize(sizeValue)) {
+          options.push(ocOpt(t, 'contact_sales', 'contact_sales_enterprise'))
+        }
+        addSteveMessage(b2bTierGuidanceText(t, sizeValue, tierHintsRef.current || tierHints), { options })
+        break
+      }
+      case 'b2b_org_type': {
+        addSteveMessage(oc(t, 'copy.org_type_prompt'), {
+          inputType: 'text',
+          inputPlaceholder: oc(t, 'placeholders.org_type'),
+        })
+        break
+      }
+      case 'b2b_parent_name': {
+        addSteveMessage(oc(t, 'messages.b2b_parent_name'), {
+          inputType: 'text',
+          inputPlaceholder: oc(t, 'placeholders.network_name'),
+        })
+        break
+      }
+      case 'b2b_sub_names': {
+        addSteveMessage(oc(t, 'messages.b2b_sub_names'), {
+          inputType: 'text',
+          inputPlaceholder: oc(t, 'placeholders.sub_communities'),
+          options: [ocOpt(t, 'skip_sub_communities', 'b2b_skip_subs')],
+        })
+        break
+      }
+      case 'welcome': {
+        const greeting = onboardingGreeting(t, data.firstName)
+        let welcomeText: string
+        if (mode === 'profile_builder') {
+          welcomeText = oc(t, 'messages.welcome_profile_builder', { greeting })
+        } else if (communityName) {
+          welcomeText = oc(t, 'messages.welcome_invited', { greeting, community: communityName })
+        } else {
+          welcomeText = oc(t, 'messages.welcome_default', { greeting })
+        }
+        const welcomeOpts: ChatMessage['options'] =
+          mode === 'profile_builder' || communityName
+            ? [ocOpt(t, 'lets_go', 'start', '🚀')]
+            : [ocOpt(t, 'lets_go', 'start'), ocOpt(t, 'finish_later', 'open_defer_modal')]
+        addSteveMessage(welcomeText, { options: welcomeOpts })
+        break
+      }
       case 'profile_builder_summary': {
-        const summary = profileSummaryBlock(data)
-        addSteveMessage(
-          `Here's what I already see on your public profile:\n\n${summary}\n\nNext, we'll confirm each filled-in field one at a time — then continue with the rest of your profile.`,
-          { options: [{ label: 'Continue', value: 'pb_summary_continue', icon: '➡️' }] }
-        )
+        const summary = profileSummaryBlock(t, data)
+        addSteveMessage(oc(t, 'messages.pb_summary', { summary }), {
+          options: [ocOpt(t, 'pb_continue', 'pb_summary_continue', '➡️')],
+        })
         break
       }
       case 'pb_confirm_field': {
@@ -497,10 +791,10 @@ export default function OnboardingChat({
           break
         }
         const raw = (data[field] || '').trim()
-        addSteveMessage(`I have your **${pbFieldLabel(field)}** as **${raw}** — still correct?`, {
+        addSteveMessage(oc(t, 'messages.pb_confirm', { field: pbFieldLabel(t, field), value: raw }), {
           options: [
-            { label: 'Yes', value: 'pb_confirm_yes', icon: '✅' },
-            { label: 'Update', value: 'pb_confirm_update', icon: '✏️' },
+            ocOpt(t, 'yes', 'pb_confirm_yes', '✅'),
+            ocOpt(t, 'update', 'pb_confirm_update', '✏️'),
           ],
         })
         break
@@ -511,49 +805,56 @@ export default function OnboardingChat({
           finishProfileBuilderQueueAndGoName(data)
           break
         }
-        addSteveMessage(`What should I use for your **${pbFieldLabel(field)}**?`, {
+        addSteveMessage(oc(t, 'messages.pb_edit', { field: pbFieldLabel(t, field) }), {
           inputType: 'text',
-          inputPlaceholder: 'Type your answer…',
+          inputPlaceholder: oc(t, 'placeholders.type_answer'),
         })
         break
       }
       case 'name': {
         const hasName = data.firstName && data.lastName
         if (hasName) {
-          addSteveMessage(`I have your name as ${data.firstName} ${data.lastName} — is that right?`, {
-            options: [
-              { label: "That's correct", value: 'confirm_name', icon: '✅' },
-              { label: 'Let me fix that', value: 'edit_name', icon: '✏️' },
-            ],
-          })
+          addSteveMessage(
+            oc(t, 'messages.name_confirm', { firstName: data.firstName, lastName: data.lastName }),
+            {
+              options: [
+                ocOpt(t, 'thats_correct', 'confirm_name', '✅'),
+                ocOpt(t, 'let_me_fix', 'edit_name', '✏️'),
+              ],
+            },
+          )
         } else {
-          addSteveMessage("Let's start with your name. What's your first and last name?", {
+          addSteveMessage(oc(t, 'messages.name_ask'), {
             inputType: 'text',
-            inputPlaceholder: 'First Last',
+            inputPlaceholder: oc(t, 'placeholders.first_last'),
           })
         }
         break
       }
       case 'location':
-        addSteveMessage('Where are you based?', {
+        addSteveMessage(oc(t, 'messages.location_ask'), {
           inputType: 'text',
-          inputPlaceholder: 'e.g. Munich, Germany',
+          inputPlaceholder: oc(t, 'placeholders.location'),
         })
         break
       case 'location_confirm': {
         const city = data?.city || collected.city || ''
         const country = data?.country || collected.country || ''
         if (city && country) {
-          addSteveMessage(`Just to confirm — did you mean ${city}, ${country}?`, {
+          addSteveMessage(oc(t, 'messages.location_confirm', { city, country }), {
             options: [
-              { label: `Yes, ${city}, ${country}`, value: 'confirm_location', icon: '✅' },
-              { label: 'No, let me correct that', value: 'edit_location', icon: '✏️' },
+              {
+                label: oc(t, 'options.yes_location', { city, country }),
+                value: 'confirm_location',
+                icon: '✅',
+              },
+              ocOpt(t, 'no_correct_location', 'edit_location', '✏️'),
             ],
           })
         } else {
-          addSteveMessage('Where are you based?', {
+          addSteveMessage(oc(t, 'messages.location_ask'), {
             inputType: 'text',
-            inputPlaceholder: 'e.g. Munich, Germany',
+            inputPlaceholder: oc(t, 'placeholders.location'),
           })
           setStage('location')
         }
@@ -561,130 +862,210 @@ export default function OnboardingChat({
       }
       case 'location_city': {
         const country = data?.country || collected.country || ''
-        addSteveMessage(`${country} — great! Which city are you based in?`, {
+        addSteveMessage(oc(t, 'messages.location_city', { country }), {
           inputType: 'text',
-          inputPlaceholder: `e.g. Berlin`,
-          options: [{ label: 'Skip — just use country', value: 'skip_city', icon: '⏭️' }],
+          inputPlaceholder: oc(t, 'placeholders.city_example'),
+          options: [ocOpt(t, 'skip_city', 'skip_city', '⏭️')],
         })
         break
       }
       case 'photo':
-        addSteveMessage("Let's add a profile picture — it helps people recognize you.", {
+        addSteveMessage(oc(t, 'messages.photo_ask'), {
           photoUpload: true,
-          options: [{ label: 'Skip for now', value: 'skip_photo', icon: '⏭️' }],
+          options: [ocOpt(t, 'skip_photo', 'skip_photo')],
+        })
+        break
+      case 'section_picker': {
+        const personalStatus = data.personalSectionComplete
+          ? oc(t, 'status.personal_complete')
+          : oc(t, 'status.personal_pending')
+        const professionalStatus = data.professionalSectionComplete
+          ? oc(t, 'status.professional_complete')
+          : oc(t, 'status.professional_pending')
+        const pickerOptions: ChatMessage['options'] =
+          data.personalSectionComplete && data.professionalSectionComplete
+            ? [
+                ocOpt(t, 'review_profile', 'finish_sections_review'),
+                ocOpt(t, 'finish_later', 'open_defer_modal'),
+              ]
+            : [ocOpt(t, 'finish_later', 'open_defer_modal')]
+        addSteveMessage(oc(t, 'messages.section_picker'), {
+          sectionPicker: { personalStatus, professionalStatus },
+          options: pickerOptions,
+        })
+        break
+      }
+      case 'personal_section_intro':
+        addSteveMessage(oc(t, 'messages.personal_intro'), {
+          sectionCard: {
+            title: oc(t, 'ui.personal_identity'),
+            subtitle: oc(t, 'messages.personal_subtitle'),
+            steps: personalSectionSteps,
+          },
+          options: [
+            ocOpt(t, 'start_personal_section', 'start_personal_section'),
+            ocOpt(t, 'finish_later', 'open_defer_modal'),
+          ],
         })
         break
       case 'talk_all_day':
-        addSteveMessage(
-          "Now let's get to know the real you.\n\nWhat are the things you could talk about all day?\n\nExamples: AI, leadership, travel, startups",
-          {
-            inputType: 'text',
-            inputPlaceholder: 'Type your answer…',
-            options: stageHistory.current.length > 1 ? [{ label: '← Go back', value: 'go_back', icon: '↩️' }] : undefined,
-          }
-        )
+        addSteveMessage(oc(t, 'messages.talk_all_day'), {
+          inputType: 'text',
+          inputPlaceholder: oc(t, 'placeholders.type_answer'),
+          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', '↩️')] : undefined,
+        })
         break
       case 'reach_out':
-        addSteveMessage(
-          "What do you want people to reach out to you about?\n\nExamples: Coffee chats, brainstorming, partnerships, new ventures",
-          {
-            inputType: 'text',
-            inputPlaceholder: 'Type your answer…',
-            options: stageHistory.current.length > 1 ? [{ label: '← Go back', value: 'go_back', icon: '↩️' }] : undefined,
-          }
-        )
+        addSteveMessage(oc(t, 'messages.reach_out'), {
+          inputType: 'text',
+          inputPlaceholder: oc(t, 'placeholders.type_answer'),
+          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', '↩️')] : undefined,
+        })
         break
       case 'professional':
-        addSteveMessage('What do you do professionally? Something like "Product Manager at Google" or "Founder, building in fintech" works great.', {
+        addSteveMessage(oc(t, 'messages.professional_ask'), {
           inputType: 'text',
-          inputPlaceholder: 'e.g. Product Manager at Google',
-          options: stageHistory.current.length > 1 ? [{ label: '← Go back', value: 'go_back', icon: '↩️' }] : undefined,
+          inputPlaceholder: oc(t, 'placeholders.professional'),
+          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', '↩️')] : undefined,
         })
         break
       case 'professional_confirm': {
         const role = data?.role || collected.role || ''
         const company = data?.company || collected.company || ''
         if (role && company) {
-          addSteveMessage(`Here's what I got:\n\n**Role:** ${role}\n**Company:** ${company}\n\nDoes that look right?`, {
+          addSteveMessage(oc(t, 'messages.professional_confirm_both', { role, company }), {
             options: [
-              { label: `Yes, that's correct`, value: 'confirm_professional', icon: '✅' },
-              { label: 'Fix role', value: 'edit_role_only', icon: '✏️' },
-              { label: 'Fix company', value: 'edit_company_only', icon: '✏️' },
-              { label: 'Fix both', value: 'edit_professional', icon: '✏️' },
+              ocOpt(t, 'yes_professional_correct', 'confirm_professional', '✅'),
+              ocOpt(t, 'fix_role', 'edit_role_only', '✏️'),
+              ocOpt(t, 'fix_company', 'edit_company_only', '✏️'),
+              ocOpt(t, 'fix_both', 'edit_professional', '✏️'),
             ],
           })
         } else if (role) {
-          addSteveMessage(`Here's what I got:\n\n**Role:** ${role}\n**Company:** not specified\n\nDoes that look right, or would you like to add a company?`, {
+          addSteveMessage(oc(t, 'messages.professional_confirm_role', { role }), {
             options: [
-              { label: `Yes, that's correct`, value: 'confirm_professional', icon: '✅' },
-              { label: 'Add company', value: 'edit_company_only', icon: '✏️' },
-              { label: 'Fix role', value: 'edit_role_only', icon: '✏️' },
+              ocOpt(t, 'yes_professional_correct', 'confirm_professional', '✅'),
+              ocOpt(t, 'add_company', 'edit_company_only', '✏️'),
+              ocOpt(t, 'fix_role', 'edit_role_only', '✏️'),
             ],
           })
         } else {
-          addSteveMessage('What do you do professionally?', {
+          addSteveMessage(oc(t, 'messages.professional_ask_short'), {
             inputType: 'text',
-            inputPlaceholder: 'e.g. Product Manager at Google',
+            inputPlaceholder: oc(t, 'placeholders.professional'),
           })
           setStage('professional')
         }
         break
       }
-      case 'recommend': {
-        const recOpts: ChatMessage['options'] = [{ label: 'Skip', value: 'skip_recommend', icon: '⏭️' }]
-        if (stageHistory.current.length > 1) recOpts.push({ label: '← Go back', value: 'go_back', icon: '↩️' })
-        addSteveMessage("As a gift to your network — recommend a book, movie, or TV show.", {
-          inputType: 'text',
-          inputPlaceholder: 'e.g. Sapiens by Yuval Noah Harari',
-          options: recOpts,
+      case 'professional_section_intro':
+        addSteveMessage(oc(t, 'messages.professional_intro'), {
+          sectionCard: {
+            title: oc(t, 'ui.professional_identity'),
+            subtitle: oc(t, 'messages.professional_subtitle'),
+            steps: professionalSectionSteps,
+          },
+          options: [
+            ocOpt(t, 'import_cv', 'start_cv_upload', '📄'),
+            ocOpt(t, 'start_professional_section', 'start_professional_section'),
+            ocOpt(t, 'finish_later', 'open_defer_modal'),
+          ],
         })
         break
-      }
+      case 'cv_upload':
+        addSteveMessage(oc(t, 'messages.cv_upload'), {
+          cvUpload: true,
+          options: [
+            ocOpt(t, 'type_manually', 'cv_skip_to_manual', '✏️'),
+            ocOpt(t, 'go_back', 'go_back', '↩️'),
+          ],
+        })
+        break
+      case 'cv_review':
+        break
+      case 'professional_associations':
+        addSteveMessage(oc(t, 'messages.professional_associations'), {
+          inputType: 'text',
+          inputPlaceholder: oc(t, 'placeholders.associations'),
+          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', '↩️')] : undefined,
+        })
+        break
+      case 'professional_strengths':
+        addSteveMessage(oc(t, 'messages.professional_strengths'), {
+          inputType: 'text',
+          inputPlaceholder: oc(t, 'placeholders.strengths'),
+          options: stageHistory.current.length > 1 ? [ocOpt(t, 'go_back', 'go_back', '↩️')] : undefined,
+        })
+        break
       case 'linkedin': {
-        const lnOpts: ChatMessage['options'] = [{ label: 'Skip', value: 'skip_linkedin', icon: '⏭️' }]
-        if (stageHistory.current.length > 1) lnOpts.push({ label: '← Go back', value: 'go_back', icon: '↩️' })
-        addSteveMessage("Got a LinkedIn URL? It helps me learn more about your background. Feel free to skip if you'd rather not share.", {
+        const lnOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_linkedin', '⏭️')]
+        if (stageHistory.current.length > 1) lnOpts.push(ocOpt(t, 'go_back', 'go_back', '↩️'))
+        addSteveMessage(oc(t, 'messages.linkedin_ask'), {
           inputType: 'url',
-          inputPlaceholder: 'https://linkedin.com/in/yourprofile',
+          inputPlaceholder: oc(t, 'placeholders.linkedin'),
           options: lnOpts,
         })
         break
       }
+      case 'recommend': {
+        const recOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_recommend', '⏭️')]
+        if (stageHistory.current.length > 1) recOpts.push(ocOpt(t, 'go_back', 'go_back', '↩️'))
+        addSteveMessage(oc(t, 'messages.recommend'), {
+          inputType: 'text',
+          inputPlaceholder: oc(t, 'placeholders.recommend'),
+          options: recOpts,
+        })
+        break
+      }
       case 'optional_social': {
-        const soOpts: ChatMessage['options'] = [{ label: 'Skip', value: 'skip_optional_social', icon: '⏭️' }]
-        if (stageHistory.current.length > 1) soOpts.push({ label: '← Go back', value: 'go_back', icon: '↩️' })
-        addSteveMessage(
-          'Optional: share profile links for **Instagram**, **TikTok**, or **Snapchat** if you want Steve to use them when profiling you. We only use these when you provide a link.\n\nPaste one URL per line, or skip.',
-          {
-            inputType: 'textarea',
-            inputPlaceholder: 'https://instagram.com/yourprofile\nhttps://www.tiktok.com/@you',
-            options: soOpts,
-          }
-        )
+        const soOpts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_optional_social', '⏭️')]
+        if (stageHistory.current.length > 1) soOpts.push(ocOpt(t, 'go_back', 'go_back', '↩️'))
+        addSteveMessage(oc(t, 'messages.optional_social'), {
+          inputType: 'textarea',
+          inputPlaceholder: oc(t, 'placeholders.social_urls'),
+          options: soOpts,
+        })
         break
       }
       case 'journey':
-        addSteveMessage(`What should your network remember about your journey?\n\n${'Totally optional. Share a highlight from work or life—something you’re proud of or that shapes how you show up today.'}\n\nExamples: “Consulting background • Two marathons • Former competitive athlete”`, {
+        addSteveMessage(oc(t, 'messages.journey'), {
           inputType: 'textarea',
-          inputPlaceholder: 'e.g. Consulting background • Two marathons • Former competitive athlete',
+          inputPlaceholder: oc(t, 'placeholders.journey'),
           options: (() => {
-            const opts: ChatMessage['options'] = [{ label: 'Skip', value: 'skip_journey', icon: '⏭️' }]
-            if (stageHistory.current.length > 1) opts.push({ label: '← Go back', value: 'go_back', icon: '↩️' })
+            const opts: ChatMessage['options'] = [ocOpt(t, 'skip', 'skip_journey', '⏭️')]
+            if (stageHistory.current.length > 1) opts.push(ocOpt(t, 'go_back', 'go_back', '↩️'))
             return opts
           })(),
         })
         break
-      case 'compose':
-        composeBio(data)
+      case 'personal_bio_review':
+        composeBio('personal', data)
+        break
+      case 'professional_bio_review':
+        composeBio('professional', data)
+        break
+      case 'profile_review':
+        addSteveMessage(oc(t, 'messages.profile_review'), {
+          profileReview: {
+            personalBio: data.bio,
+            professionalBio: data.professionalBio,
+            linkedinAdded: !!data.linkedin?.trim(),
+            companyIntelAdded: !!(data.companyIntel?.trim()),
+          },
+          options: [
+            ocOpt(t, 'looks_good', 'finish_profile_review'),
+            ocOpt(t, 'finish_later', 'open_defer_modal'),
+          ],
+        })
+        break
+      case 'manual_bio_edit':
         break
       case 'enriching':
-        // Enrichment disabled for normal users (admin-only on profile edit page)
-        addSteveMessage("Your profile is complete! No public enrichment step for now.")
+        addSteveMessage(oc(t, 'messages.enriching_complete'))
         setTimeout(() => advanceToComplete(), 800)
         break
       case 'review':
-        // Review/enrichment step disabled for normal users
-        addSteveMessage("Profile setup complete! You can always edit details later.")
+        addSteveMessage(oc(t, 'messages.review_complete'))
         setTimeout(() => advanceToComplete(), 800)
         break
       case 'complete':
@@ -695,7 +1076,12 @@ export default function OnboardingChat({
 
   function advanceTo(next: Stage, data?: Collected) {
     const c = data || collected
-    const mainStages: Stage[] = ['name', 'location', 'photo', 'talk_all_day', 'reach_out', 'professional', 'linkedin', 'optional_social', 'journey', 'recommend', 'compose']
+    const mainStages: Stage[] = [
+      'name', 'location', 'photo', 'section_picker', 'personal_section_intro', 'talk_all_day',
+      'reach_out', 'journey', 'recommend', 'optional_social', 'personal_bio_review',
+      'professional_section_intro', 'cv_upload', 'cv_review', 'professional', 'professional_associations',
+      'professional_strengths', 'linkedin', 'professional_bio_review', 'profile_review',
+    ]
     if (mainStages.includes(next)) {
       const hist = stageHistory.current
       if (hist[hist.length - 1] !== next) hist.push(next)
@@ -720,59 +1106,148 @@ export default function OnboardingChat({
     showCompleteMsg()
   }
 
-  function showCompleteMsg() {
-    addSteveMessage(
-      "You're all set! 🎉 Your profile is live!\n\nI'm always here if you need anything — just DM me or tag @Steve in any chat.\n\nBy the way, did you know you can create your own communities? Planning a trip with friends? Starting a book club? Organizing weekend tennis? A community is just a group of people you want to keep connected.",
-      {
-        options: [
-          { label: 'Show me around', value: 'start_tour', icon: '🗺️' },
-          { label: 'Take me to the dashboard', value: 'go_feed', icon: '🚀' },
-          { label: 'Create a community', value: 'create_community', icon: '➕' },
-        ],
+  async function runB2bBootstrap(childNames: string[], c: Collected) {
+    const parentName = (b2bParentRef.current || c.b2bParentName || '').trim()
+    const orgHint = (b2bOrgRef.current || c.b2bOrgTypeHint || '').trim()
+    if (!parentName) {
+      addSteveMessage(oc(t, 'messages.bootstrap_need_name'), {
+        inputType: 'text',
+        inputPlaceholder: oc(t, 'placeholders.network_name'),
+      })
+      setStage('b2b_parent_name')
+      saveState('b2b_parent_name', c)
+      return
+    }
+    const parentType = mapOrgHintToParentType(orgHint)
+    setIsTyping(true)
+    addSteveMessage(oc(t, 'messages.bootstrap_creating'))
+    try {
+      const r = await fetch('/api/onboarding/bootstrap_communities', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parent_name: parentName,
+          parent_type: parentType,
+          child_names: childNames,
+        }),
+      })
+      const j = await r.json().catch(() => null)
+      setIsTyping(false)
+      if (j?.success) {
+        addSteveMessage(oc(t, 'messages.bootstrap_success'))
+        setTimeout(() => advanceTo('name', c), 600)
+      } else {
+        const err = (j?.error || oc(t, 'errors.bootstrap_fail')) as string
+        addSteveMessage(oc(t, 'messages.bootstrap_error', { error: err }))
+        setStage('b2b_parent_name')
+        saveState('b2b_parent_name', c)
+        startStage('b2b_parent_name', c)
       }
-    )
+    } catch {
+      setIsTyping(false)
+      addSteveMessage(oc(t, 'messages.bootstrap_network_error'))
+      setStage('b2b_parent_name')
+      saveState('b2b_parent_name', c)
+      startStage('b2b_parent_name', c)
+    }
   }
 
-  async function composeBio(data?: Collected) {
+  function showCompleteMsg() {
+    addSteveMessage(oc(t, 'messages.complete'), {
+      options: [
+        ocOpt(t, 'add_edit_profile', 'edit_profile'),
+        ocOpt(t, 'show_me_around', 'start_tour'),
+        ocOpt(t, 'go_dashboard', 'go_feed'),
+        ocOpt(t, 'create_community', 'create_community'),
+      ],
+    })
+  }
+
+  async function composeBio(
+    kind: 'personal' | 'professional',
+    data?: Collected,
+    style?: 'more_natural' | 'shorter' | 'more_professional',
+    currentBio?: string,
+  ) {
     const c = data || collected
     setComposingBio(true)
-    addSteveMessage("Nice! Give me a sec — I'm putting your identity together... ✍️")
+    setBioDraftingKind(kind)
+    setIsTyping(true)
     try {
+      const reuseIntel =
+        kind === 'professional' && style && (currentBio || '').trim()
+          ? lastComposedCompanyIntelRef.current
+          : ''
       const r = await fetch('/api/onboarding/compose_bio', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          kind,
           talk_all_day: c.talkAllDay,
           recommend: c.recommend,
           reach_out: c.reachOut,
           journey: c.journey,
           role: c.role,
           company: c.company,
+          professional_associations: c.professionalAssociations,
+          professional_strengths: c.professionalStrengths,
           city: c.city,
           country: c.country,
+          style,
+          current_bio: currentBio || '',
+          opposite_bio: kind === 'professional' ? (c.bio || '').trim() : (c.professionalBio || '').trim(),
           existing_bio:
-            mode === 'profile_builder'
-              ? (originalPublicBioRef.current || '').trim()
-              : (c.bio || '').trim(),
+            kind === 'professional'
+              ? (mode === 'profile_builder'
+                  ? (originalProfessionalBioRef.current || '').trim()
+                  : (c.professionalBio || '').trim())
+              : (mode === 'profile_builder'
+                  ? (originalPublicBioRef.current || '').trim()
+                  : (c.bio || '').trim()),
+          reuse_company_intel: reuseIntel,
         }),
       })
       const j = await r.json().catch(() => null)
       const bio = j?.bio || ''
+      const companyIntelRaw = (j?.company_intel || '').trim()
       setComposingBio(false)
+      setBioDraftingKind(null)
+      setIsTyping(false)
       if (bio) {
-        addSteveMessage("Here's your identity, based on what you told me:", { composedBio: bio })
+        if (kind === 'professional') {
+          if (companyIntelRaw) {
+            lastComposedCompanyIntelRef.current = companyIntelRaw
+            setCollected(prev => ({ ...prev, companyIntel: companyIntelRaw }))
+          } else if (!reuseIntel) {
+            lastComposedCompanyIntelRef.current = ''
+            setCollected(prev => ({ ...prev, companyIntel: '' }))
+          }
+        }
+        const msgOpts: Partial<ChatMessage> = { composedBio: bio, composedBioKind: kind }
+        if (kind === 'professional' && companyIntelRaw) {
+          msgOpts.composedCompanyIntel = companyIntelRaw
+        }
+        addSteveMessage(
+          kind === 'personal' ? oc(t, 'messages.bio_personal_intro') : oc(t, 'messages.bio_professional_intro'),
+          msgOpts,
+        )
       } else {
-        addSteveMessage("I couldn't compose your identity right now — would you like to write one yourself?", {
+        addSteveMessage(oc(t, 'messages.bio_compose_fail', { kind }), {
           inputType: 'textarea',
-          inputPlaceholder: 'Write a 2-3 sentence intro...',
+          inputPlaceholder:
+            kind === 'personal' ? oc(t, 'placeholders.bio_personal') : oc(t, 'placeholders.bio_professional'),
         })
       }
     } catch {
       setComposingBio(false)
-      addSteveMessage("Something went wrong. Want to write your own intro instead?", {
+      setBioDraftingKind(null)
+      setIsTyping(false)
+      addSteveMessage(oc(t, 'messages.bio_compose_error', { kind }), {
         inputType: 'textarea',
-        inputPlaceholder: 'Write a 2-3 sentence intro...',
+        inputPlaceholder:
+          kind === 'personal' ? oc(t, 'placeholders.bio_personal') : oc(t, 'placeholders.bio_professional'),
       })
     }
   }
@@ -786,10 +1261,18 @@ export default function OnboardingChat({
   }
 
   async function handleFinishReview() {
-    addUserMessage('Done reviewing')
+    addUserMessage(oc(t, 'messages.enrichment_done'))
     const accepted = enrichmentCards.filter(c => c.status === 'accepted')
     if (accepted.length > 0) {
-      addSteveMessage(`Great choices! I've added ${accepted.length} item${accepted.length > 1 ? 's' : ''} to your profile.`)
+      addSteveMessage(
+        t('onboarding_chat.messages.enrichment_added', {
+          count: accepted.length,
+          defaultValue:
+            accepted.length === 1
+              ? oc(t, 'messages.enrichment_added', { count: 1 })
+              : oc(t, 'messages.enrichment_added_other', { count: accepted.length }),
+        }),
+      )
     }
     try {
       await fetch('/api/onboarding/state', {
@@ -806,10 +1289,99 @@ export default function OnboardingChat({
     setTimeout(() => advanceToComplete(), 800)
   }
 
+  async function finishLater() {
+    if (deferringProfile) return
+    setDeferringProfile(true)
+    setDeferError('')
+    addUserMessage(oc(t, 'user_echo.finish_later'))
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(() => controller.abort(), 12000)
+    try {
+      const serializable = messages.slice(-30).map(m => ({ from: m.from, text: m.text }))
+      const r = await fetch('/api/onboarding/defer_profile', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          stage,
+          collected,
+          messages: serializable,
+          onboarding_auto_open_suppressed: true,
+        }),
+      })
+      const j = await r.json().catch(() => null)
+      if (r.ok && j?.success) {
+        addSteveMessage(oc(t, 'messages.defer_saved'))
+        setShowDeferConfirm(false)
+        setTimeout(() => onExit(), 800)
+      } else {
+        setDeferError(j?.error || oc(t, 'errors.defer_save'))
+      }
+    } catch (err) {
+      const timedOut = err instanceof DOMException && err.name === 'AbortError'
+      setDeferError(timedOut ? oc(t, 'errors.defer_timeout') : oc(t, 'errors.defer_save'))
+    } finally {
+      window.clearTimeout(timeoutId)
+      setDeferringProfile(false)
+    }
+  }
+
   async function handleOptionClick(value: string) {
     switch (value) {
+      case 'intent_b2c': {
+        addUserMessage(oc(t, 'user_echo.intent_b2c'))
+        onboardingIntentRef.current = 'b2c'
+        advanceTo('name', collected)
+        break
+      }
+      case 'intent_b2b': {
+        addUserMessage(oc(t, 'user_echo.intent_b2b'))
+        onboardingIntentRef.current = 'b2b'
+        advanceTo('b2b_network_size', collected)
+        break
+      }
+      case 'b2b_value_continue': {
+        addUserMessage(oc(t, 'user_echo.continue'))
+        advanceTo('b2b_network_size', collected)
+        break
+      }
+      case 'b2b_skip_subs': {
+        addUserMessage(oc(t, 'user_echo.skip_subs'))
+        await runB2bBootstrap([], collected)
+        break
+      }
+      case 'open_defer_modal':
+      case 'defer_profile_72': {
+        setShowDeferConfirm(true)
+        break
+      }
+      case 'b2b_size_free':
+      case 'b2b_size_paid_l1':
+      case 'b2b_size_paid_l2':
+      case 'b2b_size_paid_l3':
+      case 'b2b_size_enterprise': {
+        addUserMessage(b2bNetworkSizeLabel(t, value, tierHintsRef.current || tierHints))
+        const newCollected = { ...collected, b2bNetworkSize: value }
+        setCollected(newCollected)
+        advanceTo('b2b_tier_guidance', newCollected)
+        break
+      }
+      case 'b2b_tier_continue': {
+        addUserMessage(oc(t, 'user_echo.continue_network'))
+        advanceTo('b2b_parent_name', collected)
+        break
+      }
+      case 'contact_sales_enterprise': {
+        addUserMessage(oc(t, 'user_echo.contact_sales'))
+        window.location.href = `mailto:${SALES_EMAIL}?subject=${encodeURIComponent(oc(t, 'sales.email_subject'))}`
+        addSteveMessage(oc(t, 'messages.sales_email_opened'), {
+          options: [ocOpt(t, 'continue_creating_network', 'b2b_tier_continue')],
+        })
+        break
+      }
       case 'start':
-        addUserMessage("Let's go!")
+        addUserMessage(oc(t, 'user_echo.lets_go'))
         if (mode === 'profile_builder') {
           advanceTo('profile_builder_summary')
         } else {
@@ -817,7 +1389,7 @@ export default function OnboardingChat({
         }
         break
       case 'pb_summary_continue': {
-        addUserMessage('Continue')
+        addUserMessage(oc(t, 'user_echo.continue'))
         const q = buildProfileBuilderConfirmQueue(collected)
         pbConfirmQueueRef.current = q
         if (q.length === 0) {
@@ -828,7 +1400,7 @@ export default function OnboardingChat({
         break
       }
       case 'pb_confirm_yes': {
-        addUserMessage('Yes')
+        addUserMessage(oc(t, 'user_echo.yes'))
         const rest = pbConfirmQueueRef.current.slice(1)
         pbConfirmQueueRef.current = rest
         if (rest.length === 0) {
@@ -841,7 +1413,7 @@ export default function OnboardingChat({
         break
       }
       case 'pb_confirm_update': {
-        addUserMessage('Update')
+        addUserMessage(oc(t, 'user_echo.update'))
         const head = pbConfirmQueueRef.current[0]
         if (!head) {
           finishProfileBuilderQueueAndGoName(collected)
@@ -854,7 +1426,7 @@ export default function OnboardingChat({
         break
       }
       case 'confirm_name': {
-        addUserMessage("That's correct")
+        addUserMessage(oc(t, 'user_echo.thats_correct'))
         const displayName = `${collected.firstName} ${collected.lastName}`.trim()
         if (displayName) saveField('display_name', displayName)
         if (mode === 'profile_builder' && profileBuilderPostPbRef.current.skipLocation) {
@@ -865,24 +1437,24 @@ export default function OnboardingChat({
         break
       }
       case 'edit_name':
-        addUserMessage('Let me fix that')
-        addSteveMessage("No problem! What's your first and last name?", {
+        addUserMessage(oc(t, 'user_echo.let_me_fix'))
+        addSteveMessage(oc(t, 'messages.edit_name'), {
           inputType: 'text',
-          inputPlaceholder: 'First Last',
+          inputPlaceholder: oc(t, 'placeholders.first_last'),
         })
         break
       case 'confirm_location': {
-        addUserMessage(`Yes, ${collected.city}, ${collected.country}`)
+        addUserMessage(oc(t, 'user_echo.yes_location', { city: collected.city, country: collected.country }))
         await saveField('city', collected.city)
         await saveField('country', collected.country)
         advanceTo('photo')
         break
       }
       case 'edit_location':
-        addUserMessage('Let me correct that')
-        addSteveMessage('No problem! Where are you based? Please include the country.', {
+        addUserMessage(oc(t, 'user_echo.let_me_correct'))
+        addSteveMessage(oc(t, 'messages.edit_location'), {
           inputType: 'text',
-          inputPlaceholder: 'e.g. Munich, Germany',
+          inputPlaceholder: oc(t, 'placeholders.location'),
         })
         setStage('location')
         break
@@ -890,78 +1462,80 @@ export default function OnboardingChat({
         const profLabel = collected.company
           ? `${collected.role} at ${collected.company}`
           : collected.role
-        addUserMessage(`Yes, ${profLabel}`)
+        addUserMessage(oc(t, 'user_echo.yes_professional', { label: profLabel }))
         await saveField('role', collected.role)
         if (collected.company) await saveField('company', collected.company)
-        advanceTo('linkedin')
+        advanceTo('professional_associations')
         break
       }
       case 'edit_professional':
-        addUserMessage('Let me fix both')
-        addSteveMessage('No problem! What do you do professionally?', {
+        addUserMessage(oc(t, 'user_echo.let_me_fix_both'))
+        addSteveMessage(oc(t, 'messages.edit_professional'), {
           inputType: 'text',
-          inputPlaceholder: 'e.g. Product Manager at Google',
+          inputPlaceholder: oc(t, 'placeholders.professional'),
         })
         setStage('professional')
         break
       case 'edit_role_only':
-        addUserMessage('Fix role')
-        addSteveMessage(`No problem! What's your role/title?`, {
+        addUserMessage(oc(t, 'user_echo.fix_role'))
+        addSteveMessage(oc(t, 'messages.edit_role'), {
           inputType: 'text',
-          inputPlaceholder: 'e.g. Product Manager',
+          inputPlaceholder: oc(t, 'placeholders.role_title'),
         })
         setStage('fix_role')
         break
       case 'edit_company_only':
-        addUserMessage(collected.company ? 'Fix company' : 'Add company')
-        addSteveMessage(`What company do you work at?`, {
+        addUserMessage(collected.company ? oc(t, 'user_echo.fix_company') : oc(t, 'user_echo.add_company'))
+        addSteveMessage(oc(t, 'messages.edit_company'), {
           inputType: 'text',
-          inputPlaceholder: 'e.g. Google',
+          inputPlaceholder: oc(t, 'placeholders.company'),
         })
         setStage('fix_company')
         break
       case 'skip_city': {
-        addUserMessage('Skip — just use country')
+        addUserMessage(oc(t, 'user_echo.skip_country'))
         await saveField('country', collected.country)
         advanceTo('photo')
         break
       }
       case 'go_back': {
-        addUserMessage('Go back')
+        addUserMessage(oc(t, 'user_echo.go_back'))
         const hist = stageHistory.current
         if (hist.length >= 2) {
           hist.pop()
           const prev = hist[hist.length - 1]
-          addSteveMessage("Sure — let's revisit that question.")
+          addSteveMessage(oc(t, 'messages.go_back_ok'))
           setTimeout(() => {
             setStage(prev)
             startStage(prev)
           }, 400)
         } else {
-          addSteveMessage("We're at the beginning — no previous questions to go back to.")
+          addSteveMessage(oc(t, 'messages.go_back_start'))
         }
         break
       }
       case 'gibberish_skip': {
-        addUserMessage('Yes, skip it')
+        addUserMessage(oc(t, 'user_echo.yes_skip'))
         const skipMap: Partial<Record<Stage, Stage>> = {
           talk_all_day: 'reach_out',
-          reach_out: 'professional',
-          professional: 'linkedin',
-          linkedin: 'optional_social',
-          recommend: 'compose',
+          reach_out: 'journey',
           journey: 'recommend',
-          optional_social: 'journey',
+          recommend: 'optional_social',
+          optional_social: 'personal_bio_review',
+          professional: 'professional_associations',
+          professional_associations: 'professional_strengths',
+          professional_strengths: 'linkedin',
+          linkedin: 'professional_bio_review',
         }
         const returnStage = gibberishReturnStage.current
         gibberishReturnStage.current = null
         const nextStage = (returnStage && skipMap[returnStage]) || 'photo'
-        addSteveMessage("No problem — you can always fill this in later from your profile.")
+        addSteveMessage(oc(t, 'messages.gibberish_skip'))
         setTimeout(() => advanceTo(nextStage), 600)
         break
       }
       case 'gibberish_retry': {
-        addUserMessage('Let me try again')
+        addUserMessage(oc(t, 'user_echo.let_me_try'))
         const retryStage = gibberishReturnStage.current
         gibberishReturnStage.current = null
         if (retryStage) {
@@ -971,63 +1545,240 @@ export default function OnboardingChat({
         break
       }
       case 'skip_photo':
-        addUserMessage('Skip for now')
-        addSteveMessage("No problem — you can always add one later from your profile.")
-        setTimeout(() => advanceTo('talk_all_day'), 600)
+        addUserMessage(oc(t, 'user_echo.skip_photo'))
+        addSteveMessage(oc(t, 'messages.skip_photo'))
+        setTimeout(() => advanceTo('section_picker'), 600)
         break
-      case 'skip_linkedin':
-        addUserMessage('Skip')
-        advanceTo('optional_social')
+      case 'choose_personal_section': {
+        addUserMessage(oc(t, 'user_echo.personal_section'))
+        const order = collected.profileSectionOrder?.includes('personal')
+          ? collected.profileSectionOrder
+          : [...(collected.profileSectionOrder || []), 'personal' as ProfileSection]
+        const newCollected = { ...collected, activeProfileSection: 'personal' as ProfileSection, profileSectionOrder: order }
+        setCollected(newCollected)
+        advanceTo(startOrResumeSection('personal', newCollected), newCollected)
+        break
+      }
+      case 'choose_professional_section': {
+        addUserMessage(oc(t, 'user_echo.professional_section'))
+        const order = collected.profileSectionOrder?.includes('professional')
+          ? collected.profileSectionOrder
+          : [...(collected.profileSectionOrder || []), 'professional' as ProfileSection]
+        const newCollected = { ...collected, activeProfileSection: 'professional' as ProfileSection, profileSectionOrder: order }
+        setCollected(newCollected)
+        advanceTo(startOrResumeSection('professional', newCollected), newCollected)
+        break
+      }
+      case 'finish_sections_review':
+        addUserMessage(oc(t, 'user_echo.review_profile'))
+        advanceTo('profile_review')
+        break
+      case 'start_cv_upload':
+        addUserMessage(oc(t, 'user_echo.import_cv'))
+        advanceTo('cv_upload', collected)
+        break
+      case 'cv_skip_to_manual':
+        addUserMessage(oc(t, 'user_echo.type_manually'))
+        advanceTo('professional', { ...collected, workHistory: undefined, currentRoleStartYm: '' })
+        break
+      case 'confirm_cv_import': {
+        addUserMessage(oc(t, 'user_echo.cv_confirm'))
+        ;(async () => {
+          const c = collected
+          try {
+            const r = await fetch('/api/onboarding/apply_professional_structured', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                role: c.role || '',
+                company: c.company || '',
+                current_role_start_ym: c.currentRoleStartYm || '',
+                work_history: c.workHistory || [],
+                professional_about: (c.professionalBio || '').trim(),
+              }),
+            })
+            const j = await r.json().catch(() => null)
+            if (r.ok && j?.success) {
+              if (c.role?.trim()) await saveField('role', c.role)
+              if (c.company?.trim()) await saveField('company', c.company)
+              advanceTo('professional_confirm', c)
+            } else {
+              addSteveMessage((j?.error as string) || oc(t, 'errors.cv_save'), {
+                options: [
+                  ocOpt(t, 'try_again', 'confirm_cv_import', '↻'),
+                  ocOpt(t, 'type_manually_short', 'reject_cv_import', '✏️'),
+                ],
+              })
+            }
+          } catch {
+            addSteveMessage(oc(t, 'errors.cv_save_network'), {
+              options: [
+                ocOpt(t, 'try_again', 'confirm_cv_import', '↻'),
+                ocOpt(t, 'type_manually_short', 'reject_cv_import', '✏️'),
+              ],
+            })
+          }
+        })()
+        break
+      }
+      case 'reject_cv_import': {
+        addUserMessage(oc(t, 'user_echo.type_instead'))
+        const reset: Collected = {
+          ...collected,
+          role: '',
+          company: '',
+          currentRoleStartYm: '',
+          workHistory: undefined,
+          professionalBio: '',
+        }
+        setCollected(reset)
+        advanceTo('professional', reset)
+        break
+      }
+      case 'cv_retry_pick': {
+        addUserMessage(oc(t, 'user_echo.pick_another'))
+        setCvFile(null)
+        try {
+          if (cvFileInputRef.current) cvFileInputRef.current.value = ''
+        } catch {}
+        setStage('cv_upload')
+        saveState('cv_upload', collected)
+        addSteveMessage(oc(t, 'messages.cv_upload'), {
+          cvUpload: true,
+          options: [
+            ocOpt(t, 'type_manually', 'cv_skip_to_manual', '✏️'),
+            ocOpt(t, 'go_back', 'go_back', '↩️'),
+          ],
+        })
+        break
+      }
+      case 'start_personal_section':
+        addUserMessage(oc(t, 'user_echo.start_personal'))
+        advanceTo('talk_all_day')
+        break
+      case 'start_professional_section':
+        addUserMessage(oc(t, 'user_echo.start_professional'))
+        advanceTo('professional')
         break
       case 'skip_optional_social':
-        addUserMessage('Skip')
-        advanceTo('journey')
+        addUserMessage(oc(t, 'user_echo.skip'))
+        advanceTo('personal_bio_review')
+        break
+      case 'skip_linkedin':
+        addUserMessage(oc(t, 'user_echo.skip'))
+        {
+          const newCollected = { ...collected, linkedin: '', linkedinDone: true }
+          setCollected(newCollected)
+          advanceTo('professional_bio_review', newCollected)
+        }
         break
       case 'skip_journey':
-        addUserMessage('Skip')
+        addUserMessage(oc(t, 'user_echo.skip'))
         advanceTo('recommend')
         break
       case 'skip_recommend':
-        addUserMessage('Skip')
-        advanceTo('compose')
+        addUserMessage(oc(t, 'user_echo.skip'))
+        advanceTo('optional_social')
         break
       case 'use_bio': {
-        const lastComposed = [...messages].reverse().find(m => m.composedBio)?.composedBio || ''
+        const lastMessage = [...messages].reverse().find(m => m.composedBio)
+        const lastComposed = lastMessage?.composedBio || ''
+        const kind = lastMessage?.composedBioKind || 'personal'
+        const intel =
+          kind === 'professional'
+            ? ((lastMessage?.composedCompanyIntel || lastComposedCompanyIntelRef.current || '').trim())
+            : ''
         if (lastComposed) {
-          addUserMessage('Use this')
-          const newCollected = { ...collected, bio: lastComposed }
+          addUserMessage(oc(t, 'user_echo.use_this'))
+          const newCollected =
+            kind === 'professional'
+              ? {
+                  ...collected,
+                  professionalBio: lastComposed,
+                  companyIntel: intel || collected.companyIntel,
+                  professionalSectionComplete: true,
+                  linkedinDone: true,
+                }
+              : { ...collected, bio: lastComposed, personalSectionComplete: true }
           setCollected(newCollected)
-          await saveField('bio', lastComposed)
-          addSteveMessage('Your identity is set! 🎯')
-          // Removed automatic enrichment call per requirements - now admin-only feature on edit profile
-          setTimeout(() => advanceToComplete(), 800)
+          await saveField(kind === 'professional' ? 'professional_about' : 'bio', lastComposed)
+          if (kind === 'professional' && intel) {
+            await saveField('professional_company_intel', intel)
+          }
+          addSteveMessage(
+            kind === 'professional' ? oc(t, 'messages.bio_saved_professional') : oc(t, 'messages.bio_saved_personal'),
+          )
+          setTimeout(
+            () => advanceTo(nextSectionAfterCompletion(newCollected), newCollected),
+            800,
+          )
         }
         break
       }
+      case 'bio_more_natural':
+      case 'bio_shorter':
+      case 'bio_more_professional': {
+        const lastMessage = [...messages].reverse().find(m => m.composedBio)
+        const kind = lastMessage?.composedBioKind || 'personal'
+        const style =
+          value === 'bio_shorter'
+            ? 'shorter'
+            : value === 'bio_more_professional'
+              ? 'more_professional'
+              : 'more_natural'
+        addUserMessage(
+          value === 'bio_shorter'
+            ? oc(t, 'user_echo.shorter')
+            : value === 'bio_more_professional'
+              ? oc(t, 'user_echo.more_professional')
+              : oc(t, 'user_echo.more_natural'),
+        )
+        await composeBio(kind, collected, style, lastMessage?.composedBio || '')
+        break
+      }
       case 'edit_bio': {
-        const bioToEdit = [...messages].reverse().find(m => m.composedBio)?.composedBio || ''
-        addUserMessage('Let me edit')
+        const lastMessage = [...messages].reverse().find(m => m.composedBio)
+        const bioToEdit = lastMessage?.composedBio || ''
+        addUserMessage(oc(t, 'user_echo.let_me_edit'))
         setInputValue(bioToEdit)
-        addSteveMessage("Go ahead — tweak it however you'd like:", {
+        addSteveMessage(oc(t, 'messages.manual_bio_edit'), {
           inputType: 'textarea',
-          inputPlaceholder: 'Edit your identity...',
+          inputPlaceholder: oc(t, 'placeholders.edit_bio'),
         })
+        setStage('manual_bio_edit')
+        saveState('manual_bio_edit', collected)
         break
       }
       case 'redo_bio':
-        addUserMessage('Start fresh')
-        addSteveMessage('No problem — write your own intro. 2-3 sentences is perfect.', {
+        lastComposedCompanyIntelRef.current = ''
+        setCollected(prev => ({ ...prev, companyIntel: '' }))
+        addUserMessage(oc(t, 'user_echo.start_fresh'))
+        addSteveMessage(oc(t, 'messages.redo_bio'), {
           inputType: 'textarea',
-          inputPlaceholder: 'Write your intro...',
+          inputPlaceholder: oc(t, 'placeholders.write_bio'),
         })
+        setStage('manual_bio_edit')
+        saveState('manual_bio_edit', collected)
+        break
+      case 'finish_profile_review':
+        addUserMessage(oc(t, 'user_echo.looks_good'))
+        addSteveMessage(oc(t, 'messages.profile_sections_set'))
+        setTimeout(() => advanceToComplete(), 800)
         break
       case 'start_tour':
-        addUserMessage('Show me around')
+        addUserMessage(oc(t, 'user_echo.show_around'))
+        await completeOnboarding()
         setTourStep(0)
         break
       case 'go_feed':
         await completeOnboarding()
         onComplete()
+        break
+      case 'edit_profile':
+        addUserMessage(oc(t, 'user_echo.add_edit_profile'))
+        await completeOnboarding()
+        window.location.href = '/profile'
         break
       case 'create_community':
         await completeOnboarding()
@@ -1057,10 +1808,10 @@ export default function OnboardingChat({
 
     if (STAGES_REQUIRING_VALIDATION.includes(stage) && looksLikeMeaninglessInput(val)) {
       gibberishReturnStage.current = stage
-      addSteveMessage("Hmm, that doesn't look quite right. Would you like to skip this question?", {
+      addSteveMessage(oc(t, 'messages.gibberish'), {
         options: [
-          { label: 'Yes, skip it', value: 'gibberish_skip', icon: '⏭️' },
-          { label: 'No, let me try again', value: 'gibberish_retry', icon: '✏️' },
+          ocOpt(t, 'yes_skip', 'gibberish_skip', '⏭️'),
+          ocOpt(t, 'no_try_again', 'gibberish_retry', '✏️'),
         ],
       })
       return
@@ -1072,9 +1823,9 @@ export default function OnboardingChat({
         const first = parts[0] || ''
         const last = parts.slice(1).join(' ') || ''
         if (!first) {
-          addSteveMessage("I need at least a first name! What's your first and last name?", {
+          addSteveMessage(oc(t, 'messages.name_need_first'), {
             inputType: 'text',
-            inputPlaceholder: 'First Last',
+            inputPlaceholder: oc(t, 'placeholders.first_last'),
           })
           return
         }
@@ -1120,12 +1871,12 @@ export default function OnboardingChat({
               setCollected(newCollected)
               advanceTo('location_confirm', newCollected)
             } else {
-              addSteveMessage("I couldn't quite place that location. No worries — you can set it later from your profile.")
+              addSteveMessage(oc(t, 'messages.location_fail'))
               setTimeout(() => advanceTo('photo'), 800)
             }
           } catch {
             setIsTyping(false)
-            addSteveMessage("I couldn't quite place that location. No worries — you can set it later from your profile.")
+            addSteveMessage(oc(t, 'messages.location_fail'))
             setTimeout(() => advanceTo('photo'), 800)
           }
         }
@@ -1140,19 +1891,14 @@ export default function OnboardingChat({
       case 'talk_all_day': {
         const newCollected = { ...collected, talkAllDay: val }
         setCollected(newCollected)
-        const reactions = ['Love it!', 'Great taste!', 'Interesting!', 'Nice!']
-        addSteveMessage(reactions[Math.floor(Math.random() * reactions.length)])
+        addSteveMessage(reactionMessage(t))
         setTimeout(() => advanceTo('reach_out', newCollected), 600)
         break
       }
       case 'reach_out': {
         const newCollected = { ...collected, reachOut: val }
         setCollected(newCollected)
-        const nextProf =
-          mode === 'profile_builder' && profileBuilderPostPbRef.current.skipProfessional
-            ? 'linkedin'
-            : 'professional'
-        advanceTo(nextProf, newCollected)
+        advanceTo('journey', newCollected)
         break
       }
       case 'pb_edit_field': {
@@ -1209,18 +1955,39 @@ export default function OnboardingChat({
         advanceTo('professional_confirm', newCollected)
         break
       }
-      case 'recommend': {
-        const newCollected = { ...collected, recommend: val }
+      case 'professional_associations': {
+        const newCollected = { ...collected, professionalAssociations: val }
         setCollected(newCollected)
-        addSteveMessage('Good pick! 📚')
-        setTimeout(() => advanceTo('compose', newCollected), 600)
+        advanceTo('professional_strengths', newCollected)
+        break
+      }
+      case 'professional_strengths': {
+        const newCollected = { ...collected, professionalStrengths: val }
+        setCollected(newCollected)
+        advanceTo('linkedin', newCollected)
         break
       }
       case 'linkedin': {
-        const newCollected = { ...collected, linkedin: val }
+        const parsed = validateLinkedInProfileUrl(t, val)
+        if (!parsed.ok) {
+          addSteveMessage(parsed.error || oc(t, 'validation.linkedin_fallback'), {
+            inputType: 'url',
+            inputPlaceholder: oc(t, 'placeholders.linkedin'),
+            options: [ocOpt(t, 'skip', 'skip_linkedin', '⏭️')],
+          })
+          return
+        }
+        const newCollected = { ...collected, linkedin: parsed.url || val, linkedinDone: true }
         setCollected(newCollected)
-        await saveField('linkedin', val)
-        addSteveMessage('Perfect, that will help me learn more about your background!')
+        await saveField('linkedin', parsed.url || val)
+        addSteveMessage(oc(t, 'messages.linkedin_saved'))
+        setTimeout(() => advanceTo('professional_bio_review', newCollected), 600)
+        break
+      }
+      case 'recommend': {
+        const newCollected = { ...collected, recommend: val }
+        setCollected(newCollected)
+        addSteveMessage(oc(t, 'messages.recommend_ok'))
         setTimeout(() => advanceTo('optional_social', newCollected), 600)
         break
       }
@@ -1235,26 +2002,64 @@ export default function OnboardingChat({
               body: JSON.stringify({ socialProvidedLinks: links }),
             })
           } catch {}
-          addSteveMessage("Saved — I'll only use those profile URLs when you want richer profiling.")
+          addSteveMessage(oc(t, 'messages.social_saved'))
         } else {
-          addSteveMessage('No problem — you can add links later from your profile.')
+          addSteveMessage(oc(t, 'messages.social_skip'))
         }
-        setTimeout(() => advanceTo('journey', collected), 600)
+        setTimeout(() => advanceTo('personal_bio_review', collected), 600)
         break
       }
       case 'journey': {
         const newCollected = { ...collected, journey: val }
         setCollected(newCollected)
-        addSteveMessage("Thanks for sharing — this helps paint a fuller picture of who you are.")
+        addSteveMessage(oc(t, 'messages.journey_thanks'))
         setTimeout(() => advanceTo('recommend', newCollected), 800)
         break
       }
-      case 'compose': {
-        const newCollected = { ...collected, bio: val }
+      case 'manual_bio_edit': {
+        const lastKind = [...messages].reverse().find(m => m.composedBio)?.composedBioKind || 'personal'
+        const intel = lastComposedCompanyIntelRef.current.trim()
+        const newCollected =
+          lastKind === 'professional'
+            ? {
+                ...collected,
+                professionalBio: val,
+                companyIntel: intel || collected.companyIntel,
+                professionalSectionComplete: true,
+                linkedinDone: true,
+              }
+            : { ...collected, bio: val, personalSectionComplete: true }
         setCollected(newCollected)
-        await saveField('bio', val)
-        addSteveMessage('Your identity is set! 🎯')
-        setTimeout(() => advanceToComplete(), 800)
+        await saveField(lastKind === 'professional' ? 'professional_about' : 'bio', val)
+        if (lastKind === 'professional' && intel) {
+          await saveField('professional_company_intel', intel)
+        }
+        addSteveMessage(
+          lastKind === 'professional' ? oc(t, 'messages.bio_saved_professional') : oc(t, 'messages.bio_saved_personal'),
+        )
+        setTimeout(
+          () => advanceTo(nextSectionAfterCompletion(newCollected), newCollected),
+          800,
+        )
+        break
+      }
+      case 'b2b_org_type': {
+        const newCollected = { ...collected, b2bOrgTypeHint: val }
+        b2bOrgRef.current = val
+        setCollected(newCollected)
+        await runB2bBootstrap([], newCollected)
+        break
+      }
+      case 'b2b_parent_name': {
+        const newCollected = { ...collected, b2bParentName: val }
+        b2bParentRef.current = val
+        setCollected(newCollected)
+        advanceTo('b2b_org_type', newCollected)
+        break
+      }
+      case 'b2b_sub_names': {
+        const parts = val.split(',').map(s => s.trim()).filter(Boolean)
+        await runB2bBootstrap(parts, collected)
         break
       }
       default:
@@ -1263,6 +2068,9 @@ export default function OnboardingChat({
   }
 
   function detectOffScript(currentStage: Stage, input: string): boolean {
+    if (currentStage === 'b2b_network_size' || currentStage === 'b2b_tier_guidance' || currentStage === 'b2b_org_type' || currentStage === 'b2b_parent_name' || currentStage === 'b2b_sub_names' || currentStage === 'manual_bio_edit') {
+      return false
+    }
     const lower = input.toLowerCase()
     if (currentStage === 'name') {
       return lower.length > 60 || lower.includes('?') || /^(hey|hi|hello|what|how|can|tell|who)/.test(lower)
@@ -1288,16 +2096,23 @@ export default function OnboardingChat({
     setIsTyping(true)
     try {
       const questionMap: Record<string, string> = {
-        name: "What's your first and last name?",
-        location: 'Where are you based?',
-        professional: 'What do you do professionally?',
-        linkedin: 'Got a LinkedIn URL?',
-        optional_social: 'Optional social profile URLs?',
-        journey: 'What should your network remember about your journey?',
-        talk_all_day: 'What are the things you could talk about all day?',
-        recommend: 'Recommend a book, movie, or TV show to your network.',
-        reach_out: 'What do you want people to reach out to you about?',
-        pb_edit_field: 'Update this profile field.',
+        name: oc(t, 'off_script_questions.name'),
+        location: oc(t, 'off_script_questions.location'),
+        professional: oc(t, 'off_script_questions.professional'),
+        linkedin: oc(t, 'off_script_questions.linkedin'),
+        optional_social: oc(t, 'off_script_questions.optional_social'),
+        journey: oc(t, 'off_script_questions.journey'),
+        talk_all_day: oc(t, 'off_script_questions.talk_all_day'),
+        recommend: oc(t, 'off_script_questions.recommend'),
+        reach_out: oc(t, 'off_script_questions.reach_out'),
+        pb_edit_field: oc(t, 'off_script_questions.pb_edit_field'),
+        b2b_network_size: oc(t, 'off_script_questions.b2b_network_size'),
+        b2b_tier_guidance: oc(t, 'off_script_questions.b2b_tier_guidance'),
+        b2b_org_type: oc(t, 'copy.org_type_prompt'),
+        b2b_parent_name: oc(t, 'off_script_questions.b2b_parent_name'),
+        b2b_sub_names: oc(t, 'off_script_questions.b2b_sub_names'),
+        cv_upload: oc(t, 'off_script_questions.cv_upload'),
+        cv_review: oc(t, 'off_script_questions.cv_review'),
       }
       const r = await fetch('/api/onboarding/redirect', {
         method: 'POST',
@@ -1311,12 +2126,12 @@ export default function OnboardingChat({
       })
       const j = await r.json().catch(() => null)
       setIsTyping(false)
-      const redirectMsg = j?.message || "Interesting! Let's come back to that. For now, let's finish getting you set up."
+      const redirectMsg = j?.message || oc(t, 'messages.off_script_fallback')
       setMessages(prev => [...prev, { from: 'steve', text: redirectMsg }])
       scrollToBottom()
     } catch {
       setIsTyping(false)
-      setMessages(prev => [...prev, { from: 'steve', text: "Great thought! Let's finish setting up your profile first." }])
+      setMessages(prev => [...prev, { from: 'steve', text: oc(t, 'messages.off_script_error') }])
       scrollToBottom()
     }
   }
@@ -1330,20 +2145,20 @@ export default function OnboardingChat({
       const r = await fetch('/upload_profile_picture', { method: 'POST', credentials: 'include', body: fd })
       const j = await r.json().catch(() => null)
       if (r.ok && j?.success) {
-        addUserMessage('📷 Photo uploaded!')
-        addSteveMessage('Looking great! 👌')
+        addUserMessage(oc(t, 'user_echo.photo_uploaded'))
+        addSteveMessage(oc(t, 'messages.photo_great'))
         setPicFile(null)
-        setTimeout(() => advanceTo('talk_all_day'), 600)
+        setTimeout(() => advanceTo('section_picker'), 600)
       } else {
-        addSteveMessage(j?.error || "Hmm, that didn't work. Try again or skip for now.", {
+        addSteveMessage(j?.error || oc(t, 'errors.photo_upload'), {
           photoUpload: true,
-          options: [{ label: 'Skip for now', value: 'skip_photo', icon: '⏭️' }],
+          options: [ocOpt(t, 'skip_photo', 'skip_photo', '⏭️')],
         })
       }
     } catch {
-      addSteveMessage("Network issue — try again or skip for now.", {
+      addSteveMessage(oc(t, 'errors.photo_network'), {
         photoUpload: true,
-        options: [{ label: 'Skip for now', value: 'skip_photo', icon: '⏭️' }],
+        options: [ocOpt(t, 'skip_photo', 'skip_photo', '⏭️')],
       })
     } finally {
       setUploadingPic(false)
@@ -1354,7 +2169,100 @@ export default function OnboardingChat({
     const f = e.target.files?.[0]
     if (f) {
       setPicFile(f)
-      try { setPicPreview(URL.createObjectURL(f)) } catch {}
+      try {
+        setPicPreview(URL.createObjectURL(f))
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  function handleCvFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if (f) setCvFile(f)
+  }
+
+  async function handleCvParseUpload() {
+    if (!cvFile) return
+    setCvUploading(true)
+    setIsTyping(true)
+    addSteveMessage(oc(t, 'messages.reading_cv'))
+    try {
+      const fd = new FormData()
+      fd.append('file', cvFile)
+      const r = await fetch('/api/onboarding/parse_cv?persist=1', { method: 'POST', credentials: 'include', body: fd })
+      const j = await r.json().catch(() => null)
+      setIsTyping(false)
+      if (r.ok && j?.success) {
+        const wh: WorkHistoryRow[] = Array.isArray(j.work_history)
+          ? j.work_history.map((row: Record<string, unknown>) => ({
+              title: String(row.title ?? ''),
+              company: String(row.company ?? ''),
+              location: String(row.location ?? ''),
+              start: String(row.start ?? ''),
+              end: String(row.end ?? ''),
+              description: String(row.description ?? ''),
+            }))
+          : []
+        const roleDesc = String(j.current_role_description || '').trim()
+        const newCollected: Collected = {
+          ...collected,
+          role: String(j.role || ''),
+          company: String(j.company || ''),
+          currentRoleStartYm: String(j.current_role_start_ym || ''),
+          workHistory: wh,
+          professionalBio: roleDesc || collected.professionalBio || '',
+        }
+        setCollected(newCollected)
+        setCvFile(null)
+        try {
+          if (cvFileInputRef.current) cvFileInputRef.current.value = ''
+        } catch {}
+        const priorN = wh.length
+        const startLine = newCollected.currentRoleStartYm
+          ? oc(t, 'messages.cv_started', { ym: newCollected.currentRoleStartYm })
+          : ''
+        const roleLine = newCollected.role?.trim() || '—'
+        const compLine = newCollected.company?.trim() || '—'
+        addSteveMessage(
+          oc(t, 'messages.cv_extract', {
+            role: roleLine,
+            company: compLine,
+            startLine,
+            priorCount: priorN,
+            storageNote: j.cv_stored ? oc(t, 'messages.cv_stored') : oc(t, 'messages.cv_not_stored'),
+          }),
+          {
+            options: [
+              ocOpt(t, 'confirm_cv', 'confirm_cv_import', '✅'),
+              ocOpt(t, 'type_instead', 'reject_cv_import', '✏️'),
+            ],
+          },
+        )
+        setStage('cv_review')
+        saveState('cv_review', newCollected)
+      } else {
+        const err = (j?.error as string) || oc(t, 'errors.cv_read')
+        addSteveMessage(err, {
+          cvUpload: true,
+          options: [
+            ocOpt(t, 'try_another_file', 'cv_retry_pick', '↻'),
+            ocOpt(t, 'type_manually', 'cv_skip_to_manual', '✏️'),
+            ocOpt(t, 'go_back', 'go_back', '↩️'),
+          ],
+        })
+      }
+    } catch {
+      setIsTyping(false)
+      addSteveMessage(oc(t, 'errors.cv_network'), {
+        cvUpload: true,
+        options: [
+          ocOpt(t, 'try_again', 'cv_retry_pick', '↻'),
+          ocOpt(t, 'type_manually_short', 'cv_skip_to_manual', '✏️'),
+        ],
+      })
+    } finally {
+      setCvUploading(false)
     }
   }
 
@@ -1363,11 +2271,18 @@ export default function OnboardingChat({
   }, [messages, isTyping, scrollToBottom])
 
   const lastSteveMsg = [...messages].reverse().find(m => m.from === 'steve')
-  const showInput = lastSteveMsg?.inputType && stage !== 'enriching' && stage !== 'review' && stage !== 'complete' && !composingBio
+  const showCvUpload = Boolean(lastSteveMsg?.cvUpload && stage === 'cv_upload')
+  const showInput =
+    Boolean(lastSteveMsg?.inputType) &&
+    stage !== 'enriching' &&
+    stage !== 'review' &&
+    stage !== 'complete' &&
+    !composingBio &&
+    !showCvUpload
   const showPhotoUpload = lastSteveMsg?.photoUpload && stage === 'photo'
   const keyboardLift = keyboardOffset > 0 ? Math.max(0, keyboardOffset - safeBottomPx) : 0
   const composerBottom = `${keyboardLift}px`
-  const composerClearance = showPhotoUpload ? 124 : showInput ? 112 : 24
+  const composerClearance = showPhotoUpload || showCvUpload ? 124 : showInput ? 112 : 24
   const composerPaddingBottom = keyboardLift > 0 ? '8px' : `calc(env(safe-area-inset-bottom, 0px) + 8px)`
 
   if (booting) {
@@ -1381,7 +2296,7 @@ export default function OnboardingChat({
             onError={() => setHeaderLogoSrc('/static/cpoint-logo.svg')}
           />
           <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-[#4db6ac] animate-spin" />
-          <div className="text-sm text-white/65">Starting your profile setup...</div>
+          <div className="text-sm text-white/65">{oc(t, 'ui.booting')}</div>
         </div>
       </div>
     )
@@ -1405,16 +2320,21 @@ export default function OnboardingChat({
               S
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-semibold text-white">Steve</div>
+              <div className="text-xs font-semibold text-white">{oc(t, 'ui.steve')}</div>
             </div>
             <button
               type="button"
-              onClick={onExit}
+              onClick={() => setShowDeferConfirm(true)}
               className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-medium text-white/60 hover:text-white hover:border-white/20 transition"
             >
-              Exit for now
+              {oc(t, 'ui.exit_for_now')}
             </button>
-            <div className="text-[10px] text-white/30">Step {Math.min(Math.ceil(stageProgress(stage) / (100 / USER_FACING_STEPS)), USER_FACING_STEPS)} of {USER_FACING_STEPS}</div>
+            <div className="text-[10px] text-white/30">
+              {oc(t, 'ui.step_of', {
+                current: Math.min(Math.ceil(stageProgress(stage) / (100 / USER_FACING_STEPS)), USER_FACING_STEPS),
+                total: USER_FACING_STEPS,
+              })}
+            </div>
           </div>
         </div>
         {/* Progress bar */}
@@ -1440,16 +2360,64 @@ export default function OnboardingChat({
                     <div className="bg-white/[0.06] border border-white/[0.08] rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-[13px] text-white/90 leading-relaxed whitespace-pre-line">
                       {msg.text}
                     </div>
+                    {msg.sectionCard && (
+                      <div className="rounded-2xl border border-[#4db6ac]/30 bg-[#4db6ac]/[0.06] px-4 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]">
+                          {msg.sectionCard.title}
+                        </div>
+                        <div className="mt-1 text-xs leading-relaxed text-white/70">
+                          {msg.sectionCard.subtitle}
+                        </div>
+                        <div className="mt-3 grid gap-2">
+                          {msg.sectionCard.steps.map((step, idx) => (
+                            <div
+                              key={step}
+                              className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[12px] text-white/60"
+                            >
+                              {idx + 1}. {step}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {msg.sectionPicker && (
+                      <div className="grid gap-2 rounded-2xl border border-[#4db6ac]/25 bg-[#4db6ac]/[0.05] px-4 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]">
+                          {oc(t, 'ui.choose_next_section')}
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOptionClick('choose_personal_section')}
+                            className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-left transition hover:border-[#4db6ac]/35 hover:bg-[#4db6ac]/10"
+                          >
+                            <div className="text-[12px] font-semibold text-white">{oc(t, 'ui.personal_identity')}</div>
+                            <div className="mt-1 text-[11px] text-white/55">
+                              {oc(t, 'ui.personal_card_meta', { status: msg.sectionPicker.personalStatus })}
+                            </div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOptionClick('choose_professional_section')}
+                            className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-left transition hover:border-[#4db6ac]/35 hover:bg-[#4db6ac]/10"
+                          >
+                            <div className="text-[12px] font-semibold text-white">{oc(t, 'ui.professional_identity')}</div>
+                            <div className="mt-1 text-[11px] text-white/55">
+                              {oc(t, 'ui.professional_card_meta', { status: msg.sectionPicker.professionalStatus })}
+                            </div>
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     {/* Quick reply buttons */}
                     {msg.options && i === messages.length - 1 && stage !== 'complete' && (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                         {msg.options.map(opt => (
                           <button
                             key={opt.value}
                             onClick={() => handleOptionClick(opt.value)}
-                            className="px-3.5 py-2 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 text-[12px] font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20 transition-colors"
+                            className="rounded-xl border border-[#4db6ac]/35 bg-black/25 px-4 py-2.5 text-left text-[12px] font-semibold text-[#d5fffb] transition-colors hover:bg-[#4db6ac]/10"
                           >
-                            {opt.icon && <span className="mr-1.5">{opt.icon}</span>}
                             {opt.label}
                           </button>
                         ))}
@@ -1457,35 +2425,86 @@ export default function OnboardingChat({
                     )}
                     {/* Complete stage options persist */}
                     {msg.options && stage === 'complete' && i === messages.length - 1 && (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                         {msg.options.map(opt => (
                           <button
                             key={opt.value}
                             onClick={() => handleOptionClick(opt.value)}
-                            className="px-3.5 py-2 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 text-[12px] font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20 transition-colors"
+                            className="rounded-xl border border-[#4db6ac]/35 bg-black/25 px-4 py-2.5 text-left text-[12px] font-semibold text-[#d5fffb] transition-colors hover:bg-[#4db6ac]/10"
                           >
-                            {opt.icon && <span className="mr-1.5">{opt.icon}</span>}
                             {opt.label}
                           </button>
                         ))}
                       </div>
                     )}
                     {/* Composed bio preview with action buttons */}
-                    {msg.composedBio && i === messages.length - 1 && stage === 'compose' && !composingBio && (
+                    {msg.composedBio && i === messages.length - 1 && (stage === 'personal_bio_review' || stage === 'professional_bio_review') && !composingBio && (
                       <div className="space-y-2 mt-1">
                         <div className="rounded-xl border border-[#4db6ac]/20 bg-[#4db6ac]/5 px-3.5 py-3">
+                          <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#4db6ac]">
+                            {msg.composedBioKind === 'professional'
+                              ? oc(t, 'ui.professional_bio_label')
+                              : oc(t, 'ui.personal_bio_label')}
+                          </div>
                           <div className="text-[13px] text-white/90 leading-relaxed italic">"{msg.composedBio}"</div>
                         </div>
+                        {msg.composedBioKind === 'professional' && msg.composedCompanyIntel ? (
+                          <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-3">
+                            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/50">
+                              {oc(t, 'ui.company_intel')}
+                            </div>
+                            <div className="text-[13px] text-white/90 leading-relaxed italic">"{msg.composedCompanyIntel}"</div>
+                          </div>
+                        ) : null}
                         <div className="flex flex-wrap gap-2">
                           <button onClick={() => handleOptionClick('use_bio')} className="px-3.5 py-2 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 text-[12px] font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20 transition-colors">
-                            ✅ Use this
+                            {oc(t, 'options.use_this')}
+                          </button>
+                          <button onClick={() => handleOptionClick('bio_more_natural')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
+                            {oc(t, 'options.more_natural')}
+                          </button>
+                          <button onClick={() => handleOptionClick('bio_shorter')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
+                            {oc(t, 'options.shorter')}
+                          </button>
+                          <button onClick={() => handleOptionClick('bio_more_professional')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
+                            {oc(t, 'options.more_professional')}
                           </button>
                           <button onClick={() => handleOptionClick('edit_bio')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
-                            ✏️ Let me edit
+                            {oc(t, 'options.edit')}
                           </button>
                           <button onClick={() => handleOptionClick('redo_bio')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
-                            🔄 Start fresh
+                            {oc(t, 'options.start_fresh')}
                           </button>
+                        </div>
+                      </div>
+                    )}
+                    {msg.profileReview && i === messages.length - 1 && (
+                      <div className="space-y-2 mt-1">
+                        <div className="rounded-xl border border-[#4db6ac]/20 bg-[#4db6ac]/5 px-3.5 py-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#4db6ac]">
+                            {oc(t, 'ui.personal_bio_label')}
+                          </div>
+                          <div className="mt-2 text-[13px] leading-relaxed text-white/90">
+                            {msg.profileReview.personalBio || oc(t, 'ui.not_added_yet')}
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/50">
+                            {oc(t, 'ui.professional_bio_label')}
+                          </div>
+                          <div className="mt-2 text-[13px] leading-relaxed text-white/90">
+                            {msg.profileReview.professionalBio || oc(t, 'ui.not_added_yet')}
+                          </div>
+                          <div className="mt-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[12px] text-white/65">
+                            {oc(t, 'ui.linkedin_row', {
+                              status: msg.profileReview.linkedinAdded ? oc(t, 'ui.added') : oc(t, 'ui.not_added'),
+                            })}
+                          </div>
+                          <div className="mt-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[12px] text-white/65">
+                            {oc(t, 'ui.company_intel_row', {
+                              status: msg.profileReview.companyIntelAdded ? oc(t, 'ui.added') : oc(t, 'ui.not_added'),
+                            })}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -1511,21 +2530,21 @@ export default function OnboardingChat({
                                   onClick={() => handleCardAction(card.id, 'accepted')}
                                   className="px-3 py-1.5 rounded-lg bg-[#4db6ac]/15 border border-[#4db6ac]/30 text-[11px] font-medium text-[#4db6ac]"
                                 >
-                                  ✅ Accept
+                                  ✅ {oc(t, 'options.accept')}
                                 </button>
                                 <button
                                   onClick={() => handleCardAction(card.id, 'dismissed')}
                                   className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-[11px] font-medium text-white/50"
                                 >
-                                  ❌ Dismiss
+                                  ❌ {oc(t, 'options.dismiss')}
                                 </button>
                               </div>
                             )}
                             {card.status === 'accepted' && (
-                              <div className="text-[10px] text-[#4db6ac]/70 mt-1.5">✅ Added to your profile</div>
+                              <div className="text-[10px] text-[#4db6ac]/70 mt-1.5">✅ {oc(t, 'ui.added_to_profile')}</div>
                             )}
                             {card.status === 'dismissed' && (
-                              <div className="text-[10px] text-white/30 mt-1.5">Dismissed</div>
+                              <div className="text-[10px] text-white/30 mt-1.5">{oc(t, 'ui.dismissed')}</div>
                             )}
                           </div>
                         ))}
@@ -1534,7 +2553,7 @@ export default function OnboardingChat({
                             onClick={handleFinishReview}
                             className="w-full mt-2 px-4 py-3 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110 transition"
                           >
-                            Continue
+                            {oc(t, 'ui.continue_btn')}
                           </button>
                         )}
                       </div>
@@ -1558,6 +2577,16 @@ export default function OnboardingChat({
                 S
               </div>
               <div className="bg-white/[0.06] border border-white/[0.08] rounded-2xl rounded-tl-sm px-4 py-3">
+                {bioDraftingKind && (
+                  <div className="mb-2 text-[12px] font-medium text-white/75">
+                    {oc(t, 'ui.drafting_bio', {
+                      kind:
+                        bioDraftingKind === 'professional'
+                          ? oc(t, 'ui.bio_kind_professional')
+                          : oc(t, 'ui.bio_kind_personal'),
+                    })}
+                  </div>
+                )}
                 <div className="flex gap-1">
                   <div className="w-2 h-2 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '0ms' }} />
                   <div className="w-2 h-2 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -1594,7 +2623,7 @@ export default function OnboardingChat({
             />
             <div className="flex items-center gap-3">
               {picPreview ? (
-                <img src={picPreview} alt="Preview" className="w-14 h-14 rounded-full object-cover border-2 border-[#4db6ac]/40" />
+                <img src={picPreview} alt={oc(t, 'ui.preview_alt')} className="w-14 h-14 rounded-full object-cover border-2 border-[#4db6ac]/40" />
               ) : (
                 <div
                   onClick={() => fileInputRef.current?.click()}
@@ -1609,7 +2638,7 @@ export default function OnboardingChat({
                     onClick={() => fileInputRef.current?.click()}
                     className="px-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white/70 hover:bg-white/[0.1] transition w-full"
                   >
-                    Choose a photo
+                    {oc(t, 'ui.choose_photo')}
                   </button>
                 ) : (
                   <button
@@ -1617,7 +2646,64 @@ export default function OnboardingChat({
                     disabled={uploadingPic}
                     className="px-4 py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110 transition w-full disabled:opacity-50"
                   >
-                    {uploadingPic ? 'Uploading...' : 'Upload photo'}
+                    {uploadingPic ? oc(t, 'ui.uploading') : oc(t, 'ui.upload_photo')}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCvUpload && (
+        <div
+          className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3"
+          style={{
+            bottom: composerBottom,
+            position: 'fixed',
+            left: '0',
+            right: '0',
+            zIndex: 1000,
+            paddingBottom: composerPaddingBottom,
+          }}
+        >
+          <div className="max-w-lg mx-auto">
+            <input
+              ref={cvFileInputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              onChange={handleCvFileSelect}
+              className="hidden"
+            />
+            <div className="flex items-center gap-3">
+              <div
+                onClick={() => !cvUploading && cvFileInputRef.current?.click()}
+                className="w-14 h-14 rounded-xl border-2 border-dashed border-white/20 flex items-center justify-center cursor-pointer hover:border-[#4db6ac]/50 transition shrink-0"
+                role="presentation"
+              >
+                <i className="fa-solid fa-file-pdf text-white/35 text-lg" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] text-white/50 truncate mb-1.5">
+                  {cvFile ? cvFile.name : oc(t, 'ui.no_file')}
+                </div>
+                {!cvFile ? (
+                  <button
+                    type="button"
+                    onClick={() => cvFileInputRef.current?.click()}
+                    disabled={cvUploading}
+                    className="px-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white/70 hover:bg-white/[0.1] transition w-full disabled:opacity-50"
+                  >
+                    {oc(t, 'ui.choose_pdf')}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleCvParseUpload}
+                    disabled={cvUploading}
+                    className="px-4 py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110 transition w-full disabled:opacity-50"
+                  >
+                    {cvUploading ? oc(t, 'ui.reading_cv') : oc(t, 'ui.upload_extract')}
                   </button>
                 )}
               </div>
@@ -1651,7 +2737,7 @@ export default function OnboardingChat({
                     handleSubmit()
                   }
                 }}
-                placeholder={lastSteveMsg.inputPlaceholder || 'Type here...'}
+                placeholder={lastSteveMsg.inputPlaceholder || oc(t, 'placeholders.type_here')}
                 rows={3}
                 className="flex-1 px-3.5 py-2.5 rounded-xl border border-white/10 bg-white/[0.04] text-sm text-white placeholder-white/30 focus:border-[#4db6ac]/50 focus:outline-none resize-none"
               />
@@ -1667,7 +2753,7 @@ export default function OnboardingChat({
                     handleSubmit()
                   }
                 }}
-                placeholder={lastSteveMsg?.inputPlaceholder || 'Type here...'}
+                placeholder={lastSteveMsg?.inputPlaceholder || oc(t, 'placeholders.type_here')}
                 className="flex-1 px-3.5 py-2.5 rounded-xl border border-white/10 bg-white/[0.04] text-sm text-white placeholder-white/30 focus:border-[#4db6ac]/50 focus:outline-none"
                 autoFocus
               />
@@ -1683,20 +2769,54 @@ export default function OnboardingChat({
         </div>
       )}
 
+      {showDeferConfirm && (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          <div className="w-full max-w-sm rounded-3xl border border-[#4db6ac]/25 bg-[#0d1214] p-5 shadow-[0_24px_80px_rgba(77,182,172,0.16)]">
+            <div className="text-lg font-semibold text-white">{oc(t, 'ui.need_more_time')}</div>
+            <div className="mt-3 text-sm leading-relaxed text-white/70">{oc(t, 'ui.defer_body')}</div>
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeferError('')
+                  setShowDeferConfirm(false)
+                }}
+                className="flex-1 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 px-4 py-2.5 text-sm font-semibold text-[#d5fffb] transition hover:bg-[#4db6ac]/15"
+              >
+                {oc(t, 'ui.keep_going')}
+              </button>
+              <button
+                type="button"
+                onClick={finishLater}
+                disabled={deferringProfile}
+                className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white/75 transition hover:bg-white/10 disabled:opacity-50"
+              >
+                {deferringProfile ? oc(t, 'ui.saving') : oc(t, 'ui.finish_later_btn')}
+              </button>
+            </div>
+            {deferError && (
+              <div className="mt-3 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs leading-relaxed text-red-100">
+                {deferError}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Platform tour modal */}
       {tourStep !== null && (
         <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center px-4" onClick={() => setTourStep(null)}>
           <div className="w-full max-w-sm bg-[#111] border border-white/10 rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="px-6 pt-6 pb-4 flex flex-col items-center text-center">
               <div className="w-16 h-16 rounded-2xl bg-[#4db6ac]/10 border border-[#4db6ac]/20 flex items-center justify-center mb-4">
-                <i className={`${TOUR_STEPS[tourStep].icon} text-2xl text-[#4db6ac]`} />
+                <i className={`${tourSteps[tourStep].icon} text-2xl text-[#4db6ac]`} />
               </div>
-              <div className="text-base font-semibold text-white mb-1.5">{TOUR_STEPS[tourStep].title}</div>
-              <div className="text-sm text-white/60 leading-relaxed">{TOUR_STEPS[tourStep].description}</div>
+              <div className="text-base font-semibold text-white mb-1.5">{tourSteps[tourStep].title}</div>
+              <div className="text-sm text-white/60 leading-relaxed">{tourSteps[tourStep].description}</div>
             </div>
             {/* Dot indicators */}
             <div className="flex justify-center gap-1.5 pb-3">
-              {TOUR_STEPS.map((_, i) => (
+              {tourSteps.map((_, i) => (
                 <div
                   key={i}
                   className={`w-1.5 h-1.5 rounded-full transition-colors ${i === tourStep ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
@@ -1709,12 +2829,14 @@ export default function OnboardingChat({
                 onClick={() => setTourStep(tourStep > 0 ? tourStep - 1 : null)}
                 className="px-4 py-2 rounded-lg text-xs font-medium text-white/50 hover:text-white/80 transition-colors"
               >
-                {tourStep > 0 ? 'Back' : 'Skip'}
+                {tourStep > 0 ? oc(t, 'ui.tour_back') : oc(t, 'ui.tour_skip')}
               </button>
-              <div className="text-[10px] text-white/30">{tourStep + 1} of {TOUR_STEPS.length}</div>
+              <div className="text-[10px] text-white/30">
+                {oc(t, 'ui.tour_counter', { current: tourStep + 1, total: tourSteps.length })}
+              </div>
               <button
                 onClick={async () => {
-                  if (tourStep < TOUR_STEPS.length - 1) {
+                  if (tourStep < tourSteps.length - 1) {
                     setTourStep(tourStep + 1)
                   } else {
                     setTourStep(null)
@@ -1724,7 +2846,7 @@ export default function OnboardingChat({
                 }}
                 className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-xs font-semibold hover:brightness-110 transition"
               >
-                {tourStep < TOUR_STEPS.length - 1 ? 'Next' : "Let's go!"}
+                {tourStep < tourSteps.length - 1 ? oc(t, 'ui.tour_next') : oc(t, 'ui.tour_done')}
               </button>
             </div>
           </div>

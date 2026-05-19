@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Capacitor } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
+import { resetAccountScopedState } from '../utils/accountStateReset'
 
 // Comprehensive cache clearing for account deletion
 async function clearAllUserData(): Promise<void> {
@@ -18,76 +20,15 @@ async function clearAllUserData(): Promise<void> {
     console.warn('Error clearing Capacitor Preferences:', e)
   }
 
-  // 2. Clear all localStorage
-  try {
-    localStorage.clear()
-    console.log('✅ localStorage cleared')
-  } catch (e) {
-    console.warn('Error clearing localStorage:', e)
-  }
+  await resetAccountScopedState({
+    localStorageMode: 'all',
+    clearSessionStorage: true,
+    preserveSessionStorageKeys: [],
+    cacheMode: 'all',
+    unregisterServiceWorkers: true,
+  })
 
-  // 3. Clear sessionStorage
-  try {
-    sessionStorage.clear()
-    console.log('✅ sessionStorage cleared')
-  } catch (e) {
-    console.warn('Error clearing sessionStorage:', e)
-  }
-
-  // 4. Clear IndexedDB databases
-  const dbsToDelete = [
-    'chat-encryption',
-    'signal-protocol',
-    'signal-store',
-  ]
-  
-  for (const dbName of dbsToDelete) {
-    try {
-      await new Promise<void>((resolve) => {
-        const request = indexedDB.deleteDatabase(dbName)
-        request.onsuccess = () => {
-          console.log(`✅ Deleted IndexedDB: ${dbName}`)
-          resolve()
-        }
-        request.onerror = () => resolve()
-        request.onblocked = () => resolve()
-        setTimeout(resolve, 1000)
-      })
-    } catch (e) {
-      console.warn(`Error deleting IndexedDB ${dbName}:`, e)
-    }
-  }
-
-  // 5. Clear ALL service worker caches (not just runtime - full cleanup for deleted account)
-  try {
-    if ('caches' in window) {
-      const cacheNames = await caches.keys()
-      await Promise.all(
-        cacheNames.map(cacheName => {
-          console.log(`🗑️ Deleting cache: ${cacheName}`)
-          return caches.delete(cacheName)
-        })
-      )
-      console.log('✅ All service worker caches cleared')
-    }
-  } catch (e) {
-    console.warn('Error clearing service worker caches:', e)
-  }
-
-  // 6. Unregister service workers
-  try {
-    if ('serviceWorker' in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations()
-      for (const registration of registrations) {
-        await registration.unregister()
-        console.log('✅ Service worker unregistered')
-      }
-    }
-  } catch (e) {
-    console.warn('Error unregistering service workers:', e)
-  }
-
-  // 7. Clear cookies by calling logout endpoint with cache-busting
+  // 2. Clear cookies by calling logout endpoint with cache-busting
   try {
     await fetch('/logout?_=' + Date.now(), { 
       credentials: 'include',
@@ -102,17 +43,18 @@ async function clearAllUserData(): Promise<void> {
 export default function AccountDangerZone() {
   const { setTitle } = useHeader()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [confirmation, setConfirmation] = useState('')
   const [loading, setLoading] = useState(false)
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
-    setTitle('Danger Zone')
-  }, [setTitle])
+    setTitle(t('account.danger.section_title'))
+  }, [setTitle, t])
 
   const handleDelete = async () => {
     if (confirmation.trim().toUpperCase() !== 'DELETE') {
-      setFeedback({ type: 'error', text: 'Please type DELETE to confirm.' })
+      setFeedback({ type: 'error', text: t('account.danger.confirm_error') })
       return
     }
     setFeedback(null)
@@ -121,13 +63,13 @@ export default function AccountDangerZone() {
       // First, delete the account on the server
       const resp = await fetch('/delete_account', { method: 'POST', credentials: 'include' })
       if (!resp.ok) {
-        setFeedback({ type: 'error', text: `Server error (${resp.status})` })
+        setFeedback({ type: 'error', text: t('account.danger.server_error', { status: resp.status }) })
         setLoading(false)
         return
       }
       const json = await resp.json().catch(() => null)
       if (json?.success) {
-        setFeedback({ type: 'success', text: 'Account deleted. Clearing data…' })
+        setFeedback({ type: 'success', text: t('account.danger.deleted') })
         
         // Clear Google Sign-In cached account
         try {
@@ -146,11 +88,11 @@ export default function AccountDangerZone() {
           window.location.replace('/signup?cleared=' + Date.now())
         }, 800)
       } else {
-        setFeedback({ type: 'error', text: json?.error || 'Failed to delete account' })
+        setFeedback({ type: 'error', text: json?.error || t('account.danger.delete_failed') })
         setLoading(false)
       }
     } catch {
-      setFeedback({ type: 'error', text: 'Network error. Please try again.' })
+      setFeedback({ type: 'error', text: t('errors.network') })
       setLoading(false)
     }
   }
@@ -164,15 +106,15 @@ export default function AccountDangerZone() {
           onClick={() => navigate('/account_settings')}
         >
           <i className="fa-solid fa-arrow-left" />
-          Back to Account Settings
+          {t('account.danger.back_to_settings')}
         </button>
 
         <div className="rounded-xl border border-red-500/40 bg-red-500/5 p-6 space-y-4">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-red-300">Danger Zone</p>
-            <h1 className="text-xl font-semibold text-white">Delete your account</h1>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-red-300">{t('account.danger.section_title')}</p>
+            <h1 className="text-xl font-semibold text-white">{t('account.danger.delete_title')}</h1>
             <p className="text-sm text-red-200/80 mt-2">
-              This action is permanent. All posts, messages, and membership data will be deleted and cannot be recovered.
+              {t('account.danger.delete_warning')}
             </p>
           </div>
 
@@ -190,7 +132,7 @@ export default function AccountDangerZone() {
 
           <div className="space-y-3">
             <label className="text-sm text-white/80">
-              Type <span className="font-semibold">DELETE</span> to confirm
+              {t('account.danger.confirm_label')}
             </label>
             <input
               type="text"
@@ -208,7 +150,7 @@ export default function AccountDangerZone() {
             onClick={handleDelete}
             className="w-full rounded-lg bg-red-600 px-4 py-3 font-semibold text-white hover:bg-red-500 disabled:opacity-60"
           >
-            {loading ? 'Deleting…' : 'Delete Account Permanently'}
+            {loading ? t('account.danger.deleting') : t('account.danger.delete_button')}
           </button>
         </div>
       </div>

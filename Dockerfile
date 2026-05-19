@@ -25,6 +25,7 @@ ENV PYTHONDONTWRITEBYTECODE=0 \
 # Install system dependencies and clean up in same layer
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -36,8 +37,6 @@ RUN pip install --no-cache-dir -r requirements.txt \
 # Copy application files
 COPY bodybuilding_app.py .
 COPY redis_cache.py .
-COPY encryption_endpoints.py .
-COPY signal_endpoints.py .
 COPY backend/ ./backend/
 COPY templates/ ./templates/
 COPY static/ ./static/
@@ -47,7 +46,8 @@ COPY --from=client-builder /client/dist ./client/dist/
 RUN python -m compileall -q /app/bodybuilding_app.py /app/redis_cache.py /app/backend/ 2>/dev/null || true
 
 # Cloud Run sets PORT; default 8080
-ENV PORT=8080
+ENV PORT=8080 \
+    CSRF_ORIGIN_ENFORCE=true
 EXPOSE 8080
 
 # --preload: Load app once before forking workers (faster startup)

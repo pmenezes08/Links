@@ -1,0 +1,16 @@
+---
+description: Before shipping backend/AI/billing work, follow AGENTS.md + AGENT_TASK_CHECKLIST.md.
+alwaysApply: true
+---
+
+# Agent task quick guard
+
+1. **Invariants:** `AGENTS.md` — blueprints/services (not new monolith routes), `resolve_entitlements`, `ai_usage` logging for paid AI, KB for policy/caps.
+2. **Steve / LLM / Whisper:** `docs/STEVE_AND_VOICE_NOTES.md` — never call vendors directly.
+3. **Crons:** `/api/cron/*` + `X-Cron-Secret` — `docs/cloud-scheduler-cron.md`.
+4. **Living docs (same change as code):** If routes, schema, deploy topology, material journeys, or major architecture shift — update **`BACKEND_ROUTES`** (regen script), **`MYSQL_AND_FIRESTORE`**, **`DEPLOYMENT_INSTANCES`** / **`cloud-scheduler-cron`**, **`PRODUCT_JOURNEYS`**, **`C_POINT_ARCHITECTURE`** per **`AGENTS.md` § Living engineering docs** and **`docs/AGENT_TASK_CHECKLIST.md`**. Stale docs are a defect.
+5. **Full checklist:** `docs/AGENT_TASK_CHECKLIST.md`.
+6. **Cross-system behaviour:** `docs/PRODUCT_JOURNEYS.md`. **Deploy names / URLs:** `docs/DEPLOYMENT_INSTANCES.md`.
+7. **Large pages / legacy Flask / big blueprints:** `docs/MONOLITH_REDUCTION_ROADMAP.md` — globs activate `.cursor/rules/frontend-pages-and-routing.mdc`, `chat-surfaces.mdc`, `backend-monolith-boundaries.mdc`.
+
+When searching the route doc, **grep your path prefix** (e.g. `/api/communities`) — avoid loading all of `BACKEND_ROUTES.md` into context unless needed.
