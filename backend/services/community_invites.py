@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from redis_cache import invalidate_user_cache
 
-from backend.services import community_invite_emails
+from backend.services import community_invite_emails, i18n, user_locale
 from backend.services.community import (
     CommunityMembershipLimitError,
     ensure_community_tier_member_capacity,
@@ -25,6 +25,32 @@ from backend.services.community import (
 )
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.notifications import create_notification, send_push_to_user
+
+
+def _err(key: str, status: int, **params: Any) -> Tuple[Dict[str, Any], int]:
+    """Return the service-layer error tuple with both the legacy ``error``
+    string and the new ``message_key`` so callers can switch on either.
+
+    Locale defaults to the current Flask request (when available) so PT-PT
+    users see PT text without each blueprint having to pass it in.
+    """
+    try:
+        from flask import request, session as _session
+
+        username = (_session.get("username") if _session else None) or None
+        locale = user_locale.resolve_request_locale(request, username)
+    except Exception:
+        locale = i18n.DEFAULT_LOCALE
+
+    message = i18n.t(key, locale, **params)
+    return {
+        "success": False,
+        "error": message,
+        "error_code": key,
+        "message_key": key,
+        "message": message,
+        "message_params": params,
+    }, status
 
 
 logger = logging.getLogger(__name__)
@@ -304,7 +330,7 @@ def invite_username(username: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any]
     if not target_username:
         return {"success": False, "error": "Username is required"}, 400
     if target_username.lower() == (username or "").lower():
-        return {"success": False, "error": "You cannot invite yourself"}, 400
+        return _err("communities.invite.cannot_invite_self", 400)
     try:
         community_id = int(community_id_raw)
     except (TypeError, ValueError):
@@ -315,26 +341,26 @@ def invite_username(username: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any]
             _ensure_tables(c)
             ph = get_sql_placeholder()
             if not _has_manage_permission(username, community_id):
-                return {"success": False, "error": "Only community owners or admins can invite members"}, 403
+                return _err("communities.admin_required", 403)
             c.execute(f"SELECT id, username FROM users WHERE LOWER(username) = LOWER({ph})", (target_username,))
             target_row = c.fetchone()
             if not target_row:
-                return {"success": False, "error": "User not found"}, 404
+                return _err("communities.invite.user_not_found", 404)
             target_user_id = _row_value(target_row, "id", 0)
             resolved_target_username = _row_value(target_row, "username", 1)
             c.execute(f"SELECT name, parent_community_id FROM communities WHERE id = {ph}", (community_id,))
             community_row = c.fetchone()
             if not community_row:
-                return {"success": False, "error": "Community not found"}, 404
+                return _err("communities.not_found", 404)
             community_name = _row_value(community_row, "name", 0)
             if _row_value(community_row, "parent_community_id", 1):
-                return {"success": False, "error": "Invites can only be created from root communities"}, 400
+                return _err("communities.invite.root_only", 400)
             c.execute(
                 f"SELECT 1 FROM user_communities WHERE user_id = {ph} AND community_id = {ph}",
                 (target_user_id, community_id),
             )
             if c.fetchone():
-                return {"success": False, "error": "User is already a member of this community"}, 400
+                return _err("communities.invite.already_member", 400)
             cap_payload = _member_cap_payload(c, community_id, username, resolved_target_username)
             if cap_payload:
                 return cap_payload

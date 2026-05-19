@@ -91,5 +91,24 @@
     "subscription_inactive": "Não tens uma subscrição ativa.",
     "checkout_failed": "Não foi possível iniciar o pagamento. Tenta de novo.",
     "portal_failed": "Não foi possível abrir o portal de faturação. Tenta de novo."
+  },
+  "communities": {
+    "not_found": "Comunidade não encontrada.",
+    "not_a_member": "Não és membro desta comunidade.",
+    "admin_required": "Só os donos ou administradores da comunidade podem fazer isso.",
+    "invite": {
+      "user_not_found": "Utilizador não encontrado.",
+      "cannot_invite_self": "Não te podes convidar a ti próprio.",
+      "already_member": "Este utilizador já é membro desta comunidade.",
+      "root_only": "Os convites só podem ser criados a partir de comunidades raiz.",
+      "invite_sent": "Convite enviado.",
+      "invite_revoked": "Convite revogado."
+    },
+    "join": {
+      "joined": "Bem-vindo a {community_name}!",
+      "expired_invite": "Este convite expirou.",
+      "used_invite": "Este convite já foi utilizado.",
+      "invalid_invite": "Este convite não é válido."
+    }
   }
 }

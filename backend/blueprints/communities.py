@@ -21,6 +21,7 @@ from flask import (
 )
 
 from backend.services.content_generation.permissions import can_manage_community_jobs
+from backend.services import api_errors
 from backend.services import auth_session, community as community_svc
 from backend.services import community_group_feed as community_group_feed_svc
 from backend.services import community_admin_notifications
@@ -98,7 +99,7 @@ def _login_required(view_func):
             except Exception:
                 pass
             if request.path.startswith("/api/") or request.path.startswith("/check_"):
-                return jsonify({"success": False, "error": "unauthenticated"}), 401
+                return api_errors.auth_required()
             return redirect(url_for("auth.login"))
         return view_func(*args, **kwargs)
 

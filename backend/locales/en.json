@@ -91,5 +91,24 @@
     "subscription_inactive": "You don't have an active subscription.",
     "checkout_failed": "Could not start checkout. Please try again.",
     "portal_failed": "Could not open the billing portal. Please try again."
+  },
+  "communities": {
+    "not_found": "Community not found.",
+    "not_a_member": "You're not a member of this community.",
+    "admin_required": "Only community owners or admins can do that.",
+    "invite": {
+      "user_not_found": "User not found.",
+      "cannot_invite_self": "You can't invite yourself.",
+      "already_member": "This user is already a member of this community.",
+      "root_only": "Invites can only be created from root communities.",
+      "invite_sent": "Invitation sent.",
+      "invite_revoked": "Invitation revoked."
+    },
+    "join": {
+      "joined": "Welcome to {community_name}!",
+      "expired_invite": "This invitation has expired.",
+      "used_invite": "This invitation has already been used.",
+      "invalid_invite": "This invitation is not valid."
+    }
   }
 }
