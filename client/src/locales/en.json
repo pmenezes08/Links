@@ -164,8 +164,56 @@
     "signup": {
       "title": "Create your account",
       "submit": "Create account",
+      "submitting": "Creating Account...",
       "have_account": "Already have an account?",
-      "sign_in": "Sign in"
+      "sign_in": "Sign in",
+      "join_today": "Join C-Point today",
+      "invited_to_join": "You've been invited to join {{community}}",
+      "invited_by": "by {{username}}",
+      "username": "Username",
+      "username_placeholder": "Choose a unique username",
+      "first_name": "First Name",
+      "first_name_placeholder": "First",
+      "last_name": "Last Name",
+      "last_name_placeholder": "Last",
+      "email": "Email",
+      "email_placeholder": "your@email.com",
+      "email_locked": "Email is pre-filled from your invitation",
+      "mobile": "Mobile (Optional)",
+      "password": "Password",
+      "confirm_password": "Confirm Password",
+      "terms_prefix": "By creating an account, you agree to our",
+      "terms": "Terms of Service",
+      "and": "and",
+      "privacy": "Privacy Policy",
+      "invalid_invite": "Invalid invitation link",
+      "invite_verify_failed": "Failed to verify invitation",
+      "registration_failed": "Registration failed",
+      "server_error": "Server error ({{status}})",
+      "network_error": "Network error: {{message}}",
+      "validation": {
+        "first_name_required": "First name is required",
+        "last_name_required": "Last name is required",
+        "username_required": "Username is required",
+        "email_required": "Email is required",
+        "password_required": "Password is required",
+        "passwords_do_not_match": "Passwords do not match",
+        "password_too_short": "Password must be at least 6 characters"
+      },
+      "verify": {
+        "title": "Verify your email",
+        "body": "We sent a verification link to {{email}}. Please click the link to verify your account.",
+        "fallback_email": "your email",
+        "resend": "Resend verification",
+        "resend_failed": "Failed to resend",
+        "resent": "Email was resent, please check your inbox",
+        "edit_email": "Edit email",
+        "go_start": "Go to start",
+        "verified": "Verified",
+        "verified_alert": "Email verified! Please sign in now.",
+        "not_verified": "Email has not been verified yet, please check your inbox",
+        "network_try_again": "Network error, please try again."
+      }
     }
   },
   "navigation": {
@@ -263,6 +311,36 @@
     "posts": "Posts",
     "about": "About",
     "joined": "Joined"
+  },
+  "onboarding_profile_picture": {
+    "title": "Add a profile picture",
+    "helper": "Help people recognize you. You can change this later in your profile.",
+    "choose_error": "Please choose an image.",
+    "upload_failed": "Failed to upload. Please try again.",
+    "preview_alt": "Preview",
+    "skip": "Skip for now",
+    "uploading": "Uploading...",
+    "upload_continue": "Upload & continue"
+  },
+  "onboarding_intro": {
+    "summary": "C-Point is built on a simple belief: the world is meant to be lived, and private communities should help you reconnect with your people without public noise or algorithms in the way.",
+    "welcome_title": "Welcome to C-Point",
+    "steve_title": "Meet Steve",
+    "steve_body": "C-Point's heart and intelligence lives in Steve, an AI user and agent inside the platform. Steve helps you build your profile, answers questions in DMs and group chats, understands what is happening inside your communities, and helps people find the right conversations, knowledge, and connections.",
+    "continue": "Continue",
+    "start": "Start onboarding",
+    "read_manifesto": "Read the manifesto",
+    "progress_label": "Welcome progress",
+    "manifesto_title": "The C-Point Manifesto",
+    "manifesto": [
+      "C-Point was built on a simple principle: The world is meant to be lived. Come here to reconnect with your people, stay present in your world, and actually get back to living.",
+      "C-Point is a global platform of private, independent communities.",
+      "No public feeds. No self-promotion. No algorithm-driven noise. No fast-consuming content.",
+      "A community can be anything - a close group of friends planning trips, a circle debating the future, a place for banter with people who truly get you, or the private network that keeps you connected to the organisations that matter: your alumni group, your school, an investor network, your sports club, or your company.",
+      "Inside every community lives Steve - our intelligent presence who deeply understands each member's journey, values and expertise, and quietly works to create meaningful connections and keep the space alive.",
+      "Access is by invitation only. Privacy and exclusivity are built in from day one. Everything shared inside stays inside. No strangers. No algorithms deciding what deserves your attention.",
+      "This is your world. Come connect with it."
+    ]
   },
   "time": {
     "just_now": "just now",

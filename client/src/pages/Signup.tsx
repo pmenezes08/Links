@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useUserProfile } from '../contexts/UserProfileContext'
 
 export default function Signup(){
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const { refresh } = useUserProfile()
   const [searchParams] = useSearchParams()
   const inviteToken = searchParams.get('invite')
@@ -54,7 +56,7 @@ export default function Signup(){
             setEmailLocked(true)
           }
         } else {
-          setError(j?.error || 'Invalid invitation link')
+          setError(j?.error || t('auth.signup.invalid_invite'))
           try {
             if (typeof window !== 'undefined') sessionStorage.removeItem(PENDING_INVITE_KEY)
           } catch {}
@@ -62,7 +64,7 @@ export default function Signup(){
       })
       .catch(err => {
         console.error('Error verifying invitation:', err)
-        setError('Failed to verify invitation')
+        setError(t('auth.signup.invite_verify_failed'))
       })
   }, [inviteToken])
   
@@ -88,31 +90,31 @@ export default function Signup(){
 
     // Validation
     if (!formData.first_name.trim()) {
-      setError('First name is required')
+      setError(t('auth.signup.validation.first_name_required'))
       return
     }
     if (!formData.last_name.trim()) {
-      setError('Last name is required')
+      setError(t('auth.signup.validation.last_name_required'))
       return
     }
     if (!formData.username.trim()) {
-      setError('Username is required')
+      setError(t('auth.signup.validation.username_required'))
       return
     }
     if (!formData.email.trim()) {
-      setError('Email is required')
+      setError(t('auth.signup.validation.email_required'))
       return
     }
     if (!formData.password) {
-      setError('Password is required')
+      setError(t('auth.signup.validation.password_required'))
       return
     }
     if (formData.password !== formData.confirm_password) {
-      setError('Passwords do not match')
+      setError(t('auth.signup.validation.passwords_do_not_match'))
       return
     }
     if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters')
+      setError(t('auth.signup.validation.password_too_short'))
       return
     }
 
@@ -161,7 +163,7 @@ export default function Signup(){
               })()
             }
           } else {
-            setError(j?.error || 'Registration failed')
+            setError(j?.error || t('auth.signup.registration_failed'))
           }
         } catch {
           setShowVerify(true)
@@ -169,15 +171,15 @@ export default function Signup(){
       } else {
         try {
           const j = await r.json()
-          setError(j?.error || `Server error (${r.status})`)
+          setError(j?.error || t('auth.signup.server_error', { status: r.status }))
         } catch {
-          setError(`Server error (${r.status})`)
+          setError(t('auth.signup.server_error', { status: r.status }))
         }
       }
     })
     .catch((error) => {
       console.error('Signup fetch error:', error)
-      setError(`Network error: ${error.message}`)
+      setError(t('auth.signup.network_error', { message: error.message }))
     })
     .finally(() => setLoading(false))
   }
@@ -187,18 +189,18 @@ export default function Signup(){
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold mb-2">Create Account</h1>
+          <h1 className="text-2xl font-bold mb-2">{t('auth.signup.title')}</h1>
           {invitationInfo ? (
             <div className="bg-[#4db6ac]/10 border border-[#4db6ac]/30 rounded-lg p-3 mt-3">
               <p className="text-white text-sm font-medium">
-                You've been invited to join <span className="text-[#4db6ac]">{invitationInfo.community_name}</span>
+                {t('auth.signup.invited_to_join', { community: invitationInfo.community_name })}
               </p>
               <p className="text-white/60 text-xs mt-1">
-                by {invitationInfo.invited_by}
+                {t('auth.signup.invited_by', { username: invitationInfo.invited_by })}
               </p>
             </div>
           ) : (
-            <p className="text-white/60 text-sm">Join C-Point today</p>
+            <p className="text-white/60 text-sm">{t('auth.signup.join_today')}</p>
           )}
         </div>
 
@@ -214,34 +216,34 @@ export default function Signup(){
           {/* Name Fields */}
           <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <label className="block text-xs font-medium mb-1.5">Username</label>
+            <label className="block text-xs font-medium mb-1.5">{t('auth.signup.username')}</label>
             <input
               type="text"
               value={formData.username}
               onChange={e => handleInputChange('username', e.target.value)}
-              placeholder="Choose a unique username"
+              placeholder={t('auth.signup.username_placeholder')}
               required
               className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
             />
           </div>
             <div>
-              <label className="block text-xs font-medium mb-1.5">First Name</label>
+              <label className="block text-xs font-medium mb-1.5">{t('auth.signup.first_name')}</label>
               <input
                 type="text"
                 value={formData.first_name}
                 onChange={e => handleInputChange('first_name', e.target.value)}
-                placeholder="First"
+                placeholder={t('auth.signup.first_name_placeholder')}
                 required
                 className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1.5">Last Name</label>
+              <label className="block text-xs font-medium mb-1.5">{t('auth.signup.last_name')}</label>
               <input
                 type="text"
                 value={formData.last_name}
                 onChange={e => handleInputChange('last_name', e.target.value)}
-                placeholder="Last"
+                placeholder={t('auth.signup.last_name_placeholder')}
                 required
                 className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
               />
@@ -250,24 +252,24 @@ export default function Signup(){
 
           {/* Email */}
           <div>
-            <label className="block text-xs font-medium mb-1.5">Email</label>
+            <label className="block text-xs font-medium mb-1.5">{t('auth.signup.email')}</label>
             <input
               type="email"
               value={formData.email}
               onChange={e => handleInputChange('email', e.target.value)}
-              placeholder="your@email.com"
+              placeholder={t('auth.signup.email_placeholder')}
               required
               disabled={emailLocked}
               className={`w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors ${emailLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
             />
             {emailLocked && (
-              <p className="text-xs text-white/50 mt-1">Email is pre-filled from your invitation</p>
+              <p className="text-xs text-white/50 mt-1">{t('auth.signup.email_locked')}</p>
             )}
           </div>
 
           {/* Mobile (Optional) */}
           <div>
-            <label className="block text-xs font-medium mb-1.5">Mobile (Optional)</label>
+            <label className="block text-xs font-medium mb-1.5">{t('auth.signup.mobile')}</label>
             <input
               type="tel"
               value={formData.mobile}
@@ -279,7 +281,7 @@ export default function Signup(){
 
           {/* Password */}
           <div>
-            <label className="block text-xs font-medium mb-1.5">Password</label>
+            <label className="block text-xs font-medium mb-1.5">{t('auth.signup.password')}</label>
             <input
               type="password"
               value={formData.password}
@@ -292,7 +294,7 @@ export default function Signup(){
 
           {/* Confirm Password */}
           <div>
-            <label className="block text-xs font-medium mb-1.5">Confirm Password</label>
+            <label className="block text-xs font-medium mb-1.5">{t('auth.signup.confirm_password')}</label>
             <input
               type="password"
               value={formData.confirm_password}
@@ -316,10 +318,10 @@ export default function Signup(){
             {loading ? (
               <>
                 <i className="fa-solid fa-spinner fa-spin mr-2" />
-                Creating Account...
+                {t('auth.signup.submitting')}
               </>
             ) : (
-              'Create Account'
+              t('auth.signup.submit')
             )}
           </button>
         </form>
@@ -327,7 +329,7 @@ export default function Signup(){
         {/* Login Link */}
         <div className="mt-4 text-center">
           <p className="text-white/60 text-xs">
-            Already have an account?{' '}
+            {t('auth.signup.have_account')}{' '}
             <button 
               className="text-[#4db6ac] hover:text-[#45a99c] transition-colors text-xs"
               onClick={async () => {
@@ -338,7 +340,7 @@ export default function Signup(){
                 navigate('/login')
               }}
             >
-              Sign in
+              {t('auth.signup.sign_in')}
             </button>
           </p>
         </div>
@@ -346,23 +348,23 @@ export default function Signup(){
         {/* Terms */}
         <div className="mt-4 text-center">
           <p className="text-white/40 text-xs">
-            By creating an account, you agree to our{' '}
+            {t('auth.signup.terms_prefix')}{' '}
             <a 
               href="https://www.c-point.co/terms" 
               target="_blank" 
               rel="noopener noreferrer"
               className="text-[#4db6ac] hover:underline"
             >
-              Terms of Service
+              {t('auth.signup.terms')}
             </a>{' '}
-            and{' '}
+            {t('auth.signup.and')}{' '}
             <a 
               href="https://www.c-point.co/privacy" 
               target="_blank" 
               rel="noopener noreferrer"
               className="text-[#4db6ac] hover:underline"
             >
-              Privacy Policy
+              {t('auth.signup.privacy')}
             </a>
           </p>
         </div>
@@ -371,34 +373,33 @@ export default function Signup(){
         {showVerify && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" aria-modal="true" role="dialog">
             <div className="w-[90%] max-w-md rounded-xl border border-white/10 bg-[#0b0b0b] p-4">
-              <div className="text-lg font-semibold mb-1">Verify your email</div>
+              <div className="text-lg font-semibold mb-1">{t('auth.signup.verify.title')}</div>
               <div className="text-sm text-white/80">
-                We sent a verification link to <span className="text-white font-medium">{pendingEmail || formData.email || 'your email'}</span>.
-                Please click the link to verify your account.
+                {t('auth.signup.verify.body', { email: pendingEmail || formData.email || t('auth.signup.verify.fallback_email') })}
               </div>
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button className="px-3 py-2 rounded-md border border-white/10" onClick={async ()=>{
                   try{
                     const r = await fetch('/resend_verification_pending', { method:'POST', credentials:'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: pendingEmail || formData.email }) })
                     const j = await r.json().catch(()=>null)
-                    if (!j?.success) alert(j?.error || 'Failed to resend')
-                    else alert('Email was resent, please check your inbox')
-                  }catch{ alert('Network error') }
-                }}>Resend verification</button>
-                <button className="px-3 py-2 rounded-md border border-white/10" onClick={()=> { setShowVerify(false) }}>Edit email</button>
-                <button className="px-3 py-2 rounded-md border border-white/10" onClick={()=> { setShowVerify(false); navigate('/') }}>Go to start</button>
+                    if (!j?.success) alert(j?.error || t('auth.signup.verify.resend_failed'))
+                    else alert(t('auth.signup.verify.resent'))
+                  }catch{ alert(t('account.messages.network_error')) }
+                }}>{t('auth.signup.verify.resend')}</button>
+                <button className="px-3 py-2 rounded-md border border-white/10" onClick={()=> { setShowVerify(false) }}>{t('auth.signup.verify.edit_email')}</button>
+                <button className="px-3 py-2 rounded-md border border-white/10" onClick={()=> { setShowVerify(false); navigate('/') }}>{t('auth.signup.verify.go_start')}</button>
                 <button className="col-span-2 px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={async ()=>{
                   try{
                     const r = await fetch('/api/email_verified_status', { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email: pendingEmail || formData.email }) })
                     const j = await r.json().catch(()=>null)
                     if (j?.success && j?.verified){
-                      alert('Email verified! Please sign in now.')
+                      alert(t('auth.signup.verify.verified_alert'))
                       navigate('/login', { replace: true })
                     } else {
-                      alert('Email has not been verified yet, please check your inbox')
+                      alert(t('auth.signup.verify.not_verified'))
                     }
-                  }catch{ alert('Network error, please try again.') }
-                }}>Verified</button>
+                  }catch{ alert(t('auth.signup.verify.network_try_again')) }
+                }}>{t('auth.signup.verify.verified')}</button>
               </div>
             </div>
           </div>

@@ -164,8 +164,56 @@
     "signup": {
       "title": "Cria a tua conta",
       "submit": "Criar conta",
+      "submitting": "A criar conta...",
       "have_account": "Já tens conta?",
-      "sign_in": "Inicia sessão"
+      "sign_in": "Inicia sessão",
+      "join_today": "Junta-te ao C-Point hoje",
+      "invited_to_join": "Foste convidado a juntar-te a {{community}}",
+      "invited_by": "por {{username}}",
+      "username": "Nome de utilizador",
+      "username_placeholder": "Escolhe um nome de utilizador único",
+      "first_name": "Nome próprio",
+      "first_name_placeholder": "Nome",
+      "last_name": "Apelido",
+      "last_name_placeholder": "Apelido",
+      "email": "Email",
+      "email_placeholder": "teu@email.com",
+      "email_locked": "O email foi preenchido a partir do teu convite",
+      "mobile": "Telemóvel (opcional)",
+      "password": "Palavra-passe",
+      "confirm_password": "Confirmar palavra-passe",
+      "terms_prefix": "Ao criares uma conta, aceitas os nossos",
+      "terms": "Termos de Serviço",
+      "and": "e",
+      "privacy": "Política de Privacidade",
+      "invalid_invite": "Ligação de convite inválida",
+      "invite_verify_failed": "Não foi possível verificar o convite",
+      "registration_failed": "Falha no registo",
+      "server_error": "Erro do servidor ({{status}})",
+      "network_error": "Erro de ligação: {{message}}",
+      "validation": {
+        "first_name_required": "O nome próprio é obrigatório",
+        "last_name_required": "O apelido é obrigatório",
+        "username_required": "O nome de utilizador é obrigatório",
+        "email_required": "O email é obrigatório",
+        "password_required": "A palavra-passe é obrigatória",
+        "passwords_do_not_match": "As palavras-passe não coincidem",
+        "password_too_short": "A palavra-passe deve ter pelo menos 6 caracteres"
+      },
+      "verify": {
+        "title": "Verifica o teu email",
+        "body": "Enviámos uma ligação de verificação para {{email}}. Clica na ligação para verificares a tua conta.",
+        "fallback_email": "o teu email",
+        "resend": "Reenviar verificação",
+        "resend_failed": "Não foi possível reenviar",
+        "resent": "Email reenviado, verifica a tua caixa de entrada",
+        "edit_email": "Editar email",
+        "go_start": "Ir para o início",
+        "verified": "Verificado",
+        "verified_alert": "Email verificado! Inicia sessão agora.",
+        "not_verified": "O email ainda não foi verificado, verifica a tua caixa de entrada",
+        "network_try_again": "Erro de ligação, tenta de novo."
+      }
     }
   },
   "navigation": {
@@ -263,6 +311,36 @@
     "posts": "Publicações",
     "about": "Sobre",
     "joined": "Aderiu"
+  },
+  "onboarding_profile_picture": {
+    "title": "Adiciona uma foto de perfil",
+    "helper": "Ajuda as pessoas a reconhecerem-te. Podes alterar isto mais tarde no teu perfil.",
+    "choose_error": "Escolhe uma imagem.",
+    "upload_failed": "Não foi possível carregar. Tenta de novo.",
+    "preview_alt": "Pré-visualização",
+    "skip": "Saltar por agora",
+    "uploading": "A carregar...",
+    "upload_continue": "Carregar e continuar"
+  },
+  "onboarding_intro": {
+    "summary": "O C-Point nasce de uma ideia simples: o mundo é para ser vivido, e as comunidades privadas devem ajudar-te a reencontrar as tuas pessoas sem ruído público nem algoritmos pelo meio.",
+    "welcome_title": "Bem-vindo ao C-Point",
+    "steve_title": "Conhece o Steve",
+    "steve_body": "O coração e a inteligência do C-Point vivem no Steve, um utilizador e agente de IA dentro da plataforma. O Steve ajuda-te a construir o teu perfil, responde a perguntas em DMs e conversas de grupo, entende o que acontece nas tuas comunidades e ajuda as pessoas a encontrar as conversas, conhecimento e ligações certas.",
+    "continue": "Continuar",
+    "start": "Começar configuração",
+    "read_manifesto": "Ler o manifesto",
+    "progress_label": "Progresso de boas-vindas",
+    "manifesto_title": "O manifesto do C-Point",
+    "manifesto": [
+      "O C-Point foi criado com base num princípio simples: o mundo é para ser vivido. Vem aqui para te reencontrares com as tuas pessoas, estares presente no teu mundo e voltares mesmo a viver.",
+      "O C-Point é uma plataforma global de comunidades privadas e independentes.",
+      "Sem feeds públicos. Sem autopromoção. Sem ruído guiado por algoritmos. Sem conteúdo de consumo rápido.",
+      "Uma comunidade pode ser qualquer coisa — um grupo próximo de amigos a planear viagens, um círculo a debater o futuro, um espaço para brincadeiras com quem te entende mesmo, ou a rede privada que te mantém ligado às organizações importantes: alumni, escola, investidores, clube desportivo ou empresa.",
+      "Dentro de cada comunidade vive o Steve — a nossa presença inteligente, que compreende profundamente o percurso, os valores e a experiência de cada membro, e trabalha discretamente para criar ligações significativas e manter o espaço vivo.",
+      "O acesso é apenas por convite. Privacidade e exclusividade vêm desde o primeiro dia. Tudo o que é partilhado lá dentro fica lá dentro. Sem estranhos. Sem algoritmos a decidir o que merece a tua atenção.",
+      "Este é o teu mundo. Vem ligar-te a ele."
+    ]
   },
   "time": {
     "just_now": "agora mesmo",

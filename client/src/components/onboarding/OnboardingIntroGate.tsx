@@ -1,24 +1,12 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 type OnboardingIntroGateProps = {
   onStart: () => void
 }
 
-const MANIFESTO_SUMMARY =
-  'C-Point is built on a simple belief: the world is meant to be lived, and private communities should help you reconnect with your people without public noise or algorithms in the way.'
-
-// Keep this aligned with backend/services/steve_platform_manual.py, card platform.what_is_cpoint.
-const MANIFESTO_PARAGRAPHS = [
-  'C-Point was built on a simple principle: The world is meant to be lived. Come here to reconnect with your people, stay present in your world, and actually get back to living.',
-  'C-Point is a global platform of private, independent communities.',
-  'No public feeds. No self-promotion. No algorithm-driven noise. No fast-consuming content.',
-  'A community can be anything - a close group of friends planning trips, a circle debating the future, a place for banter with people who truly get you, or the private network that keeps you connected to the organisations that matter: your alumni group, your school, an investor network, your sports club, or your company.',
-  "Inside every community lives Steve - our intelligent presence who deeply understands each member's journey, values and expertise, and quietly works to create meaningful connections and keep the space alive.",
-  'Access is by invitation only. Privacy and exclusivity are built in from day one. Everything shared inside stays inside. No strangers. No algorithms deciding what deserves your attention.',
-  'This is your world. Come connect with it.',
-]
-
 export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProps) {
+  const { t } = useTranslation()
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [videoFailed, setVideoFailed] = useState(false)
   const [manifestoOpen, setManifestoOpen] = useState(false)
@@ -46,6 +34,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
   }, [])
 
   const showVideo = Boolean(videoUrl && !videoFailed)
+  const manifestoParagraphs = t('onboarding_intro.manifesto', { returnObjects: true }) as string[]
 
   return (
     <div className="fixed inset-0 z-[1101] overflow-y-auto bg-black text-white">
@@ -76,17 +65,14 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
 
               {page === 0 ? (
                 <div className="text-center">
-                  <h1 className="text-2xl font-semibold tracking-tight mb-3">Welcome to C-Point</h1>
-                  <p className="text-sm leading-relaxed text-[#d5e4e7] mb-6">{MANIFESTO_SUMMARY}</p>
+                  <h1 className="text-2xl font-semibold tracking-tight mb-3">{t('onboarding_intro.welcome_title')}</h1>
+                  <p className="text-sm leading-relaxed text-[#d5e4e7] mb-6">{t('onboarding_intro.summary')}</p>
                 </div>
               ) : (
                 <div className="text-center">
-                  <h1 className="text-2xl font-semibold tracking-tight mb-3">Meet Steve</h1>
+                  <h1 className="text-2xl font-semibold tracking-tight mb-3">{t('onboarding_intro.steve_title')}</h1>
                   <p className="text-sm leading-relaxed text-[#9fb0b5] mb-6">
-                    C-Point&apos;s heart and intelligence lives in Steve, an AI user and agent inside the
-                    platform. Steve helps you build your profile, answers questions in DMs and group chats,
-                    understands what is happening inside your communities, and helps people find the right
-                    conversations, knowledge, and connections.
+                    {t('onboarding_intro.steve_body')}
                   </p>
                 </div>
               )}
@@ -98,7 +84,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                     onClick={() => setPage(1)}
                     className="w-full rounded-xl bg-[#4db6ac] text-black font-semibold py-3 text-sm hover:brightness-110 active:scale-[0.99] transition"
                   >
-                    Continue
+                    {t('onboarding_intro.continue')}
                   </button>
                 ) : (
                   <button
@@ -106,7 +92,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                     onClick={onStart}
                     className="w-full rounded-xl bg-[#4db6ac] text-black font-semibold py-3 text-sm hover:brightness-110 active:scale-[0.99] transition"
                   >
-                    Start onboarding
+                    {t('onboarding_intro.start')}
                   </button>
                 )}
                 <button
@@ -114,10 +100,10 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                   onClick={page === 0 ? () => setManifestoOpen(true) : () => setPage(0)}
                   className="w-full rounded-xl bg-[#4db6ac]/10 text-[#d5fffb] border border-[#4db6ac]/30 font-medium py-3 text-sm hover:bg-[#4db6ac]/15 transition"
                 >
-                  {page === 0 ? 'Read the manifesto' : 'Back'}
+                  {page === 0 ? t('onboarding_intro.read_manifesto') : t('common.back')}
                 </button>
               </div>
-              <div className="mt-5 flex justify-center gap-2" aria-label="Welcome progress">
+              <div className="mt-5 flex justify-center gap-2" aria-label={t('onboarding_intro.progress_label')}>
                 {[0, 1].map((item) => (
                   <span
                     key={item}
@@ -150,9 +136,9 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
               alt="C-Point"
               className="w-12 h-12 rounded-xl object-contain mx-auto mb-4"
             />
-            <h2 className="text-xl font-semibold text-center mb-5">The C-Point Manifesto</h2>
+            <h2 className="text-xl font-semibold text-center mb-5">{t('onboarding_intro.manifesto_title')}</h2>
             <div className="space-y-4 text-sm leading-relaxed text-[#c8d6d9]">
-              {MANIFESTO_PARAGRAPHS.map((paragraph) => (
+              {manifestoParagraphs.map((paragraph) => (
                 <p key={paragraph}>{paragraph}</p>
               ))}
             </div>
@@ -162,14 +148,14 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                 onClick={() => setManifestoOpen(false)}
                 className="rounded-xl bg-[#4db6ac]/10 text-[#d5fffb] border border-[#4db6ac]/30 font-medium py-3 text-sm hover:bg-[#4db6ac]/15 transition"
               >
-                Close
+                {t('common.close')}
               </button>
               <button
                 type="button"
                 onClick={onStart}
                 className="rounded-xl bg-[#4db6ac] text-black font-semibold py-3 text-sm hover:brightness-110 transition"
               >
-                Start onboarding
+                {t('onboarding_intro.start')}
               </button>
             </div>
           </div>
