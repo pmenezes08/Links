@@ -19,6 +19,11 @@ import LanguageDetector from 'i18next-browser-languagedetector'
 
 import en from '../locales/en.json'
 import ptPT from '../locales/pt-PT.json'
+import onboardingChatEn from '../locales/onboarding-chat/en.json'
+import onboardingChatPt from '../locales/onboarding-chat/pt-PT.json'
+
+const enCatalog = { ...en, onboarding_chat: onboardingChatEn }
+const ptCatalog = { ...ptPT, onboarding_chat: onboardingChatPt }
 
 export const DEFAULT_LOCALE = 'en'
 export const SUPPORTED_LOCALES = ['en', 'pt-PT'] as const
@@ -69,10 +74,10 @@ i18n
   .use(initReactI18next)
   .init({
     resources: {
-      en: { translation: en },
-      pt: { translation: ptPT },
-      'pt-PT': { translation: ptPT },
-      'pt-pt': { translation: ptPT },
+      en: { translation: enCatalog },
+      pt: { translation: ptCatalog },
+      'pt-PT': { translation: ptCatalog },
+      'pt-pt': { translation: ptCatalog },
     },
     fallbackLng: DEFAULT_LOCALE,
     supportedLngs: [...I18NEXT_SUPPORTED_LNGS],

@@ -97,7 +97,7 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
     <div className="fixed inset-0 z-[1101] overflow-y-auto bg-black text-white">
       <div className="min-h-full px-5 py-8 flex items-center justify-center">
         <div className="w-full max-w-md">
-          <div className="rounded-[28px] border border-[#4db6ac]/45 bg-black shadow-[0_24px_80px_rgba(77,182,172,0.16)] overflow-hidden">
+          <div className="rounded-[28px] border border-[#4db6ac]/45 bg-black overflow-hidden">
             <div className="p-6 sm:p-7">
               <img
                 src="/api/public/logo"
