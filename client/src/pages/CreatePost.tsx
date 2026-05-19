@@ -6,6 +6,7 @@ import type { KeyboardInfo } from '@capacitor/keyboard'
 import MentionTextarea from '../components/MentionTextarea'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { detectLinks, replaceLinkInText, type DetectedLink } from '../utils/linkUtils.tsx'
 import { extractUrls, stripExtractedUrlsFromText } from '../components/LinkPreview'
 import GifPicker from '../components/GifPicker'
@@ -20,6 +21,7 @@ import { preflightSteveMention } from '../utils/stevePreflight'
 export default function CreatePost(){
   const [params, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const communityId = params.get('community_id') || ''
   const groupId = params.get('group_id') || ''
   const fromShareParam = params.get('from_share')
@@ -39,7 +41,7 @@ export default function CreatePost(){
     if (recording) {
       void stop().then((p: { blob?: Blob } | null) => {
         if (!p?.blob?.size) {
-          alert('Could not capture audio. Try recording a bit longer, then tap stop again.')
+          alert(t('feed.audio_capture_failed'))
         }
       })
     } else {
@@ -315,7 +317,7 @@ export default function CreatePost(){
 
   async function submit(){
     if (!navigator.onLine) {
-      alert('Go back online to create a post')
+      alert(t('feed.go_back_online'))
       return
     }
 
@@ -337,7 +339,7 @@ export default function CreatePost(){
       : !!(captionStripped.trim() || mediaFiles.length > 0 || gifFile || preview?.blob || allLinkUrls.length > 0)
 
     if (!canPost) {
-      alert('Add text, media, links, or finish recording audio before posting')
+      alert(t('feed.add_content_before_post'))
       return
     }
 
@@ -440,7 +442,7 @@ export default function CreatePost(){
       }
       
       if (postResult && postResult.success === false) {
-        alert(postResult.error || 'Failed to create post')
+        alert(postResult.error || t('feed.create_failed'))
         setSubmitting(false)
         return
       }
@@ -478,7 +480,7 @@ export default function CreatePost(){
       clearPreview()
     }catch{
       setSubmitting(false)
-      alert('Failed to post. Please try again.')
+      alert(t('feed.post_failed'))
     }
   }
 
@@ -499,9 +501,9 @@ export default function CreatePost(){
       {submitting && (
         <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center">
           <div className="w-16 h-16 border-4 border-white/20 border-t-[#4db6ac] rounded-full animate-spin mb-4" />
-          <div className="text-white font-medium">Posting...</div>
+          <div className="text-white font-medium">{t('feed.posting_overlay')}</div>
           {mediaFiles.length > 0 && (
-            <div className="text-white/60 text-sm mt-2">Uploading {mediaFiles.length} {mediaFiles.length === 1 ? 'file' : 'files'}</div>
+            <div className="text-white/60 text-sm mt-2">{t('feed.uploading_files', { count: mediaFiles.length })}</div>
           )}
         </div>
       )}
@@ -511,7 +513,7 @@ export default function CreatePost(){
         <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none">
           <div className="px-6 py-3 rounded-full border border-[#4db6ac]/40 bg-black/90 backdrop-blur-sm shadow-lg">
             <div className="text-sm font-medium text-white">
-              Great job! <span className="text-[#4db6ac]">First post created</span> ?
+              {t('feed.first_post_praise')} <span className="text-[#4db6ac]">{t('feed.first_post_created')}</span>
             </div>
           </div>
         </div>
@@ -527,12 +529,12 @@ export default function CreatePost(){
             else if (communityId) navigate(`/community_feed_react/${communityId}`)
             else navigate(-1)
           }} 
-          aria-label="Back"
+          aria-label={t('common.back')}
         >
           <i className="fa-solid fa-arrow-left" />
-          <span className="text-sm font-medium">Back</span>
+          <span className="text-sm font-medium">{t('common.back')}</span>
         </button>
-        <span className="text-sm font-semibold text-white">Create Post</span>
+        <span className="text-sm font-semibold text-white">{t('feed.create_post_title')}</span>
         <div className="w-20" /> {/* Spacer for centering */}
       </div>
       <div className="app-content px-0" style={{ paddingTop: contentPaddingTop, paddingBottom: contentPaddingBottom }}>
@@ -545,7 +547,7 @@ export default function CreatePost(){
           value={content}
           onChange={setContent}
           communityId={communityId ? Number(communityId) : undefined}
-          placeholder="What's happening?"
+          placeholder={t('feed.create_post_placeholder')}
           className="w-full min-h-[180px] p-3 rounded-xl bg-black border border-white/10 text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
           rows={8}
         />
@@ -559,9 +561,9 @@ export default function CreatePost(){
               onChange={(e) => setAskSteveOnPost(e.target.checked)}
             />
             <div>
-              <div className="text-sm text-white font-medium">Ask Steve on this post</div>
+              <div className="text-sm text-white font-medium">{t('feed.ask_steve')}</div>
               <div className="text-xs text-[#9fb0b5] mt-0.5">
-                Schedules a delayed Career Expert reply when your text is at least 80 characters or you attach media. Mention @Steve anytime to jump in sooner.
+                {t('feed.ask_steve_helper')}
               </div>
             </div>
           </label>
@@ -570,7 +572,7 @@ export default function CreatePost(){
         {/* Detected links */}
         {detectedLinks.length > 0 && (
           <div className="mt-3 space-y-2">
-            <div className="text-xs text-[#9fb0b5] font-medium">Detected Links:</div>
+            <div className="text-xs text-[#9fb0b5] font-medium">{t('feed.detected_links')}</div>
             {detectedLinks.map((link, idx) => (
               <div key={idx} className="flex items-center gap-2 p-2 rounded-lg border border-white/10 bg-white/5">
                 <div className="flex-1 min-w-0">
@@ -583,7 +585,7 @@ export default function CreatePost(){
                   className="px-2 py-1 rounded text-xs border border-[#4db6ac]/30 text-[#4db6ac] hover:bg-[#4db6ac]/10"
                   onClick={() => startRenamingLink(link)}
                 >
-                  Rename
+                  {t('feed.rename')}
                 </button>
               </div>
             ))}
@@ -608,7 +610,7 @@ export default function CreatePost(){
               ) : (
                 <img 
                   src={mediaPreviewUrls[mediaCarouselIndex]?.url} 
-                  alt={`preview ${mediaCarouselIndex + 1}`} 
+                  alt={t('feed.preview_alt', { number: mediaCarouselIndex + 1 })} 
                   className="w-full max-h-[360px] object-contain bg-black" 
                 />
               )}
@@ -686,14 +688,14 @@ export default function CreatePost(){
 
         {selectedGif ? (
           <div className="mt-3 inline-flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
-            <img src={selectedGif.previewUrl} alt="Selected GIF" className="w-16 h-16 rounded object-cover" loading="lazy" />
+            <img src={selectedGif.previewUrl} alt={t('feed.selected_gif_alt')} className="w-16 h-16 rounded object-cover" loading="lazy" />
             <div className="flex items-center gap-2 text-xs text-[#7fe7df]">
               <i className="fa-solid fa-images" />
-              <span>GIF attached</span>
+              <span>{t('feed.gif_attached')}</span>
               <button
                 onClick={() => { setSelectedGif(null); setGifFile(null) }}
                 className="ml-1 text-red-400 hover:text-red-300"
-                aria-label="Remove GIF"
+                aria-label={t('feed.remove_gif')}
               >
                 <i className="fa-solid fa-times" />
               </button>
@@ -707,7 +709,7 @@ export default function CreatePost(){
         ) : null}
         {recording && (
           <div className="mt-3 px-3">
-            <div className="text-xs text-[#9fb0b5] mb-1">Recording? {Math.min(60, Math.round((recordMs||0)/1000))}s</div>
+            <div className="text-xs text-[#9fb0b5] mb-1">{t('feed.recording', { seconds: Math.min(60, Math.round((recordMs||0)/1000)) })}</div>
             <div className="h-2 w-full bg-white/5 rounded overflow-hidden">
               <div className="h-full bg-[#4db6ac] transition-all" style={{ width: `${Math.min(100, ((recordMs||0)/600) )}%`, opacity: 0.9 }} />
             </div>
@@ -723,22 +725,22 @@ export default function CreatePost(){
       {renamingLink && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm">
           <div className="w-[90%] max-w-md rounded-2xl border border-[#4db6ac]/30 bg-[#0b0b0b] p-6 shadow-[0_0_40px_rgba(77,182,172,0.3)]">
-            <h3 className="text-lg font-bold text-white mb-4">Rename Link</h3>
+            <h3 className="text-lg font-bold text-white mb-4">{t('feed.rename_link')}</h3>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-[#9fb0b5] mb-1 block">Original URL:</label>
+                <label className="text-xs text-[#9fb0b5] mb-1 block">{t('feed.original_url')}</label>
                 <div className="text-xs text-white/70 truncate p-2 rounded bg-white/5 border border-white/10">
                   {renamingLink.url}
                 </div>
               </div>
               <div>
-                <label className="text-xs text-[#9fb0b5] mb-1 block">Display as:</label>
+                <label className="text-xs text-[#9fb0b5] mb-1 block">{t('feed.display_as')}</label>
                 <input
                   type="text"
                   value={linkDisplayName}
                   onChange={(e) => setLinkDisplayName(e.target.value)}
                   className="w-full p-2 rounded bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
-                  placeholder="Enter display name"
+                  placeholder={t('feed.display_name_placeholder')}
                   autoFocus
                 />
               </div>
@@ -748,13 +750,13 @@ export default function CreatePost(){
                 className="flex-1 px-4 py-2 rounded-lg border border-white/20 text-white/80 text-sm hover:bg-white/5"
                 onClick={cancelRenaming}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 className="flex-1 px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
                 onClick={saveRenamedLink}
               >
-                Save
+                {t('common.save')}
               </button>
             </div>
           </div>
@@ -790,7 +792,7 @@ export default function CreatePost(){
           style={{ gridTemplateColumns: '1fr auto', alignItems: 'center' }}
         >
           <div className="flex flex-wrap items-center gap-3">
-            <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label="Add photos/videos">
+            <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label={t('feed.add_photos_videos')}>
               <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
               <input
                 ref={fileInputRef}
@@ -803,14 +805,14 @@ export default function CreatePost(){
                   
                   const remaining = MAX_MEDIA - mediaFiles.length
                   if (remaining <= 0) {
-                    setMediaLimitMsg(`Maximum ${MAX_MEDIA} files per post`)
+                    setMediaLimitMsg(t('feed.max_files', { max: MAX_MEDIA }))
                     setTimeout(() => setMediaLimitMsg(''), 3000)
                     e.target.value = ''
                     return
                   }
                   const newFiles = Array.from(files).slice(0, remaining)
                   if (newFiles.length < files.length) {
-                    setMediaLimitMsg(`Maximum ${MAX_MEDIA} files per post — ${files.length - newFiles.length} skipped`)
+                    setMediaLimitMsg(t('feed.max_files_skipped', { max: MAX_MEDIA, count: files.length - newFiles.length }))
                     setTimeout(() => setMediaLimitMsg(''), 3000)
                   }
                   if (newFiles.length > 0) {
@@ -825,22 +827,22 @@ export default function CreatePost(){
             </label>
             <button
               className="px-3 py-2 rounded-full text-[#4db6ac] hover:bg-white/5"
-              aria-label="Add GIF"
+              aria-label={t('feed.add_gif')}
               onClick={()=> setGifPickerOpen(true)}
             >
               <i className="fa-solid fa-images" />
             </button>
-            <button className={`px-3 py-2 rounded-full text-[#4db6ac] hover:bg-white/5 ${recording ? 'brightness-125' : ''}`} aria-label={recording ? "Stop recording" : "Record audio"} onClick={handleMicButton}>
+            <button className={`px-3 py-2 rounded-full text-[#4db6ac] hover:bg-white/5 ${recording ? 'brightness-125' : ''}`} aria-label={recording ? t('feed.stop_recording') : t('feed.record_audio')} onClick={handleMicButton}>
               <i className={`fa-solid ${recording ? 'fa-stop' : 'fa-microphone'}`} />
             </button>
             {preview && (
-              <button className="px-3 py-2 rounded-full text-white/70 hover:bg-white/5" onClick={clearPreview} aria-label="Discard audio">
+              <button className="px-3 py-2 rounded-full text-white/70 hover:bg-white/5" onClick={clearPreview} aria-label={t('feed.discard_audio')}>
                 <i className="fa-solid fa-trash" />
               </button>
             )}
           </div>
           <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting || (!content && !hasMediaAttachment && !gifFile && !preview)}>
-            {submitting ? 'Posting...' : 'Post'}
+            {submitting ? t('feed.posting') : t('feed.post')}
           </button>
         </div>
       </div>
@@ -866,7 +868,7 @@ export default function CreatePost(){
           if (fileInputRef.current) fileInputRef.current.value = ''
         } catch (err) {
           console.error('Failed to prepare GIF for post', err)
-          alert('Unable to attach GIF. Please try again.')
+          alert(t('feed.gif_attach_failed'))
         } finally {
           setGifPickerOpen(false)
         }
