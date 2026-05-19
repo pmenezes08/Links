@@ -671,7 +671,15 @@ def api_giphy_search():
                 return jsonify({'data': []})
             url = f'https://api.giphy.com/v1/gifs/search?api_key={key}&q={q}&limit={limit}&offset={offset}&rating={rating}'
         resp = _requests.get(url, timeout=10)
-        return jsonify(resp.json())
+        payload = resp.json()
+        if resp.status_code >= 400:
+            logger.warning(
+                "Giphy upstream HTTP %s: %s",
+                resp.status_code,
+                (payload.get('message') if isinstance(payload, dict) else None) or resp.text[:200],
+            )
+            return jsonify(payload), resp.status_code
+        return jsonify(payload)
     except Exception as e:
         logger.error(f"Giphy proxy error: {e}")
         return jsonify({'data': [], 'error': 'Giphy request failed'}), 502

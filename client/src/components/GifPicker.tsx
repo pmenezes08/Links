@@ -90,6 +90,9 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
         if (res.status === 403){
           throw new Error('GIPHY API key rejected (HTTP 403)')
         }
+        if (res.status === 503){
+          throw new Error('GIF search is not configured on the server (GIPHY_API_KEY missing)')
+        }
         throw new Error(`GIPHY request failed: ${res.status}`)
       }
       const data = await res.json() as { data?: GiphyItem[] }
@@ -186,7 +189,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
               <i className="fa-solid fa-spinner fa-spin" />
               Connecting to GIF library…
             </div>
-          ) : !apiKey ? (
+          ) : !useProxy && !apiKey ? (
             <div className="py-12 text-center text-sm text-red-400 px-4 leading-relaxed">GIF search requires a valid GIPHY API key. Ask an admin to configure it in the server environment.</div>
           ) : loading ? (
             <div className="flex items-center justify-center py-16 text-white/70 text-sm gap-2">
