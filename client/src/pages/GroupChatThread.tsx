@@ -656,13 +656,13 @@ export default function GroupChatThread() {
         setGroup(data.group)
         cacheKeyVal(`group-info:${group_id}`, data.group)
       } else {
-        setError(data.error || 'Failed to load group')
+        setError(data.error || t('chat.failed_load_group'))
       }
     } catch (err) {
       console.error('Error loading group:', err)
       const cached = await getCachedKeyVal<any>(`group-info:${group_id}`)
       if (cached) setGroup(prev => prev || cached)
-      else setError('Failed to load group')
+      else setError(t('chat.failed_load_group'))
     }
   }, [group_id])
 
@@ -779,7 +779,7 @@ export default function GroupChatThread() {
       console.error('Error loading messages:', err)
       if (!silent) {
         setServerMessages(prev => {
-          if (!prev.length) setError('Failed to load messages')
+          if (!prev.length) setError(t('chat.failed_load_messages'))
           return prev
         })
       }
@@ -1547,7 +1547,7 @@ export default function GroupChatThread() {
       })
     } catch (err) {
       console.error('Error sending GIF:', err)
-      alert('Failed to send GIF. Please try again.')
+      alert(t('chat.failed_send_gif'))
       setUploadingMedia(false)
       setUploadProgress(null)
     }
@@ -1721,7 +1721,7 @@ export default function GroupChatThread() {
   }
 
   const handleLeave = async () => {
-    if (!confirm('Are you sure you want to leave this group chat?')) return
+    if (!confirm(t('chat.leave_group_confirm'))) return
 
     try {
       const response = await fetch(`/api/group_chat/${group_id}/leave`, {
@@ -1733,11 +1733,11 @@ export default function GroupChatThread() {
       if (data.success) {
         navigate('/user_chat')
       } else {
-        alert(data.error || 'Failed to leave group')
+        alert(data.error || t('chat.failed_leave_group'))
       }
     } catch (err) {
       console.error('Error leaving group:', err)
-      alert('Failed to leave group')
+      alert(t('chat.failed_leave_group'))
     }
   }
 
@@ -1768,7 +1768,7 @@ export default function GroupChatThread() {
     // Check member limit
     const currentCount = group?.members.length || 0
     if (currentCount + selectedNewMembers.length > 5) {
-      alert('Group chats are limited to 5 members. For larger groups, consider creating a community or sub-community.')
+      alert(t('chat.group_member_limit_hint', { max: 5 }))
       return
     }
     
@@ -1792,14 +1792,14 @@ export default function GroupChatThread() {
         setExpandedCommunities(new Set())
       } else {
         if (data.limit_exceeded) {
-          alert(`Group chats are limited to ${data.max_members} members. For larger groups, consider creating a community or sub-community.`)
+          alert(t('chat.group_member_limit_hint', { max: data.max_members }))
         } else {
-          alert(data.error || 'Failed to add members')
+          alert(data.error || t('chat.failed_add_members'))
         }
       }
     } catch (err) {
       console.error('Error adding members:', err)
-      alert('Failed to add members')
+      alert(t('chat.failed_add_members'))
     } finally {
       setAddingMembers(false)
     }
@@ -1867,7 +1867,7 @@ export default function GroupChatThread() {
       if (!group_id) return
       const gid = Number(group_id)
       if (!Number.isFinite(gid)) return
-      if (!confirm('Remove this attachment from the message?')) return
+      if (!confirm(t('chat.remove_attachment_confirm'))) return
       try {
         const res = await fetch(`/api/group_chat/${gid}/remove_message_media`, {
           method: 'POST',
@@ -1877,7 +1877,7 @@ export default function GroupChatThread() {
         })
         const j = await res.json().catch(() => null)
         if (!j?.success) {
-          alert(j?.error || 'Could not remove attachment')
+          alert(j?.error || t('chat.failed_remove_attachment'))
           return
         }
         if (j.deleted_message) {
@@ -1900,14 +1900,14 @@ export default function GroupChatThread() {
           }),
         )
       } catch {
-        alert('Network error. Could not remove attachment.')
+        alert(t('chat.remove_attachment_network_error'))
       }
     },
     [group_id],
   )
 
   const handleDeleteMessage = async (messageId: number, messageData: Message) => {
-    if (!confirm('Are you sure you want to delete this message?')) return
+    if (!confirm(t('chat.delete_message_confirm'))) return
 
     /** Positive id = persisted on server; temp / negative = local failed or unsent bubble */
     const hasPersistedServerId = typeof messageId === 'number' && messageId > 0
@@ -1955,7 +1955,7 @@ export default function GroupChatThread() {
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
           )
         })
-        alert(data.error || 'Failed to delete message')
+        alert(data.error || t('chat.failed_delete_message'))
       }
     } catch (err) {
       console.error('Error deleting message:', err)
@@ -1966,7 +1966,7 @@ export default function GroupChatThread() {
           new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         )
       })
-      alert('Network error. Could not delete message.')
+      alert(t('chat.delete_network_error'))
     }
   }
 
@@ -2001,7 +2001,7 @@ export default function GroupChatThread() {
     if (selectedMessages.size === 0) return
     
     const count = selectedMessages.size
-    if (!confirm(`Are you sure you want to delete ${count} message${count > 1 ? 's' : ''}?`)) return
+    if (!confirm(t('chat.delete_messages_confirm', { count }))) return
     
     const idsToDelete = Array.from(selectedMessages)
     const serverIds = idsToDelete.filter((id): id is number => typeof id === 'number' && id > 0)
@@ -2051,13 +2051,13 @@ export default function GroupChatThread() {
       } else {
         idsToDelete.forEach(id => pendingDeletions.current.delete(id))
         loadMessages(true)
-        alert(data.error || 'Failed to delete messages')
+        alert(data.error || t('chat.failed_delete_messages'))
       }
     } catch (err) {
       console.error('Error bulk deleting messages:', err)
       idsToDelete.forEach(id => pendingDeletions.current.delete(id))
       loadMessages(true)
-      alert('Network error. Could not delete messages.')
+      alert(t('chat.delete_messages_network_error'))
     }
   }
 
@@ -2101,14 +2101,14 @@ export default function GroupChatThread() {
         setServerMessages(prev => prev.map(m => 
           m.id === editingId ? { ...m, text: oldMessage.text, is_edited: oldMessage.is_edited } : m
         ))
-        alert(data.error || 'Failed to edit message')
+        alert(data.error || t('chat.failed_edit_message'))
       }
     } catch (err) {
       console.error('Error editing message:', err)
       setServerMessages(prev => prev.map(m => 
         m.id === editingId ? { ...m, text: oldMessage.text } : m
       ))
-      alert('Network error. Could not edit message.')
+      alert(t('chat.edit_message_network_error'))
     } finally {
       setEditingSaving(false)
     }
@@ -2271,7 +2271,7 @@ export default function GroupChatThread() {
                   }}
                 >
                   <i className="fa-solid fa-users text-xs text-[#4db6ac]" />
-                  <span>View Members</span>
+                  <span>{t('chat.view_members')}</span>
                 </button>
                 <button
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
@@ -2281,13 +2281,13 @@ export default function GroupChatThread() {
                   }}
                 >
                   <i className="fa-solid fa-photo-film text-xs text-[#4db6ac]" />
-                  <span>View Media</span>
+                  <span>{t('chat.view_media')}</span>
                 </button>
                 <button
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
                   onClick={() => {
                     setHeaderMenuOpen(false)
-                    if (!confirm("Reset Steve's conversation context? Steve will still have the full chat history but will stop referencing older discussions.")) return
+                    if (!confirm(t('chat.reset_steve_confirm'))) return
                     fetch(`/api/group_chat/${group_id}/steve_reset_context`, {
                       method: 'POST',
                       credentials: 'include'
@@ -2295,16 +2295,16 @@ export default function GroupChatThread() {
                       .then(r => r.json())
                       .then(d => {
                         if (d?.success) {
-                          alert("Steve's context has been reset.")
+                          alert(t('chat.reset_steve_success'))
                         } else {
-                          alert(d?.error || 'Failed to reset')
+                          alert(d?.error || t('chat.reset_steve_failed'))
                         }
                       })
-                      .catch(() => alert('Failed to reset context'))
+                      .catch(() => alert(t('chat.reset_steve_context_failed')))
                   }}
                 >
                   <i className="fa-solid fa-rotate text-xs text-[#4db6ac]" />
-                  <span>Reset Steve</span>
+                  <span>{t('chat.reset_steve')}</span>
                 </button>
                 <button
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
@@ -2315,7 +2315,7 @@ export default function GroupChatThread() {
                   }}
                 >
                   <i className="fa-solid fa-user-plus text-xs text-[#4db6ac]" />
-                  <span>Add Members</span>
+                  <span>{t('chat.add_members_action')}</span>
                 </button>
                 {group?.members.find(m => m.username === currentUsername)?.is_admin && (
                   <button
@@ -2332,7 +2332,7 @@ export default function GroupChatThread() {
                     }}
                   >
                     <i className="fa-solid fa-gear text-xs text-[#4db6ac]" />
-                    <span>Manage Group</span>
+                    <span>{t('chat.manage_group')}</span>
                   </button>
                 )}
                 <button
@@ -2343,7 +2343,7 @@ export default function GroupChatThread() {
                   }}
                 >
                   <i className="fa-solid fa-arrow-right-from-bracket text-xs" />
-                  <span>Leave Group</span>
+                  <span>{t('chat.leave_group')}</span>
                 </button>
               </div>
             </div>
@@ -2409,7 +2409,7 @@ export default function GroupChatThread() {
                   <>
                     <i className="fa-solid fa-wifi-slash text-3xl mb-3 opacity-50" />
                     <div className="text-sm">{t('chat.offline_unavailable')}</div>
-                    <div className="text-xs mt-1 opacity-70">Go back online to load this conversation</div>
+                    <div className="text-xs mt-1 opacity-70">{t('chat.offline_go_online')}</div>
                   </>
                 ) : (
                   <>
@@ -2530,7 +2530,7 @@ export default function GroupChatThread() {
                     </div>
                     <div className="bg-white/10 rounded-2xl rounded-bl-lg px-4 py-2">
                       <div className="flex items-center gap-1">
-                        <span className="text-white/70 text-sm">Steve is typing</span>
+                        <span className="text-white/70 text-sm">{t('chat.steve_typing')}</span>
                         <span className="flex gap-0.5">
                           <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                           <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -2645,7 +2645,7 @@ export default function GroupChatThread() {
                     <i className="fa-solid fa-image text-[#4db6ac] text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">Photos</div>
+                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.photos')}</div>
                     <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_from_gallery')}</div>
                   </div>
                 </button>
@@ -2657,8 +2657,8 @@ export default function GroupChatThread() {
                     <i className="fa-solid fa-camera text-[#4db6ac] text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">Camera</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">Take a photo</div>
+                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.camera')}</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.take_photo')}</div>
                   </div>
                 </button>
                 <button
@@ -2682,7 +2682,7 @@ export default function GroupChatThread() {
                   </div>
                   <div className="min-w-0">
                     <div className="text-white font-medium text-sm sm:text-base">GIF</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">Powered by GIPHY</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.powered_by_giphy')}</div>
                   </div>
                 </button>
               </div>
@@ -3173,7 +3173,7 @@ export default function GroupChatThread() {
             </div>
 
             <div className="p-4 max-h-[50vh] overflow-y-auto">
-              <div className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-3">Members</div>
+              <div className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-3">{t('chat.members_section')}</div>
               <div className="space-y-2">
                 {group.members.map((member) => (
                   <div
@@ -3189,7 +3189,7 @@ export default function GroupChatThread() {
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate">{member.username}</div>
                       {member.is_admin && (
-                        <div className="text-xs text-[#4db6ac]">Admin</div>
+                        <div className="text-xs text-[#4db6ac]">{t('feed.admin')}</div>
                       )}
                     </div>
                     {group.members.find(m => m.username === currentUsername)?.is_admin && 
@@ -3197,7 +3197,7 @@ export default function GroupChatThread() {
                       <button
                         onClick={async () => {
                           if (removingMember) return
-                          if (!confirm(`Remove ${member.username} from the group?`)) return
+                          if (!confirm(t('chat.remove_member_from_group_confirm', { username: member.username }))) return
                           setRemovingMember(member.username)
                           try {
                             const r = await fetch(`/api/group_chat/${group_id}/remove_member`, {
@@ -3208,8 +3208,8 @@ export default function GroupChatThread() {
                             const d = await r.json().catch(() => null)
                             if (d?.success) {
                               setGroup(prev => prev ? { ...prev, members: prev.members.filter(m => m.username !== member.username) } : prev)
-                            } else { alert(d?.error || 'Failed to remove') }
-                          } catch { alert('Failed to remove member') }
+                            } else { alert(d?.error || t('chat.failed_remove_from_group')) }
+                          } catch { alert(t('chat.failed_remove_member')) }
                           finally { setRemovingMember(null) }
                         }}
                         disabled={removingMember === member.username}
@@ -3248,7 +3248,7 @@ export default function GroupChatThread() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-4 border-b border-white/10 flex items-center justify-between">
-              <div className="font-semibold">Manage Group</div>
+              <div className="font-semibold">{t('chat.manage_group')}</div>
               <button onClick={() => setShowManageGroup(false)} className="p-2 rounded-full hover:bg-white/5">
                 <i className="fa-solid fa-xmark" />
               </button>
@@ -3257,7 +3257,7 @@ export default function GroupChatThread() {
             <div className="p-4 space-y-5 max-h-[60vh] overflow-y-auto">
               {/* Rename Group */}
               <div>
-                <label className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-2 block">Group Name</label>
+                <label className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-2 block">{t('chat.group_name_label')}</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -3279,8 +3279,8 @@ export default function GroupChatThread() {
                         const d = await r.json().catch(() => null)
                         if (d?.success) {
                           setGroup(prev => prev ? { ...prev, name: d.name } : prev)
-                        } else { alert(d?.error || 'Failed to rename') }
-                      } catch { alert('Failed to rename') }
+                        } else { alert(d?.error || t('chat.failed_rename_group')) }
+                      } catch { alert(t('chat.failed_rename_group')) }
                       finally { setRenaming(false) }
                     }}
                     disabled={renaming || renameText.trim() === group.name}
@@ -3293,23 +3293,23 @@ export default function GroupChatThread() {
 
               {/* Steve Personality */}
               <div>
-                <label className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-2 block">Steve AI Personality</label>
+                <label className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-2 block">{t('chat.steve_ai_personality')}</label>
                 <div className="flex gap-2">
                   <select
                     value={stevePersonality}
                     onChange={(e) => setStevePersonality(e.target.value)}
                     className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#4db6ac] appearance-none"
                   >
-                    <option value="default">Default</option>
-                    <option value="professional">Professional</option>
-                    <option value="friendly">Friendly</option>
-                    <option value="sarcastic">Sarcastic</option>
-                    <option value="humorous">Humorous</option>
-                    <option value="sage">Sage</option>
-                    <option value="empathetic">Empathetic</option>
-                    <option value="cynic">Cynic</option>
-                    <option value="quirky">Quirky</option>
-                    <option value="unhinged">Unhinged</option>
+                    <option value="default">{t('chat.personality_default')}</option>
+                    <option value="professional">{t('chat.personality_professional')}</option>
+                    <option value="friendly">{t('chat.personality_friendly')}</option>
+                    <option value="sarcastic">{t('chat.personality_sarcastic')}</option>
+                    <option value="humorous">{t('chat.personality_humorous')}</option>
+                    <option value="sage">{t('chat.personality_sage')}</option>
+                    <option value="empathetic">{t('chat.personality_empathetic')}</option>
+                    <option value="cynic">{t('chat.personality_cynic')}</option>
+                    <option value="quirky">{t('chat.personality_quirky')}</option>
+                    <option value="unhinged">{t('chat.personality_unhinged')}</option>
                   </select>
                   <button
                     onClick={async () => {
@@ -3320,9 +3320,9 @@ export default function GroupChatThread() {
                           body: JSON.stringify({ personality: stevePersonality })
                         })
                         const d = await r.json().catch(() => null)
-                        if (d?.success) { alert('Personality saved!') }
-                        else { alert(d?.error || 'Failed to save') }
-                      } catch { alert('Failed to save') }
+                        if (d?.success) { alert(t('chat.personality_saved')) }
+                        else { alert(d?.error || t('chat.failed_save_personality')) }
+                      } catch { alert(t('chat.failed_save_personality')) }
                     }}
                     className="px-4 py-2 bg-[#4db6ac] text-black rounded-lg font-medium text-sm hover:bg-[#5cc4ba] transition"
                   >
@@ -3335,15 +3335,15 @@ export default function GroupChatThread() {
               <div className="pt-3 border-t border-white/10">
                 <button
                   onClick={async () => {
-                    if (!confirm('Are you sure you want to delete this group? This cannot be undone.')) return
+                    if (!confirm(t('chat.delete_group_confirm_manage'))) return
                     try {
                       const r = await fetch(`/api/group_chat/${group_id}/delete`, {
                         method: 'POST', credentials: 'include'
                       })
                       const d = await r.json().catch(() => null)
                       if (d?.success) { navigate('/messages') }
-                      else { alert(d?.error || 'Failed to delete group') }
-                    } catch { alert('Failed to delete group') }
+                      else { alert(d?.error || t('chat.failed_delete_group')) }
+                    } catch { alert(t('chat.failed_delete_group')) }
                   }}
                   className="w-full px-4 py-3 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition text-sm font-medium"
                 >
@@ -3374,7 +3374,7 @@ export default function GroupChatThread() {
           >
             <div className="p-4 border-b border-white/10 flex items-center justify-between flex-shrink-0">
               <div>
-                <div className="font-semibold">Add Members</div>
+                <div className="font-semibold">{t('chat.add_members_action')}</div>
                 <div className="text-xs text-[#9fb0b5]">
                   {group.members.length}/5 members
                   {group.members.length >= 5 && ' (limit reached)'}
@@ -3399,7 +3399,7 @@ export default function GroupChatThread() {
                 <div className="w-16 h-16 bg-[#4db6ac]/20 rounded-full flex items-center justify-center mx-auto mb-4">
                   <i className="fa-solid fa-users text-[#4db6ac] text-2xl" />
                 </div>
-                <h3 className="text-white font-medium mb-2">Group is Full</h3>
+                <h3 className="text-white font-medium mb-2">{t('chat.group_full_title')}</h3>
                 <p className="text-white/60 text-sm mb-4">
                   Group chats are limited to 5 members. For larger groups, consider creating a community or sub-community.
                 </p>
@@ -3496,7 +3496,7 @@ export default function GroupChatThread() {
                         if (sortedCommunities.length === 0) {
                           return (
                             <div className="p-6 text-center">
-                              <p className="text-white/50 text-sm">No members match your search</p>
+                              <p className="text-white/50 text-sm">{t('chat.no_members_match_search')}</p>
                             </div>
                           )
                         }
@@ -3545,7 +3545,7 @@ export default function GroupChatThread() {
                                           setSelectedNewMembers(prev => prev.filter(u => u !== user.username))
                                         } else {
                                           if (group.members.length + selectedNewMembers.length + 1 > 5) {
-                                            alert('Group chats are limited to 5 members. For larger groups, consider creating a community.')
+                                            alert(t('chat.group_member_limit_short', { max: 5 }))
                                             return
                                           }
                                           setSelectedNewMembers(prev => [...prev, user.username])
@@ -3821,7 +3821,7 @@ export default function GroupChatThread() {
           <div className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-[80%] max-w-xs p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-3">
               <i className="fa-solid fa-globe text-[#4db6ac]" />
-              <span className="text-white font-semibold text-sm">Translate to</span>
+              <span className="text-white font-semibold text-sm">{t('chat.translate_to')}</span>
             </div>
             <div className="space-y-1">
               {translateLanguages.map(lang => (
@@ -3973,7 +3973,7 @@ export default function GroupChatThread() {
                 <button
                   onClick={async () => {
                     if (!viewingMedia.messageId || deletingMedia) return
-                    if (!confirm('Delete this media message?')) return
+                    if (!confirm(t('chat.delete_media_message_confirm'))) return
                     setDeletingMedia(true)
                     try {
                       const r = await fetch(`/api/group_chat/${group_id}/message/${viewingMedia.messageId}/delete`, {
@@ -3984,9 +3984,9 @@ export default function GroupChatThread() {
                         setViewingMedia(null)
                         loadMessages(true)
                       } else {
-                        alert(d?.error || 'Failed to delete')
+                        alert(d?.error || t('chat.failed_delete_media'))
                       }
-                    } catch { alert('Failed to delete') }
+                    } catch { alert(t('chat.failed_delete_media')) }
                     finally { setDeletingMedia(false) }
                   }}
                   disabled={deletingMedia}

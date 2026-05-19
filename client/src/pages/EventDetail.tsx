@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import { exportEventToDeviceCalendar, removeNativeCalendarMirrorForCpointEvent } from '../utils/calendarExport'
@@ -32,6 +33,7 @@ const glassPanel =
   'relative rounded-2xl overflow-hidden liquid-glass-surface border border-white/15 shadow-[0_24px_56px_rgba(0,0,0,0.48)]'
 
 export default function EventDetail(){
+  const { t } = useTranslation()
   const { event_id } = useParams()
   const navigate = useNavigate()
   const { setTitle } = useHeader()
@@ -45,7 +47,7 @@ export default function EventDetail(){
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [calExporting, setCalExporting] = useState(false)
 
-  useEffect(() => { setTitle('Event Details') }, [setTitle])
+  useEffect(() => { setTitle(t('calendar.event_details_title')) }, [setTitle, t])
   
   useEffect(() => {
     let mounted = true
@@ -122,10 +124,10 @@ export default function EventDetail(){
       }
       const outcome = await exportEventToDeviceCalendar(event_id, snap)
       if (outcome.via === 'native') {
-        alert('Event added to your calendar.')
+        alert(t('calendar.event_added_to_calendar'))
       }
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Could not export calendar'
+      const msg = e instanceof Error ? e.message : t('calendar.could_not_export_calendar')
       alert(msg)
     } finally {
       setCalExporting(false)
@@ -154,11 +156,11 @@ export default function EventDetail(){
           navigate(-1)
         }
       } else {
-        alert(j?.message || 'Failed to delete event')
+        alert(j?.message || t('calendar.delete_failed'))
       }
     }catch(err){
       console.error('Error deleting event:', err)
-      alert('Failed to delete event')
+      alert(t('calendar.delete_failed'))
     } finally {
       setDeleting(false)
       setShowDeleteConfirm(false)
@@ -174,14 +176,14 @@ export default function EventDetail(){
   if (loading) {
     return (
       <div className="min-h-screen chat-thread-bg flex items-center justify-center px-4">
-        <div className="text-[#9fb0b5] text-sm">Loading event…</div>
+        <div className="text-[#9fb0b5] text-sm">{t('calendar.loading_event')}</div>
       </div>
     )
   }
   if (!event) {
     return (
       <div className="min-h-screen chat-thread-bg flex items-center justify-center px-4">
-        <div className="text-red-400/90 text-sm">Event not found</div>
+        <div className="text-red-400/90 text-sm">{t('calendar.event_not_found')}</div>
       </div>
     )
   }
@@ -194,7 +196,7 @@ export default function EventDetail(){
             type="button"
             className="rounded-full p-2 text-[#cfe7e4] hover:bg-white/5"
             onClick={() => navigate(-1)}
-            aria-label="Back"
+            aria-label={t('common.back')}
           >
             <i className="fa-solid fa-arrow-left" />
           </button>
@@ -212,8 +214,8 @@ export default function EventDetail(){
                   e.stopPropagation()
                   setShowDeleteConfirm(true)
                 }}
-                title="Delete Event"
-                aria-label="Delete Event"
+                title={t('calendar.delete_event_aria')}
+                aria-label={t('calendar.delete_event_aria')}
               >
                 <i className="fa-solid fa-trash text-sm" />
               </button>
@@ -224,7 +226,7 @@ export default function EventDetail(){
             <div className="flex items-start gap-3">
               <i className="fa-solid fa-calendar text-[#4db6ac] w-4 pt-0.5 text-sm shrink-0" />
               <div className="flex-1 min-w-0">
-                <div className="text-xs text-[#9fb0b5] mb-0.5">Date</div>
+                <div className="text-xs text-[#9fb0b5] mb-0.5">{t('calendar.date_label')}</div>
                 <div className="text-white/90 text-sm">
                   {event.date}
                   {event.end_date && event.end_date !== event.date && event.end_date !== '0000-00-00' && (
@@ -238,12 +240,12 @@ export default function EventDetail(){
               <div className="flex items-start gap-3">
                 <i className="fa-solid fa-clock text-[#4db6ac] w-4 pt-0.5 text-sm shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs text-[#9fb0b5] mb-0.5">Time</div>
+                  <div className="text-xs text-[#9fb0b5] mb-0.5">{t('calendar.time_label')}</div>
                   <div className="text-white/90 text-sm">
                     {(() => {
                       const times = [event.start_time, event.end_time]
-                        .filter(t => t && t !== '0000-00-00 00:00:00' && t !== '00:00:00' && t !== '00:00')
-                      const timeStr = times.join(' - ') || 'All day'
+                        .filter(tval => tval && tval !== '0000-00-00 00:00:00' && tval !== '00:00:00' && tval !== '00:00')
+                      const timeStr = times.join(' - ') || t('calendar.all_day')
                       return event.timezone ? `${timeStr} ${event.timezone}` : timeStr
                     })()}
                   </div>
@@ -255,7 +257,7 @@ export default function EventDetail(){
               <div className="flex items-start gap-3">
                 <i className="fa-solid fa-info-circle text-[#4db6ac] w-4 pt-0.5 text-sm shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs text-[#9fb0b5] mb-0.5">Description</div>
+                  <div className="text-xs text-[#9fb0b5] mb-0.5">{t('calendar.description')}</div>
                   <div className="text-white/90 text-sm whitespace-pre-wrap leading-relaxed">{event.description}</div>
                 </div>
               </div>
@@ -264,7 +266,7 @@ export default function EventDetail(){
             <div className="flex items-start gap-3">
               <i className="fa-solid fa-user text-[#4db6ac] w-4 pt-0.5 text-sm shrink-0" />
               <div className="flex-1 min-w-0">
-                <div className="text-xs text-[#9fb0b5] mb-0.5">Organizer</div>
+                <div className="text-xs text-[#9fb0b5] mb-0.5">{t('calendar.organizer')}</div>
                 <div className="text-white/90 text-sm">{event.username}</div>
               </div>
             </div>
@@ -277,11 +279,11 @@ export default function EventDetail(){
                 onClick={() => void addToDeviceCalendar()}
               >
                 {calExporting ? (
-                  'Preparing…'
+                  t('calendar.preparing')
                 ) : (
                   <>
                     <i className="fa-regular fa-calendar-plus mr-2" aria-hidden />
-                    Add to my calendar
+                    {t('calendar.add_to_my_calendar')}
                   </>
                 )}
               </button>
@@ -294,27 +296,27 @@ export default function EventDetail(){
           <div className="grid grid-cols-3 gap-3 text-center">
             <div>
               <div className="text-lg font-semibold text-green-400 tabular-nums">{event.rsvp_counts?.going || 0}</div>
-              <div className="text-[11px] text-[#9fb0b5] mt-0.5">Going</div>
+              <div className="text-[11px] text-[#9fb0b5] mt-0.5">{t('calendar.going')}</div>
             </div>
             <div>
               <div className="text-lg font-semibold text-yellow-400 tabular-nums">{event.rsvp_counts?.maybe || 0}</div>
-              <div className="text-[11px] text-[#9fb0b5] mt-0.5">Maybe</div>
+              <div className="text-[11px] text-[#9fb0b5] mt-0.5">{t('calendar.maybe')}</div>
             </div>
             <div>
               <div className="text-lg font-semibold text-red-400/90 tabular-nums">{event.rsvp_counts?.not_going || 0}</div>
-              <div className="text-[11px] text-[#9fb0b5] mt-0.5">Can't Go</div>
+              <div className="text-[11px] text-[#9fb0b5] mt-0.5">{t('calendar.cant_go')}</div>
             </div>
           </div>
           {typeof event.rsvp_counts?.no_response === 'number' && event.rsvp_counts.no_response > 0 && (
             <div className="mt-3 pt-3 border-t border-white/10 text-center">
-              <div className="text-xs text-[#9fb0b5]">{event.rsvp_counts.no_response} haven't responded yet</div>
+              <div className="text-xs text-[#9fb0b5]">{t('calendar.havent_responded', { count: event.rsvp_counts.no_response })}</div>
             </div>
           )}
         </div>
 
         <div className={`${glassPanel} p-4 mb-3 relative`}>
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-teal-300/50 to-transparent opacity-70 pointer-events-none" />
-          <div className="text-center mb-3 text-white/90 text-sm font-medium">Will you attend this event?</div>
+          <div className="text-center mb-3 text-white/90 text-sm font-medium">{t('calendar.will_you_attend')}</div>
           <div className="grid grid-cols-3 gap-2">
             <button
               type="button"
@@ -326,7 +328,7 @@ export default function EventDetail(){
               onClick={()=> rsvp('going')}
             >
               <i className="fa-solid fa-check-circle text-base" />
-              <span className="text-xs font-medium">Going</span>
+              <span className="text-xs font-medium">{t('calendar.going')}</span>
             </button>
             <button
               type="button"
@@ -338,7 +340,7 @@ export default function EventDetail(){
               onClick={()=> rsvp('maybe')}
             >
               <i className="fa-solid fa-question-circle text-base" />
-              <span className="text-xs font-medium">Maybe</span>
+              <span className="text-xs font-medium">{t('calendar.maybe')}</span>
             </button>
             <button
               type="button"
@@ -350,7 +352,7 @@ export default function EventDetail(){
               onClick={()=> rsvp('not_going')}
             >
               <i className="fa-solid fa-times-circle text-base" />
-              <span className="text-xs font-medium">Can't Go</span>
+              <span className="text-xs font-medium">{t('calendar.cant_go')}</span>
             </button>
           </div>
         </div>
@@ -360,7 +362,7 @@ export default function EventDetail(){
           className="w-full min-h-[44px] py-2.5 rounded-xl border border-white/15 liquid-glass-surface hover:border-teal-400/35 text-sm text-white/90 mb-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)] transition-all"
           onClick={()=> loadAttendees()}
         >
-          View Who's Coming
+          {t('calendar.view_whos_coming')}
         </button>
 
         <div className="grid grid-cols-2 gap-2">
@@ -369,14 +371,14 @@ export default function EventDetail(){
             className="min-h-[44px] py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 shadow-[0_12px_28px_rgba(77,182,172,0.25)]"
             onClick={()=> navigate(event.community_id ? `/community/${event.community_id}/calendar_react` : '/premium_dashboard')}
           >
-            View Events
+            {t('calendar.view_events')}
           </button>
           <button
             type="button"
             className="min-h-[44px] py-2.5 rounded-xl border border-white/15 liquid-glass-surface text-sm text-white/90 hover:border-teal-400/35"
             onClick={()=> navigate(event.community_id ? `/community_feed_react/${event.community_id}` : '/premium_dashboard')}
           >
-            Back to Community
+            {t('calendar.back_to_community')}
           </button>
         </div>
       </div>
@@ -398,17 +400,17 @@ export default function EventDetail(){
           >
             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-teal-300/55 to-transparent opacity-80 pointer-events-none" />
             <div className="flex items-center justify-between gap-3 mb-3 flex-shrink-0">
-              <div className="font-semibold text-sm text-white">Who's coming</div>
+              <div className="font-semibold text-sm text-white">{t('calendar.whos_coming')}</div>
               <div className="flex items-center gap-2">
                 <select
                   value={attendeeFilter}
                   onChange={(e)=> setAttendeeFilter(e.target.value as 'going'|'maybe'|'not_going'|'no_response')}
                   className="rounded-lg liquid-glass-surface border border-white/12 px-2 py-1.5 text-xs text-white/90 focus:border-[#4db6ac]/50 outline-none"
                 >
-                  <option value="going">Going</option>
-                  <option value="maybe">Maybe</option>
-                  <option value="not_going">Not going</option>
-                  <option value="no_response">Not responded</option>
+                  <option value="going">{t('calendar.going')}</option>
+                  <option value="maybe">{t('calendar.maybe')}</option>
+                  <option value="not_going">{t('calendar.not_going')}</option>
+                  <option value="no_response">{t('calendar.not_responded')}</option>
                 </select>
                 <button
                   type="button"
@@ -421,7 +423,7 @@ export default function EventDetail(){
             </div>
 
             {!rsvpDetails ? (
-              <div className="text-[#9fb0b5] text-sm">Loading…</div>
+              <div className="text-[#9fb0b5] text-sm">{t('common.loading')}</div>
             ) : (
               (() => {
                 const list =
@@ -431,10 +433,10 @@ export default function EventDetail(){
                   rsvpDetails.no_response
 
                 const label =
-                  attendeeFilter === 'going' ? 'Going' :
-                  attendeeFilter === 'maybe' ? 'Maybe' :
-                  attendeeFilter === 'not_going' ? 'Not going' :
-                  'Not responded'
+                  attendeeFilter === 'going' ? t('calendar.going') :
+                  attendeeFilter === 'maybe' ? t('calendar.maybe') :
+                  attendeeFilter === 'not_going' ? t('calendar.not_going') :
+                  t('calendar.not_responded')
 
                 const labelClass =
                   attendeeFilter === 'going' ? 'text-green-400' :
@@ -446,7 +448,7 @@ export default function EventDetail(){
                   <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-white/10 liquid-glass-surface p-3">
                     <div className={`font-medium text-xs mb-2 ${labelClass}`}>{label} ({list.length})</div>
                     {list.length === 0 ? (
-                      <div className="text-xs text-[#9fb0b5]">No users in this category yet.</div>
+                      <div className="text-xs text-[#9fb0b5]">{t('calendar.no_users_category')}</div>
                     ) : (
                       <ul className="space-y-1 text-sm text-white/88">
                         {list.map((u, idx) => (<li key={`${attendeeFilter}-${idx}`}>{u.username}</li>))}
@@ -471,10 +473,10 @@ export default function EventDetail(){
               <div className="w-9 h-9 rounded-full bg-red-500/18 flex items-center justify-center shrink-0">
                 <i className="fa-solid fa-trash text-red-400 text-sm" />
               </div>
-              <div className="font-semibold text-base text-white">Delete Event?</div>
+              <div className="font-semibold text-base text-white">{t('calendar.delete_event')}</div>
             </div>
             <p className="text-xs text-[#9fb0b5] mb-4 leading-relaxed">
-              Are you sure you want to delete &quot;{event?.title}&quot;? This action cannot be undone and will remove all RSVPs.
+              {t('calendar.delete_event_confirm_body', { title: event?.title ?? '' })}
             </p>
             <div className="flex gap-2">
               <button
@@ -483,7 +485,7 @@ export default function EventDetail(){
                 onClick={() => setShowDeleteConfirm(false)}
                 disabled={deleting}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
@@ -491,7 +493,7 @@ export default function EventDetail(){
                 onClick={deleteEvent}
                 disabled={deleting}
               >
-                {deleting ? 'Deleting...' : 'Delete'}
+                {deleting ? t('calendar.deleting') : t('common.delete')}
               </button>
             </div>
           </div>

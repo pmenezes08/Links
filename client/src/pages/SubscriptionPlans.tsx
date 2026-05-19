@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import i18n from '../i18n'
 import { useHeader } from '../contexts/HeaderContext'
 import {
   currentStoreProvider,
@@ -176,9 +178,9 @@ interface ActiveSubscriptionsPayload {
 // ---------------------------------------------------------------------------
 
 function formatEur(value: number | string | null | undefined): string {
-  if (value === null || value === undefined || value === '') return 'TBD'
+  if (value === null || value === undefined || value === '') return i18n.t('subscriptions.price_tbd')
   const n = typeof value === 'number' ? value : Number(value)
-  if (Number.isNaN(n)) return 'TBD'
+  if (Number.isNaN(n)) return i18n.t('subscriptions.price_tbd')
   return `€${n.toFixed(2).replace(/\.00$/, '')}`
 }
 
@@ -227,7 +229,7 @@ function maybeConfirmPendingCheckout(active: ActiveSubscriptionsPayload) {
     }
     if (pending.plan_id === 'premium' && (active.personal?.subscription_active ?? active.personal?.active)) {
       sessionStorage.removeItem(PENDING_CHECKOUT_KEY)
-      return 'Premium is active.'
+      return i18n.t('subscriptions.status_premium_active')
     }
     const communityId = Number(pending.community_id || 0)
     const match = active.communities?.find((c) => (
@@ -236,7 +238,10 @@ function maybeConfirmPendingCheckout(active: ActiveSubscriptionsPayload) {
     ))
     if (match) {
       sessionStorage.removeItem(PENDING_CHECKOUT_KEY)
-      return `${match.name} is active on ${tierLabel(match.tier)}.`
+      return i18n.t('subscriptions.status_community_active', {
+        name: match.name,
+        tier: tierLabel(match.tier),
+      })
     }
     if (pending.plan_id === 'steve_package') {
       const steveMatch = active.communities?.find((c) => (
@@ -244,7 +249,7 @@ function maybeConfirmPendingCheckout(active: ActiveSubscriptionsPayload) {
       ))
       if (steveMatch) {
         sessionStorage.removeItem(PENDING_CHECKOUT_KEY)
-        return `${steveMatch.name} — Steve Community Package is active.`
+        return i18n.t('subscriptions.status_steve_active', { name: steveMatch.name })
       }
     }
   } catch {
@@ -255,11 +260,11 @@ function maybeConfirmPendingCheckout(active: ActiveSubscriptionsPayload) {
 
 function tierLabel(tier?: string | null) {
   const value = String(tier || '').toLowerCase()
-  if (value === 'paid_l1') return 'Paid L1'
-  if (value === 'paid_l2') return 'Paid L2'
-  if (value === 'paid_l3') return 'Paid L3'
-  if (value === 'free') return 'Free'
-  return tier || 'active'
+  if (value === 'paid_l1') return i18n.t('subscriptions.tier_paid_l1')
+  if (value === 'paid_l2') return i18n.t('subscriptions.tier_paid_l2')
+  if (value === 'paid_l3') return i18n.t('subscriptions.tier_paid_l3')
+  if (value === 'free') return i18n.t('subscriptions.tier_free')
+  return tier || i18n.t('subscriptions.tier_active_fallback')
 }
 
 /** Paid ladder rank for upgrade vs downgrade copy (Enterprise ranks above L3). */
@@ -322,10 +327,10 @@ export default function SubscriptionPlans() {
   useEffect(() => {
     const qsStatus = queryParams.get('status')
     if (qsStatus === 'cancelled') {
-      setStatus('Checkout cancelled — no charge was made.')
+      setStatus(t('subscriptions.checkout_cancelled'))
       resetSubscriptionPageScroll()
     }
-  }, [queryParams])
+  }, [queryParams, t])
 
   useEffect(() => {
     const requestedMode = queryParams.get('mode')
@@ -386,7 +391,7 @@ export default function SubscriptionPlans() {
         const data: PricingPayload = await pricingRes.json()
         if (!cancelled) {
           if (!data.success) {
-            throw new Error('Pricing load failed')
+            throw new Error(i18n.t('subscriptions.error_load_pricing'))
           }
           setPricing(data)
           if (activeRes?.success) setActiveSubscriptions(activeRes)
@@ -394,7 +399,7 @@ export default function SubscriptionPlans() {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load pricing')
+          setError(err instanceof Error ? err.message : i18n.t('subscriptions.error_load_pricing'))
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -462,9 +467,9 @@ export default function SubscriptionPlans() {
               window.location.assign(portalData.url)
               return
             }
-            throw new Error(portalData?.error || 'Unable to open billing portal')
+            throw new Error(portalData?.error || i18n.t('subscriptions.error_billing_portal'))
           }
-          throw new Error(data?.error || 'Unable to start checkout')
+          throw new Error(data?.error || i18n.t('subscriptions.error_checkout'))
         }
         if (data.url) {
           storePendingCheckout(body)
@@ -472,9 +477,9 @@ export default function SubscriptionPlans() {
           window.location.assign(data.url)
           return
         }
-        throw new Error('No checkout URL returned')
+        throw new Error(i18n.t('subscriptions.error_checkout_url'))
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Unable to start checkout'
+        const message = err instanceof Error ? err.message : i18n.t('subscriptions.error_checkout')
         if (options?.onError) options.onError(message)
         else setError(message)
         setCheckoutLoading(null)
@@ -493,10 +498,10 @@ export default function SubscriptionPlans() {
       setError(null)
       try {
         await purchaseStoreSubscription({ provider, productId })
-        setStatus(`Premium is active through ${providerLabel(provider)}.`)
+        setStatus(t('subscriptions.status_premium_provider', { provider: providerLabel(provider) }))
         await loadActiveSubscriptions()
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to start in-app purchase')
+        setError(err instanceof Error ? err.message : t('subscriptions.error_iap'))
         resetSubscriptionPageScroll()
       } finally {
         setCheckoutLoading(null)
@@ -504,7 +509,7 @@ export default function SubscriptionPlans() {
       return
     }
     startCheckout({ plan_id: 'premium', billing_cycle: 'monthly' }, 'premium')
-  }, [iapConfig, loadActiveSubscriptions, startCheckout])
+  }, [iapConfig, loadActiveSubscriptions, startCheckout, t])
 
   const onRestorePurchases = useCallback(async () => {
     const provider = currentStoreProvider()
@@ -514,20 +519,25 @@ export default function SubscriptionPlans() {
     setModalError(null)
     try {
       const count = await restoreStorePurchases(provider, iapConfig)
-      setStatus(count > 0 ? `Restored ${count} purchase${count === 1 ? '' : 's'}.` : 'No active purchases found to restore.')
+      setStatus(
+        count > 0
+          ? t('subscriptions.status_restored', { count }) // i18n plural: _one / _other
+          : t('subscriptions.status_no_restore'),
+      )
       await loadActiveSubscriptions()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to restore purchases')
+      setError(err instanceof Error ? err.message : t('subscriptions.error_iap'))
     } finally {
       setCheckoutLoading(null)
     }
-  }, [iapConfig, loadActiveSubscriptions])
+  }, [iapConfig, loadActiveSubscriptions, t])
 
   const onPickTier = useCallback(
     (tier: CommunityTierLevel) => {
       setPendingTier(tier)
       setModalError(null)
       setMobileBillingNotice(false)
+      resetSubscriptionPageScroll()
       setView('picker')
     },
     [],
@@ -541,7 +551,9 @@ export default function SubscriptionPlans() {
         const billingProvider = String(activeCommunity.billing_provider || 'stripe').toLowerCase()
         if (billingProvider === 'apple' || billingProvider === 'google') {
           setMobileBillingNotice(false)
-          setModalError(`This community is managed through ${providerLabel(billingProvider)}. Change or cancel it from that store account.`)
+          setModalError(
+            t('subscriptions.error_managed_store', { provider: providerLabel(billingProvider) }),
+          )
           return
         }
         const key = `change-tier:${communityId}:${pendingTier.tier_code}`
@@ -559,15 +571,20 @@ export default function SubscriptionPlans() {
           })
           const data = await res.json()
           if (!res.ok || !data?.success) {
-            throw new Error(data?.error || 'Unable to change tier')
+            throw new Error(data?.error || t('subscriptions.error_change_tier'))
           }
-          setStatus(`${activeCommunity.name} changed to ${tierLabel(pendingTier.tier_code)}.`)
+          setStatus(
+            t('subscriptions.status_tier_changed', {
+              name: activeCommunity.name,
+              tier: tierLabel(pendingTier.tier_code),
+            }),
+          )
           setView(null)
           setPendingTier(null)
           resetSubscriptionPageScroll()
           await loadActiveSubscriptions()
         } catch (err) {
-          setModalError(err instanceof Error ? err.message : 'Unable to change tier')
+          setModalError(err instanceof Error ? err.message : t('subscriptions.error_change_tier'))
         } finally {
           setCheckoutLoading(null)
         }
@@ -582,7 +599,9 @@ export default function SubscriptionPlans() {
         })
         if (existingStoreCommunity) {
           setMobileBillingNotice(true)
-          setModalError(`You already have one community billed through ${providerLabel(provider)}. Additional communities are upgraded on the web app.`)
+          setModalError(
+            t('subscriptions.error_one_store_community', { provider: providerLabel(provider) }),
+          )
           return
         }
         const key = `community_tier:${pendingTier.tier_code}:${communityId}`
@@ -591,13 +610,18 @@ export default function SubscriptionPlans() {
         setMobileBillingNotice(false)
         try {
           await purchaseStoreSubscription({ provider, productId, communityId })
-          setStatus(`Community is active on ${tierLabel(pendingTier.tier_code)} through ${providerLabel(provider)}.`)
+          setStatus(
+            t('subscriptions.status_community_provider', {
+              tier: tierLabel(pendingTier.tier_code),
+              provider: providerLabel(provider),
+            }),
+          )
           setView(null)
           setPendingTier(null)
           resetSubscriptionPageScroll()
           await loadActiveSubscriptions()
         } catch (err) {
-          setModalError(err instanceof Error ? err.message : 'Unable to start in-app purchase')
+          setModalError(err instanceof Error ? err.message : t('subscriptions.error_iap'))
         } finally {
           setCheckoutLoading(null)
         }
@@ -619,7 +643,7 @@ export default function SubscriptionPlans() {
         },
       )
     },
-    [activeSubscriptions, iapConfig, loadActiveSubscriptions, pendingTier, startCheckout],
+    [activeSubscriptions, iapConfig, loadActiveSubscriptions, pendingTier, startCheckout, t],
   )
 
   const onSteveCommunityChosen = useCallback(
@@ -644,31 +668,30 @@ export default function SubscriptionPlans() {
         {ownerIntroFeedReturnId != null && (
           <div className="mb-6 flex flex-col gap-3 rounded-xl border border-cpoint-turquoise/40 bg-cpoint-turquoise/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-white/85">
-              Return to your community feed to continue the guided setup when you&apos;re done here.
+              {t('subscriptions.owner_intro_body')}
             </p>
             <button
               type="button"
               className="shrink-0 rounded-full bg-cpoint-turquoise px-4 py-2.5 text-sm font-semibold text-black hover:bg-cpoint-turquoise/90"
               onClick={() => navigate(`/community_feed_react/${ownerIntroFeedReturnId}`)}
             >
-              Continue community setup
+              {t('subscriptions.owner_intro_cta')}
             </button>
           </div>
         )}
         <header className="text-center pt-8 pb-10">
           <p className="text-xs uppercase tracking-[0.28em] text-cpoint-turquoise/80">
-            Memberships
+            {t('subscriptions.header_kicker')}
           </p>
           <h1 className="mt-4 text-3xl sm:text-4xl font-semibold tracking-tight">
-            Choose your plan.
+            {t('subscriptions.header_title')}
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-white/60 text-base leading-relaxed">
-            Upgrade your own experience or your community. Month-to-month
-            — cancel any time from the billing portal.
+            {t('subscriptions.header_subtitle')}
           </p>
           {pricing?.stripe_mode === 'test' && (
             <p className="mt-4 text-[11px] uppercase tracking-[0.25em] text-amber-300/80">
-              Test mode — no real charges will be made
+              {t('subscriptions.test_mode_banner')}
             </p>
           )}
         </header>
@@ -692,8 +715,8 @@ export default function SubscriptionPlans() {
             {pageMode === 'choose' && (
               <section aria-labelledby="subscriptions-heading">
                 <div className="mb-4">
-                  <h2 id="subscriptions-heading" className="text-xl font-semibold">Choose your plan</h2>
-                  <p className="mt-1 text-sm text-white/55">Choose a personal plan or upgrade a parent community.</p>
+                  <h2 id="subscriptions-heading" className="text-xl font-semibold">{t('subscriptions.choose_section_title')}</h2>
+                  <p className="mt-1 text-sm text-white/55">{t('subscriptions.choose_section_subtitle')}</p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <PersonalCard
@@ -711,6 +734,7 @@ export default function SubscriptionPlans() {
                       setModalError(null)
                       setMobileBillingNotice(false)
                       setView('community')
+                      resetSubscriptionPageScroll()
                     }}
                   />
                 </div>
@@ -727,7 +751,7 @@ export default function SubscriptionPlans() {
         )}
 
         <p className="mt-12 text-center text-xs text-white/40">
-          Questions?{' '}
+          {t('subscriptions.sales_questions')}{' '}
           <a
             href={`mailto:${SALES_EMAIL}`}
             className="text-cpoint-turquoise hover:underline"
@@ -750,7 +774,10 @@ export default function SubscriptionPlans() {
           storeProvider={storeProvider}
           storeProductIds={storeProvider ? iapConfig?.[storeProvider]?.community_product_ids || {} : {}}
           onPickTier={onPickTier}
-          onOpenAddons={() => setView('addons')}
+          onOpenAddons={() => {
+            resetSubscriptionPageScroll()
+            setView('addons')
+          }}
           onClose={() => setView(null)}
           pendingKey={checkoutLoading}
           error={modalError}
@@ -765,6 +792,7 @@ export default function SubscriptionPlans() {
           onClose={() => setView(null)}
           onOpenStevePicker={() => {
             setModalError(null)
+            resetSubscriptionPageScroll()
             setView('steve_picker')
           }}
           steveCheckoutLoading={
@@ -847,22 +875,33 @@ function EntryChoiceModal({
   onChoosePlans: () => void
   onChooseActive: () => void
 }) {
-  return (
+  const { t } = useTranslation()
+
+  useEffect(() => {
+    resetSubscriptionPageScroll()
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prevOverflow
+    }
+  }, [])
+
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Choose subscription view"
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 backdrop-blur sm:items-center p-0 sm:p-4"
+      aria-label={t('subscriptions.entry_aria')}
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden bg-black/80 backdrop-blur px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 sm:px-4"
     >
-      <div className="w-full sm:max-w-xl rounded-t-[28px] sm:rounded-[28px] border border-white/10 bg-[#070707] p-6 shadow-2xl shadow-black">
+      <div className="w-full sm:max-w-xl rounded-2xl border border-white/10 bg-[#070707] p-6 shadow-2xl shadow-black">
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cpoint-turquoise">
-          Subscriptions
+          {t('subscriptions.entry_kicker')}
         </p>
         <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white">
-          What would you like to manage?
+          {t('subscriptions.entry_title')}
         </h2>
         <p className="mt-2 text-sm leading-6 text-white/55">
-          Choose a new plan or review what is already active. You can switch views at any time.
+          {t('subscriptions.entry_body')}
         </p>
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
           <button
@@ -870,9 +909,9 @@ function EntryChoiceModal({
             onClick={onChoosePlans}
             className="rounded-2xl border border-cpoint-turquoise/35 bg-cpoint-turquoise/10 p-5 text-left transition hover:bg-cpoint-turquoise/15"
           >
-            <span className="text-sm font-semibold text-white">Choose your plan</span>
+            <span className="text-sm font-semibold text-white">{t('subscriptions.entry_choose_plan')}</span>
             <span className="mt-2 block text-xs leading-5 text-white/55">
-              Personal Premium or Community L1/L2/L3.
+              {t('subscriptions.entry_choose_plan_hint')}
             </span>
           </button>
           <button
@@ -880,25 +919,27 @@ function EntryChoiceModal({
             onClick={onChooseActive}
             className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-left transition hover:border-cpoint-turquoise/35 hover:bg-white/[0.06]"
           >
-            <span className="text-sm font-semibold text-white">Active subscriptions</span>
+            <span className="text-sm font-semibold text-white">{t('subscriptions.entry_active')}</span>
             <span className="mt-2 block text-xs leading-5 text-white/55">
-              See current plans, renewals, and tier changes.
+              {t('subscriptions.entry_active_hint')}
             </span>
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
 function ModeHeader({ mode, onChange }: { mode: PageMode; onChange: () => void }) {
+  const { t } = useTranslation()
   if (!mode) return null
   return (
     <div className="flex items-center justify-between rounded-2xl border border-cpoint-turquoise/45 bg-cpoint-turquoise/[0.04] px-4 py-3">
       <div>
-        <p className="text-xs uppercase tracking-[0.22em] text-white/35">Current view</p>
+        <p className="text-xs uppercase tracking-[0.22em] text-white/35">{t('subscriptions.mode_current_view')}</p>
         <p className="mt-0.5 text-sm font-medium text-white">
-          {mode === 'choose' ? 'Choose your plan' : 'Active subscriptions'}
+          {mode === 'choose' ? t('subscriptions.mode_choose_plan') : t('subscriptions.mode_active')}
         </p>
       </div>
       <button
@@ -906,7 +947,7 @@ function ModeHeader({ mode, onChange }: { mode: PageMode; onChange: () => void }
         onClick={onChange}
         className="rounded-full border border-white/15 px-4 py-2 text-xs font-semibold text-white hover:bg-white/5"
       >
-        Switch
+        {t('subscriptions.mode_switch')}
       </button>
     </div>
   )
@@ -929,8 +970,11 @@ function PersonalCard({
   onRestore: () => void
   restoreLoading: boolean
 }) {
+  const { t } = useTranslation()
   const disabled = (!payload.purchasable && !storeProductAvailable) || loading || restoreLoading
-  const ctaLabel = storeProvider && storeProductAvailable ? `Subscribe with ${providerLabel(storeProvider)}` : payload.cta_label
+  const ctaLabel = storeProvider && storeProductAvailable
+    ? t('subscriptions.subscribe_with_provider', { provider: providerLabel(storeProvider) })
+    : payload.cta_label
   const earlyMonths = payload.early_adoption_duration_months ?? 3
   const standardNum = Number(payload.price_eur)
   const earlyNum = Number(payload.early_price_eur)
@@ -945,7 +989,7 @@ function PersonalCard({
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
-            Personal
+            {t('subscriptions.card_personal')}
           </p>
           <h2 className="mt-2 text-2xl font-semibold text-white">{payload.name}</h2>
         </div>
@@ -956,16 +1000,19 @@ function PersonalCard({
       <div className="mt-6">
         <div className="flex items-baseline gap-2">
           <span className="text-4xl font-bold">{formatEur(payload.price_eur)}</span>
-          <span className="text-white/50">/ month</span>
+          <span className="text-white/50">{t('subscriptions.per_month')}</span>
         </div>
         {showEarlyOffer && (
           <p className="mt-2 text-sm font-medium text-cpoint-turquoise">
-            {formatEur(payload.early_price_eur)} / month for your first {earlyMonths} months
+            {t('subscriptions.early_offer', {
+              price: formatEur(payload.early_price_eur),
+              months: earlyMonths,
+            })}
           </p>
         )}
         {storeProvider && showEarlyOffer && (
           <p className="mt-1 text-xs text-white/45">
-            Introductory offer applied at checkout where eligible.
+            {t('subscriptions.early_offer_checkout_hint')}
           </p>
         )}
       </div>
@@ -995,7 +1042,7 @@ function PersonalCard({
             : 'bg-cpoint-turquoise text-black hover:bg-cpoint-turquoise/90')
         }
       >
-        {loading ? 'Starting checkout…' : ctaLabel}
+        {loading ? t('subscriptions.starting_checkout') : ctaLabel}
       </button>
       {storeProvider && (
         <button
@@ -1004,14 +1051,16 @@ function PersonalCard({
           disabled={restoreLoading}
           className="mt-3 text-xs font-semibold text-cpoint-turquoise hover:underline disabled:text-white/35 disabled:no-underline"
         >
-          {restoreLoading ? 'Restoring…' : `Restore ${providerLabel(storeProvider)} purchases`}
+          {restoreLoading
+            ? t('subscriptions.restoring')
+            : t('subscriptions.restore_purchases', { provider: providerLabel(storeProvider) })}
         </button>
       )}
       {!payload.purchasable && (
         <p className="mt-3 text-xs text-white/40">
           {storeProductAvailable
-            ? `${providerLabel(storeProvider)} billing is available on this device.`
-            : 'Checkout will open once a Stripe price is configured.'}
+            ? t('subscriptions.store_billing_available', { provider: providerLabel(storeProvider) })
+            : t('subscriptions.stripe_price_pending')}
         </p>
       )}
     </section>
@@ -1025,12 +1074,13 @@ function CommunityCard({
   payload: CommunityTierPayload
   onOpen: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <section className="rounded-2xl border border-white/10 bg-white/5 p-8 flex flex-col">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
-            Community
+            {t('subscriptions.card_community')}
           </p>
           <h2 className="mt-2 text-2xl font-semibold text-white">{payload.name}</h2>
         </div>
@@ -1044,15 +1094,15 @@ function CommunityCard({
       <ul className="mt-6 space-y-3 text-sm text-white/80 flex-1">
         <li className="flex items-start gap-3">
           <i className="fa-solid fa-check text-cpoint-turquoise text-xs mt-1.5 shrink-0" aria-hidden="true" />
-          <span>L1 to Enterprise tiers — pick the right size</span>
+          <span>{t('subscriptions.card_community_bullet_1')}</span>
         </li>
         <li className="flex items-start gap-3">
           <i className="fa-solid fa-check text-cpoint-turquoise text-xs mt-1.5 shrink-0" aria-hidden="true" />
-          <span>Higher member caps and media storage</span>
+          <span>{t('subscriptions.card_community_bullet_2')}</span>
         </li>
         <li className="flex items-start gap-3">
           <i className="fa-solid fa-check text-cpoint-turquoise text-xs mt-1.5 shrink-0" aria-hidden="true" />
-          <span>Optional add-ons: Steve and Networking</span>
+          <span>{t('subscriptions.card_community_bullet_3')}</span>
         </li>
       </ul>
 
@@ -1061,7 +1111,7 @@ function CommunityCard({
         onClick={onOpen}
         className="mt-8 inline-flex items-center justify-center rounded-full bg-cpoint-turquoise text-black px-6 py-3 text-sm font-semibold transition duration-150 hover:bg-cpoint-turquoise/90"
       >
-        See community plans
+        {t('subscriptions.see_community_plans')}
       </button>
     </section>
   )
@@ -1076,6 +1126,7 @@ function ActiveSubscriptionsSection({
   onManageCommunity: (communityId: number) => void
   onManagePersonalBilling?: () => void
 }) {
+  const { t } = useTranslation()
   const personal = active?.personal
   const communities = active?.communities || []
 
@@ -1097,30 +1148,30 @@ function ActiveSubscriptionsSection({
     <section aria-labelledby="active-subscriptions-heading">
       <div className="mb-4">
         <h2 id="active-subscriptions-heading" className="text-xl font-semibold">
-          Active Subscriptions
+          {t('subscriptions.active_section_title')}
         </h2>
         <p className="mt-1 text-sm text-white/55">
-          Healthy subscriptions below include a confirmed renewal window. Items under Needs Attention still bill as Paid tier labels until Stripe state is repaired.
+          {t('subscriptions.active_section_subtitle')}
         </p>
       </div>
 
       {loading ? (
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/55">
-          Loading active subscriptions…
+          {t('subscriptions.loading_active')}
         </div>
       ) : emptyAll ? (
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/55">
-          No subscriptions recorded yet.
+          {t('subscriptions.no_subscriptions')}
         </div>
       ) : (
         <div className="space-y-10">
           <div>
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-cpoint-turquoise">
-              Personal — Active
+              {t('subscriptions.personal_active_heading')}
             </h3>
             {personalSubscriptionHealthy ? (
               <ActiveRow
-                title={personal?.is_special ? 'Special Premium entitlement' : 'User Premium Membership'}
+                title={personal?.is_special ? t('subscriptions.special_premium_title') : t('subscriptions.premium_membership_title')}
                 subtitle={
                   personal?.cancel_at_period_end
                     ? benefitsCopy(personal.benefits_end_at || personal.current_period_end)
@@ -1131,26 +1182,26 @@ function ActiveSubscriptionsSection({
               />
             ) : (
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/50">
-                No active personal subscription with a valid renewal window.
+                {t('subscriptions.no_personal_active')}
               </div>
             )}
           </div>
 
           <div>
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-amber-200/90">
-              Personal — Needs Attention
+              {t('subscriptions.personal_needs_attention_heading')}
             </h3>
             {personalNeedsAttention ? (
               <ActiveRow
-                title="User Premium Membership"
+                title={t('subscriptions.premium_membership_title')}
                 subtitle={
                   personal?.subscription_status === 'past_due'
-                    ? 'Payment is past due — open the billing portal to fix autopay.'
-                    : 'Billing details need attention before Premium counts as active.'
+                    ? t('subscriptions.personal_past_due')
+                    : t('subscriptions.personal_billing_attention')
                 }
                 status={personal?.subscription_status || personal?.subscription || 'attention'}
                 provider={personal?.subscription_provider || 'stripe'}
-                actionLabel="Manage"
+                actionLabel={t('subscriptions.manage')}
                 onAction={() => {
                   if (onManagePersonalBilling) onManagePersonalBilling()
                   else window.location.assign('/account_settings')
@@ -1158,14 +1209,14 @@ function ActiveSubscriptionsSection({
               />
             ) : (
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/45">
-                No personal billing issues detected.
+                {t('subscriptions.no_personal_issues')}
               </div>
             )}
           </div>
 
           <div>
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-cpoint-turquoise">
-              Community — Active
+              {t('subscriptions.community_active_heading')}
             </h3>
             {healthyCommunities.length ? (
               <div className="space-y-3">
@@ -1176,21 +1227,21 @@ function ActiveSubscriptionsSection({
                     subtitle={communitySubtitleCommunity(community)}
                     status={tierLabel(community.tier || community.subscription_status)}
                     provider={community.billing_provider || 'stripe'}
-                    actionLabel="Manage"
+                    actionLabel={t('subscriptions.manage')}
                     onAction={() => onManageCommunity(community.id)}
                   />
                 ))}
               </div>
             ) : (
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/50">
-                No community subscriptions with a confirmed renewal window.
+                {t('subscriptions.no_community_active')}
               </div>
             )}
           </div>
 
           <div>
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-amber-200/90">
-              Community — Needs Attention
+              {t('subscriptions.community_needs_attention_heading')}
             </h3>
             {needsCommunities.length ? (
               <div className="space-y-3">
@@ -1205,14 +1256,14 @@ function ActiveSubscriptionsSection({
                     }
                     status={tierLabel(community.tier || community.subscription_status)}
                     provider={community.billing_provider || 'stripe'}
-                    actionLabel="Manage"
+                    actionLabel={t('subscriptions.manage')}
                     onAction={() => onManageCommunity(community.id)}
                   />
                 ))}
               </div>
             ) : (
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/45">
-                No community billing issues detected.
+                {t('subscriptions.no_community_issues')}
               </div>
             )}
           </div>
@@ -1272,11 +1323,15 @@ function ActiveRow({
 }
 
 function renewalCopy(value?: string | null) {
-  return value ? `Next renewal: ${formatDate(value)}` : 'Renewal date unavailable'
+  return value
+    ? i18n.t('subscriptions.renewal_next', { date: formatDate(value) })
+    : i18n.t('subscriptions.renewal_unavailable')
 }
 
 function benefitsCopy(value?: string | null) {
-  return value ? `Benefits active until: ${formatDate(value)}` : 'Cancellation pending'
+  return value
+    ? i18n.t('subscriptions.benefits_until', { date: formatDate(value) })
+    : i18n.t('subscriptions.cancellation_pending')
 }
 
 function communitySubtitleCommunity(c: ActiveCommunitySubscription): string {
@@ -1290,7 +1345,7 @@ function currentTierLabel(community: Community, active: ActiveSubscriptionsPaylo
   const activeItem = active?.communities?.find((item) => item.id === community.id)
   const tier = activeItem?.tier || community.tier
   if (!tier || tier === 'free') return null
-  return `Current: ${tierLabel(tier)}`
+  return i18n.t('subscriptions.current_tier', { tier: tierLabel(tier) })
 }
 
 // ---------------------------------------------------------------------------
@@ -1306,23 +1361,33 @@ function ModalShell({
   onClose: () => void
   ariaLabel: string
 }) {
-  // Full-screen on mobile, centered card on desktop. Backdrop click +
-  // top-right close button both dismiss; ``e.stopPropagation`` on the
-  // surface keeps clicks inside from leaking to the overlay.
-  return (
+  useEffect(() => {
+    resetSubscriptionPageScroll()
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prevOverflow
+    }
+  }, [])
+
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-label={ariaLabel}
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur sm:items-center p-0 sm:p-4"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden bg-black/80 backdrop-blur px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 sm:px-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="w-full sm:max-w-lg max-h-full overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-white/10 bg-[#0a0a0a] p-6">
+      <div
+        className="w-full sm:max-w-lg max-h-[min(720px,calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1.5rem))] overflow-y-auto rounded-2xl border border-white/10 bg-[#0a0a0a] p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -1345,25 +1410,25 @@ function CommunityModal({
   pendingKey: string | null
   error?: string | null
 }) {
+  const { t } = useTranslation()
   return (
-    <ModalShell onClose={onClose} ariaLabel="Community plans">
+    <ModalShell onClose={onClose} ariaLabel={t('subscriptions.modal_community_plans_aria')}>
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
-            Community plans
+            {t('subscriptions.modal_community_plans_kicker')}
           </p>
           <h2 className="mt-2 text-xl font-semibold text-white">
-            Pick your tier
+            {t('subscriptions.modal_pick_tier')}
           </h2>
           <p className="mt-1 text-sm text-white/60">
-            Tiers are billed monthly on the parent community. Sub-communities
-            inherit the parent's tier automatically.
+            {t('subscriptions.modal_tier_billing_hint')}
           </p>
         </div>
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t('subscriptions.close')}
           className="-mr-1 -mt-1 inline-flex h-8 w-8 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white"
         >
           <i className="fa-solid fa-xmark" />
@@ -1401,10 +1466,10 @@ function CommunityModal({
         >
           <div>
             <div className="text-sm font-medium text-white">
-              Community Add-ons
+              {t('subscriptions.addons_title')}
             </div>
             <div className="mt-0.5 text-xs text-white/50">
-              Steve and Networking — optional packages
+              {t('subscriptions.addons_subtitle')}
             </div>
           </div>
           <i className="fa-solid fa-chevron-right text-white/40 text-xs" />
@@ -1429,25 +1494,28 @@ function TierRow({
   loading: boolean
   onPick: () => void
 }) {
+  const { t } = useTranslation()
   const canPurchase = tier.purchasable || storeProductAvailable
   const disabled = !canPurchase || loading
   const label = storeProvider && storeProductAvailable
-    ? `Subscribe with ${providerLabel(storeProvider)}`
+    ? t('subscriptions.subscribe_with_provider', { provider: providerLabel(storeProvider) })
     : ctaLabel
   return (
     <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2">
           <span className="text-sm font-medium text-white">
-            Paid {tier.level_label}
+            {t('subscriptions.tier_paid_label', { level: tier.level_label })}
           </span>
           <span className="text-xs text-white/40">
-            {tier.max_members ? `up to ${tier.max_members} members` : 'TBD'}
-            {tier.media_gb ? ` · ${tier.media_gb} GB media` : ''}
+            {tier.max_members
+              ? t('subscriptions.tier_members_up_to', { count: tier.max_members })
+              : t('subscriptions.price_tbd')}
+            {tier.media_gb ? ` · ${t('subscriptions.tier_media_gb', { gb: tier.media_gb })}` : ''}
           </span>
         </div>
         <div className="mt-1 text-xs text-white/50">
-          {formatEur(tier.price_eur)} / month
+          {formatEur(tier.price_eur)} {t('subscriptions.per_month')}
         </div>
       </div>
       <button
@@ -1463,30 +1531,28 @@ function TierRow({
             : 'bg-cpoint-turquoise text-black hover:bg-cpoint-turquoise/90')
         }
       >
-        {loading ? 'Starting…' : canPurchase ? label : 'Coming soon'}
+        {loading ? t('subscriptions.starting') : canPurchase ? label : t('subscriptions.coming_soon')}
       </button>
     </div>
   )
 }
 
 function EnterpriseRow() {
-  // Enterprise is sales-driven only — not a Stripe SKU. The mailto
-  // intentionally targets sales@c-point.co; subject is pre-filled so
-  // the inbound thread is easy to triage.
+  const { t } = useTranslation()
   return (
     <div className="flex items-center gap-3 rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/[0.04] p-4">
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2">
-          <span className="text-sm font-medium text-white">Enterprise</span>
-          <span className="text-xs text-white/40">unlimited members</span>
+          <span className="text-sm font-medium text-white">{t('subscriptions.enterprise')}</span>
+          <span className="text-xs text-white/40">{t('subscriptions.enterprise_members')}</span>
         </div>
-        <div className="mt-1 text-xs text-white/50">Custom pricing</div>
+        <div className="mt-1 text-xs text-white/50">{t('subscriptions.enterprise_custom_pricing')}</div>
       </div>
       <a
-        href={`mailto:${SALES_EMAIL}?subject=${encodeURIComponent('Enterprise community plan')}`}
+        href={`mailto:${SALES_EMAIL}?subject=${encodeURIComponent(t('subscriptions.mailto_enterprise_subject'))}`}
         className="inline-flex shrink-0 items-center justify-center rounded-full border border-cpoint-turquoise/60 px-4 py-2 text-xs font-semibold text-cpoint-turquoise transition hover:bg-cpoint-turquoise/10"
       >
-        Contact Us
+        {t('subscriptions.contact_us')}
       </a>
     </div>
   )
@@ -1511,8 +1577,9 @@ function AddonsModal({
   onOpenStevePicker: () => void
   steveCheckoutLoading: boolean
 }) {
+  const { t } = useTranslation()
   return (
-    <ModalShell onClose={onClose} ariaLabel="Community Add-ons">
+    <ModalShell onClose={onClose} ariaLabel={t('subscriptions.addons_title')}>
       <div className="flex items-start justify-between">
         <div>
           <button
@@ -1521,19 +1588,19 @@ function AddonsModal({
             className="mb-3 inline-flex items-center gap-2 text-xs text-white/60 hover:text-white"
           >
             <i className="fa-solid fa-arrow-left" />
-            <span>Back to plans</span>
+            <span>{t('subscriptions.addons_back')}</span>
           </button>
           <p className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
-            Community Add-ons
+            {t('subscriptions.addons_title')}
           </p>
           <h2 className="mt-2 text-xl font-semibold text-white">
-            Optional packages
+            {t('subscriptions.addons_optional')}
           </h2>
         </div>
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t('subscriptions.close')}
           className="-mr-1 -mt-1 inline-flex h-8 w-8 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white"
         >
           <i className="fa-solid fa-xmark" />
@@ -1546,10 +1613,7 @@ function AddonsModal({
           loading={steveCheckoutLoading}
           onSubscribe={onOpenStevePicker}
         />
-        <NetworkingAddonCard
-          payload={networking}
-          subjectLabel="Networking Package"
-        />
+        <NetworkingAddonCard payload={networking} />
       </div>
     </ModalShell>
   )
@@ -1564,6 +1628,7 @@ function SteveAddonCard({
   loading: boolean
   onSubscribe: () => void
 }) {
+  const { t } = useTranslation()
   const badgeComingSoon = !payload.purchasable || payload.coming_soon
   return (
     <section className="rounded-xl border border-white/10 bg-white/[0.03] p-5">
@@ -1580,7 +1645,7 @@ function SteveAddonCard({
               : 'border-cpoint-turquoise/40 text-cpoint-turquoise')
           }
         >
-          {badgeComingSoon ? 'Coming soon' : 'Live'}
+          {badgeComingSoon ? t('subscriptions.coming_soon') : t('subscriptions.live')}
         </span>
       </div>
 
@@ -1588,21 +1653,21 @@ function SteveAddonCard({
         <span className="text-2xl font-semibold text-white">
           {formatEur(payload.price_eur)}
         </span>
-        <span className="text-xs text-white/50">/ month</span>
+        <span className="text-xs text-white/50">{t('subscriptions.per_month')}</span>
       </div>
 
       {payload.credit_pool != null && Number(payload.credit_pool) > 0 && (
         <p className="mt-2 text-xs text-white/45">
-          {payload.credit_pool} shared Steve calls / month.
+          {t('subscriptions.steve_credit_pool', { count: payload.credit_pool })}
         </p>
       )}
 
       {badgeComingSoon ? (
         <a
-          href={`mailto:${SALES_EMAIL}?subject=${encodeURIComponent('Notify me - Steve Package')}`}
+          href={`mailto:${SALES_EMAIL}?subject=${encodeURIComponent(t('subscriptions.mailto_notify_steve'))}`}
           className="mt-4 inline-flex w-full items-center justify-center rounded-full border border-white/20 px-4 py-2 text-xs font-semibold text-white transition hover:border-cpoint-turquoise/60 hover:text-cpoint-turquoise"
         >
-          Notify me
+          {t('subscriptions.notify_me')}
         </a>
       ) : (
         <button
@@ -1616,7 +1681,7 @@ function SteveAddonCard({
               : 'bg-cpoint-turquoise text-black hover:bg-cpoint-turquoise/90')
           }
         >
-          {loading ? 'Starting checkout…' : 'Subscribe'}
+          {loading ? t('subscriptions.starting_checkout') : t('subscriptions.subscribe')}
         </button>
       )}
     </section>
@@ -1625,11 +1690,10 @@ function SteveAddonCard({
 
 function NetworkingAddonCard({
   payload,
-  subjectLabel,
 }: {
   payload: NetworkingComingSoonPayload
-  subjectLabel: string
 }) {
+  const { t } = useTranslation()
   return (
     <section className="rounded-xl border border-white/10 bg-white/[0.03] p-5">
       <div className="flex items-start justify-between gap-3">
@@ -1638,7 +1702,7 @@ function NetworkingAddonCard({
           <p className="mt-1 text-xs text-white/60">{payload.tagline}</p>
         </div>
         <span className="shrink-0 rounded-full border border-white/15 px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/50">
-          Coming soon
+          {t('subscriptions.coming_soon')}
         </span>
       </div>
 
@@ -1646,14 +1710,14 @@ function NetworkingAddonCard({
         <span className="text-2xl font-semibold text-white">
           {formatEur(payload.price_eur)}
         </span>
-        <span className="text-xs text-white/50">/ month</span>
+        <span className="text-xs text-white/50">{t('subscriptions.per_month')}</span>
       </div>
 
       <a
-        href={`mailto:${SALES_EMAIL}?subject=${encodeURIComponent(`Notify me - ${subjectLabel}`)}`}
+        href={`mailto:${SALES_EMAIL}?subject=${encodeURIComponent(t('subscriptions.mailto_notify_networking'))}`}
         className="mt-4 inline-flex items-center justify-center rounded-full border border-white/20 px-4 py-2 text-xs font-semibold text-white transition hover:border-cpoint-turquoise/60 hover:text-cpoint-turquoise"
       >
-        Notify me
+        {t('subscriptions.notify_me')}
       </a>
     </section>
   )
@@ -1680,6 +1744,7 @@ function SteveAddonPickerModal({
   error?: string | null
   loading?: boolean
 }) {
+  const { t } = useTranslation()
   const [fullRows, setFullRows] = useState<ActiveCommunitySubscription[] | null>(null)
   const [loadErr, setLoadErr] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -1708,11 +1773,11 @@ function SteveAddonPickerModal({
         const data: ActiveSubscriptionsPayload = await res.json()
         if (cancelled) return
         if (!res.ok || !data?.success) {
-          throw new Error(data?.error || 'Failed to load subscriptions')
+          throw new Error(data?.error || t('subscriptions.error_load_subscriptions'))
         }
         setFullRows(data.communities || [])
       } catch (err) {
-        if (!cancelled) setLoadErr(err instanceof Error ? err.message : 'Failed to load')
+        if (!cancelled) setLoadErr(err instanceof Error ? err.message : t('subscriptions.error_load_subscriptions'))
       }
     }
     load()
@@ -1739,28 +1804,28 @@ function SteveAddonPickerModal({
 
   const heading = focusRow
     ? focusRow.steve_addon_eligible
-      ? `Subscribe to Steve Community Package for ${focusRow.name}`
+      ? t('subscriptions.steve_subscribe_heading', { name: focusRow.name })
       : focusRow.name
-    : 'Pick a community'
+    : t('subscriptions.steve_pick_community')
 
   const showRadioList = !focusRow
 
   return (
-    <ModalShell onClose={onCancel} ariaLabel="Pick a community for Steve package">
+    <ModalShell onClose={onCancel} ariaLabel={t('subscriptions.steve_picker_aria')}>
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
-            Steve Community Package
+            {t('subscriptions.steve_package_kicker')}
           </p>
           <h2 className="mt-2 text-lg font-semibold">{heading}</h2>
           <p className="mt-1 text-sm text-white/60">
-            Eligibility is computed on the server — use the reason below if checkout is blocked.
+            {t('subscriptions.steve_eligibility_hint')}
           </p>
         </div>
         <button
           type="button"
           onClick={onCancel}
-          aria-label="Close"
+          aria-label={t('subscriptions.close')}
           className="-mr-1 -mt-1 inline-flex h-8 w-8 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white"
         >
           <i className="fa-solid fa-xmark" />
@@ -1780,19 +1845,17 @@ function SteveAddonPickerModal({
 
       {focusRow && !focusRow.steve_addon_eligible && (
         <div className="mt-4 rounded-lg border border-amber-400/25 bg-amber-400/10 p-3 text-sm text-amber-50">
-          {focusRow.steve_addon_message || 'This community cannot add the Steve Community Package yet.'}
+          {focusRow.steve_addon_message || t('subscriptions.steve_not_eligible')}
         </div>
       )}
 
       <div className="mt-5 max-h-64 space-y-2 overflow-y-auto pr-1">
         {fullRows === null && !loadErr && (
-          <div className="text-sm text-white/50">Loading your subscriptions…</div>
+          <div className="text-sm text-white/50">{t('subscriptions.steve_loading_subscriptions')}</div>
         )}
         {fullRows !== null && showRadioList && eligibleList.length === 0 && (
           <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm text-white/60">
-            No eligible Paid communities right now. Add-ons require an active Paid tier
-            subscription with a confirmed renewal date. You can upgrade an owned
-            community under <span className="text-white/80">Community plans</span>.
+            {t('subscriptions.steve_no_eligible')}
           </div>
         )}
         {showRadioList && eligibleList.map((c) => (
@@ -1816,7 +1879,7 @@ function SteveAddonPickerModal({
               {c.name}
               {c.tier && c.tier !== 'free' && (
                 <span className="ml-2 text-xs text-white/40">
-                  Current: {tierLabel(c.tier)}
+                  {t('subscriptions.current_tier', { tier: tierLabel(c.tier) })}
                 </span>
               )}
             </span>
@@ -1836,7 +1899,7 @@ function SteveAddonPickerModal({
               : 'border border-white/15 bg-white/5 text-white/40 cursor-not-allowed')
           }
         >
-          {loading ? 'Starting checkout…' : 'Continue to checkout'}
+          {loading ? t('subscriptions.starting_checkout') : t('subscriptions.continue_checkout')}
         </button>
         {focusId == null && fullRows !== null && eligibleList.length === 0 && (
           <button
@@ -1844,7 +1907,7 @@ function SteveAddonPickerModal({
             onClick={onCreate}
             className="inline-flex w-full items-center justify-center rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white hover:bg-white/5"
           >
-            Create a community
+            {t('subscriptions.create_community')}
           </button>
         )}
         <button
@@ -1852,7 +1915,7 @@ function SteveAddonPickerModal({
           onClick={onCancel}
           className="mt-1 text-xs text-white/40 hover:text-white/70"
         >
-          Back
+          {t('subscriptions.back')}
         </button>
       </div>
     </ModalShell>
@@ -1886,6 +1949,7 @@ function CommunityPickerModal({
   mobileBillingNotice?: boolean
   webBillingUrl: string
 }) {
+  const { t } = useTranslation()
   const [communities, setCommunities] = useState<Community[] | null>(null)
   const [loadErr, setLoadErr] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(
@@ -1908,7 +1972,7 @@ function CommunityPickerModal({
         const data = await res.json()
         if (cancelled) return
         if (!data?.success) {
-          throw new Error(data?.error || 'Failed to load communities')
+          throw new Error(data?.error || t('subscriptions.error_load_communities'))
         }
         // Flatten the hierarchical tree and keep only root communities
         // the user owns (subs inherit billing from their root parent so
@@ -1944,7 +2008,7 @@ function CommunityPickerModal({
         })
         setCommunities(owned)
       } catch (err) {
-        if (!cancelled) setLoadErr(err instanceof Error ? err.message : 'Failed to load')
+        if (!cancelled) setLoadErr(err instanceof Error ? err.message : t('subscriptions.error_load_communities'))
       }
     }
     load()
@@ -1963,32 +2027,26 @@ function CommunityPickerModal({
   }, [communities, activeByCommunity, tier.tier_code])
 
   return (
-    <ModalShell onClose={onCancel} ariaLabel={`Pick a community for Paid ${tier.level_label}`}>
+    <ModalShell onClose={onCancel} ariaLabel={t('subscriptions.picker_aria', { level: tier.level_label })}>
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
-            {downgradeFlow ? `Change to Paid ${tier.level_label}` : `Upgrade to Paid ${tier.level_label}`}
+            {downgradeFlow ? t('subscriptions.picker_change_heading', { level: tier.level_label }) : t('subscriptions.picker_upgrade_heading', { level: tier.level_label })}
           </p>
-          <h2 className="mt-2 text-lg font-semibold">Pick a community</h2>
+          <h2 className="mt-2 text-lg font-semibold">{t('subscriptions.picker_pick_community')}</h2>
           <p className="mt-1 text-sm text-white/60">
             {downgradeFlow
-              ? (
-                  <>
-                    Some selections may lower your tier cap — Stripe bills adjustments on your existing subscription.
-                  </>
-                )
-              : (
-                  <>
-                    You can only upgrade communities you own. The new tier unlocks up to{' '}
-                    {tier.max_members ?? '?'} members at {formatEur(tier.price_eur)} / month.
-                  </>
-                )}
+              ? t('subscriptions.picker_downgrade_hint')
+              : t('subscriptions.picker_upgrade_hint', {
+                  maxMembers: tier.max_members ?? '?',
+                  price: formatEur(tier.price_eur),
+                })}
           </p>
         </div>
         <button
           type="button"
           onClick={onCancel}
-          aria-label="Close"
+          aria-label={t('subscriptions.close')}
           className="-mr-1 -mt-1 inline-flex h-8 w-8 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white"
         >
           <i className="fa-solid fa-xmark" />
@@ -2009,7 +2067,7 @@ function CommunityPickerModal({
               onClick={() => openExternalBillingUrl(webBillingUrl)}
               className="mt-3 block text-left text-cpoint-turquoise underline"
             >
-              Open web billing: {webBillingUrl}
+              {t('subscriptions.open_web_billing', { url: webBillingUrl })}
             </button>
           )}
         </div>
@@ -2017,11 +2075,11 @@ function CommunityPickerModal({
 
       <div className="mt-5 max-h-64 space-y-2 overflow-y-auto pr-1">
         {communities === null && !loadErr && (
-          <div className="text-sm text-white/50">Loading your communities…</div>
+          <div className="text-sm text-white/50">{t('subscriptions.picker_loading_communities')}</div>
         )}
         {communities !== null && communities.length === 0 && (
           <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm text-white/60">
-            No eligible owned communities for {tierLabel(tier.tier_code)}. Communities already on this tier are hidden.
+            {t('subscriptions.picker_no_eligible', { tier: tierLabel(tier.tier_code) })}
           </div>
         )}
         {communities?.map((c) => {
@@ -2058,7 +2116,7 @@ function CommunityPickerModal({
               )}
               {blockedHigher && (
                 <span className="mt-1 block text-[11px] text-amber-200/80">
-                  Already on a higher Paid tier — pick a lower tier card to change your plan.
+                  {t('subscriptions.picker_higher_tier_blocked')}
                 </span>
               )}
             </span>
@@ -2079,7 +2137,7 @@ function CommunityPickerModal({
               : 'border border-white/15 bg-white/5 text-white/40 cursor-not-allowed')
           }
         >
-          {loading ? 'Starting checkout…' : 'Continue to checkout'}
+          {loading ? t('subscriptions.starting_checkout') : t('subscriptions.continue_checkout')}
         </button>
         {communities !== null && communities.length === 0 && (
           <button
@@ -2087,7 +2145,7 @@ function CommunityPickerModal({
             onClick={onCreate}
             className="inline-flex w-full items-center justify-center rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white hover:bg-white/5"
           >
-            Create a community
+            {t('subscriptions.create_community')}
           </button>
         )}
         <button
@@ -2095,7 +2153,7 @@ function CommunityPickerModal({
           onClick={onCancel}
           className="mt-1 text-xs text-white/40 hover:text-white/70"
         >
-          Cancel
+          {t('subscriptions.cancel')}
         </button>
       </div>
     </ModalShell>

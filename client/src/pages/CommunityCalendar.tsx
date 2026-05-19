@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useHeader } from '../contexts/HeaderContext'
+import i18n, { normalizeLocale } from '../i18n'
 import { exportEventToDeviceCalendar, removeNativeCalendarMirrorForCpointEvent, syncNativeCalendarAfterServerChange } from '../utils/calendarExport'
 import type { CalendarExportEventFields } from '../utils/calendarExportTypes'
+
+function calendarLocale() {
+  return normalizeLocale(i18n.language)
+}
 
 type EventItem = {
   id: number
@@ -95,7 +101,7 @@ function isPastEvent(event: EventItem) {
 function formatDateLabel(date: string, variant: 'short' | 'long' = 'long') {
   const parsed = new Date(`${date}T12:00:00`)
   if (Number.isNaN(parsed.getTime())) return date
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(calendarLocale(), {
     weekday: variant === 'long' ? 'long' : 'short',
     month: variant === 'long' ? 'long' : 'short',
     day: 'numeric',
@@ -105,20 +111,20 @@ function formatDateLabel(date: string, variant: 'short' | 'long' = 'long') {
 function formatMonth(date: string) {
   const parsed = new Date(`${date}T12:00:00`)
   if (Number.isNaN(parsed.getTime())) return ''
-  return new Intl.DateTimeFormat(undefined, { month: 'short' }).format(parsed).toUpperCase()
+  return new Intl.DateTimeFormat(calendarLocale(), { month: 'short' }).format(parsed).toUpperCase()
 }
 
 function formatDay(date: string) {
   const parsed = new Date(`${date}T12:00:00`)
   if (Number.isNaN(parsed.getTime())) return '--'
-  return new Intl.DateTimeFormat(undefined, { day: '2-digit' }).format(parsed)
+  return new Intl.DateTimeFormat(calendarLocale(), { day: '2-digit' }).format(parsed)
 }
 
 function formatTimeRange(event: EventItem) {
   const start = normalizeTime(event.start_time)
   const end = normalizeTime(event.end_time)
   const range = [start, end].filter(Boolean).join(' - ')
-  return range && event.timezone ? `${range} ${event.timezone}` : range || 'All day'
+  return range && event.timezone ? `${range} ${event.timezone}` : range || i18n.t('calendar.all_day')
 }
 
 function formatDateRange(event: EventItem) {
@@ -131,12 +137,12 @@ function formatDateRange(event: EventItem) {
 function getCountdownLabel(event?: EventItem | null) {
   if (!event) return ''
   const diff = buildEventDateTime(event).getTime() - Date.now()
-  if (diff <= 0) return 'Starting soon'
+  if (diff <= 0) return i18n.t('calendar.starting_soon')
   const minutes = Math.ceil(diff / 60000)
-  if (minutes < 60) return `In ${minutes}m`
+  if (minutes < 60) return i18n.t('calendar.countdown_minutes', { count: minutes })
   const hours = Math.ceil(minutes / 60)
-  if (hours < 48) return `In ${hours}h`
-  return `In ${Math.ceil(hours / 24)}d`
+  if (hours < 48) return i18n.t('calendar.countdown_hours', { count: hours })
+  return i18n.t('calendar.countdown_days', { count: Math.ceil(hours / 24) })
 }
 
 function toUtcFormFields(formData: FormData) {
@@ -188,42 +194,43 @@ function toUtcFormFields(formData: FormData) {
 }
 
 function EventFormFields({ event }: { event?: EventItem }) {
+  const { t } = useTranslation()
   return (
     <div className="grid grid-cols-2 gap-2.5">
-      <label className={`col-span-2 ${LABEL_CLASS}`}>Title
-        <input name="title" defaultValue={event?.title || ''} className={INPUT_CLASS} required placeholder="Workout, meetup, webinar..." />
+      <label className={`col-span-2 ${LABEL_CLASS}`}>{t('calendar.title_label')}
+        <input name="title" defaultValue={event?.title || ''} className={INPUT_CLASS} required placeholder={t('calendar.title_placeholder')} />
       </label>
-      <label className={LABEL_CLASS}>Start date
+      <label className={LABEL_CLASS}>{t('calendar.start_date')}
         <input name="date" type="date" defaultValue={event?.date || ''} className={INPUT_CLASS} required />
       </label>
-      <label className={LABEL_CLASS}>End date
+      <label className={LABEL_CLASS}>{t('calendar.end_date')}
         <input name="end_date" type="date" defaultValue={event?.end_date || ''} className={INPUT_CLASS} />
       </label>
-      <label className={LABEL_CLASS}>Start time
+      <label className={LABEL_CLASS}>{t('calendar.start_time')}
         <input name="start_time" type="time" defaultValue={normalizeTime(event?.start_time)} className={INPUT_CLASS} />
       </label>
-      <label className={LABEL_CLASS}>End time
+      <label className={LABEL_CLASS}>{t('calendar.end_time')}
         <input name="end_time" type="time" defaultValue={normalizeTime(event?.end_time)} className={INPUT_CLASS} />
       </label>
-      <label className={`col-span-2 ${LABEL_CLASS}`}>Timezone
+      <label className={`col-span-2 ${LABEL_CLASS}`}>{t('calendar.timezone')}
         <select name="timezone" defaultValue={event?.timezone || 'UTC'} className={INPUT_CLASS} required>
-          <option value="">Select timezone</option>
+          <option value="">{t('calendar.select_timezone')}</option>
           {TIMEZONE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
       </label>
-      <label className={`col-span-2 ${LABEL_CLASS}`}>Description
-        <textarea name="description" defaultValue={event?.description || ''} rows={3} className={INPUT_CLASS} placeholder="Add context, location details, or agenda." />
+      <label className={`col-span-2 ${LABEL_CLASS}`}>{t('calendar.description')}
+        <textarea name="description" defaultValue={event?.description || ''} rows={3} className={INPUT_CLASS} placeholder={t('calendar.description_placeholder')} />
       </label>
       {!event ? (
-        <label className={`col-span-2 ${LABEL_CLASS}`}>Reminders
+        <label className={`col-span-2 ${LABEL_CLASS}`}>{t('calendar.reminders')}
           <select name="notification_preferences" defaultValue="all" className={INPUT_CLASS}>
-            <option value="none">No reminders</option>
-            <option value="1_week">1 week before</option>
-            <option value="1_day">1 day before</option>
-            <option value="1_hour">1 hour before</option>
-            <option value="all">All reminders</option>
+            <option value="none">{t('calendar.reminder_none')}</option>
+            <option value="1_week">{t('calendar.reminder_1_week')}</option>
+            <option value="1_day">{t('calendar.reminder_1_day')}</option>
+            <option value="1_hour">{t('calendar.reminder_1_hour')}</option>
+            <option value="all">{t('calendar.reminder_all')}</option>
           </select>
-          <span className="mt-2 block text-[11px] font-normal normal-case tracking-normal text-[#8fa3a8]">Reminders follow the event start time and each invitee's RSVP.</span>
+          <span className="mt-2 block text-[11px] font-normal normal-case tracking-normal text-[#8fa3a8]">{t('calendar.reminders_hint')}</span>
         </label>
       ) : null}
     </div>
@@ -242,6 +249,7 @@ type EventCardProps = {
 }
 
 function EventCard({ event, archived = false, onOpen, onRsvp, onShowDetails, onEdit, onDelete, onNativeCalendarSaved }: EventCardProps) {
+  const { t } = useTranslation()
   return (
     <article className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] p-3 shadow-[0_12px_34px_rgba(0,0,0,0.32)] backdrop-blur-xl transition hover:border-[#4db6ac]/45 hover:bg-white/[0.065]">
       <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[#4db6ac]/70 to-transparent" />
@@ -256,7 +264,7 @@ function EventCard({ event, archived = false, onOpen, onRsvp, onShowDetails, onE
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-[#8fa3a8]">
               <span>{formatTimeRange(event)}</span>
-              {archived ? <span className="rounded-full border border-white/10 px-2 py-0.5 normal-case tracking-normal">Archived</span> : null}
+              {archived ? <span className="rounded-full border border-white/10 px-2 py-0.5 normal-case tracking-normal">{t('calendar.archived')}</span> : null}
             </div>
             <h3 className="mt-0.5 line-clamp-2 text-base font-semibold text-white">{event.title}</h3>
             <p className="mt-0.5 text-xs text-[#b7c7ca]">{formatDateRange(event)}</p>
@@ -266,16 +274,16 @@ function EventCard({ event, archived = false, onOpen, onRsvp, onShowDetails, onE
       </button>
       <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-[#b7c7ca]" onClick={clickEvent => clickEvent.stopPropagation()}>
         <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'going' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => onRsvp(event.id, 'going')}>
-          Going {event.rsvp_counts?.going || 0}
+          {t('calendar.going')} {event.rsvp_counts?.going || 0}
         </button>
         <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'maybe' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => onRsvp(event.id, 'maybe')}>
-          Maybe {event.rsvp_counts?.maybe || 0}
+          {t('calendar.maybe')} {event.rsvp_counts?.maybe || 0}
         </button>
         <button type="button" className={`rounded-full border px-2.5 py-1 transition ${event.user_rsvp === 'not_going' ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#74fff0]' : 'border-white/10 hover:border-[#4db6ac]/45 hover:text-white'}`} onClick={() => onRsvp(event.id, 'not_going')}>
-          Not going {event.rsvp_counts?.not_going || 0}
+          {t('calendar.not_going')} {event.rsvp_counts?.not_going || 0}
         </button>
         <button type="button" className="ml-auto rounded-full border border-white/10 px-2.5 py-1 hover:border-[#4db6ac]/45 hover:text-white" onClick={() => onShowDetails(event)}>
-          Details
+          {t('calendar.details')}
         </button>
         <button
           type="button"
@@ -287,22 +295,22 @@ function EventCard({ event, archived = false, onOpen, onRsvp, onShowDetails, onE
                 const outcome = await exportEventToDeviceCalendar(event.id, eventItemToExportFields(event))
                 if (outcome.via === 'native') onNativeCalendarSaved?.()
               } catch (err: unknown) {
-                const msg = err instanceof Error ? err.message : 'Could not export'
+                const msg = err instanceof Error ? err.message : t('calendar.could_not_export')
                 alert(msg)
               }
             })()
           }}
-          aria-label="Add to device calendar"
-          title="Add to device calendar"
+          aria-label={t('calendar.add_to_device_calendar')}
+          title={t('calendar.add_to_device_calendar')}
         >
           <i className="fa-regular fa-calendar-plus" />
         </button>
         {!archived ? (
           <>
-            <button type="button" className="rounded-full border border-white/10 px-2.5 py-1 hover:border-[#4db6ac]/45 hover:text-white" onClick={() => onEdit(event)} aria-label="Edit event">
+            <button type="button" className="rounded-full border border-white/10 px-2.5 py-1 hover:border-[#4db6ac]/45 hover:text-white" onClick={() => onEdit(event)} aria-label={t('calendar.edit_event_aria')}>
               <i className="fa-regular fa-pen-to-square" />
             </button>
-            <button type="button" className="rounded-full border border-red-400/45 px-2.5 py-1 text-red-200 hover:bg-red-500/10" onClick={() => onDelete(event)} aria-label="Delete event">
+            <button type="button" className="rounded-full border border-red-400/45 px-2.5 py-1 text-red-200 hover:bg-red-500/10" onClick={() => onDelete(event)} aria-label={t('calendar.delete_event_card_aria')}>
               <i className="fa-regular fa-trash-can" />
             </button>
           </>
@@ -313,6 +321,7 @@ function EventCard({ event, archived = false, onOpen, onRsvp, onShowDetails, onE
 }
 
 export default function CommunityCalendar() {
+  const { t } = useTranslation()
   const { community_id } = useParams()
   const [searchParams] = useSearchParams()
   const groupId = searchParams.get('group_id')
@@ -338,7 +347,7 @@ export default function CommunityCalendar() {
   const focusedFieldRef = useRef<HTMLElement | null>(null)
   const isNativePlatform = useMemo(() => typeof window !== 'undefined' && Capacitor.getPlatform() !== 'web', [])
 
-  useEffect(() => { setTitle('Calendar') }, [setTitle])
+  useEffect(() => { setTitle(t('calendar.page_title')) }, [setTitle, t])
 
   const updateKeyboardOffset = useCallback((next: number) => {
     const clamped = Math.max(0, Math.round(next))
@@ -480,9 +489,9 @@ export default function CommunityCalendar() {
   const selectedCount = Object.values(selectedMembers).filter(Boolean).length
 
   const notifyNativeCalendarSaved = useCallback(() => {
-    setSuccessMsg('Event added to your calendar.')
+    setSuccessMsg(t('calendar.event_added_to_calendar'))
     setTimeout(() => setSuccessMsg(null), 2200)
-  }, [])
+  }, [t])
 
   async function createEvent(formData: FormData) {
     const params = toUtcFormFields(formData)
@@ -504,7 +513,7 @@ export default function CommunityCalendar() {
     const payload = await response.json().catch(() => null)
     if (payload?.success) {
       await reloadEvents()
-      setSuccessMsg('Event created')
+      setSuccessMsg(t('calendar.event_created'))
       setCreateOpen(false)
       setCreateStep('details')
       setInviteAll(false)
@@ -512,7 +521,7 @@ export default function CommunityCalendar() {
       createFormRef.current?.reset()
       setTimeout(() => setSuccessMsg(null), 2200)
     } else {
-      alert(payload?.message || 'Failed to create event')
+      alert(payload?.message || t('calendar.create_failed'))
     }
   }
 
@@ -531,7 +540,7 @@ export default function CommunityCalendar() {
       const eid = editingEvent.id
       await reloadEvents()
       setEditingEvent(null)
-      setSuccessMsg('Event updated')
+      setSuccessMsg(t('calendar.event_updated'))
       setTimeout(() => setSuccessMsg(null), 2200)
       void (async () => {
         try {
@@ -558,7 +567,7 @@ export default function CommunityCalendar() {
         }
       })()
     } else {
-      alert(payload?.message || 'Failed to update event')
+      alert(payload?.message || t('calendar.update_failed'))
     }
   }
 
@@ -579,7 +588,7 @@ export default function CommunityCalendar() {
   }
 
   async function deleteEvent(event: EventItem) {
-    if (!confirm('Delete this event?')) return
+    if (!confirm(t('calendar.delete_confirm_short'))) return
     try {
       const response = await fetch('/delete_calendar_event', {
         method: 'POST',
@@ -597,7 +606,7 @@ export default function CommunityCalendar() {
         await reloadEvents()
         setRsvpEvent(null)
       } else {
-        alert(payload?.message || 'Could not delete event')
+        alert(payload?.message || t('calendar.could_not_delete'))
       }
     } catch {}
   }
@@ -610,7 +619,7 @@ export default function CommunityCalendar() {
         style={{ WebkitOverflowScrolling: 'touch' as any } as CSSProperties}
       >
         <header className="mb-0 flex items-center">
-          <button className="rounded-full p-2 text-[#cfe7e4] hover:bg-white/5" onClick={() => navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label="Back">
+          <button className="rounded-full p-2 text-[#cfe7e4] hover:bg-white/5" onClick={() => navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label={t('common.back')}>
             <i className="fa-solid fa-arrow-left" />
           </button>
         </header>
@@ -620,18 +629,18 @@ export default function CommunityCalendar() {
         <section className="mb-2.5 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] p-3 shadow-[0_14px_46px_rgba(0,0,0,0.36)] backdrop-blur-xl">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-[#8fa3a8]">Next up</p>
-              <h2 className="mt-1 truncate text-lg font-semibold text-white">{nextEvent?.title || 'No upcoming events yet'}</h2>
-              <p className="mt-1 line-clamp-2 text-xs text-[#b7c7ca]">{nextEvent ? `${formatDateRange(nextEvent)} • ${formatTimeRange(nextEvent)}` : 'Create the first event and invite members in seconds.'}</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-[#8fa3a8]">{t('calendar.next_up')}</p>
+              <h2 className="mt-1 truncate text-lg font-semibold text-white">{nextEvent?.title || t('calendar.no_upcoming_yet')}</h2>
+              <p className="mt-1 line-clamp-2 text-xs text-[#b7c7ca]">{nextEvent ? `${formatDateRange(nextEvent)} • ${formatTimeRange(nextEvent)}` : t('calendar.create_first_hint')}</p>
             </div>
             <div className="shrink-0 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 px-2.5 py-1.5 text-right">
-              <div className="text-[11px] text-[#8ff4e9]">{nextEvent ? getCountdownLabel(nextEvent) : 'Ready'}</div>
+              <div className="text-[11px] text-[#8ff4e9]">{nextEvent ? getCountdownLabel(nextEvent) : t('calendar.ready')}</div>
             </div>
           </div>
           {nextEvent ? (
             <div className="mt-3 flex flex-wrap gap-2">
-              <button className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-black hover:bg-[#e9fffd]" onClick={() => setRsvpEvent(nextEvent)}>RSVP now</button>
-              <button className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-[#d7e1e3] hover:border-[#4db6ac]/45" onClick={() => navigate(`/event/${nextEvent.id}`)}>Open details</button>
+              <button className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-black hover:bg-[#e9fffd]" onClick={() => setRsvpEvent(nextEvent)}>{t('calendar.rsvp_now')}</button>
+              <button className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-[#d7e1e3] hover:border-[#4db6ac]/45" onClick={() => navigate(`/event/${nextEvent.id}`)}>{t('calendar.open_details')}</button>
               <button
                 className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-[#d7e1e3] hover:border-[#4db6ac]/45"
                 onClick={() =>
@@ -640,21 +649,21 @@ export default function CommunityCalendar() {
                       const outcome = await exportEventToDeviceCalendar(nextEvent.id, eventItemToExportFields(nextEvent))
                       if (outcome.via === 'native') notifyNativeCalendarSaved()
                     } catch (err: unknown) {
-                      const msg = err instanceof Error ? err.message : 'Could not export'
+                      const msg = err instanceof Error ? err.message : t('calendar.could_not_export')
                       alert(msg)
                     }
                   })()
                 }
               >
-                Add to calendar
+                {t('calendar.add_to_calendar')}
               </button>
             </div>
           ) : null}
         </section>
 
         <div className="mb-3 flex rounded-full border border-white/10 bg-white/[0.04] p-1">
-          <button className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${activeTab === 'upcoming' ? 'bg-[#4db6ac] text-black' : 'text-[#9fb0b5] hover:text-white'}`} onClick={() => setActiveTab('upcoming')}>Upcoming</button>
-          <button className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${activeTab === 'archive' ? 'bg-[#4db6ac] text-black' : 'text-[#9fb0b5] hover:text-white'}`} onClick={() => setActiveTab('archive')}>Archive</button>
+          <button className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${activeTab === 'upcoming' ? 'bg-[#4db6ac] text-black' : 'text-[#9fb0b5] hover:text-white'}`} onClick={() => setActiveTab('upcoming')}>{t('calendar.upcoming')}</button>
+          <button className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${activeTab === 'archive' ? 'bg-[#4db6ac] text-black' : 'text-[#9fb0b5] hover:text-white'}`} onClick={() => setActiveTab('archive')}>{t('calendar.archive')}</button>
         </div>
 
         {activeTab === 'upcoming' && dateStrip.length > 0 ? (
@@ -663,7 +672,7 @@ export default function CommunityCalendar() {
               <button key={event.date} className={`min-w-[58px] rounded-xl border px-2 py-2 text-center transition ${selectedDate === event.date ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-white' : 'border-white/10 bg-white/[0.035] text-[#9fb0b5]'}`} onClick={() => setSelectedDate(event.date)}>
                 <div className="text-[9px] font-bold tracking-[0.16em] text-[#4db6ac]">{formatMonth(event.date)}</div>
                 <div className="text-lg font-semibold leading-tight">{formatDay(event.date)}</div>
-                <div className="text-[10px]">{events.filter(item => item.date === event.date).length} event{events.filter(item => item.date === event.date).length === 1 ? '' : 's'}</div>
+                <div className="text-[10px]">{t('calendar.events_on_date', { count: events.filter(item => item.date === event.date).length })}</div>
               </button>
             ))}
           </div>
@@ -671,13 +680,13 @@ export default function CommunityCalendar() {
 
         <main className="space-y-2.5">
           {loading ? (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-[#9fb0b5]">Loading events...</div>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-[#9fb0b5]">{t('calendar.loading_events')}</div>
           ) : visibleEvents.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.035] p-5 text-center">
               <div className="mx-auto grid h-11 w-11 place-items-center rounded-xl bg-[#4db6ac]/10 text-[#4db6ac]"><i className="fa-regular fa-calendar" /></div>
-              <h3 className="mt-3 text-base font-semibold">{activeTab === 'archive' ? 'No archived events' : 'Nothing scheduled here'}</h3>
-              <p className="mt-1.5 text-xs text-[#9fb0b5]">{activeTab === 'archive' ? 'Past events will appear here after they end.' : 'Start with a clean event card and invite the right members.'}</p>
-              {activeTab !== 'archive' ? <button className="mt-4 rounded-full bg-[#4db6ac] px-4 py-1.5 text-xs font-semibold text-black" onClick={() => setCreateOpen(true)}>Create event</button> : null}
+              <h3 className="mt-3 text-base font-semibold">{activeTab === 'archive' ? t('calendar.no_archived_events') : t('calendar.nothing_scheduled')}</h3>
+              <p className="mt-1.5 text-xs text-[#9fb0b5]">{activeTab === 'archive' ? t('calendar.archive_empty_hint') : t('calendar.upcoming_empty_hint')}</p>
+              {activeTab !== 'archive' ? <button className="mt-4 rounded-full bg-[#4db6ac] px-4 py-1.5 text-xs font-semibold text-black" onClick={() => setCreateOpen(true)}>{t('calendar.create_event')}</button> : null}
             </div>
           ) : (
             visibleEvents.map(event => (
@@ -704,7 +713,7 @@ export default function CommunityCalendar() {
           onClick={() => setCreateOpen(true)}
         >
           <i className="fa-solid fa-plus text-xs" />
-          <span>New event</span>
+          <span>{t('calendar.new_event')}</span>
         </button>
       ) : null}
 
@@ -724,39 +733,39 @@ export default function CommunityCalendar() {
           <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#050606] p-3.5 shadow-2xl">
             <div className="mb-2.5 flex items-center justify-between">
               <div>
-                <h2 className="text-base font-semibold">Create event</h2>
-                <p className="mt-0.5 text-xs text-[#8fa3a8]">Step {createStep === 'details' ? '1' : '2'} of 2</p>
+                <h2 className="text-base font-semibold">{t('calendar.create_event_title')}</h2>
+                <p className="mt-0.5 text-xs text-[#8fa3a8]">{t('calendar.step_of', { current: createStep === 'details' ? 1 : 2, total: 2 })}</p>
               </div>
-              <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setCreateOpen(false)} aria-label="Close"><i className="fa-solid fa-xmark" /></button>
+              <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setCreateOpen(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark" /></button>
             </div>
             <form ref={createFormRef} onSubmit={event => { event.preventDefault(); createEvent(new FormData(event.currentTarget)) }}>
               <div className={createStep === 'details' ? 'block' : 'hidden'}>
                 <EventFormFields />
                 <div className="mt-3 flex justify-end">
-                  <button type="button" className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110" onClick={() => setCreateStep('invite')}>Continue</button>
+                  <button type="button" className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110" onClick={() => setCreateStep('invite')}>{t('calendar.continue')}</button>
                 </div>
               </div>
               <div className={createStep === 'invite' ? 'block' : 'hidden'}>
                 <div className="rounded-xl border border-white/10 bg-white/[0.035] p-2.5">
                   <div className="flex gap-1.5">
-                    <button type="button" className={`flex-1 rounded-lg border px-3 py-2 text-sm ${inviteAll ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca]'}`} onClick={() => setInviteAll(true)}>Invite all</button>
-                    <button type="button" className={`flex-1 rounded-lg border px-3 py-2 text-sm ${!inviteAll ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca]'}`} onClick={() => setInviteAll(false)}>Choose members</button>
+                    <button type="button" className={`flex-1 rounded-lg border px-3 py-2 text-sm ${inviteAll ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca]'}`} onClick={() => setInviteAll(true)}>{t('calendar.invite_all')}</button>
+                    <button type="button" className={`flex-1 rounded-lg border px-3 py-2 text-sm ${!inviteAll ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca]'}`} onClick={() => setInviteAll(false)}>{t('calendar.choose_members')}</button>
                   </div>
                   {!inviteAll ? (
                     <div className="mt-2.5 max-h-52 space-y-1 overflow-y-auto pr-1">
-                      {members.length === 0 ? <div className="text-sm text-[#9fb0b5]">No members found.</div> : members.map(member => (
+                      {members.length === 0 ? <div className="text-sm text-[#9fb0b5]">{t('calendar.no_members_found')}</div> : members.map(member => (
                         <label key={member.username} className="flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 hover:bg-white/5">
                           <span className="text-sm">{member.username}</span>
                           <input type="checkbox" checked={!!selectedMembers[member.username]} onChange={() => setSelectedMembers(current => ({ ...current, [member.username]: !current[member.username] }))} className="h-5 w-5 accent-[#4db6ac]" />
                         </label>
                       ))}
                     </div>
-                  ) : <p className="mt-2.5 text-sm text-[#9fb0b5]">Every current member will receive the invite.</p>}
+                  ) : <p className="mt-2.5 text-sm text-[#9fb0b5]">{t('calendar.invite_all_hint')}</p>}
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">
-                  <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm hover:bg-white/5" onClick={() => setCreateStep('details')}>Back</button>
+                  <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm hover:bg-white/5" onClick={() => setCreateStep('details')}>{t('common.back')}</button>
                   <button type="submit" className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110">
-                    Create {inviteAll ? 'for everyone' : selectedCount ? `for ${selectedCount}` : 'event'}
+                    {inviteAll ? t('calendar.create_for_everyone') : selectedCount ? t('calendar.create_for_count', { count: selectedCount }) : t('calendar.create_event_submit')}
                   </button>
                 </div>
               </div>
@@ -770,17 +779,17 @@ export default function CommunityCalendar() {
           <div className="w-full max-w-xl rounded-t-2xl border border-white/10 bg-[#050606] p-3.5 sm:mb-4 sm:rounded-2xl">
             <div className="mb-3 flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-medium text-[#4db6ac]">RSVP</p>
+                <p className="text-xs font-medium text-[#4db6ac]">{t('calendar.rsvp_label')}</p>
                 <h2 className="text-base font-semibold">{rsvpEvent.title}</h2>
                 <p className="mt-1 text-xs text-[#9fb0b5]">{formatDateRange(rsvpEvent)} • {formatTimeRange(rsvpEvent)}</p>
               </div>
-              <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setRsvpEvent(null)} aria-label="Close"><i className="fa-solid fa-xmark" /></button>
+              <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setRsvpEvent(null)} aria-label={t('common.close')}><i className="fa-solid fa-xmark" /></button>
             </div>
             <div className="grid grid-cols-3 gap-2">
               {([
-                ['going', 'Going', rsvpEvent.rsvp_counts?.going || 0],
-                ['maybe', 'Maybe', rsvpEvent.rsvp_counts?.maybe || 0],
-                ['not_going', 'Not going', rsvpEvent.rsvp_counts?.not_going || 0],
+                ['going', t('calendar.going'), rsvpEvent.rsvp_counts?.going || 0],
+                ['maybe', t('calendar.maybe'), rsvpEvent.rsvp_counts?.maybe || 0],
+                ['not_going', t('calendar.not_going'), rsvpEvent.rsvp_counts?.not_going || 0],
               ] as const).map(([value, label, count]) => (
                 <button key={value} className={`rounded-xl border px-2 py-3 text-xs transition ${rsvpEvent.user_rsvp === value ? 'border-[#4db6ac] bg-[#4db6ac]/15 text-[#8ff4e9]' : 'border-white/10 text-[#b7c7ca] hover:border-[#4db6ac]/45'}`} onClick={() => rsvp(rsvpEvent.id, value)}>
                   <span className="block font-semibold">{label}</span>
@@ -788,7 +797,7 @@ export default function CommunityCalendar() {
                 </button>
               ))}
             </div>
-            {typeof rsvpEvent.rsvp_counts?.no_response === 'number' ? <p className="mt-4 text-center text-xs text-[#8fa3a8]">{rsvpEvent.rsvp_counts.no_response} no response yet</p> : null}
+            {typeof rsvpEvent.rsvp_counts?.no_response === 'number' ? <p className="mt-4 text-center text-xs text-[#8fa3a8]">{t('calendar.no_response_yet', { count: rsvpEvent.rsvp_counts.no_response })}</p> : null}
           </div>
         </div>
       ) : null}
@@ -808,14 +817,14 @@ export default function CommunityCalendar() {
         >
           <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#050606] p-3.5">
             <div className="mb-2.5 flex items-center justify-between">
-              <h2 className="text-base font-semibold">Edit event</h2>
-              <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setEditingEvent(null)} aria-label="Close"><i className="fa-solid fa-xmark" /></button>
+              <h2 className="text-base font-semibold">{t('calendar.edit_event')}</h2>
+              <button className="grid h-8 w-8 place-items-center rounded-full border border-white/10 hover:bg-white/5" onClick={() => setEditingEvent(null)} aria-label={t('common.close')}><i className="fa-solid fa-xmark" /></button>
             </div>
             <form onSubmit={event => { event.preventDefault(); saveEditedEvent(new FormData(event.currentTarget)) }}>
               <EventFormFields event={editingEvent} />
               <div className="mt-3 flex justify-end gap-2">
-                <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm hover:bg-white/5" onClick={() => setEditingEvent(null)}>Cancel</button>
-                <button type="submit" className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110">Save changes</button>
+                <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm hover:bg-white/5" onClick={() => setEditingEvent(null)}>{t('common.cancel')}</button>
+                <button type="submit" className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110">{t('calendar.save_changes')}</button>
               </div>
             </form>
           </div>

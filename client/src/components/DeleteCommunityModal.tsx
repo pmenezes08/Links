@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 export interface ActiveSubscriptionDeletePayload {
   community_id?: number
@@ -28,6 +29,7 @@ export default function DeleteCommunityModal({
   onClose,
   onSubmit,
 }: DeleteCommunityModalProps) {
+  const { t } = useTranslation()
   const [typed, setTyped] = useState('')
   const [step, setStep] = useState<'confirm' | 'active_subscription'>('confirm')
   const [subscriptions, setSubscriptions] = useState<ActiveSubscriptionDeletePayload[]>([])
@@ -59,7 +61,7 @@ export default function DeleteCommunityModal({
         setStep('active_subscription')
         return
       }
-      setError(result.error || 'Failed to delete community')
+      setError(result.error || t('communities.delete_failed'))
     } finally {
       setLoading(false)
     }
@@ -72,19 +74,21 @@ export default function DeleteCommunityModal({
     try {
       const result = await onSubmit(true)
       if (result.success) return
-      setError(result.error || 'Failed to delete community')
+      setError(result.error || t('communities.delete_failed'))
     } finally {
       setLoading(false)
     }
   }
 
+  const displayName = communityName || t('communities.delete_modal_this_community')
+
   return (
     <div className="fixed inset-0 z-[100] flex items-stretch justify-center bg-black/80 backdrop-blur sm:items-center sm:p-6">
       <div className="flex h-full w-full flex-col border-white/10 bg-black text-white shadow-2xl sm:h-auto sm:max-w-lg sm:rounded-2xl sm:border">
         <div className="border-b border-white/10 px-5 py-4">
-          <div className="text-xs uppercase tracking-[0.22em] text-cpoint-turquoise">Danger Zone</div>
+          <div className="text-xs uppercase tracking-[0.22em] text-cpoint-turquoise">{t('communities.delete_modal_danger_zone')}</div>
           <h2 className="mt-2 text-xl font-semibold">
-            {step === 'active_subscription' ? 'Active subscription detected' : 'Delete community'}
+            {step === 'active_subscription' ? t('communities.delete_modal_active_subscription_title') : t('communities.delete_modal_title')}
           </h2>
         </div>
 
@@ -92,41 +96,41 @@ export default function DeleteCommunityModal({
           {step === 'confirm' ? (
             <>
               <p className="text-sm leading-6 text-white/70">
-                This will permanently delete <span className="font-semibold text-white">{communityName || 'this community'}</span>,
-                including posts, messages, members, and community data. This action cannot be undone.
+                {t('communities.delete_modal_body', { name: displayName })}
               </p>
               <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-100">
-                Type <span className="font-semibold text-white">DELETE</span> to confirm this destructive action.
+                {t('communities.delete_modal_type_delete_hint')}
               </div>
               <input
                 autoFocus
                 value={typed}
                 onChange={(event) => setTyped(event.target.value)}
-                placeholder="Type DELETE"
+                placeholder={t('communities.delete_modal_type_delete_placeholder')}
                 className="w-full rounded-xl border border-white/15 bg-white/[0.03] px-4 py-3 text-[16px] text-white outline-none transition placeholder:text-white/30 focus:border-cpoint-turquoise"
               />
             </>
           ) : (
             <>
               <p className="text-sm leading-6 text-white/70">
-                This community has an active subscription. If you delete it, the subscription will be scheduled to cancel
-                automatically and benefits will remain active until the end of the current billing period.
+                {t('communities.delete_modal_active_subscription_body')}
               </p>
               <div className="space-y-2">
                 {subscriptions.length > 0 ? subscriptions.map((subscription, index) => (
                   <div key={`${subscription.community_id || 'community'}-${index}`} className="rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 p-3 text-sm">
                     <div className="font-medium text-cpoint-turquoise">
-                      {subscription.tier || 'Paid tier'} · {subscription.subscription_status || 'active'}
+                      {subscription.tier || t('communities.delete_modal_paid_tier')} · {subscription.subscription_status || 'active'}
                     </div>
                     {(subscription.benefits_end_at || subscription.current_period_end) && (
                       <div className="mt-1 text-xs text-white/65">
-                        Benefits active until {formatDate(subscription.benefits_end_at || subscription.current_period_end || '')}
+                        {t('communities.delete_modal_benefits_until', {
+                          date: formatDate(subscription.benefits_end_at || subscription.current_period_end || ''),
+                        })}
                       </div>
                     )}
                   </div>
                 )) : (
                   <div className="rounded-xl border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 p-3 text-sm text-white/70">
-                    The subscription will be cancelled at the end of the current billing period.
+                    {t('communities.delete_modal_cancel_at_period_end')}
                   </div>
                 )}
               </div>
@@ -147,7 +151,7 @@ export default function DeleteCommunityModal({
             disabled={loading}
             className="rounded-full border border-white/15 px-5 py-2.5 text-sm text-white/75 transition hover:bg-white/5 disabled:opacity-50"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             type="button"
@@ -156,10 +160,10 @@ export default function DeleteCommunityModal({
             className="rounded-full bg-red-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {loading
-              ? 'Deleting...'
+              ? t('communities.delete_modal_deleting')
               : step === 'active_subscription'
-                ? 'Confirm and cancel subscription'
-                : 'Delete community'}
+                ? t('communities.delete_modal_confirm_cancel')
+                : t('communities.delete_modal_delete_community')}
           </button>
         </div>
       </div>

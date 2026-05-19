@@ -74,10 +74,10 @@ export default function Members(){
           setError(null)
         } else {
           console.error('API Error:', j)
-          setError(j?.message || j?.error || 'Error loading members')
+          setError(j?.message || j?.error || t('social.error_loading_members'))
         }
       }catch{
-        if (mounted) setError('Error loading members')
+        if (mounted) setError(t('social.error_loading_members'))
       } finally {
         if (mounted) setLoading(false)
       }
@@ -179,7 +179,7 @@ export default function Members(){
   // Add member removed per new requirements; community code is displayed instead
 
   async function removeMember(usernameToRemove: string){
-    const ok = confirm(`Remove @${usernameToRemove} from this community?`)
+    const ok = confirm(t('social.remove_member_confirm', { username: usernameToRemove }))
     if (!ok) return
     const fd = new URLSearchParams({ community_id: String(community_id), username: usernameToRemove })
     const r = await fetch('/remove_community_member', { method:'POST', credentials:'include', body: fd })
@@ -191,13 +191,17 @@ export default function Members(){
         if (jj?.success) setMembers(jj.members || [])
       }catch{}
     } else {
-      alert(j?.error || 'Unable to remove member')
+      alert(j?.error || t('social.unable_remove_member'))
     }
   }
 
   async function updateRole(targetUsername: string, newRole: 'admin'|'member'|'owner'){
-    const label = newRole === 'admin' ? 'Make admin' : newRole === 'member' ? 'Remove admin' : 'Transfer ownership'
-    const ok = confirm(`${label} for @${targetUsername}?`)
+    const label = newRole === 'admin'
+      ? t('feed.make_admin')
+      : newRole === 'member'
+        ? t('feed.remove_admin')
+        : t('social.transfer_ownership')
+    const ok = confirm(t('social.update_role_confirm', { action: label, username: targetUsername }))
     if (!ok) return
     const fd = new URLSearchParams({ community_id: String(community_id), target_username: targetUsername, new_role: newRole })
     const r = await fetch('/update_member_role', { method:'POST', credentials:'include', body: fd })
@@ -209,12 +213,14 @@ export default function Members(){
         if (jj?.success) setMembers(jj.members || [])
       }catch{}
     } else {
-      alert(j?.error || 'Unable to update role')
+      alert(j?.error || t('social.unable_update_role'))
     }
   }
 
   async function leaveCommunity(){
-    const ok = confirm(`Are you sure you want to leave ${communityName || 'this community'}?`)
+    const ok = confirm(t('social.leave_confirm', {
+      community: communityName || t('social.community_this'),
+    }))
     if (!ok) return
     const fd = new URLSearchParams({ community_id: String(community_id) })
     const r = await fetch('/leave_community', { method:'POST', credentials:'include', body: fd })
@@ -224,17 +230,17 @@ export default function Members(){
       await refreshDashboardCommunities()
       navigate('/premium_dashboard')
     } else {
-      alert(j?.error || 'Unable to leave community')
+      alert(j?.error || t('social.unable_leave_community'))
     }
   }
 
   async function handleSendInvite() {
     if (!inviteEmail.trim()) {
-      setInviteError('Email is required')
+      setInviteError(t('social.email_required'))
       return
     }
     if (!inviteCommunityId) {
-      setInviteError('No community selected for invitation')
+      setInviteError(t('social.no_community_selected'))
       return
     }
     setInviteLoading(true)
@@ -255,18 +261,18 @@ export default function Members(){
 
       if (response.ok && data.success) {
         setInviteSuccess(true)
-        setInviteSuccessMessage('Invitation sent successfully!')
+        setInviteSuccessMessage(t('social.invite_sent_success'))
         setInviteEmail('')
         setTimeout(() => {
           handleCloseInviteModal()
         }, 2000)
       } else {
         if (data?.show_upgrade && data?.upgrade_url) setInviteUpgradeUrl(data.upgrade_url)
-        setInviteError(data.error || 'Failed to send invitation')
+        setInviteError(data.error || t('social.failed_send_invite'))
       }
     } catch (error) {
       console.error('Error sending invitation:', error)
-      setInviteError('Failed to send invitation')
+      setInviteError(t('social.failed_send_invite'))
     } finally {
       setInviteLoading(false)
     }
@@ -275,11 +281,11 @@ export default function Members(){
   async function handleSendUsernameInvite() {
     const targetUsername = inviteUsername.trim().replace(/^@+/, '')
     if (!targetUsername) {
-      setInviteError('Username is required')
+      setInviteError(t('social.username_required'))
       return
     }
     if (!inviteCommunityId) {
-      setInviteError('No community selected for invitation')
+      setInviteError(t('social.no_community_selected'))
       return
     }
     setInviteLoading(true)
@@ -301,15 +307,15 @@ export default function Members(){
 
       if (response.ok && data.success) {
         setInviteSuccess(true)
-        setInviteSuccessMessage(data.message || `Invite sent to @${targetUsername}`)
+        setInviteSuccessMessage(data.message || t('social.invite_sent_to_username', { username: targetUsername }))
         setInviteUsername('')
       } else {
         if (data?.show_upgrade && data?.upgrade_url) setInviteUpgradeUrl(data.upgrade_url)
-        setInviteError(data.error || 'Failed to send username invitation')
+        setInviteError(data.error || t('social.failed_username_invite'))
       }
     } catch (error) {
       console.error('Error sending username invitation:', error)
-      setInviteError('Failed to send username invitation')
+      setInviteError(t('social.failed_username_invite'))
     } finally {
       setInviteLoading(false)
     }
@@ -317,7 +323,7 @@ export default function Members(){
 
   async function handleGenerateQR() {
     if (!inviteCommunityId) {
-      setInviteError('No community selected for invitation')
+      setInviteError(t('social.no_community_selected'))
       return
     }
     setInviteLoading(true)
@@ -340,11 +346,11 @@ export default function Members(){
         setShowQRCode(true)
       } else {
         if (data?.show_upgrade && data?.upgrade_url) setInviteUpgradeUrl(data.upgrade_url)
-        setInviteError(data.error || 'Failed to generate QR code')
+        setInviteError(data.error || t('social.failed_generate_qr'))
       }
     } catch (error) {
       console.error('Error generating QR code:', error)
-      setInviteError('Failed to generate QR code')
+      setInviteError(t('social.failed_generate_qr'))
     } finally {
       setInviteLoading(false)
     }
@@ -355,11 +361,11 @@ export default function Members(){
     console.log('Member data:', member)
 
     if (member.role === 'owner' || member.is_creator || member.role === 'creator') {
-      return <span className="px-2 py-0.5 text-xs font-medium bg-teal-600/20 text-teal-300 rounded-full border border-teal-500/30">Owner</span>
+      return <span className="px-2 py-0.5 text-xs font-medium bg-teal-600/20 text-teal-300 rounded-full border border-teal-500/30">{t('feed.owner')}</span>
     } else if (member.role === 'admin') {
-      return <span className="px-2 py-0.5 text-xs font-medium bg-cyan-600/20 text-cyan-300 rounded-full border border-cyan-500/30">Admin</span>
+      return <span className="px-2 py-0.5 text-xs font-medium bg-cyan-600/20 text-cyan-300 rounded-full border border-cyan-500/30">{t('feed.admin')}</span>
     } else {
-      return <span className="px-2 py-0.5 text-xs font-medium bg-gray-600/20 text-gray-300 rounded-full border border-gray-500/30">Member</span>
+      return <span className="px-2 py-0.5 text-xs font-medium bg-gray-600/20 text-gray-300 rounded-full border border-gray-500/30">{t('social.role_member')}</span>
     }
   }
 
@@ -369,11 +375,11 @@ export default function Members(){
         className="fixed left-0 right-0 h-12 border-b border-white/10 bg-black/95 backdrop-blur flex items-center px-3 z-40"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '48px' } as CSSProperties}
       >
-        <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
+        <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label={t('common.back')}>
           <i className="fa-solid fa-arrow-left" />
         </button>
         <div className="ml-2 text-xs text-[#9fb0b5]">
-          {members.length} {members.length === 1 ? 'Member' : 'Members'}
+          {t('social.member_count', { count: members.length })}
         </div>
         <div className="ml-auto flex items-center gap-2">
           {!canManage && (
@@ -382,7 +388,7 @@ export default function Members(){
               className="px-3 py-1.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-xs font-medium hover:bg-red-500/30"
             >
               <i className="fa-solid fa-arrow-right-from-bracket mr-1.5" />
-              Leave
+              {t('communities.leave_action')}
             </button>
           )}
             {canManage && canInviteCurrentCommunity && (
@@ -391,7 +397,7 @@ export default function Members(){
               className="px-3 py-1.5 bg-[#4db6ac] text-black rounded-lg text-xs font-medium hover:bg-[#45a099]"
             >
               <i className="fa-solid fa-envelope mr-1.5" />
-              Invite
+              {t('social.invite')}
             </button>
           )}
         </div>
@@ -411,7 +417,7 @@ export default function Members(){
             ) : members.map((m, i) => (
               <button key={i} className="flex items-center gap-3 p-2 rounded-xl bg-white/[0.03] w-full text-left hover:bg-white/[0.06]"
                 onClick={()=> { window.location.href = `/profile/${encodeURIComponent(m.username)}` }}
-                aria-label={`View @${m.username} profile`}>
+                aria-label={t('social.view_profile', { username: m.username })}>
                   <Avatar username={m.username} url={m.profile_picture || undefined} size={36} linkToProfile />
                 <div className="flex-1">
                   <div className="font-medium">{m.username}</div>
@@ -466,7 +472,7 @@ export default function Members(){
                   }}
                   className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white/80 transition hover:border-[#4db6ac]/60 hover:bg-[#4db6ac]/10 hover:text-[#4db6ac]"
                   disabled={inviteLoading}
-                  aria-label="Back to invite options"
+                  aria-label={t('social.back_to_invite_options')}
                 >
                   <i className="fa-solid fa-arrow-left text-sm" />
                 </button>
@@ -475,7 +481,7 @@ export default function Members(){
                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]/80">{t('social.invite_members')}</div>
                 <h2 className="truncate text-lg font-semibold text-white">{t('social.invite_to', { community: communityName || t('social.community_fallback') })}</h2>
                 <p className="mt-0.5 text-xs text-white/55">
-                  {inviteStep === 'choose' ? 'Choose how you want to invite members' : 'Complete the selected invite method'}
+                  {inviteStep === 'choose' ? t('social.invite_step_choose_hint') : t('social.invite_step_complete_hint')}
                 </p>
               </div>
               <button
@@ -483,7 +489,7 @@ export default function Members(){
                 onClick={handleCloseInviteModal}
                 className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white/80 transition hover:border-[#4db6ac]/60 hover:bg-[#4db6ac]/10 hover:text-[#4db6ac]"
                 disabled={inviteLoading}
-                aria-label="Close invite modal"
+                aria-label={t('social.close_invite_modal')}
               >
                 <i className="fa-solid fa-xmark text-sm" />
               </button>
@@ -492,7 +498,7 @@ export default function Members(){
             <div className="flex-1 overflow-y-auto px-4 py-4" style={{ WebkitOverflowScrolling: 'touch', paddingBottom: 'max(16px, env(safe-area-inset-bottom, 0px))' }}>
               {inviteSuccess && (
                 <div className="mb-4 rounded-2xl border border-green-500/25 bg-green-500/10 p-3 text-sm text-green-300">
-                  {inviteSuccessMessage || 'Invitation sent successfully!'}
+                  {inviteSuccessMessage || t('social.invite_sent_success')}
                 </div>
               )}
 
@@ -505,7 +511,7 @@ export default function Members(){
                       onClick={() => navigate(inviteUpgradeUrl)}
                       className="mt-3 w-full rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:bg-[#45a099]"
                     >
-                      Upgrade community tier
+                      {t('social.upgrade_community_tier')}
                     </button>
                   )}
                 </div>
@@ -515,29 +521,29 @@ export default function Members(){
                 <div className="space-y-3">
                   <div className="rounded-3xl border border-white/10 bg-black/35 p-4">
                     <p className="text-sm leading-relaxed text-white/70">
-                      Pick the simplest route for the person you are inviting. You can come back and choose another method anytime.
+                      {t('social.invite_choose_intro')}
                     </p>
                   </div>
                   {([
                     {
                       id: 'username',
                       icon: 'fa-solid fa-at',
-                      title: 'Username',
-                      text: 'Invite an existing C-Point member with an in-app notification.',
+                      titleKey: 'social.invite_method_username_title',
+                      textKey: 'social.invite_method_username_text',
                     },
                     {
                       id: 'email',
                       icon: 'fa-regular fa-envelope',
-                      title: 'E-mail',
-                      text: 'Send a direct invite to someone by e-mail address.',
+                      titleKey: 'social.invite_method_email_title',
+                      textKey: 'social.invite_method_email_text',
                     },
                     {
                       id: 'link',
                       icon: 'fa-solid fa-qrcode',
-                      title: 'QR code / link',
-                      text: 'Generate a shareable QR code and invite link.',
+                      titleKey: 'social.invite_method_link_title',
+                      textKey: 'social.invite_method_link_text',
                     },
-                  ] as Array<{ id: InviteStep; icon: string; title: string; text: string }>).map(option => (
+                  ] as Array<{ id: InviteStep; icon: string; titleKey: string; textKey: string }>).map(option => (
                     <button
                       key={option.id}
                       type="button"
@@ -553,8 +559,8 @@ export default function Members(){
                         <i className={`${option.icon} text-base`} />
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-semibold text-white">{option.title}</span>
-                        <span className="mt-1 block text-xs leading-relaxed text-white/55">{option.text}</span>
+                        <span className="block text-sm font-semibold text-white">{t(option.titleKey)}</span>
+                        <span className="mt-1 block text-xs leading-relaxed text-white/55">{t(option.textKey)}</span>
                       </span>
                       <i className="fa-solid fa-chevron-right text-xs text-white/30 transition group-hover:text-[#4db6ac]" />
                     </button>
@@ -565,7 +571,7 @@ export default function Members(){
               {inviteStep === 'username' && (
                 <div className="space-y-4">
                   <div className="rounded-3xl border border-white/10 bg-black/35 p-4">
-                    <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-white/40">C-Point username</label>
+                    <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-white/40">{t('social.username_label')}</label>
                     <input
                       type="text"
                       value={inviteUsername}
@@ -575,7 +581,7 @@ export default function Members(){
                         setInviteSuccess(false)
                         setInviteSuccessMessage('')
                       }}
-                      placeholder="@username"
+                      placeholder={t('social.username_placeholder')}
                       className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-white/35 outline-none transition focus:border-[#4db6ac] focus:bg-black/40"
                       disabled={inviteLoading}
                       onKeyDown={(e) => {
@@ -586,7 +592,7 @@ export default function Members(){
                       }}
                     />
                     <p className="mt-2 text-xs leading-relaxed text-white/45">
-                      The member gets an in-app and push notification, then can accept or decline.
+                      {t('social.username_invite_hint')}
                     </p>
                   </div>
                   <button
@@ -595,7 +601,7 @@ export default function Members(){
                     className="flex h-12 w-full items-center justify-center rounded-2xl bg-[#4db6ac] px-4 text-sm font-semibold text-black shadow-lg shadow-[#4db6ac]/20 transition hover:bg-[#45a099] disabled:cursor-not-allowed disabled:opacity-45"
                     disabled={inviteLoading || !inviteUsername.trim()}
                   >
-                    {inviteLoading ? 'Sending...' : 'Send Username Invite'}
+                    {inviteLoading ? t('social.sending') : t('social.send_username_invite')}
                   </button>
                 </div>
               )}
@@ -603,7 +609,7 @@ export default function Members(){
               {inviteStep === 'email' && (
                 <div className="space-y-4">
                   <div className="rounded-3xl border border-white/10 bg-black/35 p-4">
-                    <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-white/40">E-mail address</label>
+                    <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-white/40">{t('social.email_label')}</label>
                     <input
                       type="email"
                       value={inviteEmail}
@@ -612,7 +618,7 @@ export default function Members(){
                         setInviteError('')
                         setInviteSuccess(false)
                       }}
-                      placeholder="email@example.com"
+                      placeholder={t('social.email_placeholder')}
                       className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-white/35 outline-none transition focus:border-[#4db6ac] focus:bg-black/40"
                       disabled={inviteLoading || inviteSuccess}
                       onKeyDown={(e) => {
@@ -629,7 +635,7 @@ export default function Members(){
                     className="flex h-12 w-full items-center justify-center rounded-2xl bg-[#4db6ac] px-4 text-sm font-semibold text-black shadow-lg shadow-[#4db6ac]/20 transition hover:bg-[#45a099] disabled:cursor-not-allowed disabled:opacity-45"
                     disabled={inviteLoading || inviteSuccess || !inviteEmail.trim()}
                   >
-                    {inviteLoading ? 'Sending...' : 'Send E-mail Invite'}
+                    {inviteLoading ? t('social.sending') : t('social.send_email_invite')}
                   </button>
                 </div>
               )}
@@ -639,8 +645,8 @@ export default function Members(){
                   {(currentUserRole === 'admin' || currentUserRole === 'owner' || currentUserRole === 'app_admin') && (
                     <div className="flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-black/35 px-4 py-3">
                       <div>
-                        <div className="text-sm font-semibold text-white">Single-use invite link</div>
-                        <div className="text-xs text-white/45">When enabled, each QR/link can only be used once.</div>
+                        <div className="text-sm font-semibold text-white">{t('social.single_use_link_title')}</div>
+                        <div className="text-xs text-white/45">{t('social.single_use_link_hint')}</div>
                       </div>
                       <button
                         type="button"
@@ -671,14 +677,14 @@ export default function Members(){
                       disabled={inviteLoading}
                     >
                       <i className="fa-solid fa-qrcode mr-2" />
-                      {inviteLoading ? 'Generating...' : 'Generate QR Code / Link'}
+                      {inviteLoading ? t('social.generating') : t('social.generate_qr_link')}
                     </button>
                   ) : (
                     <div className="space-y-4">
                       <div className="rounded-3xl border border-white/10 bg-white p-5">
                         <img
                           src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrCodeUrl)}`}
-                          alt="Invitation QR Code"
+                          alt={t('social.qr_code_alt')}
                           className="mx-auto aspect-square h-auto w-full max-w-[15rem] max-h-[min(15rem,36dvh)]"
                         />
                       </div>
@@ -691,17 +697,17 @@ export default function Members(){
                           onClick={() => setShowQRCode(false)}
                           className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white/80 hover:bg-white/[0.08]"
                         >
-                          Regenerate
+                          {t('social.regenerate')}
                         </button>
                         <button
                           type="button"
                           onClick={() => {
                             navigator.clipboard.writeText(qrCodeUrl)
-                            alert('Link copied to clipboard!')
+                            alert(t('social.link_copied'))
                           }}
                           className="rounded-2xl bg-[#4db6ac] px-4 py-3 text-sm font-semibold text-black hover:bg-[#45a099]"
                         >
-                          Copy Link
+                          {t('social.copy_link')}
                         </button>
                       </div>
                     </div>
@@ -772,11 +778,11 @@ function MemberActions({
       if (data.success) {
         setSubCommunities(data.subcommunities || [])
       } else {
-        setSubCommunityError(data.error || 'Failed to load sub-communities')
+        setSubCommunityError(data.error || t('social.failed_load_sub_communities'))
       }
     } catch (err) {
       console.error('Failed to load sub-communities:', err)
-      setSubCommunityError('Failed to load sub-communities')
+      setSubCommunityError(t('social.failed_load_sub_communities'))
     } finally {
       setLoadingSubCommunities(false)
     }
@@ -807,11 +813,11 @@ function MemberActions({
           setShowSubCommunityModal(false)
         }
       } else {
-        setSubCommunityError(data.error || 'Failed to add member')
+        setSubCommunityError(data.error || t('social.failed_add_member'))
       }
     } catch (err) {
       console.error('Failed to add member to sub-community:', err)
-      setSubCommunityError('Failed to add member')
+      setSubCommunityError(t('social.failed_add_member'))
     } finally {
       setAddingToSubCommunity(false)
     }
@@ -821,18 +827,18 @@ function MemberActions({
     <>
       <div className="relative" onClick={(e)=> e.stopPropagation()}>
         <button className="px-2 py-1 rounded-md border border-white/10 text-xs text-[#cfd8dc] hover:bg-white/5" onClick={()=> setOpen(v=>!v)} aria-expanded={open} aria-haspopup="menu">
-          Manage
+          {t('social.manage')}
         </button>
         {open && (
           <div className="absolute right-0 mt-1 w-48 rounded-md border border-white/10 bg-black shadow-lg z-20">
             {isMember && (
-              <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onPromote() }}>Make admin</button>
+              <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onPromote() }}>{t('feed.make_admin')}</button>
             )}
             {isAdmin && (
-              <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onDemote() }}>Remove admin</button>
+              <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onDemote() }}>{t('feed.remove_admin')}</button>
             )}
             {onTransfer ? (
-              <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onTransfer() }}>Transfer ownership</button>
+              <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onTransfer() }}>{t('social.transfer_ownership')}</button>
             ) : null}
             <div className="h-px bg-white/10" />
             <button 
@@ -840,10 +846,10 @@ function MemberActions({
               onClick={handleOpenSubCommunityModal}
             >
               <i className="fa-solid fa-plus mr-2" />
-              Add to sub-community
+              {t('social.add_to_sub_community')}
             </button>
             <div className="h-px bg-white/10" />
-            <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 text-red-400" onClick={()=> { setOpen(false); onRemove() }}>Remove member</button>
+            <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 text-red-400" onClick={()=> { setOpen(false); onRemove() }}>{t('social.remove_member')}</button>
           </div>
         )}
       </div>
@@ -852,8 +858,8 @@ function MemberActions({
       {showSubCommunityModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
           <div className="bg-[#1a1a1a] rounded-xl p-6 w-full max-w-md border border-white/10 max-h-[80vh] overflow-hidden flex flex-col">
-            <h2 className="text-lg font-semibold mb-2">Add @{memberUsername} to Sub-Community</h2>
-            <p className="text-sm text-white/60 mb-4">Select a sub-community to add this member to</p>
+            <h2 className="text-lg font-semibold mb-2">{t('social.add_to_sub_community_title', { username: memberUsername })}</h2>
+            <p className="text-sm text-white/60 mb-4">{t('social.add_to_sub_community_hint')}</p>
 
             {subCommunityError && (
               <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
@@ -871,7 +877,7 @@ function MemberActions({
                 <div className="text-center py-8 text-white/40">
                   <i className="fa-solid fa-folder-open text-2xl mb-2" />
                   <div className="text-sm">{t('social.no_available_sub_communities')}</div>
-                  <div className="text-xs mt-1">Either there are no sub-communities, or this member is already in all of them.</div>
+                  <div className="text-xs mt-1">{t('social.sub_communities_empty_hint')}</div>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -896,7 +902,7 @@ function MemberActions({
               onClick={() => setShowSubCommunityModal(false)}
               className="mt-4 w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-medium hover:bg-white/10"
             >
-              Close
+              {t('common.close')}
             </button>
           </div>
         </div>

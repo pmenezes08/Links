@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { useHeader } from '../contexts/HeaderContext'
 import { useBadges } from '../contexts/BadgeContext'
 import { renderTextWithLinks } from '../utils/linkUtils'
@@ -94,21 +95,59 @@ function iconFor(type?: string){
   }
 }
 
-function timeAgo(ts?: string){
+function formatTimeAgo(ts: string | undefined, t: TFunction) {
   if (!ts) return ''
-  // Server stores timestamps in UTC — ensure JS parses them as UTC
   let normalized = ts
   if (!ts.endsWith('Z') && !ts.includes('+')) {
     normalized = ts.replace(' ', 'T') + 'Z'
   }
   const d = new Date(normalized)
-  const s = Math.floor((Date.now() - d.getTime())/1000)
-  if (s < 0) return 'just now'
-  if (s < 60) return 'just now'
-  if (s < 3600) return Math.floor(s/60)+'m'
-  if (s < 86400) return Math.floor(s/3600)+'h'
-  if (s < 604800) return Math.floor(s/86400)+'d'
+  const s = Math.floor((Date.now() - d.getTime()) / 1000)
+  if (s < 0) return t('notifications_page.time_just_now')
+  if (s < 60) return t('notifications_page.time_just_now')
+  if (s < 3600) return t('notifications_page.time_minutes', { count: Math.floor(s / 60) })
+  if (s < 86400) return t('notifications_page.time_hours', { count: Math.floor(s / 3600) })
+  if (s < 604800) return t('notifications_page.time_days', { count: Math.floor(s / 86400) })
   return d.toLocaleDateString()
+}
+
+function notificationSummary(n: Notif, typeKey: string | undefined, t: TFunction) {
+  const user = n.from_user || ''
+  if (typeKey === 'event_invitation') return n.message || t('notifications_page.type_event_invitation')
+  if (typeKey === 'community_post') return n.message || t('notifications_page.type_community_post', { user })
+  if (typeKey === 'new_member') return n.message || t('notifications_page.type_new_member', { user })
+  if (typeKey === 'poll') return n.message || t('notifications_page.type_poll', { user })
+  if (typeKey === 'admin_broadcast') return n.message || t('notifications_page.type_admin_broadcast')
+  if (n.message) return n.message
+  const actionKey =
+    typeKey === 'task_assigned' ? 'notifications_page.type_task_assigned'
+    : typeKey === 'reaction' ? 'notifications_page.type_reaction_post'
+    : typeKey === 'story_reaction' ? 'notifications_page.type_story_reaction'
+    : typeKey === 'reply' ? 'notifications_page.type_reply_post'
+    : typeKey === 'story_comment' ? 'notifications_page.type_story_comment'
+    : typeKey === 'mention_post' ? 'notifications_page.type_mention_post'
+    : typeKey === 'mention_reply' ? 'notifications_page.type_mention_reply'
+    : 'notifications_page.type_interacted'
+  return (
+    <>
+      <span className="font-medium text-white">@{user}</span>{' '}
+      <span className="text-white/70">{t(actionKey)}</span>
+    </>
+  )
+}
+
+function formatEventDateLabel(dateStr: string, t: TFunction) {
+  try {
+    const d = new Date(dateStr)
+    const today = new Date()
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    if (d.toDateString() === today.toDateString()) return t('notifications_page.event_today')
+    if (d.toDateString() === tomorrow.toDateString()) return t('notifications_page.event_tomorrow')
+    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+  } catch {
+    return dateStr
+  }
 }
 
 export default function Notifications(){
@@ -144,7 +183,7 @@ export default function Notifications(){
   const unreadBadgeReloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const visibleRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  useEffect(() => { setTitle('Notifications') }, [setTitle])
+  useEffect(() => { setTitle(t('notifications_page.page_title')) }, [setTitle, t])
 
   // ``load`` accepts ``{ silent: true }`` so background refreshes (badge
   // poll, focus / visibility, foreground push) repopulate ``items``
@@ -365,7 +404,7 @@ export default function Notifications(){
 
   async function deleteOneNotif(n: Notif, e?: React.MouseEvent<HTMLButtonElement>) {
     e?.stopPropagation()
-    if (!confirm('Delete this notification?')) return
+    if (!confirm(t('notifications_page.delete_confirm'))) return
     const wasUnread = !n.is_read
     if (wasUnread) {
       lastUnreadNotifsRef.current = Math.max(0, unreadNotifs - 1)
@@ -390,7 +429,7 @@ export default function Notifications(){
 
   async function clearAll(){
     if (clearing) return
-    if (!confirm('Clear all notifications? This cannot be undone.')) return
+    if (!confirm(t('notifications_page.clear_all_confirm'))) return
     try{
       setClearing(true)
       setSwipeNotifId(null)
@@ -420,10 +459,10 @@ export default function Notifications(){
         await load({ silent: true })
         refreshBadges()
       } else {
-        setInviteActionError(j?.error || `Failed to ${action} invite`)
+        setInviteActionError(j?.error || t('notifications_page.invite_action_failed', { action }))
       }
     } catch {
-      setInviteActionError(`Failed to ${action} invite`)
+      setInviteActionError(t('notifications_page.invite_action_failed', { action }))
     } finally {
       setInviteActionLoading(null)
     }
@@ -495,32 +534,23 @@ export default function Notifications(){
 
   // Format date for display
   function formatEventDate(dateStr: string) {
-    try {
-      const d = new Date(dateStr)
-      const today = new Date()
-      const tomorrow = new Date(today)
-      tomorrow.setDate(tomorrow.getDate() + 1)
-      
-      if (d.toDateString() === today.toDateString()) return 'Today'
-      if (d.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
-      return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-    } catch {
-      return dateStr
-    }
+    return formatEventDateLabel(dateStr, t)
   }
+
+  const tabItems: { key: TabType; label: string; icon: string }[] = [
+    { key: 'notifications', label: t('notifications_page.tab_notifications'), icon: 'fa-regular fa-bell' },
+    { key: 'invites', label: t('notifications_page.tab_invites'), icon: 'fa-solid fa-user-plus' },
+    { key: 'calendar', label: t('notifications_page.tab_calendar'), icon: 'fa-regular fa-calendar' },
+    { key: 'polls', label: t('notifications_page.tab_polls'), icon: 'fa-solid fa-chart-bar' },
+    { key: 'tasks', label: t('notifications_page.tab_tasks'), icon: 'fa-solid fa-list-check' },
+  ]
 
   return (
     <div className="min-h-screen bg-black text-white pb-safe">
       <div className="app-content max-w-xl mx-auto px-3 pb-20">
         {/* Tab Navigation */}
         <div className="flex gap-1 mb-4 overflow-x-auto scrollbar-hide border-b border-white/10 pb-2">
-          {[
-            { key: 'notifications' as TabType, label: 'Notifications', icon: 'fa-regular fa-bell' },
-            { key: 'invites' as TabType, label: 'Invites', icon: 'fa-solid fa-user-plus' },
-            { key: 'calendar' as TabType, label: 'Calendar', icon: 'fa-regular fa-calendar' },
-            { key: 'polls' as TabType, label: 'Polls', icon: 'fa-solid fa-chart-bar' },
-            { key: 'tasks' as TabType, label: 'Tasks', icon: 'fa-solid fa-list-check' },
-          ].map(tab => {
+          {tabItems.map(tab => {
             const showInviteDot = tab.key === 'invites' && unreadInviteCount > 0
             return (
               <button
@@ -550,14 +580,14 @@ export default function Notifications(){
                 onClick={markAll}
                 className="px-3 py-1.5 rounded-full text-sm border border-white/15 hover:border-[#4db6ac]"
               >
-                Mark all read
+                {t('notifications_page.mark_all_read')}
               </button>
               <button
                 onClick={clearAll}
                 disabled={clearing}
                 className="px-3 py-1.5 rounded-full text-sm border border-white/15 hover:border-[#e53935] disabled:opacity-50"
               >
-                Clear all
+                {t('notifications_page.clear_all')}
               </button>
             </div>
             {loading || !items ? (
@@ -593,7 +623,7 @@ export default function Notifications(){
                           onClick={e => void markOneRead(n, e)}
                           disabled={n.is_read}
                           className="my-1 h-[calc(100%-0.5rem)] min-h-[44px] w-[52px] rounded-md bg-[#4db6ac]/25 text-[#4db6ac] hover:bg-[#4db6ac]/35 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center"
-                          aria-label="Mark as read"
+                          aria-label={t('notifications_page.mark_as_read_aria')}
                         >
                           <i className="fa-regular fa-eye" />
                         </button>
@@ -601,7 +631,7 @@ export default function Notifications(){
                           type="button"
                           onClick={e => void deleteOneNotif(n, e)}
                           className="my-1 h-[calc(100%-0.5rem)] min-h-[44px] w-[52px] rounded-md bg-red-500/20 text-red-300 hover:bg-red-500/30 flex items-center justify-center"
-                          aria-label="Delete notification"
+                          aria-label={t('notifications_page.delete_notification_aria')}
                         >
                           <i className="fa-solid fa-trash" />
                         </button>
@@ -669,33 +699,14 @@ export default function Notifications(){
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="text-sm">
-                              {typeKey === 'event_invitation' ? (n.message || 'Event invitation') :
-                               typeKey === 'community_post' ? (n.message || `@${n.from_user} made a new post`) :
-                               typeKey === 'new_member' ? (n.message || `@${n.from_user} joined the community`) :
-                               typeKey === 'poll' ? (n.message || `@${n.from_user} created a new poll`) :
-                               typeKey === 'admin_broadcast' ? (n.message || 'Administrator announcement') : (
-                                n.message ? (n.message) : (
-                                  <>
-                                    <span className="font-medium text-white">@{n.from_user}</span>{' '}
-                                    <span className="text-white/70">
-                                      {typeKey === 'task_assigned' ? 'assigned you a task' :
-                                      typeKey === 'reaction' ? 'reacted to your post' :
-                                      typeKey === 'story_reaction' ? 'reacted to your story' :
-                                      typeKey === 'reply' ? 'replied to your post' :
-                                      typeKey === 'story_comment' ? 'commented on your story' :
-                                      typeKey === 'mention_post' ? 'mentioned you in a post' :
-                                      typeKey === 'mention_reply' ? 'mentioned you in a reply' : 'interacted with you'}
-                                    </span>
-                                  </>
-                                )
-                              )}
+                              {notificationSummary(n, typeKey, t)}
                             </div>
                             {n.preview ? (
                               <div className="text-xs text-white/55 mt-1 line-clamp-2 break-words">
                                 {renderTextWithLinks(n.preview, undefined, undefined)}
                               </div>
                             ) : null}
-                            <div className="text-[11px] text-[#9fb0b5] mt-0.5">{timeAgo(n.created_at)}</div>
+                            <div className="text-[11px] text-[#9fb0b5] mt-0.5">{formatTimeAgo(n.created_at, t)}</div>
                           </div>
                           {!n.is_read && (
                             <div className="w-2 h-2 rounded-full bg-[#4db6ac] flex-shrink-0 mt-2" />
@@ -725,7 +736,7 @@ export default function Notifications(){
               </div>
             ) : (
               <div className="space-y-2">
-                <div className="text-xs font-semibold uppercase tracking-wide text-white/50">Community invites</div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-white/50">{t('notifications_page.community_invites_heading')}</div>
                 {pendingInvites.map(invite => (
                   <div key={`community-${invite.id}`} className="rounded-xl border border-[#4db6ac]/35 bg-[#4db6ac]/10 p-3">
                     <div className="flex items-start gap-3">
@@ -734,10 +745,13 @@ export default function Notifications(){
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-white">
-                          You've been invited to community <span className="font-semibold">{invite.community_name}</span> by username <span className="font-semibold">{invite.invited_by_username}</span>
+                          {t('notifications_page.invite_body', {
+                            community: invite.community_name,
+                            username: invite.invited_by_username,
+                          })}
                         </div>
                         {invite.invited_at ? (
-                          <div className="text-[11px] text-[#9fb0b5] mt-0.5">{timeAgo(invite.invited_at)}</div>
+                          <div className="text-[11px] text-[#9fb0b5] mt-0.5">{formatTimeAgo(invite.invited_at, t)}</div>
                         ) : null}
                         <div className="mt-3 flex gap-2">
                           <button
@@ -745,14 +759,14 @@ export default function Notifications(){
                             disabled={inviteActionLoading === invite.id}
                             onClick={() => respondToCommunityInvite(invite, 'accept')}
                           >
-                            {inviteActionLoading === invite.id ? 'Working...' : 'Accept'}
+                            {inviteActionLoading === invite.id ? t('notifications_page.working') : t('notifications_page.accept')}
                           </button>
                           <button
                             className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white disabled:opacity-50"
                             disabled={inviteActionLoading === invite.id}
                             onClick={() => respondToCommunityInvite(invite, 'decline')}
                           >
-                            Decline
+                            {t('notifications_page.decline')}
                           </button>
                         </div>
                       </div>
@@ -805,7 +819,7 @@ export default function Notifications(){
                           event.user_rsvp === 'maybe' ? 'bg-yellow-500/20 text-yellow-400' :
                           'bg-red-500/20 text-red-400'
                         }`}>
-                          {event.user_rsvp === 'going' ? 'Going' : event.user_rsvp === 'maybe' ? 'Maybe' : 'Not going'}
+                          {event.user_rsvp === 'going' ? t('calendar.going') : event.user_rsvp === 'maybe' ? t('calendar.maybe') : t('calendar.not_going')}
                         </div>
                       )}
                     </div>
@@ -841,13 +855,13 @@ export default function Notifications(){
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-white">{poll.question}</div>
                         <div className="text-xs text-[#9fb0b5] mt-1">
-                          {poll.total_votes} vote{poll.total_votes !== 1 ? 's' : ''} • {poll.options.length} options
+                          {t(poll.total_votes === 1 ? 'notifications_page.poll_votes_one' : 'notifications_page.poll_votes_other', { count: poll.total_votes })} • {t('notifications_page.poll_options_count', { count: poll.options.length })}
                         </div>
                         <div className="text-xs text-[#4db6ac] mt-1 truncate">{poll.community_name}</div>
                       </div>
                       {poll.user_vote !== null && poll.user_vote !== undefined && (
                         <div className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#4db6ac]/20 text-[#4db6ac]">
-                          Voted
+                          {t('notifications_page.poll_voted')}
                         </div>
                       )}
                     </div>
@@ -888,7 +902,7 @@ export default function Notifications(){
                         <div className="font-medium text-white">{task.title}</div>
                         {task.due_date && (
                           <div className="text-xs text-[#9fb0b5] mt-0.5">
-                            Due: {formatEventDate(task.due_date)}
+                            {t('notifications_page.task_due', { date: formatEventDate(task.due_date) })}
                           </div>
                         )}
                         <div className="text-xs text-[#4db6ac] mt-1 truncate">{task.community_name}</div>
@@ -896,7 +910,7 @@ export default function Notifications(){
                       <div className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
                         task.status === 'ongoing' ? 'bg-blue-500/20 text-blue-400' : 'bg-orange-500/20 text-orange-400'
                       }`}>
-                        {task.status === 'ongoing' ? 'In Progress' : 'Not Started'}
+                        {task.status === 'ongoing' ? t('notifications_page.task_in_progress') : t('notifications_page.task_not_started')}
                       </div>
                     </div>
                   </button>
@@ -920,6 +934,7 @@ export default function Notifications(){
 }
 
 function BroadcastModal({ notif, onClose }: { notif: Notif | null; onClose: () => void }) {
+  const { t } = useTranslation()
   if (!notif) return null
   const messageLines = notif.message ? notif.message.split(/\n+/) : []
   const link = notif.link
@@ -930,9 +945,9 @@ function BroadcastModal({ notif, onClose }: { notif: Notif | null; onClose: () =
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2 text-lg font-semibold text-white">
             <i className="fa-solid fa-bullhorn text-[#4db6ac]" />
-            Platform Announcement
+            {t('notifications_page.broadcast_title')}
           </div>
-          <button className="p-2 rounded-lg hover:bg-white/10" onClick={onClose} aria-label="Close announcement modal">
+          <button className="p-2 rounded-lg hover:bg-white/10" onClick={onClose} aria-label={t('common.close')}>
             <i className="fa-solid fa-xmark text-white" />
           </button>
         </div>
@@ -946,7 +961,7 @@ function BroadcastModal({ notif, onClose }: { notif: Notif | null; onClose: () =
               ))
             : (
               <p className="leading-relaxed">
-                {notif.message || 'No additional message provided.'}
+                {notif.message || t('notifications_page.broadcast_no_message')}
               </p>
             )}
         </div>
@@ -963,14 +978,14 @@ function BroadcastModal({ notif, onClose }: { notif: Notif | null; onClose: () =
                 }
               }}
             >
-              Open Link
+              {t('notifications_page.open_link')}
             </button>
           )}
           <button
             className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold hover:brightness-110"
             onClick={onClose}
           >
-            Close
+            {t('common.close')}
           </button>
         </div>
       </div>

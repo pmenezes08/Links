@@ -34,8 +34,8 @@ export default function LanguagePicker() {
   async function handleSave() {
     if (!hasChanges || saving) return
     setSaved(false)
-    const savedLocale = await setLocale(draftLocale)
-    if (savedLocale === draftLocale) {
+    const result = await setLocale(draftLocale)
+    if (result.locale === draftLocale && result.persisted) {
       setSaved(true)
     }
   }

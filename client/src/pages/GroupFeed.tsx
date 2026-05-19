@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
@@ -30,15 +31,17 @@ type PostPoll = {
 type Post = { id:number; username:string; content:string; image_path?:string|null; video_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null, replies: Reply[], can_edit?: boolean, can_delete?: boolean, link_urls?: unknown, is_starred?: boolean, is_community_starred?: boolean, can_toggle_community_key?: boolean, poll?: PostPoll | null, reply_count?: number, view_count?: number }
 
 function ManageGroupButton({ groupId, onClose }:{ groupId: string, onClose: ()=>void }){
+  const { t } = useTranslation()
   const navigate = useNavigate()
   return (
     <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { onClose(); navigate(`/group/${groupId}/edit`) }}>
-      Manage Group
+      {t('feed.manage_group')}
     </button>
   )
 }
 
 export default function GroupFeed(){
+  const { t } = useTranslation()
   const { group_id } = useParams()
   const navigate = useNavigate()
   const mentionToProfile = useCallback((u: string) => { navigate(`/profile/${encodeURIComponent(u)}`) }, [navigate])
@@ -72,7 +75,7 @@ export default function GroupFeed(){
   const scrollRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
-  const [groupName, setGroupName] = useState('Group')
+  const [groupName, setGroupName] = useState(t('feed.group_fallback'))
   const [communityMeta, setCommunityMeta] = useState<{ id?: number|string, name?: string, type?: string } | null>(null)
   const [posts, setPosts] = useState<Post[]>([])
   const [capabilities, setCapabilities] = useState<{ can_post_announcements?: boolean }>({})
@@ -114,9 +117,9 @@ export default function GroupFeed(){
 
   useEffect(() => {
     const communityName = communityMeta?.name || ''
-    const title = communityName ? `${groupName} · ${communityName}` : (groupName || 'Group')
+    const title = communityName ? `${groupName} · ${communityName}` : (groupName || t('feed.group_fallback'))
     setTitle(title)
-  }, [groupName, communityMeta, setTitle])
+  }, [groupName, communityMeta, setTitle, t])
 
   useEffect(() => {
     let mounted = true
@@ -153,20 +156,20 @@ export default function GroupFeed(){
       const feedResp = await fetch(`/api/group_feed?group_id=${group_id}`, { credentials: 'include', headers: { Accept: 'application/json' } })
       const fj = await feedResp.json().catch(() => null)
       if (fj?.success) {
-        setGroupName(fj.group?.name || 'Group')
+        setGroupName(fj.group?.name || t('feed.group_fallback'))
         setCommunityMeta(fj.community || null)
         setPosts(fj.posts || [])
         setCapabilities(fj.capabilities || {})
         setError(null)
       } else {
-        setError(fj?.error || 'Failed to load group')
+        setError(fj?.error || t('feed.failed_to_load_group'))
       }
     } catch {
-      setError('Failed to load group')
+      setError(t('feed.failed_to_load_group'))
     } finally {
       setLoading(false)
     }
-  }, [group_id])
+  }, [group_id, t])
 
   useEffect(() => {
     void loadFeed()
@@ -215,7 +218,7 @@ export default function GroupFeed(){
           type="button"
           className="flex-shrink-0"
           onClick={() => setMenuOpen(true)}
-          aria-label="Menu"
+          aria-label={t('navigation.menu')}
         >
           <Avatar username={currentUsername} url={userAvatar || undefined} size={32} />
         </button>
@@ -223,7 +226,7 @@ export default function GroupFeed(){
           type="button"
           className="p-2 rounded-full hover:bg-white/10 transition-colors"
           onClick={goBackFromGroupFeed}
-          aria-label="Back"
+          aria-label={t('navigation.back')}
         >
           <i className="fa-solid fa-arrow-left text-white" />
         </button>
@@ -232,20 +235,20 @@ export default function GroupFeed(){
           className="flex-1 min-w-0 rounded-xl px-2 py-1 text-left transition hover:bg-white/[0.04] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]/50"
           onClick={() => setGroupInfoOpen((o) => !o)}
           aria-expanded={groupInfoOpen}
-          aria-label="Group details"
+          aria-label={t('feed.group_details')}
         >
-          <div className="font-semibold truncate text-white text-sm">{groupName || 'Group'}</div>
+          <div className="font-semibold truncate text-white text-sm">{groupName || t('feed.group_fallback')}</div>
           {communityMeta?.name ? (
             <div className="text-xs text-[#9fb0b5] truncate">{communityMeta.name}</div>
           ) : (
-            <div className="text-xs text-[#9fb0b5] truncate">Tap for details</div>
+            <div className="text-xs text-[#9fb0b5] truncate">{t('feed.tap_for_details')}</div>
           )}
         </button>
         <div className="flex items-center gap-1 flex-shrink-0">
           <button
             type="button"
             className="p-2 rounded-full hover:bg-white/10 transition-colors"
-            aria-label="Search"
+            aria-label={t('common.search')}
             onClick={() => {
               setShowSearch(true)
               setTimeout(() => {
@@ -261,7 +264,7 @@ export default function GroupFeed(){
             type="button"
             className="relative p-2 rounded-full hover:bg-white/10 transition-colors"
             onClick={() => navigate('/user_chat')}
-            aria-label="Messages"
+            aria-label={t('navigation.messages')}
           >
             <i className="fa-solid fa-comments text-white" />
             {unreadMsgs > 0 && (
@@ -274,7 +277,7 @@ export default function GroupFeed(){
             type="button"
             className="relative p-2 rounded-full hover:bg-white/10 transition-colors"
             onClick={() => navigate('/notifications')}
-            aria-label="Notifications"
+            aria-label={t('navigation.notifications')}
           >
             <i className="fa-regular fa-bell text-white" />
             {unreadNotifs > 0 && (
@@ -290,7 +293,7 @@ export default function GroupFeed(){
           <button
             type="button"
             className="fixed inset-0 z-[1000] cursor-default bg-transparent"
-            aria-label="Close group details"
+            aria-label={t('feed.close_group_details')}
             onClick={() => setGroupInfoOpen(false)}
           />
           <div
@@ -299,23 +302,23 @@ export default function GroupFeed(){
           >
             <div className="mb-2 flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]/80">Group</div>
-                <h2 className="mt-1 text-base font-semibold text-white">{groupName || 'Group'}</h2>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]/80">{t('feed.group_fallback')}</div>
+                <h2 className="mt-1 text-base font-semibold text-white">{groupName || t('feed.group_fallback')}</h2>
                 {communityMeta?.name ? (
-                  <div className="text-xs text-[#9fb0b5] mt-1">In {communityMeta.name}</div>
+                  <div className="text-xs text-[#9fb0b5] mt-1">{t('feed.in_community', { community: communityMeta.name })}</div>
                 ) : null}
               </div>
               <button
                 type="button"
                 className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/70 hover:border-[#4db6ac]/50 hover:text-[#4db6ac]"
                 onClick={() => setGroupInfoOpen(false)}
-                aria-label="Close group details"
+                aria-label={t('feed.close_group_details')}
               >
                 <i className="fa-solid fa-xmark text-xs" />
               </button>
             </div>
             <p className="text-sm leading-relaxed text-white/75">
-              Posts here are visible to members of this group. Use the back control to return to communities.
+              {t('feed.group_details_body')}
             </p>
           </div>
         </>
@@ -544,11 +547,11 @@ export default function GroupFeed(){
         </div>
         {currentUsername === 'admin' ? (
           <>
-            <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/admin_profile_react">Admin Profile</a>
-            <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/admin">Admin Dashboard</a>
+            <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/admin_profile_react">{t('navigation.admin_profile')}</a>
+            <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/admin">{t('navigation.admin_dashboard')}</a>
           </>
         ) : null}
-        <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/premium_dashboard">Dashboard</a>
+        <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/premium_dashboard">{t('navigation.dashboard')}</a>
         <button
           type="button"
           className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white"
@@ -558,12 +561,12 @@ export default function GroupFeed(){
             else navigate('/profile')
           }}
         >
-          My Profile
+          {t('navigation.my_profile')}
         </button>
-        <button type="button" className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={() => { setMenuOpen(false); navigate('/followers') }}>Followers</button>
-        <button type="button" className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={() => { setMenuOpen(false); navigate('/subscription_plans') }}>Subscriptions</button>
-        <button type="button" className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={requestLogout}>Logout</button>
-        <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/account_settings">Account Settings</a>
+        <button type="button" className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={() => { setMenuOpen(false); navigate('/followers') }}>{t('navigation.followers')}</button>
+        <button type="button" className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={() => { setMenuOpen(false); navigate('/subscription_plans') }}>{t('navigation.subscriptions')}</button>
+        <button type="button" className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={requestLogout}>{t('navigation.logout')}</button>
+        <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/account_settings">{t('navigation.account_settings')}</a>
       </div>
       <div className="flex-1 h-full" onClick={() => setMenuOpen(false)} />
     </div>
@@ -578,7 +581,7 @@ export default function GroupFeed(){
           className="flex-1 flex items-center justify-center text-[#9fb0b5]"
           style={{ paddingTop: `calc(env(safe-area-inset-top, 0px) + ${feedScrollHeaderBodyPx}px)` }}
         >
-          Loading…
+          {t('common.loading')}
         </div>
       </div>
     )
@@ -616,7 +619,7 @@ export default function GroupFeed(){
       >
         <div className="space-y-3">
           {posts.length === 0 ? (
-            <div className="text-sm text-[#9fb0b5]">No posts yet.</div>
+            <div className="text-sm text-[#9fb0b5]">{t('feed.no_posts_yet')}</div>
           ) : (
             posts.map(p => (
               <div key={p.id} id={`group-post-${p.id}`} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={()=> navigate(`/post/${p.id}`, { state: { groupId: group_id } })}>
@@ -628,7 +631,7 @@ export default function GroupFeed(){
                     <button
                       type="button"
                       className="p-1.5 rounded-full hover:bg-white/10"
-                      aria-label={p.is_starred ? 'Remove from your key posts' : 'Add to your key posts'}
+                      aria-label={p.is_starred ? t('feed.remove_from_key_posts') : t('feed.add_to_key_posts')}
                       onClick={async (e) => {
                         e.stopPropagation()
                         try {
@@ -636,7 +639,7 @@ export default function GroupFeed(){
                           const r = await fetch('/api/toggle_group_key_post', { method: 'POST', credentials: 'include', body: fd })
                           const j = await r.json().catch(() => null)
                           if (j?.success) setPosts((list) => list.map((it) => (it.id === p.id ? { ...it, is_starred: !!j.starred } : it)))
-                          else alert(j?.error || 'Failed')
+                          else alert(j?.error || t('feed.update_failed'))
                         } catch {}
                       }}
                     >
@@ -649,7 +652,7 @@ export default function GroupFeed(){
                       <button
                         type="button"
                         className="p-1.5 rounded-full hover:bg-white/10"
-                        aria-label={p.is_community_starred ? 'Remove group key post' : 'Mark as group key post'}
+                        aria-label={p.is_community_starred ? t('feed.remove_group_key_post') : t('feed.mark_group_key_post')}
                         onClick={async (e) => {
                           e.stopPropagation()
                           try {
@@ -658,7 +661,7 @@ export default function GroupFeed(){
                             const j = await r.json().catch(() => null)
                             if (j?.success) {
                               setPosts((list) => list.map((it) => (it.id === p.id ? { ...it, is_community_starred: !!j.starred } : it)))
-                            } else alert(j?.error || 'Failed')
+                            } else alert(j?.error || t('feed.update_failed'))
                           } catch {}
                         }}
                       >
@@ -674,7 +677,7 @@ export default function GroupFeed(){
                       {p.can_edit ? (
                         <button
                           className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
-                          aria-label="Edit post"
+                          aria-label={t('feed.edit_post')}
                           onClick={async (e)=> {
                             e.stopPropagation()
                             setEditingId(p.id)
@@ -688,15 +691,15 @@ export default function GroupFeed(){
                       {p.can_delete ? (
                         <button
                           className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
-                          aria-label="Delete post"
+                          aria-label={t('feed.delete_post')}
                           onClick={async (e)=> {
                             e.stopPropagation()
-                            if (!confirm('Delete this post?')) return
+                            if (!confirm(t('feed.delete_post_confirm'))) return
                             const fd = new URLSearchParams({ post_id: String(p.id) })
                             const r = await fetch('/api/group_posts/delete', { method:'POST', credentials:'include', body: fd })
                             const j = await r.json().catch(()=>null)
                             if (j?.success){ setPosts(list => list.filter(it => it.id !== p.id)) }
-                            else { alert(j?.error || 'Failed to delete') }
+                            else { alert(j?.error || t('feed.delete_failed')) }
                           }}
                         >
                           <i className="fa-regular fa-trash-can" style={{ color: 'inherit' }} />
@@ -726,7 +729,7 @@ export default function GroupFeed(){
                       <textarea className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" value={editText} onChange={(e)=> { setEditText(e.target.value); setDetectedLinks(detectLinks(e.target.value)) }} />
                       {detectedLinks.length > 0 && (
                         <div className="space-y-2">
-                          <div className="text-xs text-[#9fb0b5] font-medium">Detected Links:</div>
+                          <div className="text-xs text-[#9fb0b5] font-medium">{t('feed.detected_links')}</div>
                           {detectedLinks.map((link, idx) => (
                             <div key={idx} className="flex items-center gap-2 p-2 rounded-lg border border-white/10 bg-white/5">
                               <div className="flex-1 min-w-0">
@@ -738,28 +741,28 @@ export default function GroupFeed(){
                               <button
                                 className="px-2 py-1 rounded text-xs border border-[#4db6ac]/30 text-[#4db6ac] hover:bg-[#4db6ac]/10"
                                 onClick={()=> {
-                                  const newText = prompt('Rename link display text', link.displayText)
+                                  const newText = prompt(t('feed.rename_link_prompt'), link.displayText)
                                   if (newText == null) return
                                   const updated = replaceLinkInText(editText, link.url, newText)
                                   setEditText(updated)
                                   setDetectedLinks(detectLinks(updated))
                                 }}
                               >
-                                Rename
+                                {t('feed.rename')}
                               </button>
                             </div>
                           ))}
                         </div>
                       )}
                       <div className="flex gap-2 justify-end">
-                        <button className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm" onClick={()=> { setEditingId(null); setEditText('') }}>Cancel</button>
+                        <button className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm" onClick={()=> { setEditingId(null); setEditText('') }}>{t('common.cancel')}</button>
                         <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110" onClick={async()=> {
                           const fd = new URLSearchParams({ post_id: String(p.id), content: editText })
                           const r = await fetch('/api/group_posts/edit', { method:'POST', credentials:'include', body: fd })
                           const j = await r.json().catch(()=>null)
                           if (j?.success){ setPosts(list => list.map(it => it.id === p.id ? ({ ...it, content: editText }) : it)); setEditingId(null) }
-                          else alert(j?.error || 'Failed to update')
-                        }}>Save</button>
+                          else alert(j?.error || t('feed.update_failed'))
+                        }}>{t('common.save')}</button>
                       </div>
                     </div>
                   )}
@@ -772,7 +775,7 @@ export default function GroupFeed(){
                         if (ip.startsWith('/uploads') || ip.startsWith('/static')) return ip
                         return ip.startsWith('uploads') || ip.startsWith('static') ? `/${ip}` : `/uploads/${ip}`
                       })()}
-                      alt="Post image"
+                      alt={t('feed.post_image_alt')}
                       className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
                     />
                   ) : null}
@@ -796,14 +799,13 @@ export default function GroupFeed(){
                           {p.poll.question}
                           {p.poll.expires_at ? (
                             <span className="ml-2 text-[11px] text-[#9fb0b5]">
-                              • closes{' '}
-                              {(() => {
+                              • {t('feed.poll_closes', { date: (() => {
                                 try {
                                   const d = new Date(p.poll.expires_at as string)
                                   if (!isNaN(d.getTime())) return d.toLocaleDateString()
                                 } catch { /* noop */ }
                                 return String(p.poll.expires_at)
-                              })()}
+                              })() })}
                             </span>
                           ) : null}
                         </div>
@@ -909,7 +911,7 @@ export default function GroupFeed(){
                         {(() => {
                           const sv = p.poll?.single_vote
                           const isSingle = !(sv === false || sv === 0 || sv === '0' || sv === 'false')
-                          return isSingle ? <span>{p.poll.total_votes || 0} {p.poll.total_votes === 1 ? 'vote' : 'votes'}</span> : <span />
+                          return isSingle ? <span>{t('feed.vote_count', { count: p.poll.total_votes || 0 })}</span> : <span />
                         })()}
                       </div>
                     </div>
@@ -941,14 +943,14 @@ export default function GroupFeed(){
                     <div className="ml-auto flex items-center gap-1 tabular-nums">
                       <span
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[#cfd8dc]"
-                        title="Views"
+                        title={t('feed.views')}
                       >
                         <i className="fa-regular fa-eye text-[11px]" aria-hidden />
                         <span>{p.view_count ?? 0}</span>
                       </span>
                       <span
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[#cfd8dc]"
-                        title="Comments"
+                        title={t('feed.comments')}
                       >
                         <i className="fa-regular fa-comment text-[11px]" aria-hidden />
                         <span>{p.reply_count ?? 0}</span>
@@ -969,25 +971,25 @@ export default function GroupFeed(){
       >
         <div className="liquid-glass-surface border border-white/10 rounded-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.45)] max-w-2xl mx-auto mb-2">
           <div className="h-14 px-2 sm:px-6 flex items-center justify-between text-[#cfd8dc]">
-            <button className="p-3 rounded-full bg-white/10 transition-colors" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
+            <button className="p-3 rounded-full bg-white/10 transition-colors" aria-label={t('navigation.home')} onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
               <i className="fa-solid fa-house text-lg text-[#4db6ac]" />
             </button>
-            <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="Members" onClick={openMembers}>
+            <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label={t('navigation.members')} onClick={openMembers}>
               <i className="fa-solid fa-users text-lg" />
             </button>
             <button
               className="w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center transition-all"
-              aria-label="New Post"
+              aria-label={t('feed.new_post')}
               onClick={()=> navigate(`/compose?group_id=${group_id}`)}
             >
               <i className="fa-solid fa-plus" />
             </button>
-            <button className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="Announcements" onClick={() => setAnnouncementsOpen(true)}>
+            <button className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label={t('feed.announcements')} onClick={() => setAnnouncementsOpen(true)}>
               <span className="relative inline-block">
                 <i className="fa-solid fa-bullhorn text-lg" />
               </span>
             </button>
-            <button className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="More" onClick={()=> setMoreOpen(true)}>
+            <button className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label={t('common.more')} onClick={()=> setMoreOpen(true)}>
               <span className="relative inline-block">
                 <i className="fa-solid fa-ellipsis text-lg" />
                 {(hasUnseenDocs || hasPendingRsvps) && (
@@ -1004,18 +1006,18 @@ export default function GroupFeed(){
         <div className="fixed inset-0 z-[110] bg-black/30 flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
           <div className="w-[75%] max-w-sm mr-2 bg-black/95 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0" style={{ marginBottom: 'calc(70px + env(safe-area-inset-bottom))' }}>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/key_posts?group_id=${group_id}`) }}>
-              Key Posts
+              {t('feed.key_posts')}
             </button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/calendar_react?group_id=${group_id}`) }}>
-              Calendar
+              {t('feed.calendar')}
               {hasPendingRsvps && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
             </button>
             {showTasks && (
-              <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/tasks_react?group_id=${group_id}`) }}>Tasks</button>
+              <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/tasks_react?group_id=${group_id}`) }}>{t('feed.tasks')}</button>
             )}
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/photos_react?group_id=${group_id}`) }}>Media</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/photos_react?group_id=${group_id}`) }}>{t('feed.media')}</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/useful_links_react?group_id=${group_id}`) }}>
-              Useful Links & Docs
+              {t('feed.useful_links_docs')}
               {hasUnseenDocs && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
             </button>
             {group_id && <ManageGroupButton groupId={group_id} onClose={()=> setMoreOpen(false)} />}
@@ -1027,16 +1029,16 @@ export default function GroupFeed(){
         <div className="fixed inset-0 z-[120] bg-black/70 flex items-end sm:items-center justify-center p-3" onClick={(e) => e.currentTarget === e.target && setAnnouncementsOpen(false)}>
           <div className="w-full max-w-lg max-h-[85vh] rounded-2xl border border-white/10 bg-[#0a0a0a] flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-              <h2 className="text-base font-semibold text-white">Announcements</h2>
-              <button type="button" className="p-2 rounded-full hover:bg-white/10 text-[#9fb0b5]" aria-label="Close" onClick={() => setAnnouncementsOpen(false)}>
+              <h2 className="text-base font-semibold text-white">{t('feed.announcements')}</h2>
+              <button type="button" className="p-2 rounded-full hover:bg-white/10 text-[#9fb0b5]" aria-label={t('common.close')} onClick={() => setAnnouncementsOpen(false)}>
                 <i className="fa-solid fa-xmark" />
               </button>
             </div>
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
               {announcementsLoading ? (
-                <div className="text-sm text-[#9fb0b5]">Loading…</div>
+                <div className="text-sm text-[#9fb0b5]">{t('common.loading')}</div>
               ) : announcements.length === 0 ? (
-                <div className="text-sm text-[#9fb0b5]">No announcements yet.</div>
+                <div className="text-sm text-[#9fb0b5]">{t('feed.no_announcements_yet')}</div>
               ) : (
                 announcements.map((a) => (
                   <div key={a.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
@@ -1050,7 +1052,7 @@ export default function GroupFeed(){
               <div className="border-t border-white/10 p-3 space-y-2">
                 <textarea
                   className="w-full rounded-lg bg-black border border-white/10 px-3 py-2 text-sm text-white placeholder:text-[#6c757d] min-h-[72px] focus:border-teal-400/70 outline-none"
-                  placeholder="Post an announcement…"
+                  placeholder={t('feed.post_announcement_placeholder')}
                   value={newAnnouncement}
                   onChange={(e) => setNewAnnouncement(e.target.value)}
                 />
@@ -1059,7 +1061,7 @@ export default function GroupFeed(){
                   className="w-full py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110"
                   onClick={() => void submitAnnouncement()}
                 >
-                  Publish
+                  {t('feed.publish')}
                 </button>
               </div>
             ) : null}
@@ -1077,16 +1079,16 @@ export default function GroupFeed(){
                 id="group-feed-hashtag-input"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="#hashtag or text"
+                placeholder={t('feed.hashtag_or_text_placeholder')}
                 className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none"
               />
               <button type="button" className="px-3 py-2 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110" onClick={() => void runSearch()}>
-                Search
+                {t('common.search')}
               </button>
             </div>
             <div className="max-h-[320px] overflow-y-auto space-y-2">
               {results.length === 0 ? (
-                <div className="text-[#9fb0b5] text-sm">No results</div>
+                <div className="text-[#9fb0b5] text-sm">{t('feed.no_results')}</div>
               ) : (
                 results.map((r) => (
                   <button
@@ -1112,10 +1114,10 @@ export default function GroupFeed(){
         <div className="fixed inset-0 z-[120] bg-black/50 flex items-end justify-center" onClick={(e) => e.currentTarget === e.target && setShowMembers(false)}>
           <div className="w-full max-w-lg bg-black/95 backdrop-blur border border-white/10 rounded-t-2xl p-4 max-h-[75vh] flex flex-col" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}>
             <div className="flex items-center justify-between mb-3">
-              <div className="text-white font-semibold text-base">Group Members</div>
+              <div className="text-white font-semibold text-base">{t('feed.group_members')}</div>
               <div className="flex items-center gap-2">
                 <button onClick={() => { setShowMembers(false); openInvite() }} className="px-3 py-1.5 rounded-lg bg-[#4db6ac] text-black text-xs font-medium hover:brightness-110">
-                  <i className="fa-solid fa-user-plus mr-1.5" />Add
+                  <i className="fa-solid fa-user-plus mr-1.5" />{t('common.add')}
                 </button>
                 <button onClick={() => setShowMembers(false)} className="px-2 py-1 rounded-full border border-white/10 text-white/60 text-sm hover:bg-white/5">
                   <i className="fa-solid fa-xmark" />
@@ -1124,9 +1126,9 @@ export default function GroupFeed(){
             </div>
             <div className="flex-1 overflow-y-auto space-y-1">
               {membersLoading ? (
-                <div className="text-[#9fb0b5] text-sm py-4 text-center">Loading…</div>
+                <div className="text-[#9fb0b5] text-sm py-4 text-center">{t('common.loading')}</div>
               ) : groupMembers.length === 0 ? (
-                <div className="text-[#9fb0b5] text-sm py-4 text-center">No members yet. Invite people to this group!</div>
+                <div className="text-[#9fb0b5] text-sm py-4 text-center">{t('feed.no_group_members')}</div>
               ) : groupMembers.map(m => (
                 <div key={m.username} className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-white/5">
                   <div className="cursor-pointer" onClick={() => { setShowMembers(false); navigate(`/profile/${m.username}`) }}>
@@ -1135,8 +1137,8 @@ export default function GroupFeed(){
                   <div className="flex-1 min-w-0 cursor-pointer" onClick={() => { setShowMembers(false); navigate(`/profile/${m.username}`) }}>
                     <div className="text-sm font-medium text-white truncate flex items-center gap-1.5">
                       {m.display_name || m.username}
-                      {m.role === 'owner' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#4db6ac]/20 text-[#4db6ac] font-semibold">Owner</span>}
-                      {m.role === 'admin' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/10 text-white/60 font-semibold">Admin</span>}
+                      {m.role === 'owner' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#4db6ac]/20 text-[#4db6ac] font-semibold">{t('feed.owner')}</span>}
+                      {m.role === 'admin' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/10 text-white/60 font-semibold">{t('feed.admin')}</span>}
                     </div>
                     <div className="text-[11px] text-[#6f7c81]">@{m.username}</div>
                   </div>
@@ -1147,7 +1149,7 @@ export default function GroupFeed(){
                         <button
                           onClick={(e) => { e.stopPropagation(); toggleAdmin(m.username, m.role || 'member') }}
                           className="w-7 h-7 rounded-full border border-white/10 flex items-center justify-center text-white/40 hover:bg-white/10 hover:text-white/70"
-                          title={m.role === 'admin' ? 'Remove admin' : 'Make admin'}
+                          title={m.role === 'admin' ? t('feed.remove_admin') : t('feed.make_admin')}
                         >
                           <i className={`fa-solid ${m.role === 'admin' ? 'fa-user-shield' : 'fa-shield-halved'} text-[10px]`} />
                         </button>
@@ -1155,7 +1157,7 @@ export default function GroupFeed(){
                       <button
                         onClick={(e) => { e.stopPropagation(); removeMember(m.username) }}
                         className="w-7 h-7 rounded-full border border-white/10 flex items-center justify-center text-red-400/50 hover:bg-red-500/10 hover:text-red-400"
-                        title="Remove from group"
+                        title={t('feed.remove_from_group')}
                       >
                         <i className="fa-solid fa-user-minus text-[10px]" />
                       </button>
@@ -1169,7 +1171,7 @@ export default function GroupFeed(){
               onClick={leaveGroup}
               className="mt-3 w-full py-2.5 rounded-lg border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/10 transition-colors"
             >
-              <i className="fa-solid fa-right-from-bracket mr-2" />Leave Group
+              <i className="fa-solid fa-right-from-bracket mr-2" />{t('feed.leave_group')}
             </button>
           </div>
         </div>
@@ -1200,7 +1202,7 @@ export default function GroupFeed(){
               >
                 <i className="fa-solid fa-xmark text-base" />
               </button>
-              <div className="text-white font-semibold text-base flex-1">Add Members</div>
+              <div className="text-white font-semibold text-base flex-1">{t('feed.add_members')}</div>
             </div>
             {/* Search */}
             <div className="relative px-4 py-3 flex-shrink-0">
@@ -1208,7 +1210,7 @@ export default function GroupFeed(){
               <input
                 value={inviteSearch}
                 onChange={e => setInviteSearch(e.target.value)}
-                placeholder="Search by name…"
+                placeholder={t('feed.search_by_name')}
                 className="w-full rounded-lg border border-white/15 bg-transparent pl-9 pr-3 py-2 text-sm text-white placeholder-[#6f7c81] focus:outline-none focus:border-[#4db6ac]"
                 autoFocus
               />
@@ -1216,18 +1218,18 @@ export default function GroupFeed(){
             {/* Selected count + add button */}
             {selectedInvites.size > 0 && (
               <div className="flex items-center justify-between px-4 pb-2 flex-shrink-0">
-                <span className="text-xs text-[#9fb0b5]">{selectedInvites.size} selected</span>
+                <span className="text-xs text-[#9fb0b5]">{t('feed.selected_count', { count: selectedInvites.size })}</span>
                 <button onClick={sendInvites} disabled={inviteSending} className="px-4 py-1.5 rounded-lg bg-[#4db6ac] text-black text-xs font-medium hover:brightness-110 disabled:opacity-50">
-                  {inviteSending ? <i className="fa-solid fa-spinner fa-spin" /> : 'Add to Group'}
+                  {inviteSending ? <i className="fa-solid fa-spinner fa-spin" /> : t('feed.add_to_group')}
                 </button>
               </div>
             )}
             {/* Available members list */}
             <div className="flex-1 overflow-y-auto px-4 pb-4" style={{ minHeight: 0 }}>
               {inviteLoading ? (
-                <div className="text-[#9fb0b5] text-sm py-4 text-center">Loading…</div>
+                <div className="text-[#9fb0b5] text-sm py-4 text-center">{t('common.loading')}</div>
               ) : filteredAvailable.length === 0 ? (
-                <div className="text-[#9fb0b5] text-sm py-4 text-center">{q ? 'No matches found.' : 'All community members are already in this group.'}</div>
+                <div className="text-[#9fb0b5] text-sm py-4 text-center">{q ? t('feed.no_matches_found') : t('feed.all_members_already_in_group')}</div>
               ) : (
                 <div className="space-y-1">
                   {filteredAvailable.map(m => {

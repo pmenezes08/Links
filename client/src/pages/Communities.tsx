@@ -40,20 +40,20 @@ const COMMUNITY_MGMT_CACHE_TTL_MS = 5 * 60 * 1000
 const COMMUNITY_DEVICE_CACHE_VERSION = 'community-mgmt-v2'
 const COMMUNITIES_GUIDE_STEPS = [
   {
-    title: 'Sub-Communities',
-    description: 'Micro-networks within your broader network that you actively belong to.',
+    titleKey: 'communities.guide_sub_title',
+    descriptionKey: 'communities.guide_sub_desc',
     icon: 'fa-solid fa-diagram-project',
     tab: 'management' as const,
   },
   {
-    title: 'Home Timeline',
-    description: 'The central feed for your network: unread posts from every micro-network you’re part of, rolled up from the root of your community down through nested spaces.',
+    titleKey: 'communities.guide_timeline_title',
+    descriptionKey: 'communities.guide_timeline_desc',
     icon: 'fa-solid fa-house',
     tab: 'timeline' as const,
   },
   {
-    title: 'Groups',
-    description: 'Dedicated spaces for focused conversations, smooth coordination, and meaningful shared interests.',
+    titleKey: 'communities.guide_groups_title',
+    descriptionKey: 'communities.guide_groups_desc',
     icon: 'fa-solid fa-users',
     tab: 'groups' as const,
   },
@@ -111,6 +111,7 @@ type MediaItem = { type: 'image' | 'video'; path: string }
 
 // Helper component for post media carousel
 function PostMediaCarousel({ post }: { post: { image_path?: string | null; video_path?: string | null; media_paths?: MediaItem[] | string | null } }) {
+  const { t } = useTranslation()
   const [index, setIndex] = useState(0)
   
   const mediaPaths = useMemo((): MediaItem[] => {
@@ -138,7 +139,7 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
       return (
         <ImageLoader
           src={normalizeMediaPath(post.image_path)}
-          alt="Post image"
+          alt={t('communities.post_image_alt')}
           className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
         />
       )
@@ -200,7 +201,7 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
       ) : (
         <ImageLoader
           src={normalizeMediaPath(current?.path || '')}
-          alt={`Post media ${index + 1}`}
+          alt={t('communities.post_media_alt', { index: index + 1 })}
           className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
         />
       )}
@@ -382,12 +383,12 @@ export default function Communities(){
           setParentType(parent.type || '')
         } else {
           setCommunities([])
-          setError('This community was not found.')
+          setError(t('communities.community_not_found'))
         }
       }
       setLoading(false)
     })
-  }, [communityDeviceCacheKey, location.search])
+  }, [communityDeviceCacheKey, location.search, t])
   useEffect(() => {
     if (!showNested){
       setExpandedNestedParentId(null)
@@ -607,7 +608,7 @@ export default function Communities(){
           // Don't overwrite cached data with error
           setCommunities(prev => {
             if (prev.length) return prev
-            setError(jc?.error || 'Error loading communities')
+            setError(jc?.error || t('communities.error_loading_communities'))
             return prev
           })
         }
@@ -616,7 +617,7 @@ export default function Communities(){
         if (mounted) {
           setCommunities(prev => {
             if (prev.length) return prev
-            setError('Error loading communities')
+            setError(t('communities.error_loading_communities'))
             return prev
           })
         }
@@ -650,7 +651,7 @@ export default function Communities(){
     }
     load()
     return () => { mounted = false }
-  }, [communityDeviceCacheKey])
+  }, [communityDeviceCacheKey, t])
 
   useEffect(() => {
     if (parentName) setTitle(t('communities.page_title_named', { name: parentName }))
@@ -697,7 +698,7 @@ export default function Communities(){
               if (communitiesGuideStep !== null) return
               navigate('/premium_dashboard')
             }}
-            aria-label="Back"
+            aria-label={t('common.back')}
           >
             <i className="fa-solid fa-arrow-left" />
           </button>
@@ -710,7 +711,7 @@ export default function Communities(){
                 setActiveTab('management')
               }}
             >
-              <div className="pt-2 whitespace-nowrap text-center">Sub-communities</div>
+              <div className="pt-2 whitespace-nowrap text-center">{t('communities.tab_sub_communities')}</div>
               <div className={`h-0.5 ${activeTab==='management' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
             </button>
             <button 
@@ -725,7 +726,7 @@ export default function Communities(){
                 if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
               }}
             >
-              <div className="pt-2 whitespace-nowrap text-center">Home Timeline</div>
+              <div className="pt-2 whitespace-nowrap text-center">{t('communities.tab_home_timeline')}</div>
               <div className={`h-0.5 ${activeTab==='timeline' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
             </button>
             <button 
@@ -737,7 +738,7 @@ export default function Communities(){
                 loadGroupsTabData()
               }}
             >
-              <div className="pt-2 whitespace-nowrap text-center">Groups</div>
+              <div className="pt-2 whitespace-nowrap text-center">{t('communities.tab_groups')}</div>
               <div className={`h-0.5 ${activeTab==='groups' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
             </button>
             {showTrainingTab && (
@@ -749,7 +750,7 @@ export default function Communities(){
                   setActiveTab('training')
                 }}
               >
-                <div className="pt-2 whitespace-nowrap text-center">Your Training</div>
+                <div className="pt-2 whitespace-nowrap text-center">{t('communities.tab_training')}</div>
                 <div className={`h-0.5 ${activeTab==='training' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
               </button>
             )}
@@ -783,7 +784,7 @@ export default function Communities(){
 
             <div className="px-6 pt-7 pb-5 flex flex-col items-center text-center">
               <p className="text-[10px] uppercase tracking-[0.2em] text-[#4db6ac]/75 mb-4 font-medium">
-                Quick tour
+                {t('communities.guide_quick_tour')}
               </p>
               <div
                 key={communitiesGuideStep}
@@ -793,10 +794,10 @@ export default function Communities(){
                   <i className={`${COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].icon} text-2xl text-[#4db6ac]`} />
                 </div>
                 <div className="text-lg font-semibold text-white tracking-tight mb-2">
-                  {COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].title}
+                  {t(COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].titleKey)}
                 </div>
                 <div className="text-[13px] sm:text-sm text-white/75 leading-relaxed max-w-[280px]">
-                  {COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].description}
+                  {t(COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].descriptionKey)}
                 </div>
               </div>
             </div>
@@ -819,7 +820,7 @@ export default function Communities(){
                 }}
                 className="px-4 py-2.5 rounded-xl text-sm font-medium text-white/50 hover:text-white/90 hover:bg-white/5 active:scale-[0.98] transition-all"
               >
-                {communitiesGuideStep > 0 ? 'Back' : 'Skip'}
+                {communitiesGuideStep > 0 ? t('common.back') : t('feed.skip')}
               </button>
               <div className="text-[11px] tabular-nums text-white/35 shrink-0">
                 {communitiesGuideStep + 1} / {COMMUNITIES_GUIDE_STEPS.length}
@@ -832,7 +833,7 @@ export default function Communities(){
                 }}
                 className="px-5 py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold shadow-lg shadow-[#4db6ac]/20 hover:brightness-110 active:scale-[0.98] transition-all"
               >
-                {communitiesGuideStep < COMMUNITIES_GUIDE_STEPS.length - 1 ? 'Next' : 'Got it'}
+                {communitiesGuideStep < COMMUNITIES_GUIDE_STEPS.length - 1 ? t('common.next') : t('communities.guide_got_it')}
               </button>
             </div>
           </div>
@@ -849,19 +850,19 @@ export default function Communities(){
         {ownerIntroResumeFeedId != null && (
           <div className="mb-3 flex flex-col gap-3 rounded-xl border border-[#4db6ac]/35 bg-[#4db6ac]/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-[#d5e4e7]">
-              Continue the guided setup for this community on the feed when you&apos;re ready.
+              {t('communities.owner_intro_banner')}
             </p>
             <button
               type="button"
               className="shrink-0 rounded-xl bg-[#4db6ac] px-4 py-2.5 text-sm font-semibold text-black hover:brightness-110"
               onClick={() => navigate(`/community_feed_react/${ownerIntroResumeFeedId}`)}
             >
-              Continue community setup
+              {t('communities.owner_intro_continue')}
             </button>
           </div>
         )}
         {loading ? (
-          <div className="text-[#9fb0b5]">Loading…</div>
+          <div className="text-[#9fb0b5]">{t('communities.loading')}</div>
         ) : error ? (
           <div className="text-red-400">{error}</div>
         ) : (
@@ -885,7 +886,7 @@ export default function Communities(){
                          window.location.href = pidNext ? `/workout_tracking?parent_id=${pidNext}` : '/workout_tracking'
                        }}
                      >
-                       Go to Workout Tracking
+                       {t('communities.go_workout_tracking')}
                      </button>
                    </div>
                  )
@@ -895,7 +896,7 @@ export default function Communities(){
                     {activeTab === 'groups' ? (
                       <div className="space-y-5">
                         {myGroupsLoading ? (
-                          <div className="text-[#9fb0b5] text-sm py-4 text-center">Loading…</div>
+                          <div className="text-[#9fb0b5] text-sm py-4 text-center">{t('communities.loading')}</div>
                         ) : (
                           (() => {
                             const searchParams = new URLSearchParams(location.search)
@@ -918,7 +919,7 @@ export default function Communities(){
                                   onChange={e => setJoinedFilter(e.target.value)}
                                   className="rounded-lg border border-white/15 bg-transparent px-2 py-1 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
                                 >
-                                  <option value="all" className="bg-black">{parentIdParam ? 'This Community' : 'All Communities'}</option>
+                                  <option value="all" className="bg-black">{parentIdParam ? t('communities.filter_this_community') : t('communities.filter_all_communities')}</option>
                                   {filteredGroupCommunities.map(c => (
                                     <option key={c.id} value={String(c.id)} className="bg-black">{c.name}</option>
                                   ))}
@@ -960,13 +961,13 @@ export default function Communities(){
                             {/* Available Groups */}
                             <div className="space-y-2">
                               <div className="flex items-center justify-between">
-                                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-[#8ca0a8]">Available Groups</div>
+                                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-[#8ca0a8]">{t('communities.available_groups')}</div>
                                 <select
                                   value={availableFilter}
                                   onChange={e => setAvailableFilter(e.target.value)}
                                   className="rounded-lg border border-white/15 bg-transparent px-2 py-1 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
                                 >
-                                  <option value="all" className="bg-black">{parentIdParam ? 'This Community' : 'All Communities'}</option>
+                                  <option value="all" className="bg-black">{parentIdParam ? t('communities.filter_this_community') : t('communities.filter_all_communities')}</option>
                                   {filteredGroupCommunities.map(c => (
                                     <option key={c.id} value={String(c.id)} className="bg-black">{c.name}</option>
                                   ))}
@@ -996,7 +997,7 @@ export default function Communities(){
                                           <div className="text-sm font-medium text-white truncate">{g.name}</div>
                                           <div className="text-[11px] text-[#6f7c81]">
                                             {g.community_name}
-                                            {g.approval_required && <span className="ml-1.5 text-[#4db6ac]">· Approval required</span>}
+                                            {g.approval_required && <span className="ml-1.5 text-[#4db6ac]">· {t('communities.approval_required_short')}</span>}
                                           </div>
                                         </div>
                                         <button
@@ -1017,13 +1018,13 @@ export default function Communities(){
                                                   setAvailableGroups(j2.available || [])
                                                 }
                                               } else {
-                                                alert(j?.error || 'Failed to join')
+                                                alert(j?.error || t('communities.failed_to_join'))
                                               }
-                                            } catch { alert('Failed to join group') }
+                                            } catch { alert(t('communities.failed_to_join_group')) }
                                             setJoiningGroupId(null)
                                           }}
                                         >
-                                          {joiningGroupId === g.group_id ? <i className="fa-solid fa-spinner fa-spin" /> : 'Join'}
+                                          {joiningGroupId === g.group_id ? <i className="fa-solid fa-spinner fa-spin" /> : t('communities.join')}
                                         </button>
                                       </div>
                                     ))}
@@ -1044,14 +1045,14 @@ export default function Communities(){
                             window.location.href = pidNext ? `/workout_tracking?parent_id=${pidNext}` : '/workout_tracking'
                           }}
                         >
-                          Go to Workout Tracking
+                          {t('communities.go_workout_tracking')}
                         </button>
                       </div>
                     ) : (
                       <>
                         {activeTab === 'management' && hasNestedCommunities ? (
                           <div className="flex items-center justify-end gap-3 text-xs text-[#9fb0b5] px-1">
-                            <span>Show nested communities</span>
+                            <span>{t('communities.show_nested_label')}</span>
                             <button
                               type="button"
                               onClick={()=> setShowNested(value => !value)}
@@ -1066,7 +1067,7 @@ export default function Communities(){
                           </div>
                         ) : null}
                         {communities.length === 0 ? (
-                          <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
+                          <div className="text-[#9fb0b5]">{t('communities.no_member_communities')}</div>
                         ) : (
                           communities.map(c => {
                             const hasChildren = !!(c.children && c.children.length > 0)
@@ -1111,7 +1112,7 @@ export default function Communities(){
                                       await triggerDashboardServerPull()
                                       window.location.reload()
                                     }
-                                    else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
+                                    else alert(j?.error|| (asDelete ? t('communities.error_deleting_community') : t('communities.error_leaving_community')))
                                   }}
                                   currentUsername={_data?.username || ''}
                                   onOpenGroups={openGroups}
@@ -1188,7 +1189,7 @@ export default function Communities(){
           <>
             <PlusActions
               onCreateSub={() => { setNewSubName(''); setNewSubType(parentTypeLabel); setShowCreateSubModal(true) }}
-              onCreateGroup={() => { if (!isAdminOrPaulo) { alert('Only admin or Paulo can create groups'); return } setShowCreateGroup(true); setNewGroupName(''); setApprovalRequired(false); setGroupSteveAgentEnabled(false) }}
+              onCreateGroup={() => { if (!isAdminOrPaulo) { alert(t('communities.only_admin_create_groups')); return } setShowCreateGroup(true); setNewGroupName(''); setApprovalRequired(false); setGroupSteveAgentEnabled(false) }}
             />
 
             {showCreateSubModal && (
@@ -1198,12 +1199,12 @@ export default function Communities(){
               >
                 <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <div className="font-semibold text-sm">Create Sub-Community</div>
-                    <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowCreateSubModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+                    <div className="font-semibold text-sm">{t('communities.create_sub_community')}</div>
+                    <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowCreateSubModal(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
                   </div>
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-xs text-[#9fb0b5] mb-1">Create Under</label>
+                      <label className="block text-xs text-[#9fb0b5] mb-1">{t('communities.create_under')}</label>
                       <select 
                         value={selectedSubCommunityId === 'none' ? parentIdNum : selectedSubCommunityId}
                         onChange={e=> {
@@ -1216,7 +1217,7 @@ export default function Communities(){
                         }}
                         className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm"
                       >
-                        <option value={parentIdNum}>{parentName || `Parent Community`}</option>
+                        <option value={parentIdNum}>{parentName || t('communities.parent_community_fallback')}</option>
                         {(() => {
                           const parent = communities.find(c => c.id === parentIdNum)
                           const options: any[] = []
@@ -1254,25 +1255,25 @@ export default function Communities(){
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-[#9fb0b5] mb-1">Sub-Community Name</label>
+                      <label className="block text-xs text-[#9fb0b5] mb-1">{t('communities.sub_community_name')}</label>
                       <input value={newSubName}
                              onChange={e=> setNewSubName(e.target.value)}
-                             placeholder="e.g., Engineering Team"
+                             placeholder={t('communities.sub_name_placeholder')}
                              className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs text-[#9fb0b5] mb-1">Community Type</label>
+                      <label className="block text-xs text-[#9fb0b5] mb-1">{t('communities.community_type')}</label>
                       <select value={newSubType || parentTypeLabel}
                               onChange={e=> setNewSubType(e.target.value)}
                               className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm">
-                        <option value={parentTypeLabel}>Same as Parent ({parentTypeLabel || 'General'})</option>
-                        <option value="General">General</option>
+                        <option value={parentTypeLabel}>{t('communities.same_as_parent', { type: parentTypeLabel || t('communities.type_general') })}</option>
+                        <option value="General">{t('communities.type_general')}</option>
                       </select>
                     </div>
                     <div className="flex items-center justify-end gap-2">
-                      <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowCreateSubModal(false)}>Cancel</button>
+                      <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowCreateSubModal(false)}>{t('common.cancel')}</button>
                       <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=>{
-                        if (!newSubName.trim()) { alert('Please provide a sub-community name'); return }
+                        if (!newSubName.trim()) { alert(t('communities.sub_name_required')); return }
                         const targetParentId = selectedSubCommunityId === 'none' ? parentIdNum : Number(selectedSubCommunityId)
                         try{
                           const fd = new URLSearchParams({ name: newSubName.trim(), type: (newSubType || parentTypeLabel || 'General') })
@@ -1289,12 +1290,12 @@ export default function Communities(){
                             // Refresh current view to show the new child
                             window.location.reload()
                           } else {
-                            alert(j?.error || 'Failed to create sub-community')
+                            alert(j?.error || t('communities.failed_create_sub'))
                           }
                         }catch{
-                          alert('Network error')
+                          alert(t('communities.network_error'))
                         }
-                      }}>Create</button>
+                      }}>{t('communities.create')}</button>
                     </div>
                   </div>
                 </div>
@@ -1306,21 +1307,21 @@ export default function Communities(){
               <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> { if (e.currentTarget === e.target) setShowCreateGroup(false) }}>
                 <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <div className="font-semibold text-sm">Create Group</div>
-                    <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowCreateGroup(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+                    <div className="font-semibold text-sm">{t('communities.create_group')}</div>
+                    <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowCreateGroup(false)} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
                   </div>
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-xs text-[#9fb0b5] mb-1">Parent Community</label>
+                      <label className="block text-xs text-[#9fb0b5] mb-1">{t('communities.parent_community_label')}</label>
                       <input value={parentName || `ID ${parentIdNum}`} disabled className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm text-white/70 disabled:opacity-70" />
                     </div>
                     <div>
-                      <label className="block text-xs text-[#9fb0b5] mb-1">Sub-Community</label>
+                      <label className="block text-xs text-[#9fb0b5] mb-1">{t('communities.sub_community_label')}</label>
                       <select value={selectedSubCommunityId === 'none' ? 'none' : String(selectedSubCommunityId)} onChange={e=> {
                         const v = e.target.value
                         setSelectedSubCommunityId(v === 'none' ? 'none' : Number(v))
                       }} className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm">
-                        <option value="none">None (associate to parent only)</option>
+                        <option value="none">{t('communities.none_parent_only')}</option>
                         {(() => {
                           const parent = communities.find(c => c.id === parentIdNum)
                           const subs = parent?.children || []
@@ -1331,14 +1332,14 @@ export default function Communities(){
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-[#9fb0b5] mb-1">Group Name</label>
-                      <input value={newGroupName} onChange={e=> setNewGroupName(e.target.value)} placeholder="e.g., Morning Runners" className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm" />
+                      <label className="block text-xs text-[#9fb0b5] mb-1">{t('communities.group_name')}</label>
+                      <input value={newGroupName} onChange={e=> setNewGroupName(e.target.value)} placeholder={t('communities.group_name_placeholder')} className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs text-[#9fb0b5] mb-1">Join Policy</label>
+                      <label className="block text-xs text-[#9fb0b5] mb-1">{t('communities.join_policy')}</label>
                       <select value={approvalRequired ? 'approval' : 'open'} onChange={e=> setApprovalRequired(e.target.value === 'approval')} className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm">
-                        <option value="open">Any member can join</option>
-                        <option value="approval">Approval required</option>
+                        <option value="open">{t('communities.join_policy_open')}</option>
+                        <option value="approval">{t('communities.join_policy_approval_required')}</option>
                       </select>
                     </div>
                     {(() => {
@@ -1356,24 +1357,24 @@ export default function Communities(){
                               onChange={(e) => setGroupSteveAgentEnabled(e.target.checked)}
                             />
                             <span>
-                              <span className="font-medium">Career Expert agent</span>
+                              <span className="font-medium">{t('communities.steve_agent_label')}</span>
                               <span className="block text-xs text-[#9fb0b5] mt-0.5">
-                                Steve can participate on this group&apos;s feed (delayed first reply; mention @Steve anytime). Requires the Steve Community Package on this network.
+                                {t('communities.steve_agent_desc')}
                               </span>
                             </span>
                           </label>
                           {!canSteveAgent && (
                             <div className="text-xs text-amber-200/90 mt-1">
-                              Add the Steve add-on under Manage Community for this network to enable the agent.
+                              {t('communities.steve_addon_required')}
                             </div>
                           )}
                         </div>
                       )
                     })()}
                     <div className="flex items-center justify-end gap-2">
-                      <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowCreateGroup(false)}>Cancel</button>
+                      <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowCreateGroup(false)}>{t('common.cancel')}</button>
                       <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=>{
-                        if (!newGroupName.trim()) { alert('Please provide a group name'); return }
+                        if (!newGroupName.trim()) { alert(t('communities.group_name_required')); return }
                         try{
                           const targetCommunityId = selectedSubCommunityId === 'none' ? parentIdNum : Number(selectedSubCommunityId)
                           const billingRoot = billingRootIdForTree(communities, targetCommunityId)
@@ -1385,10 +1386,10 @@ export default function Communities(){
                           }
                           const r = await fetch('/api/groups/create', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                           const j = await r.json().catch(()=>null)
-                          if (j?.success){ setShowCreateGroup(false); setNewGroupName(''); setGroupSteveAgentEnabled(false); alert('Group created') }
-                          else alert(j?.error || 'Failed to create group')
-                        }catch{ alert('Network error') }
-                      }}>Create</button>
+                          if (j?.success){ setShowCreateGroup(false); setNewGroupName(''); setGroupSteveAgentEnabled(false); alert(t('communities.group_created')) }
+                          else alert(j?.error || t('communities.failed_create_group'))
+                        }catch{ alert(t('communities.network_error')) }
+                      }}>{t('communities.create')}</button>
                     </div>
                   </div>
                 </div>
@@ -1437,6 +1438,7 @@ function PlusActions({ onCreateSub, onCreateGroup }:{ onCreateSub: ()=>void, onC
 }
 
 function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=>void, communityId: number | null }){
+  const { t } = useTranslation()
   const [loading, setLoading] = useState(false)
   const [items, setItems] = useState<Array<{ id:number; name:string; approval_required:boolean; membership_status?: string | null; community_id:number, can_delete?: boolean }>>([])
   const [isMember, setIsMember] = useState<boolean | null>(null)
@@ -1473,20 +1475,20 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
     <div id="groups-modal-root" className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> { if (e.currentTarget === e.target) onClose() }}>
       <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-4">
         <div className="flex items-center justify-between mb-3">
-          <div className="font-semibold text-sm">Groups</div>
-          <button className="p-2 rounded-md hover:bg:white/5" onClick={onClose} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+          <div className="font-semibold text-sm">{t('communities.tab_groups')}</div>
+          <button className="p-2 rounded-md hover:bg:white/5" onClick={onClose} aria-label={t('common.close')}><i className="fa-solid fa-xmark"/></button>
         </div>
         {loading ? (
-          <div className="text-[#9fb0b5] text-sm">Loading…</div>
+          <div className="text-[#9fb0b5] text-sm">{t('communities.loading')}</div>
         ) : (isMember === false) ? (
           <div className="space-y-3">
-            <div className="text-[#9fb0b5] text-sm">Join this community to view and join its groups.</div>
+            <div className="text-[#9fb0b5] text-sm">{t('communities.join_to_view')}</div>
             <div className="flex justify-end">
-              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text:black text-sm hover:brightness-110" onClick={()=> { onClose(); window.location.href = `/community_feed_react/${communityId}` }}>Go to community</button>
+              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text:black text-sm hover:brightness-110" onClick={()=> { onClose(); window.location.href = `/community_feed_react/${communityId}` }}>{t('communities.go_to_community')}</button>
             </div>
           </div>
         ) : items.length === 0 ? (
-          <div className="text-[#9fb0b5] text-sm">No groups available.</div>
+          <div className="text-[#9fb0b5] text-sm">{t('communities.no_groups_available')}</div>
         ) : (
           <div className="space-y-2 max-h-[50vh] overflow-y-auto">
             {items.map(g => {
@@ -1496,17 +1498,17 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
                   <div className="flex-1">
                     <button className="font-medium text-white underline decoration-white/20 underline-offset-2" onClick={()=> {
                       if (status !== 'member'){
-                        alert('Join this group to view its activity')
+                        alert(t('communities.join_group_to_view'))
                         return
                       }
                       window.location.href = `/group_feed_react/${g.id}`
                     }}>{g.name}</button>
-                    <div className="text-xs text-[#9fb0b5]">{g.approval_required ? 'Approval required' : 'Open to members'}</div>
+                    <div className="text-xs text-[#9fb0b5]">{g.approval_required ? t('communities.approval_required_short') : t('communities.open_to_members')}</div>
                   </div>
                   {status === 'member' ? (
-                    <span className="text-xs text-[#4db6ac]">Joined</span>
+                    <span className="text-xs text-[#4db6ac]">{t('communities.joined_status')}</span>
                   ) : status === 'pending' ? (
-                    <span className="text-xs text-yellow-400">Pending</span>
+                    <span className="text-xs text-yellow-400">{t('communities.pending_status')}</span>
                   ) : (
                     <button className="px-2.5 py-1.5 rounded-md bg-[#4db6ac] text-black text-xs hover:brightness-110" onClick={async()=>{
                       try{
@@ -1514,37 +1516,37 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
                         const r = await fetch('/api/groups/join', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                         const j = await r.json().catch(()=>null)
                         if (j?.success){ setItems(list => list.map(it => it.id===g.id ? ({ ...it, membership_status: j.status }) : it)) }
-                        else alert(j?.error || 'Failed to join group')
-                      }catch{ alert('Network error') }
-                    }}>Join</button>
+                        else alert(j?.error || t('communities.failed_to_join_group'))
+                      }catch{ alert(t('communities.network_error')) }
+                    }}>{t('communities.join')}</button>
                   )}
                   {g.can_delete ? (
-                    <button className="ml-2 p-2 rounded-md hover:bg-red-500/10" title="Delete group" aria-label="Delete group" onClick={async()=>{
-                      const ok = confirm('Delete this group? This cannot be undone.')
+                    <button className="ml-2 p-2 rounded-md hover:bg-red-500/10" title={t('communities.delete_group')} aria-label={t('communities.delete_group')} onClick={async()=>{
+                      const ok = confirm(t('communities.delete_group_confirm'))
                       if (!ok) return
                       try{
                         const fd = new URLSearchParams({ group_id: String(g.id) })
                         const r = await fetch('/api/groups/delete', { method:'POST', credentials:'include', body: fd })
                         const j = await r.json().catch(()=>null)
                         if (j?.success){ setItems(list => list.filter(it => it.id !== g.id)) }
-                        else alert(j?.error || 'Failed to delete group')
-                      }catch{ alert('Network error') }
+                        else alert(j?.error || t('communities.failed_delete_group'))
+                      }catch{ alert(t('communities.network_error')) }
                     }}>
                       <i className="fa-regular fa-trash-can text-red-400" />
                     </button>
                   ) : null}
                   {status === 'member' ? (
                     <button className="ml-2 px-2.5 py-1.5 rounded-md border border-white/15 text-[#cfd8dc] text-xs hover:bg-white/5" onClick={async()=>{
-                      const ok = confirm("Leave this group? You won't receive notifications or see any activity from it.")
+                      const ok = confirm(t('communities.leave_group_confirm'))
                       if (!ok) return
                       try{
                         const fd = new URLSearchParams({ group_id: String(g.id) })
                         const r = await fetch('/api/groups/leave', { method:'POST', credentials:'include', body: fd })
                         const j = await r.json().catch(()=>null)
                         if (j?.success){ setItems(list => list.map(it => it.id===g.id ? ({ ...it, membership_status: null }) : it)) }
-                        else alert(j?.error || 'Failed to leave group')
-                      }catch{ alert('Network error') }
-                    }}>Leave</button>
+                        else alert(j?.error || t('communities.failed_leave_group'))
+                      }catch{ alert(t('communities.network_error')) }
+                    }}>{t('communities.leave_action')}</button>
                   ) : null}
                 </div>
               )
@@ -1557,6 +1559,7 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
 }
 
 function ParentTimeline({ parentId }:{ parentId:number }){
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const mentionToProfile = useCallback((u: string) => { navigate(`/profile/${encodeURIComponent(u)}`) }, [navigate])
   const [posts, setPosts] = useState<any[]>([])
@@ -1743,9 +1746,9 @@ function ParentTimeline({ parentId }:{ parentId:number }){
           try{ sessionStorage.setItem(`parent_tl_cache:${parentId}`, JSON.stringify({ ts: Date.now(), posts: j.posts||[] })) }catch{}
           try{ cacheRef.set(parentId, { ts: Date.now(), posts: j.posts||[] }) }catch{}
         }
-        else setError(j?.error || 'Error loading timeline')
+        else setError(j?.error || t('communities.timeline_load_error'))
       }catch{
-        if (ok) setError('Error loading timeline')
+        if (ok) setError(t('communities.timeline_load_error'))
       }finally{
         inflightRef.delete(parentId)
         inflight = false
@@ -1754,7 +1757,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
     }
     load()
     return ()=>{ ok = false }
-  }, [parentId])
+  }, [parentId, t])
 
   if (loading && !loadedOnce) return null
   if (error && !loadedOnce) return null
@@ -1774,12 +1777,12 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                 </svg>
-                Refreshing…
+                {t('feed.refreshing')}
               </>
             ) : (
               <>
                 <i className="fa-solid fa-arrow-down text-[10px]" />
-                Release to refresh
+                {t('feed.release_to_refresh')}
               </>
             )}
           </span>
@@ -1790,9 +1793,9 @@ function ParentTimeline({ parentId }:{ parentId:number }){
           <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-3">
             <i className="fa-regular fa-comment-dots text-2xl text-white/30" />
           </div>
-          <h3 className="text-base font-medium text-white/70 mb-1">No unread posts</h3>
+          <h3 className="text-base font-medium text-white/70 mb-1">{t('communities.timeline_empty_title')}</h3>
           <p className="text-xs text-white/40 text-center max-w-xs">
-            You&apos;re caught up — or nothing new has been posted in communities you belong to yet.
+            {t('communities.timeline_empty_body')}
           </p>
         </div>
       ) : (
@@ -1807,7 +1810,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                   <div className="flex items-baseline gap-2 min-w-0">
                     <div className="font-medium truncate">{p.username}</div>
                     {p.community_name ? (
-                      <div className="text-xs text-[#9fb0b5] truncate">in {p.community_name}</div>
+                      <div className="text-xs text-[#9fb0b5] truncate">{t('feed.in_community', { community: p.community_name })}</div>
                     ) : null}
                   </div>
                 </div>
@@ -1869,7 +1872,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                       <div className="font-medium text-sm flex-1">
                         {p.poll.question}
                         {p.poll.expires_at ? (
-                          <span className="ml-2 text-[11px] text-[#9fb0b5]">• closes {(() => { try { const d = new Date(p.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } return String(p.poll.expires_at) })()}</span>
+                          <span className="ml-2 text-[11px] text-[#9fb0b5]">• {t('communities.poll_closes_prefix')} {(() => { try { const d = new Date(p.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } return String(p.poll.expires_at) })()}</span>
                         ) : null}
                       </div>
                     </div>
@@ -1938,14 +1941,14 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                     </div>
                     <div className="flex items-center justify-between text-xs text-[#9fb0b5] pt-1">
                       {(() => { const sv = (p.poll as any)?.single_vote; const isSingle = !(sv === false || sv === 0 || sv === '0' || sv === 'false'); return isSingle })() && (
-                        <span>{p.poll.total_votes || 0} {p.poll.total_votes === 1 ? 'vote' : 'votes'}</span>
+                        <span>{t('feed.vote_count', { count: p.poll.total_votes || 0 })}</span>
                       )}
                       <button 
                         type="button"
                         onClick={()=> navigate(`/community/${p.community_id}/polls_react`)}
                         className="text-[#4db6ac] hover:underline"
                       >
-                        View all polls →
+                        {t('feed.view_all_polls')} →
                       </button>
                     </div>
                   </div>
@@ -2052,6 +2055,7 @@ function CommunityItem({
   onToggleExpand?: () => void
   expandDisabled?: boolean
 }) {
+  const { t } = useTranslation()
   const [dragX, setDragX] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
   const startXRef = useRef(0)
@@ -2090,24 +2094,24 @@ function CommunityItem({
 
   const handleLeaveClick = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    if (window.confirm(`Are you sure you want to leave ${community.name}?`)) {
+    if (window.confirm(t('communities.leave_community_confirm', { name: community.name }))) {
       try {
         await onDeleteOrLeave(false)
       } catch (error) {
         console.error('Error leaving community:', error)
-        alert('Failed to leave community. Please try again.')
+        alert(t('communities.failed_leave_community'))
       }
     }
   }
 
   const handleDeleteClick = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    if (window.confirm(`Delete "${community.name}"? This cannot be undone.`)){
+    if (window.confirm(t('communities.delete_community_confirm', { name: community.name }))){
       try{
         await onDeleteOrLeave(true)
       }catch(err){
         console.error('Error deleting community:', err)
-        alert('Failed to delete community. Please try again.')
+        alert(t('communities.failed_delete_community'))
       }
     }
   }
@@ -2134,7 +2138,7 @@ function CommunityItem({
         >
           <div className="flex flex-col items-center gap-1">
             <i className="fa-solid fa-users text-sm" />
-            <span className="text-xs font-medium">Groups</span>
+            <span className="text-xs font-medium">{t('communities.tab_groups')}</span>
           </div>
         </button>
         {community.creator_username && currentUsername === community.creator_username ? (
@@ -2149,7 +2153,7 @@ function CommunityItem({
           >
             <div className="flex flex-col items-center gap-1">
               <i className="fa-solid fa-trash text-sm" />
-              <span className="text-xs font-medium">Delete</span>
+              <span className="text-xs font-medium">{t('common.delete')}</span>
             </div>
           </button>
         ) : (
@@ -2164,7 +2168,7 @@ function CommunityItem({
           >
             <div className="flex flex-col items-center gap-1">
               <i className="fa-solid fa-user-minus text-sm" />
-              <span className="text-xs font-medium">Leave</span>
+              <span className="text-xs font-medium">{t('communities.leave_action')}</span>
             </div>
           </button>
         )}
@@ -2192,7 +2196,7 @@ function CommunityItem({
                 e.stopPropagation(); 
                 if (!expandDisabled) onToggleExpand?.() 
               }}
-              aria-label={isExpanded ? `Collapse sub-communities for ${community.name}` : `Expand sub-communities for ${community.name}`}
+              aria-label={isExpanded ? t('communities.collapse_sub_for', { name: community.name }) : t('communities.expand_sub_for', { name: community.name })}
               aria-pressed={isExpanded}
               aria-disabled={expandDisabled}
               disabled={expandDisabled}
@@ -2207,13 +2211,13 @@ function CommunityItem({
           )}
           <div className="flex-1 min-w-0">
             <div className="font-medium text-white truncate">{community.name}</div>
-            <div className="text-xs text-[#9fb0b5] truncate">{community.type || 'Community'}</div>
+            <div className="text-xs text-[#9fb0b5] truncate">{community.type || t('communities.community_type_fallback')}</div>
           </div>
         </div>
         <div className="flex items-center gap-2 ml-3 flex-shrink-0">
           {(community.unread_posts_count ?? 0) > 0 && (
             <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-[#4db6ac]/20 text-[#4db6ac] border border-[#4db6ac]/30 whitespace-nowrap">
-              {community.unread_posts_count} new
+              {t('communities.unread_new', { count: community.unread_posts_count ?? 0 })}
             </span>
           )}
           <span className="text-[#4db6ac]">
@@ -2262,6 +2266,7 @@ function NestedCommunities({
   expandedDeepCommunityIds: Record<number, boolean>
   setExpandedDeepCommunityIds: Dispatch<SetStateAction<Record<number, boolean>>>
 }) {
+  const { t } = useTranslation()
   return (
     <div className={`ml-${level * 6} space-y-2`} style={{ marginLeft: `${level * 1.5}rem` }}>
       {communities.map(child => {
@@ -2338,7 +2343,7 @@ function NestedCommunities({
                   await triggerDashboardServerPull()
                   window.location.reload()
                 }
-                else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
+                else alert(j?.error|| (asDelete ? t('communities.error_deleting_community') : t('communities.error_leaving_community')))
               }}
               isChild={level >= 1}
               currentUsername={currentUsername}

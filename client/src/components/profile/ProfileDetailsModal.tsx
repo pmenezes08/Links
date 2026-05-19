@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { PersonalForm, ProfessionalForm } from '../../pages/Profile'
 
 export type WorkExperienceRow = {
@@ -37,23 +38,18 @@ const EMPTY_EDU: EducationRow = {
   description: '',
 }
 
-const STEVE_PAGE1 =
-  "Hey—take your time here. A few honest lines help the right people find you. Nothing has to be perfect."
-const STEVE_PAGE2 =
-  "Your path matters. Add what you're comfortable sharing; you can always come back and refine it."
-
 const PERSONAL_FIELDS = [
   {
     key: 'personal_answer_five_minutes' as const,
-    label: 'If we only had five minutes, what should I ask you about?',
+    labelKey: 'profile.spotlight.five_minutes',
   },
   {
     key: 'personal_answer_outside_work' as const,
-    label: 'Outside of work, where do we most likely find you?',
+    labelKey: 'profile.spotlight.outside_work',
   },
   {
     key: 'personal_answer_cpoint_goals' as const,
-    label: 'What are you hoping to get from C-Point?',
+    labelKey: 'profile.spotlight.cpoint_goals',
   },
 ]
 
@@ -82,7 +78,11 @@ export function ProfileDetailsModal({
   savingPersonal,
   savingProfessional,
 }: ProfileDetailsModalProps) {
+  const { t } = useTranslation()
   const [page, setPage] = useState<1 | 2>(1)
+
+  const stepName =
+    page === 1 ? t('profile.details_modal.step_spotlight') : t('profile.details_modal.step_timeline')
 
   useEffect(() => {
     if (open) setPage(1)
@@ -114,17 +114,17 @@ export function ProfileDetailsModal({
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-4 py-3">
           <div>
             <h2 id="profile-details-title" className="text-base font-semibold text-white">
-              Spotlight and timeline
+              {t('profile.spotlight.title')}
             </h2>
             <p className="text-[11px] text-[#9fb0b5]">
-              Step {page} of 2 — {page === 1 ? 'Spotlight answers' : 'Career timeline'}
+              {t('profile.details_modal.step', { page, step_name: stepName })}
             </p>
           </div>
           <button
             type="button"
             className="rounded-lg p-2 text-white/50 hover:bg-white/10 hover:text-white"
             onClick={requestClose}
-            aria-label="Close"
+            aria-label={t('profile.aria.close')}
           >
             <i className="fa-solid fa-xmark" />
           </button>
@@ -134,11 +134,12 @@ export function ProfileDetailsModal({
           {page === 1 ? (
             <form id="form-personal-modal" className="space-y-4" onSubmit={onSavePersonal}>
               <p className="text-xs leading-relaxed text-[#b8c8cc] border border-[#4db6ac]/25 rounded-lg px-3 py-2 bg-[#4db6ac]/5">
-                <span className="font-medium text-[#4db6ac]">Steve:</span> {STEVE_PAGE1}
+                <span className="font-medium text-[#4db6ac]">{t('profile.details_modal.steve_label')}</span>{' '}
+                {t('profile.details_modal.steve_page1')}
               </p>
               {PERSONAL_FIELDS.map(field => (
                 <label key={field.key} className="text-sm block">
-                  <span className="text-white/90">{field.label}</span>
+                  <span className="text-white/90">{t(field.labelKey)}</span>
                   <textarea
                     className="mt-1 w-full min-h-[72px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm text-white outline-none focus:border-[#4db6ac]"
                     value={personal[field.key]}
@@ -152,12 +153,13 @@ export function ProfileDetailsModal({
           ) : (
             <form id="form-professional-modal" className="space-y-4" onSubmit={onSaveProfessional}>
               <p className="text-xs leading-relaxed text-[#b8c8cc] border border-[#4db6ac]/25 rounded-lg px-3 py-2 bg-[#4db6ac]/5">
-                <span className="font-medium text-[#4db6ac]">Steve:</span> {STEVE_PAGE2}
+                <span className="font-medium text-[#4db6ac]">{t('profile.details_modal.steve_label')}</span>{' '}
+                {t('profile.details_modal.steve_page2')}
               </p>
               <label className="text-sm sm:col-span-2 block">
-                <span className="text-white/90">Current role start</span>
+                <span className="text-white/90">{t('profile.details_modal.current_role_start')}</span>
                 <span className="block text-[11px] text-[#9fb0b5] font-normal">
-                  Month you started your current role (optional). Shown as start — Present on your public profile.
+                  {t('profile.details_modal.current_role_start_hint')}
                 </span>
                 <input
                   type="month"
@@ -169,7 +171,7 @@ export function ProfileDetailsModal({
 
               <div className="rounded-lg border border-white/10 p-3 space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium text-white">More professional experience</span>
+                  <span className="text-sm font-medium text-white">{t('profile.details_modal.more_experience')}</span>
                   <button
                     type="button"
                     className="flex h-8 w-8 items-center justify-center rounded-full border border-[#4db6ac]/50 text-[#4db6ac] hover:bg-[#4db6ac]/15"
@@ -179,13 +181,13 @@ export function ProfileDetailsModal({
                         work_history: [...prev.work_history, { ...EMPTY_WORK }],
                       }))
                     }
-                    aria-label="Add experience"
+                    aria-label={t('profile.aria.add_experience')}
                   >
                     <i className="fa-solid fa-plus" />
                   </button>
                 </div>
                 {professional.work_history.length === 0 ? (
-                  <p className="text-xs text-[#9fb0b5]">Tap the plus to add a past role.</p>
+                  <p className="text-xs text-[#9fb0b5]">{t('profile.details_modal.add_experience_hint')}</p>
                 ) : null}
                 {professional.work_history.map((row, idx) => (
                   <div key={idx} className="rounded-md border border-white/10 bg-black/40 p-3 space-y-2">
@@ -200,13 +202,13 @@ export function ProfileDetailsModal({
                           }))
                         }
                       >
-                        Remove
+                        {t('profile.remove')}
                       </button>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       <input
                         className="rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm"
-                        placeholder="Title"
+                        placeholder={t('profile.work.title')}
                         value={row.title}
                         onChange={e => {
                           const v = e.target.value
@@ -218,7 +220,7 @@ export function ProfileDetailsModal({
                       />
                       <input
                         className="rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm"
-                        placeholder="Company"
+                        placeholder={t('profile.work.company')}
                         value={row.company}
                         onChange={e => {
                           const v = e.target.value
@@ -230,7 +232,7 @@ export function ProfileDetailsModal({
                       />
                       <input
                         className="rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm sm:col-span-2"
-                        placeholder="Location (optional)"
+                        placeholder={t('profile.work.location_optional')}
                         value={row.location}
                         onChange={e => {
                           const v = e.target.value
@@ -241,8 +243,8 @@ export function ProfileDetailsModal({
                         }}
                       />
                       <label className="text-[11px] text-[#9fb0b5] sm:col-span-2 grid grid-cols-2 gap-2">
-                        <span>Start (month)</span>
-                        <span>End (month, optional)</span>
+                        <span>{t('profile.work.start_month')}</span>
+                        <span>{t('profile.work.end_month_optional')}</span>
                         <input
                           type="month"
                           className="rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm"
@@ -271,7 +273,7 @@ export function ProfileDetailsModal({
                     </div>
                     <textarea
                       className="w-full rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm min-h-[64px]"
-                      placeholder="What was this role about?"
+                      placeholder={t('profile.work.description')}
                       value={row.description}
                       onChange={e => {
                         const v = e.target.value
@@ -287,7 +289,7 @@ export function ProfileDetailsModal({
 
               <div className="rounded-lg border border-white/10 p-3 space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium text-white">Education</span>
+                  <span className="text-sm font-medium text-white">{t('profile.details_modal.education')}</span>
                   <button
                     type="button"
                     className="flex h-8 w-8 items-center justify-center rounded-full border border-[#4db6ac]/50 text-[#4db6ac] hover:bg-[#4db6ac]/15"
@@ -297,13 +299,13 @@ export function ProfileDetailsModal({
                         education: [...prev.education, { ...EMPTY_EDU }],
                       }))
                     }
-                    aria-label="Add education"
+                    aria-label={t('profile.aria.add_education')}
                   >
                     <i className="fa-solid fa-plus" />
                   </button>
                 </div>
                 {professional.education.length === 0 ? (
-                  <p className="text-xs text-[#9fb0b5]">Tap the plus to add a school or program.</p>
+                  <p className="text-xs text-[#9fb0b5]">{t('profile.details_modal.add_education_hint')}</p>
                 ) : null}
                 {professional.education.map((row, idx) => (
                   <div key={idx} className="rounded-md border border-white/10 bg-black/40 p-3 space-y-2">
@@ -318,12 +320,12 @@ export function ProfileDetailsModal({
                           }))
                         }
                       >
-                        Remove
+                        {t('profile.remove')}
                       </button>
                     </div>
                     <input
                       className="w-full rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm"
-                      placeholder="School"
+                      placeholder={t('profile.education.school')}
                       value={row.school}
                       onChange={e => {
                         const v = e.target.value
@@ -335,7 +337,7 @@ export function ProfileDetailsModal({
                     />
                     <input
                       className="w-full rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm"
-                      placeholder="Degree / field (optional)"
+                      placeholder={t('profile.education.degree_optional')}
                       value={row.degree}
                       onChange={e => {
                         const v = e.target.value
@@ -373,7 +375,7 @@ export function ProfileDetailsModal({
                     </div>
                     <textarea
                       className="w-full rounded-md bg-black border border-white/10 px-2 py-1.5 text-sm min-h-[56px]"
-                      placeholder="Description (optional)"
+                      placeholder={t('profile.education.description_optional')}
                       value={row.description}
                       onChange={e => {
                         const v = e.target.value
@@ -400,7 +402,7 @@ export function ProfileDetailsModal({
                 className="rounded-md border border-white/15 px-3 py-2 text-sm text-white/80 hover:bg-white/10"
                 onClick={() => setPage(1)}
               >
-                Back
+                {t('profile.public.back')}
               </button>
             ) : null}
           </div>
@@ -413,14 +415,14 @@ export function ProfileDetailsModal({
                   className="rounded-md bg-[#4db6ac] px-4 py-2 text-sm font-medium text-black hover:brightness-110 disabled:opacity-50"
                   disabled={savingPersonal}
                 >
-                  {savingPersonal ? 'Saving…' : 'Save highlights'}
+                  {savingPersonal ? t('profile.saving') : t('profile.details_modal.save_highlights')}
                 </button>
                 <button
                   type="button"
                   className="rounded-md border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/10"
                   onClick={() => setPage(2)}
                 >
-                  Next
+                  {t('profile.next')}
                 </button>
               </>
             ) : (
@@ -431,14 +433,14 @@ export function ProfileDetailsModal({
                   className="rounded-md bg-[#4db6ac] px-4 py-2 text-sm font-medium text-black hover:brightness-110 disabled:opacity-50"
                   disabled={savingProfessional}
                 >
-                  {savingProfessional ? 'Saving…' : 'Save timeline'}
+                  {savingProfessional ? t('profile.saving') : t('profile.details_modal.save_timeline')}
                 </button>
                 <button
                   type="button"
                   className="rounded-md border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/10"
                   onClick={requestClose}
                 >
-                  Done
+                  {t('profile.done')}
                 </button>
               </>
             )}

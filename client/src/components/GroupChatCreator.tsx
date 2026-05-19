@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import Avatar from './Avatar'
 
@@ -7,7 +8,7 @@ type Member = { username: string; profile_picture?: string | null; display_name?
 
 const MAX_GROUP_MEMBERS = 5
 
-function normalizeCommunities(rawCommunities: unknown): Community[] {
+function normalizeCommunities(rawCommunities: unknown, communityFallback: (id: number) => string): Community[] {
   if (!Array.isArray(rawCommunities)) return []
   const seen = new Set<number>()
   const normalized: Community[] = []
@@ -36,7 +37,7 @@ function normalizeCommunities(rawCommunities: unknown): Community[] {
       (typeof anyRaw.name === 'string' && anyRaw.name.trim()) ||
       (typeof anyRaw.community_name === 'string' && anyRaw.community_name.trim()) ||
       (typeof anyRaw.title === 'string' && anyRaw.title.trim()) ||
-      `Community ${id}`
+      communityFallback(id)
 
     const parentIndicators = [
       anyRaw.parent_community_id,
@@ -57,6 +58,7 @@ function normalizeCommunities(rawCommunities: unknown): Community[] {
 }
 
 export default function GroupChatCreator() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [communities, setCommunities] = useState<Community[]>([])
   const [loading, setLoading] = useState(true)
@@ -83,7 +85,7 @@ export default function GroupChatCreator() {
         try {
           const r = await fetch('/api/user_parent_community', { credentials: 'include', headers: { 'Accept': 'application/json' } })
           const j = await r.json().catch(() => null)
-          if (j?.success) list = normalizeCommunities(j.communities)
+          if (j?.success) list = normalizeCommunities(j.communities, (id) => t('chat.community_name_fallback', { id }))
         } catch {
           // Ignore and fallback
         }
@@ -92,7 +94,7 @@ export default function GroupChatCreator() {
           try {
             const r2 = await fetch('/get_user_communities', { credentials: 'include' })
             const j2 = await r2.json().catch(() => null)
-            list = normalizeCommunities(j2?.communities)
+            list = normalizeCommunities(j2?.communities, (id) => t('chat.community_name_fallback', { id }))
           } catch {
             // Ignore
           }
@@ -103,7 +105,7 @@ export default function GroupChatCreator() {
         }
       } catch (err) {
         if (!cancelled) {
-          setError('Unable to load communities right now.')
+          setError(t('chat.unable_load_communities'))
           console.error('GroupChatCreator load error:', err)
         }
       } finally {
@@ -156,13 +158,13 @@ export default function GroupChatCreator() {
             })) as Member[]
             setMembersByCommunity(prev => ({ ...prev, [commId]: list }))
           } else {
-            setMemberErrors(prev => ({ ...prev, [commId]: 'No members found for this community yet.' }))
+            setMemberErrors(prev => ({ ...prev, [commId]: t('chat.no_members_in_community') }))
             setMembersByCommunity(prev => ({ ...prev, [commId]: [] }))
           }
         })
         .catch(err => {
           console.error('GroupChatCreator member load error:', err)
-          setMemberErrors(prev => ({ ...prev, [commId]: 'Unable to load members.' }))
+          setMemberErrors(prev => ({ ...prev, [commId]: t('chat.unable_load_members') }))
         })
         .finally(() => {
           setLoadingMembers(prev => ({ ...prev, [commId]: false }))
@@ -189,11 +191,11 @@ export default function GroupChatCreator() {
 
   async function handleCreateGroup() {
     if (selectedMembers.length < 2) {
-      setCreateError('Select at least 2 members for a group chat')
+      setCreateError(t('chat.select_min_members'))
       return
     }
     if (!groupName.trim()) {
-      setCreateError('Please enter a group name')
+      setCreateError(t('chat.group_name_required'))
       return
     }
 
@@ -215,11 +217,11 @@ export default function GroupChatCreator() {
       if (data.success && data.group_id) {
         navigate(`/group_chat/${data.group_id}`)
       } else {
-        setCreateError(data.error || 'Failed to create group chat')
+        setCreateError(data.error || t('chat.failed_create_group'))
       }
     } catch (err) {
       console.error('Error creating group chat:', err)
-      setCreateError('Network error. Please try again.')
+      setCreateError(t('chat.network_error'))
     } finally {
       setCreating(false)
     }
@@ -238,7 +240,7 @@ export default function GroupChatCreator() {
       : members
 
     if (loadingMembers[commId]) {
-      return <div className="px-3 py-3 text-sm text-[#9fb0b5]">Loading members...</div>
+      return <div className="px-3 py-3 text-sm text-[#9fb0b5]">{t('chat.loading_members')}</div>
     }
 
     if (memberErrors[commId]) {
@@ -246,13 +248,13 @@ export default function GroupChatCreator() {
     }
 
     if (!members.length) {
-      return <div className="px-3 py-3 text-sm text-[#9fb0b5]">No members available yet.</div>
+      return <div className="px-3 py-3 text-sm text-[#9fb0b5]">{t('chat.no_members_available')}</div>
     }
 
     if (!filteredMembers.length) {
       return (
         <div className="px-3 py-3 text-sm text-[#9fb0b5]">
-          No members match "{searchTerms[commId]?.trim()}".
+          {t('chat.no_members_match', { query: searchTerms[commId]?.trim() ?? '' })}
         </div>
       )
     }
@@ -296,7 +298,7 @@ export default function GroupChatCreator() {
         <div className="rounded-xl border border-white/10 bg-black p-3">
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-semibold text-white/80">
-              Selected ({selectedMembers.length}/{MAX_GROUP_MEMBERS})
+              {t('chat.selected_count', { current: selectedMembers.length, max: MAX_GROUP_MEMBERS })}
             </div>
             {selectedMembers.length > 0 && (
               <button
@@ -304,7 +306,7 @@ export default function GroupChatCreator() {
                 onClick={() => setSelectedMembers([])}
                 className="text-xs text-[#9fb0b5] hover:text-white"
               >
-                Clear all
+                {t('chat.clear_all')}
               </button>
             )}
           </div>
@@ -332,12 +334,12 @@ export default function GroupChatCreator() {
       {/* Group Name Input */}
       {selectedMembers.length >= 2 && (
         <div className="rounded-xl border border-white/10 bg-black p-3">
-          <label className="block text-sm font-semibold text-white/80 mb-2">Group Name</label>
+          <label className="block text-sm font-semibold text-white/80 mb-2">{t('chat.group_name_label')}</label>
           <input
             type="text"
             value={groupName}
             onChange={(e) => setGroupName(e.target.value)}
-            placeholder="Enter a name for your group"
+            placeholder={t('chat.group_name_placeholder')}
             className={searchInputClasses}
             maxLength={50}
           />
@@ -361,12 +363,12 @@ export default function GroupChatCreator() {
             {creating ? (
               <>
                 <i className="fa-solid fa-spinner fa-spin mr-2" />
-                Creating...
+                {t('chat.creating')}
               </>
             ) : (
               <>
                 <i className="fa-solid fa-users mr-2" />
-                Create Group Chat
+                {t('chat.create_group_chat')}
               </>
             )}
           </button>
@@ -376,18 +378,18 @@ export default function GroupChatCreator() {
       {/* Community Picker */}
       <div className="rounded-xl border border-white/10 bg-black">
         <div className="p-3 border-b border-white/10">
-          <div className="font-semibold text-[15px]">Select Members</div>
+          <div className="font-semibold text-[15px]">{t('chat.select_members_title')}</div>
           <div className="mt-1 text-xs text-[#9fb0b5]">
-            Choose up to {MAX_GROUP_MEMBERS} people from your communities
+            {t('chat.select_members_hint', { max: MAX_GROUP_MEMBERS })}
           </div>
         </div>
         
         {loading ? (
-          <div className="p-4 text-sm text-[#9fb0b5]">Loading your communities...</div>
+          <div className="p-4 text-sm text-[#9fb0b5]">{t('chat.loading_communities')}</div>
         ) : error ? (
           <div className="p-4 text-sm text-red-400">{error}</div>
         ) : !filteredCommunities.length ? (
-          <div className="p-4 text-sm text-[#9fb0b5]">You haven't joined any communities yet.</div>
+          <div className="p-4 text-sm text-[#9fb0b5]">{t('chat.no_communities_joined')}</div>
         ) : (
           <div className="divide-y divide-white/10">
             {filteredCommunities.map(comm => {
@@ -412,7 +414,7 @@ export default function GroupChatCreator() {
                           onChange={event =>
                             setSearchTerms(prev => ({ ...prev, [comm.id]: event.target.value }))
                           }
-                          placeholder="Search members"
+                          placeholder={t('chat.search_members')}
                           className={searchInputClasses}
                           type="text"
                           spellCheck={false}

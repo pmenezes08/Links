@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface EditableAISummaryProps {
   postId?: number;
@@ -10,6 +11,7 @@ interface EditableAISummaryProps {
 }
 
 export default function EditableAISummary({ postId, replyId, initialSummary, isOwner, onSummaryUpdate }: EditableAISummaryProps) {
+  const { t } = useTranslation()
   const [isEditing, setIsEditing] = useState(false);
   const [summary, setSummary] = useState(initialSummary);
   const [isSaving, setIsSaving] = useState(false);
@@ -18,13 +20,13 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
   const [showLanguages, setShowLanguages] = useState(false);
   
   const languages = [
-    { code: 'pt', name: 'Portuguese (PT)', flag: '🇵🇹' },
-    { code: 'en', name: 'English', flag: '🇬🇧' },
-    { code: 'fr', name: 'French', flag: '🇫🇷' },
-    { code: 'de', name: 'German', flag: '🇩🇪' },
-    { code: 'es', name: 'Spanish', flag: '🇪🇸' },
-    { code: 'it', name: 'Italian', flag: '🇮🇹' },
-    { code: 'zh', name: 'Mandarin', flag: '🇨🇳' }
+    { code: 'pt', nameKey: 'feed.language_pt', flag: '🇵🇹' },
+    { code: 'en', nameKey: 'feed.language_en', flag: '🇬🇧' },
+    { code: 'fr', nameKey: 'feed.language_fr', flag: '🇫🇷' },
+    { code: 'de', nameKey: 'feed.language_de', flag: '🇩🇪' },
+    { code: 'es', nameKey: 'feed.language_es', flag: '🇪🇸' },
+    { code: 'it', nameKey: 'feed.language_it', flag: '🇮🇹' },
+    { code: 'zh', nameKey: 'feed.language_zh', flag: '🇨🇳' }
   ];
   
   const handleTranslate = async (targetLang: string) => {
@@ -43,11 +45,11 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
       if (data.success) {
         setTranslatedText(data.translated_summary);
       } else {
-        alert(data.error || 'Translation failed');
+        alert(data.error || t('feed.translation_failed'));
       }
     } catch (error) {
       console.error('Translation error:', error);
-      alert('Translation failed');
+      alert(t('feed.translation_failed'));
     } finally {
       setIsTranslating(false);
     }
@@ -62,7 +64,7 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
       if (replyId != null) body.reply_id = replyId
       else if (postId != null) body.post_id = postId
       else {
-        alert('Missing post or reply id')
+        alert(t('feed.missing_summary_target'))
         setIsSaving(false)
         return
       }
@@ -79,11 +81,11 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
         setIsEditing(false);
         setTranslatedText(null); // Clear translation after edit
       } else {
-        alert(respData.error || 'Failed to update summary');
+        alert(respData.error || t('feed.update_summary_failed'));
       }
     } catch (error) {
       console.error('Error updating summary:', error);
-      alert('Failed to update summary');
+      alert(t('feed.update_summary_failed'));
     } finally {
       setIsSaving(false);
     }
@@ -100,7 +102,7 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
         <div className="flex items-center gap-2">
           <i className="fa-solid fa-sparkles text-[#4db6ac] text-xs" />
           <span className="text-xs font-medium text-[#4db6ac]">
-            {translatedText ? 'Steve summary (translated)' : 'Steve summary'}
+            {translatedText ? t('feed.steve_summary_translated') : t('feed.steve_summary')}
           </span>
         </div>
         <div className="flex items-center gap-1">
@@ -111,7 +113,7 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
                 setTranslatedText(null);
               }}
               className="text-[#4db6ac] hover:text-[#4db6ac]/80 text-xs px-1"
-              title="Show original"
+              title={t('feed.show_original')}
             >
               <i className="fa-solid fa-rotate-left" />
             </button>
@@ -124,7 +126,7 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
                   setShowLanguages(!showLanguages);
                 }}
                 className="text-[#4db6ac] hover:text-[#4db6ac]/80 text-xs px-1"
-                title="Translate"
+                title={t('feed.translate')}
                 disabled={isTranslating}
               >
                 {isTranslating ? (
@@ -148,7 +150,7 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
                       className="w-full px-3 py-2 text-left text-xs text-white hover:bg-[#4db6ac]/20 flex items-center gap-2 first:rounded-t-lg last:rounded-b-lg"
                     >
                       <span>{lang.flag}</span>
-                      <span>{lang.name}</span>
+                      <span>{t(lang.nameKey)}</span>
                     </button>
                   ))}
                 </div>
@@ -162,7 +164,7 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
                 setIsEditing(true);
               }}
               className="text-[#4db6ac] hover:text-[#4db6ac]/80 text-xs px-1"
-              title="Edit summary"
+              title={t('feed.edit_summary')}
             >
               <i className="fa-solid fa-pencil" />
             </button>
@@ -175,7 +177,7 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
             value={summary}
             onChange={(e) => setSummary(e.target.value)}
             className="w-full px-2 py-1 text-sm bg-[#1a1d29] text-white rounded border border-[#4db6ac]/30 focus:outline-none focus:border-[#4db6ac] min-h-[60px]"
-            placeholder="Edit Steve summary..."
+            placeholder={t('feed.edit_steve_summary_placeholder')}
           />
           <div className="flex gap-2">
             <button
@@ -183,14 +185,14 @@ export default function EditableAISummary({ postId, replyId, initialSummary, isO
               disabled={isSaving || !summary.trim()}
               className="px-3 py-1 bg-[#4db6ac] text-white text-xs rounded hover:bg-[#4db6ac]/80 disabled:opacity-50"
             >
-              {isSaving ? 'Saving...' : 'Save'}
+              {isSaving ? t('account.language.saving') : t('common.save')}
             </button>
             <button
               onClick={handleCancel}
               disabled={isSaving}
               className="px-3 py-1 bg-white/10 text-white text-xs rounded hover:bg-white/20"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
         </div>

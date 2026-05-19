@@ -1,24 +1,23 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useHeader } from '../contexts/HeaderContext'
 
 type LinkItem = { id:number; username:string; url:string; description:string; created_at:string; can_delete?:boolean }
 type DocItem = { id:number; username:string; file_path:string; description:string; created_at:string }
 
-// Helper to resolve document URL - handles both CDN URLs and local paths
 function resolveDocUrl(filePath: string): string {
   if (!filePath) return ''
-  // If it's already a full URL (CDN), return as-is
   if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
     return filePath
   }
-  // Otherwise prepend /uploads/ for local files
   if (filePath.startsWith('/uploads/')) return filePath
   if (filePath.startsWith('uploads/')) return `/${filePath}`
   return `/uploads/${filePath}`
 }
 
 export default function UsefulLinks(){
+  const { t } = useTranslation()
   const { community_id } = useParams()
   const [searchParams] = useSearchParams()
   const groupId = searchParams.get('group_id')
@@ -39,12 +38,12 @@ export default function UsefulLinks(){
   const pdfInputRef = useRef<HTMLInputElement|null>(null)
 
   useEffect(() => { 
-    setTitle('Useful Links & Docs')
+    setTitle(t('links_docs.page_title'))
     if (community_id) {
       const key = groupId ? `docs_last_seen_group_${groupId}` : `docs_last_seen_${community_id}`
       localStorage.setItem(key, new Date().toISOString())
     }
-  }, [setTitle, community_id, groupId])
+  }, [setTitle, community_id, groupId, t])
 
   function showToast(message: string, type: 'success' | 'error' = 'success') {
     setToast({ message, type })
@@ -73,7 +72,7 @@ export default function UsefulLinks(){
   async function addLink(){
     const u = urlRef.current?.value.trim() || ''
     const d = descRef.current?.value.trim() || ''
-    if (!u || !d) { alert('URL and description are required'); return }
+    if (!u || !d) { alert(t('links_docs.url_description_required')); return }
     const body = new URLSearchParams({ url:u, description:d })
     if (community_id) body.append('community_id', String(community_id))
     if (groupId) body.append('group_id', groupId)
@@ -82,18 +81,18 @@ export default function UsefulLinks(){
     if (j?.success){ 
       if (urlRef.current) urlRef.current.value=''
       if (descRef.current) descRef.current.value=''
-      showToast('Link added successfully!')
+      showToast(t('links_docs.link_added'))
       setActiveTab('list')
       load()
     }
-    else alert(j?.error || j?.message || 'Failed to add link')
+    else alert(j?.error || j?.message || t('links_docs.add_link_failed'))
   }
 
   async function uploadPdf(){
     const file = pdfInputRef.current?.files?.[0]
     const d = pdfDescRef.current?.value.trim() || ''
-    if (!file){ alert('Select a PDF'); return }
-    if (!file.name.toLowerCase().endsWith('.pdf')){ alert('Only PDF files are allowed'); return }
+    if (!file){ alert(t('links_docs.select_pdf')); return }
+    if (!file.name.toLowerCase().endsWith('.pdf')){ alert(t('links_docs.pdf_only')); return }
     const fd = new FormData()
     fd.append('file', file)
     if (d) fd.append('description', d)
@@ -104,11 +103,11 @@ export default function UsefulLinks(){
     if (j?.success){ 
       if (pdfInputRef.current) pdfInputRef.current.value=''
       if (pdfDescRef.current) pdfDescRef.current.value=''
-      showToast('Document uploaded successfully!')
+      showToast(t('links_docs.document_uploaded'))
       setActiveTab('list')
       load()
     }
-    else alert(j?.error || 'Failed to upload')
+    else alert(j?.error || t('links_docs.upload_failed'))
   }
 
   async function remove(id:number){
@@ -116,22 +115,22 @@ export default function UsefulLinks(){
     const r = await fetch('/delete_link', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body })
     const j = await r.json().catch(()=>null)
     if (j?.success){ setLinks(prev => prev.filter(x => x.id !== id)) }
-    else alert(j?.error || j?.message || 'Failed to delete')
+    else alert(j?.error || j?.message || t('links_docs.delete_link_failed'))
   }
 
   async function removeDoc(id:number){
-    const ok = confirm('Delete this document?')
+    const ok = confirm(t('links_docs.delete_document_confirm'))
     if (!ok) return
     const body = new URLSearchParams({ doc_id: String(id) })
     const r = await fetch('/delete_doc', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body })
     const j = await r.json().catch(()=>null)
     if (j?.success){ setDocs(prev => prev.filter(x => x.id !== id)) }
-    else alert(j?.error || j?.message || 'Failed to delete')
+    else alert(j?.error || j?.message || t('links_docs.delete_document_failed'))
   }
 
   async function renameDoc(id: number, newName: string) {
     if (!newName.trim()) {
-      showToast('Name cannot be empty', 'error')
+      showToast(t('links_docs.name_empty'), 'error')
       return
     }
     const body = new URLSearchParams({ doc_id: String(id), new_name: newName.trim() })
@@ -141,30 +140,29 @@ export default function UsefulLinks(){
       setDocs(prev => prev.map(d => d.id === id ? { ...d, description: newName.trim() } : d))
       setEditingDocId(null)
       setEditingName('')
-      showToast('Document renamed!')
+      showToast(t('links_docs.document_renamed'))
     } else {
-      showToast(j?.error || 'Failed to rename', 'error')
+      showToast(j?.error || t('links_docs.rename_failed'), 'error')
     }
   }
 
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* Secondary header with nav tabs */}
       <div
         className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
       >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id||''}`)} aria-label="Back">
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id||''}`)} aria-label={t('common.back')}>
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 h-full flex">
             <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='list' ? 'text-white/95' : 'text-[#9fb0b5] hover:text_WHITE/90'}`} onClick={()=> setActiveTab('list')}>
-              <div className="pt-2">Useful Links & Docs</div>
+              <div className="pt-2">{t('links_docs.tab_list')}</div>
               <div className={`h-0.5 rounded-full w-24 mx-auto mt-1 ${activeTab==='list' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
             </button>
             <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='add' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('add')}>
-              <div className="pt-2">Add new</div>
+              <div className="pt-2">{t('links_docs.tab_add')}</div>
               <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='add' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
             </button>
           </div>
@@ -183,31 +181,31 @@ export default function UsefulLinks(){
         {activeTab === 'add' ? (
           <div className="space-y-3">
             <div className="rounded-2xl border border_WHITE/10 bg_WHITE/[0.035] p-3">
-              <div className="text-sm font-semibold mb-2">Add a Link</div>
+              <div className="text-sm font-semibold mb-2">{t('links_docs.add_link_title')}</div>
               <div className="flex flex-col sm:flex-row gap-2">
-                <input ref={urlRef} className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder="https://..." />
-                <input ref={descRef} className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder="Description" />
-                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110" onClick={addLink}>Add</button>
+                <input ref={urlRef} className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder={t('links_docs.url_placeholder')} />
+                <input ref={descRef} className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder={t('links_docs.description')} />
+                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110" onClick={addLink}>{t('common.add')}</button>
               </div>
             </div>
             <div className="rounded-2xl border border-white/10 bg_WHITE/[0.035] p-3">
-              <div className="text-sm font-semibold mb-2">Upload a PDF</div>
+              <div className="text-sm font-semibold mb-2">{t('links_docs.upload_pdf_title')}</div>
               <div className="flex flex-col sm:flex-row gap-2 items-center">
                 <input ref={pdfInputRef} type="file" accept="application/pdf" className="flex-1 text-sm" />
-                <input ref={pdfDescRef} className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder="Description (optional)" />
-                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text_black text-sm hover:brightness-110" onClick={uploadPdf}>Upload</button>
+                <input ref={pdfDescRef} className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder={t('links_docs.description_optional')} />
+                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text_black text-sm hover:brightness-110" onClick={uploadPdf}>{t('links_docs.upload')}</button>
               </div>
             </div>
           </div>
         ) : (
           <div className="space-y-3">
             {loading ? (
-              <div className="text-[#9fb0b5]">Loading…</div>
+              <div className="text-[#9fb0b5]">{t('common.loading')}</div>
             ) : (
               <>
                 <div className="space-y-2">
                   {links.length === 0 ? (
-                    <div className="text-[#9fb0b5]">No links yet.</div>
+                    <div className="text-[#9fb0b5]">{t('links_docs.no_links')}</div>
                   ) : (
                     links.map(l => (
                       <div key={l.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
@@ -215,7 +213,7 @@ export default function UsefulLinks(){
                         <div className="text-sm text-[#cfd8dc] truncate">{l.description}</div>
                         <div className="mt-2 flex justify-end">
                           {l.can_delete ? (
-                            <button className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5 text-xs" onClick={()=> remove(l.id)}>Delete</button>
+                            <button className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5 text-xs" onClick={()=> remove(l.id)}>{t('common.delete')}</button>
                           ) : null}
                         </div>
                       </div>
@@ -223,14 +221,13 @@ export default function UsefulLinks(){
                   )}
                 </div>
                 <div className="pt-2">
-                  <div className="text-sm font-semibold mb-2">Documents</div>
-                  <div className="text-xs text-[#9fb0b5] mb-2">← Swipe left on your documents to edit or delete</div>
+                  <div className="text-sm font-semibold mb-2">{t('links_docs.documents_section')}</div>
+                  <div className="text-xs text-[#9fb0b5] mb-2">{t('links_docs.swipe_hint')}</div>
                   {docs.length === 0 ? (
-                    <div className="text-[#9fb0b5]">No documents yet.</div>
+                    <div className="text-[#9fb0b5]">{t('links_docs.no_documents')}</div>
                   ) : (
                     docs.map(d => {
-                      // Extract filename from file_path if no description
-                      const displayName = d.description || (d.file_path ? (d.file_path.split('/').pop()?.replace(/^\d+_/, '') || 'PDF Document') : 'PDF Document')
+                      const displayName = d.description || (d.file_path ? (d.file_path.split('/').pop()?.replace(/^\d+_/, '') || t('links_docs.pdf_document')) : t('links_docs.pdf_document'))
                       const isEditing = editingDocId === d.id
                       const isSwiped = swipedDocId === d.id
                       
@@ -259,7 +256,6 @@ export default function UsefulLinks(){
         )}
       </div>
 
-      {/* Success/Error Toast */}
       {toast && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 animate-fade-in">
           <div className={`px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 ${
@@ -277,7 +273,6 @@ export default function UsefulLinks(){
   )
 }
 
-// Swipeable document card component
 function SwipeableDocCard({ 
   doc, 
   displayName, 
@@ -305,9 +300,10 @@ function SwipeableDocCard({
   onDelete: () => void
   resolveDocUrl: (path: string) => string
 }) {
+  const { t } = useTranslation()
   const touchRef = useRef<{ startX: number; startY: number; startTime: number } | null>(null)
   const [translateX, setTranslateX] = useState(0)
-  const actionWidth = 140 // Width of action buttons area
+  const actionWidth = 140
   
   const handleTouchStart = (e: React.TouchEvent) => {
     if (isEditing) return
@@ -323,17 +319,14 @@ function SwipeableDocCard({
     const deltaX = e.touches[0].clientX - touchRef.current.startX
     const deltaY = e.touches[0].clientY - touchRef.current.startY
     
-    // If scrolling vertically, don't swipe
     if (Math.abs(deltaY) > Math.abs(deltaX)) return
     
-    // Only allow left swipe (negative deltaX)
     const newX = isSwiped ? Math.max(-actionWidth, Math.min(0, deltaX - actionWidth)) : Math.max(-actionWidth, Math.min(0, deltaX))
     setTranslateX(newX)
   }
   
   const handleTouchEnd = () => {
     if (!touchRef.current || isEditing) return
-    // Snap to open or closed position
     if (translateX < -actionWidth / 2) {
       setTranslateX(-actionWidth)
       onSwipe(true)
@@ -344,7 +337,6 @@ function SwipeableDocCard({
     touchRef.current = null
   }
   
-  // Reset position when isSwiped changes externally
   useEffect(() => {
     if (!isSwiped) setTranslateX(0)
     else setTranslateX(-actionWidth)
@@ -352,7 +344,6 @@ function SwipeableDocCard({
 
   return (
     <div className="relative mb-2">
-      {/* Action buttons - positioned to the right, revealed when card slides */}
       <div 
         className="absolute right-0 top-0 bottom-0 flex items-stretch rounded-r-2xl overflow-hidden"
         style={{ width: actionWidth }}
@@ -371,7 +362,6 @@ function SwipeableDocCard({
         </button>
       </div>
       
-      {/* Main content - slides to reveal buttons */}
       <div 
         className="relative bg-black border border-white/10 rounded-2xl p-3 transition-transform"
         style={{ 
@@ -390,7 +380,7 @@ function SwipeableDocCard({
               value={editingName}
               onChange={(e) => onEditNameChange(e.target.value)}
               className="flex-1 rounded-md bg-black border border-white/20 px-2 py-1 text-sm focus:border-teal-400/70 outline-none"
-              placeholder="Document name"
+              placeholder={t('links_docs.document_name_placeholder')}
               autoFocus
               onKeyDown={(e) => {
                 if (e.key === 'Enter') onEditSave()
@@ -401,13 +391,13 @@ function SwipeableDocCard({
               className="px-2 py-1 rounded-md bg-[#4db6ac] text-black text-xs hover:brightness-110"
               onClick={onEditSave}
             >
-              Save
+              {t('common.save')}
             </button>
             <button 
               className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5 text-xs"
               onClick={onEditCancel}
             >
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
         ) : (
@@ -423,7 +413,7 @@ function SwipeableDocCard({
               className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm flex-shrink-0"
             >
               <i className="fa-solid fa-external-link mr-1.5" />
-              Open
+              {t('links_docs.open')}
             </a>
           </div>
         )}
@@ -431,4 +421,3 @@ function SwipeableDocCard({
     </div>
   )
 }
-

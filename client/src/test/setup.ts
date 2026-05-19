@@ -10,8 +10,12 @@ import '@testing-library/jest-dom/vitest'
 import { afterEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 
-afterEach(() => {
+// Initialise react-i18next once for every test file (components use useTranslation).
+import i18n from '../i18n'
+
+afterEach(async () => {
   cleanup()
   vi.clearAllMocks()
   vi.restoreAllMocks()
+  await i18n.changeLanguage('en')
 })

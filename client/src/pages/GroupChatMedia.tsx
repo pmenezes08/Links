@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
@@ -16,6 +17,7 @@ type MediaItem = {
 }
 
 export default function GroupChatMedia() {
+  const { t } = useTranslation()
   const { group_id } = useParams()
   const navigate = useNavigate()
   const { setTitle } = useHeader()
@@ -24,7 +26,7 @@ export default function GroupChatMedia() {
   const [error, setError] = useState<string | null>(null)
   const [viewingMedia, setViewingMedia] = useState<{ url: string; type: 'image' | 'video' } | null>(null)
 
-  useEffect(() => { setTitle('Media') }, [setTitle])
+  useEffect(() => { setTitle(t('chat.media_title')) }, [setTitle, t])
 
   useEffect(() => {
     let mounted = true
@@ -38,70 +40,68 @@ export default function GroupChatMedia() {
           setItems(j.media || [])
           setError(null)
         } else {
-          setError(j?.error || 'Failed to load media')
+          setError(j?.error || t('chat.failed_load_media'))
         }
       } catch {
-        if (mounted) setError('Failed to load media')
+        if (mounted) setError(t('chat.failed_load_media'))
       } finally {
         if (mounted) setLoading(false)
       }
     }
     load()
     return () => { mounted = false }
-  }, [group_id])
+  }, [group_id, t])
 
-  // Group by date and format dates nicely
   const groups = useMemo(() => {
+    const unknownKey = t('chat.unknown_date')
     const map: Record<string, MediaItem[]> = {}
     for (const it of items) {
       const parsedDate = parseFlexibleDate(it.created_at)
-      let dateKey = 'Unknown Date'
+      let dateKey = unknownKey
 
       if (parsedDate && !isNaN(parsedDate.getTime())) {
-        dateKey = parsedDate.toISOString().split('T')[0] // YYYY-MM-DD format
+        dateKey = parsedDate.toISOString().split('T')[0]
       }
 
       if (!map[dateKey]) map[dateKey] = []
       map[dateKey].push(it)
     }
 
-    // Sort groups by date desc, items by time desc
     const keys = Object.keys(map).sort((a, b) => {
-      if (a === 'Unknown Date') return 1
-      if (b === 'Unknown Date') return -1
+      if (a === unknownKey) return 1
+      if (b === unknownKey) return -1
       return a < b ? 1 : -1
     })
 
     for (const k of keys) {
-      if (k !== 'Unknown Date') {
+      if (k !== unknownKey) {
         map[k].sort((a, b) => {
           const dateA = parseFlexibleDate(a.created_at)
           const dateB = parseFlexibleDate(b.created_at)
           if (!dateA && !dateB) return 0
           if (!dateA) return 1
           if (!dateB) return -1
-          return dateB.getTime() - dateA.getTime() // Most recent first within each day
+          return dateB.getTime() - dateA.getTime()
         })
       }
     }
 
-    // Format date keys to be more user-friendly
     const formattedKeys = keys.map(key => {
-      if (key === 'Unknown Date') return key
+      if (key === unknownKey) return unknownKey
 
       const date = parseFlexibleDate(key)
-      if (!date || isNaN(date.getTime())) return 'Unknown Date'
+      if (!date || isNaN(date.getTime())) return unknownKey
 
       const today = new Date()
       const yesterday = new Date(today)
       yesterday.setDate(yesterday.getDate() - 1)
 
       if (date.toDateString() === today.toDateString()) {
-        return 'Today'
+        return t('chat.today')
       } else if (date.toDateString() === yesterday.toDateString()) {
-        return 'Yesterday'
+        return t('chat.yesterday_cap')
       } else {
-        return date.toLocaleDateString('en-US', {
+        return date.toLocaleDateString(undefined, {
           year: 'numeric',
           month: 'long',
           day: 'numeric'
@@ -110,14 +110,13 @@ export default function GroupChatMedia() {
     })
 
     return { keys: formattedKeys, map, originalKeys: keys }
-  }, [items])
+  }, [items, t])
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
+  if (loading) return <div className="p-4 text-[#9fb0b5]">{t('common.loading')}</div>
   if (error) return <div className="p-4 text-red-400">{error}</div>
 
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* Subnav header */}
       <div
         className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
@@ -126,16 +125,15 @@ export default function GroupChatMedia() {
           <button 
             className="p-2 rounded-full hover:bg-white/5" 
             onClick={() => navigate(`/group_chat/${group_id}`)} 
-            aria-label="Back"
+            aria-label={t('common.back')}
           >
             <i className="fa-solid fa-arrow-left" />
           </button>
-          <div className="flex-1 font-medium">Media</div>
-          <div className="text-sm text-[#9fb0b5]">{items.length} item{items.length !== 1 ? 's' : ''}</div>
+          <div className="flex-1 font-medium">{t('chat.media_title')}</div>
+          <div className="text-sm text-[#9fb0b5]">{t('chat.item_count', { count: items.length })}</div>
         </div>
       </div>
 
-      {/* Content */}
       <div
         className="app-subnav-offset max-w-2xl mx-auto pb-20 px-3 overflow-y-auto no-scrollbar"
         style={{
@@ -148,8 +146,8 @@ export default function GroupChatMedia() {
           <div className="text-center py-12">
             <div className="text-[#9fb0b5] mb-4">
               <i className="fa-solid fa-photo-film text-4xl mb-3 block opacity-50"></i>
-              <p className="text-lg font-medium">No media yet</p>
-              <p className="text-sm">Photos and videos shared in this chat will appear here</p>
+              <p className="text-lg font-medium">{t('chat.no_media_yet')}</p>
+              <p className="text-sm">{t('chat.no_media_hint')}</p>
             </div>
           </div>
         ) : (
@@ -161,7 +159,7 @@ export default function GroupChatMedia() {
               return (
                 <div key={formattedDateKey} className="space-y-3">
                   <div className="text-sm text-[#9fb0b5] font-medium border-b border-white/10 pb-2">
-                    {formattedDateKey} ({mediaForDate.length} item{mediaForDate.length !== 1 ? 's' : ''})
+                    {formattedDateKey} ({t('chat.item_count', { count: mediaForDate.length })})
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     {mediaForDate.map(m => (
@@ -187,7 +185,7 @@ export default function GroupChatMedia() {
                           <MessageImage
                             tile
                             src={normalizeMediaPath(m.url)}
-                            alt="Shared media"
+                            alt={t('chat.shared_media_alt')}
                             className="rounded-lg border border-white/10 hover:border-white/20 transition-colors"
                           />
                         )}
@@ -207,13 +205,11 @@ export default function GroupChatMedia() {
         )}
       </div>
 
-      {/* Media viewer modal */}
       {viewingMedia && (
         <div 
           className="fixed inset-0 bg-black z-[9999] flex flex-col"
           onClick={() => setViewingMedia(null)}
         >
-          {/* Header */}
           <div 
             className="flex items-center justify-between px-4 py-3 bg-black/80"
             style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
@@ -225,12 +221,11 @@ export default function GroupChatMedia() {
               <i className="fa-solid fa-xmark text-xl" />
             </button>
             <span className="text-white font-medium">
-              {viewingMedia.type === 'video' ? 'Video' : 'Photo'}
+              {viewingMedia.type === 'video' ? t('chat.video') : t('chat.photo')}
             </span>
             <div className="w-8" />
           </div>
 
-          {/* Media view */}
           <div 
             className="flex-1 flex items-center justify-center overflow-hidden"
             onClick={(e) => e.stopPropagation()}
@@ -246,14 +241,13 @@ export default function GroupChatMedia() {
             ) : (
               <ZoomableImage
                 src={viewingMedia.url}
-                alt="Media"
+                alt={t('chat.media_preview_alt')}
                 className="w-full h-full"
                 onRequestClose={() => setViewingMedia(null)}
               />
             )}
           </div>
 
-          {/* Footer */}
           <div 
             className="flex items-center justify-center px-4 py-4 bg-black/80"
             style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
@@ -262,7 +256,7 @@ export default function GroupChatMedia() {
               onClick={() => setViewingMedia(null)}
               className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition"
             >
-              Close
+              {t('common.close')}
             </button>
           </div>
         </div>

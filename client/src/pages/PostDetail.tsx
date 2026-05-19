@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, memo } from 'react'
 import { Capacitor } from '@capacitor/core'
+import { useTranslation } from 'react-i18next'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
@@ -67,6 +68,7 @@ function isReplyRowTopLevel(r: Reply): boolean {
 }
 
 export default function PostDetail(){
+  const { t } = useTranslation()
   const { post_id } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
@@ -970,7 +972,7 @@ export default function PostDetail(){
     } catch (err){
       console.error('Failed to prepare GIF attachment', err)
       setSubmittingReply(false)
-      alert('Unable to attach GIF. Please try again.')
+      alert(t('feed.gif_attach_failed'))
       return
     }
     if (replyPreview?.blob) {
@@ -1083,7 +1085,7 @@ export default function PostDetail(){
 
   async function deleteReply(replyId: number){
     if (!post) return
-    const ok = window.confirm('Delete this reply?')
+    const ok = window.confirm(t('feed.delete_reply_confirm'))
     if (!ok) return
     try{
       if (isGroupPost) {
@@ -1158,7 +1160,7 @@ export default function PostDetail(){
     if (isGroupPost) {
       try {
         if (removeMedia) {
-          alert('Removing media from group posts is not supported yet.')
+          alert(t('feed.remove_group_media_unsupported'))
           return
         }
         const fd = new FormData()
@@ -1180,10 +1182,10 @@ export default function PostDetail(){
             if (typeof invalidateFn === 'function') invalidateFn()
           } catch {}
         } else {
-          alert(j?.error || 'Failed to update post')
+          alert(j?.error || t('feed.update_post_failed'))
         }
       } catch {
-        alert('Failed to update post')
+        alert(t('feed.update_post_failed'))
       }
       return
     }
@@ -1225,16 +1227,16 @@ export default function PostDetail(){
           if (typeof invalidateFn === 'function') invalidateFn()
         } catch {}
       } else {
-        alert(j?.error || 'Failed to update post')
+        alert(j?.error || t('feed.update_post_failed'))
       }
     } catch {
-      alert('Failed to update post')
+      alert(t('feed.update_post_failed'))
     }
   }
 
   async function deletePost() {
     if (!post) return
-    const ok = window.confirm('Delete this post?')
+    const ok = window.confirm(t('feed.delete_post_confirm'))
     if (!ok) return
     try {
       const fd = new FormData()
@@ -1245,10 +1247,10 @@ export default function PostDetail(){
       if (j?.success) {
         navigate(-1)
       } else {
-        alert(j?.error || 'Failed to delete post')
+        alert(j?.error || t('feed.delete_post_failed'))
       }
     } catch {
-      alert('Failed to delete post')
+      alert(t('feed.delete_post_failed'))
     }
   }
 
@@ -1267,14 +1269,14 @@ export default function PostDetail(){
           setShowHideModal(false)
           setShowReportModal(true)
         } else {
-          alert('Post hidden. You can manage hidden posts in Settings → Privacy & Security.')
+          alert(t('feed.post_hidden'))
           navigate(-1)
         }
       } else {
-        alert(j?.error || 'Failed to hide post')
+        alert(j?.error || t('feed.hide_post_failed'))
       }
     } catch {
-      alert('Network error. Could not hide post.')
+      alert(t('feed.hide_post_network_failed'))
     }
   }
 
@@ -1294,16 +1296,16 @@ export default function PostDetail(){
       })
       const j = await res.json().catch(() => null)
       if (j?.success) {
-        alert(j.message || 'Post reported successfully')
+        alert(j.message || t('feed.post_reported'))
         setShowReportModal(false)
         setReportReason('')
         setReportDetails('')
         navigate(-1)
       } else {
-        alert(j?.error || 'Failed to report post')
+        alert(j?.error || t('feed.report_post_failed'))
       }
     } catch {
-      alert('Network error. Could not report post.')
+      alert(t('feed.report_post_network_failed'))
     } finally {
       setReportSubmitting(false)
     }
@@ -1325,15 +1327,15 @@ export default function PostDetail(){
       })
       const j = await res.json().catch(() => null)
       if (j?.success) {
-        alert(`@${post.username} has been blocked. You can manage blocked users in Settings → Privacy & Security.`)
+        alert(t('feed.user_blocked', { username: post.username }))
         setShowBlockModal(false)
         setBlockReason('')
         navigate(-1)
       } else {
-        alert(j?.error || 'Failed to block user')
+        alert(j?.error || t('feed.block_user_failed'))
       }
     } catch {
-      alert('Network error. Could not block user.')
+      alert(t('feed.block_user_network_failed'))
     } finally {
       setBlockSubmitting(false)
     }
@@ -1535,8 +1537,8 @@ export default function PostDetail(){
   }
 
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading</div>
-  if (error || !post) return <div className="p-4 text-red-400">{error||'Error'}</div>
+  if (loading) return <div className="p-4 text-[#9fb0b5]">{t('common.loading')}</div>
+  if (error || !post) return <div className="p-4 text-red-400">{error||t('errors.generic')}</div>
 
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
   const liftSource = Math.max(keyboardOffset, viewportLift)
@@ -1590,19 +1592,19 @@ export default function PostDetail(){
                 navigate(-1)
               }
             }}
-            aria-label="Back"
+            aria-label={t('navigation.back')}
           >
             <i className="fa-solid fa-arrow-left text-white" />
           </button>
           <div className="flex-1 min-w-0">
-            <div className="font-semibold tracking-[-0.01em] text-sm">Post</div>
+            <div className="font-semibold tracking-[-0.01em] text-sm">{t('feed.post')}</div>
           </div>
           <div className="flex items-center gap-1">
             {/* Messages icon */}
             <button 
               className="relative p-2 rounded-full hover:bg-white/10 transition-colors" 
               onClick={() => navigate('/user_chat')} 
-              aria-label="Messages"
+              aria-label={t('navigation.messages')}
             >
               <i className="fa-solid fa-comments text-white" />
               {unreadMsgs > 0 && (
@@ -1615,7 +1617,7 @@ export default function PostDetail(){
             <button 
               className="relative p-2 rounded-full hover:bg-white/10 transition-colors" 
               onClick={() => navigate('/notifications')} 
-              aria-label="Notifications"
+              aria-label={t('navigation.notifications')}
             >
               <i className="fa-regular fa-bell text-white" />
               {unreadNotifs > 0 && (
@@ -1657,9 +1659,9 @@ export default function PostDetail(){
               {/* Personal star (turquoise when selected) */}
               <button 
                 className="px-2 py-1 rounded-full" 
-                title={(post as any).is_starred ? 'Unstar (yours)' : 'Star (yours)'} 
+                title={(post as any).is_starred ? t('feed.unstar_yours') : t('feed.star_yours')} 
                 onClick={toggleStar} 
-                aria-label="Star post (yours)"
+                aria-label={t('feed.star_yours')}
               >
                 <i className={`${(post as any).is_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: (post as any).is_starred ? '#4db6ac' : '#6c757d' }} />
               </button>
@@ -1669,9 +1671,9 @@ export default function PostDetail(){
                 (isGroupPost && (post as any).can_toggle_community_key)) && (
                 <button 
                   className="px-2 py-1 rounded-full" 
-                  title={(post as any).is_community_starred ? 'Unfeature (community)' : 'Feature (community)'} 
+                  title={(post as any).is_community_starred ? t('feed.unfeature_community') : t('feed.feature_community')} 
                   onClick={toggleCommunityStar} 
-                  aria-label="Star post (community)"
+                  aria-label={t('feed.star_community')}
                 >
                   <i className={`${(post as any).is_community_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: (post as any).is_community_starred ? '#ffd54f' : '#6c757d' }} />
                 </button>
@@ -1680,7 +1682,7 @@ export default function PostDetail(){
               {(currentUser?.username === post.username || currentUser?.username === 'admin' || (post as any).is_community_admin) && (
                 <button 
                   className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400" 
-                  title="Delete"
+                  title={t('common.delete')}
                   onClick={deletePost}
                 >
                   <i className="fa-regular fa-trash-can" />
@@ -1690,7 +1692,7 @@ export default function PostDetail(){
               {(currentUser?.username === post.username || currentUser?.username === 'admin') && (
                 <button 
                   className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
-                  title="Edit"
+                  title={t('common.edit')}
                   onClick={startEditPost}
                 >
                   <i className="fa-regular fa-pen-to-square" />
@@ -1701,7 +1703,7 @@ export default function PostDetail(){
                 <div className="relative">
                   <button 
                     className="px-2 py-1 rounded-full text-[#6c757d] hover:text-white"
-                    title="More options"
+                    title={t('chat.more_options')}
                     onClick={() => setShowMoreMenu(!showMoreMenu)}
                   >
                     <i className="fa-solid fa-ellipsis-vertical" />
@@ -1716,7 +1718,7 @@ export default function PostDetail(){
                         }}
                       >
                         <i className="fa-solid fa-wand-magic-sparkles text-teal-400 w-4" />
-                        Summary
+                        {t('feed.summary')}
                       </button>
                       {!isGroupPost && (
                       <>
@@ -1728,7 +1730,7 @@ export default function PostDetail(){
                         }}
                       >
                         <i className="fa-solid fa-eye-slash text-orange-400 w-4" />
-                        Hide post
+                        {t('feed.hide_post')}
                       </button>
                       <button
                         className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
@@ -1738,7 +1740,7 @@ export default function PostDetail(){
                         }}
                       >
                         <i className="fa-solid fa-flag text-red-400 w-4" />
-                        Report post
+                        {t('feed.report_post')}
                       </button>
                       </>
                       )}
@@ -1750,7 +1752,7 @@ export default function PostDetail(){
                         }}
                       >
                         <i className="fa-solid fa-ban text-red-500 w-4" />
-                        Block @{post.username}
+                        {t('feed.block_user', { username: post.username })}
                       </button>
                     </div>
                   )}
@@ -1817,7 +1819,7 @@ export default function PostDetail(){
                       <div className="px-0">
                         <ImageLoader
                           src={normalizePath(parsedMediaPaths[mediaCarouselIndex]?.path || '')}
-                          alt={`Post media ${mediaCarouselIndex + 1}`}
+                          alt={t('feed.post_media_alt', { number: mediaCarouselIndex + 1 })}
                           className="block mx-auto max-w-full max-h-[520px] rounded border border-white/10 cursor-zoom-in"
                           onClick={() => setPreviewSrc(normalizePath(parsedMediaPaths[mediaCarouselIndex]?.path || ''))}
                         />
@@ -1857,7 +1859,7 @@ export default function PostDetail(){
                   <div className="px-0">
                     <ImageLoader
                       src={normalizePath(post.image_path as string)}
-                      alt="Post image"
+                      alt={t('feed.post_image_alt')}
                       className="block mx-auto max-w-full max-h-[520px] rounded border border-white/10 cursor-zoom-in"
                       onClick={()=> setPreviewSrc(normalizePath(post.image_path as string))}
                     />
@@ -1885,12 +1887,12 @@ export default function PostDetail(){
                         }}
                       />
                     ) : (() => {
-                      const t = parseFlexibleDate(post.timestamp)?.getTime()
-                      if (t != null && !Number.isNaN(t) && Date.now() - t < 120000) {
+                      const timestampMs = parseFlexibleDate(post.timestamp)?.getTime()
+                      if (timestampMs != null && !Number.isNaN(timestampMs) && Date.now() - timestampMs < 120000) {
                         return (
                           <div className="flex items-center gap-1 py-1">
                             <i className="fa-solid fa-wand-magic-sparkles text-[10px] text-white/40" />
-                            <span className="text-[12px] text-white/40">Steve summary generating</span>
+                            <span className="text-[12px] text-white/40">{t('feed.steve_summary_generating')}</span>
                             <span className="flex gap-0.5 ml-0.5">
                               <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                               <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -1925,12 +1927,12 @@ export default function PostDetail(){
                       editMediaFile?.type.startsWith('video/') ? (
                         <video src={editMediaPreview} className="w-full max-h-48 object-contain bg-black block" controls />
                       ) : (
-                        <img src={editMediaPreview} alt="New media" className="w-full max-h-48 object-contain block" />
+                        <img src={editMediaPreview} alt={t('feed.new_media_alt')} className="w-full max-h-48 object-contain block" />
                       )
                     ) : post.video_path ? (
                       <video src={normalizePath(post.video_path)} className="w-full max-h-48 object-contain bg-black block" controls />
                     ) : post.image_path ? (
-                      <img src={normalizePath(post.image_path as string)} alt="Current" className="w-full max-h-48 object-contain block" />
+                      <img src={normalizePath(post.image_path as string)} alt={t('feed.current_media_alt')} className="w-full max-h-48 object-contain block" />
                     ) : null}
                     <button
                       type="button"
@@ -1939,7 +1941,7 @@ export default function PostDetail(){
                         clearEditMedia()
                         setRemoveMedia(true)
                       }}
-                      title="Remove media"
+                      title={t('feed.remove_media')}
                     >
                       <i className="fa-solid fa-xmark text-xs" />
                     </button>
@@ -1953,7 +1955,7 @@ export default function PostDetail(){
                     className="px-3 py-1.5 rounded-md border border-white/10 text-sm hover:bg-white/10"
                     onClick={() => editMediaInputRef.current?.click()}
                   >
-                    <i className="fa-solid fa-image mr-1" /> {editMediaFile ? 'Change' : 'Add'} Media
+                    <i className="fa-solid fa-image mr-1" /> {editMediaFile ? t('feed.change_media') : t('feed.add_media')}
                   </button>
                   <input
                     ref={editMediaInputRef}
@@ -1970,13 +1972,13 @@ export default function PostDetail(){
                     className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black" 
                     onClick={saveEditPost}
                   >
-                    Save
+                    {t('common.save')}
                   </button>
                   <button 
                     className="px-3 py-1.5 rounded-md border border-white/10" 
                     onClick={cancelEditPost}
                   >
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                 </div>
               </div>
@@ -1990,7 +1992,7 @@ export default function PostDetail(){
               <button 
                 className="ml-auto flex items-center gap-1 px-2 py-1 rounded text-[#9fb0b5] hover:text-white hover:bg-white/10 transition-colors"
                 onClick={openReactorsModal}
-                title="View reactions & viewers"
+                title={t('feed.view_reactions_viewers')}
               >
                 <i className="fa-regular fa-eye text-[11px]" />
                 <span>{typeof post.view_count === 'number' ? post.view_count : 0}</span>
@@ -2025,7 +2027,7 @@ export default function PostDetail(){
           {steveIsTyping && (
             <div className="px-4 py-3 border-t border-white/10 flex items-center gap-2 text-xs text-white/60">
               <span className="font-medium text-[#4db6ac]">Steve</span>
-              <span>is typing</span>
+              <span>{t('feed.is_typing')}</span>
               <span className="inline-flex gap-0.5">
                 <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                 <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -2042,11 +2044,11 @@ export default function PostDetail(){
           className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex items-center justify-center" 
           onClick={() => setPreviewSrc(null)}
         >
-          <button className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center z-10" onClick={()=> setPreviewSrc(null)} aria-label="Close preview">
+          <button className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center z-10" onClick={()=> setPreviewSrc(null)} aria-label={t('feed.close_preview')}>
             <i className="fa-solid fa-xmark" />
           </button>
           <div className="w-[94vw] h-[86vh] max-w-4xl" onClick={(e) => e.stopPropagation()}>
-            <ZoomableImage src={previewSrc} alt="preview" className="w-full h-full" onRequestClose={()=> setPreviewSrc(null)} />
+            <ZoomableImage src={previewSrc} alt={t('feed.preview_alt', { number: '' })} className="w-full h-full" onRequestClose={()=> setPreviewSrc(null)} />
           </div>
         </div>
       ) : null}
@@ -2075,14 +2077,14 @@ export default function PostDetail(){
                 <div className="flex items-center gap-2">
                   <div className="w-12 h-12 rounded-md overflow-hidden border border-white/10">
                     {filePreviewUrl ? (
-                      <img src={filePreviewUrl} alt="preview" className="w-full h-full object-cover" />
+                      <img src={filePreviewUrl} alt={t('feed.preview_alt', { number: '' })} className="w-full h-full object-cover" />
                     ) : null}
                   </div>
                   <button 
                     onPointerDown={preventComposerBlur}
                     onClick={() => { setFile(null); setUploadFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
                     className="text-red-400 hover:text-red-300"
-                    aria-label="Remove file"
+                    aria-label={t('feed.remove_file')}
                   >
                     <i className="fa-solid fa-times" />
                   </button>
@@ -2091,13 +2093,13 @@ export default function PostDetail(){
               {replyGif && (
                 <div className="flex items-center gap-2">
                   <div className="w-12 h-12 rounded-md overflow-hidden border border-white/10">
-                    <img src={replyGif.previewUrl} alt="Selected GIF" className="w-full h-full object-cover" loading="lazy" />
+                    <img src={replyGif.previewUrl} alt={t('feed.selected_gif_alt')} className="w-full h-full object-cover" loading="lazy" />
                   </div>
                   <button
                     onPointerDown={preventComposerBlur}
                     onClick={() => { setReplyGif(null) }}
                     className="text-red-400 hover:text-red-300"
-                    aria-label="Remove GIF"
+                    aria-label={t('feed.remove_gif')}
                   >
                     <i className="fa-solid fa-times" />
                   </button>
@@ -2110,7 +2112,7 @@ export default function PostDetail(){
                     onPointerDown={preventComposerBlur}
                     onClick={() => { clearReplyPreview(); }}
                     className="text-[#9fb0b5] hover:text-white"
-                    aria-label="Remove audio"
+                    aria-label={t('feed.remove_audio')}
                   >
                     <i className="fa-regular fa-trash-can" />
                   </button>
@@ -2140,7 +2142,7 @@ export default function PostDetail(){
                 onPointerDown={preventComposerBlur}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => setShowAttachMenu(!showAttachMenu)}
-                aria-label="Add attachment"
+                aria-label={t('feed.add_attachment')}
               >
                 <i className={`fa-solid ${showAttachMenu ? 'fa-times' : 'fa-plus'} text-sm`} style={{ color: (file || replyGif) ? '#7fe7df' : '#fff' }} />
               </button>
@@ -2159,7 +2161,7 @@ export default function PostDetail(){
                     }}
                   >
                     <i className="fa-solid fa-image text-[#4db6ac]" />
-                    <span className="text-sm text-white">Photo / Video</span>
+                    <span className="text-sm text-white">{t('feed.photo_video')}</span>
                   </button>
                   <button
                     type="button"
@@ -2199,7 +2201,7 @@ export default function PostDetail(){
                 onChange={setContent}
                 communityId={(post as any)?.community_id}
                 postId={post?.id}
-                placeholder="Write a reply..."
+                placeholder={t('feed.write_reply_placeholder')}
                 className="bg-transparent px-3 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[36px]"
                 rows={1}
                 autoExpand
@@ -2215,7 +2217,7 @@ export default function PostDetail(){
                 onPointerDown={preventComposerBlur}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => startRec()}
-                aria-label="Record audio"
+                aria-label={t('feed.record_audio')}
               >
                 <i className="fa-solid fa-microphone text-sm text-white" />
               </button>
@@ -2231,10 +2233,10 @@ export default function PostDetail(){
                 onClick={async () => {
                   const p = await stopRec()
                   if (!p?.blob?.size) {
-                    alert('Could not capture audio. Try recording for at least one second, or check microphone permission in Settings.')
+                    alert(t('feed.audio_capture_minimum'))
                   }
                 }}
-                aria-label="Stop recording"
+                aria-label={t('feed.stop_recording')}
               >
                 <i className="fa-solid fa-stop text-sm" />
               </button>
@@ -2248,7 +2250,7 @@ export default function PostDetail(){
                 onPointerDown={preventComposerBlur}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => submitReply()}
-                aria-label="Send reply"
+                aria-label={t('feed.send_reply')}
                 disabled={submittingReply}
               >
                 <span className="inline-flex h-5 w-5 items-center justify-center" aria-hidden>
@@ -2294,17 +2296,17 @@ export default function PostDetail(){
               <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center">
                 <i className="fa-solid fa-eye-slash text-orange-400" />
               </div>
-              <div className="font-semibold text-lg text-white">Hide Post</div>
+              <div className="font-semibold text-lg text-white">{t('feed.hide_post')}</div>
             </div>
             <p className="text-sm text-[#9fb0b5] mb-5">
-              This post will be hidden from your feed. You can also report or block the user.
+              {t('feed.hide_post_body')}
             </p>
             <div className="flex flex-col gap-2">
               <button
                 className="w-full py-2.5 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 font-medium hover:bg-red-500/30 transition-colors"
                 onClick={() => hidePost(true)}
               >
-                Hide & Report Post
+                {t('feed.hide_report_post')}
               </button>
               <button
                 className="w-full py-2.5 rounded-lg bg-red-600/20 text-red-300 border border-red-600/30 font-medium hover:bg-red-600/30 transition-colors"
@@ -2314,19 +2316,19 @@ export default function PostDetail(){
                 }}
               >
                 <i className="fa-solid fa-ban mr-2" />
-                Block @{post.username}
+                {t('feed.block_user', { username: post.username })}
               </button>
               <button
                 className="w-full py-2.5 rounded-lg bg-white/10 text-white border border-white/10 font-medium hover:bg-white/15 transition-colors"
                 onClick={() => hidePost(false)}
               >
-                Just Hide This Post
+                {t('feed.just_hide_post')}
               </button>
               <button
                 className="w-full py-2.5 rounded-lg text-[#9fb0b5] hover:text-white transition-colors"
                 onClick={() => setShowHideModal(false)}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -2344,32 +2346,32 @@ export default function PostDetail(){
               <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
                 <i className="fa-solid fa-ban text-red-400" />
               </div>
-              <div className="font-semibold text-lg text-white">Block @{post.username}</div>
+              <div className="font-semibold text-lg text-white">{t('feed.block_user', { username: post.username })}</div>
             </div>
             <p className="text-sm text-[#9fb0b5] mb-4">
-              Blocking this user will:
+              {t('feed.block_user_body')}
             </p>
             <ul className="text-sm text-[#9fb0b5] mb-4 space-y-1 pl-4">
-              <li>• Hide all their posts from your feed</li>
-              <li>• Prevent messaging between you</li>
-              <li>• Notify our moderation team</li>
-              <li>• You can manage this in Settings → Privacy</li>
+              <li>• {t('feed.block_user_effect_hide_posts')}</li>
+              <li>• {t('feed.block_user_effect_messages')}</li>
+              <li>• {t('feed.block_user_effect_moderation')}</li>
+              <li>• {t('feed.block_user_effect_settings')}</li>
             </ul>
             
             <div className="mb-4">
-              <label className="block text-sm text-[#9fb0b5] mb-2">Reason for blocking (optional)</label>
+              <label className="block text-sm text-[#9fb0b5] mb-2">{t('feed.block_reason_label')}</label>
               <select
                 value={blockReason}
                 onChange={(e) => setBlockReason(e.target.value)}
                 className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-red-500/50"
                 disabled={blockSubmitting}
               >
-                <option value="">Select a reason...</option>
-                <option value="Harassment">Harassment or bullying</option>
-                <option value="Spam">Spam or scam</option>
-                <option value="Offensive content">Offensive content</option>
-                <option value="Threats">Threats or violence</option>
-                <option value="Other">Other</option>
+                <option value="">{t('feed.select_reason')}</option>
+                <option value="Harassment">{t('feed.report_reason_harassment')}</option>
+                <option value="Spam">{t('feed.report_reason_spam')}</option>
+                <option value="Offensive content">{t('feed.report_reason_offensive')}</option>
+                <option value="Threats">{t('feed.report_reason_threats')}</option>
+                <option value="Other">{t('feed.report_reason_other')}</option>
               </select>
             </div>
 
@@ -2382,14 +2384,14 @@ export default function PostDetail(){
                 }}
                 disabled={blockSubmitting}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 className="flex-1 py-2.5 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={() => blockUser(!!blockReason)}
                 disabled={blockSubmitting}
               >
-                {blockSubmitting ? 'Blocking...' : 'Block User'}
+                {blockSubmitting ? t('feed.blocking') : t('feed.block_user_action')}
               </button>
             </div>
           </div>
@@ -2407,14 +2409,21 @@ export default function PostDetail(){
               <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
                 <i className="fa-solid fa-flag text-red-400" />
               </div>
-              <div className="font-semibold text-lg text-white">Report Post</div>
+              <div className="font-semibold text-lg text-white">{t('feed.report_post')}</div>
             </div>
             <p className="text-sm text-[#9fb0b5] mb-4">
-              Please select a reason for reporting this post. Our team will review it.
+              {t('feed.report_post_body')}
             </p>
             
             <div className="space-y-2 mb-4">
-              {['Spam or misleading', 'Harassment or bullying', 'Hate speech', 'Violence or threats', 'Explicit content', 'Other'].map(reason => (
+              {[
+                ['Spam or misleading', t('feed.report_reason_spam_misleading')],
+                ['Harassment or bullying', t('feed.report_reason_harassment')],
+                ['Hate speech', t('feed.report_reason_hate')],
+                ['Violence or threats', t('feed.report_reason_violence')],
+                ['Explicit content', t('feed.report_reason_explicit')],
+                ['Other', t('feed.report_reason_other')],
+              ].map(([reason, label]) => (
                 <button
                   key={reason}
                   className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
@@ -2425,18 +2434,18 @@ export default function PostDetail(){
                   onClick={() => setReportReason(reason)}
                   disabled={reportSubmitting}
                 >
-                  {reason}
+                  {label}
                 </button>
               ))}
             </div>
 
             {reportReason && (
               <div className="mb-4">
-                <label className="block text-sm text-[#9fb0b5] mb-2">Additional details (optional)</label>
+                <label className="block text-sm text-[#9fb0b5] mb-2">{t('feed.additional_details_optional')}</label>
                 <textarea
                   value={reportDetails}
                   onChange={(e) => setReportDetails(e.target.value)}
-                  placeholder="Provide more context about why you're reporting this post..."
+                  placeholder={t('feed.report_details_placeholder')}
                   className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/40 focus:outline-none focus:border-red-500/50 resize-none"
                   rows={3}
                   disabled={reportSubmitting}
@@ -2454,14 +2463,14 @@ export default function PostDetail(){
                 }}
                 disabled={reportSubmitting}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 className="flex-1 py-2.5 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={reportPost}
                 disabled={!reportReason || reportSubmitting}
               >
-                {reportSubmitting ? 'Submitting...' : 'Submit Report'}
+                {reportSubmitting ? t('feed.submitting') : t('feed.submit_report')}
               </button>
             </div>
           </div>
@@ -2476,27 +2485,27 @@ export default function PostDetail(){
         >
           <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
             <div className="flex items-center justify-between mb-2">
-              <div className="font-semibold">Views & Reactions</div>
+              <div className="font-semibold">{t('feed.views_reactions')}</div>
               <button
                 className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-sm text-white/80 hover:bg-white/10"
                 onClick={closeReactorsModal}
-                aria-label="Close"
+                aria-label={t('common.close')}
               >
                 <span className="leading-none">✕</span>
               </button>
             </div>
             {reactorsLoading ? (
-              <div className="text-[#9fb0b5] text-sm py-4 text-center">Loading...</div>
+              <div className="text-[#9fb0b5] text-sm py-4 text-center">{t('common.loading')}</div>
             ) : (
               <div className="space-y-3 max-h-[420px] overflow-y-auto">
                 {/* Views section */}
                 <div className="rounded-lg border border-white/10 p-2">
                   <div className="flex items-center justify-between text-xs text-white/80 uppercase tracking-wide">
-                    <span>Views</span>
+                    <span>{t('feed.views')}</span>
                     <span className="text-sm font-semibold text-white">{reactorViewCount ?? 0}</span>
                   </div>
                   {reactorViewers.length === 0 ? (
-                    <div className="mt-2 text-xs text-[#9fb0b5]">No views yet.</div>
+                    <div className="mt-2 text-xs text-[#9fb0b5]">{t('feed.no_views_yet')}</div>
                   ) : (
                     <div className="mt-2 flex flex-col gap-1">
                       {reactorViewers.map((viewer) => {
@@ -2522,7 +2531,7 @@ export default function PostDetail(){
                 </div>
                 {/* Reactions section */}
                 {reactorGroups.length === 0 ? (
-                  <div className="text-sm text-[#9fb0b5]">No reactions yet.</div>
+                  <div className="text-sm text-[#9fb0b5]">{t('feed.no_reactions_yet')}</div>
                 ) : reactorGroups.map((group) => (
                   <div key={group.reaction_type} className="rounded-lg border border-white/10 p-2">
                     <div className="text-xs text-white/80 mb-1 capitalize">{group.reaction_type.replace('-', ' ')}</div>
@@ -2550,26 +2559,26 @@ export default function PostDetail(){
         >
           <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
             <div className="flex items-center justify-between mb-2">
-              <div className="font-semibold">Views & Reactions</div>
+              <div className="font-semibold">{t('feed.views_reactions')}</div>
               <button
                 className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-sm text-white/80 hover:bg-white/10"
                 onClick={() => setShowReplyReactorsModal(false)}
-                aria-label="Close"
+                aria-label={t('common.close')}
               >
                 <span className="leading-none">✕</span>
               </button>
             </div>
             {replyReactorsLoading ? (
-              <div className="text-[#9fb0b5] text-sm py-4 text-center">Loading...</div>
+              <div className="text-[#9fb0b5] text-sm py-4 text-center">{t('common.loading')}</div>
             ) : (
               <div className="space-y-3 max-h-[420px] overflow-y-auto">
                 <div className="rounded-lg border border-white/10 p-2">
                   <div className="flex items-center justify-between text-xs text-white/80 uppercase tracking-wide">
-                    <span>Views</span>
+                    <span>{t('feed.views')}</span>
                     <span className="text-sm font-semibold text-white">{replyReactorViewCount ?? 0}</span>
                   </div>
                   {replyReactorViewers.length === 0 ? (
-                    <div className="mt-2 text-xs text-[#9fb0b5]">No views yet.</div>
+                    <div className="mt-2 text-xs text-[#9fb0b5]">{t('feed.no_views_yet')}</div>
                   ) : (
                     <div className="mt-2 flex flex-col gap-1">
                       {replyReactorViewers.map((viewer) => {
@@ -2586,7 +2595,7 @@ export default function PostDetail(){
                   )}
                 </div>
                 {replyReactorGroups.length === 0 ? (
-                  <div className="text-sm text-[#9fb0b5]">No reactions yet.</div>
+                  <div className="text-sm text-[#9fb0b5]">{t('feed.no_reactions_yet')}</div>
                 ) : replyReactorGroups.map((group) => (
                   <div key={group.reaction_type} className="rounded-lg border border-white/10 p-2">
                     <div className="text-xs text-white/80 mb-1 capitalize">{group.reaction_type.replace('-', ' ')}</div>
@@ -2620,7 +2629,7 @@ export default function PostDetail(){
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
               <div className="flex items-center gap-2">
                 <i className="fa-solid fa-wand-magic-sparkles text-teal-400" />
-                <span className="font-semibold text-white">Steve summary</span>
+                <span className="font-semibold text-white">{t('feed.steve_summary')}</span>
               </div>
               <button 
                 className="text-white/60 hover:text-white p-1"
@@ -2635,7 +2644,7 @@ export default function PostDetail(){
               {summaryLoading && (
                 <div className="flex flex-col items-center justify-center py-8 gap-3">
                   <div className="w-8 h-8 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-white/60 text-sm">Steve is writing your summary...</span>
+                  <span className="text-white/60 text-sm">{t('feed.steve_summary_loading')}</span>
                 </div>
               )}
               
@@ -2659,7 +2668,7 @@ export default function PostDetail(){
                 className="w-full py-2.5 rounded-xl bg-[#4db6ac] text-black font-medium hover:brightness-110"
                 onClick={() => setShowSummaryModal(false)}
               >
-                Close
+                {t('common.close')}
               </button>
             </div>
           </div>
@@ -2701,6 +2710,7 @@ const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
 })
 
 function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, activeInlineReplyFor, onSetActiveInlineReply, onNavigateToReply, onOpenReactors, onArticleOpen, onReplyAudioSummaryUpdate }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File, voiceDurationSec?: number)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, activeInlineReplyFor?: number | null, onSetActiveInlineReply?: (id: number | null) => void, onNavigateToReply?: (id: number) => void, onOpenReactors?: (id: number) => void, onArticleOpen?: (url: string) => void, onReplyAudioSummaryUpdate?: (replyId: number, summary: string) => void }){
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const currentUser = currentUserName
   // Use parent's activeInlineReplyFor if provided, otherwise use local state
@@ -2771,14 +2781,14 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
               <div onClick={(e) => e.stopPropagation()}>
                 <button
                   className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
-                  title="Edit reply"
+                  title={t('feed.edit_reply')}
                   onClick={()=> setIsEditing(v=>!v)}
                 >
                   <i className="fa-regular fa-pen-to-square" />
                 </button>
                 <button
                   className="ml-1 px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400"
-                  title="Delete reply"
+                  title={t('feed.delete_reply')}
                   onClick={()=> onDelete(reply.id)}
                 >
                   <i className="fa-regular fa-trash-can" />
@@ -2806,10 +2816,10 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                     (reply as any).content = editText
                     setIsEditing(false)
                   } else {
-                    alert(j?.error || 'Failed to edit')
+                    alert(j?.error || t('feed.edit_failed'))
                   }
-                }}>Save</button>
-                <button className="px-3 py-1.5 rounded-md border border-white/10" onClick={()=> { setIsEditing(false); setEditText(reply.content) }}>Cancel</button>
+                }}>{t('common.save')}</button>
+                <button className="px-3 py-1.5 rounded-md border border-white/10" onClick={()=> { setIsEditing(false); setEditText(reply.content) }}>{t('common.cancel')}</button>
               </div>
             </div>
           )}
@@ -2818,7 +2828,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
               <div onClick={()=> onPreviewImage(normalizePath(reply.image_path as string))}>
                 <ImageLoader
                   src={normalizePath(reply.image_path as string)}
-                  alt="Reply image"
+                  alt={t('feed.reply_image_alt')}
                   className="block mx-auto max-w-full max-h-[300px] rounded border border-white/10 cursor-zoom-in"
                 />
               </div>
@@ -2845,12 +2855,12 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                   onSummaryUpdate={(newSummary) => onReplyAudioSummaryUpdate?.(reply.id, newSummary)}
                 />
               ) : (() => {
-                const t = parseFlexibleDate(reply.timestamp)?.getTime()
-                if (t != null && !Number.isNaN(t) && Date.now() - t < 120000) {
+                const timestampMs = parseFlexibleDate(reply.timestamp)?.getTime()
+                if (timestampMs != null && !Number.isNaN(timestampMs) && Date.now() - timestampMs < 120000) {
                   return (
                     <div className="flex items-center gap-1">
                       <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-white/40" />
-                      <span className="text-[11px] text-white/40">Steve summary generating</span>
+                      <span className="text-[11px] text-white/40">{t('feed.steve_summary_generating')}</span>
                       <span className="flex gap-0.5 ml-0.5">
                         <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                         <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -2877,7 +2887,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                 <button
                   className="flex items-center gap-1 px-2 py-1 rounded text-[#9fb0b5] hover:text-white hover:bg-white/10 transition-colors"
                   onClick={(e) => { e.stopPropagation(); onOpenReactors(reply.id) }}
-                  title="View reactions & viewers"
+                  title={t('feed.view_reactions_viewers')}
                 >
                   <i className="fa-regular fa-eye text-[10px]" />
                   <span>{typeof reply.view_count === 'number' ? reply.view_count : 0}</span>
@@ -2890,7 +2900,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                   const target = e.currentTarget.closest('[data-reply-node]')
                   target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
                 }, 100)
-              }}>Reply</button>
+              }}>{t('feed.reply')}</button>
             </div>
           </div>
         </div>
@@ -2904,7 +2914,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
               {img && (
                 <div className="flex items-center gap-1">
                   <div className="w-10 h-10 rounded overflow-hidden border border-white/10">
-                    <img src={URL.createObjectURL(img)} alt="preview" className="w-full h-full object-cover" />
+                    <img src={URL.createObjectURL(img)} alt={t('feed.preview_alt', { number: '' })} className="w-full h-full object-cover" />
                   </div>
                   <button onClick={() => { setImg(null); setInlineGif(null); setGifFile(null); if (inlineFileRef.current) inlineFileRef.current.value = '' }} className="text-red-400 hover:text-red-300 text-xs"><i className="fa-solid fa-times" /></button>
                 </div>
@@ -2912,7 +2922,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
               {inlineGif && (
                 <div className="flex items-center gap-1">
                   <div className="w-10 h-10 rounded overflow-hidden border border-white/10">
-                    <img src={inlineGif.previewUrl} alt="GIF" className="w-full h-full object-cover" loading="lazy" />
+                    <img src={inlineGif.previewUrl} alt={t('feed.selected_gif_alt')} className="w-full h-full object-cover" loading="lazy" />
                   </div>
                   <button onClick={() => { setInlineGif(null); setGifFile(null) }} className="text-red-400 hover:text-red-300 text-xs"><i className="fa-solid fa-times" /></button>
                 </div>
@@ -2958,7 +2968,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                     }}
                   >
                     <i className="fa-solid fa-image text-[#4db6ac] text-xs" />
-                    <span className="text-xs text-white">Photo / Video</span>
+                    <span className="text-xs text-white">{t('feed.photo_video')}</span>
                   </button>
                   <button
                     type="button"
@@ -2983,7 +2993,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                 onChange={setText}
                 communityId={communityId}
                 postId={postId}
-                placeholder={`Reply to @${reply.username}`}
+                placeholder={t('feed.reply_to_user', { username: reply.username })}
                 className="bg-transparent px-3 py-2 text-[14px] text-white placeholder-white/50 outline-none resize-none max-h-20 min-h-[36px]"
                 rows={1}
                 autoExpand
@@ -2998,7 +3008,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                 onClick={async () => {
                   const p = await stopInlineRec()
                   if (!p?.blob?.size) {
-                    alert('Could not capture audio. Try recording for at least one second.')
+                    alert(t('feed.audio_capture_minimum_short'))
                   }
                 }}
               >
@@ -3058,7 +3068,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                 if (inlineFileRef.current) inlineFileRef.current.value = ''
               } catch (err) {
                 console.error('Failed to prepare GIF for reply', err)
-                alert('Unable to attach GIF. Please try again.')
+                alert(t('feed.gif_attach_failed'))
               } finally {
                 setShowGifPicker(false)
               }
@@ -3078,7 +3088,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             }}
           >
             <i className="fa-regular fa-comment text-[11px]" />
-            {(reply as any).reply_count || reply.children?.length || 0} {((reply as any).reply_count || reply.children?.length || 0) === 1 ? 'reply' : 'replies'}
+            {t('feed.reply_count', { count: (reply as any).reply_count || reply.children?.length || 0 })}
           </button>
         </div>
       ) : null}

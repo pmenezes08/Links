@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import Avatar from './Avatar'
 
 type Community = { id: number; name: string }
@@ -10,7 +11,7 @@ type ParentCommunityPickerProps = {
   variant?: 'regular' | 'compact'
 }
 
-function normalizeCommunities(rawCommunities: unknown): Community[] {
+function normalizeCommunities(rawCommunities: unknown, communityFallback: (id: number) => string): Community[] {
   if (!Array.isArray(rawCommunities)) return []
   const seen = new Set<number>()
   const normalized: Community[] = []
@@ -39,7 +40,7 @@ function normalizeCommunities(rawCommunities: unknown): Community[] {
       (typeof anyRaw.name === 'string' && anyRaw.name.trim()) ||
       (typeof anyRaw.community_name === 'string' && anyRaw.community_name.trim()) ||
       (typeof anyRaw.title === 'string' && anyRaw.title.trim()) ||
-      `Community ${id}`
+      communityFallback(id)
 
     const parentIndicators = [
       anyRaw.parent_community_id,
@@ -60,10 +61,12 @@ function normalizeCommunities(rawCommunities: unknown): Community[] {
 }
 
 export default function ParentCommunityPicker({
-  title = 'Select a Community',
+  title,
   description,
   variant = 'regular',
 }: ParentCommunityPickerProps) {
+  const { t } = useTranslation()
+  const resolvedTitle = title ?? t('communities.picker_default_title')
   const [communities, setCommunities] = useState<Community[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -83,7 +86,7 @@ export default function ParentCommunityPicker({
         try {
           const r = await fetch('/api/user_parent_community', { credentials: 'include', headers: { 'Accept': 'application/json' } })
           const j = await r.json().catch(() => null)
-          if (j?.success) list = normalizeCommunities(j.communities)
+          if (j?.success) list = normalizeCommunities(j.communities, (id) => t('communities.picker_community_fallback', { id }))
         } catch {
           // Ignore and fallback
         }
@@ -92,7 +95,7 @@ export default function ParentCommunityPicker({
           try {
             const r2 = await fetch('/get_user_communities', { credentials: 'include' })
             const j2 = await r2.json().catch(() => null)
-            list = normalizeCommunities(j2?.communities)
+            list = normalizeCommunities(j2?.communities, (id) => t('communities.picker_community_fallback', { id }))
           } catch {
             // Ignore
           }
@@ -103,7 +106,7 @@ export default function ParentCommunityPicker({
         }
       } catch (err) {
         if (!cancelled) {
-          setError('Unable to load communities right now.')
+          setError(t('communities.picker_load_error'))
           console.error('ParentCommunityPicker load error:', err)
         }
       } finally {
@@ -114,7 +117,7 @@ export default function ParentCommunityPicker({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [t])
 
   function handleToggle(commId: number) {
     const willOpen = !expanded[commId]
@@ -155,13 +158,13 @@ export default function ParentCommunityPicker({
             })) as Member[]
             setMembersByCommunity(prev => ({ ...prev, [commId]: list }))
           } else {
-            setMemberErrors(prev => ({ ...prev, [commId]: 'No members found for this community yet.' }))
+            setMemberErrors(prev => ({ ...prev, [commId]: t('communities.picker_no_members_yet') }))
             setMembersByCommunity(prev => ({ ...prev, [commId]: [] }))
           }
         })
         .catch(err => {
           console.error('ParentCommunityPicker member load error:', err)
-          setMemberErrors(prev => ({ ...prev, [commId]: 'Unable to load members.' }))
+          setMemberErrors(prev => ({ ...prev, [commId]: t('communities.picker_load_members_error') }))
         })
         .finally(() => {
           setLoadingMembers(prev => ({ ...prev, [commId]: false }))
@@ -204,7 +207,7 @@ export default function ParentCommunityPicker({
       : members
 
     if (loadingMembers[commId]) {
-      return <div className="px-3 py-3 text-sm text-[#9fb0b5]">Loading members...</div>
+      return <div className="px-3 py-3 text-sm text-[#9fb0b5]">{t('communities.picker_loading_members')}</div>
     }
 
     if (memberErrors[commId]) {
@@ -212,13 +215,13 @@ export default function ParentCommunityPicker({
     }
 
     if (!members.length) {
-      return <div className="px-3 py-3 text-sm text-[#9fb0b5]">No members available yet.</div>
+      return <div className="px-3 py-3 text-sm text-[#9fb0b5]">{t('communities.picker_no_members_available')}</div>
     }
 
     if (!filteredMembers.length) {
       return (
         <div className="px-3 py-3 text-sm text-[#9fb0b5]">
-          No members match "{searchTerms[commId]?.trim()}".
+          {t('communities.picker_no_members_match', { term: searchTerms[commId]?.trim() })}
         </div>
       )
     }
@@ -242,15 +245,15 @@ export default function ParentCommunityPicker({
   return (
     <div className={cardClasses}>
       <div className={headerClasses}>
-        <div>{title}</div>
+        <div>{resolvedTitle}</div>
         {description ? <div className="mt-1 text-xs text-[#9fb0b5]">{description}</div> : null}
       </div>
       {loading ? (
-        <div className="p-4 text-sm text-[#9fb0b5]">Loading your parent communities...</div>
+        <div className="p-4 text-sm text-[#9fb0b5]">{t('communities.picker_loading_parents')}</div>
       ) : error ? (
         <div className="p-4 text-sm text-red-400">{error}</div>
       ) : !filteredCommunities.length ? (
-        <div className="p-4 text-sm text-[#9fb0b5]">You haven't created or joined any parent communities yet.</div>
+        <div className="p-4 text-sm text-[#9fb0b5]">{t('communities.picker_no_parents')}</div>
       ) : (
         <div className="divide-y divide-white/10">
           {filteredCommunities.map(comm => {
@@ -272,7 +275,7 @@ export default function ParentCommunityPicker({
                         onChange={event =>
                           setSearchTerms(prev => ({ ...prev, [comm.id]: event.target.value }))
                         }
-                        placeholder="Search members"
+                        placeholder={t('communities.picker_search_members')}
                         className={searchInputClasses}
                         type="text"
                         spellCheck={false}

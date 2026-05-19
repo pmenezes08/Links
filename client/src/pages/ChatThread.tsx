@@ -273,13 +273,13 @@ export default function ChatThread(){
       const r = await fetch('/api/me/steve/reminders', { credentials: 'include' })
       const d = await r.json()
       if (!r.ok) {
-        setReminderVaultError(typeof d?.error === 'string' ? d.error : 'Could not load reminders')
+        setReminderVaultError(typeof d?.error === 'string' ? d.error : t('chat.reminder_load_failed'))
         setReminderRows([])
         return
       }
       setReminderRows(Array.isArray(d.reminders) ? d.reminders : [])
     } catch {
-      setReminderVaultError('Network error')
+      setReminderVaultError(t('chat.reminder_network_error'))
       setReminderRows([])
     } finally {
       setReminderVaultLoading(false)
@@ -582,7 +582,7 @@ export default function ChatThread(){
   async function commitEdit(){
     if (!editingId) return
     const newBody = editText.trim()
-    if (!newBody) { alert('Message cannot be empty'); return }
+    if (!newBody) { alert(t('chat.message_empty')); return }
     const prev = messages
     setEditingSaving(true)
     // Optimistically update - clear encryption flags since server will store as plain text
@@ -599,13 +599,13 @@ export default function ChatThread(){
       const res = await fetch('/api/chat/edit_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ message_id: editingId, text: newBody }) })
       const j = await res.json().catch(()=>null)
       if (!j?.success){
-        alert(j?.error || 'Edit failed')
+        alert(j?.error || t('chat.edit_failed'))
         setMessages(prev)
       } else {
         setEditingId(null); setEditText('')
       }
     }catch(err){
-      alert('Network error while editing')
+      alert(t('chat.edit_network_error'))
       setMessages(prev)
     } finally { setEditingSaving(false) }
   }
@@ -1949,7 +1949,7 @@ export default function ChatThread(){
       handleImageFile(file, 'gif')
     } catch (err) {
       console.error('Failed to prepare GIF for chat', err)
-      alert('Unable to attach GIF. Please try again.')
+      alert(t('chat.attach_gif_failed'))
     }
   }
 
@@ -2102,7 +2102,7 @@ export default function ChatThread(){
         setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
         recentOptimisticRef.current.delete(tempId)
         URL.revokeObjectURL(url)
-        alert(j?.error || 'Failed to send audio')
+        alert(j?.error || t('chat.failed_send_audio'))
       } else if (j.message_id) {
         idBridgeRef.current.tempToServer.set(tempId, j.message_id)
         idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
@@ -2130,7 +2130,7 @@ export default function ChatThread(){
       console.error('Failed to send shared audio', error)
       setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
       recentOptimisticRef.current.delete(tempId)
-      alert('Failed to send audio')
+      alert(t('chat.failed_send_audio'))
     } finally {
       setSending(false)
     }
@@ -2170,7 +2170,7 @@ export default function ChatThread(){
         setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
         recentOptimisticRef.current.delete(tempId)
         URL.revokeObjectURL(url)
-        alert(j?.error || 'Failed to send audio')
+        alert(j?.error || t('chat.failed_send_audio'))
       } else {
         // Update optimistic message with server data and remove duplicates
         if (j.message_id) {
@@ -2204,7 +2204,7 @@ export default function ChatThread(){
       console.error('Failed to send audio', error)
       setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
       recentOptimisticRef.current.delete(tempId)
-      alert('Failed to send audio')
+      alert(t('chat.failed_send_audio'))
     }finally{
       setSending(false)
     }
@@ -2340,7 +2340,7 @@ export default function ChatThread(){
         setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
         recentOptimisticRef.current.delete(tempId)
         URL.revokeObjectURL(url)
-        alert(j?.error || 'Failed to send audio message')
+        alert(j?.error || t('chat.failed_send_audio'))
       } else {
         // Update optimistic message with server data and remove duplicates
         if (j.message_id) {
@@ -2376,7 +2376,7 @@ export default function ChatThread(){
       setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
       recentOptimisticRef.current.delete(tempId)
       const message = error instanceof Error ? error.message : String(error)
-      alert('Failed to send voice message: ' + message)
+      alert(t('chat.failed_send_voice', { message }))
     } finally {
       setSending(false)
     }
@@ -2433,7 +2433,7 @@ export default function ChatThread(){
 
   function handleDeleteMessage(messageId: number | string, messageData: Message) {
     // Show confirmation dialog
-    if (!confirm('Are you sure you want to delete this message?')) {
+    if (!confirm(t('chat.delete_message_confirm'))) {
       return
     }
 
@@ -2506,11 +2506,11 @@ export default function ChatThread(){
         
         // Show error
         if (j?.error) {
-          alert(j.error === 'Premium subscription required!' 
-            ? 'Premium subscription required to delete messages' 
+          alert(j.error === t('chat.premium_required_delete') 
+            ? t('chat.premium_required_delete') 
             : `Failed to delete message: ${j.error}`)
         } else {
-          alert('Failed to delete message')
+          alert(t('chat.failed_delete_message'))
         }
       } else {
         // Success - keep in pending deletions for a while to prevent re-appearing
@@ -2539,7 +2539,7 @@ export default function ChatThread(){
         })
       })
       
-      alert('Network error. Could not delete message.')
+      alert(t('chat.delete_network_error'))
     })
   }
 
@@ -2548,7 +2548,7 @@ export default function ChatThread(){
       (typeof messageId === 'number' && messageId > 0) ||
       (typeof messageId === 'string' && /^\d+$/.test(messageId) && Number(messageId) > 0)
     if (!hasPersistedServerId) return
-    if (!confirm('Remove this attachment from the message?')) return
+    if (!confirm(t('chat.remove_attachment_confirm'))) return
     try {
       const res = await fetch('/api/chat/dm/remove_message_media', {
         method: 'POST',
@@ -2558,7 +2558,7 @@ export default function ChatThread(){
       })
       const j = await res.json().catch(() => null)
       if (!j?.success) {
-        alert(j?.error || 'Could not remove attachment')
+        alert(j?.error || t('chat.failed_remove_attachment'))
         return
       }
       if (j.deleted_message) {
@@ -2581,7 +2581,7 @@ export default function ChatThread(){
         })
       )
     } catch {
-      alert('Network error. Could not remove attachment.')
+      alert(t('chat.remove_attachment_network_error'))
     }
   }
 
@@ -2617,7 +2617,7 @@ export default function ChatThread(){
     if (selectedMessages.size === 0) return
     
     const count = selectedMessages.size
-    if (!confirm(`Delete ${count} message${count > 1 ? 's' : ''}?`)) {
+    if (!confirm(t('chat.delete_messages_confirm', { count }))) {
       return
     }
 
@@ -2678,15 +2678,15 @@ export default function ChatThread(){
       })
       const j = await res.json().catch(() => null)
       if (j?.success) {
-        alert(`@${username} has been blocked. You can manage blocked users in Settings → Privacy & Security.`)
+        alert(t('feed.user_blocked', { username }))
         setShowBlockModal(false)
         setBlockReason('')
         navigate('/user_chat')
       } else {
-        alert(j?.error || 'Failed to block user')
+        alert(j?.error || t('feed.block_user_failed'))
       }
     } catch {
-      alert('Network error. Could not block user.')
+      alert(t('feed.block_user_network_failed'))
     } finally {
       setBlockSubmitting(false)
     }
@@ -2776,7 +2776,7 @@ export default function ChatThread(){
                   onClick={() => setHeaderMenuOpen(false)}
                 >
                   <i className="fa-solid fa-user text-xs text-[#4db6ac]" />
-                  <span>View Profile</span>
+                  <span>{t('chat.view_profile')}</span>
                 </Link>
                 <button
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
@@ -2786,7 +2786,7 @@ export default function ChatThread(){
                   }}
                 >
                   <i className="fa-solid fa-photo-film text-xs text-[#4db6ac]" />
-                  <span>View Media</span>
+                  <span>{t('chat.view_media')}</span>
                 </button>
                 {isSteveDm && (
                   <button
@@ -2799,7 +2799,7 @@ export default function ChatThread(){
                     }}
                   >
                     <i className="fa-solid fa-clock text-xs text-[#4db6ac]" aria-hidden />
-                    <span>Reminder Vault</span>
+                    <span>{t('chat.reminder_vault')}</span>
                   </button>
                 )}
                 {(username || '').toLowerCase() === 'steve' && (
@@ -2807,7 +2807,7 @@ export default function ChatThread(){
                     className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
                     onClick={() => {
                       setHeaderMenuOpen(false)
-                      if (!confirm("Reset Steve's conversation context? Steve will still have the full chat history but will stop referencing older discussions.")) return
+                      if (!confirm(t('chat.reset_steve_confirm'))) return
                       fetch('/api/steve/reset_dm_context', {
                         method: 'POST',
                         credentials: 'include',
@@ -2817,16 +2817,16 @@ export default function ChatThread(){
                         .then(r => r.json())
                         .then(d => {
                           if (d?.success) {
-                            alert("Steve's context has been reset.")
+                            alert(t('chat.reset_steve_success'))
                           } else {
-                            alert(d?.error || 'Failed to reset')
+                            alert(d?.error || t('chat.reset_steve_failed'))
                           }
                         })
-                        .catch(() => alert('Failed to reset context'))
+                        .catch(() => alert(t('chat.reset_steve_context_failed')))
                     }}
                   >
                     <i className="fa-solid fa-rotate text-xs text-[#4db6ac]" />
-                    <span>Reset Steve</span>
+                    <span>{t('chat.reset_steve')}</span>
                   </button>
                 )}
                 <button
@@ -2837,7 +2837,7 @@ export default function ChatThread(){
                   }}
                 >
                   <i className="fa-solid fa-ban text-xs" />
-                  <span>Block User</span>
+                  <span>{t('chat.block_user')}</span>
                 </button>
               </div>
             </div>
@@ -2898,7 +2898,7 @@ export default function ChatThread(){
           <div className="flex flex-col items-center justify-center py-20 text-[#9fb0b5]">
             <i className="fa-solid fa-wifi-slash text-3xl mb-3 opacity-50" />
             <div className="text-sm">{t('chat.offline_unavailable')}</div>
-            <div className="text-xs mt-1 opacity-70">Go back online to load this conversation</div>
+            <div className="text-xs mt-1 opacity-70">{t('chat.offline_go_online')}</div>
           </div>
         )}
         {messages.map((m, index) => {
@@ -3029,7 +3029,7 @@ export default function ChatThread(){
                       
                       if (!cleanStoryId || cleanStoryId === 'undefined' || cleanStoryId === 'null') {
                         console.error('Invalid story ID:', storyId)
-                        alert('Story reference is invalid')
+                        alert(t('chat.story_invalid'))
                         return
                       }
                       
@@ -3038,11 +3038,11 @@ export default function ChatThread(){
                       
                       if (!res.ok) {
                         if (res.status === 404) {
-                          alert('This story is no longer available')
+                          alert(t('chat.story_unavailable'))
                           return
                         }
                         console.error('HTTP error:', res.status)
-                        alert('Unable to load story')
+                        alert(t('chat.story_load_failed'))
                         return
                       }
                       
@@ -3054,14 +3054,14 @@ export default function ChatThread(){
                         navigate(`/community_feed_react/${json.story.community_id}`, { state: { openStoryId: Number(cleanStoryId) } })
                       } else if (json?.error === 'Story not found' || json?.error === 'Story expired') {
                         // Story might have expired
-                        alert('This story is no longer available')
+                        alert(t('chat.story_unavailable'))
                       } else {
                         console.error('Failed to get story details:', json)
-                        alert('Unable to load story')
+                        alert(t('chat.story_load_failed'))
                       }
                     } catch (err) {
                       console.error('Failed to fetch story:', err)
-                      alert('Unable to load story')
+                      alert(t('chat.story_load_failed'))
                     }
                   }}
                   otherUsername={username}
@@ -3081,7 +3081,7 @@ export default function ChatThread(){
             </div>
             <div className="bg-white/10 rounded-2xl rounded-bl-lg px-4 py-2">
               <div className="flex items-center gap-1">
-                <span className="text-white/70 text-sm">Steve is typing</span>
+                <span className="text-white/70 text-sm">{t('chat.steve_typing')}</span>
                 <span className="flex gap-0.5">
                   <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                   <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -3209,7 +3209,7 @@ export default function ChatThread(){
                     <i className="fa-solid fa-image text-[#4db6ac] text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">Photos</div>
+                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.photos')}</div>
                     <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.send_from_gallery')}</div>
                   </div>
                 </button>
@@ -3221,8 +3221,8 @@ export default function ChatThread(){
                     <i className="fa-solid fa-camera text-[#4db6ac] text-sm sm:text-base" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white font-medium text-sm sm:text-base">Camera</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">Take a photo</div>
+                    <div className="text-white font-medium text-sm sm:text-base">{t('chat.camera')}</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.take_photo')}</div>
                   </div>
                 </button>
                 <button
@@ -3234,7 +3234,7 @@ export default function ChatThread(){
                   </div>
                   <div className="min-w-0">
                     <div className="text-white font-medium text-sm sm:text-base">GIF</div>
-                    <div className="text-white/60 text-[10px] sm:text-xs">Powered by GIPHY</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">{t('chat.powered_by_giphy')}</div>
                   </div>
                 </button>
                 <button
@@ -3699,7 +3699,7 @@ export default function ChatThread(){
               <div className="w-16 h-16 bg-red-600/20 rounded-full flex items-center justify-center mx-auto mb-3">
                 <i className="fa-solid fa-microphone-slash text-red-400 text-2xl" />
               </div>
-              <h3 className="text-white text-lg font-medium mb-2">Microphone Access Needed</h3>
+              <h3 className="text-white text-lg font-medium mb-2">{t('chat.microphone_access_needed')}</h3>
               <p className="text-white/70 text-sm">
                 To enable voice messages, please allow microphone access in your browser settings.
               </p>
@@ -3785,7 +3785,7 @@ export default function ChatThread(){
               <div className="w-16 h-16 bg-[#4db6ac]/20 rounded-full flex items-center justify-center mx-auto mb-3">
                 <i className="fa-solid fa-microphone text-[#4db6ac] text-2xl" />
               </div>
-              <h3 className="text-white text-lg font-medium mb-2">Microphone Access</h3>
+              <h3 className="text-white text-lg font-medium mb-2">{t('chat.microphone_access')}</h3>
               <p className="text-white/70 text-sm leading-relaxed">
                 To send voice messages, we need access to your microphone. 
                 {isMobile ? ' Your browser will ask for permission.' : ' Click "Allow" when your browser asks for permission.'}
@@ -3796,15 +3796,15 @@ export default function ChatThread(){
             <div className="mb-6 space-y-2">
               <div className="flex items-center gap-3 text-sm text-white/80">
                 <i className="fa-solid fa-check text-[#4db6ac] text-xs" />
-                <span>Record voice messages</span>
+                <span>{t('chat.mic_record_voice')}</span>
               </div>
               <div className="flex items-center gap-3 text-sm text-white/80">
                 <i className="fa-solid fa-check text-[#4db6ac] text-xs" />
-                <span>Preview before sending</span>
+                <span>{t('chat.mic_preview_before_send')}</span>
               </div>
               <div className="flex items-center gap-3 text-sm text-white/80">
                 <i className="fa-solid fa-check text-[#4db6ac] text-xs" />
-                <span>Your audio stays private</span>
+                <span>{t('chat.mic_audio_private')}</span>
               </div>
             </div>
 
@@ -3837,7 +3837,7 @@ export default function ChatThread(){
           <div className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-[80%] max-w-xs p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-3">
               <i className="fa-solid fa-globe text-[#4db6ac]" />
-              <span className="text-white font-semibold text-sm">Translate to</span>
+              <span className="text-white font-semibold text-sm">{t('chat.translate_to')}</span>
             </div>
             <div className="space-y-1">
               {dmTranslateLanguages.map(lang => (
@@ -3916,14 +3916,14 @@ export default function ChatThread(){
                   <li key={row.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
                     {editingVaultId === row.id ? (
                       <div className="space-y-2">
-                        <label className="block text-[11px] uppercase tracking-wide text-white/45">Description</label>
+                        <label className="block text-[11px] uppercase tracking-wide text-white/45">{t('chat.reminder_description')}</label>
                         <textarea
                           value={editVaultText}
                           onChange={(e) => setEditVaultText(e.target.value)}
                           rows={3}
                           className="w-full bg-white/10 border border-white/20 rounded-lg px-2 py-2 text-white text-sm resize-none focus:outline-none focus:border-[#4db6ac]"
                         />
-                        <label className="block text-[11px] uppercase tracking-wide text-white/45 mt-2">When</label>
+                        <label className="block text-[11px] uppercase tracking-wide text-white/45 mt-2">{t('chat.reminder_when')}</label>
                         <input
                           type="datetime-local"
                           value={editVaultIso}
@@ -3957,13 +3957,13 @@ export default function ChatThread(){
                                 })
                                 const data = await res.json()
                                 if (!res.ok || !data.success) {
-                                  alert(typeof data.message === 'string' ? data.message : 'Could not save')
+                                  alert(typeof data.message === 'string' ? data.message : t('chat.reminder_could_not_save'))
                                   return
                                 }
                                 setEditingVaultId(null)
                                 void loadReminderVault()
                               } catch {
-                                alert('Could not save')
+                                alert(t('chat.reminder_could_not_save'))
                               }
                             }}
                           >
@@ -3979,10 +3979,10 @@ export default function ChatThread(){
                             type="button"
                             className="flex-shrink-0 p-2 rounded-lg text-white/40 hover:text-rose-300 hover:bg-white/10 disabled:opacity-40"
                             title="Remove reminder"
-                            aria-label={`Delete reminder ${row.id}`}
+                            aria-label={t('chat.reminder_delete_aria', { id: row.id })}
                             disabled={vaultDeletingId === row.id}
                             onClick={async () => {
-                              if (!window.confirm('Remove this reminder?')) return
+                              if (!window.confirm(t('chat.reminder_remove_confirm'))) return
                               setVaultDeletingId(row.id)
                               try {
                                 const res = await fetch(`/api/me/steve/reminders/${row.id}`, {
@@ -3992,12 +3992,12 @@ export default function ChatThread(){
                                 })
                                 const data = await res.json().catch(() => ({}))
                                 if (!res.ok || !data.success) {
-                                  alert(typeof data.message === 'string' ? data.message : 'Could not remove')
+                                  alert(typeof data.message === 'string' ? data.message : t('chat.reminder_could_not_remove'))
                                   return
                                 }
                                 void loadReminderVault()
                               } catch {
-                                alert('Could not remove')
+                                alert(t('chat.reminder_could_not_remove'))
                               } finally {
                                 setVaultDeletingId(null)
                               }
@@ -4224,11 +4224,11 @@ export default function ChatThread(){
                 disabled={blockSubmitting}
               >
                 <option value="">Select a reason...</option>
-                <option value="Harassment">Harassment or bullying</option>
-                <option value="Spam">Spam or scam</option>
-                <option value="Offensive content">Offensive content</option>
-                <option value="Threats">Threats or violence</option>
-                <option value="Other">Other</option>
+                <option value="Harassment">{t('feed.report_reason_harassment')}</option>
+                <option value="Spam">{t('feed.report_reason_spam')}</option>
+                <option value="Offensive content">{t('feed.report_reason_offensive')}</option>
+                <option value="Threats">{t('feed.report_reason_threats')}</option>
+                <option value="Other">{t('feed.report_reason_other')}</option>
               </select>
             </div>
 

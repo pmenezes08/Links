@@ -255,7 +255,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                                     const parts = replySnippet.split('|')
                                     const isImage = replySnippet.startsWith('📷|')
                                     const icon = isImage ? 'fa-image' : 'fa-video'
-                                    const defaultLabel = isImage ? 'Photo' : 'Video'
+                                    const defaultLabel = isImage ? t('chat.photo') : t('chat.video')
                                     const caption =
                                       parts.length > 2 ? parts.slice(2).join('|').trim() || defaultLabel : defaultLabel
                                     return (
@@ -268,7 +268,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                                     return (
                                       <>
                                         <i className="fa-solid fa-microphone text-[9px]" />
-                                        {replySnippet.length > 2 ? replySnippet.slice(2).trim() : 'Voice message'}
+                                        {replySnippet.length > 2 ? replySnippet.slice(2).trim() : t('chat.voice_message')}
                                       </>
                                     )
                                   }
@@ -337,7 +337,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                       ) : (
                         <MessageImage
                           src={normalizeMediaPath(msg.media_paths[0])}
-                          alt="Media"
+                          alt={t('chat.media_preview_alt')}
                           className="w-full rounded-lg"
                         />
                       )}
@@ -361,7 +361,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                       >
                         <MessageImage
                           src={normalizeMediaPath(msg.image)}
-                          alt="Shared image"
+                          alt={t('chat.shared_image_alt')}
                           className="w-full rounded-lg"
                         />
                       </div>
@@ -398,7 +398,7 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                       <div className="px-2 pb-1 pt-0.5">
                         <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
                           <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
-                          <span>{translationForMessage ? 'Steve summary (translated)' : 'Steve summary'}</span>
+                          <span>{translationForMessage ? t('feed.steve_summary_translated') : t('feed.steve_summary')}</span>
                           <div className="ml-auto flex items-center gap-1">
                             {translationForMessage && (
                               <button
@@ -448,13 +448,13 @@ function GroupMessageRowInner(props: GroupMessageRowProps) {
                     ) : (
                       (() => {
                         try {
-                          const t = new Date(msg.created_at).getTime()
-                          if (Date.now() - t < 120000)
+                          const createdMs = new Date(msg.created_at).getTime()
+                          if (Date.now() - createdMs < 120000)
                             return (
                               <div className="px-2 pb-1 pt-0.5">
                                 <div className="flex items-center gap-1">
                                   <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-white/40" />
-                                  <span className="text-[11px] text-white/40">Steve summary generating</span>
+                                  <span className="text-[11px] text-white/40">{t('feed.steve_summary_generating')}</span>
                                   <span className="flex gap-0.5 ml-0.5">
                                     <span
                                       className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce"

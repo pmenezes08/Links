@@ -373,6 +373,79 @@ catalog convention and namespaces.
       `users.preferred_locale`).
 - [ ] Switch back to **English**. Expected: same instant re-render and
       a fresh `PATCH /api/me/locale`. Reload still shows English.
+- [ ] Simulate a failed `PATCH /api/me/locale` (DevTools offline or
+      mocked 500). Expected: the picker does **not** show the green
+      saved state, even if the in-session UI language changed.
+
+### Feed smoke sweep
+
+- [ ] With pt-PT saved, hard reload and open `/home` or `/feed`.
+      Expected: loading/empty states, dashboard filter labels, poll
+      labels, and post action chrome render in Portuguese; user post
+      bodies and usernames remain unchanged.
+- [ ] Open `/community_feed_react/:id`. Expected: community header
+      fallback copy, stories, announcements, search, poll voters,
+      hide/report/block modals, and bottom navigation labels are in
+      Portuguese.
+- [ ] Open `/group_feed_react/:id`. Expected: group details, post card
+      edit/delete actions, announcements, members/invite modals, and
+      the more sheet are in Portuguese.
+- [ ] Open `/post/:id` and `/reply/:id` (or `/group_reply/:id`).
+      Expected: reply composer placeholders, attachment menus,
+      confirmations, Steve summary chrome, views/reactions modals,
+      and empty reply states are in Portuguese.
+- [ ] Switch back to English, Save, hard reload, and revisit the same
+      feed routes. Expected: chrome returns to English while content
+      authored by users stays in its original language.
+
+### Community + messaging smoke sweep (PRs 39–47)
+
+- [ ] With pt-PT saved, open `/premium_dashboard`. Expected: dashboard
+      tabs, About C-Point modal, and home timeline chrome are in
+      Portuguese.
+- [ ] Open a community **Calendar**, **Polls**, and **Useful Links &
+      Docs** page. Expected: headers, empty states, create/edit
+      modals, and confirmations are in Portuguese.
+- [ ] Open `/communities`. Expected: tabs, spotlight tour, create
+      modals, groups tab, and community item actions are in Portuguese.
+- [ ] Open **Manage Community** (EditCommunity), owner setup intro,
+      delete/frozen modals, and parent community picker. Expected: all
+      chrome in Portuguese; typed `DELETE` confirmation stays literal
+      English for validation.
+- [ ] Open `/community/:id/members`. Expected: member list, invite modal
+      (username / email / QR), role badges, and sub-community actions
+      are in Portuguese.
+- [ ] Open `/user_chat` (Messages inbox). Expected: tabs, community
+      filter, group/DM lists, archived section, new-message flow, and
+      group chat creator are in Portuguese.
+- [ ] Open a **DM thread** and a **group chat thread**. Expected:
+      composer, attachment sheet, long-press menu (Reply/Copy/Edit/
+      Delete), Steve summary chrome, and header menus are in
+      Portuguese.
+- [ ] Open **View Media** from a DM and from a group chat. Expected:
+      empty state, date headers, and viewer chrome are in Portuguese.
+- [ ] Switch back to English, Save, hard reload, and revisit the same
+      community and chat routes. Expected: chrome returns to English.
+
+### Profile, notifications, networking, tasks, subscriptions smoke sweep (PRs 48–52)
+
+- [ ] With pt-PT saved, open `/notifications`. Expected: tabs, empty
+      states, invite actions, and time labels are in Portuguese.
+- [ ] Open `/profile` and your own `/profile/:username` view. Expected:
+      edit chrome, spotlight modals, and settings sections are in
+      Portuguese; **no** “What does Steve know about me?” button on the
+      self public profile.
+- [ ] Open `/networking`. Expected: Steve networking chrome, profile gate,
+      and chat history labels are in Portuguese.
+- [ ] Open `/community/:id/tasks_react`. Expected: task tabs, create
+      form, empty states, and confirmations are in Portuguese.
+- [ ] Open `/subscription_plans`. Expected: entry modal, plan picker,
+      and community tier modals use Portuguese chrome; the entry modal
+      sits at the **top** of the viewport (safe-area padding), not
+      bottom-sheet style. KB plan names, feature bullets, and prices
+      stay as returned by the API.
+- [ ] Switch back to English, Save, hard reload, and revisit the same
+      routes. Expected: chrome returns to English.
 
 ### API errors
 

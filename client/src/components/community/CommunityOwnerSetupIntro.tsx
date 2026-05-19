@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { clearDeviceCache } from '../../utils/deviceCache'
 import { invalidateDashboardCache } from '../../utils/dashboardCache'
 
@@ -103,17 +104,6 @@ export type CommunityOwnerSetupIntroProps = {
 
 const PANEL_CLASS = 'rounded-2xl border border-white/10 bg-black'
 
-const SUB_COMMUNITY_FIRST_BODY =
-  "Everyone who joins the community is part of the main network — that's the shared home base. Sub-communities are smaller groups within that network: each has its own membership and its own feed, so only people in that sub-community see what's posted there."
-
-const SETUP_HEADLINE = "Let's set up your community."
-
-const OPTION_B_BODY =
-  "We'll start with structure — the shape of your network and sub-communities. The steps that follow focus only on the main community: what it says about itself, the plan, how many members it can hold, its image, and my personality when members talk to me. You can skip ahead whenever you like; you're not committing until you hit Save."
-
-const INVITE_BODY =
-  "This is when your space really comes alive. When you're ready, I'll take you to the Members page — from there you can invite people by link, email, or username."
-
 function ManageCommunityHint({
   onOpenManageCommunity,
   onStay,
@@ -121,14 +111,14 @@ function ManageCommunityHint({
   onOpenManageCommunity: () => void
   onStay: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <div className="space-y-5 text-center">
       <p className="text-sm leading-relaxed text-[#d5e4e7]">
-        You can finish setting up the community in <span className="font-semibold text-white">Manage Community</span>.
+        {t('communities.owner_setup_manage_hint')}
       </p>
       <p className="text-[10px] leading-relaxed text-white/30">
-        Tap <span className="text-white/40">More</span> (<span className="text-white/40">⋯</span>) on the bottom navigation
-        bar, then tap <span className="text-white/40">Manage Community</span>.
+        {t('communities.owner_setup_manage_nav_hint')}
       </p>
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
         <button
@@ -136,14 +126,14 @@ function ManageCommunityHint({
           onClick={onOpenManageCommunity}
           className="w-full rounded-xl bg-[#4db6ac] px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:w-auto"
         >
-          Open Manage Community
+          {t('communities.owner_setup_open_manage')}
         </button>
         <button
           type="button"
           onClick={onStay}
           className="w-full rounded-xl border border-white/15 bg-white/[0.04] px-5 py-3 text-sm font-medium text-white/90 transition hover:bg-white/[0.08] sm:w-auto"
         >
-          Stay on feed
+          {t('communities.owner_setup_stay_on_feed')}
         </button>
       </div>
     </div>
@@ -164,6 +154,7 @@ export default function CommunityOwnerSetupIntro({
   onOpenManageCommunity,
   onCommunityUpdated,
 }: CommunityOwnerSetupIntroProps) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const titleId = useId()
   const steps = useMemo(() => buildIntroSteps(showSubCommunityFirstStep), [showSubCommunityFirstStep])
@@ -350,7 +341,7 @@ export default function CommunityOwnerSetupIntro({
       const r = await fetch('/update_community', { method: 'POST', credentials: 'include', body: fd })
       const j = await r.json().catch(() => null)
       if (!j?.success) {
-        alert(j?.error || 'Failed to save')
+        alert(j?.error || t('communities.owner_setup_failed_save'))
         return false
       }
       if (deviceFeedCacheKey) clearDeviceCache(deviceFeedCacheKey)
@@ -368,7 +359,7 @@ export default function CommunityOwnerSetupIntro({
     try {
       const ok = await postUpdateCommunity(draft, {})
       if (ok) {
-        setSaveHint('Saved')
+        setSaveHint(t('communities.owner_setup_saved'))
         window.setTimeout(() => setSaveHint(null), 2200)
       }
     } finally {
@@ -391,7 +382,7 @@ export default function CommunityOwnerSetupIntro({
         }))
         if (removeBackground) setRemoveBackground(false)
         if (imageFile) setImageFile(null)
-        setSaveHint('Saved')
+        setSaveHint(t('communities.owner_setup_saved'))
         window.setTimeout(() => setSaveHint(null), 2200)
       }
     } finally {
@@ -404,11 +395,11 @@ export default function CommunityOwnerSetupIntro({
     if (raw) {
       const n = parseInt(raw, 10)
       if (!Number.isFinite(n) || n < 1) {
-        alert('Enter a positive number for the member limit, or clear the field.')
+        alert(t('communities.owner_setup_member_limit_invalid'))
         return
       }
       if (memberCap != null && memberCap > 0 && n > memberCap) {
-        alert(`Your current plan allows up to ${memberCap} members. Enter ${memberCap} or less.`)
+        alert(t('communities.owner_setup_member_limit_over_cap', { cap: memberCap }))
         return
       }
     }
@@ -417,7 +408,7 @@ export default function CommunityOwnerSetupIntro({
     try {
       const ok = await postUpdateCommunity(draft, {})
       if (ok) {
-        setSaveHint('Saved')
+        setSaveHint(t('communities.owner_setup_saved'))
         window.setTimeout(() => setSaveHint(null), 2200)
       }
     } finally {
@@ -436,14 +427,14 @@ export default function CommunityOwnerSetupIntro({
       })
       const data = await resp.json().catch(() => null)
       if (data?.success) {
-        setSaveHint('Saved')
+        setSaveHint(t('communities.owner_setup_saved'))
         window.setTimeout(() => setSaveHint(null), 2200)
         await onCommunityUpdated()
       } else {
-        alert(data?.error || 'Failed to update Steve personality')
+        alert(data?.error || t('communities.owner_setup_failed_personality'))
       }
     } catch {
-      alert('Failed to update Steve personality')
+      alert(t('communities.owner_setup_failed_personality'))
     } finally {
       setSavingPersonality(false)
     }
@@ -451,8 +442,11 @@ export default function CommunityOwnerSetupIntro({
 
   const memberLimitHelp =
     memberCap != null && memberCap > 0
-      ? `On your current plan${tierLabel ? ` (${tierLabel})` : ''}, you can have up to ${memberCap} members. Leave blank for no custom cap.`
-      : 'Leave blank for no custom cap, or set a limit that fits your plan (see Manage Community for the exact ceiling).'
+      ? t('communities.owner_setup_member_limit_help_capped', {
+          tierSuffix: tierLabel ? t('communities.owner_setup_tier_suffix', { tier: tierLabel }) : '',
+          cap: memberCap,
+        })
+      : t('communities.owner_setup_member_limit_help_open')
 
   const heyName = (ownerDisplayName || 'there').trim() || 'there'
   const lastStep = stepIndex >= stepCount - 1
@@ -465,8 +459,7 @@ export default function CommunityOwnerSetupIntro({
 
   const persistFooter = (
     <p className="text-center text-[10px] leading-relaxed text-white/30">
-      Use <span className="text-white/35">More</span> (⋯) on the bottom bar anytime for{' '}
-      <span className="text-white/35">Manage Community</span>.
+      {t('communities.owner_setup_footer_hint')}
     </p>
   )
 
@@ -478,7 +471,7 @@ export default function CommunityOwnerSetupIntro({
         onClick={() => void saveCommunityFieldsOnly()}
         className="rounded-xl bg-[#4db6ac] px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
       >
-        {saving ? 'Saving…' : 'Save'}
+        {saving ? t('communities.saving') : t('common.save')}
       </button>
       {saveHint ? <span className="text-xs text-[#4db6ac]">{saveHint}</span> : null}
     </div>
@@ -492,7 +485,7 @@ export default function CommunityOwnerSetupIntro({
         onClick={() => void saveWithImage()}
         className="rounded-xl bg-[#4db6ac] px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
       >
-        {saving ? 'Saving…' : 'Save'}
+        {saving ? t('communities.saving') : t('common.save')}
       </button>
       {saveHint ? <span className="text-xs text-[#4db6ac]">{saveHint}</span> : null}
     </div>
@@ -503,44 +496,34 @@ export default function CommunityOwnerSetupIntro({
     case 'welcome':
       stepContent = (
         <>
-          <h3 className="text-base font-semibold text-white">{`Hey ${heyName}, Steve here.`}</h3>
-          <p className="mt-2 text-base font-semibold text-white">{SETUP_HEADLINE}</p>
-          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{OPTION_B_BODY}</p>
+          <h3 className="text-base font-semibold text-white">{t('communities.owner_setup_welcome_greeting', { name: heyName })}</h3>
+          <p className="mt-2 text-base font-semibold text-white">{t('communities.owner_setup_headline')}</p>
+          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{t('communities.owner_setup_intro_body')}</p>
         </>
       )
       break
     case 'structure':
       stepContent = (
         <>
-          <h3 className="text-base font-semibold text-white">Let&apos;s define your community structure</h3>
-          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{SUB_COMMUNITY_FIRST_BODY}</p>
+          <h3 className="text-base font-semibold text-white">{t('communities.owner_setup_structure_title')}</h3>
+          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{t('communities.owner_setup_structure_body')}</p>
           <p className="mt-3 text-sm leading-relaxed text-[#9fb0b5]">
-            To help you plan — you don&apos;t have to lock this in yet:
+            {t('communities.owner_setup_structure_plan_intro')}
           </p>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-relaxed text-[#9fb0b5]">
-            <li>
-              Roughly <span className="font-medium text-white/85">how many</span> sub-communities do you want to start
-              with? (You can always add more later.)
-            </li>
-            <li>
-              Any <span className="font-medium text-white/85">working names</span> in mind — by team, cohort, topic, or
-              region?
-            </li>
-            <li>
-              Do you imagine <span className="font-medium text-white/85">nested</span> spaces (a group inside a
-              sub-community), or is <span className="font-medium text-white/85">one level</span> enough for now?
-            </li>
+            <li>{t('communities.owner_setup_structure_q_count')}</li>
+            <li>{t('communities.owner_setup_structure_q_names')}</li>
+            <li>{t('communities.owner_setup_structure_q_nested')}</li>
           </ul>
           <p className="mt-3 text-sm leading-relaxed text-[#9fb0b5]">
-            <span className="font-medium text-white/85">See where to manage structure</span> on{' '}
-            <span className="font-medium text-white/85">Communities</span>.
+            {t('communities.owner_setup_structure_manage_hint')}
           </p>
           <button
             type="button"
             onClick={goCommunitiesStructure}
             className="mt-3 w-full rounded-xl border border-[#4db6ac]/50 bg-[#4db6ac]/10 px-5 py-3 text-sm font-semibold text-[#4db6ac] transition hover:bg-[#4db6ac]/20"
           >
-            See where to manage structure
+            {t('communities.owner_setup_see_structure')}
           </button>
         </>
       )
@@ -548,15 +531,15 @@ export default function CommunityOwnerSetupIntro({
     case 'description':
       stepContent = (
         <>
-          <h3 className="text-base font-semibold text-white">Description</h3>
+          <h3 className="text-base font-semibold text-white">{t('communities.description')}</h3>
           <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">
-            This appears under your community name on the feed.
+            {t('communities.owner_setup_description_hint')}
           </p>
           <textarea
             className="mt-3 w-full rounded-md border border-white/15 bg-black px-3 py-2 text-[16px] text-white outline-none focus:border-[#4db6ac] min-h-[100px]"
             value={draft.description}
             onChange={e => setDraft(d => ({ ...d, description: e.target.value }))}
-            placeholder="What is this community about?"
+            placeholder={t('communities.description_placeholder')}
             rows={4}
           />
           {saveBarDescription}
@@ -566,11 +549,11 @@ export default function CommunityOwnerSetupIntro({
     case 'subscription':
       stepContent = (
         <>
-          <h3 className="text-base font-semibold text-white">Subscription</h3>
+          <h3 className="text-base font-semibold text-white">{t('communities.owner_setup_subscription_title')}</h3>
           <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">
             {billingInherited
-              ? 'Billing and tier for this community are managed on the parent network. Open the root community’s Manage Community to change the plan.'
-              : 'Your community plan sets member caps, storage, and more. You can compare tiers and checkout here.'}
+              ? t('communities.owner_setup_subscription_inherited')
+              : t('communities.owner_setup_subscription_local')}
           </p>
           {!billingInherited && (
             <button
@@ -582,7 +565,7 @@ export default function CommunityOwnerSetupIntro({
               }
               className="mt-4 w-full rounded-xl bg-[#4db6ac] px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110"
             >
-              Community plans & billing
+              {t('communities.owner_setup_plans_billing')}
             </button>
           )}
         </>
@@ -591,14 +574,14 @@ export default function CommunityOwnerSetupIntro({
     case 'member_limit':
       stepContent = (
         <>
-          <h3 className="text-base font-semibold text-white">Member limit</h3>
+          <h3 className="text-base font-semibold text-white">{t('communities.owner_setup_member_limit_title')}</h3>
           <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{memberLimitHelp}</p>
           <input
             type="number"
             min={1}
             inputMode="numeric"
             className="mt-3 w-full rounded-md border border-white/15 bg-black px-3 py-2 text-[16px] text-white outline-none focus:border-[#4db6ac]"
-            placeholder={memberCap != null && memberCap > 0 ? `e.g., ${memberCap}` : 'e.g., 25'}
+            placeholder={memberCap != null && memberCap > 0 ? t('communities.member_limit_example', { count: memberCap }) : t('communities.member_limit_example', { count: 25 })}
             value={draft.maxMembers}
             onChange={e => setDraft(d => ({ ...d, maxMembers: e.target.value.replace(/[^0-9]/g, '') }))}
           />
@@ -609,7 +592,7 @@ export default function CommunityOwnerSetupIntro({
               onClick={() => void saveMemberLimitOnly()}
               className="rounded-xl bg-[#4db6ac] px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
             >
-              {saving ? 'Saving…' : 'Save limit'}
+              {saving ? t('communities.saving') : t('communities.owner_setup_save_limit')}
             </button>
             {saveHint ? <span className="text-xs text-[#4db6ac]">{saveHint}</span> : null}
           </div>
@@ -619,9 +602,9 @@ export default function CommunityOwnerSetupIntro({
     case 'image':
       stepContent = (
         <>
-          <h3 className="text-base font-semibold text-white">Community image</h3>
+          <h3 className="text-base font-semibold text-white">{t('communities.community_image')}</h3>
           <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">
-            Banner shown for your community. Save after choosing a file or removing the current image.
+            {t('communities.owner_setup_image_hint')}
           </p>
           {draft.backgroundPath && !removeBackground && !imageFile && (
             <div className="mt-3 overflow-hidden rounded-lg border border-white/10">
@@ -638,7 +621,7 @@ export default function CommunityOwnerSetupIntro({
             </div>
           )}
           {removeBackground && !imageFile && (
-            <p className="mt-2 text-xs text-amber-200/90">Current image will be removed when you save.</p>
+            <p className="mt-2 text-xs text-amber-200/90">{t('communities.owner_setup_image_remove_on_save')}</p>
           )}
           <input
             type="file"
@@ -659,7 +642,7 @@ export default function CommunityOwnerSetupIntro({
                 setImageFile(null)
               }}
             >
-              Remove current image
+              {t('communities.owner_setup_remove_current_image')}
             </button>
           )}
           {saveBarImage}
@@ -669,9 +652,9 @@ export default function CommunityOwnerSetupIntro({
     case 'personality':
       stepContent = (
         <>
-          <h3 className="text-base font-semibold text-white">Steve personality</h3>
+          <h3 className="text-base font-semibold text-white">{t('communities.steve_personality_label')}</h3>
           <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">
-            How Steve responds when members mention @Steve in comments.
+            {t('communities.owner_setup_personality_hint')}
           </p>
           <select
             className="mt-3 w-full rounded-md border border-white/15 bg-black px-3 py-2 text-[16px] text-white outline-none focus:border-[#4db6ac]"
@@ -696,7 +679,7 @@ export default function CommunityOwnerSetupIntro({
               onClick={() => void savePersonality()}
               className="rounded-xl bg-[#4db6ac] px-4 py-2.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:opacity-50"
             >
-              {savingPersonality ? 'Saving…' : 'Save personality'}
+              {savingPersonality ? t('communities.saving') : t('communities.owner_setup_save_personality')}
             </button>
             {saveHint ? <span className="text-xs text-[#4db6ac]">{saveHint}</span> : null}
           </div>
@@ -706,8 +689,8 @@ export default function CommunityOwnerSetupIntro({
     case 'invite':
       stepContent = (
         <>
-          <h3 className="text-base font-semibold text-white">Your community is ready</h3>
-          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{INVITE_BODY}</p>
+          <h3 className="text-base font-semibold text-white">{t('communities.owner_setup_ready_title')}</h3>
+          <p className="mt-2 text-sm leading-relaxed text-[#9fb0b5]">{t('communities.owner_setup_invite_body')}</p>
         </>
       )
       break
@@ -725,7 +708,7 @@ export default function CommunityOwnerSetupIntro({
       >
         <div className={`w-full max-w-md p-6 sm:p-7 ${PANEL_CLASS}`}>
           <h2 id={titleId} className="sr-only">
-            Finish in Manage Community
+            {t('communities.owner_setup_finish_sr_title')}
           </h2>
           <ManageCommunityHint
             onOpenManageCommunity={openManageAndComplete}
@@ -749,9 +732,9 @@ export default function CommunityOwnerSetupIntro({
         <div className="border-b border-white/10 px-5 py-4 sm:px-7">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-xs uppercase tracking-[0.2em] text-[#4db6ac]">Steve</div>
+              <div className="text-xs uppercase tracking-[0.2em] text-[#4db6ac]">{t('communities.owner_setup_steve_label')}</div>
               <h2 id={titleId} className="mt-1 text-lg font-semibold text-white">
-                {draft.name || 'Your community'}
+                {draft.name || t('communities.owner_setup_your_community')}
               </h2>
             </div>
             <button
@@ -762,7 +745,7 @@ export default function CommunityOwnerSetupIntro({
               }}
               className="shrink-0 rounded-full border border-white/15 px-3 py-1.5 text-xs font-medium text-[#9fb0b5] transition hover:border-[#4db6ac]/40 hover:text-white"
             >
-              Skip
+              {t('feed.skip')}
             </button>
           </div>
           <div className="mt-3 flex gap-1.5" aria-hidden={reducedMotion}>
@@ -784,7 +767,7 @@ export default function CommunityOwnerSetupIntro({
               onClick={() => setStepIndex(i => Math.max(0, i - 1))}
               className="order-2 w-full rounded-xl border border-white/15 bg-white/[0.04] px-5 py-3 text-sm font-medium text-white/90 transition hover:bg-white/[0.08] sm:order-1 sm:w-auto"
             >
-              Back
+              {t('communities.owner_setup_step_back')}
             </button>
           )}
           {!lastStep ? (
@@ -793,7 +776,7 @@ export default function CommunityOwnerSetupIntro({
               onClick={() => setStepIndex(i => Math.min(stepCount - 1, i + 1))}
               className="order-1 w-full rounded-xl bg-[#4db6ac] px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:order-2 sm:w-auto"
             >
-              Next
+              {t('communities.owner_setup_step_next')}
             </button>
           ) : currentStepId === 'invite' ? (
             <>
@@ -802,14 +785,14 @@ export default function CommunityOwnerSetupIntro({
                 onClick={finishFromSteps}
                 className="order-1 w-full rounded-xl border border-white/15 bg-white/[0.04] px-5 py-3 text-sm font-medium text-white/90 transition hover:bg-white/[0.08] sm:order-2 sm:w-auto"
               >
-                Not yet
+                {t('communities.owner_setup_not_yet')}
               </button>
               <button
                 type="button"
                 onClick={openInviteAndComplete}
                 className="order-2 w-full rounded-xl bg-[#4db6ac] px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:order-3 sm:w-auto"
               >
-                Invite people
+                {t('communities.owner_setup_invite_people')}
               </button>
             </>
           ) : (
@@ -818,7 +801,7 @@ export default function CommunityOwnerSetupIntro({
               onClick={finishFromSteps}
               className="order-1 w-full rounded-xl bg-[#4db6ac] px-5 py-3 text-sm font-semibold text-black transition hover:brightness-110 sm:order-2 sm:w-auto"
             >
-              Done
+              {t('communities.owner_setup_step_finish')}
             </button>
           )}
         </div>

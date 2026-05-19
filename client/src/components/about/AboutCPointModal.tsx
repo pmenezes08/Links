@@ -1,15 +1,21 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
-import {
-  ABOUT_CPOINT_MODAL_COMMUNITY_FEED_FEATURES,
-  ABOUT_CPOINT_MODAL_COMMUNITY_FEEDS_INTRO,
-  ABOUT_CPOINT_MODAL_DMS_PARAS,
-  ABOUT_CPOINT_MODAL_STEVE_PARAS,
-  MANIFESTO_FULL,
-  MANIFESTO_SUMMARY_PARAS,
-} from '../../content/aboutCPoint'
 
-const STEP_TITLES = ['Manifesto', 'Community feeds', 'DMs & group chats', 'Steve'] as const
+const STEP_TITLE_KEYS = [
+  'dashboard.about_step_manifesto',
+  'dashboard.about_step_community_feeds',
+  'dashboard.about_step_dms',
+  'dashboard.about_step_steve',
+] as const
+
+const FEED_FEATURE_KEYS = [
+  { icon: 'fa-regular fa-comments', titleKey: 'dashboard.about_feed_posts_title', textKey: 'dashboard.about_feed_posts_text' },
+  { icon: 'fa-solid fa-square-poll-vertical', titleKey: 'dashboard.about_feed_polls_title', textKey: 'dashboard.about_feed_polls_text' },
+  { icon: 'fa-regular fa-calendar', titleKey: 'dashboard.about_feed_events_title', textKey: 'dashboard.about_feed_events_text' },
+  { icon: 'fa-regular fa-images', titleKey: 'dashboard.about_feed_media_title', textKey: 'dashboard.about_feed_media_text' },
+  { icon: 'fa-regular fa-address-book', titleKey: 'dashboard.about_feed_members_title', textKey: 'dashboard.about_feed_members_text' },
+] as const
 
 function stevePrefillUrl(message: string): string {
   return `/user_chat/chat/Steve?prefill=${encodeURIComponent(message.trim())}`
@@ -56,6 +62,7 @@ function ModalBackdrop({
 }
 
 export default function AboutCPointModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [step, setStep] = useState(0)
   const [manifestoFullOpen, setManifestoFullOpen] = useState(false)
@@ -69,7 +76,8 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
 
   if (!open) return null
 
-  const lastStep = STEP_TITLES.length - 1
+  const lastStep = STEP_TITLE_KEYS.length - 1
+  const manifestoSummary = t('dashboard.about_manifesto_summary', { returnObjects: true }) as string[]
 
   return (
     <>
@@ -77,19 +85,19 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
         <div className="flex justify-between items-start gap-2 mb-2">
           <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-wider text-[#9fb0b5]/70 mb-0.5">
-              About C-Point · {step + 1} / {STEP_TITLES.length}
+              {t('dashboard.about_header', { current: step + 1, total: STEP_TITLE_KEYS.length })}
             </div>
             <h2 id="about-cpoint-modal-title" className="text-base font-semibold text-white">
-              {STEP_TITLES[step]}
+              {t(STEP_TITLE_KEYS[step])}
             </h2>
           </div>
           <button type="button" className="text-xs text-[#9fb0b5] hover:text-white shrink-0" onClick={onClose}>
-            Close
+            {t('common.close')}
           </button>
         </div>
 
         <div className="flex gap-1.5 mb-4" aria-hidden>
-          {STEP_TITLES.map((_, i) => (
+          {STEP_TITLE_KEYS.map((_, i) => (
             <span
               key={i}
               className={`h-1 flex-1 rounded-full ${i === step ? 'bg-[#4db6ac]' : 'bg-white/15'}`}
@@ -99,7 +107,7 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
 
         {step === 0 ? (
           <div className="space-y-3 mb-4">
-            {MANIFESTO_SUMMARY_PARAS.map((p, i) => (
+            {Array.isArray(manifestoSummary) && manifestoSummary.map((p, i) => (
               <p key={i} className="text-sm text-[#9fb0b5] leading-relaxed">
                 {p}
               </p>
@@ -109,22 +117,22 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
               className="text-sm font-medium text-[#4db6ac] hover:underline"
               onClick={() => setManifestoFullOpen(true)}
             >
-              Read the full manifesto
+              {t('dashboard.about_read_full_manifesto')}
             </button>
           </div>
         ) : null}
 
         {step === 1 ? (
           <div className="space-y-3 mb-4">
-            <p className="text-sm text-[#9fb0b5] leading-relaxed">{ABOUT_CPOINT_MODAL_COMMUNITY_FEEDS_INTRO}</p>
+            <p className="text-sm text-[#9fb0b5] leading-relaxed">{t('dashboard.about_feeds_intro')}</p>
             <div className="grid grid-cols-2 gap-2">
-              {ABOUT_CPOINT_MODAL_COMMUNITY_FEED_FEATURES.map((feature) => (
-                <div key={feature.title} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              {FEED_FEATURE_KEYS.map((feature) => (
+                <div key={feature.titleKey} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
                   <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg bg-[#4db6ac]/10 text-[#4db6ac]">
                     <i className={`${feature.icon} text-sm`} />
                   </div>
-                  <div className="text-sm font-semibold text-white">{feature.title}</div>
-                  <div className="mt-1 text-xs leading-relaxed text-[#9fb0b5]">{feature.text}</div>
+                  <div className="text-sm font-semibold text-white">{t(feature.titleKey)}</div>
+                  <div className="mt-1 text-xs leading-relaxed text-[#9fb0b5]">{t(feature.textKey)}</div>
                 </div>
               ))}
             </div>
@@ -133,30 +141,24 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
 
         {step === 2 ? (
           <div className="space-y-3 mb-4">
-            {ABOUT_CPOINT_MODAL_DMS_PARAS.map((p, i) => (
-              <p key={i} className="text-sm text-[#9fb0b5] leading-relaxed">
-                {p}
-              </p>
-            ))}
+            <p className="text-sm text-[#9fb0b5] leading-relaxed">{t('dashboard.about_dms_para_1')}</p>
+            <p className="text-sm text-[#9fb0b5] leading-relaxed">{t('dashboard.about_dms_para_2')}</p>
           </div>
         ) : null}
 
         {step === 3 ? (
           <div className="space-y-3 mb-4">
-            {ABOUT_CPOINT_MODAL_STEVE_PARAS.map((p, i) => (
-              <p key={i} className="text-sm text-[#9fb0b5] leading-relaxed">
-                {p}
-              </p>
-            ))}
+            <p className="text-sm text-[#9fb0b5] leading-relaxed">{t('dashboard.about_steve_para_1')}</p>
+            <p className="text-sm text-[#9fb0b5] leading-relaxed">{t('dashboard.about_steve_para_2')}</p>
             <button
               type="button"
               className="w-full py-2.5 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110"
               onClick={() => {
                 onClose()
-                navigate(stevePrefillUrl('I just read About C-Point — what should I try first?'))
+                navigate(stevePrefillUrl(t('dashboard.about_talk_prefill')))
               }}
             >
-              Talk to Steve
+              {t('steve.talk_to_steve')}
             </button>
           </div>
         ) : null}
@@ -168,7 +170,7 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
               className="px-4 py-2 rounded-xl border border-white/15 text-sm text-white hover:bg-white/5"
               onClick={() => setStep((s) => Math.max(0, s - 1))}
             >
-              Back
+              {t('common.back')}
             </button>
           ) : null}
           {step < lastStep ? (
@@ -177,7 +179,7 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
               className="ml-auto px-4 py-2 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110"
               onClick={() => setStep((s) => Math.min(lastStep, s + 1))}
             >
-              Next
+              {t('common.next')}
             </button>
           ) : (
             <button
@@ -185,7 +187,7 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
               className="ml-auto px-4 py-2 rounded-xl bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110"
               onClick={onClose}
             >
-              Done
+              {t('common.done')}
             </button>
           )}
         </div>
@@ -198,19 +200,19 @@ export default function AboutCPointModal({ open, onClose }: { open: boolean; onC
             navigate('/about_cpoint')
           }}
         >
-          Open full About page
+          {t('dashboard.about_open_full_page')}
         </button>
       </ModalBackdrop>
 
       {manifestoFullOpen ? (
         <ModalBackdrop onClose={() => setManifestoFullOpen(false)} wide zClass="z-[210]">
           <div className="flex justify-between items-start gap-2 mb-2">
-            <h2 className="text-base font-semibold text-white">Full manifesto</h2>
+            <h2 className="text-base font-semibold text-white">{t('dashboard.about_full_manifesto_title')}</h2>
             <button type="button" className="text-xs text-[#9fb0b5] shrink-0" onClick={() => setManifestoFullOpen(false)}>
-              Close
+              {t('common.close')}
             </button>
           </div>
-          <div className="whitespace-pre-wrap break-words text-sm text-[#9fb0b5] font-sans">{MANIFESTO_FULL}</div>
+          <div className="whitespace-pre-wrap break-words text-sm text-[#9fb0b5] font-sans">{t('dashboard.about_manifesto_full')}</div>
         </ModalBackdrop>
       ) : null}
     </>

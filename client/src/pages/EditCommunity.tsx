@@ -103,7 +103,7 @@ export default function EditCommunity(){
         const owner = role === 'owner'
         setAllowed(!!can)
         setIsOwner(!!owner)
-        if (!can){ setError('You do not have permission to manage this community.'); setLoading(false); return }
+        if (!can){ setError(t('communities.no_permission_manage')); setLoading(false); return }
         // Load current community info
         const rc = await fetch(`/api/community_feed/${community_id}`, { credentials:'include', headers: { 'Accept': 'application/json' } })
         const jc = await rc.json().catch(()=>null)
@@ -145,12 +145,12 @@ export default function EditCommunity(){
         
         setLoading(false)
       }catch{
-        if (mounted){ setError('Failed to load community'); setLoading(false) }
+        if (mounted){ setError(t('communities.failed_load_community')); setLoading(false) }
       }
     }
     init()
     return () => { mounted = false }
-  }, [community_id])
+  }, [community_id, t])
 
   // Billing snapshot — fetched for any community owner. Root owners see
   // the full panel (status, renewal, portal CTA); sub-community owners
@@ -246,7 +246,7 @@ export default function EditCommunity(){
       invalidateDashboardCache()
       navigate(`/community_feed_react/${community_id}`)
     } else {
-      alert(j?.error || 'Failed to update community')
+      alert(j?.error || t('communities.failed_update_community'))
     }
   }
 
@@ -265,21 +265,21 @@ export default function EditCommunity(){
         // Server-side deletion is now transactional and honest; one dashboard
         // invalidation is enough before leaving the deleted community.
         invalidateDashboardCache()
-        alert('Community deleted successfully')
+        alert(t('communities.community_deleted_success'))
         window.location.href = '/premium_dashboard'
         return { success: true }
       } else if (r.status === 409 && j?.reason === 'active_subscription_requires_confirmation') {
         return {
           success: false,
           activeSubscription: true,
-          error: j?.error || 'This community has an active subscription.',
+          error: j?.error || t('communities.active_subscription_on_delete'),
           subscriptions: Array.isArray(j?.subscriptions) ? j.subscriptions : [],
         }
       } else {
-        return { success: false, error: j?.error || 'Failed to delete community' }
+        return { success: false, error: j?.error || t('communities.delete_failed') }
       }
     } catch {
-      return { success: false, error: 'Failed to delete community' }
+      return { success: false, error: t('communities.delete_failed') }
     }
   }
 
@@ -288,13 +288,11 @@ export default function EditCommunity(){
     const freezing = !isFrozen
     const warning = freezing
       ? [
-          'Freeze this community?',
-          'Members will still see it on their dashboard, but only the owner and admins will be able to access it.',
-          billing?.has_stripe_customer
-            ? 'The community subscription will remain active while the community is frozen.'
-            : '',
+          t('communities.freeze_confirm_title'),
+          t('communities.freeze_confirm_body'),
+          billing?.has_stripe_customer ? t('communities.freeze_confirm_billing_note') : '',
         ].filter(Boolean).join('\n\n')
-      : 'Unfreeze this community and restore member access?'
+      : t('communities.unfreeze_confirm')
     if (!window.confirm(warning)) return
     setFreezeLoading(true)
     try {
@@ -305,12 +303,12 @@ export default function EditCommunity(){
         body: freezing ? JSON.stringify({ reason: 'owner_requested' }) : '{}',
       })
       const j = await r.json().catch(()=>null)
-      if (!r.ok || !j?.success) throw new Error(j?.error || 'Unable to update community')
+      if (!r.ok || !j?.success) throw new Error(j?.error || t('communities.unable_update_community'))
       setIsFrozen(!!j.is_frozen)
       invalidateDashboardCache()
-      alert(freezing ? 'Community frozen.' : 'Community unfrozen.')
+      alert(freezing ? t('communities.community_frozen') : t('communities.community_unfrozen'))
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Unable to update community')
+      alert(err instanceof Error ? err.message : t('communities.unable_update_community'))
     } finally {
       setFreezeLoading(false)
     }
@@ -329,10 +327,10 @@ export default function EditCommunity(){
       if (data?.success) {
         setAiPersonality(newPersonality)
       } else {
-        alert(data?.error || 'Failed to update AI personality')
+        alert(data?.error || t('communities.failed_update_ai_personality'))
       }
     } catch {
-      alert('Failed to update AI personality')
+      alert(t('communities.failed_update_ai_personality'))
     } finally {
       setSavingAiPersonality(false)
     }
@@ -353,9 +351,9 @@ export default function EditCommunity(){
         window.location.assign(data.url)
         return
       }
-      alert(data?.error || 'Unable to open billing portal')
+      alert(data?.error || t('communities.unable_open_billing_portal'))
     } catch {
-      alert('Unable to open billing portal')
+      alert(t('communities.unable_open_billing_portal'))
     }
   }
 
@@ -366,7 +364,7 @@ export default function EditCommunity(){
       return (
         <div className="rounded-xl border border-white/10 bg-white/5 p-5">
           <div className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
-            Billing
+            {t('communities.billing_label')}
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1 text-[11px] font-medium text-cpoint-turquoise">
@@ -374,16 +372,16 @@ export default function EditCommunity(){
             </span>
             <span className="text-xs text-white/60">
               {billing.inherited_from_root_name
-                ? <>inherited from <span className="text-white/80">{billing.inherited_from_root_name}</span></>
-                : 'inherited from parent community'}
+                ? t('communities.inherited_from_named', { name: billing.inherited_from_root_name })
+                : t('communities.inherited_from_parent')}
             </span>
           </div>
           {billing.steve_package_subscription_active && billing.steve_pool_cap !== null && billing.steve_pool_cap > 0 && (
             <div className="mt-4 rounded-lg border border-[#00CEC8]/25 bg-[#00CEC8]/5 p-3 text-xs text-white/70">
-              <div className="font-medium text-[#00CEC8]">Steve community calls</div>
+              <div className="font-medium text-[#00CEC8]">{t('communities.steve_community_calls')}</div>
               <div className="mt-1">
-                {billing.steve_pool_remaining ?? 0} of {billing.steve_pool_cap} available this month
-                <span className="text-white/35"> ({billing.steve_pool_used} used)</span>
+                {t('communities.steve_pool_available', { remaining: billing.steve_pool_remaining ?? 0, cap: billing.steve_pool_cap })}
+                <span className="text-white/35"> ({t('communities.steve_pool_used', { used: billing.steve_pool_used })})</span>
               </div>
             </div>
           )}
@@ -401,34 +399,34 @@ export default function EditCommunity(){
       ? Math.min(100, (activeMediaBytes / mediaLimitBytes) * 100)
       : 0
     const mediaTone = !mediaLimitBytes || mediaPercent < 75
-      ? 'Healthy'
+      ? t('communities.media_healthy')
       : mediaPercent < 100
-        ? 'Getting full'
-        : 'Over plan limit'
+        ? t('communities.media_getting_full')
+        : t('communities.media_over_limit')
 
     return (
       <div className="rounded-xl border border-white/10 bg-white/5 p-5 space-y-4">
         <div className="flex items-start justify-between">
           <div>
             <div className="text-xs uppercase tracking-[0.2em] text-cpoint-turquoise">
-              Billing
+              {t('communities.billing_label')}
             </div>
             <div className="mt-2 text-sm font-medium text-white">
-              Community plan
+              {t('communities.community_plan')}
             </div>
             {billing.is_canceling && billing.days_remaining !== null && (
               <div className="mt-1 text-xs font-medium text-amber-200">
-                Cancels in {billing.days_remaining} {billing.days_remaining === 1 ? 'day' : 'days'}
+                {t('communities.cancels_in_days', { count: billing.days_remaining })}
               </div>
             )}
             {billing.current_period_end && (
               <div className="mt-1 text-xs text-white/40">
-                {billing.is_canceling ? 'Benefits active until' : 'Next renewal'}: {formatBillingDate(billing.current_period_end)}
+                {billing.is_canceling ? t('communities.benefits_active_until') : t('communities.next_renewal')}: {formatBillingDate(billing.current_period_end)}
               </div>
             )}
             {billing.subscription_status && billing.subscription_status !== 'active' && (
               <div className="mt-1 text-xs text-amber-300/80">
-                Status: {billing.subscription_status}
+                {t('communities.status_label', { status: billing.subscription_status })}
               </div>
             )}
           </div>
@@ -443,7 +441,7 @@ export default function EditCommunity(){
         {billing.member_cap !== null && billing.member_cap > 0 && (
           <div className="space-y-1.5">
             <div className="flex items-baseline justify-between text-xs text-white/60">
-              <span>Members</span>
+              <span>{t('communities.members_label')}</span>
               <span>
                 {billing.member_count} / {billing.member_cap}
               </span>
@@ -464,7 +462,7 @@ export default function EditCommunity(){
 
         <div className="space-y-1.5">
           <div className="flex items-baseline justify-between text-xs text-white/60">
-            <span>Media storage</span>
+            <span>{t('communities.media_storage')}</span>
             <span>
               {formatBytes(activeMediaBytes)}
               {mediaLimitBytes ? ` / ${formatBytes(mediaLimitBytes)}` : ''}
@@ -478,19 +476,19 @@ export default function EditCommunity(){
           </div>
           <div className="flex items-center justify-between gap-2 text-[11px] text-white/40">
             <span>{mediaTone}</span>
-            <span>{billing.media_usage.asset_count} tracked media item{billing.media_usage.asset_count === 1 ? '' : 's'}</span>
+            <span>{t('communities.tracked_media_items', { count: billing.media_usage.asset_count })}</span>
           </div>
           <div className="text-[11px] leading-relaxed text-white/35">
-            Storage is tracked for visibility first. Uploads are not blocked while we validate usage accounting.
+            {t('communities.storage_tracking_note')}
           </div>
         </div>
 
         {billing.steve_package_subscription_active && billing.steve_pool_cap !== null && billing.steve_pool_cap > 0 && (
           <div className="rounded-lg border border-[#00CEC8]/25 bg-[#00CEC8]/5 p-3">
             <div className="flex items-baseline justify-between gap-3 text-xs">
-              <span className="font-medium text-[#00CEC8]">Steve community calls</span>
+              <span className="font-medium text-[#00CEC8]">{t('communities.steve_community_calls')}</span>
               <span className="text-white/70">
-                {billing.steve_pool_remaining ?? 0} / {billing.steve_pool_cap} available
+                {t('communities.steve_pool_available_short', { remaining: billing.steve_pool_remaining ?? 0, cap: billing.steve_pool_cap })}
               </span>
             </div>
             <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
@@ -505,9 +503,9 @@ export default function EditCommunity(){
               />
             </div>
             <div className="mt-1 text-[11px] text-white/40">
-              {billing.steve_pool_used} used this month
+              {t('communities.steve_used_this_month', { used: billing.steve_pool_used })}
               {billing.steve_package_current_period_end
-                ? ` · Renews ${formatBillingDate(billing.steve_package_current_period_end)}`
+                ? ` · ${t('communities.steve_renews', { date: formatBillingDate(billing.steve_package_current_period_end) })}`
                 : ''}
             </div>
           </div>
@@ -524,18 +522,18 @@ export default function EditCommunity(){
           }}
           className="inline-flex w-full items-center justify-center rounded-full bg-cpoint-turquoise px-5 py-2.5 text-xs font-semibold text-black hover:bg-cpoint-turquoise/90 transition disabled:opacity-50"
         >
-          {showManageSubscription ? 'Manage Subscription' : 'Choose paid tier'}
+          {showManageSubscription ? t('communities.manage_subscription') : t('communities.choose_paid_tier')}
         </button>
 
         {hasPaidTier && isStoreBilled && (
           <div className="text-xs text-white/40">
-            This tier is managed through {providerLabel(billingProvider)}. Tier changes and cancellation happen in the store account.
+            {t('communities.store_billed_note', { provider: providerLabel(billingProvider) })}
           </div>
         )}
 
         {hasPaidTier && !billing.has_stripe_customer && !isStoreBilled && (
           <div className="text-xs text-white/40">
-            This tier has no Stripe customer attached yet. Use checkout to reconnect billing.
+            {t('communities.no_stripe_customer_note')}
           </div>
         )}
       </div>
@@ -578,34 +576,34 @@ export default function EditCommunity(){
               placeholder={t('communities.description_placeholder')}
               rows={3}
             />
-            <div className="text-xs text-[#9fb0b5] mt-1">Shown below the community name on the feed.</div>
+            <div className="text-xs text-[#9fb0b5] mt-1">{t('communities.description_feed_hint')}</div>
           </div>
           {renderBillingCard()}
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-1">Network Type <span className="text-[#4db6ac] text-xs">(Parent owners &amp; @Admin only)</span></label>
+            <label className="block text-sm text-[#9fb0b5] mb-1">{t('communities.network_type_label')} <span className="text-[#4db6ac] text-xs">{t('communities.network_type_admin_only')}</span></label>
             <select 
               className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none" 
               value={networkType} 
               onChange={e => setNetworkType(e.target.value)}
             >
-              <option value="professional">Professional / Industry</option>
-              <option value="social">Social / Community</option>
-              <option value="sports">Sports &amp; Recreation</option>
-              <option value="alumni">Alumni &amp; Classmates</option>
-              <option value="corporate">Corporate / Internal</option>
-              <option value="interest">Interest &amp; Hobby</option>
-              <option value="geographic">Geographic / Local</option>
-              <option value="cause">Cause &amp; Advocacy</option>
-              <option value="hybrid">Hybrid (Mixed Purpose)</option>
+              <option value="professional">{t('communities.network_professional')}</option>
+              <option value="social">{t('communities.network_social')}</option>
+              <option value="sports">{t('communities.network_sports')}</option>
+              <option value="alumni">{t('communities.network_alumni')}</option>
+              <option value="corporate">{t('communities.network_corporate')}</option>
+              <option value="interest">{t('communities.network_interest')}</option>
+              <option value="geographic">{t('communities.network_geographic')}</option>
+              <option value="cause">{t('communities.network_cause')}</option>
+              <option value="hybrid">{t('communities.network_hybrid')}</option>
             </select>
-            <div className="text-xs text-[#9fb0b5] mt-1">This controls Steve&apos;s insights, content recommendations, and group suggestions for the network.</div>
+            <div className="text-xs text-[#9fb0b5] mt-1">{t('communities.network_type_hint')}</div>
           </div>
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-2">Notifications</label>
+            <label className="block text-sm text-[#9fb0b5] mb-2">{t('communities.notifications_label')}</label>
             <label className="flex items-center justify-between px-4 py-3 rounded-lg border border-white/15 bg-black hover:bg-white/5 cursor-pointer">
               <div className="flex-1">
-                <div className="text-sm font-medium text-white">Notify on new members</div>
-                <div className="text-xs text-[#9fb0b5] mt-0.5">Send a notification to all members when someone new joins</div>
+                <div className="text-sm font-medium text-white">{t('communities.notify_new_members')}</div>
+                <div className="text-xs text-[#9fb0b5] mt-0.5">{t('communities.notify_new_members_hint')}</div>
               </div>
               <div className="ml-3">
                 <button
@@ -619,15 +617,15 @@ export default function EditCommunity(){
             </label>
           </div>
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-1">Member limit (optional)</label>
+            <label className="block text-sm text-[#9fb0b5] mb-1">{t('communities.member_limit_optional')}</label>
             <input
               type="number"
               min={1}
               inputMode="numeric"
               placeholder={
                 billing?.member_cap != null && billing.member_cap > 0
-                  ? `e.g., ${billing.member_cap}`
-                  : 'e.g., 25'
+                  ? t('communities.member_limit_example', { count: billing.member_cap })
+                  : t('communities.member_limit_example', { count: 25 })
               }
               className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none"
               value={maxMembers}
@@ -636,15 +634,15 @@ export default function EditCommunity(){
             <div className="text-xs text-[#9fb0b5] mt-1">
               {billing?.member_cap != null && billing.member_cap > 0 ? (
                 <>
-                  Plan cap: {billing.member_cap} members (your optional limit should stay at or below this.)
+                  {t('communities.member_limit_plan_cap', { cap: billing.member_cap })}
                 </>
               ) : (
-                <>When set, new joins are blocked once the limit is reached.</>
+                <>{t('communities.member_limit_when_set')}</>
               )}
             </div>
           </div>
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-1">Hierarchy</label>
+            <label className="block text-sm text-[#9fb0b5] mb-1">{t('communities.hierarchy_label')}</label>
             <div className="inline-flex rounded-full border border-white/15 overflow-hidden bg-black">
               <button
                 type="button"
@@ -652,7 +650,7 @@ export default function EditCommunity(){
                 onClick={()=> setIsChild(false)}
                 aria-pressed={!isChild}
               >
-                Parent Community
+                {t('communities.parent_community_button')}
               </button>
               <button
                 type="button"
@@ -660,14 +658,14 @@ export default function EditCommunity(){
                 onClick={()=> setIsChild(true)}
                 aria-pressed={isChild}
               >
-                Child Community
+                {t('communities.child_community_button')}
               </button>
             </div>
             {isChild && (
               <div className="mt-2">
-                <label className="block text-xs text-[#9fb0b5] mb-1">Select parent community</label>
+                <label className="block text-xs text-[#9fb0b5] mb-1">{t('communities.select_parent_community')}</label>
                 <select className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none" value={selectedParentId} onChange={e=> setSelectedParentId(e.target.value)}>
-                  <option value="none">None</option>
+                  <option value="none">{t('communities.none_option')}</option>
                   {parentOptions.map(p => (
                     <option key={p.id} value={String(p.id)}>{p.name}{p.type?` (${p.type})`:''}</option>
                   ))}
@@ -684,7 +682,7 @@ export default function EditCommunity(){
               <div style={{ position: 'relative' }} className="mb-3 rounded-lg border border-white/10 overflow-hidden">
                 <img 
                   src={`/uploads/${currentBackgroundPath}`} 
-                  alt="Current community image" 
+                  alt={t('communities.current_community_image_alt')} 
                   className="w-full max-h-48 object-cover"
                 />
                 <button
@@ -705,7 +703,7 @@ export default function EditCommunity(){
                     zIndex: 10,
                   }}
                   onClick={() => setRemoveBackground(true)}
-                  title="Remove image"
+                  title={t('communities.remove_image')}
                 >
                   <i className="fa-solid fa-xmark text-sm" />
                 </button>
@@ -717,7 +715,7 @@ export default function EditCommunity(){
               <div style={{ position: 'relative' }} className="mb-3 rounded-lg border border-white/10 overflow-hidden">
                 <img 
                   src={URL.createObjectURL(imageFile)} 
-                  alt="New community image" 
+                  alt={t('communities.new_community_image_alt')} 
                   className="w-full max-h-48 object-cover"
                 />
                 <button
@@ -738,7 +736,7 @@ export default function EditCommunity(){
                     zIndex: 10,
                   }}
                   onClick={() => setImageFile(null)}
-                  title="Remove new image"
+                  title={t('communities.remove_new_image')}
                 >
                   <i className="fa-solid fa-xmark text-sm" />
                 </button>
@@ -747,13 +745,13 @@ export default function EditCommunity(){
             
             {removeBackground && !imageFile && (
               <div className="mb-3 p-3 rounded-lg border border-red-500/30 bg-red-500/10 flex items-center justify-between">
-                <span className="text-sm text-red-400">Image will be removed</span>
+                <span className="text-sm text-red-400">{t('communities.image_will_be_removed')}</span>
                 <button
                   type="button"
                   className="text-xs text-[#9fb0b5] hover:text-white"
                   onClick={() => setRemoveBackground(false)}
                 >
-                  Undo
+                  {t('communities.undo')}
                 </button>
               </div>
             )}
@@ -770,10 +768,10 @@ export default function EditCommunity(){
           </div>
           
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-2">Steve Personality</label>
+            <label className="block text-sm text-[#9fb0b5] mb-2">{t('communities.steve_personality_label')}</label>
             <div className="rounded-lg border border-white/15 bg-black p-4">
               <p className="text-xs text-[#9fb0b5] mb-3">
-                Choose how Steve responds when members mention @Steve in comments.
+                {t('communities.steve_personality_hint')}
               </p>
               <select 
                 className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none"
@@ -787,19 +785,19 @@ export default function EditCommunity(){
               </select>
               {savingAiPersonality && (
                 <div className="mt-2 text-xs text-[#4db6ac]">
-                  <i className="fa-solid fa-spinner fa-spin mr-1" /> Saving...
+                  <i className="fa-solid fa-spinner fa-spin mr-1" /> {t('communities.saving')}
                 </div>
               )}
             </div>
           </div>
 
           <div>
-            <label className="block text-sm text-[#9fb0b5] mb-2">Content Generation</label>
+            <label className="block text-sm text-[#9fb0b5] mb-2">{t('communities.content_generation_label')}</label>
             <div className="rounded-lg border border-white/15 bg-black p-4 flex items-center justify-between gap-4">
               <div>
-                <div className="text-sm font-medium text-white">Steve automations</div>
+                <div className="text-sm font-medium text-white">{t('communities.steve_automations')}</div>
                 <div className="text-xs text-[#9fb0b5] mt-1">
-                  Configure saved jobs for Steve to publish community content. Schedules are stored now and can be automated later.
+                  {t('communities.steve_automations_hint')}
                 </div>
               </div>
               <button
@@ -807,7 +805,7 @@ export default function EditCommunity(){
                 className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110 whitespace-nowrap"
                 onClick={() => setShowContentGeneration(true)}
               >
-                Open
+                {t('communities.open_action')}
               </button>
             </div>
           </div>
@@ -822,9 +820,9 @@ export default function EditCommunity(){
         {isOwner && (
           <div className="mt-8 pt-6 border-t border-white/10">
             <div className="bg-[#4db6ac]/10 border border-[#4db6ac]/30 rounded-lg p-4">
-              <h3 className="text-lg font-semibold text-[#4db6ac] mb-2">Steve's welcome post</h3>
+              <h3 className="text-lg font-semibold text-[#4db6ac] mb-2">{t('communities.welcome_post_title')}</h3>
               <p className="text-sm text-[#9fb0b5] mb-4">
-                When this community was created, Steve published a welcome post explaining what's inside. If it was deleted, or you'd like a fresh copy, republish it here. Existing posts are not duplicated.
+                {t('communities.welcome_post_body')}
               </p>
               <button
                 onClick={async () => {
@@ -834,17 +832,17 @@ export default function EditCommunity(){
                     })
                     const j = await r.json().catch(() => null)
                     if (j?.success) {
-                      alert('Welcome post is back in your feed.')
+                      alert(t('communities.welcome_post_republished'))
                     } else {
-                      alert(j?.error === 'forbidden' ? 'Only the owner or admins can do this.' : 'Could not republish the welcome post.')
+                      alert(j?.error === 'forbidden' ? t('communities.welcome_post_forbidden') : t('communities.welcome_post_failed'))
                     }
                   } catch {
-                    alert('Could not republish the welcome post.')
+                    alert(t('communities.welcome_post_failed'))
                   }
                 }}
                 className="px-4 py-2 bg-[#4db6ac] hover:brightness-110 text-black rounded-md font-medium transition-colors"
               >
-                Republish welcome post
+                {t('communities.republish_welcome_post')}
               </button>
             </div>
           </div>
@@ -854,9 +852,9 @@ export default function EditCommunity(){
         {isOwner && (
           <div className="mt-8 pt-6 border-t border-white/10">
             <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
-              <h3 className="text-lg font-semibold text-red-400 mb-2">Danger Zone</h3>
+              <h3 className="text-lg font-semibold text-red-400 mb-2">{t('communities.danger_zone_title')}</h3>
               <p className="text-sm text-[#9fb0b5] mb-4">
-                Deleting this community will permanently remove all posts, messages, and member data. This action cannot be undone.
+                {t('communities.danger_zone_body')}
               </p>
               <div className="flex flex-col gap-3 sm:flex-row">
                 <button
@@ -865,20 +863,20 @@ export default function EditCommunity(){
                   disabled={freezeLoading}
                   className="px-4 py-2 border border-amber-400/40 bg-amber-400/10 hover:bg-amber-400/15 text-amber-100 rounded-md font-medium transition-colors disabled:opacity-50"
                 >
-                  {freezeLoading ? 'Updating…' : isFrozen ? 'Unfreeze Community' : 'Freeze Community'}
+                  {freezeLoading ? t('communities.updating') : isFrozen ? t('communities.unfreeze_community') : t('communities.freeze_community')}
                 </button>
                 <button 
                   type="button"
                   onClick={onDelete}
                   className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md font-medium transition-colors"
                 >
-                  Delete Community
+                  {t('communities.delete_community')}
                 </button>
               </div>
               <p className="mt-3 text-xs text-[#9fb0b5]">
                 {isFrozen
-                  ? 'This community is frozen. Members can still see it on their dashboard but cannot open it.'
-                  : 'Freezing keeps the community visible on dashboards but blocks member access until you unfreeze it.'}
+                  ? t('communities.frozen_member_note')
+                  : t('communities.freeze_member_note')}
               </p>
             </div>
           </div>
@@ -889,7 +887,7 @@ export default function EditCommunity(){
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-4"
           role="dialog"
           aria-modal="true"
-          aria-label="Manage subscription"
+          aria-label={t('communities.manage_subscription_modal_label')}
           onClick={() => setShowManageSubscriptionModal(false)}
         >
           <div
@@ -898,17 +896,17 @@ export default function EditCommunity(){
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-[#00CEC8]">Billing</p>
-                <h3 className="mt-2 text-lg font-semibold">Manage Subscription</h3>
+                <p className="text-xs uppercase tracking-[0.2em] text-[#00CEC8]">{t('communities.billing_label')}</p>
+                <h3 className="mt-2 text-lg font-semibold">{t('communities.manage_subscription')}</h3>
                 <p className="mt-1 text-sm text-white/55">
                   {modalStoreBilled
-                    ? `This subscription is managed through ${providerLabel(modalBillingProvider)}.`
-                    : 'Change tier, add Steve pool billing, or open Stripe to cancel / payment methods.'}
+                    ? t('communities.manage_subscription_modal_body_store', { provider: providerLabel(modalBillingProvider) })
+                    : t('communities.manage_subscription_modal_body_stripe')}
                 </p>
               </div>
               <button
                 type="button"
-                aria-label="Close"
+                aria-label={t('common.close')}
                 className="rounded-full p-1 text-white/50 hover:bg-white/10 hover:text-white"
                 onClick={() => setShowManageSubscriptionModal(false)}
               >
@@ -926,7 +924,7 @@ export default function EditCommunity(){
                   navigate(`/subscription_plans?mode=choose&open=community_plans&community_id=${community_id}`)
                 }}
               >
-                Upgrade Community Tier
+                {t('communities.upgrade_community_tier')}
               </button>
               {['paid_l1', 'paid_l2', 'paid_l3'].includes(String(billing.tier || '').toLowerCase()) && (
                 <button
@@ -937,7 +935,7 @@ export default function EditCommunity(){
                     navigate(`/subscription_plans?mode=choose&open=community_addons&community_id=${community_id}`)
                   }}
                 >
-                  Subscribe to a Community Add-On
+                  {t('communities.subscribe_community_addon')}
                 </button>
               )}
               <button
@@ -956,14 +954,14 @@ export default function EditCommunity(){
                   void openCommunityBillingPortal()
                 }}
               >
-                {modalStoreBilled ? `Open ${providerLabel(modalBillingProvider)} subscriptions` : 'Cancel Community Tier Subscription'}
+                {modalStoreBilled ? t('communities.open_store_subscriptions', { provider: providerLabel(modalBillingProvider) }) : t('communities.cancel_community_tier')}
               </button>
               <button
                 type="button"
                 className="mt-1 text-xs text-white/40 hover:text-white/70"
                 onClick={() => setShowManageSubscriptionModal(false)}
               >
-                Close
+                {t('common.close')}
               </button>
             </div>
           </div>

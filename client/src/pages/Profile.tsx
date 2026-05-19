@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { ChangeEvent, CSSProperties, FormEvent, KeyboardEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import Avatar, { clearImageCache } from '../components/Avatar'
 import { useUserProfile } from '../contexts/UserProfileContext'
+import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 import { clearAvatarCache } from '../utils/avatarCache'
+import { profileGenderLabel, profileIndustryLabel, profileInterestLabel } from '../utils/profileOptionLabel'
 import { ProfileSelectField, type SelectOption } from '../components/profile/ProfileSelectField'
 import { ProfileDetailsModal, type WorkExperienceRow, type EducationRow } from '../components/profile/ProfileDetailsModal'
 
@@ -187,8 +190,14 @@ function mapEducationFromApi(items: unknown): EducationRow[] {
 }
 
 export default function Profile() {
+  const { t } = useTranslation()
+  const { setTitle } = useHeader()
   const navigate = useNavigate()
   const [showOnboardingReturn, setShowOnboardingReturn] = useState(false)
+
+  useEffect(() => {
+    setTitle(t('profile.page_title'))
+  }, [setTitle, t])
   useEffect(() => {
     if (typeof window === 'undefined') return
     try {
@@ -339,7 +348,7 @@ export default function Profile() {
   }, [navigate])
 
   const handleSaveAndLeave = useCallback(async () => {
-    if (!navigator.onLine) { alert('Go back online to save changes'); setShowLeaveModal(false); return }
+    if (!navigator.onLine) { alert(t('profile.alert.offline_save')); setShowLeaveModal(false); return }
     setSavingPersonal(true)
     try {
       const form = new FormData()
@@ -400,7 +409,7 @@ export default function Profile() {
     if (!trimmed) return
     const exists = professional.interests.some(existing => existing.toLowerCase() === trimmed.toLowerCase())
     if (professional.interests.length >= MAX_INTERESTS && !exists) {
-      setFeedback(`You can list up to ${MAX_INTERESTS} interests. Remove one to add more.`)
+      setFeedback(t('profile.feedback.interests_max', { max: MAX_INTERESTS }))
       setInterestInput('')
       return
     }
@@ -449,7 +458,7 @@ export default function Profile() {
       if (cachedProfileError) {
         setError(cachedProfileError)
       } else {
-        setError('Unable to load profile')
+        setError(t('profile.error.load_failed'))
       }
       return
     }
@@ -775,23 +784,23 @@ export default function Profile() {
       : [personal.city, ...cities.filter(city => city.toLowerCase() !== personal.city.toLowerCase())]
     : cities
 
-  const genderOptions: SelectOption[] = GENDERS.map(option => ({ value: option, label: option }))
+  const genderOptions: SelectOption[] = GENDERS.map(option => ({ value: option, label: profileGenderLabel(option, t) }))
   const countryOptions: SelectOption[] = normalizedCountries.map(country => ({ value: country, label: country }))
   const cityOptions: SelectOption[] = normalizedCities.map(city => ({ value: city, label: city }))
-  const industryOptions: SelectOption[] = INDUSTRIES.map(industry => ({ value: industry, label: industry }))
+  const industryOptions: SelectOption[] = INDUSTRIES.map(industry => ({ value: industry, label: profileIndustryLabel(industry, t) }))
 
   const citySelectDisabled = !personal.country
   const cityPlaceholder = personal.country
     ? citiesLoading
-      ? 'Loading cities…'
+      ? t('profile.personal.city_loading')
       : normalizedCities.length
-        ? 'Select a city'
-        : 'Type to add a city'
-    : 'Select a country first'
+        ? t('profile.personal.city_select')
+        : t('profile.personal.city_type_custom')
+    : t('profile.personal.city_select_country_first')
 
   async function handlePersonalSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!navigator.onLine) { alert('Go back online to save changes'); return }
+    if (!navigator.onLine) { alert(t('profile.alert.offline_save')); return }
     if (savingPersonal) return
     setSavingPersonal(true)
     try {
@@ -812,7 +821,7 @@ export default function Profile() {
       if (payload?.success) {
         serverPersonalRef.current = { ...personal }
         try { sessionStorage.removeItem(PROFILE_DRAFT_KEY) } catch {}
-        setFeedback('Personal information saved')
+        setFeedback(t('profile.feedback.personal_saved'))
         setSummary(prev => {
           if (!prev) return prev
           const updatedLocation = [personal.city, personal.country].filter(Boolean).join(', ')
@@ -828,10 +837,10 @@ export default function Profile() {
           await prefetchPublicProfileApi()
         } catch {}
       } else {
-        setFeedback(payload?.error || 'Unable to save personal information')
+        setFeedback(payload?.error || t('profile.feedback.personal_save_failed'))
       }
     } catch {
-      setFeedback('Unable to save personal information')
+      setFeedback(t('profile.feedback.personal_save_failed'))
     } finally {
       setSavingPersonal(false)
     }
@@ -839,7 +848,7 @@ export default function Profile() {
 
   async function handleProfessionalSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!navigator.onLine) { alert('Go back online to save changes'); return }
+    if (!navigator.onLine) { alert(t('profile.alert.offline_save')); return }
     if (savingProfessional) return
     setSavingProfessional(true)
     try {
@@ -864,16 +873,16 @@ export default function Profile() {
       const response = await fetch('/update_professional', { method: 'POST', credentials: 'include', body: form })
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
-        setFeedback('Professional information saved')
+        setFeedback(t('profile.feedback.professional_saved'))
         try {
           await refreshUserProfile()
           await prefetchPublicProfileApi()
         } catch {}
       } else {
-        setFeedback(payload?.error || 'Unable to save professional information')
+        setFeedback(payload?.error || t('profile.feedback.professional_save_failed'))
       }
     } catch {
-      setFeedback('Unable to save professional information')
+      setFeedback(t('profile.feedback.professional_save_failed'))
     } finally {
       setSavingProfessional(false)
     }
@@ -881,7 +890,7 @@ export default function Profile() {
 
   async function parseCvUpload(file: File) {
     if (!file.name.toLowerCase().endsWith('.pdf')) {
-      setFeedback('Please choose a PDF file.')
+      setFeedback(t('profile.feedback.cv_pdf_only'))
       return
     }
     setCvParsing(true)
@@ -892,7 +901,7 @@ export default function Profile() {
       const r = await fetch('/api/onboarding/parse_cv?persist=1', { method: 'POST', credentials: 'include', body: fd })
       const j = await r.json().catch(() => null)
       if (!r.ok || !j?.success) {
-        setFeedback((j?.error as string) || 'Could not read that CV.')
+        setFeedback((j?.error as string) || t('profile.feedback.cv_read_failed'))
         return
       }
       const wh: WorkExperienceRow[] = Array.isArray(j.work_history)
@@ -916,7 +925,7 @@ export default function Profile() {
       })
       setCvModalOpen(true)
     } catch {
-      setFeedback('Network error uploading CV.')
+      setFeedback(t('profile.feedback.cv_upload_network_error'))
     } finally {
       setCvParsing(false)
       try {
@@ -945,10 +954,10 @@ export default function Profile() {
       })
       const j = await r.json().catch(() => null)
       if (!r.ok || !j?.success) {
-        setFeedback((j?.error as string) || 'Could not update from CV.')
+        setFeedback((j?.error as string) || t('profile.feedback.cv_update_failed'))
         return
       }
-      setFeedback(mode === 'merge' ? 'Professional details merged from CV.' : 'Professional details updated from CV.')
+      setFeedback(mode === 'merge' ? t('profile.feedback.cv_merged') : t('profile.feedback.cv_replaced'))
       setCvModalOpen(false)
       setCvPending(null)
       try {
@@ -966,7 +975,7 @@ export default function Profile() {
         await prefetchPublicProfileApi()
       } catch {}
     } catch {
-      setFeedback('Could not apply CV changes.')
+      setFeedback(t('profile.feedback.cv_apply_failed'))
     } finally {
       setCvApplying(false)
     }
@@ -977,7 +986,7 @@ export default function Profile() {
     try {
       const r = await fetch('/api/profile/cv', { credentials: 'include' })
       if (!r.ok) {
-        setFeedback('No CV file available to download.')
+        setFeedback(t('profile.feedback.cv_download_unavailable'))
         return
       }
       const blob = await r.blob()
@@ -991,13 +1000,13 @@ export default function Profile() {
       a.remove()
       URL.revokeObjectURL(url)
     } catch {
-      setFeedback('Download failed.')
+      setFeedback(t('profile.feedback.cv_download_failed'))
     }
   }
 
   async function handleInterestsSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!navigator.onLine) { alert('Go back online to save changes'); return }
+    if (!navigator.onLine) { alert(t('profile.alert.offline_save')); return }
     if (savingInterests) return
     setSavingInterests(true)
     try {
@@ -1007,7 +1016,7 @@ export default function Profile() {
         professional.interests.length >= MAX_INTERESTS &&
         !professional.interests.some(item => item.toLowerCase() === pendingInterest.toLowerCase())
       ) {
-        setFeedback(`You can list up to ${MAX_INTERESTS} interests. Remove one to add more.`)
+        setFeedback(t('profile.feedback.interests_max', { max: MAX_INTERESTS }))
         return
       }
       let interestList = professional.interests
@@ -1039,16 +1048,16 @@ export default function Profile() {
       const response = await fetch('/update_professional', { method: 'POST', credentials: 'include', body: form })
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
-        setFeedback('Personal interests saved')
+        setFeedback(t('profile.feedback.interests_saved'))
         try {
           await refreshUserProfile()
           await prefetchPublicProfileApi()
         } catch {}
       } else {
-        setFeedback(payload?.error || 'Unable to save personal interests')
+        setFeedback(payload?.error || t('profile.feedback.interests_save_failed'))
       }
     } catch {
-      setFeedback('Unable to save personal interests')
+      setFeedback(t('profile.feedback.interests_save_failed'))
     } finally {
       setSavingInterests(false)
     }
@@ -1060,7 +1069,7 @@ export default function Profile() {
   const justUploadedPicRef = useRef<string | null>(null)
 
   async function handlePhotoUpload(file: File) {
-    if (!navigator.onLine) { alert('Go back online to upload a photo'); return }
+    if (!navigator.onLine) { alert(t('profile.alert.offline_upload')); return }
     // Show immediate local preview
     const previewUrl = URL.createObjectURL(file)
     setLocalPhotoPreview(previewUrl)
@@ -1085,7 +1094,7 @@ export default function Profile() {
         
         setSummary(prev => prev ? { ...prev, profile_picture: cacheBustedUrl } : prev)
         setLocalPhotoPreview(null) // Clear local preview, use server URL
-        setFeedback('Profile picture updated')
+        setFeedback(t('profile.feedback.photo_updated'))
         
         // Directly update the context profile with new picture URL
         // This avoids refetching from potentially stale server cache
@@ -1096,11 +1105,11 @@ export default function Profile() {
         void prefetchPublicProfileApi()
       } else {
         setLocalPhotoPreview(null) // Revert to old image on error
-        setFeedback(payload?.error || 'Unable to upload picture')
+        setFeedback(payload?.error || t('profile.feedback.photo_upload_failed'))
       }
     } catch {
       setLocalPhotoPreview(null) // Revert to old image on error
-      setFeedback('Unable to upload picture')
+      setFeedback(t('profile.feedback.photo_upload_failed'))
     } finally {
       setUploadingPhoto(false)
       // Clean up the blob URL
@@ -1113,8 +1122,8 @@ export default function Profile() {
     if (file) handlePhotoUpload(file)
   }
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
-  if (error || !summary) return <div className="p-4 text-red-400">{error || 'Something went wrong'}</div>
+  if (loading) return <div className="p-4 text-[#9fb0b5]">{t('profile.loading')}</div>
+  if (error || !summary) return <div className="p-4 text-red-400">{error || t('profile.error.generic')}</div>
 
   return (
     <div className="glass-page min-h-screen text-white">
@@ -1123,7 +1132,7 @@ export default function Profile() {
           <div className="rounded-xl border border-white/10 overflow-hidden">
             <img
               src={summary.cover_photo.startsWith('http') ? summary.cover_photo : `/static/${summary.cover_photo}`}
-              alt="Cover"
+              alt={t('profile.alt.cover')}
               className="w-full h-40 object-cover"
             />
           </div>
@@ -1131,14 +1140,14 @@ export default function Profile() {
         {showOnboardingReturn ? (
             <div className="rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-white">
-                Finished updating your profile? Jump back to onboarding to complete the setup.
+                {t('profile.onboarding_return.message')}
               </div>
               <button
                 type="button"
                 className="rounded-full border border-[#4db6ac]/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white hover:bg-[#4db6ac]/20"
                 onClick={handleReturnToOnboarding}
               >
-                Return to onboarding
+                {t('profile.onboarding_return.button')}
               </button>
             </div>
           ) : null}
@@ -1151,7 +1160,7 @@ export default function Profile() {
                 className="rounded-full overflow-hidden bg-white/10 border border-white/10 flex items-center justify-center"
                 style={{ width: 64, height: 64 }}
               >
-                <img src={localPhotoPreview} alt="Preview" className="w-full h-full object-cover" />
+                <img src={localPhotoPreview} alt={t('profile.alt.preview')} className="w-full h-full object-cover" />
                 {uploadingPhoto && (
                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-full">
                     <i className="fa-solid fa-spinner fa-spin text-white" />
@@ -1164,7 +1173,7 @@ export default function Profile() {
             <button
               className="absolute -right-1 -bottom-1 w-7 h-7 rounded-full bg-[#4db6ac] text-black text-xs flex items-center justify-center border border-black"
               onClick={() => fileInputRef.current?.click()}
-              aria-label="Change profile picture"
+              aria-label={t('profile.aria.change_profile_picture')}
               type="button"
             >
               <i className="fa-solid fa-camera" />
@@ -1199,42 +1208,42 @@ export default function Profile() {
             className="ml-auto px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm"
             href={`/profile/${encodeURIComponent(summary.username)}`}
           >
-            Preview Profile
+            {t('profile.preview_profile')}
           </a>
         </div>
 
         <section className="rounded-xl border border-white/10 p-4 space-y-3">
           <form className="space-y-3" onSubmit={handlePersonalSubmit}>
             <header>
-              <div className="font-semibold">Personal information</div>
-              <p className="text-xs text-[#9fb0b5]">Your bio and profile basics.</p>
+              <div className="font-semibold">{t('profile.personal.title')}</div>
+              <p className="text-xs text-[#9fb0b5]">{t('profile.personal.subtitle')}</p>
             </header>
             <label className="text-sm block">
-              Personal bio
+              {t('profile.personal.bio_label')}
               <textarea
                 className="mt-1 w-full min-h-[100px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
                 style={{ userSelect: 'text', WebkitUserSelect: 'text' } as CSSProperties}
                 value={personal.bio}
                 onChange={event => setPersonal(prev => ({ ...prev, bio: event.target.value }))}
-                placeholder={`💼 Your bio is currently consulting its therapist.\nDrop one polished line to lure it back.`}
+                placeholder={t('profile.personal.bio_placeholder')}
               />
             </label>
             {personal.bio.trim() ? null : (
               <div className="rounded-lg border border-dashed border-white/15 bg-white/[0.03] px-3 py-2 text-xs leading-relaxed text-[#9fb0b5]">
                 <p className="text-white/80 font-medium">
-                  💼 Your bio is currently consulting its therapist.
+                  {t('profile.personal.bio_empty_title')}
                 </p>
-                <p>Drop one polished line to lure it back.</p>
+                <p>{t('profile.personal.bio_empty_subtitle')}</p>
                 <p className="mt-2 whitespace-pre-line">
-                  Example:
-                  {"\n"}"Owned by a sassy rescue cat named Pickles 🐱{'\n'}Excel wizard by day,{'\n'}jazz vinyl curator by night"
+                  {t('profile.personal.bio_empty_example_label')}
+                  {"\n"}{t('profile.personal.bio_empty_example_text')}
                 </p>
-                <p className="mt-2 text-white/70">Impress us—bonus points for zero typos. 🖋️</p>
+                <p className="mt-2 text-white/70">{t('profile.personal.bio_empty_cta')}</p>
               </div>
             )}
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-sm min-w-0">
-                First name
+                {t('profile.personal.first_name')}
                 <input
                   className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
                   value={personal.first_name}
@@ -1242,7 +1251,7 @@ export default function Profile() {
                 />
               </label>
               <label className="text-sm min-w-0">
-                Last name
+                {t('profile.personal.last_name')}
                 <input
                   className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
                   value={personal.last_name}
@@ -1250,7 +1259,7 @@ export default function Profile() {
                 />
               </label>
               <label className="text-sm min-w-0">
-                Display name
+                {t('profile.personal.display_name')}
                 <input
                   className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
                   value={personal.display_name}
@@ -1258,7 +1267,7 @@ export default function Profile() {
                 />
               </label>
               <label className="text-sm min-w-0">
-                Date of birth
+                {t('profile.personal.date_of_birth')}
                 <input
                   type="date"
                   className="mt-1 w-full min-w-0 rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
@@ -1267,32 +1276,32 @@ export default function Profile() {
                 />
               </label>
               <label className="text-sm min-w-0">
-                Gender
+                {t('profile.personal.gender')}
                 <div className="mt-1">
                   <ProfileSelectField
                     value={personal.gender}
                     onChange={nextValue => setPersonal(prev => ({ ...prev, gender: nextValue }))}
                     options={genderOptions}
-                    placeholder="Select a value"
+                    placeholder={t('profile.personal.gender_placeholder')}
                   />
                 </div>
               </label>
               <label className="text-sm min-w-0">
-                Country
+                {t('profile.personal.country')}
                 <div className="mt-1">
                   <ProfileSelectField
                     value={personal.country}
                     onChange={nextValue => setPersonal(prev => ({ ...prev, country: nextValue, city: '' }))}
                     options={countryOptions}
-                    placeholder="Select a country"
+                    placeholder={t('profile.personal.country_placeholder')}
                     searchable
                     allowCustomOption
-                    emptyMessage="No countries match your search"
+                    emptyMessage={t('profile.personal.country_empty')}
                   />
                 </div>
               </label>
               <label className="text-sm min-w-0 sm:col-span-2">
-                City
+                {t('profile.personal.city')}
                 <div className="mt-1">
                   <ProfileSelectField
                     value={personal.city}
@@ -1303,7 +1312,7 @@ export default function Profile() {
                     loading={citiesLoading}
                     searchable
                     allowCustomOption
-                    emptyMessage={personal.country ? 'No cities found, type to add your own' : 'Select a country first'}
+                    emptyMessage={personal.country ? t('profile.personal.city_empty') : t('profile.personal.city_select_country_first')}
                   />
                 </div>
               </label>
@@ -1313,7 +1322,7 @@ export default function Profile() {
               className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
               disabled={savingPersonal}
             >
-              {savingPersonal ? 'Saving…' : 'Save bio and personal info'}
+              {savingPersonal ? t('profile.saving') : t('profile.personal.save')}
             </button>
           </form>
         </section>
@@ -1321,8 +1330,8 @@ export default function Profile() {
         <section className="rounded-xl border border-white/10 p-4">
           <form className="space-y-4" onSubmit={handleProfessionalSubmit}>
             <header>
-              <div className="font-semibold">Professional information</div>
-              <p className="text-xs text-[#9fb0b5]">How you work and what you do — edit anytime.</p>
+              <div className="font-semibold">{t('profile.professional.title')}</div>
+              <p className="text-xs text-[#9fb0b5]">{t('profile.professional.subtitle')}</p>
             </header>
             <input
               ref={cvFileInputRef}
@@ -1341,7 +1350,7 @@ export default function Profile() {
                 disabled={cvParsing}
                 onClick={() => cvFileInputRef.current?.click()}
               >
-                {cvParsing ? 'Reading CV…' : 'Upload CV (PDF)'}
+                {cvParsing ? t('profile.professional.reading_cv') : t('profile.professional.upload_cv')}
               </button>
               {professional.has_stored_cv ? (
                 <button
@@ -1349,13 +1358,13 @@ export default function Profile() {
                   className="rounded-md border border-[#4db6ac]/50 bg-[#4db6ac]/10 px-3 py-1.5 text-xs font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20"
                   onClick={() => void downloadStoredCv()}
                 >
-                  Download last CV
+                  {t('profile.professional.download_last_cv')}
                 </button>
               ) : null}
             </div>
             {professional.cv_uploaded_at ? (
               <p className="text-[11px] text-[#9fb0b5]">
-                Last CV on file:{' '}
+                {t('profile.professional.last_cv_on_file')}{' '}
                 {(() => {
                   try {
                     const d = new Date(professional.cv_uploaded_at)
@@ -1368,69 +1377,69 @@ export default function Profile() {
               </p>
             ) : null}
             <p className="text-[11px] text-[#9fb0b5]">
-              When storage is enabled, your PDF is kept privately for repopulating this section. You choose whether to replace all professional fields from the CV or merge (e.g. move your previous role into history if you have a new one).
+              {t('profile.professional.cv_storage_hint')}
             </p>
             <label className="text-sm block">
-              Professional bio / about
+              {t('profile.professional.about_label')}
               <textarea
                 className="mt-1 w-full min-h-[96px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
                 value={professional.about}
                 onChange={event => setProfessional(prev => ({ ...prev, about: event.target.value }))}
-                placeholder="Share a short summary about your professional background"
+                placeholder={t('profile.professional.about_placeholder')}
               />
             </label>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-sm">
-                Current position
+                {t('profile.professional.current_position')}
                 <input
                   className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
                   value={professional.role}
                   onChange={event => setProfessional(prev => ({ ...prev, role: event.target.value }))}
-                  placeholder="e.g. Product Manager"
+                  placeholder={t('profile.professional.current_position_placeholder')}
                 />
               </label>
               <label className="text-sm">
-                Company
+                {t('profile.professional.company')}
                 <input
                   className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
                   value={professional.company}
                   onChange={event => setProfessional(prev => ({ ...prev, company: event.target.value }))}
-                  placeholder="Company name"
+                  placeholder={t('profile.professional.company_placeholder')}
                 />
               </label>
               <label className="text-sm sm:col-span-2">
-                Company description
+                {t('profile.professional.company_description')}
                 <span className="block text-[11px] text-[#9fb0b5] font-normal mt-0.5 mb-1">
-                  In your own words, what the company does (optional).
+                  {t('profile.professional.company_description_hint')}
                 </span>
                 <textarea
                   className="mt-1 w-full min-h-[72px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
                   value={professional.company_intel}
                   onChange={event => setProfessional(prev => ({ ...prev, company_intel: event.target.value }))}
-                  placeholder="Brief description of the company (optional)"
+                  placeholder={t('profile.professional.company_description_placeholder')}
                 />
               </label>
               <label className="text-sm">
-                Industry
+                {t('profile.professional.industry')}
                 <div className="mt-1">
                   <ProfileSelectField
                     value={professional.industry}
                     onChange={nextValue => setProfessional(prev => ({ ...prev, industry: nextValue }))}
                     options={industryOptions}
-                    placeholder="Select an industry"
+                    placeholder={t('profile.professional.industry_placeholder')}
                     searchable
                     allowCustomOption
-                    emptyMessage="No industries match your search"
+                    emptyMessage={t('profile.professional.industry_empty')}
                   />
                 </div>
               </label>
               <label className="text-sm">
-                LinkedIn URL
+                {t('profile.professional.linkedin')}
                 <input
                   className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
                   value={professional.linkedin}
                   onChange={event => setProfessional(prev => ({ ...prev, linkedin: event.target.value }))}
-                  placeholder="https://www.linkedin.com/in/username"
+                  placeholder={t('profile.professional.linkedin_placeholder')}
                 />
               </label>
             </div>
@@ -1439,7 +1448,7 @@ export default function Profile() {
               className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
               disabled={savingProfessional}
             >
-              {savingProfessional ? 'Saving…' : 'Save professional info'}
+              {savingProfessional ? t('profile.saving') : t('profile.professional.save')}
             </button>
           </form>
 
@@ -1452,24 +1461,24 @@ export default function Profile() {
             >
               <div className="max-w-lg w-full rounded-xl border border-white/15 bg-[#0d1619] p-4 shadow-xl space-y-3">
                 <div id="cv-modal-title" className="font-semibold text-white">
-                  Apply CV to your profile?
+                  {t('profile.cv_modal.title')}
                 </div>
                 <p className="text-xs text-[#9fb0b5]">
-                  Steve extracted the following. Choose how to update your professional section (role, company, dates, work history, professional bio).
+                  {t('profile.cv_modal.description')}
                 </p>
                 {cvPending.cv_stored === false ? (
                   <p className="text-xs text-amber-200/90">
-                    The PDF was not stored (cloud storage may be unavailable). You can still apply the parsed fields.
+                    {t('profile.cv_modal.not_stored_warning')}
                   </p>
                 ) : null}
                 <ul className="text-xs text-[#c8d8dc] list-disc pl-4 space-y-1 max-h-40 overflow-y-auto">
-                  <li>Current role: {cvPending.role.trim() || '—'}</li>
-                  <li>Company: {cvPending.company.trim() || '—'}</li>
-                  <li>Start (year-month): {cvPending.current_role_start_ym.trim() || '—'}</li>
-                  <li>Past roles in CV: {cvPending.work_history.length}</li>
+                  <li>{t('profile.cv_modal.current_role')} {cvPending.role.trim() || t('profile.cv_modal.empty_value')}</li>
+                  <li>{t('profile.cv_modal.company')} {cvPending.company.trim() || t('profile.cv_modal.empty_value')}</li>
+                  <li>{t('profile.cv_modal.start_ym')} {cvPending.current_role_start_ym.trim() || t('profile.cv_modal.empty_value')}</li>
+                  <li>{t('profile.cv_modal.past_roles_count')} {cvPending.work_history.length}</li>
                   {cvPending.professional_about ? (
                     <li className="list-none -ml-4 mt-2 text-[#9fb0b5]">
-                      Bio: {cvPending.professional_about.length > 220 ? `${cvPending.professional_about.slice(0, 220)}…` : cvPending.professional_about}
+                      {t('profile.cv_modal.bio')} {cvPending.professional_about.length > 220 ? `${cvPending.professional_about.slice(0, 220)}…` : cvPending.professional_about}
                     </li>
                   ) : null}
                 </ul>
@@ -1480,7 +1489,7 @@ export default function Profile() {
                     disabled={cvApplying}
                     onClick={() => void applyCvStructured('replace')}
                   >
-                    {cvApplying ? 'Applying…' : 'Replace all from CV'}
+                    {cvApplying ? t('profile.cv_modal.applying') : t('profile.cv_modal.replace_all')}
                   </button>
                   <button
                     type="button"
@@ -1488,11 +1497,11 @@ export default function Profile() {
                     disabled={cvApplying}
                     onClick={() => void applyCvStructured('merge')}
                   >
-                    {cvApplying ? 'Applying…' : 'Merge (keep history)'}
+                    {cvApplying ? t('profile.cv_modal.applying') : t('profile.cv_modal.merge')}
                   </button>
                 </div>
                 <p className="text-[11px] text-[#7a8f94]">
-                  Merge moves your previous current role into past experience when the CV shows a different role or company, then adds CV work history without duplicates.
+                  {t('profile.cv_modal.merge_hint')}
                 </p>
                 <div className="flex justify-end pt-1">
                   <button
@@ -1504,7 +1513,7 @@ export default function Profile() {
                       setCvPending(null)
                     }}
                   >
-                    Cancel
+                    {t('profile.cancel')}
                   </button>
                 </div>
               </div>
@@ -1513,26 +1522,26 @@ export default function Profile() {
         </section>
 
         <section className="rounded-xl border border-white/10 p-4 space-y-3">
-          <div className="font-semibold">Spotlight and timeline</div>
+          <div className="font-semibold">{t('profile.spotlight.title')}</div>
           <p className="text-xs text-[#9fb0b5]">
-            Optional spotlight answers and your experience or education history. Two quick steps with tips from Steve — use your main profile above for bio and role details.
+            {t('profile.spotlight.subtitle')}
           </p>
           <button
             type="button"
             className="rounded-md border border-[#4db6ac]/50 bg-[#4db6ac]/10 px-4 py-2 text-sm font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20"
             onClick={() => setDetailsModalOpen(true)}
           >
-            Open spotlight and timeline
+            {t('profile.spotlight.open')}
           </button>
         </section>
 
         <section className="rounded-xl border border-white/10 p-4">
           <form className="space-y-3" onSubmit={handleInterestsSubmit}>
             <div>
-              <div className="text-sm font-semibold text-white">Personal interests</div>
-              <p className="text-xs text-[#9fb0b5]">Press enter after each interest to add it.</p>
+              <div className="text-sm font-semibold text-white">{t('profile.interests.title')}</div>
+              <p className="text-xs text-[#9fb0b5]">{t('profile.interests.subtitle')}</p>
               <div className="mt-2 space-y-1">
-                <div className="text-[11px] uppercase tracking-wide text-white/40">Popular suggestions</div>
+                <div className="text-[11px] uppercase tracking-wide text-white/40">{t('profile.interests.popular_suggestions')}</div>
                 <div className="flex flex-wrap gap-2">
                   {INTEREST_SUGGESTIONS.map(suggestion => {
                     const alreadySelected = professional.interests.some(
@@ -1550,7 +1559,7 @@ export default function Profile() {
                         }`}
                         disabled={alreadySelected}
                       >
-                        {suggestion}
+                        {profileInterestLabel(suggestion, t)}
                       </button>
                     )
                   })}
@@ -1564,7 +1573,7 @@ export default function Profile() {
                   type="button"
                   className="flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs text-white hover:bg-white/25 transition"
                   onClick={() => removeInterest(index)}
-                  aria-label={`Remove ${interest}`}
+                  aria-label={t('profile.interests.remove_aria', { interest })}
                 >
                   <span>{interest}</span>
                   <i className="fa-solid fa-xmark text-[10px]" />
@@ -1576,7 +1585,7 @@ export default function Profile() {
                   onChange={event => setInterestInput(event.target.value)}
                   onKeyDown={handleInterestKeyDown}
                   onBlur={handleInterestBlur}
-                  placeholder={professional.interests.length ? 'Add another interest' : 'Add an interest…'}
+                  placeholder={professional.interests.length ? t('profile.interests.add_another') : t('profile.interests.add_first')}
                   className="flex-1 min-w-[140px] bg-transparent text-xs text-white placeholder:text-[#9fb0b5] outline-none"
                 />
               ) : null}
@@ -1586,7 +1595,7 @@ export default function Profile() {
               className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
               disabled={savingInterests}
             >
-              {savingInterests ? 'Saving…' : 'Save personal interests'}
+              {savingInterests ? t('profile.saving') : t('profile.interests.save')}
             </button>
           </form>
         </section>
@@ -1613,9 +1622,9 @@ export default function Profile() {
         {showLeaveModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
             <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#111] p-5 space-y-4">
-              <h3 className="text-base font-semibold text-white">Unsaved changes</h3>
+              <h3 className="text-base font-semibold text-white">{t('profile.leave_modal.title')}</h3>
               <p className="text-sm text-[#a7b8be]">
-                You have unsaved profile changes. Would you like to save before leaving?
+                {t('profile.leave_modal.message')}
               </p>
               <div className="flex flex-col gap-2">
                 <button
@@ -1623,19 +1632,19 @@ export default function Profile() {
                   disabled={savingPersonal}
                   className="w-full py-2.5 rounded-lg bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
                 >
-                  {savingPersonal ? 'Saving…' : 'Save and leave'}
+                  {savingPersonal ? t('profile.saving') : t('profile.leave_modal.save_and_leave')}
                 </button>
                 <button
                   onClick={handleDiscardAndLeave}
                   className="w-full py-2.5 rounded-lg border border-white/15 text-sm text-white hover:bg-white/5"
                 >
-                  Discard changes
+                  {t('profile.leave_modal.discard')}
                 </button>
                 <button
                   onClick={handleCancelLeave}
                   className="w-full py-2 text-sm text-[#9fb0b5] hover:text-white"
                 >
-                  Cancel
+                  {t('profile.cancel')}
                 </button>
               </div>
             </div>

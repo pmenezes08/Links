@@ -6,12 +6,14 @@
 import { Capacitor } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
 
+import i18n from '../i18n'
 import type { CalendarExportEventFields } from './calendarExportTypes'
 
 const STORAGE_KEY = 'cpoint_native_calendar_event_ids_v1'
 
-const CALENDAR_ACCESS_DENIED_MSG =
-  'Calendar access was not granted. You can enable it in the Settings app.'
+function calendarAccessDeniedMsg() {
+  return i18n.t('calendar.access_denied')
+}
 
 function isNativeCapacitor(): boolean {
   return typeof window !== 'undefined' && Capacitor.isNativePlatform()
@@ -156,7 +158,7 @@ function pluginErrorMessage(err: unknown): string {
     const m = (err as Error).message.trim()
     if (m) return m
   }
-  return 'Could not save the event to your calendar.'
+  return i18n.t('calendar.save_to_device_failed')
 }
 
 /** iOS: full calendar access via READ only. Android: WRITE then READ (separate runtime permissions). */
@@ -167,17 +169,17 @@ async function ensureCalendarPermissions(
   if (Capacitor.getPlatform() === 'ios') {
     const rd = await CapacitorCalendar.requestPermission({ alias: PluginPermission.READ_CALENDAR })
     if (!permGranted(normalizePermissionState(rd.result))) {
-      throw new Error(CALENDAR_ACCESS_DENIED_MSG)
+      throw new Error(calendarAccessDeniedMsg())
     }
     return
   }
   const wr = await CapacitorCalendar.requestPermission({ alias: PluginPermission.WRITE_CALENDAR })
   if (!permGranted(normalizePermissionState(wr.result))) {
-    throw new Error(CALENDAR_ACCESS_DENIED_MSG)
+    throw new Error(calendarAccessDeniedMsg())
   }
   const rd = await CapacitorCalendar.requestPermission({ alias: PluginPermission.READ_CALENDAR })
   if (!permGranted(normalizePermissionState(rd.result))) {
-    throw new Error(CALENDAR_ACCESS_DENIED_MSG)
+    throw new Error(calendarAccessDeniedMsg())
   }
 }
 

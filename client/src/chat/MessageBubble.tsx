@@ -191,7 +191,7 @@ function MessageBubbleInner({
                   <MessageImage
                     key={normalizeMediaPath(m.media_paths[0])} // Ensures retry state resets on src change for "Unavailable" preview fix
                     src={normalizeMediaPath(m.media_paths[0])}
-                    alt="Media"
+                    alt={t('chat.media_preview_alt')}
                     className="w-full rounded-lg"
                   />
                 )}
@@ -210,7 +210,7 @@ function MessageBubbleInner({
                 <div className="mb-1.5">
                   <MessageImage
                     src={normalizeMediaPath(m.image_path)}
-                    alt="Shared photo"
+                    alt={t('chat.shared_image_alt')}
                     className="max-w-full max-h-64 cursor-pointer rounded-lg"
                     onClick={() => onImageClick(normalizeMediaPath(m.image_path!))}
                   />
@@ -238,7 +238,7 @@ function MessageBubbleInner({
                 <div className="px-2 pb-1 pt-0.5">
                   <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
                     <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
-                    <span>{translatedSummaries?.[m.id] ? 'Steve summary (translated)' : 'Steve summary'}</span>
+                    <span>{translatedSummaries?.[m.id] ? t('feed.steve_summary_translated') : t('feed.steve_summary')}</span>
                     <div className="ml-auto flex items-center gap-1">
                       {translatedSummaries?.[m.id] && onTranslateSummary && (
                         <button onClick={(e) => { e.stopPropagation(); onTranslateSummary(m.id, '', 'reset') }} className="text-white/30 hover:text-white/50 px-0.5"><i className="fa-solid fa-rotate-left text-[8px]" /></button>
@@ -259,12 +259,12 @@ function MessageBubbleInner({
                 </div>
               ) : m.audio_path && (() => {
                 try {
-                  const t = new Date(m.time).getTime()
-                  if (Date.now() - t < 120000) return (
+                  const createdMs = new Date(m.time).getTime()
+                  if (Date.now() - createdMs < 120000) return (
                     <div className="px-2 pb-1 pt-0.5">
                       <div className="flex items-center gap-1">
                         <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-white/40" />
-                        <span className="text-[11px] text-white/40">Steve summary generating</span>
+                        <span className="text-[11px] text-white/40">{t('feed.steve_summary_generating')}</span>
                         <span className="flex gap-0.5 ml-0.5">
                           <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                           <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -342,7 +342,7 @@ function MessageBubbleInner({
                     <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-black/30">
                       <img 
                         src={normalizeMediaPath(mediaPath)} 
-                        alt="Story" 
+                        alt={t('chat.story_alt')} 
                         className="w-full h-full object-cover"
                         onError={(e) => {
                           const el = e.currentTarget
@@ -388,9 +388,9 @@ function MessageBubbleInner({
                     </div>
                     <div className="text-[12px] text-white/50 mt-0.5 flex items-center gap-1">
                       {isVideo ? (
-                        <><i className="fa-solid fa-video text-[10px]" /> Video</>
+                        <><i className="fa-solid fa-video text-[10px]" /> {t('chat.video')}</>
                       ) : (
-                        <><i className="fa-solid fa-image text-[10px]" /> Photo</>
+                        <><i className="fa-solid fa-image text-[10px]" /> {t('chat.photo')}</>
                       )}
                     </div>
                   </div>
@@ -417,10 +417,10 @@ function MessageBubbleInner({
               const parts = m.replySnippet.split('|')
               if (parts.length >= 3) {
                 mediaPath = parts[1]
-                displayText = parts.slice(2).join('|') || (isImageReply ? 'Photo' : 'Video')
+                displayText = parts.slice(2).join('|') || (isImageReply ? t('chat.photo') : t('chat.video'))
               }
             } else if (isAudioReply) {
-              displayText = m.replySnippet.substring(2) || 'Voice message'
+              displayText = m.replySnippet.substring(2) || t('chat.voice_message')
             }
             if (displayText.length > 80) displayText = displayText.slice(0, 80) + '…'
             

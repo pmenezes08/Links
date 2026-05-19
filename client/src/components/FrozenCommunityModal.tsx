@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
 export interface FrozenCommunityModalProps {
   open: boolean
@@ -10,15 +11,6 @@ export interface FrozenCommunityModalProps {
   onManageMembers: () => void
 }
 
-/**
- * Owner-facing modal that locks the community feed when a paid
- * subscription has expired and the community still has more members than
- * the Free tier allows.
- *
- * The modal is intentionally non-dismissable — the only ways out are to
- * renew the subscription or to remove members until the community fits
- * within the Free cap. Both options are surfaced as primary actions.
- */
 export default function FrozenCommunityModal({
   open,
   communityId,
@@ -28,6 +20,7 @@ export default function FrozenCommunityModal({
   frozenAt,
   onManageMembers,
 }: FrozenCommunityModalProps) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   if (!open) return null
 
@@ -44,53 +37,46 @@ export default function FrozenCommunityModal({
       <div className="flex h-full w-full flex-col border-white/10 bg-black text-white shadow-2xl sm:h-auto sm:max-w-lg sm:rounded-2xl sm:border">
         <div className="border-b border-white/10 px-5 py-4">
           <div className="text-xs uppercase tracking-[0.22em] text-cpoint-turquoise">
-            Subscription expired
+            {t('communities.frozen_subscription_expired')}
           </div>
           <h2
             id="frozen-community-modal-title"
             className="mt-2 text-xl font-semibold"
           >
-            {communityName ? `"${communityName}" is suspended` : 'This community is suspended'}
+            {communityName ? t('communities.frozen_title_named', { name: communityName }) : t('communities.frozen_title_generic')}
           </h2>
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
           <p className="text-sm leading-6 text-white/75">
-            This community was suspended because the paid subscription
-            ended and the community has more members than the Free tier
-            allows. To restore access, either renew the subscription or
-            remove members until the community fits within the
-            <span className="font-semibold text-white"> {freeMemberCap}-member </span>
-            Free limit.
+            {t('communities.frozen_body', { cap: freeMemberCap })}
           </p>
 
           <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm">
             <div className="flex items-center justify-between">
-              <span className="text-white/60">Members</span>
+              <span className="text-white/60">{t('communities.frozen_members_label')}</span>
               <span className="font-semibold text-white">{memberCount}</span>
             </div>
             <div className="mt-2 flex items-center justify-between">
-              <span className="text-white/60">Free tier limit</span>
+              <span className="text-white/60">{t('communities.frozen_limit_label')}</span>
               <span className="font-semibold text-white">{freeMemberCap}</span>
             </div>
             {overflow > 0 && (
               <div className="mt-2 flex items-center justify-between">
-                <span className="text-white/60">Members over limit</span>
+                <span className="text-white/60">{t('communities.frozen_over_limit_label')}</span>
                 <span className="font-semibold text-cpoint-turquoise">{overflow}</span>
               </div>
             )}
             {frozenAtDisplay && (
               <div className="mt-2 flex items-center justify-between">
-                <span className="text-white/60">Suspended on</span>
+                <span className="text-white/60">{t('communities.frozen_suspended_on_label')}</span>
                 <span className="font-semibold text-white">{frozenAtDisplay}</span>
               </div>
             )}
           </div>
 
           <p className="text-xs leading-5 text-white/50">
-            Members keep read-only access to other communities. Once the
-            subscription is active again, or the community fits within
-            the Free limit, access is restored automatically.
+            {t('communities.frozen_footer_note')}
           </p>
         </div>
 
@@ -100,7 +86,7 @@ export default function FrozenCommunityModal({
             onClick={onManageMembers}
             className="rounded-full border border-white/15 px-5 py-2.5 text-sm text-white/85 transition hover:bg-white/5"
           >
-            Remove members
+            {t('communities.frozen_remove_members')}
           </button>
           <button
             type="button"
@@ -109,7 +95,7 @@ export default function FrozenCommunityModal({
             }
             className="rounded-full bg-cpoint-turquoise px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-cpoint-turquoise/90"
           >
-            Renew subscription
+            {t('communities.frozen_renew_subscription')}
           </button>
         </div>
       </div>

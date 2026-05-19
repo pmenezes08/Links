@@ -24,6 +24,7 @@ export default function LocaleBootstrap() {
     fetched.current = true
 
     let cancelled = false
+    let savedLocaleApplied = false
 
     // 1) Native shells: ask Capacitor for the device language tag. The
     //    react-i18next browser detector reads navigator.language, which
@@ -36,6 +37,7 @@ export default function LocaleBootstrap() {
         .then(({ Device }) => Device.getLanguageTag())
         .then((res) => {
           if (cancelled) return
+          if (savedLocaleApplied) return
           const tag = matchLocale(res?.value)
           if (tag && tag !== i18n.language) {
             i18n.changeLanguage(tag).catch(() => undefined)
@@ -51,7 +53,10 @@ export default function LocaleBootstrap() {
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {
         if (cancelled || !json?.success) return
-        const saved = matchLocale(json.saved_locale)
+        const saved = matchLocale(json.preferred_locale)
+        if (saved) {
+          savedLocaleApplied = true
+        }
         if (saved && saved !== i18n.language) {
           i18n.changeLanguage(saved).catch(() => undefined)
         }

@@ -35,10 +35,13 @@ export interface UseLocaleResult {
   error: string | null
   /**
    * Flip the active locale. When `persist` is true (default) also
-   * write through to the server. Throws nothing; consumers should
-   * read `error` instead.
+   * write through to the server. The returned `persisted` flag is
+   * true only after the server accepted the preference.
    */
-  setLocale: (next: string | null | undefined, options?: { persist?: boolean }) => Promise<SupportedLocale>
+  setLocale: (
+    next: string | null | undefined,
+    options?: { persist?: boolean },
+  ) => Promise<{ locale: SupportedLocale; persisted: boolean }>
 }
 
 async function patchPreferredLocale(locale: SupportedLocale | null): Promise<void> {
@@ -94,13 +97,15 @@ export function useLocale(): UseLocaleResult {
         await i18n.changeLanguage(matched)
       } catch (err) {
         setError((err as Error)?.message || 'change_failed')
-        return matched
+        return { locale: matched, persisted: false }
       }
 
+      let persisted = !persist
       if (persist) {
         setSaving(true)
         try {
           await patchPreferredLocale(matched)
+          persisted = true
         } catch (err) {
           setError((err as Error)?.message || 'save_failed')
         } finally {
@@ -108,7 +113,7 @@ export function useLocale(): UseLocaleResult {
         }
       }
 
-      return matched
+      return { locale: matched, persisted }
     },
     [],
   )

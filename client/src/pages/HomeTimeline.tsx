@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, Fragment, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import { formatSmartTime } from '../utils/time'
@@ -251,6 +252,7 @@ type HomeTimelineProps = {
 }
 
 export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { refreshBadges } = useBadges()
@@ -343,10 +345,10 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
           writeDeviceCache(HOME_TIMELINE_CACHE_KEY, j, HOME_TIMELINE_CACHE_TTL_MS, HOME_TIMELINE_CACHE_VERSION)
           setError(null)
         } else if (!hadCache) {
-          setError(j?.error || 'Error')
+          setError(j?.error || t('errors.generic'))
         }
       } catch {
-        if (mounted && !hadCache) setError('Error loading')
+        if (mounted && !hadCache) setError(t('feed.error_loading'))
       } finally {
         if (mounted) setLoading(false)
       }
@@ -355,7 +357,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
     return () => {
       mounted = false
     }
-  }, [mode, refreshKey])
+  }, [mode, refreshKey, t])
 
   useEffect(() => {
     if (mode !== 'dashboard_feed') return
@@ -429,11 +431,11 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
             }
           }
         } else if (!hadCache) {
-          setError(j?.error || 'Error')
+          setError(j?.error || t('errors.generic'))
           setShowStaleFeed(false)
         }
       } catch {
-        if (mounted && !hadCache) setError('Error loading')
+        if (mounted && !hadCache) setError(t('feed.error_loading'))
       } finally {
         if (mounted) setLoading(false)
       }
@@ -442,7 +444,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
     return () => {
       mounted = false
     }
-  }, [mode, refreshKey, feedMode, feedParentId])
+  }, [mode, refreshKey, feedMode, feedParentId, t])
 
   useEffect(() => {
     if (mode !== 'dashboard_feed') return
@@ -493,8 +495,8 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
   const { setTitle } = useHeader()
 
   useEffect(() => {
-    setTitle(mode === 'dashboard_feed' ? 'Feed' : 'Home')
-  }, [setTitle, mode])
+    setTitle(mode === 'dashboard_feed' ? t('navigation.feed') : t('navigation.home'))
+  }, [setTitle, mode, t])
 
   async function handlePollVote(postId: number, pollId: number, optionId: number){
     // Optimistic update for poll vote
@@ -570,7 +572,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                 }`}
                 onClick={() => setFeedMode('unread')}
               >
-                <div className="pt-1 whitespace-nowrap text-center">Unread</div>
+                <div className="pt-1 whitespace-nowrap text-center">{t('feed.unread_tab')}</div>
                 <div
                   className={`h-0.5 rounded-full w-16 mx-auto mt-1 transition-shadow ${
                     feedMode === 'unread' ? 'bg-[#4db6ac] shadow-[0_0_12px_rgba(77,182,172,0.35)]' : 'bg-transparent'
@@ -584,7 +586,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                 }`}
                 onClick={() => setFeedMode('recent48h')}
               >
-                <div className="pt-1 whitespace-nowrap text-center">Last 48 hours</div>
+                <div className="pt-1 whitespace-nowrap text-center">{t('feed.last_48_hours_tab')}</div>
                 <div
                   className={`h-0.5 rounded-full w-16 mx-auto mt-1 transition-shadow ${
                     feedMode === 'recent48h' ? 'bg-[#4db6ac] shadow-[0_0_12px_rgba(77,182,172,0.35)]' : 'bg-transparent'
@@ -593,7 +595,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
               </button>
             </div>
             <label className="block">
-              <span className="sr-only">Filter by community</span>
+              <span className="sr-only">{t('feed.filter_by_community')}</span>
               <select
                 value={feedParentId ?? ''}
                 onChange={(e) => {
@@ -602,7 +604,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                 }}
                 className="w-full rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5 text-sm text-white focus:outline-none focus:border-[#4db6ac]/50 focus:ring-1 focus:ring-[#4db6ac]/25"
               >
-                <option value="">All networks</option>
+                <option value="">{t('feed.all_networks')}</option>
                 {dashboardParents.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -613,16 +615,16 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
           </div>
         ) : null}
         {loading ? (
-          <div className="p-3 text-[#9fb0b5]">Loading…</div>
+          <div className="p-3 text-[#9fb0b5]">{t('common.loading')}</div>
         ) : error ? (
           <div className="p-3 text-red-400">{error}</div>
         ) : posts.length === 0 ? (
           <div className="p-3 text-[#9fb0b5]">
             {mode === 'dashboard_feed'
               ? feedMode === 'recent48h'
-                ? 'No posts in the last 48 hours.'
-                : 'No unread posts.'
-              : 'No recent posts'}
+                ? t('feed.no_posts_recent_window')
+                : t('feed.no_unread_posts')
+              : t('feed.no_recent_posts')}
           </div>
         ) : (
           <div className="space-y-3">
@@ -631,9 +633,9 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                 <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
                   <i className="fa-regular fa-comment-dots text-3xl text-white/30" />
                 </div>
-                <h3 className="text-lg font-medium text-white/80 mb-2 text-center">You&apos;re caught up</h3>
+                <h3 className="text-lg font-medium text-white/80 mb-2 text-center">{t('feed.caught_up')}</h3>
                 <p className="text-sm text-white/50 text-center max-w-xs">
-                  Showing recent activity from your communities until new posts arrive.
+                  {t('feed.showing_recent_activity')}
                 </p>
               </div>
             ) : null}
@@ -655,7 +657,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                     <div className="flex items-baseline gap-2 min-w-0">
                       <div className="font-medium tracking-[-0.01em] truncate">{p.username}</div>
                       {p.community_name ? (
-                        <div className="text-xs text-[#9fb0b5] truncate">in {p.community_name}</div>
+                        <div className="text-xs text-[#9fb0b5] truncate">{t('feed.in_community', { community: p.community_name })}</div>
                       ) : null}
                     </div>
                   </div>
@@ -724,7 +726,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                         <div className="font-medium text-sm flex-1">
                           {p.poll.question}
                           {p.poll.expires_at ? (
-                            <span className="ml-2 text-[11px] text-[#9fb0b5]">• closes {(() => { try { const d = new Date(p.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } return String(p.poll.expires_at) })()}</span>
+                            <span className="ml-2 text-[11px] text-[#9fb0b5]">• {t('feed.poll_closes', { date: (() => { try { const d = new Date(p.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } return String(p.poll.expires_at) })() })}</span>
                           ) : null}
                         </div>
                       </div>
@@ -754,14 +756,14 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
                         })}
                       </div>
                       <div className="flex items-center justify-between text-xs text-[#9fb0b5] pt-1">
-                        <span>{p.poll.total_votes || 0} {p.poll.total_votes === 1 ? 'vote' : 'votes'}</span>
+                        <span>{t('feed.vote_count', { count: p.poll.total_votes || 0 })}</span>
                         {p.community_id && (
                           <button 
                             type="button"
                             onClick={(e)=> { e.preventDefault(); e.stopPropagation(); navigate(`/community/${p.community_id}/polls_react`) }}
                             className="text-[#4db6ac] hover:underline"
                           >
-                            View all polls →
+                            {t('feed.view_all_polls')} →
                           </button>
                         )}
                       </div>
@@ -787,7 +789,7 @@ export default function HomeTimeline({ mode = 'home' }: HomeTimelineProps){
               const sep = showSep ? (
                 <DashboardFeedCommunityRule
                   key={`sep-before-${p.id}`}
-                  label={String(p.community_name || 'Community')}
+                  label={String(p.community_name || t('feed.community_fallback'))}
                 />
               ) : null
               return sep ? [sep, listItem] : [listItem]
