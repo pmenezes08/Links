@@ -292,6 +292,7 @@ export default function Communities(){
   const [stevePackageRootIds, setStevePackageRootIds] = useState<Set<number>>(new Set())
   const [selectedSubCommunityId, setSelectedSubCommunityId] = useState<number | 'none'>('none')
   const [isAdminOrPaulo, setIsAdminOrPaulo] = useState(false)
+  const [isAppAdmin, setIsAppAdmin] = useState(false)
   const [showNested, setShowNested] = useState<boolean>(() => {
     try{
       if (typeof window === 'undefined') return true
@@ -426,11 +427,17 @@ export default function Communities(){
     let mounted = true
     async function loadUser(){
       try{
-        const r = await fetch('/api/profile_me', { credentials:'include', headers: { 'Accept': 'application/json' } })
-        const j = await r.json().catch(()=>null)
+        const [profileRes, adminRes] = await Promise.all([
+          fetch('/api/profile_me', { credentials:'include', headers: { 'Accept': 'application/json' } }),
+          fetch('/api/check_admin', { credentials:'include', headers: { 'Accept': 'application/json' } }),
+        ])
+        const j = await profileRes.json().catch(()=>null)
+        const adminJ = await adminRes.json().catch(()=>null)
         if (mounted && j?.success && j.profile){
           const u = String(j.profile.username || '')
-          setIsAdminOrPaulo(['admin','paulo'].includes(u.toLowerCase()))
+          const adminFlag = !!(adminJ?.is_admin || adminJ?.isAdmin)
+          setIsAppAdmin(adminFlag)
+          setIsAdminOrPaulo(adminFlag || ['admin','paulo'].includes(u.toLowerCase()))
         }
       }catch{}
     }
@@ -1188,7 +1195,7 @@ export default function Communities(){
         return (
           <>
             <PlusActions
-              onCreateSub={() => { setNewSubName(''); setNewSubType(parentTypeLabel); setShowCreateSubModal(true) }}
+              onCreateSub={() => { setNewSubName(''); setNewSubType('General'); setShowCreateSubModal(true) }}
               onCreateGroup={() => { if (!isAdminOrPaulo) { alert(t('communities.only_admin_create_groups')); return } setShowCreateGroup(true); setNewGroupName(''); setApprovalRequired(false); setGroupSteveAgentEnabled(false) }}
             />
 
@@ -1261,22 +1268,28 @@ export default function Communities(){
                              placeholder={t('communities.sub_name_placeholder')}
                              className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm" />
                     </div>
-                    <div>
-                      <label className="block text-xs text-[#9fb0b5] mb-1">{t('communities.community_type')}</label>
-                      <select value={newSubType || parentTypeLabel}
-                              onChange={e=> setNewSubType(e.target.value)}
-                              className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm">
-                        <option value={parentTypeLabel}>{t('communities.same_as_parent', { type: parentTypeLabel || t('communities.type_general') })}</option>
-                        <option value="General">{t('communities.type_general')}</option>
-                      </select>
-                    </div>
+                    {isAppAdmin ? (
+                      <div>
+                        <label className="block text-xs text-[#9fb0b5] mb-1">{t('communities.community_type')}</label>
+                        <select value={newSubType || parentTypeLabel}
+                                onChange={e=> setNewSubType(e.target.value)}
+                                className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm">
+                          <option value={parentTypeLabel}>{t('communities.same_as_parent', { type: parentTypeLabel || t('communities.type_general') })}</option>
+                          <option value="General">{t('communities.type_general')}</option>
+                          <option value="Gym">{t('dashboard.type_gym', { defaultValue: 'Gym' })}</option>
+                          <option value="University">{t('dashboard.type_university', { defaultValue: 'University' })}</option>
+                          <option value="Business">{t('dashboard.type_business', { defaultValue: 'Business' })}</option>
+                        </select>
+                      </div>
+                    ) : null}
                     <div className="flex items-center justify-end gap-2">
                       <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowCreateSubModal(false)}>{t('common.cancel')}</button>
                       <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=>{
                         if (!newSubName.trim()) { alert(t('communities.sub_name_required')); return }
                         const targetParentId = selectedSubCommunityId === 'none' ? parentIdNum : Number(selectedSubCommunityId)
                         try{
-                          const fd = new URLSearchParams({ name: newSubName.trim(), type: (newSubType || parentTypeLabel || 'General') })
+                          const subType = isAppAdmin ? (newSubType || parentTypeLabel || 'General') : 'General'
+                          const fd = new URLSearchParams({ name: newSubName.trim(), type: subType })
                           fd.append('parent_community_id', String(targetParentId))
                           const r = await fetch('/create_community', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
                           const j = await r.json().catch(()=>null)

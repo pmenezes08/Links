@@ -682,6 +682,34 @@ def ensure_community_tier_member_capacity(
     )
 
 
+def normalize_community_type_value(value: Optional[str], *, default: str = "general") -> str:
+    """Lowercase functional category for comparisons (Gym → gym)."""
+    cleaned = str(value or "").strip().lower()
+    return cleaned or default
+
+
+def coerce_community_type_for_create(username: str, requested_type: Optional[str]) -> str:
+    """Type persisted on create. Only platform admins may set non-General types."""
+    if is_app_admin(username):
+        return normalize_community_type_value(requested_type)
+    return "general"
+
+
+def effective_community_type_for_update(
+    username: str,
+    submitted_type: Optional[str],
+    current_type: Optional[str],
+) -> str:
+    """Type persisted on update. Non-admins always keep the stored value."""
+    current = normalize_community_type_value(current_type)
+    if not is_app_admin(username):
+        return current
+    submitted = str(submitted_type or "").strip()
+    if not submitted:
+        return current
+    return normalize_community_type_value(submitted)
+
+
 def is_app_admin(username):
     """Check if a user is a global app admin.
 

@@ -1250,16 +1250,18 @@ export default function PremiumDashboard() {
               </div>
                 <div>
                   <label className="block text-xs text-[#9fb0b5] mb-1">{t('dashboard.community_type_label')}</label>
-                  <select value={newCommType} onChange={e=> setNewCommType(e.target.value as any)} className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm">
-                    <option value="General">{t('dashboard.type_general')}</option>
-                    {isPremium && (
-                      <>
-                        <option value="Gym">{t('dashboard.type_gym')}</option>
-                        <option value="University">{t('dashboard.type_university')}</option>
-                        {isAppAdmin && <option value="Business">{t('dashboard.type_business')}</option>}
-                      </>
-                    )}
-                  </select>
+                  {isAppAdmin ? (
+                    <select value={newCommType} onChange={e=> setNewCommType(e.target.value as any)} className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm">
+                      <option value="General">{t('dashboard.type_general')}</option>
+                      <option value="Gym">{t('dashboard.type_gym')}</option>
+                      <option value="University">{t('dashboard.type_university')}</option>
+                      <option value="Business">{t('dashboard.type_business')}</option>
+                    </select>
+                  ) : (
+                    <div className="w-full px-3 py-2 rounded-md bg-black/50 border border-white/10 text-sm text-[#9fb0b5]">
+                      {t('dashboard.type_general')}
+                    </div>
+                  )}
                 </div>
               <div className="text-xs text-[#9fb0b5]">{t('dashboard.create_parent_hint')}</div>
                 <div className="flex items-center justify-end gap-2">
@@ -1272,7 +1274,7 @@ export default function PremiumDashboard() {
                         if (!newCommName.trim()) { alert(t('dashboard.name_required')); return }
                         setIsCreatingCommunity(true)
                         try{
-                          const fd = new URLSearchParams({ name: newCommName.trim(), type: newCommType })
+                          const fd = new URLSearchParams({ name: newCommName.trim(), type: isAppAdmin ? newCommType : 'General' })
                           const r = await fetch('/create_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                           const j = await r.json().catch(()=>null)
                           if (j?.success){

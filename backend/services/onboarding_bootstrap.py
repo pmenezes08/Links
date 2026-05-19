@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.community import (
     CommunityMembershipLimitError,
+    coerce_community_type_for_create,
     get_community_ancestors,
     get_community_basic,
     insert_new_community_row,
@@ -72,8 +73,8 @@ def _create_single_community(
     if not name:
         return False, {"success": False, "error": "Name is required"}, 400
 
-    requested_type = (community_type or "general").strip().lower() or "general"
     is_admin = is_app_admin(username)
+    normalized_type = coerce_community_type_for_create(username, community_type)
 
     with get_db_connection() as conn:
         c = conn.cursor()
@@ -95,17 +96,9 @@ def _create_single_community(
         is_premium_user = subscription_value == "premium"
         parent_is_none = parent_id_int is None
         applies_free_limits = not is_admin and not is_premium_user
-        normalized_type = requested_type
-
-        if applies_free_limits and parent_is_none:
-            normalized_type = "general"
 
         if normalized_type == "business":
             return False, {"success": False, "error": "Business type is not available from onboarding bootstrap"}, 400
-
-        if applies_free_limits and parent_is_none:
-            if normalized_type not in ("general",):
-                normalized_type = "general"
 
         try:
             c.execute(

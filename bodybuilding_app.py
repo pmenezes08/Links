@@ -59,6 +59,8 @@ from backend.services.community import (
     get_community_ancestors,
     get_community_basic,
     get_parent_chain_ids,
+    coerce_community_type_for_create,
+    effective_community_type_for_update,
     insert_new_community_row,
     invalidate_dashboard_caches_for_community_subtree,
     is_app_admin,
@@ -25739,7 +25741,7 @@ def create_community():
                 except Exception as bypass_err:
                     logger.warning(f"Error checking Business admin bypass: {bypass_err}")
             
-            raw_type = str(requested_type or '').strip().lower() or 'general'
+            raw_type = coerce_community_type_for_create(username, requested_type)
 
             # Determine if user should be treated as free-plan creator
             parent_is_none = parent_community_id_check is None
@@ -25747,7 +25749,6 @@ def create_community():
                 if not is_premium_user:
                     if parent_is_none:
                         is_free_creator = True
-                        raw_type = 'general'
         
         name = request.form.get('name')
         description = request.form.get('description', '')
@@ -26340,7 +26341,9 @@ def update_community():
             else:
                 owner_username = community[0]
                 current_type = (community[1] if len(community) > 1 else '') or ''
-            effective_type = community_type if community_type else current_type
+            effective_type = effective_community_type_for_update(
+                username, community_type, current_type
+            )
             is_owner = str(owner_username or '').strip().lower() == str(username or '').strip().lower()
             is_platform_admin = is_app_admin(username)
             # Allow community admins to edit general fields
