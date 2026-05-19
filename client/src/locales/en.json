@@ -400,7 +400,27 @@
     "current_plan": "Current plan",
     "upgrade": "Upgrade",
     "manage": "Manage",
-    "loading": "Loading plans..."
+    "loading": "Loading plans...",
+    "modal_title": "Manage Membership",
+    "account": "Account",
+    "tabs": {
+      "plan": "Plan",
+      "ai": "AI Usage",
+      "billing": "Billing",
+      "payment": "Payment",
+      "notifications": "Notifications"
+    },
+    "loading_plan": "Loading plan...",
+    "loading_usage": "Loading usage...",
+    "loading_billing": "Loading billing...",
+    "included": "Included",
+    "staff": "staff",
+    "enterprise_benefit_note": "Your Premium features come from an Enterprise community you belong to. Leaving that community will pause these benefits.",
+    "steve_uses_month": "Steve uses / month",
+    "voice_transcription_month": "Voice transcription / month",
+    "communities_owned": "Communities you can own",
+    "members_per_community": "Members per community",
+    "based_on_community_tier": "Based on community tier"
   },
   "profile": {
     "edit_profile": "Edit Profile",

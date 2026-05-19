@@ -18,6 +18,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useEntitlements } from '../../hooks/useEntitlements'
 import { openExternalBillingUrl, providerBadge, providerLabel } from '../../utils/mobileStoreBilling'
 
@@ -86,15 +87,16 @@ interface AiUsageResponse {
   by_surface?: Record<string, number>
 }
 
-const TABS: { id: MembershipTab; label: string; icon: string }[] = [
-  { id: 'plan', label: 'Plan', icon: 'fa-id-card' },
-  { id: 'ai', label: 'AI Usage', icon: 'fa-robot' },
-  { id: 'billing', label: 'Billing', icon: 'fa-receipt' },
-  { id: 'payment', label: 'Payment', icon: 'fa-credit-card' },
-  { id: 'notifications', label: 'Notifications', icon: 'fa-bell' },
+const TABS: { id: MembershipTab; labelKey: string; icon: string }[] = [
+  { id: 'plan', labelKey: 'billing.tabs.plan', icon: 'fa-id-card' },
+  { id: 'ai', labelKey: 'billing.tabs.ai', icon: 'fa-robot' },
+  { id: 'billing', labelKey: 'billing.tabs.billing', icon: 'fa-receipt' },
+  { id: 'payment', labelKey: 'billing.tabs.payment', icon: 'fa-credit-card' },
+  { id: 'notifications', labelKey: 'billing.tabs.notifications', icon: 'fa-bell' },
 ]
 
 export default function ManageMembershipModal({ open, onClose, initialTab = 'plan' }: Props) {
+  const { t } = useTranslation()
   const [tab, setTab] = useState<MembershipTab>(initialTab)
 
   useEffect(() => {
@@ -123,7 +125,7 @@ export default function ManageMembershipModal({ open, onClose, initialTab = 'pla
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Manage Membership"
+        aria-label={t('billing.modal_title')}
         className="fixed inset-0 z-50 flex items-center justify-center p-4"
       >
         <div
@@ -132,13 +134,13 @@ export default function ManageMembershipModal({ open, onClose, initialTab = 'pla
         >
           <header className="flex items-center justify-between px-5 py-4 border-b border-white/10">
             <div>
-              <div className="text-xs text-white/50">Account</div>
-              <h2 className="text-lg font-semibold">Manage Membership</h2>
+              <div className="text-xs text-white/50">{t('billing.account')}</div>
+              <h2 className="text-lg font-semibold">{t('billing.modal_title')}</h2>
             </div>
             <button
               onClick={onClose}
               className="text-white/60 hover:text-white transition"
-              aria-label="Close"
+              aria-label={t('common.close')}
             >
               <i className="fa-solid fa-xmark text-lg" />
             </button>
@@ -146,35 +148,35 @@ export default function ManageMembershipModal({ open, onClose, initialTab = 'pla
 
           <div className="flex flex-1 overflow-hidden">
             <nav className="w-44 shrink-0 border-r border-white/10 p-2 overflow-y-auto hidden sm:block">
-              {TABS.map(t => (
+              {TABS.map(tabItem => (
                 <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
+                  key={tabItem.id}
+                  onClick={() => setTab(tabItem.id)}
                   className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition ${
-                    tab === t.id
+                    tab === tabItem.id
                       ? 'bg-[#4db6ac]/15 text-[#4db6ac]'
                       : 'text-white/70 hover:bg-white/5 hover:text-white'
                   }`}
                 >
-                  <i className={`fa-solid ${t.icon} w-4 text-center`} />
-                  {t.label}
+                  <i className={`fa-solid ${tabItem.icon} w-4 text-center`} />
+                  {t(tabItem.labelKey)}
                 </button>
               ))}
             </nav>
 
             <div className="flex-1 overflow-y-auto">
               <div className="sm:hidden flex gap-1 p-2 border-b border-white/10 overflow-x-auto">
-                {TABS.map(t => (
+                {TABS.map(tabItem => (
                   <button
-                    key={t.id}
-                    onClick={() => setTab(t.id)}
+                    key={tabItem.id}
+                    onClick={() => setTab(tabItem.id)}
                     className={`px-3 py-1.5 text-xs rounded-full whitespace-nowrap transition ${
-                      tab === t.id
+                      tab === tabItem.id
                         ? 'bg-[#4db6ac]/15 text-[#4db6ac]'
                         : 'bg-white/5 text-white/70'
                     }`}
                   >
-                    {t.label}
+                    {t(tabItem.labelKey)}
                   </button>
                 ))}
               </div>
@@ -195,8 +197,9 @@ export default function ManageMembershipModal({ open, onClose, initialTab = 'pla
 // --- Plan ----------------------------------------------------------------
 
 function PlanTab() {
+  const { t } = useTranslation()
   const { entitlements, loading } = useEntitlements()
-  if (loading || !entitlements) return <div className="text-white/60 text-sm">Loading plan…</div>
+  if (loading || !entitlements) return <div className="text-white/60 text-sm">{t('billing.loading_plan')}</div>
 
   const tier = entitlements.tier
   const isEnterprise = !!(entitlements as { inherited_from?: string | null })?.inherited_from?.startsWith('enterprise:')
@@ -218,38 +221,37 @@ function PlanTab() {
   // would mislead — the cap depends on the community, not on the plan.
   const perCommunityLabel =
     entitlements.members_per_owned_community == null
-      ? 'Based on community tier'
+      ? t('billing.based_on_community_tier')
       : capLabel(entitlements.members_per_owned_community, '')
 
   const rows: Array<[string, string]> = [
-    ['Steve uses / month', capLabel(entitlements.steve_uses_per_month, '')],
-    ['Voice transcription / month', capLabel(entitlements.whisper_minutes_per_month, 'min')],
-    ['Communities you can own', capLabel(entitlements.communities_max, '')],
-    ['Members per community', perCommunityLabel],
+    [t('billing.steve_uses_month'), capLabel(entitlements.steve_uses_per_month, '')],
+    [t('billing.voice_transcription_month'), capLabel(entitlements.whisper_minutes_per_month, 'min')],
+    [t('billing.communities_owned'), capLabel(entitlements.communities_max, '')],
+    [t('billing.members_per_community'), perCommunityLabel],
   ]
 
   return (
     <div className="space-y-6">
       <section className="rounded-xl border border-white/10 bg-white/5 p-4">
-        <div className="text-xs uppercase tracking-wide text-white/50">Current plan</div>
+        <div className="text-xs uppercase tracking-wide text-white/50">{t('billing.current_plan')}</div>
         <div className="flex items-center gap-3 mt-1">
           <h3 className="text-xl font-semibold">{tierLabel}</h3>
           {entitlements.is_special && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-200 border border-purple-500/30">
-              staff
+              {t('billing.staff')}
             </span>
           )}
         </div>
         {isEnterprise && (
           <p className="text-xs text-white/60 mt-2">
-            Your Premium features come from an Enterprise community you belong to.
-            Leaving that community will pause these benefits.
+            {t('billing.enterprise_benefit_note')}
           </p>
         )}
       </section>
 
       <section>
-        <h4 className="text-sm font-semibold mb-3">Included</h4>
+        <h4 className="text-sm font-semibold mb-3">{t('billing.included')}</h4>
         <div className="divide-y divide-white/5 rounded-xl border border-white/10 bg-white/5">
           {rows.map(([k, v]) => (
             <div key={k} className="flex items-center justify-between px-4 py-2.5 text-sm">
@@ -275,6 +277,7 @@ function PlanTab() {
 // --- AI Usage ------------------------------------------------------------
 
 function AiUsageTab() {
+  const { t } = useTranslation()
   const { entitlements, usage, refresh } = useEntitlements()
   const [aiData, setAiData] = useState<AiUsageResponse | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -294,7 +297,7 @@ function AiUsageTab() {
   }, [refresh])
 
   if (err) return <div className="text-red-400 text-sm">{err}</div>
-  if (!entitlements || !usage) return <div className="text-white/60 text-sm">Loading usage…</div>
+  if (!entitlements || !usage) return <div className="text-white/60 text-sm">{t('billing.loading_usage')}</div>
 
   return (
     <div className="space-y-5">
@@ -388,6 +391,7 @@ function UsageRow({
 // --- Billing / Payment ---------------------------------------------------
 
 function BillingTab({ variant }: { variant: 'billing' | 'payment' }) {
+  const { t } = useTranslation()
   const [data, setData] = useState<BillingResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
@@ -432,7 +436,7 @@ function BillingTab({ variant }: { variant: 'billing' | 'payment' }) {
     }
   }, [])
 
-  if (loading) return <div className="text-white/60 text-sm">Loading billing…</div>
+  if (loading) return <div className="text-white/60 text-sm">{t('billing.loading_billing')}</div>
   if (err) return <div className="text-red-400 text-sm">{err}</div>
   if (!data) return null
 

@@ -400,7 +400,27 @@
     "current_plan": "Plano atual",
     "upgrade": "Atualizar",
     "manage": "Gerir",
-    "loading": "A carregar planos..."
+    "loading": "A carregar planos...",
+    "modal_title": "Gerir adesão",
+    "account": "Conta",
+    "tabs": {
+      "plan": "Plano",
+      "ai": "Utilização de IA",
+      "billing": "Faturação",
+      "payment": "Pagamento",
+      "notifications": "Notificações"
+    },
+    "loading_plan": "A carregar plano...",
+    "loading_usage": "A carregar utilização...",
+    "loading_billing": "A carregar faturação...",
+    "included": "Incluído",
+    "staff": "equipa",
+    "enterprise_benefit_note": "As tuas funcionalidades Premium vêm de uma comunidade Enterprise a que pertences. Se saíres dessa comunidade, estes benefícios ficam em pausa.",
+    "steve_uses_month": "Utilizações do Steve / mês",
+    "voice_transcription_month": "Transcrição de voz / mês",
+    "communities_owned": "Comunidades que podes gerir",
+    "members_per_community": "Membros por comunidade",
+    "based_on_community_tier": "Com base no plano da comunidade"
   },
   "profile": {
     "edit_profile": "Editar perfil",
