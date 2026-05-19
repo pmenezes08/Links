@@ -8,6 +8,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 from threading import Lock
+from typing import Any
 
 from pywebpush import WebPushException, webpush
 
@@ -175,6 +176,50 @@ def truncate_notification_preview(text: str, max_len: int = 160) -> str:
     if len(preview) <= max_len:
         return preview
     return preview[: max_len - 1].rstrip() + "…"
+
+
+def user_wants_notification_content_previews(username: str) -> bool:
+    """Whether push/in-app notifications may include message or post text snippets."""
+    if not username:
+        return True
+    ensure_users_notification_show_previews_column()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT notification_show_previews FROM users WHERE username = ? LIMIT 1",
+                (username,),
+            )
+            row = c.fetchone()
+            if row is None:
+                return True
+            val = row["notification_show_previews"] if hasattr(row, "keys") else row[0]
+            if val is None:
+                return True
+            try:
+                return bool(int(val))
+            except (TypeError, ValueError):
+                return bool(val)
+    except Exception as exc:
+        logger.debug("notification_show_previews lookup failed for %s: %s", username, exc)
+        return True
+
+
+def push_privacy_summary(recipient_username: str, event: str, **params: Any) -> str:
+    """Localized summary-only push/in-app line (no content snippet)."""
+    from backend.services import notification_copy
+
+    locale = notification_copy.recipient_locale(recipient_username)
+    return notification_copy.in_app_text(event, locale, **params)
+
+
+def _resolve_push_payload_for_user(target_username: str, payload: dict) -> dict:
+    """Apply notification_show_previews: swap body for summary_body when previews disabled."""
+    resolved = dict(payload)
+    summary_body = payload.get("summary_body")
+    if summary_body is not None and not user_wants_notification_content_previews(target_username):
+        resolved["body"] = summary_body
+    return resolved
 
 
 # ── Community member-blocked notification ──────────────────────────────
@@ -464,6 +509,7 @@ def fanout_community_post_notifications(
                     {
                         "title": "New community post",
                         "body": f"{author_username}: {preview or truncate_notification_preview(content or '', 100)}",
+                        "summary_body": notif_message,
                         "url": notif_link,
                         "tag": f"community-post-{community_id}-{post_id}",
                     },
@@ -620,8 +666,13 @@ def send_fcm_notification(device_token: str, title: str, body: str, data: dict =
 
 
 def send_push_to_user(target_username: str, payload: dict):
-    """Send push notification to the given user (web + native)."""
-    
+    """Send push notification to the given user (web + native).
+
+    When ``summary_body`` is set and the recipient disabled content previews,
+    ``summary_body`` is sent instead of ``body`` (native + web push).
+    """
+    payload = _resolve_push_payload_for_user(target_username, payload)
+
     # Extract payload data
     title = payload.get('title', 'C-Point Notification')
     body = payload.get('body', '')

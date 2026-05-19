@@ -84,6 +84,7 @@ from backend.services.notifications import (
     ensure_notifications_preview_text_column,
     ensure_users_notification_show_previews_column,
     fanout_community_post_notifications,
+    push_privacy_summary,
     send_push_to_user,
     truncate_notification_preview,
 )
@@ -13322,6 +13323,9 @@ def send_message():
                     send_push_to_user(recipient_username, {
                         'title': f'Message from {username}',
                         'body': _dm_preview,
+                        'summary_body': push_privacy_summary(
+                            recipient_username, 'dm_message', author=username
+                        ),
                         'url': f'/user_chat/chat/{username}',
                         'tag': f'message-{username}-{inserted_id}',
                     })
@@ -13635,6 +13639,9 @@ def react_to_message():
                     send_push_to_user(notify_user, {
                         'title': f'{username} reacted {emoji}',
                         'body': f'to: "{preview}"' if preview else 'to your message',
+                        'summary_body': push_privacy_summary(
+                            notify_user, 'dm_reaction', author=username
+                        ),
                         'url': notif_link,
                         'tag': f'reaction-{username}-{message_id}',
                     })
@@ -13811,6 +13818,9 @@ def send_photo_message():
                     send_push_to_user(recipient_username, {
                         'title': f'Photo from {username}',
                         'body': _photo_preview,
+                        'summary_body': push_privacy_summary(
+                            recipient_username, 'dm_photo', author=username
+                        ),
                         'url': f'/user_chat/chat/{username}',
                         'tag': f'message-{username}-{inserted_id}',  # Unique tag per message
                     })
@@ -14008,6 +14018,9 @@ def send_dm_media():
                     send_push_to_user(recipient_username, {
                         'title': f'Media from {username}',
                         'body': _dm_media_preview,
+                        'summary_body': push_privacy_summary(
+                            recipient_username, 'dm_media', author=username
+                        ),
                         'url': f'/user_chat/chat/{username}',
                         'tag': f'message-{username}-{inserted_id}',
                     })
@@ -14148,6 +14161,9 @@ def send_video_message():
                     send_push_to_user(recipient_username, {
                         'title': f'Video from {username}',
                         'body': _video_preview,
+                        'summary_body': push_privacy_summary(
+                            recipient_username, 'dm_video', author=username
+                        ),
                         'url': f'/user_chat/chat/{username}',
                         'tag': f'message-{username}-{inserted_id}',  # Unique tag per message
                     })
@@ -14363,6 +14379,9 @@ def send_audio_message():
                     send_push_to_user(recipient_username, {
                         'title': f'Voice message from {username}',
                         'body': _audio_preview,
+                        'summary_body': push_privacy_summary(
+                            recipient_username, 'dm_voice', author=username
+                        ),
                         'url': f'/user_chat/chat/{username}',
                         'tag': f'message-{username}-audio-{int(time.time()*1000)}',  # Unique tag
                     })
@@ -16642,6 +16661,9 @@ def notify_post_reply_recipients(
                     send_push_to_user(target, {
                         'title': f'New reply from {from_user}',
                         'body': push_body,
+                        'summary_body': push_privacy_summary(
+                            target, 'community_reply', author=from_user
+                        ),
                         'url': notification_url,
                         'tag': f'post-reply-{post_id}-{target}'
                     })

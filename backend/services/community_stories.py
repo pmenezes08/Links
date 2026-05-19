@@ -1269,7 +1269,13 @@ def _notify_story_interaction(
     except Exception as exc:
         logger.warning("Story interaction notification error for %s: %s", recipient, exc)
     try:
-        send_push_to_user(recipient, {"title": title, "body": preview_text or message, "url": link, "tag": tag})
+        send_push_to_user(recipient, {
+            "title": title,
+            "body": preview_text or message,
+            "summary_body": message,
+            "url": link,
+            "tag": tag,
+        })
     except Exception as exc:
         logger.warning("Story interaction push error for %s: %s", recipient, exc)
 

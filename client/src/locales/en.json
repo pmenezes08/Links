@@ -115,8 +115,8 @@
       "open_settings": "Open Notification Settings",
       "native_helper": "This will open your device settings where you can enable notifications for C-Point.",
       "browser_helper": "Please allow notifications when your browser prompts you.",
-      "preview_label": "Show content previews in notifications",
-      "preview_helper": "When enabled, the notifications list includes a short snippet of the related post or reply. Turn off for a more private summary (who did what, without the text).",
+      "preview_label": "Show message previews in notifications",
+      "preview_helper": "When enabled, notifications and push alerts can include a short snippet of the message or post. Turn off for a private summary (who contacted you, without the text).",
       "android_settings_alert": "Please open your device Settings > Apps > C-Point > Notifications to enable them.",
       "browser_settings_alert": "Please enable notifications in your browser settings for this site.",
       "device_settings_alert": "Please open your device Settings and enable notifications for C-Point."

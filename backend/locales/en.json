@@ -173,6 +173,46 @@
       "body": "{author}: {preview}",
       "message": "{author} posted in {group}"
     },
+    "group_chat_mention": {
+      "title": "{group} — Mention",
+      "body": "{author} mentioned you: {preview}",
+      "message": "{author} mentioned you in {group}"
+    },
+    "dm_photo": {
+      "title": "New photo",
+      "body": "{author}: {preview}",
+      "message": "{author} sent you a photo"
+    },
+    "dm_video": {
+      "title": "New video",
+      "body": "{author}: {preview}",
+      "message": "{author} sent you a video"
+    },
+    "dm_voice": {
+      "title": "New voice message",
+      "body": "{author}: {preview}",
+      "message": "{author} sent you a voice message"
+    },
+    "dm_media": {
+      "title": "New media",
+      "body": "{author}: {preview}",
+      "message": "{author} sent you media"
+    },
+    "dm_reaction": {
+      "title": "New reaction",
+      "body": "{author} reacted to your message",
+      "message": "{author} reacted to your message"
+    },
+    "community_reply": {
+      "title": "New reply",
+      "body": "{author} replied to your post",
+      "message": "{author} replied to your post"
+    },
+    "group_feed_reply": {
+      "title": "New reply",
+      "body": "{author} replied to your post",
+      "message": "{author} replied to your post"
+    },
     "post_reply": {
       "title": "New reply",
       "body": "{author} replied to your post",

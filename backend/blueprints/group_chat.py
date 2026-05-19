@@ -1745,14 +1745,27 @@ def _send_group_message_notification(cursor, ph, recipient_username: str, sender
     They only appear as push notifications and affect the chat icon unread count.
     """
     from backend.services.database import USE_MYSQL
+    from backend.services.notifications import push_privacy_summary, send_push_to_user
     
     # Determine push content based on whether it's a mention
     if is_mention:
         push_title = f"{group_name} - Mention"
         push_body = f"{sender_username} mentioned you: {message_preview}"
+        summary_body = push_privacy_summary(
+            recipient_username,
+            "group_chat_mention",
+            author=sender_username,
+            group=group_name,
+        )
     else:
         push_title = group_name
         push_body = f"{sender_username}: {message_preview}"
+        summary_body = push_privacy_summary(
+            recipient_username,
+            "group_chat_message",
+            author=sender_username,
+            group=group_name,
+        )
     
     # Check if recipient is actively viewing this group chat (suppress push if so)
     should_push = True
@@ -1798,6 +1811,7 @@ def _send_group_message_notification(cursor, ph, recipient_username: str, sender
                 {
                     "title": push_title,
                     "body": push_body,
+                    "summary_body": summary_body,
                     "url": f"/group_chat/{group_id}",
                     "tag": f"group-{group_id}-msg"
                 }

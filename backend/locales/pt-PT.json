@@ -173,6 +173,46 @@
       "body": "{author}: {preview}",
       "message": "{author} publicou em {group}"
     },
+    "group_chat_mention": {
+      "title": "{group} — Menção",
+      "body": "{author} mencionou-te: {preview}",
+      "message": "{author} mencionou-te em {group}"
+    },
+    "dm_photo": {
+      "title": "Nova foto",
+      "body": "{author}: {preview}",
+      "message": "{author} enviou-te uma foto"
+    },
+    "dm_video": {
+      "title": "Novo vídeo",
+      "body": "{author}: {preview}",
+      "message": "{author} enviou-te um vídeo"
+    },
+    "dm_voice": {
+      "title": "Nova mensagem de voz",
+      "body": "{author}: {preview}",
+      "message": "{author} enviou-te uma mensagem de voz"
+    },
+    "dm_media": {
+      "title": "Novo media",
+      "body": "{author}: {preview}",
+      "message": "{author} enviou-te media"
+    },
+    "dm_reaction": {
+      "title": "Nova reação",
+      "body": "{author} reagiu à tua mensagem",
+      "message": "{author} reagiu à tua mensagem"
+    },
+    "community_reply": {
+      "title": "Nova resposta",
+      "body": "{author} respondeu à tua publicação",
+      "message": "{author} respondeu à tua publicação"
+    },
+    "group_feed_reply": {
+      "title": "Nova resposta",
+      "body": "{author} respondeu à tua publicação",
+      "message": "{author} respondeu à tua publicação"
+    },
     "post_reply": {
       "title": "Nova resposta",
       "body": "{author} respondeu à tua publicação",

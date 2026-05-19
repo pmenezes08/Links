@@ -115,8 +115,8 @@
       "open_settings": "Abrir definições de notificações",
       "native_helper": "Isto vai abrir as definições do teu dispositivo, onde podes ativar as notificações do C-Point.",
       "browser_helper": "Permite notificações quando o teu browser te pedir.",
-      "preview_label": "Mostrar pré-visualizações de conteúdo nas notificações",
-      "preview_helper": "Quando ativo, a lista de notificações inclui um pequeno excerto da publicação ou resposta relacionada. Desativa para um resumo mais privado (quem fez o quê, sem o texto).",
+      "preview_label": "Mostrar pré-visualizações de mensagens nas notificações",
+      "preview_helper": "Quando ativo, as notificações e alertas push podem incluir um pequeno excerto da mensagem ou publicação. Desativa para um resumo privado (quem te contactou, sem o texto).",
       "android_settings_alert": "Abre as Definições do dispositivo > Apps > C-Point > Notificações para as ativares.",
       "browser_settings_alert": "Permite notificações nas definições do browser para este site.",
       "device_settings_alert": "Abre as Definições do dispositivo e ativa as notificações do C-Point."

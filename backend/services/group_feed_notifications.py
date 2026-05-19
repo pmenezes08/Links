@@ -9,6 +9,7 @@ from backend.services import notification_copy
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.notifications import (
     create_notification,
+    push_privacy_summary,
     send_push_to_user,
     truncate_notification_preview,
 )
@@ -131,6 +132,7 @@ def fanout_group_post_notifications(
                     {
                         "title": push["title"],
                         "body": push["body"],
+                        "summary_body": line,
                         "url": post_link,
                         "tag": f"group-feed-post-{group_id}-{group_post_id}",
                     },
@@ -357,6 +359,9 @@ def notify_group_post_reply_recipients(
                         {
                             "title": f"New reply from {from_user}",
                             "body": push_body,
+                            "summary_body": push_privacy_summary(
+                                target, "group_feed_reply", author=from_user
+                            ),
                             "url": notif_link,
                             "tag": f"group-{group_id}-post-reply-{group_post_id}-{target}",
                         },
