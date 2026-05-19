@@ -92,6 +92,28 @@
     "checkout_failed": "Não foi possível iniciar o pagamento. Tenta de novo.",
     "portal_failed": "Não foi possível abrir o portal de faturação. Tenta de novo."
   },
+  "email": {
+    "common": {
+      "go_to_c_point": "Ir para o C-Point",
+      "footer_thanks": "Obrigado por fazeres parte do C-Point."
+    },
+    "invite_existing_user": {
+      "subject": "{inviter} adicionou-te a {community} no C-Point",
+      "heading": "Foste adicionado!",
+      "lead_html": "<strong>{inviter}</strong> adicionou-te a <strong>{community}</strong> no C-Point.",
+      "lead_text": "{inviter} adicionou-te a {community} no C-Point.",
+      "secondary": "Já podes aceder a esta comunidade e começar a contactar com outros membros.",
+      "nested_heading": "Também vais entrar em"
+    },
+    "invite_new_user": {
+      "subject": "Tens um convite para entrar em {community} no C-Point",
+      "heading": "Bem-vindo ao C-Point",
+      "lead_html": "Foste convidado para entrar em <strong>{community}</strong> por <strong>{inviter}</strong>.",
+      "lead_text": "Foste convidado para entrar em {community} por {inviter}.",
+      "cta": "Entrar em {community}",
+      "nested_heading": "Também vais entrar em"
+    }
+  },
   "notifications": {
     "group_feed_post": {
       "title": "Nova publicação no grupo",

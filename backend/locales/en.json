@@ -92,6 +92,28 @@
     "checkout_failed": "Could not start checkout. Please try again.",
     "portal_failed": "Could not open the billing portal. Please try again."
   },
+  "email": {
+    "common": {
+      "go_to_c_point": "Go to C-Point",
+      "footer_thanks": "Thanks for being part of C-Point."
+    },
+    "invite_existing_user": {
+      "subject": "{inviter} added you to {community} on C-Point",
+      "heading": "You've Been Added!",
+      "lead_html": "<strong>{inviter}</strong> has added you to <strong>{community}</strong> on C-Point.",
+      "lead_text": "{inviter} has added you to {community} on C-Point.",
+      "secondary": "You can now access this community and start connecting with other members.",
+      "nested_heading": "You're also joining"
+    },
+    "invite_new_user": {
+      "subject": "You're invited to join {community} on C-Point",
+      "heading": "Welcome to C-Point",
+      "lead_html": "You have been invited to join <strong>{community}</strong> by <strong>{inviter}</strong>.",
+      "lead_text": "You have been invited to join {community} by {inviter}.",
+      "cta": "Join {community}",
+      "nested_heading": "You'll also join"
+    }
+  },
   "notifications": {
     "group_feed_post": {
       "title": "New group post",
