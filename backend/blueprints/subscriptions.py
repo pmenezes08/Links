@@ -937,7 +937,7 @@ def api_community_billing(community_id: int):
         "days_remaining": None if inherited else state.get("days_remaining"),
         "benefits_end_at": None if inherited else state.get("benefits_end_at"),
         "has_stripe_customer": False if inherited else bool(state.get("stripe_customer_id")),
-        "billing_provider": None if inherited else (state.get("billing_provider") or "stripe"),
+        "billing_provider": state.get("billing_provider") or "stripe",
         "stripe_mode": _stripe_mode(),
         # Freeze state — non-null even when not frozen so clients can
         # render an "active" indicator without a separate request.

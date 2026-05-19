@@ -5,8 +5,10 @@ import { useTranslation } from 'react-i18next'
 import i18n from '../i18n'
 import { useHeader } from '../contexts/HeaderContext'
 import {
+  canUseNativeStoreIap,
   currentStoreProvider,
   loadIapConfig,
+  nativeIapPurchasesEnabled,
   openExternalBillingUrl,
   providerBadge,
   providerLabel,
@@ -489,11 +491,13 @@ export default function SubscriptionPlans() {
   )
 
   const storeProvider = currentStoreProvider()
+  const iapEnabled = nativeIapPurchasesEnabled(iapConfig)
+  const webBillingUrl = iapConfig?.web_app_billing_url || 'https://app.c-point.co/subscription_plans'
 
   const onSubscribePremium = useCallback(async () => {
     const provider = currentStoreProvider()
     const productId = provider ? iapConfig?.[provider]?.premium_product_id : ''
-    if (provider && productId) {
+    if (provider && productId && canUseNativeStoreIap(provider, iapConfig, productId)) {
       setCheckoutLoading('premium')
       setError(null)
       try {
@@ -513,7 +517,7 @@ export default function SubscriptionPlans() {
 
   const onRestorePurchases = useCallback(async () => {
     const provider = currentStoreProvider()
-    if (!provider || !iapConfig) return
+    if (!provider || !iapConfig || !nativeIapPurchasesEnabled(iapConfig)) return
     setCheckoutLoading(`restore:${provider}`)
     setError(null)
     setModalError(null)
@@ -591,8 +595,10 @@ export default function SubscriptionPlans() {
         return
       }
       const provider = currentStoreProvider()
-      const productId = provider ? iapConfig?.[provider]?.community_product_ids?.[pendingTier.tier_code] : ''
-      if (provider && productId) {
+      const productId = provider
+        ? iapConfig?.[provider]?.community_product_ids?.[pendingTier.tier_code]
+        : ''
+      if (provider && productId && canUseNativeStoreIap(provider, iapConfig, productId)) {
         const existingStoreCommunity = activeSubscriptions?.communities?.find((item) => {
           const billingProvider = String(item.billing_provider || '').toLowerCase()
           return billingProvider === provider && item.id !== communityId
@@ -648,6 +654,13 @@ export default function SubscriptionPlans() {
 
   const onSteveCommunityChosen = useCallback(
     async (communityId: number) => {
+      if (currentStoreProvider()) {
+        setModalError(null)
+        openExternalBillingUrl(
+          `${webBillingUrl}${webBillingUrl.includes('?') ? '&' : '?'}open=community_addons&community_id=${communityId}`,
+        )
+        return
+      }
       startCheckout(
         { plan_id: 'steve_package', community_id: communityId },
         `steve_package:${communityId}`,
@@ -659,7 +672,7 @@ export default function SubscriptionPlans() {
         },
       )
     },
-    [startCheckout],
+    [startCheckout, webBillingUrl],
   )
 
   return (
@@ -772,7 +785,13 @@ export default function SubscriptionPlans() {
         <CommunityModal
           payload={pricing.sku.community_tier}
           storeProvider={storeProvider}
-          storeProductIds={storeProvider ? iapConfig?.[storeProvider]?.community_product_ids || {} : {}}
+          storeProductIds={
+            iapEnabled && storeProvider
+              ? iapConfig?.[storeProvider]?.community_product_ids || {}
+              : {}
+          }
+          iapDisabledOnNative={!!storeProvider && !iapEnabled}
+          webBillingUrl={webBillingUrl}
           onPickTier={onPickTier}
           onOpenAddons={() => {
             resetSubscriptionPageScroll()
@@ -974,6 +993,8 @@ function PersonalCard({
   loading,
   storeProvider,
   storeProductAvailable,
+  iapDisabledOnNative,
+  webBillingUrl,
   onRestore,
   restoreLoading,
 }: {
@@ -982,11 +1003,17 @@ function PersonalCard({
   loading: boolean
   storeProvider: StoreProvider | null
   storeProductAvailable: boolean
+  iapDisabledOnNative?: boolean
+  webBillingUrl?: string
   onRestore: () => void
   restoreLoading: boolean
 }) {
   const { t } = useTranslation()
-  const disabled = (!payload.purchasable && !storeProductAvailable) || loading || restoreLoading
+  const disabled =
+    (!payload.purchasable && !storeProductAvailable)
+    || loading
+    || restoreLoading
+    || !!iapDisabledOnNative
   const ctaLabel = storeProvider && storeProductAvailable
     ? t('subscriptions.subscribe_with_provider', { provider: providerLabel(storeProvider) })
     : payload.cta_label
@@ -1059,7 +1086,7 @@ function PersonalCard({
       >
         {loading ? t('subscriptions.starting_checkout') : ctaLabel}
       </button>
-      {storeProvider && (
+      {storeProvider && storeProductAvailable && (
         <button
           type="button"
           onClick={onRestore}
@@ -1071,7 +1098,21 @@ function PersonalCard({
             : t('subscriptions.restore_purchases', { provider: providerLabel(storeProvider) })}
         </button>
       )}
-      {!payload.purchasable && (
+      {iapDisabledOnNative && (
+        <p className="mt-3 text-xs text-white/55">
+          {t('subscriptions.iap_disabled_notice')}
+          {webBillingUrl && (
+            <button
+              type="button"
+              onClick={() => openExternalBillingUrl(webBillingUrl)}
+              className="mt-2 block text-left text-cpoint-turquoise underline"
+            >
+              {t('subscriptions.open_web_billing', { url: webBillingUrl })}
+            </button>
+          )}
+        </p>
+      )}
+      {!payload.purchasable && !iapDisabledOnNative && (
         <p className="mt-3 text-xs text-white/40">
           {storeProductAvailable
             ? t('subscriptions.store_billing_available', { provider: providerLabel(storeProvider) })
@@ -1410,6 +1451,8 @@ function CommunityModal({
   payload,
   storeProvider,
   storeProductIds,
+  iapDisabledOnNative,
+  webBillingUrl,
   onPickTier,
   onOpenAddons,
   onClose,
@@ -1419,6 +1462,8 @@ function CommunityModal({
   payload: CommunityTierPayload
   storeProvider: StoreProvider | null
   storeProductIds: Record<string, string>
+  iapDisabledOnNative?: boolean
+  webBillingUrl?: string
   onPickTier: (tier: CommunityTierLevel) => void
   onOpenAddons: () => void
   onClose: () => void
@@ -1456,6 +1501,21 @@ function CommunityModal({
         </div>
       )}
 
+      {iapDisabledOnNative && (
+        <p className="mt-4 text-sm text-white/60">
+          {t('subscriptions.iap_disabled_notice')}
+          {webBillingUrl && (
+            <button
+              type="button"
+              onClick={() => openExternalBillingUrl(webBillingUrl)}
+              className="mt-2 block text-left text-cpoint-turquoise underline"
+            >
+              {t('subscriptions.open_web_billing', { url: webBillingUrl })}
+            </button>
+          )}
+        </p>
+      )}
+
       <div className="mt-6 space-y-2">
         {payload.tiers.map((tier) => (
           <TierRow
@@ -1463,7 +1523,7 @@ function CommunityModal({
             tier={tier}
             ctaLabel={payload.cta_label}
             storeProvider={storeProvider}
-            storeProductAvailable={!!storeProductIds[tier.tier_code]}
+            storeProductAvailable={!iapDisabledOnNative && !!storeProductIds[tier.tier_code]}
             loading={
               !!pendingKey && pendingKey.startsWith(`community_tier:${tier.tier_code}`)
             }

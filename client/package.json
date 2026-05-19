@@ -10,6 +10,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "cap:sync:staging": "npx cross-env CPOINT_CAPACITOR_PROFILE=staging npx cap sync",
+    "cap:sync:prod": "npx cross-env CPOINT_CAPACITOR_PROFILE=production npx cap sync",
+    "cap:copy:prod": "npx cross-env CPOINT_CAPACITOR_PROFILE=production npx cap copy",
     "postinstall": "npx patch-package || true; bash patches/fix-google-auth-ios.sh || true"
   },
   "dependencies": {
@@ -58,6 +61,7 @@
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.21",
+    "cross-env": "^7.0.3",
     "eslint": "^9.33.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",

@@ -21,6 +21,7 @@ itsdangerous>=2.0.0
 markupsafe>=2.1.0
 pypdf>=3.0.0
 google-auth
+PyJWT>=2.8.0  # App Store Server API JWT + Apple ASSN2 JWS verification
 trafilatura>=1.6.0
 python-dateutil>=2.8.2
 dateparser>=1.2.0

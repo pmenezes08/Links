@@ -51,6 +51,7 @@ Communities can have **Stripe-backed** billing separate from the user’s person
 - **Additional communities go to web billing.** Native UI opens `https://app.c-point.co/subscription_plans` as a clickable external link for extra communities; it must not open Stripe Checkout inside the native app.
 - **Provider-aware management.** `billing_provider` on community rows and `subscription_provider` on users route management to Stripe, App Store, or Google Play. Stripe portal/change-tier endpoints reject Apple/Google-managed rows with `store_billing_active`.
 - **Launch gate.** Production IAP grants stay off until `iap_purchases_enabled=true` in KB after App Store / Play review. Sandbox/license-test restore/confirm paths are kept available for review testing.
+- **Server trust.** Confirm/restore calls `store_purchase_verify` (App Store Server API + Play Developer API) before granting entitlements when not sandbox; ASSN2/RTDN webhooks verify signed payloads when store credentials are configured (`docs/STORE_BILLING_SETUP.md`).
 
 ### Subscription hub API (`GET /api/me/subscriptions`)
 

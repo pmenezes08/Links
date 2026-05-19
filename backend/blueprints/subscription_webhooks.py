@@ -714,7 +714,11 @@ def apple_webhook():
     if not signed:
         return jsonify({"success": False, "error": "missing signedPayload"}), 400
 
-    decoded = _decode_jws_unsafely(signed)
+    from backend.services import store_purchase_verify
+
+    ok, decoded = store_purchase_verify.verify_apple_notification_jws(signed)
+    if not ok:
+        return jsonify({"success": False, "error": "invalid_signed_payload"}), 400
     notif_type = decoded.get("notificationType") or "unknown"
     subtype = decoded.get("subtype")
     data = decoded.get("data") or {}
@@ -729,6 +733,12 @@ def apple_webhook():
     username = _lookup_username_by_apple_tx(original_tx_id) or ""
 
     action = _apple_notif_to_action(notif_type, subtype)
+    signed_tx = data.get("signedTransactionInfo") or ""
+    if action and store_purchase_verify.apple_configured() and signed_tx:
+        tx_ok, _ = store_purchase_verify.verify_apple_notification_jws(signed_tx)
+        if not tx_ok:
+            logger.warning("apple_webhook: signedTransactionInfo failed verification")
+            return jsonify({"success": False, "error": "invalid_transaction"}), 400
     if action:
         mobile_iap.apply_store_lifecycle(
             provider=iap_links.PROVIDER_APPLE,
@@ -785,8 +795,18 @@ def google_webhook():
     purchase_token = sub_notif.get("purchaseToken")
     expires_at = sub_notif.get("expiryTimeMillis")
 
+    from backend.services import store_purchase_verify
+
+    subscription_id = sub_notif.get("subscriptionId")
     username = _lookup_username_by_google_token(purchase_token) or ""
     action = _google_notif_to_action(notification_type)
+    if action and purchase_token:
+        g_ok, g_err = store_purchase_verify.verify_google_rtdn(
+            purchase_token=purchase_token,
+            subscription_id=subscription_id,
+        )
+        if not g_ok:
+            return jsonify({"success": False, "error": g_err or "verification_failed"}), 400
     if action:
         mobile_iap.apply_store_lifecycle(
             provider=iap_links.PROVIDER_GOOGLE,

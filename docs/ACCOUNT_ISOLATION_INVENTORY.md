@@ -8,7 +8,7 @@ behavior changes. It is intentionally descriptive only.
 
 ### localStorage
 
-Known identity/session keys currently cleared by `client/src/utils/logout.ts`:
+Known identity/session keys cleared by `resetAccountScopedState` (via `logout.ts` or username change):
 
 - `signal_device_id`
 - `current_username`
@@ -21,7 +21,7 @@ Known identity/session keys currently cleared by `client/src/utils/logout.ts`:
 - `communityManagementShowNested`
 - `cached_profile`
 
-Known account-scoped prefixes currently cleared by `client/src/utils/logout.ts`:
+Known account-scoped prefixes cleared by `resetAccountScopedState`:
 
 - `signal_`
 - `chat_`
@@ -85,7 +85,7 @@ Logout also deletes the following IndexedDB databases:
 
 ### Cache Storage / Service Worker
 
-Current SW version: `2.69.1`.
+Current SW version: `2.69.3` (see `client/public/sw.js`).
 
 Current Cache Storage buckets:
 
@@ -93,7 +93,12 @@ Current Cache Storage buckets:
 - `cp-runtime-${SW_VERSION}`
 - `cp-media-${SW_VERSION}`
 
-Current explicit no-cache API list in `client/public/sw.js`:
+Session JSON (no SW cache): all same-origin `GET` requests with
+`Accept: application/json` and path under `/api/`, plus legacy
+`/get_user_communities_with_members`. The service worker does not call
+`respondWith` for these — the browser handles the fetch directly.
+
+Explicit profile paths (subset of `/api/` rule, listed for audits):
 
 - `/api/profile_me`
 - `/api/profile/cv`
@@ -102,21 +107,12 @@ Current explicit no-cache API list in `client/public/sw.js`:
 - `/api/profile/steve_analysis`
 - `/api/profile/steve_request_refresh`
 
-Current stale-while-revalidate API list in `client/public/sw.js`:
+**Removed (2026-05):** stale-while-revalidate and `networkFirst` for session
+JSON APIs. Previously cached endpoints included notifications, chat threads,
+and user communities — see git history for `STALE_API_ENDPOINTS`.
 
-- `/api/user_communities_hierarchical`
-- `/get_user_communities_with_members`
-- `/api/premium_dashboard_summary`
-- `/api/user_parent_community`
-- `/api/chat_threads`
-- `/api/group_chat/list`
-- `/api/notifications`
-- `/api/check_gym_membership`
-- `/api/check_admin`
-
-Current fallback behavior: same-origin JSON `GET /api/*` responses that are not
-in the no-cache list are handled with `networkFirst(..., RUNTIME_CACHE)`, which
-can still write successful responses to Cache Storage.
+Previous fallback (superseded): `networkFirst` wrote session JSON into
+`RUNTIME_CACHE` keyed by URL only.
 
 ## User-Scoped Endpoints
 

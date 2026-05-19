@@ -165,6 +165,19 @@ export async function unregisterServiceWorkersForAccount(): Promise<void> {
   }
 }
 
+/**
+ * Clear account-scoped client state when the signed-in username changes (e.g. A → B
+ * without a full page reload). No-op when first login or same user.
+ */
+export async function ensureAccountIsolationForUsername(nextUsername: string): Promise<boolean> {
+  const next = nextUsername.trim()
+  if (!next) return false
+  const previous = localStorage.getItem('current_username')?.trim() || ''
+  if (!previous || previous === next) return false
+  await resetAccountScopedState({ clearSessionStorage: false })
+  return true
+}
+
 export async function resetAccountScopedState(options: AccountStateResetOptions = {}): Promise<void> {
   const {
     localStorageMode = 'account',

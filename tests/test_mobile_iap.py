@@ -42,6 +42,27 @@ def test_confirm_apple_premium_grants_user_subscription(monkeypatch):
     assert saved["user"]["provider"] == "apple"
 
 
+def test_confirm_production_rejected_without_verification(monkeypatch):
+    monkeypatch.setattr(mobile_iap, "_grants_allowed", lambda _environment: True)
+    monkeypatch.setattr(
+        mobile_iap.store_purchase_verify,
+        "verify_confirm",
+        lambda **_kwargs: (False, "apple_verification_unconfigured", {}),
+    )
+
+    ok, reason, result = mobile_iap.confirm_purchase(
+        provider="apple",
+        username="paulo",
+        product_id="cpoint_premium_monthly",
+        purchase_key="tx_prod",
+        environment="Production",
+    )
+
+    assert ok is False
+    assert reason == "apple_verification_unconfigured"
+    assert result is None
+
+
 def test_second_store_billed_community_is_rejected(monkeypatch):
     monkeypatch.setattr(mobile_iap, "_grants_allowed", lambda _environment: True)
     monkeypatch.setattr(iap_links, "find", lambda _provider, _purchase_key: None)

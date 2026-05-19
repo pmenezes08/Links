@@ -40,7 +40,7 @@ Console billing report):
 |---------------------------|------|----------------------------------------------------------------|
 | Cloud Run (all services)  | 103.35 | Dominant cost; two services at `min-instances=1` was the cause |
 | Artifact Registry         | 8.71 | Growing creep from stale source-deploy image layers            |
-| Cloud SQL (cpoint-db)     | 7.81 | `db-f1-micro` — already lean, no action                       |
+| Cloud SQL (cpoint-db)     | 7.81 | **`db-f1-micro` today** — upgrade before a marketing push (see §0.5) |
 | Other (Cloud Storage, SM) | 1.91 | Noise                                                         |
 
 Services actually in use for C-Point: `cpoint-app`, `cpoint-app-staging`,
@@ -116,6 +116,22 @@ only gate observability:
    - Dataset: `billing_export` (already created)
    - Enable both *Standard usage cost* and *Pricing* exports.
    First data appears ~24h after enabling.
+
+### 0.5 Cloud SQL tier (pre-scale)
+
+**Current:** `db-f1-micro` on instance `cpoint-db` (shared staging + prod).
+
+**Before ~50k MAU or a paid acquisition push**, upgrade to at least **`db-g1-small`** (or `db-custom-1-3840` if connection headroom is needed):
+
+```powershell
+gcloud sql instances patch cpoint-db --tier=db-g1-small --project=cpoint-127c2
+```
+
+Take an on-demand backup first (§2). Update this section when the tier changes.
+
+**`ai_usage_log` rollups:** nightly cron `POST /api/cron/ai-usage/daily-rollup` (auth: `X-Cron-Secret`) writes `ai_usage_daily_rollups` so admin metrics avoid full-table scans. Wire in Cloud Scheduler after deploy.
+
+**Production entitlements:** set `ENTITLEMENTS_ENFORCEMENT_ENABLED=true` on Cloud Run service **`cpoint-app`** when launching paid AI to the public (staging should match for QA).
 
 ### 0.4 Admin activity metrics (DAU / MAU)
 

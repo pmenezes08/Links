@@ -55,6 +55,7 @@
 		"PushNotificationsPlugin",
 		"SharePlugin",
 		"InAppBrowserPlugin",
+		"NativePurchasesPlugin",
 		"GoogleAuth",
 		"CapacitorCalendarPlugin",
 		"TabsBarPlugin"

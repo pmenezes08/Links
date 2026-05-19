@@ -38,6 +38,21 @@ export function providerBadge(provider: StoreProvider | 'stripe' | string | null
   return 'Web billing'
 }
 
+/** True when KB allows production IAP grants and native subscribe CTAs should be active. */
+export function nativeIapPurchasesEnabled(config: IapConfig | null | undefined): boolean {
+  return !!config?.iap_purchases_enabled
+}
+
+/** Native store IAP product flow is available (platform + product id + KB flag). */
+export function canUseNativeStoreIap(
+  provider: StoreProvider | null,
+  config: IapConfig | null | undefined,
+  productId: string | undefined | null,
+): boolean {
+  if (!provider || !productId) return false
+  return nativeIapPurchasesEnabled(config)
+}
+
 export async function loadIapConfig(): Promise<IapConfig | null> {
   const res = await fetch('/api/iap/config', {
     credentials: 'include',

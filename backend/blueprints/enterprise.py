@@ -555,6 +555,17 @@ def cron_revoke_expired_subscriptions():
     return jsonify({"success": True, "revoked": revoked, "cutoff": cutoff})
 
 
+@enterprise_bp.route("/api/cron/ai-usage/daily-rollup", methods=["POST"])
+def cron_ai_usage_daily_rollup():
+    """Aggregate yesterday's ``ai_usage_log`` rows into ``ai_usage_daily_rollups``."""
+    if not _cron_authed():
+        return jsonify({"success": False, "error": "forbidden"}), 403
+    from backend.services import ai_usage_rollups
+
+    result = ai_usage_rollups.rollup_day()
+    return jsonify({"success": True, **result})
+
+
 @enterprise_bp.route("/api/cron/usage/cycle-notify", methods=["POST"])
 def cron_usage_cycle_notify():
     """Queue 80% / 95% usage warnings for Premium users near their caps.

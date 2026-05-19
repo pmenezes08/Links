@@ -370,12 +370,32 @@ export default function EditCommunity(){
             <span className="inline-flex items-center rounded-full border border-cpoint-turquoise/30 bg-cpoint-turquoise/10 px-3 py-1 text-[11px] font-medium text-cpoint-turquoise">
               {billing.tier_label || TIER_LABEL[billing.tier] || billing.tier}
             </span>
+            <span className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[11px] font-medium text-white/60">
+              {providerBadge(billing.billing_provider || 'stripe')}
+            </span>
             <span className="text-xs text-white/60">
               {billing.inherited_from_root_name
                 ? t('communities.inherited_from_named', { name: billing.inherited_from_root_name })
                 : t('communities.inherited_from_parent')}
             </span>
           </div>
+          {billing.inherited_from_root_id != null && billing.inherited_from_root_id > 0 && (
+            <div className="mt-3 space-y-2 text-xs text-white/60">
+              <p>
+                {t('communities.inherited_billing_on_root', {
+                  name: billing.inherited_from_root_name || t('communities.inherited_from_parent'),
+                  provider: providerLabel(String(billing.billing_provider || 'stripe').toLowerCase()),
+                })}
+              </p>
+              <button
+                type="button"
+                onClick={() => navigate(`/community/${billing.inherited_from_root_id}/edit`)}
+                className="text-cpoint-turquoise underline hover:text-cpoint-turquoise/90"
+              >
+                {t('communities.manage_billing_on_root')}
+              </button>
+            </div>
+          )}
           {billing.steve_package_subscription_active && billing.steve_pool_cap !== null && billing.steve_pool_cap > 0 && (
             <div className="mt-4 rounded-lg border border-[#00CEC8]/25 bg-[#00CEC8]/5 p-3 text-xs text-white/70">
               <div className="font-medium text-[#00CEC8]">{t('communities.steve_community_calls')}</div>

@@ -44,6 +44,22 @@ This repository does **not** define a Cloud Run service literally named `cpoint-
 
 So: **“web” = front-end artifact + hostname**, not a sixth Cloud Run backend name.
 
+### Mobile Capacitor API host (store releases)
+
+Store binaries must **not** load the staging Cloud Run URL. From `client/`:
+
+| Profile | Command | `server.url` |
+|---------|---------|----------------|
+| **Production** (App Store / Play release) | `npm run cap:sync:prod` | `https://app.c-point.co` |
+| **Staging** (internal QA) | `npm run cap:sync:staging` | `cpoint-app-staging-…run.app` |
+| **Development** (bundled `webDir`) | `CPOINT_CAPACITOR_PROFILE=development npx cap sync` | omitted (Vite dev server / local) |
+
+Android release builds also default `capacitor-server-inject.gradle` to **`https://app.c-point.co`**; override with `cpointCapacitorServerUrl` in `gradle.properties` for staging APKs.
+
+Production IAP verification secrets (Cloud Run **`cpoint-app`**): `APPLE_IAP_*`, `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`. See **`docs/STORE_BILLING_SETUP.md`**.
+
+Before broad launch, set **`ENTITLEMENTS_ENFORCEMENT_ENABLED=true`** on production Cloud Run (staging should already match).
+
 ---
 
 ## Other infrastructure (short)

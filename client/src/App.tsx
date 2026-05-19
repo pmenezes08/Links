@@ -71,7 +71,7 @@ import GroupFeed from './pages/GroupFeed'
 import EditGroup from './pages/EditGroup'
 import CommentReply from './pages/CommentReply'
 import ShareIncomingRouteRedirect from './pages/ShareIncomingRouteRedirect'
-import { resetAccountScopedState } from './utils/accountStateReset'
+import { ensureAccountIsolationForUsername } from './utils/accountStateReset'
 import {
   GOOGLE_ANDROID_CLIENT_ID,
   GOOGLE_IOS_CLIENT_ID,
@@ -113,17 +113,18 @@ function AppRoutes(){
     [],
   )
 
-  const applyProfileFromServer = useCallback((profile: Record<string, unknown>) => {
+  const applyProfileFromServer = useCallback(async (profile: Record<string, unknown>) => {
     setProfileData(profile)
     setIsVerified(!!(profile as any)?.email_verified)
     setProfileError(null)
 
     const username = (profile as any)?.username as string | undefined
-    const previousUsername = localStorage.getItem('current_username')
-    if (username && previousUsername && previousUsername !== username) {
-      void resetAccountScopedState({ clearSessionStorage: false }).catch((e) => {
+    if (username) {
+      try {
+        await ensureAccountIsolationForUsername(username)
+      } catch (e) {
         console.warn('Error clearing account-scoped state for user change:', e)
-      })
+      }
     }
 
     try {
@@ -574,7 +575,7 @@ function AppRoutes(){
       const json = await response.json().catch(() => null)
       if (json?.success && json.profile) {
         const profile = json.profile as Record<string, unknown>
-        applyProfileFromServer(profile)
+        await applyProfileFromServer(profile)
         return profile as UserProfile
       }
 

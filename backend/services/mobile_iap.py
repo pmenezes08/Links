@@ -16,7 +16,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from backend.services import community as community_svc
 from backend.services import community_billing, iap_links, knowledge_base
-from backend.services import subscription_audit, user_billing
+from backend.services import store_purchase_verify, subscription_audit, user_billing
 from backend.services.database import get_db_connection, get_sql_placeholder
 
 
@@ -115,6 +115,28 @@ def confirm_purchase(
 
     if not _grants_allowed(environment):
         return False, "iap_purchases_disabled", None
+
+    verify_ok, verify_reason, verified_payload = store_purchase_verify.verify_confirm(
+        provider=provider,
+        product_id=product_id,
+        purchase_key=purchase_key,
+        signed_payload=signed_payload,
+        environment=environment,
+    )
+    if not verify_ok:
+        return False, verify_reason or "purchase_verification_failed", None
+    if verified_payload:
+        product_id = str(verified_payload.get("productId") or product_id).strip()
+        purchase_key = str(
+            verified_payload.get("originalTransactionId")
+            or verified_payload.get("transactionId")
+            or purchase_key
+        ).strip()
+        environment = (
+            str(verified_payload.get("environment") or environment or "").strip()
+            or environment
+        )
+        expires_at = expires_at or _expires_from_payload(verified_payload)
 
     existing = iap_links.find(provider, purchase_key)
     if existing and str(existing.get("username") or "").lower() != username.lower():

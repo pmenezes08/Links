@@ -138,6 +138,7 @@ Run these in TestFlight and Play internal testing before flipping `iap_purchases
 - [ ] iOS extra community: attempt to upgrade a second community and confirm the modal explains web billing with a clickable `https://app.c-point.co/subscription_plans` link.
 - [ ] Android Premium: repeat Premium via Play Billing license tester and confirm the **Google Play** badge.
 - [ ] Android Community: repeat one community tier purchase via Play Billing and confirm the **Google Play** badge.
+- [ ] Android extra community: attempt to upgrade a second community and confirm the modal explains web billing with a clickable `https://app.c-point.co/subscription_plans` link.
 - [ ] Restore purchases: use the native restore action on both platforms and confirm active purchases reappear without opening Stripe.
 - [ ] Web guard: for a store-billed community, try Stripe change-tier / portal paths; backend must return `store_billing_active` and the UI must route management to the store.
 - [ ] Web still works: from desktop web, Premium and community checkout still open Stripe Checkout.

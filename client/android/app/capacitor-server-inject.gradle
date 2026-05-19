@@ -2,8 +2,8 @@
  * Injects server.url into assets/capacitor.config.json so the Android WebView loads
  * a real backend (relative /api/* and static paths resolve correctly).
  *
- * Default: staging Cloud Run. Override in gradle.properties:
- *   cpointCapacitorServerUrl=https://app.c-point.co
+ * Default: production app host (store releases). Override in gradle.properties:
+ *   cpointCapacitorServerUrl=https://cpoint-app-staging-739552904126.europe-west1.run.app
  *
  * Requires capacitor.config.json in src/main/assets (run from client/: npm run build && npx cap copy android).
  */
@@ -11,7 +11,7 @@ import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 
 ext.injectCapacitorRemoteServerUrl = {
-    String defaultUrl = 'https://cpoint-app-staging-739552904126.europe-west1.run.app'
+    String defaultUrl = 'https://app.c-point.co'
     def prop = project.findProperty('cpointCapacitorServerUrl')
     String url = (prop != null ? prop.toString() : defaultUrl).replaceAll(/\/+$/, '')
 

@@ -110,6 +110,17 @@ gcloud scheduler jobs create http usage-cycle-notify \
   --headers="X-Cron-Secret=$SECRET" \
   --attempt-deadline=300s
 
+# AI usage daily rollup — aggregates yesterday's ai_usage_log into
+# ai_usage_daily_rollups (admin metrics). Daily at 02:15 UTC.
+gcloud scheduler jobs create http ai-usage-daily-rollup \
+  --location=europe-west1 \
+  --schedule="15 2 * * *" \
+  --time-zone=UTC \
+  --uri="$BASE/api/cron/ai-usage/daily-rollup" \
+  --http-method=POST \
+  --headers="X-Cron-Secret=$SECRET" \
+  --attempt-deadline=300s
+
 # Community lifecycle warnings — fires pre-archive warnings for Free
 # communities (day 75, day 88) and purge reminders for archived Free
 # communities (day 300). Daily at 10:05 Europe/Dublin so warnings land

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   clearAccountScopedLocalStorage,
+  ensureAccountIsolationForUsername,
   resetAccountScopedState,
 } from './accountStateReset'
 
@@ -106,6 +107,29 @@ describe('accountStateReset', () => {
     expect(swUnregister).toHaveBeenCalled()
     expect(sessionStorage.getItem('cpoint_processed_deep_links')).toBe('["link"]')
     expect(sessionStorage.getItem('temporary')).toBe(null)
+  })
+
+  it('ensureAccountIsolationForUsername resets when username changes', async () => {
+    localStorage.setItem('current_username', 'alice')
+    localStorage.setItem('chat-threads-list:alice', 'threads')
+
+    const didReset = await ensureAccountIsolationForUsername('bob')
+
+    expect(didReset).toBe(true)
+    expect(localStorage.getItem('current_username')).toBe(null)
+    expect(localStorage.getItem('chat-threads-list:alice')).toBe(null)
+    expect(deletedDbs).toContain('cpoint-offline')
+  })
+
+  it('ensureAccountIsolationForUsername is a no-op for same or first user', async () => {
+    localStorage.setItem('chat-threads-list:alice', 'threads')
+
+    expect(await ensureAccountIsolationForUsername('alice')).toBe(false)
+    expect(localStorage.getItem('chat-threads-list:alice')).toBe('threads')
+
+    localStorage.setItem('current_username', 'alice')
+    expect(await ensureAccountIsolationForUsername('alice')).toBe(false)
+    expect(localStorage.getItem('chat-threads-list:alice')).toBe('threads')
   })
 
   it('supports account deletion mode that clears all localStorage, sessionStorage, and caches', async () => {

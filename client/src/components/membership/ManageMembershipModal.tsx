@@ -17,8 +17,15 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Capacitor } from '@capacitor/core'
 import { useEntitlements } from '../../hooks/useEntitlements'
-import { openExternalBillingUrl, providerBadge, providerLabel } from '../../utils/mobileStoreBilling'
+import {
+  currentStoreProvider,
+  openExternalBillingUrl,
+  providerBadge,
+  providerLabel,
+} from '../../utils/mobileStoreBilling'
+import PaidCommunitiesBillingSection from './PaidCommunitiesBillingSection'
 
 export type MembershipTab = 'plan' | 'ai' | 'billing' | 'payment'
 
@@ -195,10 +202,29 @@ export default function ManageMembershipModal({ open, onClose, initialTab = 'pla
 function PlanTab() {
   const { t } = useTranslation()
   const { entitlements, loading } = useEntitlements()
-  if (loading || !entitlements) return <div className="text-white/60 text-sm">{t('billing.loading_plan')}</div>
+  const [billingProvider, setBillingProvider] = useState('stripe')
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/me/billing', { credentials: 'include', headers: { Accept: 'application/json' } })
+      .then((res) => res.json())
+      .then((body) => {
+        if (!cancelled && body?.success) {
+          setBillingProvider(String(body.plan?.subscription_provider || 'stripe').toLowerCase())
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  if (loading || !entitlements) {
+    return <div className="text-white/60 text-sm">{t('billing.loading_plan')}</div>
+  }
 
   const tier = entitlements.tier
   const isEnterprise = !!(entitlements as { inherited_from?: string | null })?.inherited_from?.startsWith('enterprise:')
+  const storeBilled = billingProvider === 'apple' || billingProvider === 'google'
+  const nativeProvider = currentStoreProvider()
 
   const tierLabel =
     entitlements.is_special
@@ -233,6 +259,9 @@ function PlanTab() {
         <div className="text-xs uppercase tracking-wide text-white/50">{t('billing.current_plan')}</div>
         <div className="flex items-center gap-3 mt-1">
           <h3 className="text-xl font-semibold">{tierLabel}</h3>
+          <span className="text-[10px] px-2 py-0.5 rounded-full border border-white/15 bg-white/5 text-white/60">
+            {providerBadge(billingProvider)}
+          </span>
           {entitlements.is_special && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-200 border border-purple-500/30">
               {t('billing.staff')}
@@ -258,13 +287,38 @@ function PlanTab() {
         </div>
       </section>
 
+      <PaidCommunitiesBillingSection />
+
       {!entitlements.is_special && tier !== 'premium' && (
-        <button
-          onClick={() => { window.location.href = '/subscription_plans' }}
-          className="w-full bg-[#4db6ac] text-black font-semibold py-3 rounded-lg hover:bg-[#3da398] transition"
-        >
-          Upgrade to Premium
-        </button>
+        storeBilled ? (
+          <button
+            type="button"
+            onClick={() => openExternalBillingUrl(
+              billingProvider === 'apple'
+                ? 'https://apps.apple.com/account/subscriptions'
+                : 'https://play.google.com/store/account/subscriptions',
+            )}
+            className="w-full bg-white/10 border border-white/20 text-white font-semibold py-3 rounded-lg hover:bg-white/20 transition"
+          >
+            {t('billing.manage_in_store', { provider: providerLabel(billingProvider) })}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              if (Capacitor.isNativePlatform() && nativeProvider) {
+                window.location.href = '/subscription_plans'
+              } else {
+                window.location.href = '/subscription_plans'
+              }
+            }}
+            className="w-full bg-[#4db6ac] text-black font-semibold py-3 rounded-lg hover:bg-[#3da398] transition"
+          >
+            {nativeProvider
+              ? t('billing.upgrade_via_store', { provider: providerLabel(nativeProvider) })
+              : 'Upgrade to Premium'}
+          </button>
+        )
       )}
     </div>
   )
@@ -520,6 +574,8 @@ function BillingTab({ variant }: { variant: 'billing' | 'payment' }) {
           </button>
         )}
       </section>
+
+      <PaidCommunitiesBillingSection />
 
       {data.plan.tier !== 'premium' && !data.plan.is_special && (
         <button

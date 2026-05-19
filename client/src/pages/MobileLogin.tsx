@@ -131,6 +131,12 @@ export default function MobileLogin() {
           /* so loadProfile cannot fall back to previous user */
         }
         try {
+          const { ensureAccountIsolationForUsername } = await import('../utils/accountStateReset')
+          await ensureAccountIsolationForUsername(j.username ?? '')
+        } catch (e) {
+          console.warn('Account isolation reset before login:', e)
+        }
+        try {
           localStorage.setItem('current_username', j.username ?? '')
         } catch {}
         invalidateDashboardCache()
