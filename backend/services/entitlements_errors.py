@@ -30,7 +30,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional, Tuple
 
-from backend.services import knowledge_base as kb
+from backend.services import i18n, knowledge_base as kb
 
 
 logger = logging.getLogger(__name__)
@@ -241,20 +241,53 @@ def _format_template(template: str, context: Dict[str, Any]) -> str:
         return template
 
 
+def _localized_message(reason: str, locale: str, context: Dict[str, Any]) -> Optional[str]:
+    """Return the i18n-catalog message for ``reason`` if present.
+
+    Returns ``None`` when the catalog does not have an override (caller
+    falls back to the English default template). Empty-string keys are
+    treated as "intentionally blank" and returned as-is.
+    """
+    key = f"entitlements.{reason}.message"
+    if not i18n.has_key(key, locale):
+        return None
+    return i18n.t(key, locale, **context)
+
+
+def _localized_cta_label(reason: str, locale: str, context: Dict[str, Any]) -> Optional[str]:
+    key = f"entitlements.{reason}.cta_label"
+    if not i18n.has_key(key, locale):
+        return None
+    return i18n.t(key, locale, **context)
+
+
 def build_error(
     reason: str,
     *,
     ent: Optional[Dict[str, Any]] = None,
     usage: Optional[Dict[str, Any]] = None,
     overrides: Optional[Dict[str, Any]] = None,
+    locale: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], int]:
     """Return the shared error JSON shape + HTTP status for ``reason``.
 
     Call like::
 
         payload, status = build_error(REASON_MONTHLY_STEVE_CAP,
-                                      ent=ent, usage=usage)
+                                      ent=ent, usage=usage,
+                                      locale="pt-PT")
         return jsonify(payload), status
+
+    Locale handling
+    ---------------
+
+    * ``locale="en"`` (or ``None``): KB ``cta_copy_templates`` overrides
+      win, then ``_DEFAULT_TEMPLATES``. Backward-compatible behaviour.
+    * Any other supported locale: the i18n catalog
+      (``entitlements.<reason>.message`` / ``entitlements.<reason>.cta_label``)
+      wins, then the English defaults. KB overrides are intentionally
+      ignored for non-English locales — see ``docs/I18N_ROADMAP.md``
+      § 1 (KB stays English).
 
     The function never raises — unknown reasons fall back to a generic
     "limit reached" payload.
@@ -262,16 +295,19 @@ def build_error(
     ent = ent or {}
     usage = usage or {}
     overrides = overrides or {}
+    resolved_locale = i18n.normalize_locale(locale)
 
-    kb_templates = _kb_templates()
     base = dict(_DEFAULT_TEMPLATES.get(reason) or {
         "http_status": 429,
         "message": "You've reached a usage limit.",
         "cta": {"type": "manage", "label": "See my usage", "url": "/settings/membership/ai-usage"},
     })
 
-    kb_override = kb_templates.get(reason) or {}
-    base.update(kb_override)
+    # KB overrides only apply for English; PT (and any future locale)
+    # serves i18n catalog content.
+    if resolved_locale == i18n.DEFAULT_LOCALE:
+        kb_override = _kb_templates().get(reason) or {}
+        base.update(kb_override)
     base.update(overrides)
 
     offer_caps: Optional[Dict[str, int]] = None
@@ -280,13 +316,29 @@ def build_error(
         offer_caps = _upgrade_offer_caps()
         context.update(offer_caps)
 
-    message = _format_template(str(base.get("message") or ""), context)
+    # i18n catalog has priority for non-English locales.
+    catalog_message: Optional[str] = None
+    catalog_label: Optional[str] = None
+    if resolved_locale != i18n.DEFAULT_LOCALE:
+        catalog_message = _localized_message(reason, resolved_locale, context)
+        catalog_label = _localized_cta_label(reason, resolved_locale, context)
+
+    if catalog_message is not None:
+        message = catalog_message
+    else:
+        message = _format_template(str(base.get("message") or ""), context)
 
     cta = base.get("cta") or {}
     if isinstance(cta, dict):
+        if catalog_label is not None:
+            label = catalog_label
+        elif cta.get("label"):
+            label = _format_template(str(cta.get("label")), context)
+        else:
+            label = None
         cta = {
             "type": cta.get("type"),
-            "label": _format_template(str(cta.get("label") or ""), context) if cta.get("label") else None,
+            "label": label,
             "url": cta.get("url"),
         }
     else:
@@ -326,9 +378,11 @@ def build_error(
         "error": "entitlements_error",
         "reason": reason,
         "message": message,
+        "message_key": f"entitlements.{reason}.message",
         "cta": cta,
         "usage": usage_payload,
         "tier": ent.get("tier"),
+        "locale": resolved_locale,
     }
     if offer_caps is not None:
         payload["premium_offer"] = offer_caps
@@ -342,11 +396,14 @@ def entitlements_error(
 ) -> Tuple[Dict[str, Any], int]:
     """Convenience alias for :func:`build_error` used in legacy call-sites.
 
-    Accepts ``usage=...`` and ``overrides=...`` as kwargs; anything else is
-    merged into ``overrides`` for one-off tweaks.
+    Accepts ``usage=...``, ``overrides=...`` and ``locale=...`` as kwargs;
+    anything else is merged into ``overrides`` for one-off tweaks.
     """
     usage = extra.pop("usage", None)
     overrides = extra.pop("overrides", None)
+    locale = extra.pop("locale", None)
     if extra:
         overrides = {**(overrides or {}), **extra}
-    return build_error(reason, ent=ent, usage=usage, overrides=overrides)
+    return build_error(
+        reason, ent=ent, usage=usage, overrides=overrides, locale=locale
+    )

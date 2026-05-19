@@ -42,5 +42,54 @@
       "registration_failed": "Ocorreu um erro no registo. Tenta de novo."
     },
     "server_error": "Erro no servidor. Tenta de novo."
+  },
+  "entitlements": {
+    "premium_required": {
+      "message": "O Premium desbloqueia o Steve em DM, feed e conversas elegíveis — até {steve_uses_per_month} conversas com o Steve por mês e {whisper_minutes_per_month} minutos de resumos de notas de voz em cada ciclo de faturação.",
+      "cta_label": "Subir para Premium"
+    },
+    "daily_cap": {
+      "message": "Atingiste o limite diário do Steve ({ai_daily_limit} chamadas). Reinicia às {resets_at_daily}.",
+      "cta_label": "Ver a minha utilização"
+    },
+    "monthly_steve_cap": {
+      "message": "Usaste todas as {steve_uses_per_month} chamadas Steve deste mês. Reiniciam a {resets_at_monthly}.",
+      "cta_label": "Ver a minha utilização"
+    },
+    "monthly_whisper_cap": {
+      "message": "Usaste todos os {whisper_minutes_per_month} minutos de resumos de notas de voz deste mês. Reiniciam a {resets_at_monthly}.",
+      "cta_label": "Ver a minha utilização"
+    },
+    "community_pool_exhausted": {
+      "message": "A bolsa partilhada do Steve nesta comunidade está esgotada este mês. Os membros Premium podem continuar a usar a sua quota pessoal.",
+      "cta_label": "Subir para Premium"
+    },
+    "rpm_exceeded": {
+      "message": "Estás a enviar pedidos demasiado depressa — abranda um momento e tenta de novo.",
+      "cta_label": "OK"
+    },
+    "hpm_exceeded": {
+      "message": "Atingiste o limite por hora. Tenta de novo daqui a um pouco.",
+      "cta_label": "OK"
+    },
+    "special_technical_cap": {
+      "message": "Atingiste um limite técnico de segurança. Isto protege a plataforma de uso descontrolado — desbloqueia em breve.",
+      "cta_label": "Ver a minha utilização"
+    },
+    "community_suspended": {
+      "message": "Esta comunidade está suspensa. As funcionalidades do Steve ficam em pausa até a comunidade ser reativada.",
+      "cta_label": "Contactar o suporte"
+    },
+    "grace_expired": {
+      "message": "O teu lugar Enterprise terminou. Subscreve o Premium para continuares a usar o Steve.",
+      "cta_label": "Subscrever Premium"
+    }
+  },
+  "billing": {
+    "premium_required": "Subscrição Premium necessária!",
+    "subscription_active": "A tua subscrição está ativa.",
+    "subscription_inactive": "Não tens uma subscrição ativa.",
+    "checkout_failed": "Não foi possível iniciar o pagamento. Tenta de novo.",
+    "portal_failed": "Não foi possível abrir o portal de faturação. Tenta de novo."
   }
 }

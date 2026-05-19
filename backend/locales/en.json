@@ -42,5 +42,54 @@
       "registration_failed": "An error occurred during registration. Please try again."
     },
     "server_error": "Server error. Please try again."
+  },
+  "entitlements": {
+    "premium_required": {
+      "message": "Premium unlocks Steve in DM, feed, and eligible chats — up to {steve_uses_per_month} Steve conversations per month and {whisper_minutes_per_month} minutes of voice-note summaries each billing cycle.",
+      "cta_label": "Upgrade to Premium"
+    },
+    "daily_cap": {
+      "message": "You've hit today's Steve limit of {ai_daily_limit} calls. It resets at {resets_at_daily}.",
+      "cta_label": "See my usage"
+    },
+    "monthly_steve_cap": {
+      "message": "You've used all {steve_uses_per_month} Steve calls for this month. They reset on {resets_at_monthly}.",
+      "cta_label": "See my usage"
+    },
+    "monthly_whisper_cap": {
+      "message": "You've used all {whisper_minutes_per_month} minutes of voice-note summaries this month. They reset on {resets_at_monthly}.",
+      "cta_label": "See my usage"
+    },
+    "community_pool_exhausted": {
+      "message": "This community's shared Steve pool is empty for this month. Premium members can still use their personal allowance.",
+      "cta_label": "Upgrade to Premium"
+    },
+    "rpm_exceeded": {
+      "message": "You're sending requests too fast — slow down for a moment and try again.",
+      "cta_label": "OK"
+    },
+    "hpm_exceeded": {
+      "message": "You've hit the hourly rate limit. Try again in a little while.",
+      "cta_label": "OK"
+    },
+    "special_technical_cap": {
+      "message": "You've hit a technical safety cap. This protects the platform against runaway usage — it'll clear shortly.",
+      "cta_label": "See my usage"
+    },
+    "community_suspended": {
+      "message": "This community is currently suspended. Steve features are paused until the community is reinstated.",
+      "cta_label": "Contact support"
+    },
+    "grace_expired": {
+      "message": "Your Enterprise seat has ended. Subscribe to Premium to keep using Steve.",
+      "cta_label": "Subscribe to Premium"
+    }
+  },
+  "billing": {
+    "premium_required": "Premium subscription required!",
+    "subscription_active": "Your subscription is active.",
+    "subscription_inactive": "You don't have an active subscription.",
+    "checkout_failed": "Could not start checkout. Please try again.",
+    "portal_failed": "Could not open the billing portal. Please try again."
   }
 }

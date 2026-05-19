@@ -37,6 +37,7 @@ from flask import Blueprint, jsonify, request, session
 from backend.services import community as community_svc
 from backend.services import (
     ai_usage,
+    api_errors,
     auth_session,
     community_admin_notifications,
     community_billing,
@@ -213,7 +214,7 @@ def _resolve_community_tier_price(tier_code: str) -> str:
 def api_stripe_config():
     """Expose the publishable key so the client can initialize Stripe.js."""
     if not _session_username():
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+        return api_errors.auth_required()
     pub = _stripe_publishable_key()
     if not pub:
         return jsonify({"success": False, "error": "stripe_not_configured"}), 400
@@ -225,7 +226,7 @@ def api_me_subscriptions():
     """Return subscription state scoped to the signed-in user."""
     username = _session_username()
     if not username:
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+        return api_errors.auth_required()
 
     personal_state = user_billing.get_billing_state(username) or {}
     user_row = _fetch_user_subscription_row(username)
@@ -396,7 +397,7 @@ def api_kb_pricing():
     helpers above are emitted.
     """
     if not _session_username():
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+        return api_errors.auth_required()
 
     user_tiers = _kb_field_map("user-tiers")
     community_tiers = _kb_field_map("community-tiers")
@@ -850,7 +851,7 @@ def api_community_billing(community_id: int):
     """
     username = _session_username()
     if not username:
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+        return api_errors.auth_required()
     if not community_svc.is_community_owner(username, community_id):
         return jsonify({
             "success": False,
@@ -957,7 +958,7 @@ def api_community_billing_change_tier(community_id: int):
     """Change an existing root community Stripe subscription tier."""
     username = _session_username()
     if not username:
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+        return api_errors.auth_required()
 
     stripe_mod = _stripe_client()
     if stripe_mod is None:
@@ -1062,7 +1063,7 @@ def api_admin_community_billing_change_tier(community_id: int):
     """Platform-admin tier change for an existing community subscription."""
     username = _session_username()
     if not username:
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+        return api_errors.auth_required()
     if not community_svc.is_app_admin(username):
         return jsonify({"success": False, "error": "Admin access required"}), 403
 
@@ -1172,7 +1173,7 @@ def api_admin_community_billing_sync_stripe_renewal(community_id: int):
     """Admin-only: ``Subscription.retrieve`` → persist tier renewal fields."""
     username = _session_username()
     if not username:
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+        return api_errors.auth_required()
     if not community_svc.is_app_admin(username):
         return jsonify({"success": False, "error": "Admin access required"}), 403
 
@@ -1203,7 +1204,7 @@ def api_stripe_checkout_status():
     """Return SKU-aware checkout fulfillment state for the success page."""
     username = _session_username()
     if not username:
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+        return api_errors.auth_required()
 
     session_id = str(request.args.get("session_id") or "").strip()
     if not session_id:
@@ -1304,7 +1305,7 @@ def api_stripe_create_checkout_session():
     """
     username = _session_username()
     if not username:
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+        return api_errors.auth_required()
 
     stripe_mod = _stripe_client()
     if stripe_mod is None:

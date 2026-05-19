@@ -95,6 +95,7 @@ def check_steve_access(
     *,
     duration_seconds: Optional[float] = None,
     community_id: Optional[Any] = None,
+    locale: Optional[str] = None,
 ) -> Tuple[bool, Optional[Dict[str, Any]], Optional[int], Dict[str, Any]]:
     """Decide whether ``username`` can invoke Steve on ``surface`` right now.
 
@@ -125,6 +126,7 @@ def check_steve_access(
             errs.REASON_PREMIUM_REQUIRED,
             ent={"tier": "unknown"},
             overrides={"message": "Steve is temporarily unavailable. Please try again."},
+            locale=locale,
         )
         return False, payload, status, {}
 
@@ -214,6 +216,7 @@ def check_steve_access(
                 errs.REASON_COMMUNITY_POOL_EXHAUSTED,
                 ent=ent,
                 usage=usage_snapshot,
+                locale=locale,
             )
             ai_usage.log_block(
                 username,
@@ -223,7 +226,9 @@ def check_steve_access(
             )
             return False, payload, status, ent
         else:
-            payload, status = errs.build_error(errs.REASON_PREMIUM_REQUIRED, ent=ent)
+            payload, status = errs.build_error(
+                errs.REASON_PREMIUM_REQUIRED, ent=ent, locale=locale
+            )
             ai_usage.log_block(
                 username,
                 surface=surface,
@@ -239,7 +244,7 @@ def check_steve_access(
         if used >= daily_cap:
             usage_snapshot = _snapshot(username, ent)
             payload, status = errs.build_error(
-                errs.REASON_DAILY_CAP, ent=ent, usage=usage_snapshot
+                errs.REASON_DAILY_CAP, ent=ent, usage=usage_snapshot, locale=locale
             )
             ai_usage.log_block(
                 username,
@@ -265,6 +270,7 @@ def check_steve_access(
                     errs.REASON_COMMUNITY_POOL_EXHAUSTED,
                     ent=ent,
                     usage=usage_snapshot,
+                    locale=locale,
                 )
                 ai_usage.log_block(
                     username,
@@ -287,7 +293,10 @@ def check_steve_access(
             if used_m >= monthly_cap:
                 usage_snapshot = _snapshot(username, ent)
                 payload, status = errs.build_error(
-                    errs.REASON_MONTHLY_STEVE_CAP, ent=ent, usage=usage_snapshot
+                    errs.REASON_MONTHLY_STEVE_CAP,
+                    ent=ent,
+                    usage=usage_snapshot,
+                    locale=locale,
                 )
                 ai_usage.log_block(
                     username,
@@ -308,7 +317,10 @@ def check_steve_access(
             if used_min + need_min > float(whisper_cap):
                 usage_snapshot = _snapshot(username, ent)
                 payload, status = errs.build_error(
-                    errs.REASON_MONTHLY_WHISPER_CAP, ent=ent, usage=usage_snapshot
+                    errs.REASON_MONTHLY_WHISPER_CAP,
+                    ent=ent,
+                    usage=usage_snapshot,
+                    locale=locale,
                 )
                 ai_usage.log_block(
                     username, surface=surface, reason=errs.REASON_MONTHLY_WHISPER_CAP
@@ -347,6 +359,7 @@ def check_steve_access(
                     errs.REASON_MONTHLY_STEVE_CAP,
                     ent=ent,
                     usage=_snapshot(username, ent),
+                    locale=locale,
                 )
                 # Keep the internal breadcrumb separate from the user-facing
                 # reason so we can tell these two apart in analytics.
