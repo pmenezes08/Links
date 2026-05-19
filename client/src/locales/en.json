@@ -429,7 +429,40 @@
     "following": "Following",
     "posts": "Posts",
     "about": "About",
-    "joined": "Joined"
+    "joined": "Joined",
+    "manage_followers": "Manage Followers",
+    "followers_feed": "Followers Feed",
+    "no_followers": "No followers yet.",
+    "no_pending_requests": "No pending follow requests.",
+    "loading_feed": "Loading feed...",
+    "no_recent_activity": "No recent activity from the people you follow."
+  },
+  "social": {
+    "members_loading": "Loading...",
+    "no_members": "No members.",
+    "invite_members": "Invite members",
+    "invite_to": "Invite to {{community}}",
+    "community_fallback": "Community",
+    "loading_sub_communities": "Loading sub-communities...",
+    "no_available_sub_communities": "No available sub-communities"
+  },
+  "notifications_page": {
+    "loading": "Loading...",
+    "no_notifications": "No notifications",
+    "no_invites": "No invites",
+    "loading_events": "Loading events...",
+    "no_upcoming_events": "No upcoming events",
+    "loading_polls": "Loading polls...",
+    "no_active_polls": "No active polls",
+    "loading_tasks": "Loading tasks...",
+    "no_pending_tasks": "No pending tasks"
+  },
+  "calendar": {
+    "loading_event": "Loading event...",
+    "event_not_found": "Event not found",
+    "going": "Going",
+    "no_users_category": "No users in this category yet.",
+    "delete_event": "Delete Event?"
   },
   "onboarding_profile_picture": {
     "title": "Add a profile picture",

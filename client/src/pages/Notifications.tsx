@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useHeader } from '../contexts/HeaderContext'
 import { useBadges } from '../contexts/BadgeContext'
 import { renderTextWithLinks } from '../utils/linkUtils'
@@ -111,6 +112,7 @@ function timeAgo(ts?: string){
 }
 
 export default function Notifications(){
+  const { t } = useTranslation()
   const { setTitle } = useHeader()
   const { unreadNotifs, refreshBadges, adjustBadges } = useBadges()
   const navigate = useNavigate()
@@ -559,11 +561,11 @@ export default function Notifications(){
               </button>
             </div>
             {loading || !items ? (
-              <div className="text-[#9fb0b5] py-10 text-center">Loading…</div>
+              <div className="text-[#9fb0b5] py-10 text-center">{t('notifications_page.loading')}</div>
             ) : items.length === 0 ? (
               <div className="text-[#9fb0b5] py-10 text-center">
                 <i className="fa-regular fa-bell text-2xl" />
-                <div className="mt-2">No notifications</div>
+                <div className="mt-2">{t('notifications_page.no_notifications')}</div>
               </div>
             ) : (
               <div className="flex flex-col gap-2">
@@ -719,7 +721,7 @@ export default function Notifications(){
             {pendingInvites.length === 0 ? (
               <div className="text-[#9fb0b5] py-10 text-center">
                 <i className="fa-solid fa-user-plus text-2xl" />
-                <div className="mt-2">No invites</div>
+                <div className="mt-2">{t('notifications_page.no_invites')}</div>
               </div>
             ) : (
               <div className="space-y-2">
@@ -766,11 +768,11 @@ export default function Notifications(){
         {activeTab === 'calendar' && (
           <>
             {eventsLoading ? (
-              <div className="text-[#9fb0b5] py-10 text-center">Loading events…</div>
+              <div className="text-[#9fb0b5] py-10 text-center">{t('notifications_page.loading_events')}</div>
             ) : events.length === 0 ? (
               <div className="text-[#9fb0b5] py-10 text-center">
                 <i className="fa-regular fa-calendar text-2xl" />
-                <div className="mt-2">No upcoming events</div>
+                <div className="mt-2">{t('notifications_page.no_upcoming_events')}</div>
               </div>
             ) : (
               <div className="flex flex-col gap-2">
@@ -818,11 +820,11 @@ export default function Notifications(){
         {activeTab === 'polls' && (
           <>
             {pollsLoading ? (
-              <div className="text-[#9fb0b5] py-10 text-center">Loading polls…</div>
+              <div className="text-[#9fb0b5] py-10 text-center">{t('notifications_page.loading_polls')}</div>
             ) : polls.length === 0 ? (
               <div className="text-[#9fb0b5] py-10 text-center">
                 <i className="fa-solid fa-chart-bar text-2xl" />
-                <div className="mt-2">No active polls</div>
+                <div className="mt-2">{t('notifications_page.no_active_polls')}</div>
               </div>
             ) : (
               <div className="flex flex-col gap-2">
@@ -860,11 +862,11 @@ export default function Notifications(){
         {activeTab === 'tasks' && (
           <>
             {tasksLoading ? (
-              <div className="text-[#9fb0b5] py-10 text-center">Loading tasks…</div>
+              <div className="text-[#9fb0b5] py-10 text-center">{t('notifications_page.loading_tasks')}</div>
             ) : tasks.length === 0 ? (
               <div className="text-[#9fb0b5] py-10 text-center">
                 <i className="fa-solid fa-list-check text-2xl" />
-                <div className="mt-2">No pending tasks</div>
+                <div className="mt-2">{t('notifications_page.no_pending_tasks')}</div>
               </div>
             ) : (
               <div className="flex flex-col gap-2">

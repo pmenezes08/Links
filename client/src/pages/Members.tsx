@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import Avatar from '../components/Avatar'
 import { triggerDashboardServerPull } from '../utils/serverPull'
 import { refreshDashboardCommunities } from '../utils/dashboardCache'
@@ -14,6 +15,7 @@ type Member = {
 type InviteStep = 'choose' | 'username' | 'email' | 'link'
 
 export default function Members(){
+  const { t } = useTranslation()
   const { community_id } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
@@ -399,13 +401,13 @@ export default function Members(){
         style={{ minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))', '--app-subnav-height': '48px' } as CSSProperties}
       >
         {loading ? (
-          <div className="text-[#9fb0b5]">Loading…</div>
+          <div className="text-[#9fb0b5]">{t('social.members_loading')}</div>
         ) : error ? (
           <div className="text-red-400">{error}</div>
         ) : (
           <div className="space-y-2">
             {members.length === 0 ? (
-              <div className="text-[#9fb0b5]">No members.</div>
+              <div className="text-[#9fb0b5]">{t('social.no_members')}</div>
             ) : members.map((m, i) => (
               <button key={i} className="flex items-center gap-3 p-2 rounded-xl bg-white/[0.03] w-full text-left hover:bg-white/[0.06]"
                 onClick={()=> { window.location.href = `/profile/${encodeURIComponent(m.username)}` }}
@@ -470,8 +472,8 @@ export default function Members(){
                 </button>
               ) : null}
               <div className="min-w-0 flex-1">
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]/80">Invite members</div>
-                <h2 className="truncate text-lg font-semibold text-white">Invite to {communityName || 'Community'}</h2>
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#4db6ac]/80">{t('social.invite_members')}</div>
+                <h2 className="truncate text-lg font-semibold text-white">{t('social.invite_to', { community: communityName || t('social.community_fallback') })}</h2>
                 <p className="mt-0.5 text-xs text-white/55">
                   {inviteStep === 'choose' ? 'Choose how you want to invite members' : 'Complete the selected invite method'}
                 </p>
@@ -862,12 +864,12 @@ function MemberActions({
               {loadingSubCommunities ? (
                 <div className="text-center py-8 text-white/60">
                   <i className="fa-solid fa-spinner fa-spin text-xl mb-2" />
-                  <div className="text-sm">Loading sub-communities...</div>
+                  <div className="text-sm">{t('social.loading_sub_communities')}</div>
                 </div>
               ) : subCommunities.length === 0 ? (
                 <div className="text-center py-8 text-white/40">
                   <i className="fa-solid fa-folder-open text-2xl mb-2" />
-                  <div className="text-sm">No available sub-communities</div>
+                  <div className="text-sm">{t('social.no_available_sub_communities')}</div>
                   <div className="text-xs mt-1">Either there are no sub-communities, or this member is already in all of them.</div>
                 </div>
               ) : (

@@ -429,7 +429,40 @@
     "following": "A seguir",
     "posts": "Publicações",
     "about": "Sobre",
-    "joined": "Aderiu"
+    "joined": "Aderiu",
+    "manage_followers": "Gerir seguidores",
+    "followers_feed": "Feed de seguidores",
+    "no_followers": "Ainda não tens seguidores.",
+    "no_pending_requests": "Sem pedidos de seguimento pendentes.",
+    "loading_feed": "A carregar feed...",
+    "no_recent_activity": "Sem atividade recente das pessoas que segues."
+  },
+  "social": {
+    "members_loading": "A carregar...",
+    "no_members": "Sem membros.",
+    "invite_members": "Convidar membros",
+    "invite_to": "Convidar para {{community}}",
+    "community_fallback": "Comunidade",
+    "loading_sub_communities": "A carregar subcomunidades...",
+    "no_available_sub_communities": "Sem subcomunidades disponíveis"
+  },
+  "notifications_page": {
+    "loading": "A carregar...",
+    "no_notifications": "Sem notificações",
+    "no_invites": "Sem convites",
+    "loading_events": "A carregar eventos...",
+    "no_upcoming_events": "Sem eventos próximos",
+    "loading_polls": "A carregar sondagens...",
+    "no_active_polls": "Sem sondagens ativas",
+    "loading_tasks": "A carregar tarefas...",
+    "no_pending_tasks": "Sem tarefas pendentes"
+  },
+  "calendar": {
+    "loading_event": "A carregar evento...",
+    "event_not_found": "Evento não encontrado",
+    "going": "Vou",
+    "no_users_category": "Ainda não há utilizadores nesta categoria.",
+    "delete_event": "Apagar evento?"
   },
   "onboarding_profile_picture": {
     "title": "Adiciona uma foto de perfil",
