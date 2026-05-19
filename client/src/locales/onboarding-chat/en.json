@@ -1,11 +1,11 @@
 {
   "copy": {
-    "intent_question": "What are you here to build today?",
+    "intent_question": "Which best describes you?",
     "org_type_prompt": "What type of organisation is it? A short label is enough — e.g. fitness studio, school, professional association, brand."
   },
   "options": {
-    "intent_b2c": "A private community for my personal circles",
-    "intent_b2b": "A private network for my organisation",
+    "intent_b2c": "I'm here as an individual — to create and/or join communities",
+    "intent_b2b": "I'm a business owner setting up a community for my organisation",
     "finish_later": "Finish later",
     "continue": "Continue",
     "continue_creating_network": "Continue creating network",
@@ -361,8 +361,8 @@
     "continue_network": "Continue creating network",
     "contact_sales": "Contact sales",
     "skip_subs": "Skip sub-communities for now",
-    "intent_b2c": "A private community for my personal circles",
-    "intent_b2b": "A private network for my organisation"
+    "intent_b2c": "I'm here as an individual — to create and/or join communities",
+    "intent_b2b": "I'm a business owner setting up a community for my organisation"
   },
   "sales": {
     "email_subject": "Enterprise community plan"

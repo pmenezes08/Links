@@ -1,11 +1,11 @@
 {
   "copy": {
-    "intent_question": "O que quer construir aqui hoje?",
+    "intent_question": "O que melhor o descreve?",
     "org_type_prompt": "Que tipo de organização é? Basta uma etiqueta curta — por exemplo estúdio de fitness, escola, associação profissional, marca."
   },
   "options": {
-    "intent_b2c": "Uma comunidade privada para os meus círculos pessoais",
-    "intent_b2b": "Uma rede privada para a minha organização",
+    "intent_b2c": "Estou aqui como utilizador individual — para criar e/ou participar em comunidades",
+    "intent_b2b": "Sou proprietário de um negócio e quero criar uma comunidade para a minha organização",
     "finish_later": "Terminar mais tarde",
     "continue": "Continuar",
     "continue_creating_network": "Continuar a criar a rede",
@@ -361,8 +361,8 @@
     "continue_network": "Continuar a criar a rede",
     "contact_sales": "Contactar vendas",
     "skip_subs": "Saltar subcomunidades por agora",
-    "intent_b2c": "Uma comunidade privada para os meus círculos pessoais",
-    "intent_b2b": "Uma rede privada para a minha organização"
+    "intent_b2c": "Estou aqui como utilizador individual — para criar e/ou participar em comunidades",
+    "intent_b2b": "Sou proprietário de um negócio e quero criar uma comunidade para a minha organização"
   },
   "sales": {
     "email_subject": "Plano de comunidade Enterprise"
