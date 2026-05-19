@@ -92,6 +92,25 @@
     "checkout_failed": "Não foi possível iniciar o pagamento. Tenta de novo.",
     "portal_failed": "Não foi possível abrir o portal de faturação. Tenta de novo."
   },
+  "onboarding": {
+    "validation": {
+      "no_text": "Indica algum texto.",
+      "no_location": "Diz-nos onde estás.",
+      "no_field": "Não foi indicado nenhum campo.",
+      "no_answers": "Não foram dadas respostas.",
+      "parent_name_required": "O nome da comunidade é obrigatório.",
+      "user_not_found": "Utilizador não encontrado."
+    },
+    "deferral": {
+      "unavailable": "O adiamento não está disponível neste momento.",
+      "save_failed": "Não foi possível adiar a configuração. Tenta de novo.",
+      "forbidden": "Não podes adiar a configuração neste momento.",
+      "reminders_failed": "Não foi possível agendar os lembretes de configuração."
+    },
+    "hints": {
+      "tier_load_failed": "Não foi possível carregar as sugestões de plano."
+    }
+  },
   "email": {
     "common": {
       "go_to_c_point": "Ir para o C-Point",

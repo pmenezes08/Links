@@ -92,6 +92,25 @@
     "checkout_failed": "Could not start checkout. Please try again.",
     "portal_failed": "Could not open the billing portal. Please try again."
   },
+  "onboarding": {
+    "validation": {
+      "no_text": "Please provide some text.",
+      "no_location": "Please tell us where you're based.",
+      "no_field": "No field specified.",
+      "no_answers": "No answers provided.",
+      "parent_name_required": "Community name is required.",
+      "user_not_found": "User not found."
+    },
+    "deferral": {
+      "unavailable": "Deferral is not available right now.",
+      "save_failed": "Could not defer onboarding. Please try again.",
+      "forbidden": "You can't defer onboarding right now.",
+      "reminders_failed": "Could not schedule onboarding reminders."
+    },
+    "hints": {
+      "tier_load_failed": "Unable to load tier hints right now."
+    }
+  },
   "email": {
     "common": {
       "go_to_c_point": "Go to C-Point",

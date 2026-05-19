@@ -25,6 +25,7 @@ from flask import (
     url_for,
 )
 
+from backend.services import api_errors
 from backend.services.database import get_db_connection, get_sql_placeholder
 from redis_cache import invalidate_user_cache
 from backend.services.firestore_writes import merge_onboarding_identity_to_steve_profile
@@ -109,7 +110,7 @@ def _login_required(view_func):
     def wrapper(*args, **kwargs):
         if "username" not in session:
             if request.path.startswith("/api/"):
-                return jsonify({"success": False, "error": "Unauthorized"}), 401
+                return api_errors.auth_required()
             try:
                 current_app.logger.info("No username in session for %s, redirecting to login", request.path)
             except Exception:
@@ -551,7 +552,7 @@ def onboarding_defer_profile():
 
         db = _get_firestore_client()
         if not db:
-            return jsonify({"success": False, "error": "Deferral unavailable"}), 503
+            return api_errors.error_response("onboarding.deferral.unavailable", 503)
         patch = merge_defer_into_state_patch()
         extra = {
             "stage": data.get("stage", "welcome"),
@@ -568,14 +569,14 @@ def onboarding_defer_profile():
         return jsonify({"success": True, "profileDeferUntil": patch["profile_defer_until"]})
     except Exception as e:
         logger.error("onboarding_defer_profile failed for %s: %s", username, e)
-        return jsonify({"success": False, "error": "Could not defer onboarding"}), 500
+        return api_errors.error_response("onboarding.deferral.save_failed", 500)
 
 
 @onboarding_bp.route("/api/cron/onboarding/reminders", methods=["POST"])
 def onboarding_reminders_cron():
     """Dispatch gentle deferred-onboarding reminders via Cloud Scheduler."""
     if not _cron_authed():
-        return jsonify({"success": False, "error": "forbidden"}), 403
+        return api_errors.error_response("onboarding.deferral.forbidden", 403)
     try:
         from backend.services.onboarding_reminders import dispatch_onboarding_reminders
 
@@ -585,7 +586,7 @@ def onboarding_reminders_cron():
         return jsonify(result), status
     except Exception as e:
         logger.exception("onboarding reminder cron failed: %s", e)
-        return jsonify({"success": False, "error": "onboarding_reminders_failed"}), 500
+        return api_errors.error_response("onboarding.deferral.reminders_failed", 500)
 
 
 @onboarding_bp.route("/api/onboarding/tier_hints", methods=["GET"])
@@ -598,7 +599,7 @@ def onboarding_tier_hints():
         return jsonify({"success": True, "hints": build_onboarding_tier_hints(username)})
     except Exception as e:
         logger.warning("onboarding_tier_hints: %s", e)
-        return jsonify({"success": False, "error": "Unable to load tier hints"}), 500
+        return api_errors.error_response("onboarding.hints.tier_load_failed", 500)
 
 
 @onboarding_bp.route("/api/onboarding/bootstrap_communities", methods=["POST"])
@@ -611,7 +612,7 @@ def onboarding_bootstrap_communities():
     raw_children = data.get("child_names") or []
     child_names = [str(x).strip() for x in raw_children if str(x).strip()] if isinstance(raw_children, list) else []
     if not parent_name:
-        return jsonify({"success": False, "error": "parent_name required"}), 400
+        return api_errors.error_response("onboarding.validation.parent_name_required", 400)
     try:
         from backend.services.onboarding_bootstrap import bootstrap_communities_for_onboarding
 
@@ -674,7 +675,7 @@ def onboarding_resolve_role():
     data = request.get_json(silent=True) or {}
     text = (data.get("text") or "").strip()
     if not text:
-        return jsonify({"success": False, "error": "No text provided"}), 400
+        return api_errors.error_response("onboarding.validation.no_text", 400)
 
     if not ONBOARDING_XAI_API_KEY and not ONBOARDING_OPENAI_API_KEY:
         return jsonify({"success": True, "role": text, "company": ""})
@@ -725,7 +726,7 @@ def onboarding_resolve_location():
     data = request.get_json(silent=True) or {}
     text = (data.get("city") or data.get("text") or "").strip()
     if not text:
-        return jsonify({"success": False, "error": "No location provided"}), 400
+        return api_errors.error_response("onboarding.validation.no_location", 400)
 
     from bodybuilding_app import get_cached_countries
     try:
@@ -1103,7 +1104,7 @@ def onboarding_enrich_profile():
             """, (username,))
             row = c.fetchone()
             if not row:
-                return jsonify({"success": False, "error": "User not found"}), 404
+                return api_errors.error_response("onboarding.validation.user_not_found", 404)
 
         existing_profile = get_steve_user_profile(username)
         existing_analysis_pre = _migrate_analysis_to_v3((existing_profile or {}).get("analysis", {})) or {}
@@ -1266,7 +1267,7 @@ def onboarding_save_field():
     value = (data.get("value") or "").strip()
 
     if not field:
-        return jsonify({"success": False, "error": "No field specified"}), 400
+        return api_errors.error_response("onboarding.validation.no_field", 400)
 
     try:
         with get_db_connection() as conn:

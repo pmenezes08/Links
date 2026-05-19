@@ -20,7 +20,7 @@ import logging
 
 from flask import Blueprint, jsonify, session
 
-from backend.services import ai_usage
+from backend.services import ai_usage, api_errors
 from backend.services.entitlements import resolve_entitlements
 from backend.services.feature_flags import entitlements_enforcement_enabled
 
@@ -39,13 +39,13 @@ def steve_chat_preflight():
     """
     username = session.get("username")
     if not username:
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+        return api_errors.auth_required()
 
     try:
         ent = resolve_entitlements(username)
     except Exception as err:
         logger.exception("steve_chat_preflight resolve failed: %s", err)
-        return jsonify({"success": False, "error": "Could not resolve entitlements"}), 500
+        return api_errors.error_response("errors.server", 500)
 
     monthly_used = ai_usage.monthly_steve_count(username)
     daily_used = ai_usage.daily_count(username)
