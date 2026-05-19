@@ -45,7 +45,9 @@ function makePricingPayload() {
         sku: 'premium' as const,
         name: 'User Premium Membership',
         tagline: 'Unlock Steve for yourself and own larger communities.',
-        price_eur: 4.99,
+        price_eur: 7.99,
+        early_price_eur: 4.99,
+        early_adoption_duration_months: 3,
         billing_cycle: 'monthly',
         currency: 'EUR',
         features: [
@@ -250,6 +252,17 @@ describe('SubscriptionPlans (Personal + Community redesign)', () => {
     // Add-ons live inside a (closed) sub-modal.
     expect(screen.queryByText('Steve Community Package')).toBeNull()
     expect(screen.queryByText('Networking Package')).toBeNull()
+  })
+
+  it('shows standard Premium price with early-adoption subline', async () => {
+    mockFetchOnce(makePricingPayload())
+    renderPage()
+    await choosePlanView()
+
+    await waitFor(() => expect(screen.getByText('€7.99')).toBeInTheDocument())
+    expect(
+      screen.getByText('€4.99 / month for your first 3 months'),
+    ).toBeInTheDocument()
   })
 
   it('opens Active subscriptions as a separate view', async () => {

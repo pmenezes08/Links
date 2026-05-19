@@ -166,6 +166,9 @@ class TestShape:
         assert premium["currency"] == "EUR"
         assert isinstance(premium["features"], list) and premium["features"]
         assert "cta_label" in premium
+        assert float(premium["price_eur"]) == 7.99
+        assert float(premium["early_price_eur"]) == 4.99
+        assert int(premium["early_adoption_duration_months"]) == 3
 
         # Community tier card — three sub-tiers.
         ct = sku["community_tier"]

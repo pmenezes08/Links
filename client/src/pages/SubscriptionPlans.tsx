@@ -47,6 +47,8 @@ interface PremiumPayload {
   name: string
   tagline: string
   price_eur: number | string | null
+  early_price_eur?: number | string | null
+  early_adoption_duration_months?: number | null
   billing_cycle: string
   currency: string
   features: string[]
@@ -927,6 +929,15 @@ function PersonalCard({
 }) {
   const disabled = (!payload.purchasable && !storeProductAvailable) || loading || restoreLoading
   const ctaLabel = storeProvider && storeProductAvailable ? `Subscribe with ${providerLabel(storeProvider)}` : payload.cta_label
+  const earlyMonths = payload.early_adoption_duration_months ?? 3
+  const standardNum = Number(payload.price_eur)
+  const earlyNum = Number(payload.early_price_eur)
+  const showEarlyOffer =
+    payload.early_price_eur != null &&
+    payload.early_price_eur !== '' &&
+    Number.isFinite(earlyNum) &&
+    earlyNum > 0 &&
+    (!Number.isFinite(standardNum) || earlyNum !== standardNum)
   return (
     <section className="rounded-2xl border border-white/10 bg-white/5 p-8 flex flex-col">
       <div className="flex items-start justify-between">
@@ -940,9 +951,21 @@ function PersonalCard({
       </div>
       <p className="mt-3 text-sm text-white/60">{payload.tagline}</p>
 
-      <div className="mt-6 flex items-baseline gap-2">
-        <span className="text-4xl font-bold">{formatEur(payload.price_eur)}</span>
-        <span className="text-white/50">/ month</span>
+      <div className="mt-6">
+        <div className="flex items-baseline gap-2">
+          <span className="text-4xl font-bold">{formatEur(payload.price_eur)}</span>
+          <span className="text-white/50">/ month</span>
+        </div>
+        {showEarlyOffer && (
+          <p className="mt-2 text-sm font-medium text-cpoint-turquoise">
+            {formatEur(payload.early_price_eur)} / month for your first {earlyMonths} months
+          </p>
+        )}
+        {storeProvider && showEarlyOffer && (
+          <p className="mt-1 text-xs text-white/45">
+            Introductory offer applied at checkout where eligible.
+          </p>
+        )}
       </div>
 
       {payload.features.length > 0 && (

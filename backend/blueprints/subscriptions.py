@@ -280,16 +280,25 @@ _NETWORKING_FEATURE_BULLETS: Tuple[str, ...] = (
 
 def _premium_payload(fields: Dict[str, Any]) -> Dict[str, Any]:
     """Build the user-premium card data from the ``user-tiers`` KB page."""
-    price_eur = fields.get("premium_price_early_eur")
-    if price_eur in (None, "", 0):
-        price_eur = fields.get("premium_price_standard_eur")
+    standard_price = fields.get("premium_price_standard_eur")
+    if standard_price in (None, "", 0):
+        standard_price = fields.get("premium_price_early_eur")
+    early_price = fields.get("premium_price_early_eur")
+    try:
+        early_months = int(fields.get("early_adoption_duration_months") or 3)
+    except (TypeError, ValueError):
+        early_months = 3
+    if early_months < 1:
+        early_months = 3
     mode = _stripe_mode()
     price_id = _resolve_premium_price("monthly")
     return {
         "sku": "premium",
         "name": "User Premium Membership",
         "tagline": "Unlock Steve for yourself and own larger communities.",
-        "price_eur": price_eur,
+        "price_eur": standard_price,
+        "early_price_eur": early_price,
+        "early_adoption_duration_months": early_months,
         "billing_cycle": "monthly",
         "currency": "EUR",
         "features": list(_PREMIUM_FEATURE_BULLETS),
