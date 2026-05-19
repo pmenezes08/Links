@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import type { EntitlementsError } from '../../utils/entitlementsError'
 
@@ -8,23 +9,26 @@ interface Props {
 }
 
 /** Keep aligned with `backend/blueprints/subscriptions.py` `_PREMIUM_FEATURE_BULLETS` / Personal card on Subscription Plans. */
-const PREMIUM_MODAL_FEATURE_BULLETS: readonly string[] = [
-  'Full Steve capabilities across posts, replies, and networking',
-  'Own up to 10 communities with member-cap scaling by tier',
-  'Voice and post summaries',
-  'Priority support + early feature access',
-]
+const PREMIUM_BULLET_KEYS = [
+  'entitlements.limit_modal.premium_bullet_1',
+  'entitlements.limit_modal.premium_bullet_2',
+  'entitlements.limit_modal.premium_bullet_3',
+  'entitlements.limit_modal.premium_bullet_4',
+] as const
 
 /** Confirms current plan for Steve upgrade prompts (aligned with `err.tier` from the API). */
-function planTierNotice(err: EntitlementsError): string | null {
+function planTierNotice(err: EntitlementsError, tr: (key: string) => string): string | null {
   if (err.reason !== 'premium_required') return null
-  const t = (err.tier || '').toLowerCase()
-  if (t === 'trial') return "You're on a Trial plan."
-  if (!t || t === 'free' || t === 'anonymous' || t === 'unknown') return "You're on the Free plan."
+  const tier = (err.tier || '').toLowerCase()
+  if (tier === 'trial') return tr('entitlements.limit_modal.tier_trial')
+  if (!tier || tier === 'free' || tier === 'anonymous' || tier === 'unknown') {
+    return tr('entitlements.limit_modal.tier_free')
+  }
   return null
 }
 
 function PremiumBenefitsList({ err }: { err: EntitlementsError }) {
+  const { t } = useTranslation()
   if (err.reason !== 'premium_required') return null
   return (
     <div style={{ marginTop: 14, textAlign: 'left' }}>
@@ -37,7 +41,7 @@ function PremiumBenefitsList({ err }: { err: EntitlementsError }) {
           marginBottom: 8,
         }}
       >
-        With Premium
+        {t('entitlements.limit_modal.with_premium')}
       </div>
       <ul
         style={{
@@ -48,9 +52,9 @@ function PremiumBenefitsList({ err }: { err: EntitlementsError }) {
           lineHeight: 1.55,
         }}
       >
-        {PREMIUM_MODAL_FEATURE_BULLETS.map((line, i) => (
-          <li key={i} style={{ marginBottom: 6 }}>
-            {line}
+        {PREMIUM_BULLET_KEYS.map((key) => (
+          <li key={key} style={{ marginBottom: 6 }}>
+            {t(key)}
           </li>
         ))}
       </ul>
@@ -69,6 +73,7 @@ function PremiumBenefitsList({ err }: { err: EntitlementsError }) {
  * subscription-aligned bullet list instead of the long default message.
  */
 export default function LimitReachedModal({ err, onClose }: Props) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -100,21 +105,21 @@ export default function LimitReachedModal({ err, onClose }: Props) {
   const titleForReason = (): string => {
     switch (err.reason) {
       case 'premium_required':
-        return 'Steve is a Premium feature'
+        return t('entitlements.limit_modal.title_premium_required')
       case 'daily_cap':
-        return '24-hour limit reached'
+        return t('entitlements.limit_modal.title_daily_cap')
       case 'monthly_steve_cap':
-        return 'Monthly Steve allowance reached'
+        return t('entitlements.limit_modal.title_monthly_steve_cap')
       case 'monthly_whisper_cap':
-        return 'Voice transcription limit reached'
+        return t('entitlements.limit_modal.title_monthly_whisper_cap')
       case 'community_pool_exhausted':
-        return 'Community Steve pool exhausted'
+        return t('entitlements.limit_modal.title_community_pool_exhausted')
       case 'community_suspended':
-        return 'Community temporarily paused'
+        return t('entitlements.limit_modal.title_community_suspended')
       case 'grace_expired':
-        return 'Enterprise seat ended'
+        return t('entitlements.limit_modal.title_grace_expired')
       default:
-        return "You've hit a limit"
+        return t('entitlements.limit_modal.title_default')
     }
   }
 
@@ -144,21 +149,21 @@ export default function LimitReachedModal({ err, onClose }: Props) {
     const rows: { label: string; used: number | null; cap: number | null }[] = []
     if (u.monthly_steve_used != null || u.monthly_steve_cap != null) {
       rows.push({
-        label: 'Steve uses this month',
+        label: t('entitlements.limit_modal.usage_steve_month'),
         used: u.monthly_steve_used ?? 0,
         cap: u.monthly_steve_cap ?? null,
       })
     }
     if (u.daily_used != null || u.daily_cap != null) {
       rows.push({
-        label: 'Steve uses (last 24h)',
+        label: t('entitlements.limit_modal.usage_steve_24h'),
         used: u.daily_used ?? 0,
         cap: u.daily_cap ?? null,
       })
     }
     if (u.whisper_minutes_used != null || u.whisper_minutes_cap != null) {
       rows.push({
-        label: 'Voice minutes this month',
+        label: t('entitlements.limit_modal.usage_voice_month'),
         used: Math.round(u.whisper_minutes_used ?? 0),
         cap: u.whisper_minutes_cap ?? null,
       })
@@ -209,7 +214,7 @@ export default function LimitReachedModal({ err, onClose }: Props) {
     )
   }
 
-  const tierLine = planTierNotice(err)
+  const tierLine = planTierNotice(err, t)
 
   return (
     <div
@@ -337,7 +342,7 @@ export default function LimitReachedModal({ err, onClose }: Props) {
               cursor: 'pointer',
             }}
           >
-            Not now
+            {t('entitlements.limit_modal.not_now')}
           </button>
         </div>
       </div>

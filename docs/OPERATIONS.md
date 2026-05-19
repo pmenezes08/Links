@@ -129,7 +129,7 @@ gcloud sql instances patch cpoint-db --tier=db-g1-small --project=cpoint-127c2
 
 Take an on-demand backup first (§2). Update this section when the tier changes.
 
-**`ai_usage_log` rollups:** nightly cron `POST /api/cron/ai-usage/daily-rollup` (auth: `X-Cron-Secret`) writes `ai_usage_daily_rollups` so admin metrics avoid full-table scans. Wire in Cloud Scheduler after deploy.
+**`ai_usage_log` rollups:** nightly cron `POST /api/cron/ai-usage/daily-rollup` (auth: `X-Cron-Secret`) writes `ai_usage_daily_rollups`. Cloud Scheduler jobs: **`ai-usage-daily-rollup`** (prod) and **`staging-ai-usage-daily-rollup`** — daily 02:15 UTC. Admin metrics may still read `ai_usage_log` until rollup consumption is wired.
 
 **Production entitlements:** set `ENTITLEMENTS_ENFORCEMENT_ENABLED=true` on Cloud Run service **`cpoint-app`** when launching paid AI to the public (staging should match for QA).
 

@@ -228,13 +228,13 @@ function PlanTab() {
 
   const tierLabel =
     entitlements.is_special
-      ? 'Special'
+      ? t('billing.tier_special')
       : tier === 'premium'
-        ? isEnterprise ? 'Premium (via Enterprise)' : 'Premium'
+        ? isEnterprise ? t('billing.tier_premium_enterprise') : t('billing.tier_premium')
         : tier === 'trial'
-          ? 'Free trial (Premium features)'
+          ? t('billing.tier_trial')
           : tier === 'free'
-            ? 'Free'
+            ? t('billing.tier_free')
             : tier
 
   // Premium / Special have no user-tier member cap — their owned
@@ -244,12 +244,13 @@ function PlanTab() {
   const perCommunityLabel =
     entitlements.members_per_owned_community == null
       ? t('billing.based_on_community_tier')
-      : capLabel(entitlements.members_per_owned_community, '')
+      : capLabel(entitlements.members_per_owned_community, '', t('billing.unlimited'))
 
+  const unlimited = t('billing.unlimited')
   const rows: Array<[string, string]> = [
-    [t('billing.steve_uses_month'), capLabel(entitlements.steve_uses_per_month, '')],
-    [t('billing.voice_transcription_month'), capLabel(entitlements.whisper_minutes_per_month, 'min')],
-    [t('billing.communities_owned'), capLabel(entitlements.communities_max, '')],
+    [t('billing.steve_uses_month'), capLabel(entitlements.steve_uses_per_month, '', unlimited)],
+    [t('billing.voice_transcription_month'), capLabel(entitlements.whisper_minutes_per_month, 'min', unlimited)],
+    [t('billing.communities_owned'), capLabel(entitlements.communities_max, '', unlimited)],
     [t('billing.members_per_community'), perCommunityLabel],
   ]
 
@@ -316,7 +317,7 @@ function PlanTab() {
           >
             {nativeProvider
               ? t('billing.upgrade_via_store', { provider: providerLabel(nativeProvider) })
-              : 'Upgrade to Premium'}
+              : t('billing.upgrade_to_premium')}
           </button>
         )
       )}
@@ -352,20 +353,20 @@ function AiUsageTab() {
   return (
     <div className="space-y-5">
       <UsageRow
-        label="Steve uses this month"
+        label={t('billing.steve_uses_month')}
         used={usage.monthly_steve_used}
         cap={usage.monthly_steve_cap}
         resetAt={usage.resets_at_monthly}
       />
       <UsageRow
-        label="Voice transcription this month"
+        label={t('billing.voice_transcription_month')}
         used={usage.whisper_minutes_used}
         cap={usage.whisper_minutes_cap}
         unit="min"
         resetAt={usage.resets_at_monthly}
       />
       <UsageRow
-        label="Steve uses (last 24h)"
+        label={t('entitlements.limit_modal.usage_steve_24h')}
         used={usage.daily_used}
         cap={usage.daily_cap}
         resetAt={usage.resets_at_daily}
@@ -374,7 +375,7 @@ function AiUsageTab() {
 
       {aiData?.by_surface && (
         <section>
-          <h4 className="text-sm font-semibold mb-2">Breakdown by surface</h4>
+          <h4 className="text-sm font-semibold mb-2">{t('billing.breakdown_by_surface')}</h4>
           <div className="divide-y divide-white/5 rounded-xl border border-white/10 bg-white/5">
             {Object.entries(aiData.by_surface).map(([k, v]) => (
               <div key={k} className="flex items-center justify-between px-4 py-2 text-sm">
@@ -529,26 +530,24 @@ function BillingTab({ variant }: { variant: 'billing' | 'payment' }) {
           </div>
         ) : sub ? (
           <div className="text-sm text-white/80 space-y-1">
-            <div>Status: <span className="font-medium capitalize">{sub.status}</span>
+            <div>{t('billing.subscription_status')}: <span className="font-medium capitalize">{sub.status}</span>
               {sub.cancel_at_period_end && (
-                <span className="ml-2 text-xs text-yellow-400">cancels at period end</span>
+                <span className="ml-2 text-xs text-yellow-400">{t('billing.cancels_at_period_end')}</span>
               )}
             </div>
-            {amount && <div>Price: <span className="font-medium">{amount}</span></div>}
+            {amount && <div>{t('billing.price_label')}: <span className="font-medium">{amount}</span></div>}
             {trial && sub.status === 'trialing' && (
-              <div>Trial ends: <span className="font-medium">{trial.toLocaleDateString()}</span></div>
+              <div>{t('billing.trial_ends')}: <span className="font-medium">{trial.toLocaleDateString()}</span></div>
             )}
             {renewal && sub.status !== 'trialing' && (
               <div>
-                {sub.cancel_at_period_end ? 'Ends' : 'Renews'}:{' '}
+                {sub.cancel_at_period_end ? t('billing.ends') : t('billing.renews')}:{' '}
                 <span className="font-medium">{renewal.toLocaleDateString()}</span>
               </div>
             )}
           </div>
         ) : (
-          <div className="text-sm text-white/60">
-            No active subscription linked to your email.
-          </div>
+          <div className="text-sm text-white/60">{t('billing.no_active_subscription')}</div>
         )}
 
         {storeBilled ? (
@@ -561,7 +560,7 @@ function BillingTab({ variant }: { variant: 'billing' | 'payment' }) {
             className="w-full mt-2 bg-white/10 border border-white/20 rounded-lg py-2.5 text-sm font-semibold hover:bg-white/20 transition"
           >
             <i className="fa-regular fa-credit-card mr-2" />
-            Open {providerLabel(provider)} subscriptions
+            {t('billing.open_provider_subscriptions', { provider: providerLabel(provider) })}
           </button>
         ) : data.stripe.portal_available && (
           <button
@@ -570,7 +569,11 @@ function BillingTab({ variant }: { variant: 'billing' | 'payment' }) {
             className="w-full mt-2 bg-white/10 border border-white/20 rounded-lg py-2.5 text-sm font-semibold hover:bg-white/20 disabled:opacity-50 transition"
           >
             <i className="fa-regular fa-credit-card mr-2" />
-            {portalBusy ? 'Opening Stripe…' : variant === 'payment' ? 'Manage payment method' : 'Open billing portal'}
+            {portalBusy
+              ? t('billing.opening_stripe')
+              : variant === 'payment'
+                ? t('billing.manage_payment_method')
+                : t('billing.open_billing_portal')}
           </button>
         )}
       </section>
@@ -582,7 +585,7 @@ function BillingTab({ variant }: { variant: 'billing' | 'payment' }) {
           onClick={() => { window.location.href = '/subscription_plans' }}
           className="w-full bg-[#4db6ac] text-black font-semibold py-3 rounded-lg hover:bg-[#3da398] transition"
         >
-          Upgrade to Premium
+          {t('billing.upgrade_to_premium')}
         </button>
       )}
     </div>
@@ -591,8 +594,8 @@ function BillingTab({ variant }: { variant: 'billing' | 'payment' }) {
 
 // --- helpers -------------------------------------------------------------
 
-function capLabel(cap: number | null, unit: string): string {
-  if (cap === null) return 'Unlimited'
+function capLabel(cap: number | null, unit: string, unlimitedLabel: string): string {
+  if (cap === null) return unlimitedLabel
   return `${cap}${unit ? ` ${unit}` : ''}`
 }
 
