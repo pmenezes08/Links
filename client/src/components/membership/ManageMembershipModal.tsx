@@ -17,7 +17,7 @@
  * method", then redirects to the returned Stripe-hosted URL.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useEntitlements } from '../../hooks/useEntitlements'
 import { openExternalBillingUrl, providerBadge, providerLabel } from '../../utils/mobileStoreBilling'
@@ -445,11 +445,11 @@ function BillingTab({ variant }: { variant: 'billing' | 'payment' }) {
   const storeBilled = provider === 'apple' || provider === 'google'
   const renewal = sub?.current_period_end ? new Date(sub.current_period_end * 1000) : null
   const trial = sub?.trial_end ? new Date(sub.trial_end * 1000) : null
-  const amount = useMemo(() => {
-    if (sub?.price_amount_cents == null || !sub.price_currency) return null
+  let amount: string | null = null
+  if (sub?.price_amount_cents != null && sub.price_currency) {
     const v = (sub.price_amount_cents / 100).toFixed(2)
-    return `${sub.price_currency} ${v}${sub.price_interval ? ` / ${sub.price_interval}` : ''}`
-  }, [sub])
+    amount = `${sub.price_currency} ${v}${sub.price_interval ? ` / ${sub.price_interval}` : ''}`
+  }
 
   return (
     <div className="space-y-5">

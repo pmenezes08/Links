@@ -790,7 +790,17 @@ export default function PremiumDashboard() {
       <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="relative">
-            <img src="/static/logo.png" alt="Logo" className="w-16 h-16 rounded-2xl object-contain" />
+            <img
+              src="/api/public/logo"
+              alt="C-Point"
+              className="w-16 h-16 rounded-2xl object-contain"
+              onError={(e) => {
+                const img = e.currentTarget
+                if (img.src.includes('cpoint-logo.svg')) return
+                img.onerror = null
+                img.src = '/static/cpoint-logo.svg'
+              }}
+            />
             <div className="absolute -inset-2">
               <svg className="w-20 h-20 animate-spin" viewBox="0 0 24 24">
                 <circle 
