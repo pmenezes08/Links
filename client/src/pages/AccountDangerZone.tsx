@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Capacitor } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
 import { resetAccountScopedState } from '../utils/accountStateReset'
@@ -42,17 +43,18 @@ async function clearAllUserData(): Promise<void> {
 export default function AccountDangerZone() {
   const { setTitle } = useHeader()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [confirmation, setConfirmation] = useState('')
   const [loading, setLoading] = useState(false)
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
-    setTitle('Danger Zone')
-  }, [setTitle])
+    setTitle(t('account.danger.section_title'))
+  }, [setTitle, t])
 
   const handleDelete = async () => {
     if (confirmation.trim().toUpperCase() !== 'DELETE') {
-      setFeedback({ type: 'error', text: 'Please type DELETE to confirm.' })
+      setFeedback({ type: 'error', text: t('account.danger.confirm_error') })
       return
     }
     setFeedback(null)
@@ -61,13 +63,13 @@ export default function AccountDangerZone() {
       // First, delete the account on the server
       const resp = await fetch('/delete_account', { method: 'POST', credentials: 'include' })
       if (!resp.ok) {
-        setFeedback({ type: 'error', text: `Server error (${resp.status})` })
+        setFeedback({ type: 'error', text: t('account.danger.server_error', { status: resp.status }) })
         setLoading(false)
         return
       }
       const json = await resp.json().catch(() => null)
       if (json?.success) {
-        setFeedback({ type: 'success', text: 'Account deleted. Clearing data…' })
+        setFeedback({ type: 'success', text: t('account.danger.deleted') })
         
         // Clear Google Sign-In cached account
         try {
@@ -86,11 +88,11 @@ export default function AccountDangerZone() {
           window.location.replace('/signup?cleared=' + Date.now())
         }, 800)
       } else {
-        setFeedback({ type: 'error', text: json?.error || 'Failed to delete account' })
+        setFeedback({ type: 'error', text: json?.error || t('account.danger.delete_failed') })
         setLoading(false)
       }
     } catch {
-      setFeedback({ type: 'error', text: 'Network error. Please try again.' })
+      setFeedback({ type: 'error', text: t('errors.network') })
       setLoading(false)
     }
   }
@@ -104,15 +106,15 @@ export default function AccountDangerZone() {
           onClick={() => navigate('/account_settings')}
         >
           <i className="fa-solid fa-arrow-left" />
-          Back to Account Settings
+          {t('account.danger.back_to_settings')}
         </button>
 
         <div className="rounded-xl border border-red-500/40 bg-red-500/5 p-6 space-y-4">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-red-300">Danger Zone</p>
-            <h1 className="text-xl font-semibold text-white">Delete your account</h1>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-red-300">{t('account.danger.section_title')}</p>
+            <h1 className="text-xl font-semibold text-white">{t('account.danger.delete_title')}</h1>
             <p className="text-sm text-red-200/80 mt-2">
-              This action is permanent. All posts, messages, and membership data will be deleted and cannot be recovered.
+              {t('account.danger.delete_warning')}
             </p>
           </div>
 
@@ -130,7 +132,7 @@ export default function AccountDangerZone() {
 
           <div className="space-y-3">
             <label className="text-sm text-white/80">
-              Type <span className="font-semibold">DELETE</span> to confirm
+              {t('account.danger.confirm_label')}
             </label>
             <input
               type="text"
@@ -148,7 +150,7 @@ export default function AccountDangerZone() {
             onClick={handleDelete}
             className="w-full rounded-lg bg-red-600 px-4 py-3 font-semibold text-white hover:bg-red-500 disabled:opacity-60"
           >
-            {loading ? 'Deleting…' : 'Delete Account Permanently'}
+            {loading ? t('account.danger.deleting') : t('account.danger.delete_button')}
           </button>
         </div>
       </div>

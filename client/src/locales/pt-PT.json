@@ -28,6 +28,49 @@
   },
   "account": {
     "settings": "Definições da conta",
+    "messages": {
+      "notification_update_failed": "Não foi possível atualizar as preferências de notificações",
+      "notification_update_network": "Erro de ligação ao atualizar as preferências",
+      "profile_load_failed": "Não foi possível carregar o perfil",
+      "profile_load_error": "Erro ao carregar o perfil",
+      "email_updated": "Email atualizado. Verifica o teu novo email.",
+      "email_update_error": "Erro ao atualizar o email",
+      "resend_failed": "Não foi possível reenviar",
+      "verification_sent": "Email de verificação enviado",
+      "network_error": "Erro de ligação"
+    },
+    "info": {
+      "section_title": "Informação da conta",
+      "helper": "Atualiza o email associado à tua conta.",
+      "username": "Nome de utilizador",
+      "username_locked": "O nome de utilizador não pode ser alterado",
+      "email": "Email",
+      "email_placeholder": "teu@email.com",
+      "save_changes": "Guardar alterações",
+      "loading_profile": "A carregar perfil...",
+      "try_again": "Tentar de novo"
+    },
+    "about": {
+      "section_title": "Sobre o C-Point",
+      "helper": "Manifesto, como funciona e vídeos tutoriais.",
+      "open": "Abrir Sobre o C-Point"
+    },
+    "privacy": {
+      "section_title": "Privacidade e segurança",
+      "helper": "Atualiza a tua palavra-passe e ajusta os controlos de privacidade num espaço dedicado.",
+      "open": "Abrir Privacidade e segurança",
+      "request_data": "Pedir os meus dados",
+      "request_data_helper": "Pede-nos uma cópia dos dados pessoais que guardamos sobre ti. Respondemos no prazo de 30 dias."
+    },
+    "subscription": {
+      "section_title": "Gestão da subscrição",
+      "helper": "Vê o teu estado atual e gere upgrades ou downgrades.",
+      "label": "Subscrição",
+      "premium": "⭐ Premium",
+      "free": "🆓 Gratuito",
+      "manage_membership": "Gerir adesão",
+      "view_ai_usage": "Ver utilização de IA"
+    },
     "language": {
       "section_title": "Idioma",
       "helper": "Aplica-se à aplicação, notificações e emails.",
@@ -38,7 +81,41 @@
       "save_failed": "Não foi possível guardar o teu idioma. Tenta de novo."
     },
     "notifications": {
-      "section_title": "Notificações"
+      "section_title": "Notificações",
+      "helper": "Gere as definições de notificações push.",
+      "checking": "A verificar...",
+      "enabled": "Notificações ativadas",
+      "enabled_helper": "Vais receber notificações push de mensagens, eventos e atualizações.",
+      "disabled": "Notificações desativadas",
+      "disabled_helper": "Estás a perder mensagens, lembretes de eventos e atualizações da comunidade.",
+      "open_settings": "Abrir definições de notificações",
+      "native_helper": "Isto vai abrir as definições do teu dispositivo, onde podes ativar as notificações do C-Point.",
+      "browser_helper": "Permite notificações quando o teu browser te pedir.",
+      "preview_label": "Mostrar pré-visualizações de conteúdo nas notificações",
+      "preview_helper": "Quando ativo, a lista de notificações inclui um pequeno excerto da publicação ou resposta relacionada. Desativa para um resumo mais privado (quem fez o quê, sem o texto).",
+      "android_settings_alert": "Abre as Definições do dispositivo > Apps > C-Point > Notificações para as ativares.",
+      "browser_settings_alert": "Permite notificações nas definições do browser para este site.",
+      "device_settings_alert": "Abre as Definições do dispositivo e ativa as notificações do C-Point."
+    },
+    "danger": {
+      "section_title": "Zona de perigo",
+      "summary": "Apaga permanentemente a tua conta e todos os dados associados. Vais confirmar esta ação numa página dedicada.",
+      "go": "Ir para a Zona de perigo",
+      "back_to_settings": "Voltar às Definições da conta",
+      "delete_title": "Apagar a tua conta",
+      "delete_warning": "Esta ação é permanente. Todas as publicações, mensagens e dados de adesão serão apagados e não poderão ser recuperados.",
+      "confirm_label": "Escreve DELETE para confirmar",
+      "confirm_error": "Escreve DELETE para confirmar.",
+      "server_error": "Erro do servidor ({{status}})",
+      "deleting": "A apagar...",
+      "delete_button": "Apagar conta permanentemente",
+      "deleted": "Conta apagada. A limpar dados...",
+      "delete_failed": "Não foi possível apagar a conta"
+    },
+    "verify": {
+      "title": "Verifica o teu novo email",
+      "body": "Enviámos uma ligação de verificação para o teu novo email. Verifica-o para concluir a alteração.",
+      "resend": "Reenviar email"
     }
   },
   "errors": {
