@@ -1,15 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { LOCALE_OPTIONS } from '../../i18n/localeOptions'
 import { useLocale } from '../../i18n/useLocale'
 import type { SupportedLocale } from '../../i18n'
-
-type Option = { value: SupportedLocale; labelKey: string }
-
-const OPTIONS: Option[] = [
-  { value: 'en', labelKey: 'account.language.option_en' },
-  { value: 'pt-PT', labelKey: 'account.language.option_pt_pt' },
-]
 
 /**
  * Language picker for Account Settings.
@@ -48,7 +42,7 @@ export default function LanguagePicker() {
       </div>
 
       <div className="space-y-2">
-        {OPTIONS.filter((opt) => supported.includes(opt.value)).map((opt) => {
+        {LOCALE_OPTIONS.filter((opt) => supported.includes(opt.value)).map((opt) => {
           const checked = draftLocale === opt.value
           return (
             <label

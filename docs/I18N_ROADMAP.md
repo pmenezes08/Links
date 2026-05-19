@@ -54,7 +54,7 @@ may be retained (recommended) while the branch can be retired.
 | Transactional email | Localized to **recipient** locale |
 | `templates/*.html` (auth flows, RSVP, etc.) | Localized |
 | Account Settings language picker | New section after Notifications |
-| Auto-detect locale | Device / browser, no first-run modal |
+| Auto-detect locale | Device / browser; explicit pick on first login welcome (`OnboardingIntroGate`) |
 
 ### Out of scope (v1)
 
@@ -84,7 +84,7 @@ catalog plus catalog completeness CI.
 | Default locale | `en` |
 | First localized locale | `pt-PT` |
 | pt-PT tone | **Tu** (informal European Portuguese) |
-| Detection | Auto-detect device/browser language; no first-run prompt |
+| Detection | Auto-detect until first login welcome; then `preferred_locale` on server |
 | Persistence | `users.preferred_locale` is set **only** when the user explicitly picks in Account Settings |
 | Before explicit choice | Client sends `Accept-Language`; backend uses it for API / push / email |
 | Settings UI placement | `client/src/pages/AccountSettings.tsx`, new "Language" section immediately after the Notifications block (before Danger Zone) |

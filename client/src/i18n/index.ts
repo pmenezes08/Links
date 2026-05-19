@@ -1,7 +1,8 @@
 // client/src/i18n/index.ts
 //
 // Single entrypoint for react-i18next on the client. Boots with the
-// device / browser locale (no first-run language modal), maps common
+// device / browser locale; first-run language pick is in OnboardingIntroGate.
+// Maps common
 // aliases to the supported set, and exposes a small typed API for the
 // rest of the SPA.
 //

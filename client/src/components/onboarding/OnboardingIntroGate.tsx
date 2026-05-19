@@ -1,22 +1,55 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+
+import { matchLocale, type SupportedLocale } from '../../i18n'
+import { LOCALE_OPTIONS } from '../../i18n/localeOptions'
+import { useLocale } from '../../i18n/useLocale'
 
 type OnboardingIntroGateProps = {
   onStart: () => void
 }
 
+type IntroPage = 0 | 1 | 2
+
+function fetchMockable(url: string, init?: RequestInit) {
+  return fetch(url, init)
+}
+
 export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProps) {
   const { t } = useTranslation()
+  const { locale, supported, saving, setLocale } = useLocale()
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [videoFailed, setVideoFailed] = useState(false)
   const [manifestoOpen, setManifestoOpen] = useState(false)
-  const [page, setPage] = useState<0 | 1>(0)
+  const [page, setPage] = useState<IntroPage | null>(null)
+  const [skipLanguageStep, setSkipLanguageStep] = useState(false)
+  const [draftLocale, setDraftLocale] = useState<SupportedLocale>(locale)
+  const [localeError, setLocaleError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setDraftLocale(locale)
+  }, [locale])
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
+      let hasSavedLocale = false
       try {
-        const response = await fetch('/api/public/onboarding_welcome_video', {
+        const localeRes = await fetchMockable('/api/me/locale', {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+        })
+        const localeJson = localeRes.ok ? await localeRes.json().catch(() => null) : null
+        if (!cancelled && localeJson?.success && matchLocale(localeJson.preferred_locale)) {
+          hasSavedLocale = true
+          setSkipLanguageStep(true)
+        }
+      } catch {
+        // Fall through to language step.
+      }
+
+      try {
+        const response = await fetchMockable('/api/public/onboarding_welcome_video', {
           cache: 'no-store',
           headers: { Accept: 'application/json' },
         })
@@ -26,6 +59,10 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
         }
       } catch {
         if (!cancelled) setVideoFailed(true)
+      } finally {
+        if (!cancelled) {
+          setPage(hasSavedLocale ? 1 : 0)
+        }
       }
     })()
     return () => {
@@ -33,8 +70,28 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
     }
   }, [])
 
-  const showVideo = Boolean(videoUrl && !videoFailed)
+  const showVideo = Boolean(videoUrl && !videoFailed) && page === 1
   const manifestoParagraphs = t('onboarding_intro.manifesto', { returnObjects: true }) as string[]
+
+  const progressPages: IntroPage[] = skipLanguageStep ? [1, 2] : [0, 1, 2]
+
+  const handleLanguageContinue = useCallback(async () => {
+    setLocaleError(null)
+    const result = await setLocale(draftLocale)
+    if (!result.persisted) {
+      setLocaleError(t('account.language.save_failed'))
+      return
+    }
+    setPage(1)
+  }, [draftLocale, setLocale, t])
+
+  if (page === null) {
+    return (
+      <div className="fixed inset-0 z-[1101] bg-black text-white flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-[#4db6ac] animate-spin" aria-hidden />
+      </div>
+    )
+  }
 
   return (
     <div className="fixed inset-0 z-[1101] overflow-y-auto bg-black text-white">
@@ -65,6 +122,47 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
 
               {page === 0 ? (
                 <div className="text-center">
+                  <h1 className="text-2xl font-semibold tracking-tight mb-2">
+                    {t('onboarding_intro.language_title')}
+                  </h1>
+                  <p className="text-sm leading-relaxed text-[#9fb0b5] mb-5">
+                    {t('onboarding_intro.language_subtitle')}
+                  </p>
+                  <div className="space-y-2 text-left mb-2">
+                    {LOCALE_OPTIONS.filter((opt) => supported.includes(opt.value)).map((opt) => {
+                      const checked = draftLocale === opt.value
+                      return (
+                        <label
+                          key={opt.value}
+                          className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition ${
+                            checked
+                              ? 'border-[#4db6ac]/60 bg-[#4db6ac]/10 text-white'
+                              : 'border-white/10 bg-white/5 text-white/80 hover:border-white/20'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="onboarding-language"
+                            value={opt.value}
+                            checked={checked}
+                            disabled={saving}
+                            onChange={() => {
+                              setLocaleError(null)
+                              setDraftLocale(opt.value)
+                            }}
+                            className="h-4 w-4 accent-[#4db6ac]"
+                          />
+                          <span>{t(opt.labelKey)}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                  {localeError ? (
+                    <p className="text-xs text-red-300 mt-2">{localeError}</p>
+                  ) : null}
+                </div>
+              ) : page === 1 ? (
+                <div className="text-center">
                   <h1 className="text-2xl font-semibold tracking-tight mb-3">{t('onboarding_intro.welcome_title')}</h1>
                   <p className="text-sm leading-relaxed text-[#d5e4e7] mb-6">{t('onboarding_intro.summary')}</p>
                 </div>
@@ -81,7 +179,16 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                 {page === 0 ? (
                   <button
                     type="button"
-                    onClick={() => setPage(1)}
+                    disabled={saving}
+                    onClick={() => void handleLanguageContinue()}
+                    className="w-full rounded-xl bg-[#4db6ac] text-black font-semibold py-3 text-sm hover:brightness-110 active:scale-[0.99] transition disabled:opacity-50"
+                  >
+                    {saving ? t('account.language.saving') : t('onboarding_intro.language_continue')}
+                  </button>
+                ) : page === 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => setPage(2)}
                     className="w-full rounded-xl bg-[#4db6ac] text-black font-semibold py-3 text-sm hover:brightness-110 active:scale-[0.99] transition"
                   >
                     {t('onboarding_intro.continue')}
@@ -95,16 +202,26 @@ export default function OnboardingIntroGate({ onStart }: OnboardingIntroGateProp
                     {t('onboarding_intro.start')}
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={page === 0 ? () => setManifestoOpen(true) : () => setPage(0)}
-                  className="w-full rounded-xl bg-[#4db6ac]/10 text-[#d5fffb] border border-[#4db6ac]/30 font-medium py-3 text-sm hover:bg-[#4db6ac]/15 transition"
-                >
-                  {page === 0 ? t('onboarding_intro.read_manifesto') : t('common.back')}
-                </button>
+                {page === 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => setManifestoOpen(true)}
+                    className="w-full rounded-xl bg-[#4db6ac]/10 text-[#d5fffb] border border-[#4db6ac]/30 font-medium py-3 text-sm hover:bg-[#4db6ac]/15 transition"
+                  >
+                    {t('onboarding_intro.read_manifesto')}
+                  </button>
+                ) : page === 2 ? (
+                  <button
+                    type="button"
+                    onClick={() => setPage(1)}
+                    className="w-full rounded-xl bg-[#4db6ac]/10 text-[#d5fffb] border border-[#4db6ac]/30 font-medium py-3 text-sm hover:bg-[#4db6ac]/15 transition"
+                  >
+                    {t('common.back')}
+                  </button>
+                ) : null}
               </div>
               <div className="mt-5 flex justify-center gap-2" aria-label={t('onboarding_intro.progress_label')}>
-                {[0, 1].map((item) => (
+                {progressPages.map((item) => (
                   <span
                     key={item}
                     className={`h-1.5 w-6 rounded-full ${page === item ? 'bg-[#4db6ac]' : 'bg-[#4db6ac]/25'}`}

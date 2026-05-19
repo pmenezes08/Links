@@ -2028,6 +2028,9 @@
     "upload_continue": "Upload & continue"
   },
   "onboarding_intro": {
+    "language_title": "Let's choose your preferred language",
+    "language_subtitle": "You can change this anytime in Account Settings.",
+    "language_continue": "Continue",
     "summary": "C-Point is built on a simple belief: the world is meant to be lived, and private communities should help you reconnect with your people without public noise or algorithms in the way.",
     "welcome_title": "Welcome to C-Point",
     "steve_title": "Meet Steve",

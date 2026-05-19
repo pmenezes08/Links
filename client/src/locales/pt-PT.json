@@ -2028,6 +2028,9 @@
     "upload_continue": "Carregar e continuar"
   },
   "onboarding_intro": {
+    "language_title": "Vamos escolher o seu idioma preferido",
+    "language_subtitle": "Pode alterar isto a qualquer momento nas definições da conta.",
+    "language_continue": "Continuar",
     "summary": "O C-Point nasce de uma ideia simples: o mundo é para ser vivido, e as comunidades privadas devem ajudar-te a reencontrar as tuas pessoas sem ruído público nem algoritmos pelo meio.",
     "welcome_title": "Bem-vindo ao C-Point",
     "steve_title": "Conhece o Steve",
