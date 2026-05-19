@@ -1262,11 +1262,12 @@ def _seed_pages() -> List[Dict[str, Any]]:
                  "group": "internal_pool",
                  "help": "Minimum credits per call by surface; actual debit is max(floor, context tier) + tool addons."},
                 {"name": "credit_tier_slim_max_tokens_in", "label": "Context tier — slim max input tokens", "type": "integer", "value": 4000, "group": "internal_pool"},
-                {"name": "credit_tier_standard_max_tokens_in", "label": "Context tier — standard max input tokens", "type": "integer", "value": 12000, "group": "internal_pool"},
+                {"name": "credit_tier_standard_max_tokens_in", "label": "Context tier — standard max input tokens", "type": "integer", "value": 25000, "group": "internal_pool",
+                 "help": "Typical Steve DM billed input is ~15k–20k; keep standard tier through that range so credits match real usage."},
                 {"name": "credit_tier_slim_weight", "label": "Context tier — slim credits", "type": "decimal", "value": 1, "group": "internal_pool"},
                 {"name": "credit_tier_standard_weight", "label": "Context tier — standard credits", "type": "decimal", "value": 2, "group": "internal_pool"},
                 {"name": "credit_tier_heavy_weight", "label": "Context tier — heavy credits", "type": "decimal", "value": 3, "group": "internal_pool"},
-                {"name": "credit_addon_web_search", "label": "Addon credits — web_search", "type": "decimal", "value": 1, "group": "internal_pool"},
+                {"name": "credit_addon_web_search", "label": "Addon credits — web_search", "type": "decimal", "value": 0.5, "group": "internal_pool"},
                 {"name": "credit_addon_x_search", "label": "Addon credits — x_search", "type": "decimal", "value": 1, "group": "internal_pool"},
                 {"name": "credit_addon_tool_router", "label": "Addon credits — tool router pass", "type": "decimal", "value": 0.5, "group": "internal_pool"},
                 {"name": "max_credits_per_call", "label": "Max credits debited per call", "type": "decimal", "value": 10, "group": "internal_pool"},
@@ -1332,7 +1333,9 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 "sees **X of 100** credits; heavy context + search debits more per turn.\n\n"
                 "**Why the weighting works**: aligns ~100 credits with the hidden "
                 "``monthly_spend_ceiling_eur`` (€3.99) worst-case mix — more light DMs per month, "
-                "fewer heavy feed+search turns.\n\n"
+                "fewer heavy feed+search turns. Standard context tier runs through **25k** billed "
+                "input tokens (typical DM). News/browse turns attach **web_search** only unless the "
+                "user asks for X/Twitter; optional facts (e.g. podcast episodes) use confirm-then-search.\n\n"
                 "**Model Costs**: this page is the single source of truth for the math. "
                 "When you edit any model cost, the Calculator (under Planning → Calculator) "
                 "updates automatically. Re-verify `model_costs_source` every month.\n\n"

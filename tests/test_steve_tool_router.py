@@ -87,7 +87,7 @@ def test_ambiguous_turn_uses_router_when_static_empty(monkeypatch):
     )
     msg = (
         "Walk through how mid-size analytics vendors position themselves; "
-        "pull examples from both the public web and X."
+        "pull examples from the public web and search twitter for reactions."
     )
     out = resolve_steve_hosted_tools(
         msg,
@@ -97,6 +97,24 @@ def test_ambiguous_turn_uses_router_when_static_empty(monkeypatch):
     )
     types = {t.get("type") for t in out}
     assert types == {"web_search", "x_search"}
+
+
+def test_router_strips_x_when_user_did_not_ask_for_x(monkeypatch):
+    monkeypatch.setattr(
+        "backend.services.steve_tool_router._call_router_llm",
+        lambda _t: ({"web_search": True, "x_search": True}, None),
+    )
+    msg = (
+        "Walk through how mid-size analytics vendors position themselves using "
+        "public web sources only please."
+    )
+    out = resolve_steve_hosted_tools(
+        msg,
+        username="alice",
+        surface="group",
+        config=_cfg_explicit_only(),
+    )
+    assert out == [{"type": "web_search"}]
 
 
 def test_ambiguous_heuristic_false_short_message():

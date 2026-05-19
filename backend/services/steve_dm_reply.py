@@ -495,8 +495,14 @@ def _run_grok_dm_turn(
         logger.warning("Steve DM platform/manual gate failed (non-fatal): %s", manual_gate_err)
 
     from backend.services.steve_community_config import get_paid_steve_package_config
-    from backend.services.steve_prompt_policy import render_hosted_search_capability_instructions
-    from backend.services.steve_tool_policy import steve_tool_names_for_log
+    from backend.services.steve_prompt_policy import (
+        news_current_events_requested,
+        render_hosted_search_capability_instructions,
+    )
+    from backend.services.steve_tool_policy import (
+        steve_optional_live_web_intent,
+        steve_tool_names_for_log,
+    )
     from backend.services.steve_tool_router import resolve_steve_hosted_tools
 
     steve_pkg = get_paid_steve_package_config()
@@ -509,7 +515,21 @@ def _run_grok_dm_turn(
         config=steve_pkg,
     )
     has_web_tools = bool(dm_tools)
-    caps_lines = render_hosted_search_capability_instructions(has_hosted_search_tools=has_web_tools)
+    has_x_tool = any(
+        isinstance(t, dict) and (t.get("type") or "").strip().lower() == "x_search" for t in (dm_tools or [])
+    )
+    optional_web_offer = bool(
+        not has_web_tools
+        and not platform_question_dm
+        and not professional_dm
+        and steve_optional_live_web_intent(user_message)
+        and not news_current_events_requested(user_message)
+    )
+    caps_lines = render_hosted_search_capability_instructions(
+        has_hosted_search_tools=has_web_tools,
+        optional_web_offer=optional_web_offer,
+        has_x_search=has_x_tool,
+    )
     admin_line = (
         "\n- As an admin, you have full platform access."
         if is_app_admin(sender_username)

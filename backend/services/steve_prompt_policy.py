@@ -87,24 +87,46 @@ def should_include_community_resources(user_message: str) -> bool:
     return bool(_COMMUNITY_RESOURCE_RE.search(user_message or ""))
 
 
-def render_hosted_search_capability_instructions(*, has_hosted_search_tools: bool) -> str:
+def render_hosted_search_capability_instructions(
+    *,
+    has_hosted_search_tools: bool,
+    optional_web_offer: bool = False,
+    has_x_search: bool = False,
+) -> str:
     """Align the system prompt with the actual ``tools=`` list for this Grok turn.
 
     When tools are omitted, Steve should state plainly that web lookup is not available **for this
-    turn** (not a vague \"I have no real-time access\" forever).
+    turn** (not a vague \"I have no real-time access\" forever), or offer confirm-then-search phrasing.
     """
     if has_hosted_search_tools:
+        x_line = (
+            "- THIS TURN also includes hosted **x_search** — use it only when the user clearly wants "
+            "X/Twitter posts or social chatter on X.\n"
+            if has_x_search
+            else ""
+        )
         return (
-            "- THIS TURN includes hosted **web_search** and **x_search** (when x_search is present in the "
-            "API tool list). Use them for any request that depends on **current or verifiable public web** "
-            "information — e.g. news, markets, sports, employer **public** careers pages, product or company "
-            "facts, government pages, event schedules.\n"
+            "- THIS TURN includes hosted **web_search**. Use it for **current or verifiable public web** "
+            "information — e.g. news, markets, sports, employer **public** careers pages, podcasts, "
+            "product or company facts, government pages, event schedules.\n"
+            f"{x_line}"
             "- Prefer **primary sources** (official careers/press/docs) when claiming a specific job posting, "
             "product fact, or policy exists.\n"
             "- Do **not** claim you searched or saw live results for facts that did not come from tool output "
             "on this turn.\n"
             "- **C-Point members:** do not use web search to look up platform users who are not in the "
             "injected profile excerpts; privacy rules override."
+        )
+    if optional_web_offer:
+        return (
+            "- THIS TURN does **not** include hosted web_search yet — the answer may be incomplete for "
+            "live public-web facts (e.g. latest podcast episode, release date, listing).\n"
+            "- Briefly say you can **search the web** for this if they want, and ask them to reply with "
+            "exactly one of:\n"
+            '  - **\"Yes, search the web for this\"** (English)\n'
+            '  - **\"Sim, consulta a internet\"** (Portuguese)\n'
+            "- Mention that web search uses a bit more of their monthly Steve credits than a short chat.\n"
+            "- Do **not** invent episode numbers, URLs, or headlines as if you had browsed the web."
         )
     return (
         "- THIS TURN does **not** include hosted web_search or x_search — **no live web lookup on this reply**. "

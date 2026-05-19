@@ -41,6 +41,8 @@ DEFAULT_SLUGS = ("credits-entitlements", "community-tiers")
 POLICY_FIELD_STALE_VALUES: Dict[str, List[Any]] = {
     "paid_steve_package_monthly_provider_cost_ceiling_usd": [5, 5.0, "5", "5.00"],
     "paid_steve_package_price_eur_monthly": [49, 49.0, "49", "49.00"],
+    "credit_tier_standard_max_tokens_in": [12000, "12000"],
+    "credit_addon_web_search": [1, 1.0, "1", "1.00"],
 }
 
 

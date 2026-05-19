@@ -39,7 +39,7 @@ and then write the code. Do **not** silently diverge.
    tied to a community), pass **`community_id`** into `check_steve_access` /
    `gate_or_reason` so eligible members can consume the **Steve Community
    Package** monthly pool per KB flags (`community-tiers` page).
-   **Feed replies** attach Grok **`web_search` + `x_search`** when **`steve_tool_router.resolve_steve_hosted_tools`** applies **`steve_tool_policy`** +
+   **Feed replies** attach Grok **`web_search`** (and **`x_search`** only when the user explicitly asks for X/Twitter) when **`steve_tool_router.resolve_steve_hosted_tools`** applies **`steve_tool_policy`** +
    **`steve_prompt_policy`** (live-news, explicit browse intent, **or job/careers-site /
    listing-verification wording** per **`steve_job_listing_or_employer_research_requested`**, or when
    KB allows default-on with **`external_search_explicit_only`** OFF). If that **static** policy returns
@@ -283,7 +283,7 @@ don't build parallel queries.
 
 | Function | Window | Surface filter | Used for |
 |---|---|---|---|
-| `monthly_steve_count` | 1st of month UTC → now | `STEVE_SURFACES` | `steve_uses_per_month` cap + "Steve uses this month" UI (SUM of `credits_debited` when `STEVE_WEIGHTED_CREDITS_ENABLED` is on) |
+| `monthly_steve_count` | 1st of month UTC → now | `STEVE_SURFACES` | `steve_uses_per_month` cap + "Steve uses this month" UI (SUM of `credits_debited` when `STEVE_WEIGHTED_CREDITS_ENABLED` is on). KB tiers: standard through **25k** billed input tokens; **web_search** addon **0.5**; news/browse attach **web only** unless user asks for X; optional facts (podcast episodes) use confirm-then-search in DM. |
 | `daily_count` | Rolling 24h | `STEVE_SURFACES` | `ai_daily_limit` enforcement + "Steve uses today" UI (same weighted SUM) |
 | `community_monthly_steve_pool_usage` | Calendar month | `STEVE_SURFACES` + `community_id` | Steve Community Package pool (200 credits default); dual gate with `monthly_community_spend_usd` vs KB `$19.99` ceiling |
 | `daily_any_count` | Rolling 24h | *none* | Admin-only "all AI activity" metric |

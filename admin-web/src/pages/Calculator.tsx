@@ -174,9 +174,9 @@ function MonthTab({ costs, allowance }: { costs: ModelCosts; allowance: UserAllo
   const [whisperMin, setWhisperMin] = useState(30)
 
   const callTypes = [
-    { name: 'DM', count: dmCount, setter: setDmCount, input: 2000, output: 300, tool: 0 },
-    { name: 'Group chat', count: groupCount, setter: setGroupCount, input: 8000, output: 600, tool: 1 },
-    { name: 'Community feed', count: feedCount, setter: setFeedCount, input: 6000, output: 500, tool: 1 },
+    { name: 'DM', count: dmCount, setter: setDmCount, input: 15000, output: 400, tool: 0.5 },
+    { name: 'Group chat', count: groupCount, setter: setGroupCount, input: 8000, output: 600, tool: 0.5 },
+    { name: 'Community feed', count: feedCount, setter: setFeedCount, input: 6000, output: 500, tool: 0.5 },
     { name: 'Post summary', count: postSummaryCount, setter: setPostSummaryCount, input: 3000, output: 400, tool: 0 },
   ]
 
@@ -200,17 +200,23 @@ function MonthTab({ costs, allowance }: { costs: ModelCosts; allowance: UserAllo
   const pctOfCeiling = ceiling > 0 ? (totalEur / ceiling) * 100 : 0
 
   const w = allowance.internal_weights || {}
-  const addonTool = 1
-  const tierOf = (input: number) => (input > 12000 ? 3 : input > 4000 ? 2 : 1)
-  const creditsFor = (key: string, input: number, tool: number) => {
+  const tierStandardMax = 25000
+  const tierOf = (input: number) =>
+    input > tierStandardMax ? 3 : input > 4000 ? 2 : 1
+  const creditsFor = (key: string, input: number, toolAddon: number) => {
     const base = Math.max(Number(w[key] ?? 1), tierOf(input))
-    return Math.min(10, base + (tool > 0 ? addonTool : 0))
+    return Math.min(10, base + (toolAddon > 0 ? toolAddon : 0))
   }
-  const totalCredits =
-    dmCount * creditsFor('dm', 2000, 0) +
-    groupCount * creditsFor('group', 8000, 1) +
-    feedCount * creditsFor('feed', 6000, 1) +
-    postSummaryCount * creditsFor('post_summary', 3000, 0)
+  const surfaceKeys: Record<string, string> = {
+    DM: 'dm',
+    'Group chat': 'group',
+    'Community feed': 'feed',
+    'Post summary': 'post_summary',
+  }
+  const totalCredits = callTypes.reduce(
+    (sum, t) => sum + t.count * creditsFor(surfaceKeys[t.name] || 'dm', t.input, t.tool),
+    0,
+  )
   const userFacingUses = totalCredits
   const allowanceLimit = allowance.steve_uses_per_month
   const allowancePct = allowanceLimit > 0 ? (userFacingUses / allowanceLimit) * 100 : 0

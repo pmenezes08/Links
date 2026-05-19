@@ -51,6 +51,32 @@ def test_feedback_path_zero_credits():
     assert deb == 0.0
 
 
+def test_dm_15k_input_is_standard_tier_not_heavy():
+    """Typical billed DM context (~15k tokens) should be standard tier after KB recalibration."""
+    deb, meta = scw.compute_credits_debited(
+        surface=SURFACE_DM,
+        request_type="steve_dm_reply",
+        tokens_in=15334,
+        tools_web_search=False,
+        tools_x_search=False,
+    )
+    assert deb == 2.0
+    assert meta["tier_weight"] == 2.0
+
+
+def test_dm_news_web_only_credits():
+    deb, meta = scw.compute_credits_debited(
+        surface=SURFACE_DM,
+        request_type="steve_dm_reply",
+        tokens_in=17116,
+        tools_web_search=True,
+        tools_x_search=False,
+    )
+    assert deb == 2.5
+    assert meta["addon_web"] == 0.5
+    assert meta.get("addon_x", 0) == 0
+
+
 def test_max_per_call_cap():
     rules = scw.load_credit_rules()
     rules = scw.CreditRules(

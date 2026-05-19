@@ -7,8 +7,11 @@ from backend.services.steve_tool_policy import (
     normalize_message_for_live_search_signals,
     steve_external_search_requested,
     steve_job_listing_or_employer_research_requested,
+    steve_optional_live_web_intent,
     steve_tool_names_for_log,
     steve_tools_for_message,
+    steve_web_search_confirmed,
+    steve_x_search_requested,
 )
 
 
@@ -39,9 +42,16 @@ def test_tool_log_summary():
     )
 
 
-def test_live_news_explicit_gets_tools():
+def test_live_news_explicit_gets_web_only():
     cfg = SteveCommunityConfig()
     msg = "@admin @Steve what's the latest news"
+    tools = steve_tools_for_message(msg, config=cfg)
+    assert tools == [{"type": "web_search"}]
+
+
+def test_live_news_with_x_phrase_gets_both_tools():
+    cfg = SteveCommunityConfig()
+    msg = "@Steve what's trending on twitter today"
     tools = steve_tools_for_message(msg, config=cfg)
     assert tools == [{"type": "web_search"}, {"type": "x_search"}]
 
@@ -65,7 +75,7 @@ def test_profile_suppression_yields_when_news_also_requested():
         "@Steve tell me about @bob AND what happened in Portugal news today?",
         config=cfg,
     )
-    assert tools == [{"type": "web_search"}, {"type": "x_search"}]
+    assert tools == [{"type": "web_search"}]
 
 
 def test_platform_manual_path_strips_tools_even_if_news_words():
@@ -95,7 +105,6 @@ def test_kb_default_when_explicit_only_off_attaches_without_phrases():
     )
     assert steve_tools_for_message("@Steve hey there", config=cfg) == [
         {"type": "web_search"},
-        {"type": "x_search"},
     ]
 
 
@@ -111,7 +120,7 @@ def test_kb_explicit_only_requires_signal():
 def test_kb_can_disable_web_tool_only_when_eligible():
     cfg = replace(SteveCommunityConfig(), feed_attach_web_search_tool=False)
     tools = steve_tools_for_message("latest headlines please", config=cfg)
-    assert tools == [{"type": "x_search"}]
+    assert tools == []
 
 
 def test_kb_can_disable_x_tool_only_when_eligible():
@@ -137,7 +146,7 @@ def test_careers_site_phrase_gets_tools_with_explicit_only():
         platform_question=is_platform_question(msg),
         config=cfg,
     )
-    assert tools == [{"type": "web_search"}, {"type": "x_search"}]
+    assert tools == [{"type": "web_search"}]
 
 
 def test_job_listing_signal_overrides_profile_suppression_when_mixed():
@@ -146,7 +155,7 @@ def test_job_listing_signal_overrides_profile_suppression_when_mixed():
         "@Steve tell me about @alice and any open roles at Meta",
         config=cfg,
     )
-    assert tools == [{"type": "web_search"}, {"type": "x_search"}]
+    assert tools == [{"type": "web_search"}]
 
 
 def test_roles_at_company_triggers_tools_with_explicit_only():
@@ -160,7 +169,21 @@ def test_roles_at_company_triggers_tools_with_explicit_only():
         platform_question=is_platform_question(msg),
         config=cfg,
     )
-    assert tools == [{"type": "web_search"}, {"type": "x_search"}]
+    assert tools == [{"type": "web_search"}]
+
+
+def test_web_search_confirmed_attaches_web_only():
+    cfg = SteveCommunityConfig()
+    assert steve_web_search_confirmed("Sim, consulta a internet")
+    tools = steve_tools_for_message("yes please search the web for this", config=cfg)
+    assert tools == [{"type": "web_search"}]
+
+
+def test_podcast_episode_is_optional_web_not_auto_tools():
+    cfg = SteveCommunityConfig()
+    msg = "What's the latest episode of Huberman Lab?"
+    assert steve_optional_live_web_intent(msg)
+    assert steve_tools_for_message(msg, config=cfg) == []
 
 
 def test_render_hosted_search_capability_instructions_reflects_tool_flag():
@@ -171,6 +194,10 @@ def test_render_hosted_search_capability_instructions_reflects_tool_flag():
     )
     assert "don't have web lookup" in render_hosted_search_capability_instructions(
         has_hosted_search_tools=False
+    )
+    assert "consulta a internet" in render_hosted_search_capability_instructions(
+        has_hosted_search_tools=False,
+        optional_web_offer=True,
     )
 
 

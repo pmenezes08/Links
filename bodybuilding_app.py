@@ -23903,7 +23903,14 @@ def _steve_ai_reply_for_group_post(
         config=steve_config,
         community_id=int(community_id) if community_id is not None else None,
     )
-    _hosted_caps_grp = render_hosted_search_capability_instructions(has_hosted_search_tools=bool(_reply_tools))
+    _reply_has_x = any(
+        isinstance(t, dict) and (t.get("type") or "").strip().lower() == "x_search"
+        for t in (_reply_tools or [])
+    )
+    _hosted_caps_grp = render_hosted_search_capability_instructions(
+        has_hosted_search_tools=bool(_reply_tools),
+        has_x_search=_reply_has_x,
+    )
     effective_system = f"{effective_system}\n\nHOSTED WEB / X (this turn):\n{_hosted_caps_grp}\n"
     started = time.perf_counter()
     response = client.responses.create(

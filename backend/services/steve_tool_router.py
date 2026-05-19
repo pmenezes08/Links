@@ -25,6 +25,7 @@ from backend.services.steve_tool_policy import (
     normalize_message_for_live_search_signals,
     steve_external_tool_suppressed_for_profile_intent,
     steve_tools_for_message,
+    steve_x_search_requested,
 )
 
 logger = logging.getLogger(__name__)
@@ -157,6 +158,8 @@ def resolve_steve_hosted_tools(
     started = time.perf_counter()
     try:
         flags, response = _call_router_llm(text)
+        if not steve_x_search_requested(text):
+            flags = {**flags, "x_search": False}
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         tools = _router_tools_from_flags(
             web_search=bool(flags.get("web_search")),

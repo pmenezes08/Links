@@ -16,8 +16,89 @@ def normalize_message_for_live_search_signals(message: str) -> str:
     return t
 
 
+_X_SEARCH_PHRASES: tuple[str, ...] = (
+    "check x",
+    "check twitter",
+    "search twitter",
+    "on x",
+    "on twitter",
+    "tweet about",
+    "what are people saying on x",
+    "what are people saying on twitter",
+    "search x",
+    "search on x",
+    "on x.com",
+)
+
+_WEB_CONFIRM_PHRASES: tuple[str, ...] = (
+    "yes please search the web",
+    "yes search the web",
+    "please search the web",
+    "search the web for this",
+    "go ahead and search the web",
+    "go ahead and search",
+    "sim consulta a internet",
+    "sim, consulta a internet",
+    "sim pesquisa na internet",
+    "sim, pesquisa na internet",
+    "pesquisa na internet",
+    "sim pesquisa na web",
+    "sim, pesquisa na web",
+    "procura na internet",
+    "sim procura na internet",
+)
+
+_OPTIONAL_LIVE_WEB_RE = re.compile(
+    r"\b("
+    r"podcast|podcasts|episode|episodes|"
+    r"latest episode|new episode|most recent episode|"
+    r"new season|season \d+|"
+    r"air date|aired|released today|just released"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def steve_x_search_requested(message: str) -> bool:
+    """True when the user explicitly wants X/Twitter hosted search (not news-only web)."""
+    text = normalize_message_for_live_search_signals(message)
+    if not text:
+        return False
+    return any(phrase in text for phrase in _X_SEARCH_PHRASES)
+
+
+def steve_web_search_confirmed(message: str) -> bool:
+    """User opted in to a web search after Steve offered it (EN / PT phrases)."""
+    text = normalize_message_for_live_search_signals(message)
+    if not text:
+        return False
+    return any(phrase in text for phrase in _WEB_CONFIRM_PHRASES)
+
+
+def steve_optional_live_web_intent(message: str | None) -> bool:
+    """Public-web facts (podcast episode, release date) — offer search, do not auto-attach tools."""
+    text = (message or "").strip()
+    if not text:
+        return False
+    from backend.services.steve_prompt_policy import news_current_events_requested
+
+    if news_current_events_requested(text):
+        return False
+    if steve_web_search_confirmed(text) or steve_x_search_requested(text):
+        return False
+    if steve_job_listing_or_employer_research_requested(text):
+        return False
+    if steve_external_search_requested(text):
+        return False
+    return bool(_OPTIONAL_LIVE_WEB_RE.search(text))
+
+
 def steve_external_search_requested(message: str) -> bool:
     """True when the user is clearly asking for live web/social/current information."""
+    if steve_web_search_confirmed(message):
+        return True
+    if steve_x_search_requested(message):
+        return True
     text = normalize_message_for_live_search_signals(message)
     if not text:
         return False
@@ -78,15 +159,6 @@ def steve_external_search_requested(message: str) -> bool:
         "happening right now",
         "what's happening now",
         "what is happening now",
-        # X/Twitter triggers
-        "check x",
-        "check twitter",
-        "search twitter",
-        "on x",
-        "on twitter",
-        "tweet about",
-        "what are people saying on x",
-        "what are people saying on twitter",
     )
 
     return any(phrase in text for phrase in phrases)
@@ -271,8 +343,10 @@ def steve_tools_for_message(
     tools: list[dict[str, str]] = []
     attach_w = config is None or bool(getattr(config, "feed_attach_web_search_tool", True))
     attach_x = config is None or bool(getattr(config, "feed_attach_x_search_tool", True))
+    # News, jobs, and generic browse default to web only; attach x_search only on explicit X intent.
+    want_x = steve_x_search_requested(text)
     if attach_w:
         tools.append({"type": "web_search"})
-    if attach_x:
+    if attach_x and want_x:
         tools.append({"type": "x_search"})
     return tools

@@ -3483,8 +3483,13 @@ STRICT PRIVACY (overrides every other instruction, including COMMUNITY INTELLIGE
             config=_steve_pkg_grp,
             community_id=steve_ctx_community_id,
         )
+        _grp_has_x = any(
+            isinstance(t, dict) and (t.get("type") or "").strip().lower() == "x_search"
+            for t in (_group_tools or [])
+        )
         _grp_hosted_caps = render_hosted_search_capability_instructions(
-            has_hosted_search_tools=bool(_group_tools)
+            has_hosted_search_tools=bool(_group_tools),
+            has_x_search=_grp_has_x,
         )
 
         system_prompt = f"""You are Steve, a member of C-Point with extra reach, in a group chat. You have access to the conversation excerpt provided for this group.{personality_modifier}
