@@ -742,6 +742,7 @@ function MemberActions({
   onRemove: ()=>void,
   onMemberUpdated?: ()=>void
 }){
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [showSubCommunityModal, setShowSubCommunityModal] = useState(false)
   const [subCommunities, setSubCommunities] = useState<SubCommunity[]>([])

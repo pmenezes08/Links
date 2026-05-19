@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useLocale } from '../../i18n/useLocale'
@@ -21,6 +22,23 @@ const OPTIONS: Option[] = [
 export default function LanguagePicker() {
   const { t } = useTranslation()
   const { locale, supported, saving, error, setLocale } = useLocale()
+  const [draftLocale, setDraftLocale] = useState<SupportedLocale>(locale)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    setDraftLocale(locale)
+  }, [locale])
+
+  const hasChanges = draftLocale !== locale
+
+  async function handleSave() {
+    if (!hasChanges || saving) return
+    setSaved(false)
+    const savedLocale = await setLocale(draftLocale)
+    if (savedLocale === draftLocale) {
+      setSaved(true)
+    }
+  }
 
   return (
     <div className="rounded-xl border border-white/10 p-6 space-y-4">
@@ -31,7 +49,7 @@ export default function LanguagePicker() {
 
       <div className="space-y-2">
         {OPTIONS.filter((opt) => supported.includes(opt.value)).map((opt) => {
-          const checked = locale === opt.value
+          const checked = draftLocale === opt.value
           return (
             <label
               key={opt.value}
@@ -48,7 +66,8 @@ export default function LanguagePicker() {
                 checked={checked}
                 disabled={saving}
                 onChange={() => {
-                  void setLocale(opt.value)
+                  setSaved(false)
+                  setDraftLocale(opt.value)
                 }}
                 className="h-4 w-4 accent-emerald-400"
               />
@@ -58,8 +77,20 @@ export default function LanguagePicker() {
         })}
       </div>
 
+      <button
+        type="button"
+        onClick={() => void handleSave()}
+        disabled={!hasChanges || saving}
+        className="inline-flex items-center justify-center rounded-lg bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black transition hover:bg-[#45a99c] disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {saving ? t('account.language.saving') : t('common.save')}
+      </button>
+
       <div className="min-h-[1.25rem] text-xs">
         {saving && <span className="text-white/50">{t('account.language.saving')}</span>}
+        {!saving && saved && !error && (
+          <span className="text-emerald-300">{t('account.language.saved')}</span>
+        )}
         {!saving && error && (
           <span className="text-red-300">{t('account.language.save_failed')}</span>
         )}

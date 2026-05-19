@@ -364,11 +364,11 @@ catalog convention and namespaces.
 
 ### Account Settings preference
 
-- [ ] Open **Account Settings → Language** (new block under
-      Notifications). Switch from **English** to **Português (Portugal)**
-      with no page reload. Expected: chrome strings, modals, and
-      validation messages change immediately. A `PATCH /api/me/locale`
-      with `{"locale": "pt-PT"}` fires and returns 200.
+- [ ] Open **Account Settings → Language** (block under
+      Notifications). Select **Português (Portugal)**, then click
+      **Save**. Expected: chrome strings, modals, and validation
+      messages change after Save. A `PATCH /api/me/locale` with
+      `{"locale": "pt-PT"}` fires and returns 200.
 - [ ] Reload the page and confirm Portuguese persists (read from
       `users.preferred_locale`).
 - [ ] Switch back to **English**. Expected: same instant re-render and
