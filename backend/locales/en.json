@@ -24,5 +24,23 @@
     "not_found": "Not found.",
     "forbidden": "You don't have access to that.",
     "rate_limited": "Too many requests. Please slow down and try again."
+  },
+  "auth": {
+    "authentication_required": "Authentication required",
+    "invalid_credentials": "Invalid username or password.",
+    "user_not_found": "User not found",
+    "signup": {
+      "missing_required_fields": "All required fields must be filled.",
+      "passwords_do_not_match": "Passwords do not match.",
+      "password_too_short": "Password must be at least 6 characters long.",
+      "invalid_email": "Please enter a valid email address.",
+      "disposable_email_blocked": "This email provider isn't supported. Please use a permanent email address (not a disposable / temporary one).",
+      "email_already_registered": "Email already registered.",
+      "invalid_username": "Invalid username.",
+      "username_taken": "Username already taken.",
+      "email_does_not_match_invitation": "Email does not match invitation.",
+      "registration_failed": "An error occurred during registration. Please try again."
+    },
+    "server_error": "Server error. Please try again."
   }
 }

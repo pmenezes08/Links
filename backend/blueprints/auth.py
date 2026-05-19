@@ -34,6 +34,7 @@ from backend.services.native_push import (
     deactivate_for_install,
 )
 from backend.services import auth_session, disposable_email, remember_tokens, session_identity
+from backend.services import api_errors
 from backend.services.account_deletion import AccountDeletionMode, delete_user_in_connection
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.email_normalization import (
@@ -57,7 +58,7 @@ def _session_required_api(view_func):
     @wraps(view_func)
     def wrapper(*args, **kwargs):
         if "username" not in session:
-            return jsonify({"success": False, "error": "Authentication required"}), 401
+            return api_errors.auth_required()
         return view_func(*args, **kwargs)
 
     return wrapper
@@ -269,9 +270,11 @@ def signup():
                     is_qr_invite = invited_email.startswith("qr-invite-") and invited_email.endswith("@placeholder.local")
                     if not is_qr_invite:
                         if email and email.lower() != invited_email.lower():
-                            error_msg = "Email does not match invitation"
                             if _is_mobile_request():
-                                return jsonify({"success": False, "error": error_msg}), 400
+                                return api_errors.error_response(
+                                    "auth.signup.email_does_not_match_invitation", 400
+                                )
+                            error_msg = "Email does not match invitation"
                             return render_template("signup.html", error=error_msg)
                         if not email:
                             email = invited_email
@@ -286,26 +289,53 @@ def signup():
     elif first_name and last_name:
         full_name = f"{first_name} {last_name}".strip()
 
-    def _react_error(error_msg: str):
+    def _react_error(key: str, *, fallback_text: str):
+        """Return an i18n error for mobile clients, HTML for desktop browsers.
+
+        ``key`` is the i18n key used for mobile JSON; ``fallback_text`` is
+        the English string rendered into the HTML signup template (which
+        still expects raw text) until that template is migrated.
+        """
         if _is_mobile_request() or (
             request.headers.get("Content-Type") == "application/x-www-form-urlencoded" and _is_mobile_request()
         ):
-            return jsonify({"success": False, "error": error_msg}), 400
-        return render_template("signup.html", error=error_msg, full_name=full_name, email=email, mobile=mobile)
+            return api_errors.error_response(key, 400)
+        return render_template(
+            "signup.html",
+            error=fallback_text,
+            full_name=full_name,
+            email=email,
+            mobile=mobile,
+        )
 
     if not all([first_name, email, password, confirm_password]):
-        return _react_error("All required fields must be filled")
+        return _react_error(
+            "auth.signup.missing_required_fields",
+            fallback_text="All required fields must be filled",
+        )
     if password != confirm_password:
-        return _react_error("Passwords do not match")
+        return _react_error(
+            "auth.signup.passwords_do_not_match",
+            fallback_text="Passwords do not match",
+        )
     if len(password) < 6:
-        return _react_error("Password must be at least 6 characters long")
+        return _react_error(
+            "auth.signup.password_too_short",
+            fallback_text="Password must be at least 6 characters long",
+        )
     if not _email_is_well_formed(email):
-        return _react_error("Please enter a valid email address")
+        return _react_error(
+            "auth.signup.invalid_email",
+            fallback_text="Please enter a valid email address",
+        )
     if disposable_email.should_block(email):
         logger.info("Blocked signup from disposable domain: %s", email)
         return _react_error(
-            "This email provider isn't supported. Please use a permanent "
-            "email address (not a disposable / temporary one)."
+            "auth.signup.disposable_email_blocked",
+            fallback_text=(
+                "This email provider isn't supported. Please use a permanent "
+                "email address (not a disposable / temporary one)."
+            ),
         )
     canonical = canonicalize_with_policy(email)
 
@@ -322,15 +352,18 @@ def signup():
                 (canonical, email),
             )
             if c.fetchone():
-                return _react_error("Email already registered")
+                return _react_error(
+                    "auth.signup.email_already_registered",
+                    fallback_text="Email already registered",
+                )
 
             if desired_username:
                 candidate = re.sub(r"[^a-z0-9_]", "", desired_username.lower())
                 if not candidate:
-                    return jsonify({"success": False, "error": "Invalid username"}), 400
+                    return api_errors.error_response("auth.signup.invalid_username", 400)
                 c.execute("SELECT 1 FROM users WHERE username = ?", (candidate,))
                 if c.fetchone():
-                    return jsonify({"success": False, "error": "Username already taken"}), 400
+                    return api_errors.error_response("auth.signup.username_taken", 400)
                 username = candidate
             else:
                 base_username = (email.split("@")[0] if email else (first_name + last_name)).lower()
@@ -514,7 +547,7 @@ def signup():
         logger.error("Error during user registration: %s", exc)
         logger.error("Registration error traceback: %s", traceback.format_exc())
         if _is_mobile_request():
-            return jsonify({"success": False, "error": "An error occurred during registration. Please try again."}), 500
+            return api_errors.error_response("auth.signup.registration_failed", 500)
         return render_template(
             "signup.html",
             error="An error occurred during registration. Please try again.",

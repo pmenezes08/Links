@@ -24,5 +24,23 @@
     "not_found": "Não encontrado.",
     "forbidden": "Não tens acesso a isso.",
     "rate_limited": "Demasiados pedidos. Abranda e tenta de novo."
+  },
+  "auth": {
+    "authentication_required": "Tens de iniciar sessão.",
+    "invalid_credentials": "Utilizador ou palavra-passe inválidos.",
+    "user_not_found": "Utilizador não encontrado.",
+    "signup": {
+      "missing_required_fields": "Preenche todos os campos obrigatórios.",
+      "passwords_do_not_match": "As palavras-passe não coincidem.",
+      "password_too_short": "A palavra-passe tem de ter pelo menos 6 caracteres.",
+      "invalid_email": "Introduz um email válido.",
+      "disposable_email_blocked": "Este fornecedor de email não é suportado. Usa um email permanente (não temporário).",
+      "email_already_registered": "Email já registado.",
+      "invalid_username": "Nome de utilizador inválido.",
+      "username_taken": "Esse nome de utilizador já está em uso.",
+      "email_does_not_match_invitation": "O email não corresponde ao convite.",
+      "registration_failed": "Ocorreu um erro no registo. Tenta de novo."
+    },
+    "server_error": "Erro no servidor. Tenta de novo."
   }
 }
