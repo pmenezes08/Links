@@ -1,0 +1,28 @@
+{
+  "_meta": {
+    "locale": "en",
+    "name": "English",
+    "description": "Default catalog. Source of truth for all keys."
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "retry": "Try again",
+    "loading": "Loading...",
+    "ok": "OK",
+    "close": "Close",
+    "yes": "Yes",
+    "no": "No",
+    "back": "Back",
+    "next": "Next",
+    "done": "Done"
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again.",
+    "network": "Network error. Please check your connection and try again.",
+    "server": "Server error. Please try again in a moment.",
+    "not_found": "Not found.",
+    "forbidden": "You don't have access to that.",
+    "rate_limited": "Too many requests. Please slow down and try again."
+  }
+}

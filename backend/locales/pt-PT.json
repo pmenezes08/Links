@@ -1,0 +1,28 @@
+{
+  "_meta": {
+    "locale": "pt-PT",
+    "name": "Português (Portugal)",
+    "description": "European Portuguese (tu tone). Reject Brazilian variants — see docs/I18N_ROADMAP.md § 7."
+  },
+  "common": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "retry": "Tenta de novo",
+    "loading": "A carregar...",
+    "ok": "OK",
+    "close": "Fechar",
+    "yes": "Sim",
+    "no": "Não",
+    "back": "Voltar",
+    "next": "Seguinte",
+    "done": "Concluído"
+  },
+  "errors": {
+    "generic": "Algo correu mal. Tenta de novo.",
+    "network": "Erro de rede. Verifica a tua ligação e tenta de novo.",
+    "server": "Erro no servidor. Tenta de novo daqui a um momento.",
+    "not_found": "Não encontrado.",
+    "forbidden": "Não tens acesso a isso.",
+    "rate_limited": "Demasiados pedidos. Abranda e tenta de novo."
+  }
+}
