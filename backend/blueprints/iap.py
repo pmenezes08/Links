@@ -143,6 +143,14 @@ def _int(value: Any) -> Optional[int]:
 def _status(reason: str) -> int:
     if reason in ("not_owner", "iap_purchases_disabled"):
         return 403
-    if reason in ("store_community_limit", "purchase_owned_by_other_user", "same_tier"):
+    if reason in (
+        "store_community_limit",
+        "purchase_owned_by_other_user",
+        "same_tier",
+        "steve_package_already_active",
+        "steve_package_redundant",
+        "community_subscription_inactive",
+        "not_root_community",
+    ):
         return 409
     return 400

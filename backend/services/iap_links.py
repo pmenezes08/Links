@@ -19,6 +19,7 @@ PROVIDER_APPLE = "apple"
 PROVIDER_GOOGLE = "google"
 SKU_PREMIUM = "premium"
 SKU_COMMUNITY_TIER = "community_tier"
+SKU_STEVE_PACKAGE = "steve_package"
 
 
 def ensure_tables() -> None:

@@ -11,6 +11,8 @@ def test_iap_config_exposes_default_product_ids(monkeypatch):
     assert cfg["apple"]["premium_product_id"] == "cpoint_premium_monthly"
     assert cfg["apple"]["community_product_ids"]["paid_l1"] == "cpoint_community_l1_monthly"
     assert cfg["google"]["community_product_ids"]["paid_l3"] == "cpoint_community_l3_monthly"
+    assert cfg["apple"]["steve_product_id"] == "cpoint_steve_community_monthly"
+    assert cfg["google"]["steve_product_id"] == "cpoint_steve_community_monthly"
 
 
 def test_confirm_apple_premium_grants_user_subscription(monkeypatch):

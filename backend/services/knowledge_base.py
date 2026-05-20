@@ -833,7 +833,15 @@ def _seed_pages() -> List[Dict[str, Any]]:
                  "help": "Not purchasable yet in Step E. Populate once the Stripe Product is created.",
                  "group": "paid_steve_package"},
                 {"name": "paid_steve_package_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
-                 "help": "Not purchasable yet in Step E. Populate once the Stripe Product is created.",
+                 "help": "Web checkout via Stripe. Populate once the Stripe Product is created.",
+                 "group": "paid_steve_package"},
+                {"name": "paid_steve_package_apple_product_id", "label": "Apple product ID — Steve monthly", "type": "string",
+                 "value": "cpoint_steve_community_monthly",
+                 "help": "Auto-renewable subscription in its own App Store subscription group (not Premium or Community).",
+                 "group": "paid_steve_package"},
+                {"name": "paid_steve_package_google_product_id", "label": "Google Play product ID — Steve monthly", "type": "string",
+                 "value": "cpoint_steve_community_monthly",
+                 "help": "Separate Play subscription product from Premium and Community tiers.",
                  "group": "paid_steve_package"},
 
                 # Paid · Content generation

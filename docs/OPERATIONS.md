@@ -640,9 +640,10 @@ commerce surface. Two SKUs are live, two ship as "Coming soon" cards.
 
 **"Coming soon" (deferred, no live checkout):**
 
-- **Steve Community Package** — shared community credit pool. KB fields in
-  `community-tiers.paid_steve_package_*` already exist. Deferred: live
-  checkout + pool-allocation fulfillment.
+- **Steve Community Package** — Stripe web checkout + native IAP (`cpoint_steve_community_monthly`)
+  when KB product IDs and `iap_purchases_enabled` are set. Populate
+  `paid_steve_package_stripe_price_id_*` for web; Apple/Google IDs in KB
+  `paid_steve_package_*_product_id` fields.
 - **Networking Package** — directory listing add-on. KB fields in
   `networking-page.networking_page_*` already exist. Deferred: live
   checkout + `communities.on_networking_page` flag fulfillment.

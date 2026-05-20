@@ -654,7 +654,44 @@ export default function SubscriptionPlans() {
 
   const onSteveCommunityChosen = useCallback(
     async (communityId: number) => {
-      if (currentStoreProvider()) {
+      const provider = currentStoreProvider()
+      const steveProductId =
+        provider && iapConfig?.[provider]?.steve_product_id
+          ? iapConfig[provider].steve_product_id
+          : ''
+      const loadingKey = `steve_package:${communityId}`
+
+      if (
+        provider &&
+        steveProductId &&
+        canUseNativeStoreIap(provider, iapConfig, steveProductId)
+      ) {
+        setCheckoutLoading(loadingKey)
+        setModalError(null)
+        try {
+          await purchaseStoreSubscription({
+            provider,
+            productId: steveProductId,
+            communityId,
+          })
+          const refreshed = await loadActiveSubscriptions()
+          const name =
+            refreshed?.communities?.find((c) => c.id === communityId)?.name
+            || activeSubscriptions?.communities?.find((c) => c.id === communityId)?.name
+            || t('dashboard.community_fallback')
+          setView(null)
+          setStatus(t('subscriptions.status_steve_active', { name }))
+        } catch (err: unknown) {
+          const message =
+            err instanceof Error ? err.message : t('subscriptions.error_checkout')
+          setModalError(message)
+        } finally {
+          setCheckoutLoading(null)
+        }
+        return
+      }
+
+      if (provider) {
         setModalError(null)
         openExternalBillingUrl(
           `${webBillingUrl}${webBillingUrl.includes('?') ? '&' : '?'}open=community_addons&community_id=${communityId}`,
@@ -663,7 +700,7 @@ export default function SubscriptionPlans() {
       }
       startCheckout(
         { plan_id: 'steve_package', community_id: communityId },
-        `steve_package:${communityId}`,
+        loadingKey,
         {
           onError: setModalError,
           onBeforeRedirect: () => {
@@ -672,7 +709,7 @@ export default function SubscriptionPlans() {
         },
       )
     },
-    [startCheckout, webBillingUrl],
+    [activeSubscriptions, iapConfig, loadActiveSubscriptions, startCheckout, t, webBillingUrl],
   )
 
   return (
@@ -807,6 +844,18 @@ export default function SubscriptionPlans() {
         <AddonsModal
           steve={pricing.sku.steve_package}
           networking={pricing.sku.networking}
+          storeProvider={storeProvider}
+          steveNativePurchasable={
+            !!(
+              storeProvider &&
+              iapConfig?.[storeProvider]?.steve_product_id &&
+              canUseNativeStoreIap(
+                storeProvider,
+                iapConfig,
+                iapConfig[storeProvider].steve_product_id,
+              )
+            )
+          }
           onBack={() => setView('community')}
           onClose={() => setView(null)}
           onOpenStevePicker={() => {
@@ -1640,6 +1689,8 @@ function EnterpriseRow() {
 function AddonsModal({
   steve,
   networking,
+  storeProvider,
+  steveNativePurchasable,
   onBack,
   onClose,
   onOpenStevePicker,
@@ -1647,6 +1698,8 @@ function AddonsModal({
 }: {
   steve: StevePackagePayload
   networking: NetworkingComingSoonPayload
+  storeProvider: StoreProvider | null
+  steveNativePurchasable: boolean
   onBack: () => void
   onClose: () => void
   onOpenStevePicker: () => void
@@ -1696,15 +1749,21 @@ function AddonsModal({
 
 function SteveAddonCard({
   payload,
+  storeProvider,
+  steveNativePurchasable,
   loading,
   onSubscribe,
 }: {
   payload: StevePackagePayload
+  storeProvider: StoreProvider | null
+  steveNativePurchasable: boolean
   loading: boolean
   onSubscribe: () => void
 }) {
   const { t } = useTranslation()
-  const badgeComingSoon = !payload.purchasable || payload.coming_soon
+  const badgeComingSoon = storeProvider
+    ? !steveNativePurchasable
+    : !payload.purchasable || payload.coming_soon
   return (
     <section className="rounded-xl border border-white/10 bg-white/[0.03] p-5">
       <div className="flex items-start justify-between gap-3">
@@ -1756,7 +1815,13 @@ function SteveAddonCard({
               : 'bg-cpoint-turquoise text-black hover:bg-cpoint-turquoise/90')
           }
         >
-          {loading ? t('subscriptions.starting_checkout') : t('subscriptions.subscribe')}
+          {loading
+            ? t('subscriptions.starting_checkout')
+            : storeProvider && steveNativePurchasable
+              ? t('subscriptions.subscribe_with_provider', {
+                  provider: providerLabel(storeProvider),
+                })
+              : t('subscriptions.subscribe')}
         </button>
       )}
     </section>

@@ -10,10 +10,12 @@ export interface IapConfig {
   apple: {
     premium_product_id: string
     community_product_ids: Record<string, string>
+    steve_product_id?: string
   }
   google: {
     premium_product_id: string
     community_product_ids: Record<string, string>
+    steve_product_id?: string
   }
 }
 
@@ -107,6 +109,7 @@ export async function restoreStorePurchases(
   const providerConfig = config[provider]
   const productIds = new Set<string>([
     providerConfig.premium_product_id,
+    providerConfig.steve_product_id || '',
     ...Object.values(providerConfig.community_product_ids || {}),
   ].filter(Boolean))
   const activeIds = (restored.customerInfo?.activeSubscriptions || [])

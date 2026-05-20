@@ -16,7 +16,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from backend.services import community as community_svc
 from backend.services import community_billing, iap_links, knowledge_base
-from backend.services import store_purchase_verify, subscription_audit, user_billing
+from backend.services import store_purchase_verify, subscription_audit, subscription_health, user_billing
 from backend.services.database import get_db_connection, get_sql_placeholder
 
 
@@ -33,6 +33,8 @@ DEFAULT_PRODUCT_IDS = {
     "paid_l1_google_product_id": "cpoint_community_l1_monthly",
     "paid_l2_google_product_id": "cpoint_community_l2_monthly",
     "paid_l3_google_product_id": "cpoint_community_l3_monthly",
+    "paid_steve_package_apple_product_id": "cpoint_steve_community_monthly",
+    "paid_steve_package_google_product_id": "cpoint_steve_community_monthly",
 }
 
 TIER_BY_PRODUCT_FIELD = {
@@ -64,6 +66,7 @@ def config() -> Dict[str, Any]:
                 "paid_l2": _field(community_fields, "paid_l2_apple_product_id"),
                 "paid_l3": _field(community_fields, "paid_l3_apple_product_id"),
             },
+            "steve_product_id": _field(community_fields, "paid_steve_package_apple_product_id"),
         },
         "google": {
             "premium_product_id": _field(user_fields, "premium_google_product_id"),
@@ -72,6 +75,7 @@ def config() -> Dict[str, Any]:
                 "paid_l2": _field(community_fields, "paid_l2_google_product_id"),
                 "paid_l3": _field(community_fields, "paid_l3_google_product_id"),
             },
+            "steve_product_id": _field(community_fields, "paid_steve_package_google_product_id"),
         },
     }
     return out
@@ -152,6 +156,22 @@ def confirm_purchase(
             expires_at=expires_at,
         )
 
+    if product["sku"] == iap_links.SKU_STEVE_PACKAGE:
+        if not community_id:
+            return False, "community_id_required", None
+        steve_error = _steve_preflight(username=username, community_id=int(community_id))
+        if steve_error:
+            return False, steve_error, None
+        return _grant_steve_package(
+            provider=provider,
+            username=username,
+            product_id=product_id,
+            purchase_key=purchase_key,
+            community_id=int(community_id),
+            environment=environment,
+            expires_at=expires_at,
+        )
+
     if not community_id:
         return False, "community_id_required", None
     tier_code = product["tier_code"]
@@ -216,6 +236,33 @@ def apply_store_lifecycle(
             action=f"personal_premium_{action}",
             source=provider,
             metadata={"purchase_key": purchase_key},
+        )
+        return
+
+    if sku == iap_links.SKU_STEVE_PACKAGE:
+        community_id = int(link.get("community_id") or 0)
+        if not community_id:
+            return
+        if action in ("renewed", "purchased", "active"):
+            community_billing.mark_steve_package_subscription(
+                community_id,
+                subscription_id=purchase_key,
+                status="active",
+                current_period_end=expires_at,
+                cancel_at_period_end=False,
+            )
+        elif action in ("cancelled", "expired"):
+            community_billing.mark_steve_package_subscription(
+                community_id,
+                status="cancelled",
+                current_period_end=expires_at,
+                cancel_at_period_end=False,
+            )
+        subscription_audit.log(
+            username=username,
+            action=f"steve_package_{action}",
+            source=provider,
+            metadata={"community_id": community_id, "purchase_key": purchase_key},
         )
         return
 
@@ -349,6 +396,79 @@ def _grant_community(
     }
 
 
+def _grant_steve_package(
+    *,
+    provider: str,
+    username: str,
+    product_id: str,
+    purchase_key: str,
+    community_id: int,
+    environment: Optional[str],
+    expires_at: Any,
+) -> Tuple[bool, str, Dict[str, Any]]:
+    iap_links.upsert_link(
+        provider=provider,
+        purchase_key=purchase_key,
+        username=username,
+        sku=iap_links.SKU_STEVE_PACKAGE,
+        community_id=community_id,
+        product_id=product_id,
+        status="active",
+        environment=environment,
+        expires_at=expires_at,
+    )
+    community_billing.mark_steve_package_subscription(
+        community_id,
+        subscription_id=purchase_key,
+        status="active",
+        current_period_end=expires_at,
+        cancel_at_period_end=False,
+    )
+    subscription_audit.log(
+        username=username,
+        action="steve_package_purchased",
+        source=provider,
+        metadata={
+            "community_id": community_id,
+            "product_id": product_id,
+            "purchase_key": purchase_key,
+        },
+    )
+    return True, "ok", {
+        "subscription": "steve_package",
+        "provider": provider,
+        "community_id": community_id,
+    }
+
+
+def _steve_preflight(*, username: str, community_id: int) -> Optional[str]:
+    """Return error code or None when Steve IAP purchase is allowed."""
+    if not community_svc.is_community_owner(username, community_id):
+        return "not_owner"
+    root_id, is_root = community_svc.resolve_root_community_id(community_id)
+    if not is_root or int(root_id) != int(community_id):
+        return "not_root_community"
+    if community_billing.has_active_steve_package(community_id):
+        return "steve_package_already_active"
+    state = community_billing.get_billing_state(community_id) or {}
+    kb_fields = _kb_field_map("community-tiers")
+    ent_incl = _truthy(kb_fields.get("enterprise_steve_package_included"), default=True)
+    health = subscription_health.derive_community_subscription_health(
+        state,
+        enterprise_steve_package_included=ent_incl,
+    )
+    if health.get("steve_addon_eligible"):
+        return None
+    reason = str(health.get("steve_addon_reason") or "")
+    if reason == "steve_already_active":
+        return "steve_package_already_active"
+    if reason == "enterprise_included":
+        return "steve_package_redundant"
+    if reason in ("tier_not_paid", "tier_subscription_inactive"):
+        return "community_subscription_inactive"
+    return "community_subscription_inactive"
+
+
 def _community_preflight(
     *, provider: str, username: str, community_id: int, tier_code: str
 ) -> Optional[str]:
@@ -381,6 +501,8 @@ def _resolve_product(provider: str, product_id: str) -> Optional[Dict[str, str]]
     for tier_code, tier_product_id in (provider_cfg.get("community_product_ids") or {}).items():
         if product_id == tier_product_id:
             return {"sku": iap_links.SKU_COMMUNITY_TIER, "tier_code": tier_code}
+    if product_id == provider_cfg.get("steve_product_id"):
+        return {"sku": iap_links.SKU_STEVE_PACKAGE}
     return None
 
 
