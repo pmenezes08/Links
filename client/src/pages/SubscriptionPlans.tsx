@@ -1738,6 +1738,8 @@ function AddonsModal({
       <div className="mt-6 space-y-4">
         <SteveAddonCard
           payload={steve}
+          storeProvider={storeProvider}
+          steveNativePurchasable={steveNativePurchasable}
           loading={steveCheckoutLoading}
           onSubscribe={onOpenStevePicker}
         />
