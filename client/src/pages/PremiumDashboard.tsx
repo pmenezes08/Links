@@ -193,24 +193,9 @@ export default function PremiumDashboard() {
   }, [showOnboarding, onboardingLaunching])
 
   useEffect(() => {
-    if (communities.length === 0) {
-      setTitleAccessory(null)
-      return
-    }
-    setTitleAccessory(
-      <button
-        type="button"
-        className="shrink-0 px-3 py-1.5 rounded-lg bg-[#4db6ac] text-black text-xs sm:text-sm font-semibold hover:brightness-110 transition-all touch-manipulation whitespace-nowrap"
-        onClick={() => {
-          setNewCommType('General')
-          setShowCreateModal(true)
-        }}
-      >
-        {t('dashboard.create_community_short')}
-      </button>,
-    )
+    setTitleAccessory(null)
     return () => setTitleAccessory(null)
-  }, [communities.length, setTitleAccessory, t])
+  }, [setTitleAccessory])
   const navigate = useNavigate()
   const location = useLocation()
   const isWeb = Capacitor.getPlatform() === 'web'
@@ -1129,6 +1114,21 @@ export default function PremiumDashboard() {
             </>
             )}
         </div>
+
+        {communities.length > 0 && (
+          <button
+            type="button"
+            aria-label={t('dashboard.create_community_short')}
+            className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] right-5 z-[120] flex h-16 w-16 items-center justify-center rounded-full bg-[#4db6ac] text-3xl font-light leading-none text-black shadow-[0_12px_34px_rgba(77,182,172,0.36)] transition hover:brightness-110 active:scale-95 touch-manipulation"
+            onClick={() => {
+              setNewCommType('General')
+              setShowCreateModal(true)
+            }}
+            style={{ WebkitTapHighlightColor: 'transparent' }}
+          >
+            +
+          </button>
+        )}
 
         <DashboardBottomNav show searchOpen={searchOpen} onToggleSearch={() => setSearchOpen((v) => !v)} />
       </div>
