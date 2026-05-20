@@ -1129,7 +1129,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
                  "help": "Filters out early-stage and abandoned communities."},
                 {"name": "included_in_enterprise", "label": "Included in Enterprise", "type": "boolean", "value": True},
                 {"name": "available_as_paid_addon", "label": "Available as Paid add-on", "type": "boolean", "value": True},
-                {"name": "paid_addon_price_eur_monthly", "label": "Paid add-on price / month", "type": "decimal", "prefix": "€", "value": 15, "tbd": True},
+                {"name": "paid_addon_price_eur_monthly", "label": "Paid add-on price / month", "type": "decimal", "prefix": "€", "value": "", "tbd": True},
                 {"name": "free_community_visibility", "label": "Free communities visible", "type": "boolean", "value": False},
                 {"name": "calls_per_user_per_24h", "label": "Networking-page calls / user / 24h", "type": "integer", "value": 50,
                  "help": "A \"call\" is a page load or search that hits our listing endpoint."},
@@ -1157,9 +1157,9 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 "**Rate limits** protect against scraping and spam (see fields above). "
                 "Steve-powered search is a future feature; enabling it changes the cost "
                 "model — re-check Credits & Entitlements before launch.\n\n"
-                "**Pricing**: €{paid_addon_price_eur_monthly}/month for Paid communities, "
-                "included for Enterprise. Price is still TBD and should be validated "
-                "against what communities are willing to pay for 'discoverable' status."
+                "**Pricing**: monthly add-on for Paid communities (**price TBD** — not "
+                "finalized). Included for Enterprise. Validate against what communities "
+                "are willing to pay for discoverable status before launch."
             ),
         },
         {
@@ -1991,7 +1991,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
                         {"term": "Paid community", "definition": "Subscription-based. No hard member limit. Content creation opt-in with free allowance. Networking page + Steve package sold as add-ons."},
                         {"term": "Enterprise community", "definition": "Custom subscription. Members get Premium Steve. Steve package + networking page + content generation all bundled."},
                         {"term": "Steve package", "definition": "Paid-community add-on (€49/month). Gives the community a shared Steve call pool that members use before their personal credits."},
-                        {"term": "Networking page", "definition": "Public directory of C-Point communities. Appears for communities with ≥50 members. Included in Enterprise; €15/month add-on for Paid."},
+                        {"term": "Networking page", "definition": "Public directory of C-Point communities. Appears for communities with ≥50 members. Included in Enterprise; paid add-on for Paid (price TBD)."},
                         {"term": "Premium user", "definition": "Subscriber of €4.99 (early-adoption, first 3 months) / €7.99 (standard). Steve + voice/post summaries + 10 owned communities."},
                         {"term": "Free trial", "definition": "30-day Premium-equivalent access on signup. Community ownership capped at 5 (not Premium's 10)."},
                         {"term": "Free user", "definition": "No Steve. Up to 5 free communities owned."},

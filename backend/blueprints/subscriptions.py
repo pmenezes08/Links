@@ -132,6 +132,28 @@ def _kb_field_map(slug: str) -> Dict[str, Any]:
     return out
 
 
+def _kb_published_decimal(slug: str, field_name: str) -> Optional[float]:
+    """Decimal from KB for commerce surfaces — ``None`` when TBD or unset."""
+    try:
+        page = knowledge_base.get_page(slug) or {}
+    except Exception:
+        logger.exception("_kb_published_decimal: KB read failed for %s", slug)
+        return None
+    for f in page.get("fields") or []:
+        if f.get("name") != field_name:
+            continue
+        if f.get("tbd"):
+            return None
+        raw = f.get("value")
+        if raw is None or raw == "":
+            return None
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
 def _kb_truthy(fields: Dict[str, Any], key: str, default: bool = True) -> bool:
     raw = fields.get(key)
     if raw is None:
@@ -368,8 +390,8 @@ def _steve_package_payload(fields: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _networking_payload(fields: Dict[str, Any]) -> Dict[str, Any]:
-    price_eur = fields.get("paid_addon_price_eur_monthly")
+def _networking_payload(_fields: Dict[str, Any]) -> Dict[str, Any]:
+    price_eur = _kb_published_decimal("networking-page", "paid_addon_price_eur_monthly")
     price_id = _price_id_from_kb("networking-page", "networking_page_stripe_price_id")
     return {
         "sku": "networking_package",

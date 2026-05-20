@@ -188,6 +188,7 @@ class TestShape:
 
         assert sku["networking"]["coming_soon"] is True
         assert sku["networking"]["purchasable"] is False
+        assert sku["networking"]["price_eur"] is None
 
 
 # ── 3. Mode filtering ───────────────────────────────────────────────────

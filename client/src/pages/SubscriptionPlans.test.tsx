@@ -115,7 +115,7 @@ function makePricingPayload() {
         sku: 'networking_package' as const,
         name: 'Networking Package',
         tagline: 'Get your community discovered on the public directory.',
-        price_eur: 15,
+        price_eur: null,
         billing_cycle: 'monthly',
         currency: 'EUR',
         features: ['Directory listing'],

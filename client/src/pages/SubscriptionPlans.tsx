@@ -186,6 +186,12 @@ function formatEur(value: number | string | null | undefined): string {
   return `€${n.toFixed(2).replace(/\.00$/, '')}`
 }
 
+function priceIsKnown(value: number | string | null | undefined): boolean {
+  if (value === null || value === undefined || value === '') return false
+  const n = typeof value === 'number' ? value : Number(value)
+  return !Number.isNaN(n)
+}
+
 function formatDate(value: string): string {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString()
@@ -1852,7 +1858,9 @@ function NetworkingAddonCard({
         <span className="text-2xl font-semibold text-white">
           {formatEur(payload.price_eur)}
         </span>
-        <span className="text-xs text-white/50">{t('subscriptions.per_month')}</span>
+        {priceIsKnown(payload.price_eur) && (
+          <span className="text-xs text-white/50">{t('subscriptions.per_month')}</span>
+        )}
       </div>
 
       <a
