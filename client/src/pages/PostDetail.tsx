@@ -2319,7 +2319,7 @@ export default function PostDetail(){
       )}
       {replyComposerExpanded && (
         <div
-          className="fixed inset-0 z-[300] flex items-stretch justify-center bg-black/85 px-3 backdrop-blur sm:items-center sm:p-4"
+          className="fixed inset-0 z-[300] bg-black/90 backdrop-blur"
           role="dialog"
           aria-modal="true"
           aria-labelledby="expanded-reply-composer-title"
@@ -2327,14 +2327,16 @@ export default function PostDetail(){
         >
           <div
             ref={expandedComposerRef}
-            className="flex h-full w-full max-w-2xl flex-col overflow-hidden border border-white/10 bg-[#0a0a0c] text-white shadow-2xl sm:h-[86vh] sm:rounded-2xl"
+            className="absolute left-0 right-0 mx-auto flex max-w-2xl flex-col overflow-hidden bg-black text-white sm:rounded-3xl sm:bg-[#050607]/95"
             style={{
-              paddingTop: 'max(env(safe-area-inset-top, 0px), 0px)',
-              paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 0px)',
+              top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+              bottom: showKeyboard
+                ? `${Math.max(8, keyboardLift + 8)}px`
+                : 'max(env(safe-area-inset-bottom, 0px), 12px)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <header className="flex items-start justify-between gap-4 border-b border-white/10 px-4 py-3">
+            <header className="flex items-start justify-between gap-4 px-5 pb-4 pt-2">
               <div className="min-w-0">
                 <h2 id="expanded-reply-composer-title" className="text-base font-semibold">
                   {t('feed.write_reply_modal_title')}
@@ -2345,7 +2347,7 @@ export default function PostDetail(){
               </div>
               <button
                 type="button"
-                className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-white/10 text-white transition hover:bg-white/20"
+                className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
                 onClick={() => setReplyComposerExpanded(false)}
                 aria-label={t('feed.close_reply_composer')}
               >
@@ -2354,9 +2356,9 @@ export default function PostDetail(){
             </header>
 
             {(file || replyGif || replyPreview) && (
-              <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
                 {file && (
-                  <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-2 py-2">
+                  <div className="flex items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
                     <div className="h-12 w-12 overflow-hidden rounded-md border border-white/10">
                       {filePreviewUrl ? (
                         <img src={filePreviewUrl} alt={t('feed.preview_alt', { number: '' })} className="h-full w-full object-cover" />
@@ -2382,7 +2384,7 @@ export default function PostDetail(){
                   </div>
                 )}
                 {replyGif && (
-                  <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-2 py-2">
+                  <div className="flex items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
                     <div className="h-12 w-12 overflow-hidden rounded-md border border-white/10">
                       <img src={replyGif.previewUrl} alt={t('feed.selected_gif_alt')} className="h-full w-full object-cover" loading="lazy" />
                     </div>
@@ -2397,7 +2399,7 @@ export default function PostDetail(){
                   </div>
                 )}
                 {replyPreview && (
-                  <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-2 py-2">
+                  <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
                     <audio controls className="h-8 flex-1" playsInline webkit-playsinline="true" src={replyPreview.url} />
                     <button
                       type="button"
@@ -2412,32 +2414,32 @@ export default function PostDetail(){
               </div>
             )}
 
-            <div className="flex min-h-0 flex-1 px-4 py-3">
-              <div className="flex min-h-0 flex-1 rounded-xl border border-[#4db6ac] bg-white/5">
+            <div className="flex min-h-0 flex-1 px-5 pb-3">
+              <div className="flex min-h-0 flex-1 rounded-2xl border border-white/10 bg-white/[0.035] transition-colors focus-within:border-[#4db6ac]/60">
                 <MentionTextarea
                   value={content}
                   onChange={setContent}
                   communityId={(post as any)?.community_id}
                   postId={post?.id}
                   placeholder={t('feed.write_reply_placeholder')}
-                  className="h-full min-h-[52vh] resize-none overflow-y-auto bg-transparent px-4 py-3 text-[16px] leading-relaxed text-white outline-none placeholder-white/50"
+                  className="h-full min-h-[48vh] resize-none overflow-y-auto bg-transparent px-4 py-4 text-[16px] leading-relaxed text-white outline-none placeholder-white/45"
                   rows={10}
                   perfDegraded={!!uploadFile}
                 />
               </div>
             </div>
 
-            <footer className="flex items-center justify-between gap-3 border-t border-white/10 px-4 py-3">
+            <footer className="flex items-center justify-between gap-3 px-5 pb-2 pt-1">
               <button
                 type="button"
-                className="rounded-xl px-4 py-2 text-sm font-medium text-[#9fb0b5] transition hover:bg-white/10 hover:text-white"
+                className="rounded-full px-2 py-2 text-sm font-medium text-[#9fb0b5] transition hover:text-white"
                 onClick={() => setReplyComposerExpanded(false)}
               >
                 {t('common.cancel')}
               </button>
               <button
                 type="button"
-                className="flex items-center gap-2 rounded-xl bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex items-center gap-2 rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_28px_rgba(77,182,172,0.22)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => submitReply()}
                 disabled={submittingReply || (!content.trim() && !file && !replyPreview && !replyGif)}
               >

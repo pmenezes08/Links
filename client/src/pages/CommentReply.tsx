@@ -156,12 +156,26 @@ export default function CommentReply() {
   const [lightboxImageSrc, setLightboxImageSrc] = useState<string | null>(null)
   const [lightboxVideoSrc, setLightboxVideoSrc] = useState<string | null>(null)
   const scrollAreaRef = useRef<HTMLDivElement | null>(null)
+  const [replyComposerExpanded, setReplyComposerExpanded] = useState(false)
+  const expandedComposerRef = useRef<HTMLDivElement | null>(null)
 
   // Check if message contains @Steve mention (case insensitive) - same as CommunityFeed
   const containsSteveMention = (text: string) => {
     const result = /@steve\b/i.test(text)
     console.log('[Steve AI] Checking for @Steve in:', text, '-> Found:', result)
     return result
+  }
+
+  const openExpandedReplyComposer = () => {
+    try {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur()
+      }
+    } catch {
+      /* noop */
+    }
+    setShowAttachMenu(false)
+    setReplyComposerExpanded(true)
   }
 
   // Call Steve AI to generate a reply - matching CommunityFeed implementation
@@ -448,6 +462,24 @@ export default function CommentReply() {
     }
   }, [showAttachMenu])
 
+  useEffect(() => {
+    if (!replyComposerExpanded) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setReplyComposerExpanded(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    const focusTimer = window.setTimeout(() => {
+      const textarea = expandedComposerRef.current?.querySelector('textarea')
+      textarea?.focus()
+    }, 80)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.clearTimeout(focusTimer)
+    }
+  }, [replyComposerExpanded])
+
   async function compressImageFile(input: File, maxEdge = 1600, quality = 0.82): Promise<File> {
     try {
       const isImage = typeof input.type === 'string' && input.type.startsWith('image/')
@@ -638,6 +670,7 @@ export default function CommentReply() {
         clearReplyPreview()
         if (fileInputRef.current) fileInputRef.current.value = ''
         setShowAttachMenu(false)
+        setReplyComposerExpanded(false)
         replyTokenRef.current = `${Date.now()}_${Math.random().toString(36).slice(2)}`
       } else {
         alert(data.error || t('feed.post_reply_failed'))
@@ -1580,6 +1613,16 @@ export default function CommentReply() {
               />
             </div>
 
+            <button
+              type="button"
+              className="w-9 h-9 flex-none flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/15"
+              onClick={openExpandedReplyComposer}
+              aria-label={t('feed.expand_reply_composer')}
+              title={t('feed.expand_reply_composer')}
+            >
+              <i className="fa-solid fa-up-right-and-down-left-from-center text-xs text-white/80" />
+            </button>
+
             {!recording && !replyText.trim() && (
               <button
                 type="button"
@@ -1626,6 +1669,145 @@ export default function CommentReply() {
           <div style={{ height: 'env(safe-area-inset-bottom, 0px)' }} />
         )}
       </div>
+
+      {replyComposerExpanded && reply && post && (
+        <div
+          className="fixed inset-0 z-[300] bg-black/90 backdrop-blur"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="expanded-nested-reply-composer-title"
+          onClick={(e) => e.currentTarget === e.target && setReplyComposerExpanded(false)}
+        >
+          <div
+            ref={expandedComposerRef}
+            className="absolute left-0 right-0 mx-auto flex max-w-2xl flex-col overflow-hidden bg-black text-white sm:rounded-3xl sm:bg-[#050607]/95"
+            style={{
+              top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+              bottom: showKeyboard
+                ? `${Math.max(8, keyboardLift + 8)}px`
+                : 'max(env(safe-area-inset-bottom, 0px), 12px)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="flex items-start justify-between gap-4 px-5 pb-4 pt-2">
+              <div className="min-w-0">
+                <h2 id="expanded-nested-reply-composer-title" className="text-base font-semibold">
+                  {t('feed.write_reply_modal_title')}
+                </h2>
+                <p className="mt-1 text-xs leading-relaxed text-[#9fb0b5]">
+                  {t('feed.write_reply_modal_hint')}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                onClick={() => setReplyComposerExpanded(false)}
+                aria-label={t('feed.close_reply_composer')}
+              >
+                <i className="fa-solid fa-xmark text-sm" />
+              </button>
+            </header>
+
+            {(file || selectedGif || replyPreview) && (
+              <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
+                {file && (
+                  <div className="flex items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
+                    <div className="h-12 w-12 overflow-hidden rounded-md border border-white/10">
+                      {filePreviewUrl ? (
+                        typeof file.type === 'string' && file.type.startsWith('video/') ? (
+                          <video src={filePreviewUrl} className="h-full w-full object-cover" muted playsInline />
+                        ) : (
+                          <img src={filePreviewUrl} alt={t('feed.preview_alt', { number: '' })} className="h-full w-full object-cover" />
+                        )
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-white/50">
+                          <i className="fa-solid fa-file" />
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="text-red-400 hover:text-red-300"
+                      onClick={() => {
+                        setFile(null)
+                        setUploadFile(null)
+                        setFilePreviewUrl(null)
+                        if (fileInputRef.current) fileInputRef.current.value = ''
+                      }}
+                      aria-label={t('feed.remove_file')}
+                    >
+                      <i className="fa-solid fa-times" />
+                    </button>
+                  </div>
+                )}
+                {selectedGif && (
+                  <div className="flex items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
+                    <div className="h-12 w-12 overflow-hidden rounded-md border border-white/10">
+                      <img src={selectedGif.previewUrl} alt={t('feed.selected_gif_alt')} className="h-full w-full object-cover" loading="lazy" />
+                    </div>
+                    <button
+                      type="button"
+                      className="text-red-400 hover:text-red-300"
+                      onClick={() => setSelectedGif(null)}
+                      aria-label={t('feed.remove_gif')}
+                    >
+                      <i className="fa-solid fa-times" />
+                    </button>
+                  </div>
+                )}
+                {replyPreview && (
+                  <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-2">
+                    <audio controls className="h-8 flex-1" playsInline webkit-playsinline="true" src={replyPreview.url} />
+                    <button
+                      type="button"
+                      className="text-[#9fb0b5] hover:text-white"
+                      onClick={() => clearReplyPreview()}
+                      aria-label={t('feed.remove_audio')}
+                    >
+                      <i className="fa-regular fa-trash-can" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex min-h-0 flex-1 px-5 pb-3">
+              <div className="flex min-h-0 flex-1 rounded-2xl border border-white/10 bg-white/[0.035] transition-colors focus-within:border-[#4db6ac]/60">
+                <MentionTextarea
+                  value={replyText}
+                  onChange={setReplyText}
+                  communityId={post.community_id}
+                  postId={post.id}
+                  replyId={reply.id}
+                  placeholder={t('feed.reply_to_user_ellipsis', { username: reply.username })}
+                  className="h-full min-h-[48vh] resize-none overflow-y-auto bg-transparent px-4 py-4 text-[16px] leading-relaxed text-white outline-none placeholder-white/45"
+                  rows={10}
+                  perfDegraded={!!uploadFile}
+                />
+              </div>
+            </div>
+
+            <footer className="flex items-center justify-between gap-3 px-5 pb-2 pt-1">
+              <button
+                type="button"
+                className="rounded-full px-2 py-2 text-sm font-medium text-[#9fb0b5] transition hover:text-white"
+                onClick={() => setReplyComposerExpanded(false)}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-2 rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_28px_rgba(77,182,172,0.22)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={handleSubmitReply}
+                disabled={sendingReply || (!replyText.trim() && !file && !replyPreview && !selectedGif)}
+              >
+                {sendingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
+                <span>{t('feed.send_reply')}</span>
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
 
       {lightboxImageSrc ? (
         <div
