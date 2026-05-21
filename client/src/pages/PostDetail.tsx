@@ -757,6 +757,25 @@ export default function PostDetail(){
     } catch {}
   }, [post_id])
 
+  const writePostDetailCache = useCallback((nextPost: Post | null, nextIsGroupPost = isGroupPost) => {
+    if (!nextPost?.id) return
+    writeDeviceCache(
+      `post-${nextPost.id}`,
+      { post: nextPost, isGroupPost: nextIsGroupPost },
+      POST_DETAIL_CACHE_TTL_MS,
+      POST_DETAIL_CACHE_VERSION,
+    )
+  }, [isGroupPost])
+
+  const clearRelatedPostListCaches = useCallback((nextPost: Post | null) => {
+    if (!nextPost?.id) return
+    const communityId = (nextPost as any).community_id
+    if (communityId !== undefined && communityId !== null && communityId !== '') {
+      clearDeviceCache(`community-feed:${communityId}`)
+    }
+    clearDeviceCache('home-timeline')
+  }, [])
+
   useEffect(() => {
     // Pull-to-refresh on overscroll at top
     let startY = 0
@@ -1349,7 +1368,8 @@ export default function PostDetail(){
       setStarring(true)
       try {
         const prev = !!(post as any).is_starred
-        setPost((p: any) => (p ? { ...p, is_starred: !prev } : p))
+        const optimisticPost = { ...(post as any), is_starred: !prev } as Post
+        setPost(optimisticPost)
         const fd = new URLSearchParams({
           group_id: String(gid),
           group_post_id: String(post.id),
@@ -1362,10 +1382,13 @@ export default function PostDetail(){
         })
         const j = await r.json().catch(() => null)
         if (!j?.success) {
-          setPost((p: any) => (p ? { ...p, is_starred: prev } : p))
+          setPost({ ...(post as any), is_starred: prev } as Post)
           alert(j?.error || 'Failed to update')
         } else {
-          setPost((p: any) => (p ? { ...p, is_starred: !!j.starred } : p))
+          const nextPost = { ...(post as any), is_starred: !!j.starred } as Post
+          setPost(nextPost)
+          writePostDetailCache(nextPost, true)
+          clearRelatedPostListCaches(nextPost)
         }
       } finally {
         setStarring(false)
@@ -1375,15 +1398,19 @@ export default function PostDetail(){
     setStarring(true)
     try {
       const prev = (post as any).is_starred
-      setPost((p: any) => p ? { ...p, is_starred: !prev } : p)
+      const optimisticPost = { ...(post as any), is_starred: !prev } as Post
+      setPost(optimisticPost)
       const fd = new URLSearchParams({ post_id: String(post.id) })
       const r = await fetch('/api/toggle_key_post', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
       const j = await r.json().catch(() => null)
       if (!j?.success) {
-        setPost((p: any) => p ? { ...p, is_starred: prev } : p)
+        setPost({ ...(post as any), is_starred: prev } as Post)
         alert(j?.error || 'Failed to update')
       } else {
-        setPost((p: any) => p ? { ...p, is_starred: !!j.starred } : p)
+        const nextPost = { ...(post as any), is_starred: !!j.starred } as Post
+        setPost(nextPost)
+        writePostDetailCache(nextPost, false)
+        clearRelatedPostListCaches(nextPost)
       }
     } finally {
       setStarring(false)
@@ -1398,7 +1425,8 @@ export default function PostDetail(){
       setStarring(true)
       try {
         const prev = !!(post as any).is_community_starred
-        setPost((p: any) => (p ? { ...p, is_community_starred: !prev } : p))
+        const optimisticPost = { ...(post as any), is_community_starred: !prev } as Post
+        setPost(optimisticPost)
         const fd = new URLSearchParams({
           group_id: String(gid),
           group_post_id: String(post.id),
@@ -1411,10 +1439,13 @@ export default function PostDetail(){
         })
         const j = await r.json().catch(() => null)
         if (!j?.success) {
-          setPost((p: any) => (p ? { ...p, is_community_starred: prev } : p))
+          setPost({ ...(post as any), is_community_starred: prev } as Post)
           alert(j?.error || 'Failed to update')
         } else {
-          setPost((p: any) => (p ? { ...p, is_community_starred: !!j.starred } : p))
+          const nextPost = { ...(post as any), is_community_starred: !!j.starred } as Post
+          setPost(nextPost)
+          writePostDetailCache(nextPost, true)
+          clearRelatedPostListCaches(nextPost)
         }
       } finally {
         setStarring(false)
@@ -1424,15 +1455,19 @@ export default function PostDetail(){
     setStarring(true)
     try {
       const prev = (post as any).is_community_starred
-      setPost((p: any) => p ? { ...p, is_community_starred: !prev } : p)
+      const optimisticPost = { ...(post as any), is_community_starred: !prev } as Post
+      setPost(optimisticPost)
       const fd = new URLSearchParams({ post_id: String(post.id) })
       const r = await fetch('/api/toggle_community_key_post', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
       const j = await r.json().catch(() => null)
       if (!j?.success) {
-        setPost((p: any) => p ? { ...p, is_community_starred: prev } : p)
+        setPost({ ...(post as any), is_community_starred: prev } as Post)
         alert(j?.error || 'Failed to update')
       } else {
-        setPost((p: any) => p ? { ...p, is_community_starred: !!j.starred } : p)
+        const nextPost = { ...(post as any), is_community_starred: !!j.starred } as Post
+        setPost(nextPost)
+        writePostDetailCache(nextPost, false)
+        clearRelatedPostListCaches(nextPost)
       }
     } finally {
       setStarring(false)

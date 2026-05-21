@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
 import { formatSmartTime } from '../utils/time'
+import { clearDeviceCache } from '../utils/deviceCache'
 
 type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null; is_starred?: boolean }
 
@@ -18,6 +19,11 @@ export default function KeyPosts(){
   const [yourPosts, setYourPosts] = useState<Post[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
+
+  const openPost = (postId: number) => {
+    clearDeviceCache(`post-${postId}`)
+    navigate(`/post/${postId}`)
+  }
 
   useEffect(() => {
     let ok = true
@@ -102,12 +108,12 @@ export default function KeyPosts(){
           ) : (
             <div className="space-y-3">
               {communityPosts.map(p => (
-                <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={()=> navigate(`/post/${p.id}`)}>
+                <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={()=> openPost(p.id)}>
                   <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
                     <Avatar username={p.username} url={p.profile_picture || undefined} size={28} linkToProfile />
                     <div className="font-medium">{p.username}</div>
                     <div className="text-xs text-[#9fb0b5] ml-auto">{formatSmartTime((p as any).display_timestamp || p.timestamp)}</div>
-                    <i className="fa-solid fa-star" style={{ color:'#ffd54f' }} />
+                    <i className="fa-solid fa-thumbtack" style={{ color:'#ffd54f' }} />
                   </div>
                   <div className="px-3 py-2 space-y-2">
                     <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{p.content}</div>
@@ -135,7 +141,7 @@ export default function KeyPosts(){
           ) : (
             <div className="space-y-3">
               {yourPosts.map(p => (
-                <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={()=> navigate(`/post/${p.id}`)}>
+                <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={()=> openPost(p.id)}>
                   <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
                     <Avatar username={p.username} url={p.profile_picture || undefined} size={28} linkToProfile />
                     <div className="font-medium">{p.username}</div>
