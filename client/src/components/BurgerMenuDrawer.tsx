@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import Avatar from './Avatar'
@@ -47,6 +48,12 @@ export default function BurgerMenuDrawer({
   const title = displayName || username || ''
   const isAdmin = username === 'admin'
 
+  useEffect(() => {
+    if (typeof navigator === 'undefined') return
+    const nav = navigator as Navigator & { vibrate?: (pattern: number | number[]) => boolean }
+    nav.vibrate?.(8)
+  }, [])
+
   const goTo = (path: string) => {
     onClose()
     navigate(path)
@@ -54,14 +61,14 @@ export default function BurgerMenuDrawer({
 
   return (
     <div
-      className={`fixed inset-0 ${zIndexClass} flex bg-black/50`}
+      className={`burger-menu-backdrop fixed inset-0 ${zIndexClass} flex items-end justify-center bg-black/55`}
       onClick={(e) => e.currentTarget === e.target && onClose()}
-      style={{ paddingTop: 'env(safe-area-inset-top)' }}
     >
       <div
-        className="h-full w-[90%] max-w-sm overflow-y-auto overscroll-auto border-r border-white/10 bg-black/95 p-4 text-white backdrop-blur"
-        style={{ paddingTop: '1rem', paddingBottom: 'env(safe-area-inset-bottom)' }}
+        className="burger-menu-sheet max-h-[min(82dvh,640px)] w-full overflow-y-auto overscroll-contain rounded-t-[2rem] border border-white/10 bg-black/95 p-4 text-white shadow-[0_-24px_70px_rgba(0,0,0,0.72)] backdrop-blur-md sm:max-w-sm sm:rounded-[2rem] sm:mb-4"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}
       >
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/25" aria-hidden />
         <button
           type="button"
           className="flex w-full items-center gap-3 border-b border-white/10 pb-5 text-left"
@@ -102,7 +109,6 @@ export default function BurgerMenuDrawer({
           </div>
         </nav>
       </div>
-      <div className="h-full flex-1" onClick={onClose} />
     </div>
   )
 }
