@@ -4391,10 +4391,10 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               <button className="px-2 py-1 rounded-full" title={post.is_starred ? t('feed.unstar_yours') : t('feed.star_yours')} onClick={toggleStar} aria-label={t('feed.star_yours')}>
                 <i className={`${post.is_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: post.is_starred ? '#4db6ac' : '#6c757d' }} />
               </button>
-              {/* Community star (yellow) for owner/admins */}
+              {/* Community pin (yellow) for owner/admins */}
               {(isAdmin || currentUser === 'admin') && (
                 <button className="px-2 py-1 rounded-full" title={post.is_community_starred ? t('feed.unfeature_community') : t('feed.feature_community')} onClick={toggleCommunityStar} aria-label={t('feed.star_community')}>
-                  <i className={`${post.is_community_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: post.is_community_starred ? '#ffd54f' : '#6c757d' }} />
+                  <i className="fa-solid fa-thumbtack" style={{ color: post.is_community_starred ? '#ffd54f' : '#6c757d' }} />
                 </button>
               )}
               {(post.username === currentUser || isAdmin || currentUser === 'admin') && !isSystemPostLocked(post) && (

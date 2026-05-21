@@ -1728,7 +1728,7 @@ export default function PostDetail(){
               >
                 <i className={`${(post as any).is_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: (post as any).is_starred ? '#4db6ac' : '#6c757d' }} />
               </button>
-              {/* Community star (yellow) for owner/admins */}
+              {/* Community pin (yellow) for owner/admins */}
               {(currentUser?.username === 'admin' ||
                 (post as any).is_community_admin ||
                 (isGroupPost && (post as any).can_toggle_community_key)) && (
@@ -1738,7 +1738,7 @@ export default function PostDetail(){
                   onClick={toggleCommunityStar} 
                   aria-label={t('feed.star_community')}
                 >
-                  <i className={`${(post as any).is_community_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: (post as any).is_community_starred ? '#ffd54f' : '#6c757d' }} />
+                  <i className="fa-solid fa-thumbtack" style={{ color: (post as any).is_community_starred ? '#ffd54f' : '#6c757d' }} />
                 </button>
               )}
               {/* Delete button for owner/admin/community admin */}
