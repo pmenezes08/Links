@@ -4217,6 +4217,16 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   const [childReplyGif, setChildReplyGif] = useState<GifSelection | null>(null)
   const [sendingChildReply, setSendingChildReply] = useState(false)
   const [gifPickerTarget, setGifPickerTarget] = useState<'main' | number | null>(null)
+  const [personalStarred, setPersonalStarred] = useState(!!post.is_starred)
+  const [communityStarred, setCommunityStarred] = useState(!!post.is_community_starred)
+
+  useEffect(() => {
+    setPersonalStarred(!!post.is_starred)
+  }, [post.is_starred])
+
+  useEffect(() => {
+    setCommunityStarred(!!post.is_community_starred)
+  }, [post.is_community_starred])
 
   // Detect links when editing
   useEffect(() => {
@@ -4290,17 +4300,22 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     if (starring) return
     setStarring(true)
     try{
-      // Optimistic flip
-      const prev = post.is_starred
+      const prev = personalStarred
+      setPersonalStarred(!prev)
       ;(post as any).is_starred = !prev
       const fd = new URLSearchParams({ post_id: String(post.id) })
       const r = await fetch('/api/toggle_key_post', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
       const j = await r.json().catch(()=>null)
       if (!j?.success){
+        setPersonalStarred(prev)
         ;(post as any).is_starred = prev
         alert(j?.error || t('feed.update_failed'))
       } else {
-        ;(post as any).is_starred = !!j.starred
+        const next = !!j.starred
+        setPersonalStarred(next)
+        ;(post as any).is_starred = next
+        if (communityId) clearDeviceCache(`community-feed:${communityId}`)
+        clearDeviceCache('home-timeline')
       }
     } finally {
       setStarring(false)
@@ -4311,16 +4326,22 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     if (starring) return
     setStarring(true)
     try{
-      const prev = post.is_community_starred
+      const prev = communityStarred
+      setCommunityStarred(!prev)
       ;(post as any).is_community_starred = !prev
       const fd = new URLSearchParams({ post_id: String(post.id) })
       const r = await fetch('/api/toggle_community_key_post', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
       const j = await r.json().catch(()=>null)
       if (!j?.success){
+        setCommunityStarred(prev)
         ;(post as any).is_community_starred = prev
         alert(j?.error || t('feed.update_failed'))
       } else {
-        ;(post as any).is_community_starred = !!j.starred
+        const next = !!j.starred
+        setCommunityStarred(next)
+        ;(post as any).is_community_starred = next
+        if (communityId) clearDeviceCache(`community-feed:${communityId}`)
+        clearDeviceCache('home-timeline')
       }
     } finally {
       setStarring(false)
@@ -4388,13 +4409,13 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             <div className="text-xs text-[#9fb0b5] tabular-nums">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
             <div className="flex items-center gap-2">
               {/* Personal star (turquoise when selected) */}
-              <button className="px-2 py-1 rounded-full" title={post.is_starred ? t('feed.unstar_yours') : t('feed.star_yours')} onClick={toggleStar} aria-label={t('feed.star_yours')}>
-                <i className={`${post.is_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: post.is_starred ? '#4db6ac' : '#6c757d' }} />
+              <button className="px-2 py-1 rounded-full" title={personalStarred ? t('feed.unstar_yours') : t('feed.star_yours')} onClick={toggleStar} aria-label={t('feed.star_yours')}>
+                <i className={`${personalStarred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: personalStarred ? '#4db6ac' : '#6c757d' }} />
               </button>
               {/* Community pin (yellow) for owner/admins */}
               {(isAdmin || currentUser === 'admin') && (
-                <button className="px-2 py-1 rounded-full" title={post.is_community_starred ? t('feed.unfeature_community') : t('feed.feature_community')} onClick={toggleCommunityStar} aria-label={t('feed.star_community')}>
-                  <i className="fa-solid fa-thumbtack" style={{ color: post.is_community_starred ? '#ffd54f' : '#6c757d' }} />
+                <button className="px-2 py-1 rounded-full" title={communityStarred ? t('feed.unfeature_community') : t('feed.feature_community')} onClick={toggleCommunityStar} aria-label={t('feed.star_community')}>
+                  <i className="fa-solid fa-thumbtack" style={{ color: communityStarred ? '#ffd54f' : '#6c757d' }} />
                 </button>
               )}
               {(post.username === currentUser || isAdmin || currentUser === 'admin') && !isSystemPostLocked(post) && (
