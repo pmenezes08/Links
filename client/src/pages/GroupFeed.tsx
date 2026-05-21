@@ -666,7 +666,7 @@ export default function GroupFeed(){
                         }}
                       >
                         <i
-                          className={p.is_community_starred ? 'fa-solid fa-star' : 'fa-regular fa-star'}
+                          className="fa-solid fa-thumbtack"
                           style={{ color: p.is_community_starred ? '#ffd54f' : '#6c757d', fontSize: '0.85rem' }}
                         />
                       </button>
