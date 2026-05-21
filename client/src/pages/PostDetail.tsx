@@ -110,6 +110,8 @@ export default function PostDetail(){
   const [submittingReply, setSubmittingReply] = useState(false)
   const [mediaCarouselIndex, setMediaCarouselIndex] = useState(0)
   const [steveIsTyping, setSteveIsTyping] = useState(false)
+  const [replyComposerExpanded, setReplyComposerExpanded] = useState(false)
+  const expandedComposerRef = useRef<HTMLDivElement | null>(null)
   
   const openArticleReader = useCallback((url: string) => {
     void openExternalInApp(url)
@@ -128,6 +130,18 @@ export default function PostDetail(){
   // doesn't dismiss the keyboard and shove the fixed bar into the safe area.
   const preventComposerBlur = (event: { preventDefault(): void }) => {
     event.preventDefault()
+  }
+
+  const openExpandedReplyComposer = () => {
+    try {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur()
+      }
+    } catch {
+      /* noop */
+    }
+    setShowAttachMenu(false)
+    setReplyComposerExpanded(true)
   }
   
   // Call Steve AI to generate a reply
@@ -505,6 +519,24 @@ export default function PostDetail(){
       document.removeEventListener('click', handleClickOutside)
     }
   }, [showAttachMenu])
+
+  useEffect(() => {
+    if (!replyComposerExpanded) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setReplyComposerExpanded(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    const focusTimer = window.setTimeout(() => {
+      const textarea = expandedComposerRef.current?.querySelector('textarea')
+      textarea?.focus()
+    }, 80)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.clearTimeout(focusTimer)
+    }
+  }, [replyComposerExpanded])
 
   // Scroll inline reply composer into view when keyboard opens
   useEffect(() => {
@@ -1010,6 +1042,7 @@ export default function PostDetail(){
           void callSteveAI(messageText, parentId)
         })
       }
+      setReplyComposerExpanded(false)
       setContent(''); setFile(null); setUploadFile(null); setReplyGif(null); setFilePreviewUrl(null); if (fileInputRef.current) fileInputRef.current.value = ''
       replyTokenRef.current = `${Date.now()}_${Math.random().toString(36).slice(2)}`
     }
@@ -2209,6 +2242,18 @@ export default function PostDetail(){
               />
             </div>
 
+            <button
+              type="button"
+              className="w-9 h-9 flex-none flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
+              onPointerDown={preventComposerBlur}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={openExpandedReplyComposer}
+              aria-label={t('feed.expand_reply_composer')}
+              title={t('feed.expand_reply_composer')}
+            >
+              <i className="fa-solid fa-up-right-and-down-left-from-center text-xs text-white" />
+            </button>
+
             {/* Mic button - when not recording and no text */}
             {!recording && !content.trim() && (
               <button
@@ -2271,6 +2316,137 @@ export default function PostDetail(){
           }}
         />
       </div>
+      )}
+      {replyComposerExpanded && (
+        <div
+          className="fixed inset-0 z-[300] flex items-stretch justify-center bg-black/85 px-3 backdrop-blur sm:items-center sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="expanded-reply-composer-title"
+          onClick={(e) => e.currentTarget === e.target && setReplyComposerExpanded(false)}
+        >
+          <div
+            ref={expandedComposerRef}
+            className="flex h-full w-full max-w-2xl flex-col overflow-hidden border border-white/10 bg-[#0a0a0c] text-white shadow-2xl sm:h-[86vh] sm:rounded-2xl"
+            style={{
+              paddingTop: 'max(env(safe-area-inset-top, 0px), 0px)',
+              paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 0px)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="flex items-start justify-between gap-4 border-b border-white/10 px-4 py-3">
+              <div className="min-w-0">
+                <h2 id="expanded-reply-composer-title" className="text-base font-semibold">
+                  {t('feed.write_reply_modal_title')}
+                </h2>
+                <p className="mt-1 text-xs leading-relaxed text-[#9fb0b5]">
+                  {t('feed.write_reply_modal_hint')}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-white/10 text-white transition hover:bg-white/20"
+                onClick={() => setReplyComposerExpanded(false)}
+                aria-label={t('feed.close_reply_composer')}
+              >
+                <i className="fa-solid fa-xmark text-sm" />
+              </button>
+            </header>
+
+            {(file || replyGif || replyPreview) && (
+              <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-4 py-3">
+                {file && (
+                  <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-2 py-2">
+                    <div className="h-12 w-12 overflow-hidden rounded-md border border-white/10">
+                      {filePreviewUrl ? (
+                        <img src={filePreviewUrl} alt={t('feed.preview_alt', { number: '' })} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-white/50">
+                          <i className="fa-solid fa-file" />
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="text-red-400 hover:text-red-300"
+                      onClick={() => {
+                        setFile(null)
+                        setUploadFile(null)
+                        setFilePreviewUrl(null)
+                        if (fileInputRef.current) fileInputRef.current.value = ''
+                      }}
+                      aria-label={t('feed.remove_file')}
+                    >
+                      <i className="fa-solid fa-times" />
+                    </button>
+                  </div>
+                )}
+                {replyGif && (
+                  <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-2 py-2">
+                    <div className="h-12 w-12 overflow-hidden rounded-md border border-white/10">
+                      <img src={replyGif.previewUrl} alt={t('feed.selected_gif_alt')} className="h-full w-full object-cover" loading="lazy" />
+                    </div>
+                    <button
+                      type="button"
+                      className="text-red-400 hover:text-red-300"
+                      onClick={() => setReplyGif(null)}
+                      aria-label={t('feed.remove_gif')}
+                    >
+                      <i className="fa-solid fa-times" />
+                    </button>
+                  </div>
+                )}
+                {replyPreview && (
+                  <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-2 py-2">
+                    <audio controls className="h-8 flex-1" playsInline webkit-playsinline="true" src={replyPreview.url} />
+                    <button
+                      type="button"
+                      className="text-[#9fb0b5] hover:text-white"
+                      onClick={() => clearReplyPreview()}
+                      aria-label={t('feed.remove_audio')}
+                    >
+                      <i className="fa-regular fa-trash-can" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex min-h-0 flex-1 px-4 py-3">
+              <div className="flex min-h-0 flex-1 rounded-xl border border-[#4db6ac] bg-white/5">
+                <MentionTextarea
+                  value={content}
+                  onChange={setContent}
+                  communityId={(post as any)?.community_id}
+                  postId={post?.id}
+                  placeholder={t('feed.write_reply_placeholder')}
+                  className="h-full min-h-[52vh] resize-none overflow-y-auto bg-transparent px-4 py-3 text-[16px] leading-relaxed text-white outline-none placeholder-white/50"
+                  rows={10}
+                  perfDegraded={!!uploadFile}
+                />
+              </div>
+            </div>
+
+            <footer className="flex items-center justify-between gap-3 border-t border-white/10 px-4 py-3">
+              <button
+                type="button"
+                className="rounded-xl px-4 py-2 text-sm font-medium text-[#9fb0b5] transition hover:bg-white/10 hover:text-white"
+                onClick={() => setReplyComposerExpanded(false)}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-2 rounded-xl bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => submitReply()}
+                disabled={submittingReply || (!content.trim() && !file && !replyPreview && !replyGif)}
+              >
+                {submittingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
+                <span>{t('feed.send_reply')}</span>
+              </button>
+            </footer>
+          </div>
+        </div>
       )}
       <GifPicker
         isOpen={gifPickerOpen}
