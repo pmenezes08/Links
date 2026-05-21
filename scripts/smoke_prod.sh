@@ -42,19 +42,21 @@ else
   fail "/api/invitation/verify — unexpected status=${INV_STATUS} body=${INV_BODY:0:120}"
 fi
 
-# 4) Session cookie shape on login step 1 (host-only, no Domain= when CANONICAL_HOST=app.c-point.co)
+# 4) Login step 1 for unknown user: 302 (not 500). Set-Cookie is only sent after a valid username.
 HDR_FILE="$(mktemp)"
-curl -sS -m 20 -D "${HDR_FILE}" -o /dev/null -X POST "${BASE_URL}/login" \
+LOGIN_STATUS="$(curl -sS -m 20 -D "${HDR_FILE}" -o /dev/null -w '%{http_code}' -X POST "${BASE_URL}/login" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=__smoke_nonexistent_user__" || true
-if grep -qi 'set-cookie:.*cpoint_session' "${HDR_FILE}"; then
+  -d "username=__smoke_nonexistent_user__" || echo 000)"
+if [[ "${LOGIN_STATUS}" == "302" ]] || [[ "${LOGIN_STATUS}" == "303" ]]; then
   if grep -qi 'set-cookie:.*Domain=app\.c-point\.co' "${HDR_FILE}"; then
-    fail "login Set-Cookie — invalid Domain=app.c-point.co"
+    fail "login — invalid Domain=app.c-point.co on Set-Cookie"
   else
-    pass "login issues Set-Cookie (session pipeline alive)"
+    pass "login step 1 (unknown user → redirect, no 500)"
   fi
+elif [[ "${LOGIN_STATUS}" == "500" ]]; then
+  fail "login — server error (status ${LOGIN_STATUS})"
 else
-  fail "login — no cpoint_session Set-Cookie"
+  fail "login — unexpected status ${LOGIN_STATUS}"
 fi
 rm -f "${HDR_FILE}"
 
