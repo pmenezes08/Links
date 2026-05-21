@@ -1,0 +1,2 @@
+# Cloud Build runs bash on Linux; CRLF breaks set -euo pipefail.
+*.sh text eol=lf
