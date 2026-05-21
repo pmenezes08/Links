@@ -15,6 +15,7 @@ import { renderTextWithLinks, detectLinks, replaceLinkInText } from '../utils/li
 import { openExternalInApp } from '../utils/openExternalInApp'
 import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
+import { clearDeviceCache } from '../utils/deviceCache'
 
 type Reply = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null }
 type PollOption = { id: number; text?: string; option_text?: string; votes: number; user_voted?: boolean }
@@ -613,8 +614,10 @@ export default function GroupFeed(){
                           const fd = new URLSearchParams({ group_id: String(group_id), group_post_id: String(p.id) })
                           const r = await fetch('/api/toggle_group_key_post', { method: 'POST', credentials: 'include', body: fd })
                           const j = await r.json().catch(() => null)
-                          if (j?.success) setPosts((list) => list.map((it) => (it.id === p.id ? { ...it, is_starred: !!j.starred } : it)))
-                          else alert(j?.error || t('feed.update_failed'))
+                          if (j?.success) {
+                            setPosts((list) => list.map((it) => (it.id === p.id ? { ...it, is_starred: !!j.starred } : it)))
+                            clearDeviceCache(`post-${p.id}`)
+                          } else alert(j?.error || t('feed.update_failed'))
                         } catch {}
                       }}
                     >
@@ -636,6 +639,7 @@ export default function GroupFeed(){
                             const j = await r.json().catch(() => null)
                             if (j?.success) {
                               setPosts((list) => list.map((it) => (it.id === p.id ? { ...it, is_community_starred: !!j.starred } : it)))
+                              clearDeviceCache(`post-${p.id}`)
                             } else alert(j?.error || t('feed.update_failed'))
                           } catch {}
                         }}

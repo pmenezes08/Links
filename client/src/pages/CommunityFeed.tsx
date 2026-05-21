@@ -102,8 +102,8 @@ type StoryGroup = {
 type StoryViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
 const COMMUNITY_FEED_CACHE_TTL_MS = 2 * 60 * 1000
 const COMMUNITY_FEED_CACHE_VERSION = 'community-feed-v3'
-/** Matches PostDetail `post-detail-v1` for feed → post navigation hydrate */
-const POST_DETAIL_CACHE_VERSION = 'post-detail-v1'
+/** Matches PostDetail for feed → post navigation hydrate */
+const POST_DETAIL_CACHE_VERSION = 'post-detail-v2'
 const POST_DETAIL_CACHE_TTL_MS = 3 * 60 * 1000
 const STORY_UPLOAD_MAX_FILES = 10
 const STORY_UPLOAD_MAX_FILE_BYTES = 100 * 1024 * 1024
@@ -2754,7 +2754,7 @@ export default function CommunityFeed() {
                     try {
                       writeDeviceCache(
                         `post-${p.id}`,
-                        { post: p, isGroupPost: true },
+                        { post: p, isGroupPost: false },
                         POST_DETAIL_CACHE_TTL_MS,
                         POST_DETAIL_CACHE_VERSION
                       )
@@ -4314,6 +4314,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         const next = !!j.starred
         setPersonalStarred(next)
         ;(post as any).is_starred = next
+        clearDeviceCache(`post-${post.id}`)
         if (communityId) clearDeviceCache(`community-feed:${communityId}`)
         clearDeviceCache('home-timeline')
       }
@@ -4340,6 +4341,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         const next = !!j.starred
         setCommunityStarred(next)
         ;(post as any).is_community_starred = next
+        clearDeviceCache(`post-${post.id}`)
         if (communityId) clearDeviceCache(`community-feed:${communityId}`)
         clearDeviceCache('home-timeline')
       }
