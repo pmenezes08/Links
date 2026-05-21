@@ -157,6 +157,7 @@ export default function CommentReply() {
   const [lightboxVideoSrc, setLightboxVideoSrc] = useState<string | null>(null)
   const scrollAreaRef = useRef<HTMLDivElement | null>(null)
   const [replyComposerExpanded, setReplyComposerExpanded] = useState(false)
+  const [expandedComposerViewportLift, setExpandedComposerViewportLift] = useState(0)
   const expandedComposerRef = useRef<HTMLDivElement | null>(null)
 
   // Check if message contains @Steve mention (case insensitive) - same as CommunityFeed
@@ -477,6 +478,33 @@ export default function CommentReply() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
       window.clearTimeout(focusTimer)
+    }
+  }, [replyComposerExpanded])
+
+  useEffect(() => {
+    if (!replyComposerExpanded || typeof window === 'undefined') {
+      setExpandedComposerViewportLift(0)
+      return
+    }
+    const viewport = window.visualViewport
+    if (!viewport) return
+    let rafId: number | null = null
+    const updateLift = () => {
+      const next = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+      setExpandedComposerViewportLift(prev => (Math.abs(prev - next) < 1 ? prev : next))
+    }
+    const schedule = () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(updateLift)
+    }
+    viewport.addEventListener('resize', schedule)
+    viewport.addEventListener('scroll', schedule)
+    updateLift()
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      viewport.removeEventListener('resize', schedule)
+      viewport.removeEventListener('scroll', schedule)
+      setExpandedComposerViewportLift(0)
     }
   }, [replyComposerExpanded])
 
@@ -892,6 +920,8 @@ export default function CommentReply() {
   // Calculate keyboard lift (subtract safe area since keyboard height includes it on iOS)
   const keyboardLift = Math.max(0, keyboardOffset - safeBottomPx)
   const showKeyboard = keyboardOffset > 2
+  const expandedComposerLift = Math.max(keyboardLift, expandedComposerViewportLift)
+  const expandedComposerKeyboardOpen = expandedComposerLift > 2
 
   return (
     <div
@@ -1683,8 +1713,8 @@ export default function CommentReply() {
             className="absolute left-0 right-0 mx-auto flex max-w-2xl flex-col overflow-hidden bg-black text-white sm:rounded-3xl sm:bg-[#050607]/95"
             style={{
               top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
-              bottom: showKeyboard
-                ? `${Math.max(8, keyboardLift + 8)}px`
+              bottom: expandedComposerKeyboardOpen
+                ? `${Math.max(8, expandedComposerLift + 8)}px`
                 : 'max(env(safe-area-inset-bottom, 0px), 12px)',
             }}
             onClick={(e) => e.stopPropagation()}
@@ -1780,7 +1810,7 @@ export default function CommentReply() {
                   postId={post.id}
                   replyId={reply.id}
                   placeholder={t('feed.reply_to_user_ellipsis', { username: reply.username })}
-                  className="h-full min-h-[48vh] resize-none overflow-y-auto bg-transparent px-4 py-4 text-[16px] leading-relaxed text-white outline-none placeholder-white/45"
+                  className="h-full min-h-0 resize-none overflow-y-auto bg-transparent px-4 py-4 text-[16px] leading-relaxed text-white outline-none placeholder-white/45"
                   rows={10}
                   perfDegraded={!!uploadFile}
                 />
@@ -1797,12 +1827,12 @@ export default function CommentReply() {
               </button>
               <button
                 type="button"
-                className="flex items-center gap-2 rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_28px_rgba(77,182,172,0.22)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-[#4db6ac] text-sm font-semibold text-white shadow-[0_10px_28px_rgba(77,182,172,0.22)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={handleSubmitReply}
+                aria-label={t('feed.send_reply')}
                 disabled={sendingReply || (!replyText.trim() && !file && !replyPreview && !selectedGif)}
               >
                 {sendingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
-                <span>{t('feed.send_reply')}</span>
               </button>
             </footer>
           </div>

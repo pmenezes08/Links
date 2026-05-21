@@ -26,7 +26,7 @@ import VideoEmbed from '../components/VideoEmbed'
 import LinkPreview, { feedPostLinkPreviewUrls } from '../components/LinkPreview'
 import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
 import {
-  renderTextWithLinks,
+  renderRichText,
   renderTextWithSourceLinks,
   detectLinks,
   replaceLinkInText,
@@ -4489,7 +4489,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                 <>
                   {displayContent && (
                     <div className="px-3 whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">
-                      {renderTextWithLinks(displayContent, undefined, mentionToProfile, { sourcesSmallLinks: true, onExternalClick: openExternalArticle })}
+                      {renderRichText(displayContent, false, mentionToProfile, openExternalArticle)}
                     </div>
                   )}
                   {feedPostLinkPreviewUrls(post.content, post.link_urls, videoEmbed).map(u => (

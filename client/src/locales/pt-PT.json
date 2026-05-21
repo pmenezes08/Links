@@ -922,6 +922,7 @@
     "steve_summary_loading": "O Steve está a escrever o teu resumo...",
     "steve_summary_generating": "Resumo do Steve a ser gerado",
     "translation_failed": "A tradução falhou",
+    "is_typing": "está a escrever",
     "missing_summary_target": "Falta o id da publicação ou da resposta",
     "update_summary_failed": "Não foi possível atualizar o resumo",
     "show_original": "Mostrar original",

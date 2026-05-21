@@ -111,6 +111,7 @@ export default function PostDetail(){
   const [mediaCarouselIndex, setMediaCarouselIndex] = useState(0)
   const [steveIsTyping, setSteveIsTyping] = useState(false)
   const [replyComposerExpanded, setReplyComposerExpanded] = useState(false)
+  const [expandedComposerViewportLift, setExpandedComposerViewportLift] = useState(0)
   const expandedComposerRef = useRef<HTMLDivElement | null>(null)
   
   const openArticleReader = useCallback((url: string) => {
@@ -535,6 +536,33 @@ export default function PostDetail(){
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
       window.clearTimeout(focusTimer)
+    }
+  }, [replyComposerExpanded])
+
+  useEffect(() => {
+    if (!replyComposerExpanded || typeof window === 'undefined') {
+      setExpandedComposerViewportLift(0)
+      return
+    }
+    const viewport = window.visualViewport
+    if (!viewport) return
+    let rafId: number | null = null
+    const updateLift = () => {
+      const next = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+      setExpandedComposerViewportLift(prev => (Math.abs(prev - next) < 1 ? prev : next))
+    }
+    const schedule = () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(updateLift)
+    }
+    viewport.addEventListener('resize', schedule)
+    viewport.addEventListener('scroll', schedule)
+    updateLift()
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      viewport.removeEventListener('resize', schedule)
+      viewport.removeEventListener('scroll', schedule)
+      setExpandedComposerViewportLift(0)
     }
   }, [replyComposerExpanded])
 
@@ -1577,6 +1605,8 @@ export default function PostDetail(){
   const liftSource = Math.max(keyboardOffset, viewportLift)
   const keyboardLift = Math.max(0, liftSource - safeBottomPx)
   const showKeyboard = liftSource > 2
+  const expandedComposerLift = Math.max(keyboardLift, expandedComposerViewportLift)
+  const expandedComposerKeyboardOpen = expandedComposerLift > 2
   // Padding to ensure content doesn't hide behind composer
   const contentPaddingBottom = showKeyboard
     ? `${effectiveComposerHeight + keyboardLift + 16}px`
@@ -2330,8 +2360,8 @@ export default function PostDetail(){
             className="absolute left-0 right-0 mx-auto flex max-w-2xl flex-col overflow-hidden bg-black text-white sm:rounded-3xl sm:bg-[#050607]/95"
             style={{
               top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
-              bottom: showKeyboard
-                ? `${Math.max(8, keyboardLift + 8)}px`
+              bottom: expandedComposerKeyboardOpen
+                ? `${Math.max(8, expandedComposerLift + 8)}px`
                 : 'max(env(safe-area-inset-bottom, 0px), 12px)',
             }}
             onClick={(e) => e.stopPropagation()}
@@ -2422,7 +2452,7 @@ export default function PostDetail(){
                   communityId={(post as any)?.community_id}
                   postId={post?.id}
                   placeholder={t('feed.write_reply_placeholder')}
-                  className="h-full min-h-[48vh] resize-none overflow-y-auto bg-transparent px-4 py-4 text-[16px] leading-relaxed text-white outline-none placeholder-white/45"
+                  className="h-full min-h-0 resize-none overflow-y-auto bg-transparent px-4 py-4 text-[16px] leading-relaxed text-white outline-none placeholder-white/45"
                   rows={10}
                   perfDegraded={!!uploadFile}
                 />
@@ -2439,12 +2469,12 @@ export default function PostDetail(){
               </button>
               <button
                 type="button"
-                className="flex items-center gap-2 rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_28px_rgba(77,182,172,0.22)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-[#4db6ac] text-sm font-semibold text-white shadow-[0_10px_28px_rgba(77,182,172,0.22)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => submitReply()}
+                aria-label={t('feed.send_reply')}
                 disabled={submittingReply || (!content.trim() && !file && !replyPreview && !replyGif)}
               >
                 {submittingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
-                <span>{t('feed.send_reply')}</span>
               </button>
             </footer>
           </div>
