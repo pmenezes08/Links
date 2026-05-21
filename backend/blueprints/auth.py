@@ -73,6 +73,25 @@ def _apply_login_persistence(resp, username: str) -> int:
     return stale
 
 
+def _finalize_session_response(resp, username: str) -> None:
+    """Persist Flask session + remember-me on an auth redirect (Capacitor/fetch-safe).
+
+    After a FLASK_SECRET_KEY rotation or SESSION_COOKIE_DOMAIN change, browsers may
+    still send an old ``cpoint_session`` cookie that decodes to an empty session.
+    Clear it explicitly, then save the new signed session on this response.
+    """
+    auth_session.clear_session_cookie(resp)
+    session.permanent = True
+    session["username"] = username
+    session.modified = True
+    try:
+        current_app.session_interface.save_session(current_app, session, resp)
+    except Exception as exc:
+        current_app.logger.error("save_session failed for %s: %s", username, exc)
+    _apply_login_persistence(resp, username)
+    auth_session.no_store(resp)
+
+
 def _invalidate_profile_and_dashboard_caches(username: str) -> None:
     """Bust Redis profile/dashboard payloads so the next API read matches MySQL."""
     if not username:
@@ -757,8 +776,6 @@ def login_password():
                     except Exception as exc:
                         logger.error("Error tracking login: %s", exc)
 
-                    session.permanent = True
-                    session["username"] = username
                     try:
                         install_cookie = request.cookies.get("native_push_install_id")
                         if install_cookie:
@@ -883,17 +900,15 @@ def login_password():
                                             conn2.commit()
 
                                         resp = make_response(redirect(f"/community_feed_react/{community_id}"))
-                                        stale = _apply_login_persistence(resp, username)
-                                        logger.info("login_password invite_ok remember_stale_revoked=%d", stale)
-                                        auth_session.no_store(resp)
+                                        _finalize_session_response(resp, username)
+                                        logger.info("login_password invite_ok username=%s", username)
                                         return resp
                         except Exception as exc:
                             logger.error("Error auto-joining via invite token: %s", exc)
 
                     resp = make_response(redirect("/premium_dashboard"))
-                    stale = _apply_login_persistence(resp, username)
-                    logger.info("login_password ok remember_stale_revoked=%d username=%s", stale, username)
-                    auth_session.no_store(resp)
+                    _finalize_session_response(resp, username)
+                    logger.info("login_password ok username=%s", username)
                     return resp
                 # Incorrect password - redirect back to React with error
                 return redirect("/login?step=password&error=" + quote("Incorrect password. Please try again."))

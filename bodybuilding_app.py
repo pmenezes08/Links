@@ -642,8 +642,10 @@ try:
     if explicit_domain:
         app.config['SESSION_COOKIE_DOMAIN'] = explicit_domain
     else:
-        ch = os.getenv('CANONICAL_HOST') or ''
-        if ch.endswith('c-point.co'):
+        ch = (os.getenv('CANONICAL_HOST') or '').strip().lower()
+        # Capacitor / app host: host-only cookies are more reliable in WKWebView.
+        # Use .c-point.co only for apex/www (admin on another subdomain still receives it).
+        if ch.endswith('c-point.co') and ch not in ('app.c-point.co',):
             app.config['SESSION_COOKIE_DOMAIN'] = '.c-point.co'
 except Exception:
     pass

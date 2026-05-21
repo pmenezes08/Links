@@ -14,7 +14,7 @@
 ## 0. Topology (what you're working with)
 
 - **Cloud Run — staging**: `cpoint-app-staging` (region `europe-west1`).
-- **Cloud Run — prod**: `cpoint-app` (same region).
+- **Cloud Run — prod**: `cpoint-app` (same region). **Outage runbook** (staging OK, prod login/DB broken): [`PROD_CLOUD_RUN_RECOVERY.md`](PROD_CLOUD_RUN_RECOVERY.md).
 - **Cloud SQL — MySQL 8**: `cpoint-db` (same instance + same database +
   same credentials for **both** services). See §6 for the implications.
 - **Secret Manager**: `mysql-password`, `cron-shared-secret-staging`,

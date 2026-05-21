@@ -12,5 +12,6 @@ alwaysApply: true
 5. **Full checklist:** `docs/AGENT_TASK_CHECKLIST.md`.
 6. **Cross-system behaviour:** `docs/PRODUCT_JOURNEYS.md`. **Deploy names / URLs:** `docs/DEPLOYMENT_INSTANCES.md`.
 7. **Large pages / legacy Flask / big blueprints:** `docs/MONOLITH_REDUCTION_ROADMAP.md` — globs activate `.cursor/rules/frontend-pages-and-routing.mdc`, `chat-surfaces.mdc`, `backend-monolith-boundaries.mdc`.
+8. **Prod broken, staging OK** (`app.c-point.co` login/DB): **`docs/PROD_CLOUD_RUN_RECOVERY.md`** → `scripts/wire_prod_cloud_run_secrets.sh` + `scripts/smoke_prod.sh`.
 
 When searching the route doc, **grep your path prefix** (e.g. `/api/communities`) — avoid loading all of `BACKEND_ROUTES.md` into context unless needed.
