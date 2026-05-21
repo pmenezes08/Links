@@ -37,6 +37,21 @@ PASSWORD_SECRET = "mysql-password"
 
 DEFAULT_SLUGS = ("credits-entitlements", "community-tiers")
 
+# Stripe price ID fields: fill from seed only when DB value is empty / TBD placeholder.
+STRIPE_PRICE_FIELD_SUFFIXES = ("_stripe_price_id_test", "_stripe_price_id_live")
+
+
+def _is_empty_stripe_price_value(value: Any) -> bool:
+    if value is None:
+        return True
+    s = str(value).strip()
+    if not s:
+        return True
+    if s.upper() in ("TBD", "TODO", "N/A", "NA"):
+        return True
+    return False
+
+
 # field_name -> list of legacy values that may be upgraded to seed value
 POLICY_FIELD_STALE_VALUES: Dict[str, List[Any]] = {
     "paid_steve_package_monthly_provider_cost_ceiling_usd": [5, 5.0, "5", "5.00"],
@@ -173,6 +188,83 @@ def _sync_stale_policy_fields(slug: str, dry_run: bool) -> Tuple[int, List[str]]
     return len(changed), changed
 
 
+def _sync_empty_stripe_price_fields(slug: str, dry_run: bool) -> Tuple[int, List[str]]:
+    """Set Stripe price ID fields from seed when DB value is empty; never overwrite a real ID."""
+    from backend.services.database import get_db_connection, get_sql_placeholder
+    from backend.services.knowledge_base import get_page
+
+    seed_by_name = _seed_field_map(slug)
+    if not seed_by_name:
+        return 0, []
+
+    page = get_page(slug)
+    if not page:
+        return 0, []
+
+    fields: List[Dict[str, Any]] = list(page.get("fields") or [])
+    changed: List[str] = []
+    for field in fields:
+        name = str(field.get("name") or "")
+        if not any(name.endswith(suffix) for suffix in STRIPE_PRICE_FIELD_SUFFIXES):
+            continue
+        if name not in seed_by_name:
+            continue
+        current = field.get("value")
+        if not _is_empty_stripe_price_value(current):
+            continue
+        new_val = seed_by_name[name].get("value")
+        if _is_empty_stripe_price_value(new_val):
+            continue
+        if _values_equal(current, new_val):
+            continue
+        field["value"] = new_val
+        if field.get("tbd"):
+            field["tbd"] = False
+        changed.append(f"{name}: {current!r} -> {new_val!r}")
+
+    if not changed or dry_run:
+        return len(changed), changed
+
+    ph = get_sql_placeholder()
+    import json as _json
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    new_version = int(page.get("version") or 1) + 1
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""
+            UPDATE kb_pages SET
+                fields_json = {ph},
+                version = {ph},
+                updated_by = {ph},
+                updated_at = {ph}
+            WHERE slug = {ph}
+            """,
+            (_json.dumps(fields), new_version, "kb-safe-reseed-script", now, slug),
+        )
+        c.execute(
+            f"""
+            INSERT INTO kb_changelog
+                (page_slug, version_from, version_to, changed_fields_json,
+                 reason, actor_username, created_at)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """,
+            (
+                slug,
+                page.get("version"),
+                new_version,
+                _json.dumps({"empty_stripe_price_sync": changed}),
+                "Fill empty Stripe price IDs from seed (preserve existing values)",
+                "kb-safe-reseed-script",
+                now,
+            ),
+        )
+        conn.commit()
+    return len(changed), changed
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Safe KB merge reseed on staging MySQL")
     parser.add_argument(
@@ -200,6 +292,11 @@ def main() -> int:
             print(f"[kb-reseed] {slug}: synced {n} stale policy field(s): {', '.join(names)}")
         else:
             print(f"[kb-reseed] {slug}: no stale policy fields to sync (custom values kept)")
+        p, price_names = _sync_empty_stripe_price_fields(slug, dry_run=False)
+        if p:
+            print(f"[kb-reseed] {slug}: filled {p} empty Stripe price field(s): {', '.join(price_names)}")
+        else:
+            print(f"[kb-reseed] {slug}: no empty Stripe price fields to fill")
 
     print("[kb-reseed] Done.")
     return 0

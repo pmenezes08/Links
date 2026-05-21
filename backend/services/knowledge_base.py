@@ -601,7 +601,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
                  "help": "Use the Stripe Price ID (``price_...``), not Product ID (``prod_...``). "
                          "Paste the test-mode monthly Price ID here. Used for staging checkouts only.",
                  "group": "premium"},
-                {"name": "premium_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
+                {"name": "premium_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "price_1TYTiwDHGQ57hB639I1hXI9U",
                  "help": "Use the Stripe Price ID (``price_...``), not Product ID (``prod_...``). "
                          "Paste the live-mode monthly Price ID here. Used for production checkouts only.",
                  "group": "premium"},
@@ -832,8 +832,8 @@ def _seed_pages() -> List[Dict[str, Any]]:
                 {"name": "paid_steve_package_stripe_price_id_test", "label": "Stripe price ID — monthly (test)", "type": "string", "value": "", "tbd": True,
                  "help": "Not purchasable yet in Step E. Populate once the Stripe Product is created.",
                  "group": "paid_steve_package"},
-                {"name": "paid_steve_package_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "", "tbd": True,
-                 "help": "Web checkout via Stripe. Populate once the Stripe Product is created.",
+                {"name": "paid_steve_package_stripe_price_id_live", "label": "Stripe price ID — monthly (live)", "type": "string", "value": "price_1TZ7ubDHGQ57hB63F2iLp3sL",
+                 "help": "Web checkout via Stripe (live). Product: C-Point Steve Community Package (EUR 49.99/mo). One subscription per root community.",
                  "group": "paid_steve_package"},
                 {"name": "paid_steve_package_apple_product_id", "label": "Apple product ID — Steve monthly", "type": "string",
                  "value": "cpoint_steve_community_monthly",

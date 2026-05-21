@@ -116,6 +116,7 @@ interface StevePackagePayload {
 interface PricingPayload {
   success: boolean
   stripe_mode: 'test' | 'live'
+  show_stripe_test_banner?: boolean
   publishable_key_available: boolean
   sku: {
     premium: PremiumPayload
@@ -198,6 +199,8 @@ function formatDate(value: string): string {
 }
 
 const SALES_EMAIL = 'sales@c-point.co'
+const PRIVACY_POLICY_URL = 'https://www.c-point.co/privacy'
+const TERMS_OF_USE_URL = 'https://www.c-point.co/terms'
 
 function resetSubscriptionPageScroll() {
   const reset = () => {
@@ -745,7 +748,7 @@ export default function SubscriptionPlans() {
           <p className="mx-auto mt-4 max-w-xl text-white/60 text-base leading-relaxed">
             {t('subscriptions.header_subtitle')}
           </p>
-          {pricing?.stripe_mode === 'test' && (
+          {pricing?.show_stripe_test_banner && (
             <p className="mt-4 text-[11px] uppercase tracking-[0.25em] text-amber-300/80">
               {t('subscriptions.test_mode_banner')}
             </p>
@@ -781,6 +784,9 @@ export default function SubscriptionPlans() {
                     loading={checkoutLoading === 'premium'}
                     storeProvider={storeProvider}
                     storeProductAvailable={!!(storeProvider && iapConfig?.[storeProvider]?.premium_product_id)}
+                    iapDisabledOnNative={false}
+                    iapProductionGrantsEnabled={iapEnabled}
+                    webBillingUrl={webBillingUrl}
                     onRestore={onRestorePurchases}
                     restoreLoading={checkoutLoading != null && checkoutLoading.startsWith('restore:')}
                   />
@@ -829,11 +835,9 @@ export default function SubscriptionPlans() {
           payload={pricing.sku.community_tier}
           storeProvider={storeProvider}
           storeProductIds={
-            iapEnabled && storeProvider
-              ? iapConfig?.[storeProvider]?.community_product_ids || {}
-              : {}
+            storeProvider ? iapConfig?.[storeProvider]?.community_product_ids || {} : {}
           }
-          iapDisabledOnNative={!!storeProvider && !iapEnabled}
+          iapDisabledOnNative={false}
           webBillingUrl={webBillingUrl}
           onPickTier={onPickTier}
           onOpenAddons={() => {
@@ -1049,6 +1053,7 @@ function PersonalCard({
   storeProvider,
   storeProductAvailable,
   iapDisabledOnNative,
+  iapProductionGrantsEnabled,
   webBillingUrl,
   onRestore,
   restoreLoading,
@@ -1059,6 +1064,7 @@ function PersonalCard({
   storeProvider: StoreProvider | null
   storeProductAvailable: boolean
   iapDisabledOnNative?: boolean
+  iapProductionGrantsEnabled?: boolean
   webBillingUrl?: string
   onRestore: () => void
   restoreLoading: boolean
@@ -1114,6 +1120,8 @@ function PersonalCard({
         )}
       </div>
 
+      <SubscriptionLegalLinks className="mt-5" />
+
       {payload.features.length > 0 && (
         <ul className="mt-6 space-y-3 text-sm text-white/80 flex-1">
           {payload.features.slice(0, 5).map((f) => (
@@ -1165,6 +1173,11 @@ function PersonalCard({
               {t('subscriptions.open_web_billing', { url: webBillingUrl })}
             </button>
           )}
+        </p>
+      )}
+      {storeProvider && storeProductAvailable && iapProductionGrantsEnabled === false && !iapDisabledOnNative && (
+        <p className="mt-3 text-xs text-white/45">
+          {t('subscriptions.iap_sandbox_review_notice')}
         </p>
       )}
       {!payload.purchasable && !iapDisabledOnNative && (
@@ -1578,7 +1591,7 @@ function CommunityModal({
             tier={tier}
             ctaLabel={payload.cta_label}
             storeProvider={storeProvider}
-            storeProductAvailable={!iapDisabledOnNative && !!storeProductIds[tier.tier_code]}
+            storeProductAvailable={!!storeProductIds[tier.tier_code]}
             loading={
               !!pendingKey && pendingKey.startsWith(`community_tier:${tier.tier_code}`)
             }
@@ -1587,6 +1600,8 @@ function CommunityModal({
         ))}
         <EnterpriseRow />
       </div>
+
+      <SubscriptionLegalLinks className="mt-4" />
 
       <div className="mt-6 border-t border-white/10 pt-5">
         <button
@@ -1751,7 +1766,34 @@ function AddonsModal({
         />
         <NetworkingAddonCard payload={networking} />
       </div>
+      <SubscriptionLegalLinks className="mt-4" />
     </ModalShell>
+  )
+}
+
+function SubscriptionLegalLinks({ className = '' }: { className?: string }) {
+  const { t } = useTranslation()
+  return (
+    <p className={`text-xs leading-relaxed text-white/45 ${className}`}>
+      {t('subscriptions.legal_disclosure')}{' '}
+      <a
+        href={TERMS_OF_USE_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-cpoint-turquoise underline"
+      >
+        {t('subscriptions.terms_of_use')}
+      </a>
+      {' · '}
+      <a
+        href={PRIVACY_POLICY_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-cpoint-turquoise underline"
+      >
+        {t('subscriptions.privacy_policy')}
+      </a>
+    </p>
   )
 }
 

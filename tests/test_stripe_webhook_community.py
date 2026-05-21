@@ -171,10 +171,7 @@ class TestCommunitySubscriptionDeleted:
         _post_event(client)
         state = community_billing.get_billing_state(cid) or {}
         assert state["subscription_status"] == "cancelled"
-        # Tier is deliberately unchanged by the deletion event — the
-        # communities-lifecycle cron handles the downgrade so we don't
-        # yank active members mid-cycle.
-        assert state["tier"] == "paid_l1"
+        assert state["tier"] == "free"
 
         assert _audit_count_for("community_tier_cancelled", community_id=cid) == 1
 

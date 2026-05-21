@@ -1,6 +1,6 @@
 import { Apple, Laptop } from "lucide-react";
 import heroBg from "@/assets/hero-community.jpg";
-import { AndroidComingSoonButton } from "@/components/AndroidComingSoonButton";
+import { AndroidStoreButton } from "@/components/AndroidStoreButton";
 import { APP_STORE_URL, APP_WEB_URL, PLATFORM_AVAILABILITY_LINE, HERO_SUBHEAD } from "@/content/siteCopy";
 
 export const Hero = () => {
@@ -39,15 +39,6 @@ export const Hero = () => {
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center items-center flex-wrap fade-in-up" style={{ animationDelay: "0.5s" }}>
           <a
-            href={APP_WEB_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-white text-[#2a7a72] text-sm font-semibold hover:bg-white/95 transition-colors shadow-lg"
-          >
-            <Laptop size={18} />
-            Open web app
-          </a>
-          <a
             href={APP_STORE_URL}
             target="_blank"
             rel="noopener noreferrer"
@@ -56,7 +47,16 @@ export const Hero = () => {
             <Apple size={18} />
             Download for iOS
           </a>
-          <AndroidComingSoonButton variant="hero" />
+          <AndroidStoreButton variant="hero" />
+          <a
+            href={APP_WEB_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-white text-[#2a7a72] text-sm font-semibold hover:bg-white/95 transition-colors shadow-lg"
+          >
+            <Laptop size={18} />
+            Open web app
+          </a>
         </div>
 
         <p className="mt-16 text-sm text-white/60 fade-in-up" style={{ animationDelay: "0.65s" }}>
