@@ -38,7 +38,7 @@ export default function BurgerMenuDrawer({
   username,
   displayName,
   avatarUrl,
-  zIndexClass = 'z-[90]',
+  zIndexClass = 'z-[1100]',
   onClose,
 }: BurgerMenuDrawerProps) {
   const navigate = useNavigate()
@@ -63,11 +63,13 @@ export default function BurgerMenuDrawer({
     <div
       className={`burger-menu-backdrop fixed inset-0 ${zIndexClass} flex bg-black/55`}
       onClick={(e) => e.currentTarget === e.target && onClose()}
-      style={{ paddingTop: 'env(safe-area-inset-top)' }}
     >
       <div
         className="burger-menu-sheet h-full w-[90%] max-w-sm overflow-y-auto overscroll-contain border-r border-white/10 bg-black/95 p-4 text-white shadow-[24px_0_70px_rgba(0,0,0,0.72)] backdrop-blur-md"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}
+        style={{
+          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
+          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)',
+        }}
       >
         <button
           type="button"
