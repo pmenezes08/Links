@@ -61,14 +61,14 @@ export default function BurgerMenuDrawer({
 
   return (
     <div
-      className={`burger-menu-backdrop fixed inset-0 ${zIndexClass} flex items-end justify-center bg-black/55`}
+      className={`burger-menu-backdrop fixed inset-0 ${zIndexClass} flex bg-black/55`}
       onClick={(e) => e.currentTarget === e.target && onClose()}
+      style={{ paddingTop: 'env(safe-area-inset-top)' }}
     >
       <div
-        className="burger-menu-sheet max-h-[min(82dvh,640px)] w-full overflow-y-auto overscroll-contain rounded-t-[2rem] border border-white/10 bg-black/95 p-4 text-white shadow-[0_-24px_70px_rgba(0,0,0,0.72)] backdrop-blur-md sm:max-w-sm sm:rounded-[2rem] sm:mb-4"
+        className="burger-menu-sheet h-full w-[90%] max-w-sm overflow-y-auto overscroll-contain border-r border-white/10 bg-black/95 p-4 text-white shadow-[24px_0_70px_rgba(0,0,0,0.72)] backdrop-blur-md"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}
       >
-        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/25" aria-hidden />
         <button
           type="button"
           className="flex w-full items-center gap-3 border-b border-white/10 pb-5 text-left"
