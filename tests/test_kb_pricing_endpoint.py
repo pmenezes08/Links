@@ -154,6 +154,7 @@ class TestShape:
         body = resp.get_json()
         assert body["success"] is True
         assert body["stripe_mode"] == "test"
+        assert body.get("show_stripe_test_banner") is True
 
         sku = body["sku"]
         assert set(sku.keys()) == {"premium", "community_tier",
@@ -192,6 +193,21 @@ class TestShape:
 
 
 # ── 3. Mode filtering ───────────────────────────────────────────────────
+
+
+class TestStripeTestBanner:
+    """Production host must not show the test-mode banner even with sk_test keys."""
+
+    def test_production_flask_env_hides_banner(self, client, monkeypatch):
+        _set_stripe_mode(monkeypatch, "test")
+        monkeypatch.setenv("FLASK_ENV", "production")
+        make_user("banner_user", subscription="free")
+        _seed_pricing_kb()
+        _login(client, "banner_user")
+
+        body = client.get("/api/kb/pricing").get_json()
+        assert body["stripe_mode"] == "test"
+        assert body.get("show_stripe_test_banner") is False
 
 
 class TestModeFiltering:
@@ -283,13 +299,15 @@ class TestGracefulFallback:
     def test_id_populated_flips_purchasable_true(self, client, monkeypatch):
         _set_stripe_mode(monkeypatch, "test")
         make_user("purch_user", subscription="free")
-        _seed_pricing_kb()
+        _seed_pricing_kb(steve_test="price_steve_test_abc")
         _login(client, "purch_user")
 
         body = client.get("/api/kb/pricing").get_json()
         assert body["sku"]["premium"]["purchasable"] is True
         for tier in body["sku"]["community_tier"]["tiers"]:
             assert tier["purchasable"] is True
+        assert body["sku"]["steve_package"]["purchasable"] is True
+        assert body["sku"]["steve_package"]["coming_soon"] is False
 
     def test_partial_seed_only_flips_present_ids(self, client, monkeypatch):
         """L1 populated, L2/L3 still blank → only L1 is purchasable."""

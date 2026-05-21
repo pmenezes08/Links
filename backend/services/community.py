@@ -555,6 +555,26 @@ def _read_kb_member_cap(tier: str) -> Optional[int]:
     return _TIER_CAP_FALLBACK.get(tier)
 
 
+def _read_kb_free_community_cap() -> Optional[int]:
+    """Free-tier member cap from KB (used when paid billing has lapsed)."""
+    try:
+        from backend.services.knowledge_base import get_page
+
+        page = get_page("community-tiers") or {}
+        for f in page.get("fields") or []:
+            if f.get("name") == "free_community_max_members":
+                try:
+                    resolved = int(f.get("value"))
+                    if resolved > 0:
+                        return resolved
+                except (TypeError, ValueError):
+                    pass
+                break
+    except Exception:
+        logger.exception("_read_kb_free_community_cap: KB lookup failed")
+    return 25
+
+
 def _count_community_members(cursor, community_id: int) -> int:
     placeholder = get_sql_placeholder()
     try:
@@ -655,6 +675,42 @@ def ensure_community_tier_member_capacity(
         return
     if tier in (COMMUNITY_TIER_FREE, COMMUNITY_TIER_ENTERPRISE):
         return
+
+    # Paid tier label can remain in MySQL until webhooks run; never grant
+    # paid-tier member caps when the Stripe subscription is not live.
+    if tier in (COMMUNITY_TIER_PAID_L1, COMMUNITY_TIER_PAID_L2, COMMUNITY_TIER_PAID_L3):
+        try:
+            from backend.services import community_billing
+
+            billing_state = community_billing.get_billing_state(community_id) or {}
+            if not community_billing.tier_subscription_is_live(billing_state):
+                cap = _read_kb_free_community_cap()
+                if cap is None or cap <= 0:
+                    return
+                current_count = _count_community_members(cursor, community_id)
+                try:
+                    extra = max(1, int(extra_members or 1))
+                except Exception:
+                    extra = 1
+                if current_count + extra <= cap:
+                    return
+                community_name = _fetch_community_name(cursor, community_id)
+                creator_username = str(info.get("creator_username") or "")
+                raise CommunityMembershipLimitError(
+                    community_id=community_id,
+                    community_name=community_name,
+                    cap=cap,
+                    attempted_username=attempted_username,
+                    creator_username=creator_username,
+                )
+        except CommunityMembershipLimitError:
+            raise
+        except Exception:
+            logger.exception(
+                "ensure_community_tier_member_capacity: billing lapsed check failed "
+                "for community %s",
+                community_id,
+            )
 
     cap = _read_kb_member_cap(tier)
     if cap is None or cap <= 0:

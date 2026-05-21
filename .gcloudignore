@@ -8,6 +8,9 @@
 
 # Ignore development files
 *.md
+# Landing legal pages (vite ?raw imports — required for cpoint-landing image build)
+!landing/src/content/legal/
+!landing/src/content/legal/**
 *.sh
 *.sql
 *.sample

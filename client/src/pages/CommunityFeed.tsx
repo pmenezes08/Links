@@ -18,6 +18,7 @@ import MentionTextarea from '../components/MentionTextarea'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import ImageLoader from '../components/ImageLoader'
 import ZoomableImage from '../components/ZoomableImage'
+import BurgerMenuDrawer from '../components/BurgerMenuDrawer'
 import { useHeader } from '../contexts/HeaderContext'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
 import { ENTITLEMENTS_REFRESH_EVENT, useEntitlements } from '../hooks/useEntitlements'
@@ -40,7 +41,6 @@ import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/de
 import { cacheFeed, getCachedFeed } from '../utils/offlineDb'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { useBadges } from '../contexts/BadgeContext'
-import { useLogoutRequest } from '../contexts/LogoutPromptContext'
 import { openExternalInApp } from '../utils/openExternalInApp'
 import {
   buildClientPremiumRequiredError,
@@ -187,7 +187,6 @@ function SortableThumb({ id, file, isActive, onSelect, onRemove }: {
 
 export default function CommunityFeed() {
   const { t } = useTranslation()
-  const requestLogout = useLogoutRequest()
   let { community_id } = useParams()
   if (!community_id){
     try{ community_id = window.location.pathname.split('/').filter(Boolean).pop() as any }catch{}
@@ -2578,36 +2577,13 @@ export default function CommunityFeed() {
 
       {/* Burger Menu Overlay */}
       {menuOpen && (
-        <div className="fixed inset-0 z-[1001] flex bg-black/50" onClick={(e)=> e.currentTarget===e.target && setMenuOpen(false)} style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-          <div className="w-[90%] h-full bg-black/95 backdrop-blur border-r border-white/10 p-4 space-y-3 text-white overflow-y-auto overscroll-auto" style={{ paddingTop: '1rem', paddingBottom: 'env(safe-area-inset-bottom)' }}>
-            <div className="flex items-center gap-2 pb-2 border-b border-white/10">
-              <Avatar username={currentUsername} url={userAvatar} size={40} />
-              <div className="font-medium truncate">{currentDisplayName}</div>
-            </div>
-            {currentUsername === 'admin' ? (
-              <>
-                <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/admin_profile_react">{t('navigation.admin_profile')}</a>
-                <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/admin">{t('navigation.admin_dashboard')}</a>
-              </>
-            ) : null}
-            <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/premium_dashboard">{t('navigation.dashboard')}</a>
-            <button
-              className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white"
-              onClick={() => {
-                setMenuOpen(false)
-                if (currentUsername) navigate(`/profile/${encodeURIComponent(currentUsername)}`)
-                else navigate('/profile')
-              }}
-            >
-              {t('navigation.my_profile')}
-            </button>
-            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/followers') }}>{t('navigation.followers')}</button>
-            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/subscription_plans') }}>{t('navigation.subscriptions')}</button>
-            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={requestLogout}>{t('navigation.logout')}</button>
-            <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/account_settings">{t('navigation.account_settings')}</a>
-          </div>
-          <div className="flex-1 h-full" onClick={()=> setMenuOpen(false)} />
-        </div>
+        <BurgerMenuDrawer
+          username={currentUsername}
+          displayName={currentDisplayName}
+          avatarUrl={userAvatar}
+          zIndexClass="z-[1001]"
+          onClose={() => setMenuOpen(false)}
+        />
       )}
 
       {(refreshHint || isRefreshing) && (

@@ -1,9 +1,9 @@
-const SW_VERSION = '2.69.2'
+const SW_VERSION = '2.69.3'
 const APP_SHELL_CACHE = `cp-shell-${SW_VERSION}`
 const RUNTIME_CACHE = `cp-runtime-${SW_VERSION}`
 const MEDIA_CACHE = `cp-media-${SW_VERSION}`
 const MAX_MEDIA_CACHE_SIZE = 50 // Max number of videos/large media to cache
-const FORCE_UPDATE_TIMESTAMP = 1776499200000 // Force cache clear - updated Apr 22 2026
+const FORCE_UPDATE_TIMESTAMP = 1776556800000 // Force cache clear — session API bypass (May 2026)
 
 const STATIC_ASSETS = [
   '/',
@@ -16,22 +16,13 @@ const STATIC_ASSETS = [
 ]
 
 const STATIC_ASSET_PATHS = new Set(STATIC_ASSETS)
-// These endpoints use stale-while-revalidate (show cached first, update in background)
-// User-specific endpoints (/api/profile_me, /api/profile/*) must NOT be here
-const STALE_API_ENDPOINTS = new Set([
-  '/api/user_communities_hierarchical',
+
+// Legacy Flask JSON paths (not under /api/) — still session-scoped; never cache in SW.
+const LEGACY_SESSION_JSON_PATHS = new Set([
   '/get_user_communities_with_members',
-  '/api/premium_dashboard_summary',
-  '/api/user_parent_community',
-  '/api/chat_threads',
-  '/api/group_chat/list',
-  '/api/notifications',
-  '/api/check_gym_membership',
-  '/api/check_admin',
 ])
 
-// User-specific endpoints that must NEVER be cached by the service worker.
-// These are excluded from both staleWhileRevalidate and networkFirst caching.
+// Profile paths explicitly listed for clarity (also covered by /api/ rule).
 const NO_CACHE_API_ENDPOINTS = new Set([
   '/api/profile_me',
   '/api/profile/cv',
@@ -40,6 +31,17 @@ const NO_CACHE_API_ENDPOINTS = new Set([
   '/api/profile/steve_analysis',
   '/api/profile/steve_request_refresh',
 ])
+
+/** Cookie-session JSON must not use Cache Storage (no viewer in cache key). */
+function isSessionJsonGetRequest(pathname, request) {
+  if (request.method !== 'GET') return false
+  const accept = request.headers.get('accept') || ''
+  if (!accept.includes('application/json')) return false
+  if (pathname.startsWith('/api/')) return true
+  if (LEGACY_SESSION_JSON_PATHS.has(pathname)) return true
+  if (NO_CACHE_API_ENDPOINTS.has(pathname)) return true
+  return false
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
@@ -243,18 +245,8 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // User-specific endpoints: always go straight to network, never cache
-  if (NO_CACHE_API_ENDPOINTS.has(url.pathname)){
-    return // Let the browser handle it directly — no SW caching
-  }
-
-  if (STALE_API_ENDPOINTS.has(url.pathname) && request.headers.get('accept')?.includes('application/json')){
-    event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE))
-    return
-  }
-
-  if (url.pathname.startsWith('/api/') && request.headers.get('accept')?.includes('application/json')){
-    event.respondWith(networkFirst(request, RUNTIME_CACHE))
+  // Session JSON: browser fetch only — no staleWhileRevalidate or networkFirst caching.
+  if (isSessionJsonGetRequest(url.pathname, request)) {
     return
   }
 })

@@ -41,6 +41,7 @@ from backend.services import (
     subscription_audit,
     user_billing,
 )
+from backend.services.community import COMMUNITY_TIER_FREE
 from backend.services.database import get_db_connection, get_sql_placeholder
 
 
@@ -273,6 +274,7 @@ def _handle_community_tier_event(
             )
         community_billing.mark_subscription(
             community_id,
+            tier_code=COMMUNITY_TIER_FREE,
             status="cancelled",
             current_period_end=obj.get("current_period_end"),
             cancel_at_period_end=False,

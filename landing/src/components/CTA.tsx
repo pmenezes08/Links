@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Apple, Laptop, MessageCircle } from "lucide-react";
 import { ContactForm } from "./ContactForm";
-import { AndroidComingSoonButton } from "@/components/AndroidComingSoonButton";
+import { AndroidStoreButton } from "@/components/AndroidStoreButton";
 import { APP_STORE_URL, APP_WEB_URL, PLATFORM_AVAILABILITY_LINE } from "@/content/siteCopy";
 
 export const CTA = () => {
@@ -28,15 +28,6 @@ export const CTA = () => {
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center items-center flex-wrap mb-8">
           <a
-            href={APP_WEB_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity shadow-lg"
-          >
-            <Laptop size={18} />
-            Open web app
-          </a>
-          <a
             href={APP_STORE_URL}
             target="_blank"
             rel="noopener noreferrer"
@@ -45,7 +36,16 @@ export const CTA = () => {
             <Apple size={18} />
             Download for iOS
           </a>
-          <AndroidComingSoonButton variant="muted" />
+          <AndroidStoreButton variant="muted" />
+          <a
+            href={APP_WEB_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity shadow-lg"
+          >
+            <Laptop size={18} />
+            Open web app
+          </a>
         </div>
 
         <button
@@ -58,7 +58,7 @@ export const CTA = () => {
         </button>
 
         <p className="mt-12 text-xs text-muted-foreground max-w-md mx-auto leading-relaxed">
-          Push notifications where supported — Web and iOS today; Android when available on Google Play.
+          Push notifications where supported across iOS, Android, and Web.
         </p>
       </div>
 

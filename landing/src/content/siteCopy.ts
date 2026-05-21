@@ -5,12 +5,13 @@
 
 export const APP_WEB_URL = "https://app.c-point.co";
 export const APP_STORE_URL = "https://apps.apple.com/us/app/cpoint/id6755534074";
+export const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=co.cpoint.app";
 /** In-app pricing and plan caps (no amounts on the landing page). */
 export const APP_SUBSCRIPTION_PATH = "/subscription_plans";
 
-/** Single sentence for Hero / CTA / Tools — Android not on Google Play yet. */
+/** Single sentence for Hero / CTA / Tools. */
 export const PLATFORM_AVAILABILITY_LINE =
-  "Web and iOS available now. Android on Google Play — coming soon.";
+  "iOS, Android, and Web are available now.";
 
 export const MANIFESTO_SUMMARY_PARAS: string[] = [
   "C-Point was built on a simple principle: the world is meant to be lived — reconnect with your people in invitation-only communities, with no public feeds or algorithmic noise.",
@@ -32,7 +33,7 @@ Access is by invitation only. Privacy and exclusivity are built in from day one.
 
 This is your world. Come connect with it.`;
 
-export const androidComingSoonLabel = "Android — coming soon on Google Play";
+export const androidStoreLabel = "Get C-Point on Google Play";
 
 /** High-level hero paragraph approved by user - global platform of private micro-networks framing. Keep in sync with manifesto in docs/STEVE_PLATFORM_KB.md and client/src/content/aboutCPoint.ts */
 export const HERO_SUBHEAD =

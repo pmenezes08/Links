@@ -287,6 +287,47 @@ The app chooses `*_test` or `*_live` from the current `STRIPE_API_KEY`
 prefix. Admin-web → Subscriptions shows a diagnostics banner when any
 expected Price ID is missing.
 
+**Production Cloud Run (`cpoint-app`) Stripe secrets** (Secret Manager):
+
+| Secret | Purpose |
+|--------|---------|
+| `stripe-api-key` | `STRIPE_API_KEY` — must be `sk_live_*` for live billing |
+| `stripe-publishable-key` | `STRIPE_PUBLISHABLE_KEY` — `pk_live_*` |
+| `stripe-webhook-secret` | `STRIPE_WEBHOOK_SECRET` — live webhook signing secret |
+
+Wire or rotate from repo root (paste live keys from [Stripe API keys](https://dashboard.stripe.com/apikeys) with **live** mode on):
+
+```powershell
+$env:STRIPE_API_KEY = "sk_live_..."
+$env:STRIPE_PUBLISHABLE_KEY = "pk_live_..."
+$env:STRIPE_WEBHOOK_SECRET = "whsec_..."
+.\scripts\wire_prod_stripe_secrets.ps1
+```
+
+If live keys were pasted into Cloud Run as plain env vars (including the legacy typo `STRIPE_PERISHABLE_KEY`), copy them into Secret Manager and remount secrets:
+
+```powershell
+.\scripts\sync_prod_stripe_from_cloudrun.ps1
+```
+
+The app reads **`STRIPE_PUBLISHABLE_KEY`** only (not `STRIPE_PERISHABLE_KEY`).
+
+**Live price IDs** (Stripe account `acct_1STYnkDHGQ57hB63`, verified via Stripe MCP):
+
+| SKU | Live `price_...` | Amount |
+|-----|------------------|--------|
+| Premium monthly | `price_1TYTiwDHGQ57hB639I1hXI9U` | €7.99 |
+| Community L1 | `price_1TYaE2DHGQ57hB63fjGqo2nZ` | €49.99 |
+| Community L2 | `price_1TYaE2DHGQ57hB63Vr9ugl3Z` | €99.99 |
+| Community L3 | `price_1TYaE2DHGQ57hB63cnv6WV3h` | €189.99 |
+| Steve Community Package | `price_1TZ7ubDHGQ57hB63F2iLp3sL` | €49.99 |
+
+Steve is a **separate** Stripe product (`C-Point Steve Community Package`). Each **paid root community** can have its own Steve subscription (second sub on the same `stripe_customer_id` when tier billing exists). Add this price to the **live** Customer Portal allowed products alongside L1/L2/L3.
+
+Seeds in `knowledge_base.py` include these live IDs; after deploy use admin-web **Reseed + Force** on `user-tiers` / `community-tiers` if the DB still has empty price IDs.
+
+The subscriptions page **test-mode banner** is hidden on production (`FLASK_ENV=production`) via `show_stripe_test_banner` on `/api/kb/pricing`, even during a temporary `sk_test_*` rotation.
+
 Webhook-owned billing state:
 
 - Personal Premium state is stored on `users` via
@@ -308,17 +349,24 @@ Upgrade, downgrade, and renewal policy:
   or manage cancellation/payment methods. Do not start a second Checkout
   session for L1 → L2, L2 → L3, or renewal after
   `cancel_at_period_end`.
-- Configure Stripe Customer Portal in the Stripe Dashboard so Community
-  L1/L2/L3 products and prices are available as a fallback for plan
-  changes and customer self-service.
-- Stripe-side setup for portal fallback:
-  1. Open Stripe Dashboard → Settings → Billing → Customer portal.
-  2. Enable subscription updates.
-  3. Add the Community L1, L2, and L3 recurring monthly prices to the
-     allowed products/prices.
-  4. Save test-mode and live-mode portal configurations separately.
-  5. Verify with an L2 test subscription that L1 downgrade and L3
-     upgrade options appear.
+- Configure Stripe Customer Portal so Community L1/L2/L3 **and Steve
+  Community Package** are allowed for subscription updates (plan changes,
+  add-ons, renewals). The Stripe MCP plugin cannot update portal settings;
+  use the script below or the Dashboard.
+- **Script (merges products; does not remove existing portal prices)**::
+
+    $env:STRIPE_API_KEY = "sk_live_..."   # or sk_test_... for test portal
+    python scripts/update_stripe_portal_products.py --dry-run
+    python scripts/update_stripe_portal_products.py --apply
+
+  Live catalog is baked into the script (`prod_UYEN3sAR4LrZpq` +
+  `price_1TZ7ubDHGQ57hB63F2iLp3sL` for Steve). Test portal uses
+  `prod_UUaAZq6nO2Jiu9` / `price_1TVb03DHGQ57hB634kqTt5Gz`.
+- **Dashboard fallback:** Settings → Billing → Customer portal → enable
+  subscription updates → add L1/L2/L3 + Steve monthly prices → save **live**
+  and **test** configurations separately.
+- Verify with an L2 subscription that L1 downgrade, L3 upgrade, and Steve
+  add-on/change paths appear in the portal.
 
 Stripe subscription identification:
 
@@ -337,8 +385,8 @@ Stripe subscription identification:
 
 When a paid community Stripe subscription terminates (the
 `customer.subscription.deleted` webhook fires *after* Stripe finishes
-its dunning retries), the C-Point app evaluates whether the community
-should auto-freeze:
+its dunning retries), the app sets `communities.tier` to **free** and
+evaluates whether the community should auto-freeze:
 
 - If the community has `> free_community_max_members` members at the
   moment of cancellation, the community is frozen with
@@ -737,6 +785,24 @@ calling `https://cpoint-app-staging-….run.app`), CSRF enforcement will block
 Use the exact admin URL origin from the browser (comma-separated if several).
 `cloudbuild.yaml` for staging sets this alongside deploy when the URL matches
 the project’s admin service.
+
+---
+
+## Landing legal pages (EN + Portuguese)
+
+Marketing site (`landing/`) serves static legal copy for App Store / Play compliance.
+
+| Page | English (authoritative) | Portuguese (Portugal) |
+|------|-------------------------|------------------------|
+| Privacy | `https://www.c-point.co/privacy` | `https://www.c-point.co/pt/privacy` |
+| Terms | `https://www.c-point.co/terms` | `https://www.c-point.co/pt/terms` |
+| Safety | `https://www.c-point.co/safety` | `https://www.c-point.co/pt/safety` |
+
+- **English** is the binding version. **pt-PT** pages show a disclaimer and link to English.
+- `?lang=pt-PT` on an English URL redirects to the matching `/pt/...` path.
+- Source: `landing/src/content/legal/{en,pt-PT}/*.md` — update both locales when policy text changes; redeploy `cpoint-landing` (`cloudbuild-landing.yaml`).
+
+**App Store Connect:** set **Privacy Policy URL (Portuguese (Portugal))** to `https://www.c-point.co/pt/privacy` (same host as English; path opens in Portuguese).
 
 ---
 

@@ -29,6 +29,7 @@ export function currentStoreProvider(): StoreProvider | null {
 
 export function providerLabel(provider: StoreProvider | string | null | undefined): string {
   if (provider === 'apple') return 'App Store'
+  if (provider === 'google' && Capacitor.getPlatform() === 'ios') return 'store billing'
   if (provider === 'google') return 'Google Play'
   if (provider === 'stripe') return 'Web billing'
   return 'Billing'
@@ -36,6 +37,7 @@ export function providerLabel(provider: StoreProvider | string | null | undefine
 
 export function providerBadge(provider: StoreProvider | 'stripe' | string | null | undefined): string {
   if (provider === 'apple') return 'App Store'
+  if (provider === 'google' && Capacitor.getPlatform() === 'ios') return 'Store billing'
   if (provider === 'google') return 'Google Play'
   return 'Web billing'
 }
@@ -45,14 +47,13 @@ export function nativeIapPurchasesEnabled(config: IapConfig | null | undefined):
   return !!config?.iap_purchases_enabled
 }
 
-/** Native store IAP product flow is available (platform + product id + KB flag). */
+/** Native store IAP checkout can start (platform + configured product id). */
 export function canUseNativeStoreIap(
   provider: StoreProvider | null,
-  config: IapConfig | null | undefined,
+  _config: IapConfig | null | undefined,
   productId: string | undefined | null,
 ): boolean {
-  if (!provider || !productId) return false
-  return nativeIapPurchasesEnabled(config)
+  return !!(provider && productId)
 }
 
 export async function loadIapConfig(): Promise<IapConfig | null> {

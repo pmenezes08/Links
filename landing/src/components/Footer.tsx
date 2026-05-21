@@ -51,6 +51,15 @@ export const Footer = () => {
             <Link to="/safety" className="text-sm text-white/70 hover:text-white transition-colors">
               Safety
             </Link>
+            <span className="text-white/30 hidden sm:inline" aria-hidden>
+              |
+            </span>
+            <Link to="/pt/privacy" className="text-sm text-white/70 hover:text-white transition-colors" lang="pt-PT">
+              Privacidade (PT)
+            </Link>
+            <Link to="/pt/terms" className="text-sm text-white/70 hover:text-white transition-colors" lang="pt-PT">
+              Termos (PT)
+            </Link>
             <Link to="/admin" className="text-sm text-white/70 hover:text-white transition-colors">
               Operator login
             </Link>

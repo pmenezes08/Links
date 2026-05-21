@@ -92,6 +92,15 @@ def _stripe_mode() -> str:
     return "live" if key.startswith("sk_live_") else "test"
 
 
+def _show_stripe_test_banner() -> bool:
+    """Whether the subscriptions page should show the test-mode banner."""
+    if _stripe_mode() != "test":
+        return False
+    # Production Cloud Run (`FLASK_ENV=production`) must not show a test banner
+    # to end users even while operators rotate Stripe keys.
+    return (os.getenv("FLASK_ENV") or "").strip().lower() != "production"
+
+
 def _stripe_publishable_key() -> str:
     return (os.getenv("STRIPE_PUBLISHABLE_KEY") or "").strip()
 
@@ -428,6 +437,7 @@ def api_kb_pricing():
     payload = {
         "success": True,
         "stripe_mode": _stripe_mode(),
+        "show_stripe_test_banner": _show_stripe_test_banner(),
         "publishable_key_available": bool(_stripe_publishable_key()),
         "sku": {
             "premium": _premium_payload(user_tiers),
