@@ -1005,11 +1005,6 @@ export default function PremiumDashboard() {
               </div>
             ) : (
             <>
-              {/* Welcome Header */}
-              <div className="mb-4 text-sm text-[#9fb0b5]">
-                {t('dashboard.welcome_populated')}
-              </div>
-
               {searchOpen && (
                 <div className="mb-4">
                   <div className="relative w-full max-w-xl">
