@@ -8,7 +8,7 @@ import secrets
 import traceback
 from datetime import datetime
 from functools import wraps
-from typing import List, Optional, Set
+from typing import Any, List, Optional, Set
 from urllib.parse import urlencode, quote
 
 from flask import (
@@ -975,6 +975,10 @@ _DEFAULT_GOOGLE_ANDROID_CLIENT_ID = "739552904126-mvkhoasgt3kt25uejlple989m3ph6d
 GOOGLE_CLIENT_ID_WEB = os.environ.get("GOOGLE_CLIENT_ID_WEB") or _DEFAULT_GOOGLE_WEB_CLIENT_ID
 GOOGLE_CLIENT_ID_IOS = os.environ.get("GOOGLE_CLIENT_ID_IOS") or _DEFAULT_GOOGLE_IOS_CLIENT_ID
 GOOGLE_CLIENT_ID_ANDROID = os.environ.get("GOOGLE_CLIENT_ID_ANDROID") or _DEFAULT_GOOGLE_ANDROID_CLIENT_ID
+APPLE_CLIENT_ID_IOS = os.environ.get("APPLE_CLIENT_ID_IOS") or os.environ.get("APPLE_BUNDLE_ID") or "co.cpoint.app"
+APPLE_ISSUER = "https://appleid.apple.com"
+APPLE_JWKS_URL = f"{APPLE_ISSUER}/auth/keys"
+_APPLE_JWKS_CLIENT: Any = None
 
 
 def _verify_google_id_token(id_token: str, platform: str = 'ios') -> dict | None:
@@ -1021,6 +1025,56 @@ def _ensure_google_id_column(cursor):
                 cursor.execute("ALTER TABLE users ADD COLUMN google_id TEXT UNIQUE DEFAULT NULL")
         except Exception:
             pass
+
+
+def _ensure_apple_id_column(cursor):
+    """Add apple_id column to users table if missing."""
+    try:
+        cursor.execute("SELECT apple_id FROM users LIMIT 1")
+    except Exception:
+        try:
+            from backend.services.database import USE_MYSQL
+            if USE_MYSQL:
+                cursor.execute("ALTER TABLE users ADD COLUMN apple_id VARCHAR(191) UNIQUE DEFAULT NULL")
+            else:
+                cursor.execute("ALTER TABLE users ADD COLUMN apple_id TEXT UNIQUE DEFAULT NULL")
+        except Exception:
+            pass
+
+
+def _oauth_email_verified(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes")
+    return bool(value)
+
+
+def _verify_apple_id_token(id_token: str, nonce: str | None = None) -> dict | None:
+    """Verify an Apple identity token and return its claims."""
+    try:
+        import jwt
+        from jwt import PyJWKClient
+
+        global _APPLE_JWKS_CLIENT
+        if _APPLE_JWKS_CLIENT is None:
+            _APPLE_JWKS_CLIENT = PyJWKClient(APPLE_JWKS_URL)
+
+        signing_key = _APPLE_JWKS_CLIENT.get_signing_key_from_jwt(id_token)
+        payload = jwt.decode(
+            id_token,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=APPLE_CLIENT_ID_IOS,
+            issuer=APPLE_ISSUER,
+        )
+        if nonce and payload.get("nonce") and payload.get("nonce") != nonce:
+            current_app.logger.warning("Apple ID token nonce mismatch")
+            return None
+        return payload
+    except Exception as exc:
+        current_app.logger.warning("Apple ID token verification failed: %s", exc)
+        return None
 
 
 @auth_bp.route("/api/auth/google", methods=["POST"])
@@ -1167,4 +1221,155 @@ def google_sign_in():
 
     except Exception as e:
         logger.error(f"Google sign-in error: {e}")
+        return jsonify({'success': False, 'error': 'Authentication failed'}), 500
+
+
+@auth_bp.route("/api/auth/apple", methods=["POST"])
+def apple_sign_in():
+    """
+    Sign in with Apple endpoint for iOS.
+    Body: { id_token, apple_user?, given_name?, family_name?, nonce?, invite_token? }
+    """
+    logger = current_app.logger
+    data = request.get_json() or {}
+    id_token_str = (data.get('id_token') or '').strip()
+    apple_user = (data.get('apple_user') or '').strip()
+    nonce = (data.get('nonce') or '').strip() or None
+    invite_token = (data.get('invite_token') or '').strip() or None
+
+    if not id_token_str:
+        return jsonify({'success': False, 'error': 'Apple identity token required'}), 400
+
+    payload = _verify_apple_id_token(id_token_str, nonce=nonce)
+    if not payload:
+        return jsonify({'success': False, 'error': 'Invalid Apple token'}), 401
+
+    apple_id = (payload.get('sub') or '').strip()
+    email = (payload.get('email') or '').lower().strip()
+    canonical = canonicalize_with_policy(email) if email else ""
+    first_name = (data.get('given_name') or '').strip()
+    last_name = (data.get('family_name') or '').strip()
+    email_verified = _oauth_email_verified(payload.get('email_verified'))
+
+    if not apple_id:
+        return jsonify({'success': False, 'error': 'Incomplete Apple profile'}), 400
+    if apple_user and apple_user != apple_id:
+        return jsonify({'success': False, 'error': 'Apple account mismatch'}), 400
+
+    try:
+        # Drop any prior session keys (pending_username, stale username, etc.) before binding identity.
+        session.clear()
+        session.permanent = False
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            _ensure_apple_id_column(c)
+
+            # 1. Look up by Apple's stable subject (returning user).
+            c.execute(f"SELECT username, email FROM users WHERE apple_id = {ph}", (apple_id,))
+            row = c.fetchone()
+            if row:
+                username = row['username'] if hasattr(row, 'keys') else row[0]
+                apply_oauth_email_verified(c, ph, username, email_verified)
+                conn.commit()
+                session['username'] = username
+                session.permanent = True
+                _invalidate_profile_and_dashboard_caches(username)
+                logger.info("Apple sign-in: returning user %s", username)
+                resp = make_response(jsonify({'success': True, 'username': username, 'is_new': False}))
+                stale = _apply_login_persistence(resp, username)
+                logger.info("Apple sign-in persistence stale_revoked=%d user=%s", stale, username)
+                auth_session.no_store(resp)
+                return resp
+
+            # 2. Link an existing email account only when Apple supplied a signed email claim.
+            if email:
+                c.execute(
+                    f"SELECT username FROM users WHERE canonical_email = {ph} OR LOWER(email) = LOWER({ph})",
+                    (canonical, email),
+                )
+                row = c.fetchone()
+                if row:
+                    username = row['username'] if hasattr(row, 'keys') else row[0]
+                    c.execute(
+                        f"UPDATE users SET apple_id = {ph}, canonical_email = COALESCE(canonical_email, {ph}) WHERE username = {ph}",
+                        (apple_id, canonical, username),
+                    )
+                    apply_oauth_email_verified(c, ph, username, email_verified)
+                    conn.commit()
+                    session['username'] = username
+                    session.permanent = True
+                    _invalidate_profile_and_dashboard_caches(username)
+                    logger.info("Apple sign-in: linked %s to Apple ID", username)
+                    resp = make_response(jsonify({'success': True, 'username': username, 'is_new': False}))
+                    stale = _apply_login_persistence(resp, username)
+                    logger.info("Apple sign-in linked persistence stale_revoked=%d user=%s", stale, username)
+                    auth_session.no_store(resp)
+                    return resp
+
+            if not email:
+                return jsonify({
+                    'success': False,
+                    'error': 'Apple did not provide an email address. Remove C-Point from Sign in with Apple settings and try again.',
+                }), 400
+
+            # 3. Create new user. Apple private relay emails are accepted as the account email.
+            base_username = re.sub(r'[^a-z0-9_]', '', email.split('@')[0].lower()) or 'appleuser'
+            username = base_username
+            suffix = 1
+            while True:
+                c.execute(f"SELECT 1 FROM users WHERE username = {ph}", (username,))
+                if not c.fetchone():
+                    break
+                suffix += 1
+                username = f"{base_username}{suffix}"
+
+            random_password = generate_password_hash(secrets.token_urlsafe(32))
+            now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            verified_at = first_oauth_verified_at_iso() if email_verified else None
+            c.execute(f"""
+                INSERT INTO users (username, email, canonical_email, password, first_name, last_name, apple_id, email_verified, email_verified_at, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """, (
+                username,
+                email,
+                canonical,
+                random_password,
+                first_name,
+                last_name,
+                apple_id,
+                1 if email_verified else 0,
+                verified_at,
+                now,
+            ))
+            conn.commit()
+
+            full_name = f"{first_name} {last_name}".strip() or username
+            try:
+                c.execute(f"INSERT INTO user_profiles (username, display_name) VALUES ({ph}, {ph})", (username, full_name))
+                conn.commit()
+            except Exception:
+                try:
+                    c.execute(f"UPDATE user_profiles SET display_name = {ph} WHERE username = {ph}", (full_name, username))
+                    conn.commit()
+                except Exception:
+                    pass
+
+            if invite_token:
+                try:
+                    session['pending_invite_token'] = invite_token
+                except Exception:
+                    pass
+
+            session['username'] = username
+            session.permanent = True
+            _invalidate_profile_and_dashboard_caches(username)
+            logger.info("Apple sign-in: created new user %s", username)
+            resp = make_response(jsonify({'success': True, 'username': username, 'is_new': True}))
+            stale = _apply_login_persistence(resp, username)
+            logger.info("Apple sign-in new user persistence stale_revoked=%d user=%s", stale, username)
+            auth_session.no_store(resp)
+            return resp
+    except Exception as e:
+        logger.error("Apple sign-in error: %s", e)
         return jsonify({'success': False, 'error': 'Authentication failed'}), 500

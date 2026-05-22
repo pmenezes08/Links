@@ -118,3 +118,96 @@ def test_google_sign_in_email_link_returns_existing_username(
     assert link_calls
     assert "canonical_email = COALESCE" in str(link_calls[0].args[0])
     assert link_calls[0].args[1] == ("google-sub-link", "existing@example.com", "oldaccount")
+
+
+@patch("backend.blueprints.auth._ensure_apple_id_column")
+@patch("backend.blueprints.auth._apply_login_persistence", return_value=0)
+@patch("backend.blueprints.auth._verify_apple_id_token")
+@patch("backend.blueprints.auth.get_db_connection")
+def test_apple_sign_in_new_user_uses_private_relay_email(
+    mock_get_conn, mock_verify, _mock_persist, _mock_ensure, auth_google_app
+):
+    mock_verify.return_value = {
+        "sub": "apple-sub-new",
+        "email": "relay@privaterelay.appleid.com",
+        "email_verified": "true",
+    }
+
+    cm = MagicMock()
+    cursor = MagicMock()
+    cm.cursor.return_value = cursor
+    cm.commit = MagicMock()
+    mock_get_conn.return_value.__enter__.return_value = cm
+    mock_get_conn.return_value.__exit__.return_value = None
+
+    cursor.fetchone.side_effect = [None, None, None]
+
+    with auth_google_app.test_client() as client:
+        resp = client.post(
+            "/api/auth/apple",
+            json={
+                "id_token": "t",
+                "apple_user": "apple-sub-new",
+                "given_name": "Relay",
+                "family_name": "User",
+            },
+        )
+        assert resp.status_code == 200
+        js = resp.get_json()
+        assert js["success"] is True
+        assert js["is_new"] is True
+        assert js["username"] == "relay"
+        with client.session_transaction() as sess:
+            assert sess.get("username") == "relay"
+
+    user_insert_calls = [
+        call for call in cursor.execute.call_args_list
+        if "INSERT INTO users" in str(call.args[0])
+    ]
+    assert user_insert_calls
+    sql = str(user_insert_calls[0].args[0])
+    params = user_insert_calls[0].args[1]
+    assert "apple_id" in sql
+    assert params[1] == "relay@privaterelay.appleid.com"
+    assert params[6] == "apple-sub-new"
+
+
+@patch("backend.blueprints.auth._ensure_apple_id_column")
+@patch("backend.blueprints.auth._apply_login_persistence", return_value=0)
+@patch("backend.blueprints.auth._verify_apple_id_token")
+@patch("backend.blueprints.auth.get_db_connection")
+def test_apple_sign_in_email_link_returns_existing_username(
+    mock_get_conn, mock_verify, _mock_persist, _mock_ensure, auth_google_app
+):
+    mock_verify.return_value = {
+        "sub": "apple-sub-link",
+        "email": "existing@example.com",
+        "email_verified": True,
+    }
+
+    cm = MagicMock()
+    cursor = MagicMock()
+    cm.cursor.return_value = cursor
+    cm.commit = MagicMock()
+    mock_get_conn.return_value.__enter__.return_value = cm
+    mock_get_conn.return_value.__exit__.return_value = None
+
+    cursor.fetchone.side_effect = [None, {"username": "oldaccount"}]
+
+    with auth_google_app.test_client() as client:
+        resp = client.post("/api/auth/apple", json={"id_token": "t"})
+        assert resp.status_code == 200
+        js = resp.get_json()
+        assert js["success"] is True
+        assert js["is_new"] is False
+        assert js["username"] == "oldaccount"
+        with client.session_transaction() as sess:
+            assert sess.get("username") == "oldaccount"
+
+    link_calls = [
+        call for call in cursor.execute.call_args_list
+        if "UPDATE users SET apple_id" in str(call.args[0])
+    ]
+    assert link_calls
+    assert "canonical_email = COALESCE" in str(link_calls[0].args[0])
+    assert link_calls[0].args[1] == ("apple-sub-link", "existing@example.com", "oldaccount")

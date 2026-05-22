@@ -45,6 +45,7 @@
 		"Filesystem": {}
 	},
 	"packageClassList": [
+		"SignInWithApple",
 		"AppPlugin",
 		"DevicePlugin",
 		"FilesystemPlugin",

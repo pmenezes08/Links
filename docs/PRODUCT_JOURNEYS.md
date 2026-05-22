@@ -6,6 +6,15 @@ Short narratives for **how behaviour spans** Flask, Stripe, MySQL, Firestore, cr
 
 ---
 
+## 0. Authentication
+
+- **Username/password remains first-party.** The staged `/login` → `/login_password` flow sets the same Flask session / remember-token cookies as OAuth and is still available on all platforms.
+- **Google Sign-In remains available.** `client/src/pages/MobileLogin.tsx` uses native Google auth on Capacitor and Google Identity Services on web, then posts the ID token to `POST /api/auth/google`. The backend verifies the token, looks up `users.google_id`, links by signed email when needed, or creates a user.
+- **iOS Sign in with Apple is App Store compliance-critical.** On iOS only, the login screen shows Sign in with Apple beside Google. The client requests `email name` scopes through `@capacitor-community/apple-sign-in` and posts Apple’s identity token to `POST /api/auth/apple`. The backend verifies Apple JWKS / issuer / audience (`co.cpoint.app`), stores `users.apple_id`, accepts private relay email addresses, and uses first-login name fields only when Apple returns them.
+- **Session finish is shared.** Successful OAuth paths clear stale session state, issue the normal remember-token/install cookies, invalidate profile/dashboard caches, re-register push tokens, and redirect to `/premium_dashboard`.
+
+---
+
 ## 1. Subscription and Stripe
 
 1. User starts checkout from the client; backend creates a **Stripe Checkout** session (`backend/blueprints/subscriptions.py` and related).

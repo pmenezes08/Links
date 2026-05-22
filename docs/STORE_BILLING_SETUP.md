@@ -33,6 +33,10 @@ Production grants stay behind the KB field `iap_purchases_enabled=false` until s
 5. Set App Store Server Notifications V2 URL to `https://cpoint-app-739552904126.europe-west1.run.app/api/webhooks/apple` (or `https://app.c-point.co/api/webhooks/apple` if routed).
 6. Use sandbox testers to verify Premium, Community L1, L1→L2 upgrade, **Steve add-on on a paid root community**, restore purchases, and the extra-community web-link modal.
 
+### Login compliance
+
+Because the iOS app offers Google Sign-In, App Store Guideline 4.8 requires an equivalent privacy-preserving login provider. The app shows **Sign in with Apple** beside Google on iOS; the App ID / provisioning profile must have the Sign in with Apple capability enabled before creating the TestFlight/App Review build.
+
 ## Google Play Console
 
 1. Create a Premium subscription product `cpoint_premium_monthly`.

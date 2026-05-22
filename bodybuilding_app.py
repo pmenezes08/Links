@@ -788,6 +788,7 @@ def _block_unverified_users():
         # Exception for public endpoints (no auth required)
         public_api_endpoints = [
             '/api/auth/google',  # Google Sign-In (no session yet)
+            '/api/auth/apple',  # Sign in with Apple (no session yet)
             '/api/public/logo',  # Public logo (no auth, used by admin/landing)
             '/api/poll_notification_check', 
             '/api/event_notification_check', 

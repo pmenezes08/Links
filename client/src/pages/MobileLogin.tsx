@@ -16,6 +16,13 @@ import {
 import { useUserProfile } from '../contexts/UserProfileContext'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
+const APPLE_CLIENT_ID = 'co.cpoint.app'
+
+function randomAuthToken(): string {
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
 
 export default function MobileLogin() {
   const navigate = useNavigate()
@@ -34,6 +41,7 @@ export default function MobileLogin() {
   const [showPassword, setShowPassword] = useState(false)
   const [authCheckDone, setAuthCheckDone] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+  const [appleLoading, setAppleLoading] = useState(false)
   const [inviteFromInstallBusy, setInviteFromInstallBusy] = useState(false)
   const [showInviteClipboardModal, setShowInviteClipboardModal] = useState(false)
   // PWA install state (removed install UI)
@@ -110,53 +118,57 @@ export default function MobileLogin() {
 
   const gsiButtonRef = useRef<HTMLDivElement>(null)
 
+  const finishAuthSuccess = useCallback(
+    async (j: { username?: string; is_new?: boolean }) => {
+      if (inviteToken) {
+        try {
+          await fetch('/api/join_with_invite', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ invite_token: inviteToken }),
+          })
+        } catch {}
+      }
+      try {
+        localStorage.removeItem('cached_profile')
+      } catch {
+        /* so loadProfile cannot fall back to previous user */
+      }
+      try {
+        const { ensureAccountIsolationForUsername } = await import('../utils/accountStateReset')
+        await ensureAccountIsolationForUsername(j.username ?? '')
+      } catch (e) {
+        console.warn('Account isolation reset before login:', e)
+      }
+      try {
+        localStorage.setItem('current_username', j.username ?? '')
+      } catch {}
+      invalidateDashboardCache()
+      void deleteCachedKeyVal('dashboard-data')
+      if (j.is_new === false) {
+        try {
+          sessionStorage.setItem('cpoint_signin_notice', 'existing_account')
+        } catch {
+          /* ignore */
+        }
+      }
+      await (window as any).__reregisterPushToken?.()
+      await triggerDashboardServerPull()
+      try {
+        await refresh()
+      } catch {
+        /* ignore; dashboard will refetch */
+      }
+      window.location.assign('/premium_dashboard')
+    },
+    [inviteToken, refresh],
+  )
+
   const postGoogleIdToken = useCallback(
     async (idToken: string) => {
       setError(null)
       const isAndroidGoogleDebug = Capacitor.getPlatform() === 'android'
-      const finishSuccess = async (j: { username?: string; is_new?: boolean }) => {
-        if (inviteToken) {
-          try {
-            await fetch('/api/join_with_invite', {
-              method: 'POST',
-              credentials: 'include',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ invite_token: inviteToken }),
-            })
-          } catch {}
-        }
-        try {
-          localStorage.removeItem('cached_profile')
-        } catch {
-          /* so loadProfile cannot fall back to previous user */
-        }
-        try {
-          const { ensureAccountIsolationForUsername } = await import('../utils/accountStateReset')
-          await ensureAccountIsolationForUsername(j.username ?? '')
-        } catch (e) {
-          console.warn('Account isolation reset before login:', e)
-        }
-        try {
-          localStorage.setItem('current_username', j.username ?? '')
-        } catch {}
-        invalidateDashboardCache()
-        void deleteCachedKeyVal('dashboard-data')
-        if (j.is_new === false) {
-          try {
-            sessionStorage.setItem('cpoint_signin_notice', 'existing_account')
-          } catch {
-            /* ignore */
-          }
-        }
-        await (window as any).__reregisterPushToken?.()
-        await triggerDashboardServerPull()
-        try {
-          await refresh()
-        } catch {
-          /* ignore; dashboard will refetch */
-        }
-        window.location.assign('/premium_dashboard')
-      }
       try {
         const r = await fetch('/api/auth/google', {
           method: 'POST',
@@ -183,7 +195,7 @@ export default function MobileLogin() {
             return
           }
           if (j?.success) {
-            await finishSuccess(j)
+            await finishAuthSuccess(j)
           } else {
             setError(j?.error || `Google sign-in failed (HTTP ${r.status})`)
           }
@@ -192,7 +204,7 @@ export default function MobileLogin() {
 
         const j = await r.json()
         if (j?.success) {
-          await finishSuccess(j)
+          await finishAuthSuccess(j)
         } else {
           setError(j?.error || 'Google sign-in failed')
         }
@@ -204,7 +216,46 @@ export default function MobileLogin() {
         )
       }
     },
-    [inviteToken, refresh],
+    [finishAuthSuccess, inviteToken],
+  )
+
+  const postAppleIdentityToken = useCallback(
+    async (payload: {
+      idToken: string
+      appleUser?: string | null
+      givenName?: string | null
+      familyName?: string | null
+      email?: string | null
+      nonce?: string | null
+    }) => {
+      setError(null)
+      try {
+        const r = await fetch('/api/auth/apple', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id_token: payload.idToken,
+            apple_user: payload.appleUser || undefined,
+            given_name: payload.givenName || undefined,
+            family_name: payload.familyName || undefined,
+            email: payload.email || undefined,
+            nonce: payload.nonce || undefined,
+            platform: Capacitor.getPlatform(),
+            invite_token: inviteToken || undefined,
+          }),
+        })
+        const j = await r.json().catch(() => null)
+        if (j?.success) {
+          await finishAuthSuccess(j)
+        } else {
+          setError(j?.error || 'Apple sign-in failed')
+        }
+      } catch {
+        setError('Apple sign-in failed. Please try again.')
+      }
+    },
+    [finishAuthSuccess, inviteToken],
   )
 
   useEffect(() => {
@@ -631,52 +682,100 @@ export default function MobileLogin() {
 
             <div className="flex flex-col gap-3">
               {Capacitor.isNativePlatform() ? (
-                <button
-                  type="button"
-                  disabled={googleLoading || isSubmitting || !window.__googleAuthReady}
-                  className="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 text-sm font-medium active:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
-                  onClick={async () => {
-                    const isAndroid = Capacitor.getPlatform() === 'android'
-                    setGoogleLoading(true)
-                    setError(null)
-                    try {
-                      const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth')
-                      const result = await GoogleAuth.signIn()
-                      const idToken = result?.authentication?.idToken
-                      if (!idToken) {
-                        if (isAndroid) {
-                          const hint = result?.authentication
-                            ? 'authentication object present but idToken missing (check Web client ID / SHA-1).'
-                            : 'no authentication in sign-in result.'
-                          console.error('[Google Sign-In Android]', hint, result)
-                          setError(`Google sign-in failed: ${hint}`)
-                        } else {
-                          setError('Google sign-in failed')
+                <>
+                  <button
+                    type="button"
+                    disabled={googleLoading || isSubmitting || !window.__googleAuthReady}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 text-sm font-medium active:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                    onClick={async () => {
+                      const isAndroid = Capacitor.getPlatform() === 'android'
+                      setGoogleLoading(true)
+                      setError(null)
+                      try {
+                        const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth')
+                        const result = await GoogleAuth.signIn()
+                        const idToken = result?.authentication?.idToken
+                        if (!idToken) {
+                          if (isAndroid) {
+                            const hint = result?.authentication
+                              ? 'authentication object present but idToken missing (check Web client ID / SHA-1).'
+                              : 'no authentication in sign-in result.'
+                            console.error('[Google Sign-In Android]', hint, result)
+                            setError(`Google sign-in failed: ${hint}`)
+                          } else {
+                            setError('Google sign-in failed')
+                          }
+                          return
                         }
-                        return
-                      }
-                      await postGoogleIdToken(idToken)
-                    } catch (err: any) {
-                      if (err?.message !== 'The user canceled the sign-in flow.') {
-                        if (isAndroid) {
-                          const msg =
-                            typeof err?.message === 'string' && err.message.trim()
-                              ? err.message.trim()
-                              : String(err ?? 'unknown error')
-                          console.error('[Google Sign-In Android]', err)
-                          setError(`Google sign-in: ${msg}`)
-                        } else {
-                          setError('Google sign-in failed. Please try again.')
+                        await postGoogleIdToken(idToken)
+                      } catch (err: any) {
+                        if (err?.message !== 'The user canceled the sign-in flow.') {
+                          if (isAndroid) {
+                            const msg =
+                              typeof err?.message === 'string' && err.message.trim()
+                                ? err.message.trim()
+                                : String(err ?? 'unknown error')
+                            console.error('[Google Sign-In Android]', err)
+                            setError(`Google sign-in: ${msg}`)
+                          } else {
+                            setError('Google sign-in failed. Please try again.')
+                          }
                         }
+                      } finally {
+                        setGoogleLoading(false)
                       }
-                    } finally {
-                      setGoogleLoading(false)
-                    }
-                  }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-                  {googleLoading ? 'Signing in...' : 'Sign in with Google'}
-                </button>
+                    }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+                    {googleLoading ? 'Signing in...' : 'Sign in with Google'}
+                  </button>
+                  {Capacitor.getPlatform() === 'ios' && (
+                    <button
+                      type="button"
+                      disabled={appleLoading || googleLoading || isSubmitting}
+                      className="w-full rounded-lg bg-white py-2.5 text-sm font-semibold text-black active:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                      onClick={async () => {
+                        setAppleLoading(true)
+                        setError(null)
+                        const nonce = randomAuthToken()
+                        try {
+                          const { SignInWithApple } = await import('@capacitor-community/apple-sign-in')
+                          const result = await SignInWithApple.authorize({
+                            clientId: APPLE_CLIENT_ID,
+                            redirectURI: 'https://app.c-point.co/login',
+                            scopes: 'email name',
+                            state: randomAuthToken(),
+                            nonce,
+                          })
+                          const response = result?.response
+                          if (!response?.identityToken) {
+                            setError('Apple sign-in failed')
+                            return
+                          }
+                          await postAppleIdentityToken({
+                            idToken: response.identityToken,
+                            appleUser: response.user,
+                            email: response.email,
+                            givenName: response.givenName,
+                            familyName: response.familyName,
+                            nonce,
+                          })
+                        } catch (err: any) {
+                          const msg = typeof err?.message === 'string' ? err.message.toLowerCase() : ''
+                          if (!msg.includes('cancel')) {
+                            console.error('[Apple Sign-In]', err)
+                            setError('Apple sign-in failed. Please try again.')
+                          }
+                        } finally {
+                          setAppleLoading(false)
+                        }
+                      }}
+                    >
+                      <i className="fa-brands fa-apple text-lg" aria-hidden="true" />
+                      {appleLoading ? 'Signing in...' : 'Sign in with Apple'}
+                    </button>
+                  )}
+                </>
               ) : (
                 <div
                   className={`relative w-full min-h-[44px] ${

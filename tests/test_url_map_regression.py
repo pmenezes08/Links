@@ -69,6 +69,7 @@ def test_auth_and_webhook_routes_still_exist():
     du = [r for r in app.url_map.iter_rules() if str(r.rule) == "/api/admin/delete_user"]
     assert len(du) == 1
     assert "/api/auth/google" in rules
+    assert "/api/auth/apple" in rules
     assert "/api/webhooks/stripe" in rules
     assert "/api/check_pending_login" in rules
     assert "/api/clear_stale_session" in rules

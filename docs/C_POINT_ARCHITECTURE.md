@@ -55,7 +55,7 @@ Flask blueprints are registered **without** a global URL prefix; each route decl
 | Module | Purpose |
 |--------|---------|
 | `public.py` | Unauthenticated routes (health, public config, push token registration, etc.). |
-| `auth.py` | Login, logout, session, OAuth/email verification flows. |
+| `auth.py` | Login, logout, session, Google Sign-In / iOS Sign in with Apple, OAuth/email verification flows. |
 | `onboarding.py` | Onboarding shell, stage APIs, debug helpers. |
 | `notifications.py` | Notification feeds, preferences, cron-style notification work. |
 | `communities.py` | Communities CRUD, dashboards, Stripe hooks for community billing, feeds. |
@@ -268,7 +268,7 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 - **`src/components/entitlements/`** — `useEntitlements` hook consumers, `LimitReachedBubble`, `LimitReachedModal`, `UsageWarningBanner`.
 - **`src/chat/`** — DM/group chat UI, media send queue, audio.
 - **`src/contexts/`** — `UserProfileContext`, badges, network state.
-- **`src/utils/`** — Caching, push payload parsing, offline DB, Google identity helpers.
+- **`src/utils/`** — Caching, push payload parsing, offline DB, Google identity helpers; iOS Apple auth uses the native Capacitor plugin directly from `MobileLogin`.
 - **`src/services/`** — Client-side service modules (share import, etc.).
 - **`src/hooks/useEntitlements.ts`** — Central entitlements fetching.
 
