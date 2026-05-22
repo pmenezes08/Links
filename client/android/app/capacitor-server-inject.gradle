@@ -45,7 +45,7 @@ ext.injectCapacitorRemoteServerUrl = {
 
 tasks.register('injectCapacitorRemoteServer') {
     group = 'capacitor'
-    description = 'Sets server.url in assets/capacitor.config.json (default: staging)'
+    description = 'Sets server.url in assets/capacitor.config.json (default: production app host)'
     doLast {
         injectCapacitorRemoteServerUrl()
     }

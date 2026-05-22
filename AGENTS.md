@@ -86,6 +86,25 @@ flows.
   (wires secrets + runs `scripts/smoke_prod.sh`). If prod fails while staging works:
   **`docs/PROD_CLOUD_RUN_RECOVERY.md`**.
 
+### Android release (do not revert)
+
+Play Store / production Android builds depend on fixed Gradle and Firebase config. **Do not**
+revert these to placeholders, remove `externalOverride`, comment out the prod Capacitor host,
+or drop the upload-key SHA-1 — that breaks signing, Firebase auth, or points the WebView at
+the wrong API.
+
+| Invariant | Location |
+|-----------|----------|
+| Production WebView host | `client/android/gradle.properties` → `cpointCapacitorServerUrl=https://app.c-point.co` |
+| Release + `externalOverride` signing | `client/android/app/build.gradle` — both use `MYAPP_RELEASE_*` from `gradle.properties` |
+| Keystore path and credentials | `client/android/gradle.properties` → `MYAPP_RELEASE_*` (not `my-release-key` placeholders) |
+| Upload key SHA-1 in Firebase config | `client/android/app/google-services.json` must include `1e343ca3f56277ae6439d91ad423c69d59f7165b` alongside Play App Signing hashes |
+
+Keystore file lives at `android-backup/app/cpoint-release.keystore` (outside the tracked tree).
+For **internal QA APKs** that must hit staging API only, temporarily override
+`cpointCapacitorServerUrl` to the staging Cloud Run URL in a local build — do not change `main`
+prod values for store releases. See **`docs/DEPLOYMENT_INSTANCES.md`** § Mobile Capacitor API host.
+
 ## Git / commit hygiene
 
 - Do not commit on the user's behalf unless explicitly asked.
