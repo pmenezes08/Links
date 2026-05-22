@@ -98,7 +98,10 @@ the wrong API.
 | Production WebView host | `client/android/gradle.properties` → `cpointCapacitorServerUrl=https://app.c-point.co` |
 | Release + `externalOverride` signing | `client/android/app/build.gradle` — both use `MYAPP_RELEASE_*` from `gradle.properties` |
 | Keystore path and credentials | `client/android/gradle.properties` → `MYAPP_RELEASE_*` (not `my-release-key` placeholders) |
-| Upload key SHA-1 in Firebase config | `client/android/app/google-services.json` must include `1e343ca3f56277ae6439d91ad423c69d59f7165b` alongside Play App Signing hashes |
+| Play Store version baseline | `client/android/app/build.gradle` → `versionCode 500`, `versionName "5.0.0"` (increment for each upload) |
+| ProGuard keep rules | `client/android/app/proguard-rules.pro` — keep `com.getcapacitor.**`, Google Auth, `ee.forgr.nativepurchases.**` |
+| Play Billing permission | `client/android/app/src/main/AndroidManifest.xml` → `com.android.vending.BILLING` |
+| Upload key SHA-1 in Firebase config | `client/android/app/google-services.json` must include `1e343ca3f56277ae6439d91ad423c69d59f7165b` and Play App Signing hash `f35dc4b2fb266cdacae11762004cf0dc2833dcf7` |
 
 Keystore file lives at `android-backup/app/cpoint-release.keystore` (outside the tracked tree).
 For **internal QA APKs** that must hit staging API only, temporarily override

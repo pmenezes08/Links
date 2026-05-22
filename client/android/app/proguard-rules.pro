@@ -19,3 +19,9 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Production release: do not remove — R8 strips Capacitor/plugins and breaks startup + Play Billing.
+-keep class com.getcapacitor.** { *; }
+-keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
+-keep class com.codetrixstudio.capacitor.GoogleAuth.** { *; }
+-keep class ee.forgr.nativepurchases.** { *; }
