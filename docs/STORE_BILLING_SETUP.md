@@ -42,7 +42,7 @@ Production grants stay behind the KB field `iap_purchases_enabled=false` until s
    - `cpoint_community_l3_monthly` at EUR 189.99
 3. Create subscription `cpoint_steve_community_monthly` (separate product; KB `paid_steve_package_google_product_id`).
 4. Add license testers and include the products in an internal testing release.
-5. Configure RTDN Pub/Sub push delivery to `https://cpoint-app-739552904126.europe-west1.run.app/api/webhooks/google`.
+5. Configure RTDN with Pub/Sub topic `projects/cpoint-127c2/topics/cpoint-play-rtdn`; the push subscription `cpoint-play-rtdn-to-app` delivers to `https://app.c-point.co/api/webhooks/google` (use the canonical host — `run.app` URLs redirect and Pub/Sub push will not reach the handler).
 6. Verify Premium, Community L1, L1→L2 upgrade, Steve add-on, restore purchases, and the extra-community web-link modal.
 
 ## Mobile UX Policy
@@ -56,7 +56,7 @@ Cloud Run **`cpoint-app`** must have:
 | Secret / env | Purpose |
 |--------------|---------|
 | `APPLE_IAP_KEY_ID`, `APPLE_IAP_ISSUER_ID`, `APPLE_IAP_PRIVATE_KEY` | App Store Server API + ASSN2 JWS verify |
-| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Play Developer API subscription lookup |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` from Secret Manager `google-play-service-account-json` | Play Developer API subscription lookup |
 | `GOOGLE_PLAY_PACKAGE_NAME` | Optional override (default `co.cpoint.app`) |
 
 Confirm/restore and webhooks reject forged tokens when `iap_purchases_enabled=true` (sandbox/license-test still allowed without store credentials).

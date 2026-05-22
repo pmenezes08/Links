@@ -78,4 +78,6 @@ Before broad launch, set **`ENTITLEMENTS_ENFORCEMENT_ENABLED=true`** on producti
 - Backend **production:** `gcloud builds submit --config=cloudbuild-production.yaml --project=cpoint-127c2 .`
 - Admin **staging:** from `admin-web/`, `gcloud builds submit --config=../cloudbuild-admin-staging.yaml --project=cpoint-127c2 .`
 
+**Production secrets (`cpoint-app`):** `cloudbuild-production.yaml` deploys the image, runs **`scripts/wire_prod_cloud_run_secrets.sh`**, then **`scripts/smoke_prod.sh`**. If prod breaks while staging works, use **`docs/PROD_CLOUD_RUN_RECOVERY.md`** (agent runbook). Manual repair: `bash scripts/wire_prod_cloud_run_secrets.sh` then `bash scripts/smoke_prod.sh`. Do **not** set `SESSION_COOKIE_DOMAIN=app.c-point.co` — invalid; host-only is used when `CANONICAL_HOST=app.c-point.co`.
+
 If a Run service URL changes, update **admin build args** and any **`CSRF_ALLOWED_ORIGINS`** on the API service that accepts browser POSTs from that admin origin.

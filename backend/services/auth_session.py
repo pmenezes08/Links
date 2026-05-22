@@ -21,7 +21,14 @@ def _session_cookie_attrs() -> dict:
 def clear_session_cookie(response) -> None:
     """Expire Flask's configured session cookie using matching attributes."""
     name = current_app.config.get("SESSION_COOKIE_NAME", "session")
-    response.set_cookie(name, "", max_age=0, expires=0, **_session_cookie_attrs())
+    attrs = _session_cookie_attrs()
+    response.set_cookie(name, "", max_age=0, expires=0, **attrs)
+    # Expire legacy domain variants after secret/domain migrations (prod 2026-05).
+    for legacy_domain in (".c-point.co", "app.c-point.co"):
+        legacy = {**attrs, "domain": legacy_domain}
+        response.set_cookie(name, "", max_age=0, expires=0, **legacy)
+    host_only = {k: v for k, v in attrs.items() if k != "domain" and v is not None}
+    response.set_cookie(name, "", max_age=0, expires=0, **host_only)
 
 
 def _install_cookie_attrs() -> dict:

@@ -12,6 +12,9 @@
 !landing/src/content/legal/
 !landing/src/content/legal/**
 *.sh
+# Production Cloud Build needs these (cloudbuild-production.yaml steps 3–4)
+!scripts/wire_prod_cloud_run_secrets.sh
+!scripts/smoke_prod.sh
 *.sql
 *.sample
 *.example

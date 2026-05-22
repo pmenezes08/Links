@@ -82,7 +82,9 @@ flows.
 - Admin-web staging: from `admin-web/`,
   `gcloud builds submit --config=../cloudbuild-admin-staging.yaml --project=cpoint-127c2 .`
 - Never deploy straight to prod; stage and smoke-test first. Production
-  configs are separate Cloud Build files.
+  backend: `gcloud builds submit --config=cloudbuild-production.yaml --project=cpoint-127c2 .`
+  (wires secrets + runs `scripts/smoke_prod.sh`). If prod fails while staging works:
+  **`docs/PROD_CLOUD_RUN_RECOVERY.md`**.
 
 ## Git / commit hygiene
 

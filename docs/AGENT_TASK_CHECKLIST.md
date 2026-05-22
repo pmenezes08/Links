@@ -11,6 +11,7 @@ Reference docs are **part of the implementation**. If the code you ship makes a 
 | Routes added, removed, or moved | `python scripts/generate_route_inventory.py` → commit **`docs/BACKEND_ROUTES.md`**. |
 | Schema / collection / read-path change (MySQL or Firestore) | Edit **`docs/MYSQL_AND_FIRESTORE.md`**. |
 | Deploy or infra naming/URLs/env (Cloud Build, Run services, domains, CSRF admin pairing) | Edit **`docs/DEPLOYMENT_INSTANCES.md`** (+ **`docs/cloud-scheduler-cron.md`** if cron base URL or auth story changes). |
+| **Prod outage** (staging OK; `app.c-point.co` login/DB/welcome broken) | Follow **`docs/PROD_CLOUD_RUN_RECOVERY.md`** — `scripts/wire_prod_cloud_run_secrets.sh`, `scripts/smoke_prod.sh`. |
 | User-visible **journey** changes materially (billing, AI pipeline steps, seat lifecycle, onboarding flow, chat persistence) | Edit **`docs/PRODUCT_JOURNEYS.md`**. |
 | Monolith reduction **epic** (priority, acceptance, or hotspot list) shifts | Edit **`docs/MONOLITH_REDUCTION_ROADMAP.md`**; align **KB → Product Roadmap** row if status changes. |
 | **Product Roadmap** row added, renamed, merged, dropped, or materially retargeted (`knowledge_base.py` → **`product-roadmap` → roadmap_items**) | Update **both** KB seeds **and** the Notion hub **Product roadmap** database (**same Names / titles**, **Area**, status). Prefer editing KB first, then mirror to Notion (or Notion MCP from Cursor). Details: § **Product roadmap (KB ↔ Notion)** below. |
