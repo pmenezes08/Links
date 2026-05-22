@@ -102,9 +102,6 @@ type StoryGroup = {
 type StoryViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
 const COMMUNITY_FEED_CACHE_TTL_MS = 2 * 60 * 1000
 const COMMUNITY_FEED_CACHE_VERSION = 'community-feed-v3'
-/** Matches PostDetail for feed → post navigation hydrate */
-const POST_DETAIL_CACHE_VERSION = 'post-detail-v2'
-const POST_DETAIL_CACHE_TTL_MS = 3 * 60 * 1000
 const STORY_UPLOAD_MAX_FILES = 10
 const STORY_UPLOAD_MAX_FILE_BYTES = 100 * 1024 * 1024
 const STORY_VIDEO_MAX_SECONDS = 15
@@ -2751,16 +2748,7 @@ export default function CommunityFeed() {
                   highlightStep={highlightStep}
                   onOpen={() => {
                     markPostViewed(p.id, p.has_viewed)
-                    try {
-                      writeDeviceCache(
-                        `post-${p.id}`,
-                        { post: p, isGroupPost: false },
-                        POST_DETAIL_CACHE_TTL_MS,
-                        POST_DETAIL_CACHE_VERSION
-                      )
-                    } catch {
-                      /* ignore */
-                    }
+                    clearDeviceCache(`post-${p.id}`)
                     navigate(`/post/${p.id}`)
                   }}
                   onToggleReaction={handleToggleReaction}
