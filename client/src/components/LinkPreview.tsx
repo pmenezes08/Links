@@ -1,8 +1,7 @@
 import { useState, useEffect, memo } from 'react'
-import { Capacitor } from '@capacitor/core'
 import type { VideoEmbed } from '../utils/videoEmbed'
 import { extractVideoEmbed } from '../utils/videoEmbed'
-import { openExternalNativeLink } from '../utils/openExternalInApp'
+import { openExternalInApp } from '../utils/openExternalInApp'
 
 export type LinkPreviewData = {
   title: string
@@ -264,11 +263,9 @@ function LinkPreviewCard({ url, sent }: Props) {
         className="block mt-1.5 rounded-xl overflow-hidden border border-white/10 hover:border-white/20 transition-colors no-underline"
         style={{ background: 'rgba(255,255,255,0.04)' }}
         onClick={(e) => {
+          e.preventDefault()
           e.stopPropagation()
-          if (Capacitor.isNativePlatform()) {
-            e.preventDefault()
-            void openExternalNativeLink(openUrl)
-          }
+          void openExternalInApp(openUrl)
         }}
       >
         <div className="px-3 py-2">
@@ -299,11 +296,9 @@ function LinkPreviewCard({ url, sent }: Props) {
       className="block mt-1.5 rounded-xl overflow-hidden border border-white/10 hover:border-white/20 transition-colors no-underline"
       style={{ background: 'rgba(255,255,255,0.04)' }}
       onClick={(e) => {
+        e.preventDefault()
         e.stopPropagation()
-        if (Capacitor.isNativePlatform()) {
-          e.preventDefault()
-          void openExternalNativeLink(openUrl)
-        }
+        void openExternalInApp(openUrl)
       }}
     >
       {hasImage && (

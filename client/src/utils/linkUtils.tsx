@@ -133,6 +133,10 @@ export function SmartLink({
 
     // Landing page links (www.c-point.co) should open in browser
     if (isLandingPageLink(resolvedHref)) {
+      if (onExternalClick) {
+        onExternalClick(resolvedHref)
+        return
+      }
       window.open(resolvedHref, '_blank', 'noopener,noreferrer')
       return
     }
