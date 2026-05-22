@@ -25069,10 +25069,31 @@ def get_post():
                         # Community admin flag
                         fs_post['is_community_admin'] = bool(
                             fs_community_id and (
+                                is_app_admin(username)
+                                or
                                 is_community_owner(username, fs_community_id)
                                 or is_community_admin(username, fs_community_id)
                             )
                         )
+                        fs_post['is_starred'] = False
+                        fs_post['is_community_starred'] = False
+                        if fs_community_id:
+                            try:
+                                hc.execute(
+                                    "SELECT id FROM key_posts WHERE username = ? AND post_id = ?",
+                                    (username, post_id),
+                                )
+                                fs_post['is_starred'] = hc.fetchone() is not None
+                            except Exception:
+                                pass
+                            try:
+                                hc.execute(
+                                    "SELECT id FROM community_key_posts WHERE community_id = ? AND post_id = ?",
+                                    (fs_community_id, post_id),
+                                )
+                                fs_post['is_community_starred'] = hc.fetchone() is not None
+                            except Exception:
+                                pass
 
                         # Hydrate replies: view counts, profile pics, reactions
                         all_reply_ids = []
@@ -25359,10 +25380,30 @@ def get_post():
             post_community_id = post.get('community_id')
             post['is_community_admin'] = bool(
                 post_community_id and (
-                    is_community_owner(username, post_community_id)
+                    is_app_admin(username)
+                    or is_community_owner(username, post_community_id)
                     or is_community_admin(username, post_community_id)
                 )
             )
+            post['is_starred'] = False
+            post['is_community_starred'] = False
+            if post_community_id:
+                try:
+                    c.execute(
+                        "SELECT id FROM key_posts WHERE username = ? AND post_id = ?",
+                        (username, post_id),
+                    )
+                    post['is_starred'] = c.fetchone() is not None
+                except Exception:
+                    pass
+                try:
+                    c.execute(
+                        "SELECT id FROM community_key_posts WHERE community_id = ? AND post_id = ?",
+                        (post_community_id, post_id),
+                    )
+                    post['is_community_starred'] = c.fetchone() is not None
+                except Exception:
+                    pass
 
             return jsonify({'success': True, 'post': post})
             

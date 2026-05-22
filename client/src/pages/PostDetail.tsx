@@ -39,11 +39,12 @@ type Post = { id: number; username: string; content: string; link_urls?: string[
 const POST_DETAIL_CACHE_VERSION = 'post-detail-v2'
 const POST_DETAIL_CACHE_TTL_MS = 30 * 1000
 
-type PostDetailCachePayload = { post: Post; isGroupPost: boolean }
+type PostDetailCachePayload = { post: Post; isGroupPost: boolean; detailComplete?: boolean }
 
 function readCachedPostDetail(postId: string | undefined): { post: Post | null; isGroupPost: boolean } {
   if (!postId) return { post: null, isGroupPost: false }
   const c = readDeviceCache<PostDetailCachePayload>(`post-${postId}`, POST_DETAIL_CACHE_VERSION)
+  if (!c?.detailComplete) return { post: null, isGroupPost: false }
   return { post: c?.post ?? null, isGroupPost: !!c?.isGroupPost }
 }
 
@@ -65,6 +66,41 @@ function isSteveAiReply(r: Reply): boolean {
 }
 function isReplyRowTopLevel(r: Reply): boolean {
   return !r.parent_reply_id || isSteveAiReply(r)
+}
+
+function normalizeReplyTreeForDetail(replies: Reply[] | undefined | null): Reply[] {
+  const visit = (reply: Reply): { reply: Reply | null; steveRows: Reply[] } => {
+    const normalizedChildren: Reply[] = []
+    const steveRows: Reply[] = []
+    for (const child of reply.children || []) {
+      const nextChild = visit(child)
+      if (nextChild.reply) normalizedChildren.push(nextChild.reply)
+      steveRows.push(...nextChild.steveRows)
+    }
+
+    const normalizedReply = { ...reply, children: normalizedChildren }
+    if (isSteveAiReply(normalizedReply)) {
+      return { reply: null, steveRows: [normalizedReply, ...steveRows] }
+    }
+    return { reply: normalizedReply, steveRows }
+  }
+
+  const roots: Reply[] = []
+  for (const reply of replies || []) {
+    const nextReply = visit(reply)
+    if (nextReply.reply) roots.push(nextReply.reply)
+    roots.push(...nextReply.steveRows)
+  }
+
+  return roots
+}
+
+function normalizePostForDetail(rawPost: Post | null | undefined): Post | null {
+  if (!rawPost) return null
+  return {
+    ...rawPost,
+    replies: normalizeReplyTreeForDetail(rawPost.replies),
+  }
 }
 
 export default function PostDetail(){
@@ -746,22 +782,26 @@ export default function PostDetail(){
       const gJson = await gRes.json().catch(() => null)
       const pJson = await pRes.json().catch(() => null)
       if (gJson?.success && gJson.post) {
-        setPost(gJson.post)
+        const nextPost = normalizePostForDetail(gJson.post)
+        setPost(nextPost)
         setIsGroupPost(true)
-        writeDeviceCache(`post-${post_id}`, { post: gJson.post, isGroupPost: true }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
+        if (nextPost) writeDeviceCache(`post-${post_id}`, { post: nextPost, isGroupPost: true, detailComplete: true }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
       } else if (pJson?.success && pJson.post) {
-        setPost(pJson.post)
+        const nextPost = normalizePostForDetail(pJson.post)
+        setPost(nextPost)
         setIsGroupPost(false)
-        writeDeviceCache(`post-${post_id}`, { post: pJson.post, isGroupPost: false }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
+        if (nextPost) writeDeviceCache(`post-${post_id}`, { post: nextPost, isGroupPost: false, detailComplete: true }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
       }
     } catch {}
   }, [post_id])
 
   const writePostDetailCache = useCallback((nextPost: Post | null, nextIsGroupPost = isGroupPost) => {
     if (!nextPost?.id) return
+    const normalizedPost = normalizePostForDetail(nextPost)
+    if (!normalizedPost) return
     writeDeviceCache(
       `post-${nextPost.id}`,
-      { post: nextPost, isGroupPost: nextIsGroupPost },
+      { post: normalizedPost, isGroupPost: nextIsGroupPost, detailComplete: true },
       POST_DETAIL_CACHE_TTL_MS,
       POST_DETAIL_CACHE_VERSION,
     )
@@ -844,15 +884,17 @@ export default function PostDetail(){
         const pJson = await pRes.json().catch(() => null)
         if (!mounted) return
         if (gJson?.success && gJson.post) {
-          setPost(gJson.post)
+          const nextPost = normalizePostForDetail(gJson.post)
+          setPost(nextPost)
           setIsGroupPost(true)
           setError(null)
-          writeDeviceCache(`post-${post_id}`, { post: gJson.post, isGroupPost: true }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
+          if (nextPost) writeDeviceCache(`post-${post_id}`, { post: nextPost, isGroupPost: true, detailComplete: true }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
         } else if (pJson?.success && pJson.post) {
-          setPost(pJson.post)
+          const nextPost = normalizePostForDetail(pJson.post)
+          setPost(nextPost)
           setIsGroupPost(false)
           setError(null)
-          writeDeviceCache(`post-${post_id}`, { post: pJson.post, isGroupPost: false }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
+          if (nextPost) writeDeviceCache(`post-${post_id}`, { post: nextPost, isGroupPost: false, detailComplete: true }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
         } else {
           setError(gJson?.error || pJson?.error || 'Error')
         }
