@@ -1,0 +1,52 @@
+---
+description: Holistic cybersecurity methodology for C-Point engineering work.
+alwaysApply: true
+---
+
+# Cybersecurity methodology
+
+Security is part of every code, dependency, infrastructure, and product decision. Before changing the system, assess the threat model, data sensitivity, trust boundaries, and blast radius.
+
+## Core principles
+
+- Prefer least privilege for users, services, CI jobs, tokens, cloud roles, and third-party integrations.
+- Treat dependencies, build scripts, GitHub Actions, webhooks, uploads, AI inputs, inbound email, and user-generated content as untrusted until proven otherwise.
+- Never expose secrets to install, build, or test jobs unless the job genuinely needs them.
+- Pin dependencies and build from committed lockfiles. Prefer `npm ci` over `npm install`.
+- Use approved repo services, gates, and logging paths instead of direct vendor/API calls.
+- Validate authentication, authorization, CSRF/origin, rate limits, ownership, and audit logging for every sensitive route.
+- Keep security behavior observable without leaking secrets.
+
+## Supply chain checklist
+
+- Check lockfile diffs for unexpected packages, install scripts, GitHub dependencies, registry changes, or removed integrity hashes.
+- Be skeptical of `preinstall`, `install`, `postinstall`, `prepare`, `curl`, `wget`, shell scripts, obfuscated payloads, and unusual network calls.
+- Avoid broad dependency upgrades during active ecosystem incidents.
+- Prefer registry packages with integrity hashes over GitHub tarballs or moving refs.
+- Run advisory/IoC scans when a supply-chain incident is active.
+
+## CI/CD hardening
+
+- Default GitHub Actions permissions to read-only: `permissions: contents: read`.
+- Grant write, deploy, package, or OIDC permissions only in isolated jobs that require them.
+- Avoid `pull_request_target` unless there is a documented reason and strict checkout rules.
+- Do not run untrusted PR code with secrets available.
+- Use short-lived credentials/OIDC over long-lived tokens.
+- Review workflows for unexpected outbound network calls, encoded scripts, or secret exfiltration patterns.
+
+## Product and API review
+
+- Backend routes must have explicit authentication, authorization, tenant ownership, input validation, and idempotency where state changes.
+- Webhooks must verify signatures before processing payloads.
+- Cron routes must live under `/api/cron/*` and require `X-Cron-Secret`.
+- Frontend code must not contain secrets or duplicate server-side entitlement, billing, or identity truth.
+- Render user-generated HTML/Markdown only through approved sanitization paths.
+- AI, email, voice, uploads, prompts, and chat content are untrusted inputs and must not control tools, secrets, or admin actions.
+
+## Incident response habit
+
+- Identify affected ecosystems, package/version IoCs, payload filenames, domains, and behaviors.
+- Search lockfiles, source, CI workflows, built assets, and deployment scripts.
+- Freeze dependency updates if the ecosystem is actively compromised.
+- Rotate tokens if they may have been exposed during install, build, or CI execution.
+- Document findings and add preventive checks where practical.
