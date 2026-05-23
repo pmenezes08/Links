@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import Avatar from './Avatar'
 import { useLogoutRequest } from '../contexts/LogoutPromptContext'
+import { triggerHaptic } from '../utils/haptics'
 
 type BurgerMenuDrawerProps = {
   username?: string
@@ -49,20 +50,24 @@ export default function BurgerMenuDrawer({
   const isAdmin = username === 'admin'
 
   useEffect(() => {
-    if (typeof navigator === 'undefined') return
-    const nav = navigator as Navigator & { vibrate?: (pattern: number | number[]) => boolean }
-    nav.vibrate?.(8)
+    void triggerHaptic('light')
   }, [])
 
   const goTo = (path: string) => {
+    void triggerHaptic('selection')
     onClose()
     navigate(path)
+  }
+
+  const closeDrawer = () => {
+    void triggerHaptic('light')
+    onClose()
   }
 
   return (
     <div
       className={`burger-menu-backdrop fixed inset-0 ${zIndexClass} flex bg-black/55`}
-      onClick={(e) => e.currentTarget === e.target && onClose()}
+      onClick={(e) => e.currentTarget === e.target && closeDrawer()}
     >
       <div
         className="burger-menu-sheet h-full w-[90%] max-w-sm overflow-y-auto overscroll-contain border-r border-white/10 bg-black/95 p-4 text-white shadow-[24px_0_70px_rgba(0,0,0,0.72)] backdrop-blur-md"
@@ -101,6 +106,7 @@ export default function BurgerMenuDrawer({
               type="button"
               className="flex w-full items-center gap-4 rounded-xl px-4 py-3 text-left text-white transition-colors hover:bg-white/5"
               onClick={(e) => {
+                void triggerHaptic('medium')
                 onClose()
                 requestLogout(e)
               }}

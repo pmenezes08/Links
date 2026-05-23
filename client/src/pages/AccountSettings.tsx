@@ -1,11 +1,21 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Capacitor } from '@capacitor/core'
-import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+
+import DangerZoneSheet from '../components/settings/DangerZoneSheet'
+import LanguageSettingsPanel from '../components/settings/LanguageSettingsPanel'
 import ManageMembershipModal, { type MembershipTab } from '../components/membership/ManageMembershipModal'
+import PrivacySecurityPanel from '../components/settings/PrivacySecurityPanel'
 import RequestMyDataModal from '../components/privacy/RequestMyDataModal'
-import LanguagePicker from '../components/settings/LanguagePicker'
+import SettingsHome, { type SettingsPanelKey } from '../components/settings/SettingsHome'
+import SettingsPanel from '../components/settings/SettingsPanel'
+import SettingsSwitch from '../components/settings/SettingsSwitch'
+import { ABOUT_CPOINT_VERSION_LABEL } from '../content/aboutCPoint'
+import { useHeader } from '../contexts/HeaderContext'
+import { LOCALE_OPTIONS } from '../i18n/localeOptions'
+import { useLocale } from '../i18n/useLocale'
+import { triggerHaptic } from '../utils/haptics'
 
 type ProfileData = {
   username: string
@@ -19,7 +29,6 @@ type ProfileData = {
   twitter: string
   profile_picture: string
   cover_photo: string
-  /** When true, in-app notifications include a short text preview of the post or reply */
   notification_show_previews?: boolean
 }
 
@@ -28,35 +37,83 @@ function cpointVersionEnvironment(): 'Production' | 'Staging' {
   return host === 'app.c-point.co' ? 'Production' : 'Staging'
 }
 
-export default function AccountSettings(){
+function FieldCard({
+  label,
+  children,
+  helper,
+}: {
+  label: string
+  children: ReactNode
+  helper?: string
+}) {
+  return (
+    <label className="block rounded-3xl border border-white/[0.06] bg-white/[0.055] p-4">
+      <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/28">{label}</span>
+      <div className="mt-2">{children}</div>
+      {helper ? <span className="mt-2 block text-xs text-white/35">{helper}</span> : null}
+    </label>
+  )
+}
+
+function PanelCard({ children }: { children: ReactNode }) {
+  return <div className="overflow-hidden rounded-3xl border border-white/[0.06] bg-white/[0.055]">{children}</div>
+}
+
+export default function AccountSettings() {
   const { setTitle } = useHeader()
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const [profile, setProfile] = useState<ProfileData|null>(null)
+  const { locale } = useLocale()
+  const [profile, setProfile] = useState<ProfileData | null>(null)
   const [loading, setLoading] = useState(true)
-  // Removed saving state since only email updates are handled here now
-  const [message, setMessage] = useState<{type: 'success'|'error', text: string}|null>(null)
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [showVerifyModal, setShowVerifyModal] = useState(false)
   const [notifStatus, setNotifStatus] = useState<'granted' | 'denied' | 'default' | 'loading'>('loading')
   const [membershipTab, setMembershipTab] = useState<MembershipTab | null>(null)
   const [showRequestMyData, setShowRequestMyData] = useState(false)
+  const [activePanel, setActivePanel] = useState<SettingsPanelKey | null>(null)
+  const [dangerOpen, setDangerOpen] = useState(false)
 
   const openMembership = useCallback((tab: MembershipTab = 'plan') => {
+    void triggerHaptic('selection')
     setMembershipTab(tab)
   }, [])
   const closeMembership = useCallback(() => setMembershipTab(null), [])
 
-  // Honor /account_settings/membership and /settings/membership with optional
-  // ?tab=ai|billing|payment|plan to open the modal directly.
   useEffect(() => {
     const path = window.location.pathname
-    if (!/membership/.test(path)) return
-    const params = new URLSearchParams(window.location.search)
-    const tab = params.get('tab') as MembershipTab | null
-    const allowed: MembershipTab[] = ['plan', 'ai', 'billing', 'payment']
-    const initial = tab && allowed.includes(tab) ? tab : 'plan'
-    setMembershipTab(initial)
+    if (/membership/.test(path)) {
+      const params = new URLSearchParams(window.location.search)
+      const tab = params.get('tab') as MembershipTab | null
+      const allowed: MembershipTab[] = ['plan', 'ai', 'billing', 'payment']
+      setMembershipTab(tab && allowed.includes(tab) ? tab : 'plan')
+    }
+    if (/\/account_settings\/security$/.test(path)) setActivePanel('privacy')
+    if (/\/account_settings\/danger$/.test(path)) setDangerOpen(true)
   }, [])
+
+  const loadProfile = useCallback((opts?: { silent?: boolean; refresh?: boolean }) => {
+    const silent = !!opts?.silent
+    const refresh = !!opts?.refresh
+    if (!silent) setLoading(true)
+    const url = refresh ? '/api/profile_me?refresh=1' : '/api/profile_me'
+    fetch(url, { credentials: 'include', headers: { Accept: 'application/json' } })
+      .then(r => r.json())
+      .then(j => {
+        if (j?.success && j.profile) {
+          setProfile(j.profile)
+        } else if (!silent) {
+          setMessage({ type: 'error', text: t('account.messages.profile_load_failed') })
+        }
+      })
+      .catch(() => {
+        if (!silent) setMessage({ type: 'error', text: t('account.messages.profile_load_error') })
+      })
+      .finally(() => {
+        if (!silent) setLoading(false)
+      })
+  }, [t])
 
   const checkNotifPermission = useCallback(async () => {
     try {
@@ -85,34 +142,33 @@ export default function AccountSettings(){
       const j = await r.json().catch(() => null)
       if (!j?.success) {
         setMessage({ type: 'error', text: j?.error || t('account.messages.notification_update_failed') })
-        setProfile(prev =>
-          prev ? { ...prev, notification_show_previews: previousValue } : null
-        )
+        setProfile(prev => (prev ? { ...prev, notification_show_previews: previousValue } : null))
+        void triggerHaptic('error')
         return
       }
       setProfile(prev =>
         prev
           ? {
               ...prev,
-              notification_show_previews:
-                typeof j.show_content_previews === 'boolean' ? j.show_content_previews : show,
+              notification_show_previews: typeof j.show_content_previews === 'boolean' ? j.show_content_previews : show,
             }
-          : null
+          : null,
       )
       loadProfile({ silent: true, refresh: true })
+      void triggerHaptic('success')
     } catch {
       setMessage({ type: 'error', text: t('account.messages.notification_update_network') })
-      setProfile(prev =>
-        prev ? { ...prev, notification_show_previews: previousValue } : null
-      )
+      setProfile(prev => (prev ? { ...prev, notification_show_previews: previousValue } : null))
+      void triggerHaptic('error')
     }
-  }, [t])
+  }, [loadProfile, t])
 
   const openDeviceSettings = useCallback(async () => {
+    void triggerHaptic('selection')
     try {
       if (Capacitor.getPlatform() === 'ios') {
         const { App: CapApp } = await import('@capacitor/app')
-        // @ts-ignore - openUrl may not be in types but works at runtime
+        // @ts-ignore - openUrl may not be in types but works at runtime.
         if (CapApp.openUrl) await CapApp.openUrl({ url: 'app-settings:' })
         else window.open('app-settings:', '_system')
       } else if (Capacitor.getPlatform() === 'android') {
@@ -129,32 +185,35 @@ export default function AccountSettings(){
   }, [t])
 
   useEffect(() => { setTitle(t('account.settings')) }, [setTitle, t])
-  useEffect(() => { checkNotifPermission() }, [checkNotifPermission])
+  useEffect(() => { void checkNotifPermission() }, [checkNotifPermission])
+  useEffect(() => { loadProfile() }, [loadProfile])
 
   useEffect(() => {
-    loadProfile()
-  }, [])
+    const locked = activePanel !== null || dangerOpen
+    const previous = document.body.style.overflow
+    if (locked) document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [activePanel, dangerOpen])
 
-  function loadProfile(opts?: { silent?: boolean; refresh?: boolean }) {
-    const silent = !!opts?.silent
-    const refresh = !!opts?.refresh
-    if (!silent) setLoading(true)
-    const url = refresh ? '/api/profile_me?refresh=1' : '/api/profile_me'
-    fetch(url, { credentials: 'include', headers: { Accept: 'application/json' } })
-      .then(r => r.json())
-      .then(j => {
-        if (j?.success && j.profile) {
-          setProfile(j.profile)
-        } else if (!silent) {
-          setMessage({ type: 'error', text: t('account.messages.profile_load_failed') })
-        }
-      })
-      .catch(() => {
-        if (!silent) setMessage({ type: 'error', text: t('account.messages.profile_load_error') })
-      })
-      .finally(() => {
-        if (!silent) setLoading(false)
-      })
+  useEffect(() => {
+    if (!toast) return
+    const id = window.setTimeout(() => setToast(null), 2400)
+    return () => window.clearTimeout(id)
+  }, [toast])
+
+  function openPanel(panel: SettingsPanelKey) {
+    void triggerHaptic('light')
+    setActivePanel(panel)
+  }
+
+  function closePanel() {
+    setActivePanel(null)
+  }
+
+  function handleInputChange(field: keyof ProfileData, value: string) {
+    setProfile(prev => (prev ? { ...prev, [field]: value } : null))
   }
 
   function handleSave(e: React.FormEvent) {
@@ -162,49 +221,50 @@ export default function AccountSettings(){
     if (!profile) return
     setMessage(null)
 
-    // Save public fields
     const pf = new FormData()
-    ;(['display_name','bio','location','website','instagram','twitter'] as const).forEach((k)=>{
-      const v = (profile as any)[k]
+    ;(['display_name', 'bio', 'location', 'website', 'instagram', 'twitter'] as const).forEach(k => {
+      const v = profile[k]
       if (v !== undefined) pf.append(k, v as string)
     })
-    fetch('/update_public_profile', { method:'POST', credentials:'include', body: pf })
-      .then(()=>{})
-      .catch(()=>{})
-      .finally(()=>{})
+    fetch('/update_public_profile', { method: 'POST', credentials: 'include', body: pf }).catch(() => {})
 
-    // If email changed, call update_email
-    const newEmail = profile.email
-    if (newEmail) {
+    if (profile.email) {
       const ef = new FormData()
-      ef.append('new_email', newEmail)
-      fetch('/update_email', { method:'POST', credentials:'include', body: ef })
-        .then(r=>r.json())
-        .then(j=>{
+      ef.append('new_email', profile.email)
+      fetch('/update_email', { method: 'POST', credentials: 'include', body: ef })
+        .then(r => r.json())
+        .then(j => {
           if (j?.success) {
             setShowVerifyModal(true)
             setMessage({ type: 'success', text: t('account.messages.email_updated') })
+            void triggerHaptic('success')
           } else if (j?.error) {
             setMessage({ type: 'error', text: j.error })
+            void triggerHaptic('error')
           }
         })
-        .catch(()=> setMessage({ type:'error', text:t('account.messages.email_update_error') }))
-        .finally(()=> {})
-    } else {
-      // no-op
+        .catch(() => {
+          setMessage({ type: 'error', text: t('account.messages.email_update_error') })
+          void triggerHaptic('error')
+        })
     }
   }
 
-  function handleInputChange(field: keyof ProfileData, value: string) {
-    if (!profile) return
-    setProfile(prev => prev ? { ...prev, [field]: value } : null)
-  }
+  const languageLabel = useMemo(() => {
+    const option = LOCALE_OPTIONS.find(opt => opt.value === locale)
+    return option ? t(option.labelKey) : String(locale)
+  }, [locale, t])
+
+  const notificationLabel = useMemo(() => {
+    if (notifStatus === 'loading') return t('account.notifications.checking')
+    return notifStatus === 'granted' ? t('account.notifications.enabled') : t('account.notifications.disabled')
+  }, [notifStatus, t])
 
   if (loading) {
     return (
-      <div className="h-screen bg-black text-white flex items-center justify-center">
+      <div className="flex h-screen items-center justify-center bg-black text-white">
         <div className="text-center">
-          <i className="fa-solid fa-spinner fa-spin text-2xl mb-4" />
+          <i className="fa-solid fa-spinner fa-spin mb-4 text-2xl" />
           <div>{t('account.info.loading_profile')}</div>
         </div>
       </div>
@@ -213,12 +273,12 @@ export default function AccountSettings(){
 
   if (!profile) {
     return (
-      <div className="h-screen bg-black text-white flex items-center justify-center">
+      <div className="flex h-screen items-center justify-center bg-black text-white">
         <div className="text-center">
-          <i className="fa-solid fa-exclamation-triangle text-2xl mb-4 text-red-400" />
+          <i className="fa-solid fa-exclamation-triangle mb-4 text-2xl text-red-400" />
           <div>{t('account.messages.profile_load_failed')}</div>
-          <button 
-            className="mt-4 px-4 py-2 bg-[#4db6ac] text-black rounded-lg hover:bg-[#45a99c]"
+          <button
+            className="mt-4 rounded-lg bg-[#4db6ac] px-4 py-2 text-black hover:bg-[#45a99c]"
             onClick={() => loadProfile()}
           >
             {t('account.info.try_again')}
@@ -228,276 +288,211 @@ export default function AccountSettings(){
     )
   }
 
+  const isPanelOpen = activePanel !== null
+  const isPro = profile.subscription === 'premium'
+
   return (
-    <div className="glass-page min-h-screen text-white pb-safe">
-      <div className="glass-card glass-card--plain max-w-2xl mx-auto px-4 pb-8 space-y-8">
-        {message && (
-          <div
-            className={`mb-6 rounded-lg border p-4 ${
-              message.type === 'success'
-                ? 'bg-green-500/10 border-green-500/30 text-green-400'
-                : 'bg-red-500/10 border-red-500/30 text-red-400'
-            }`}
-          >
-            {message.text}
-          </div>
-        )}
-
-        <form onSubmit={handleSave} className="space-y-6">
-          {/* Account Information */}
-        <div className="glass-section space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold">{t('account.info.section_title')}</h2>
-              <p className="text-sm text-white/60">{t('account.info.helper')}</p>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="mb-2 block text-sm font-medium">{t('account.info.username')}</label>
-                <input
-                  type="text"
-                  value={profile.username}
-                  disabled
-                  className="w-full cursor-not-allowed rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-white/60"
-                />
-                <div className="mt-1 text-xs text-white/50">{t('account.info.username_locked')}</div>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium">{t('account.info.email')}</label>
-                <input
-                  type="email"
-                  value={profile.email || ''}
-                  onChange={e => handleInputChange('email', e.target.value)}
-                  placeholder={t('account.info.email_placeholder')}
-                  className="w-full rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-white focus:border-[#4db6ac] focus:outline-none"
-                />
-              </div>
-
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#4db6ac] px-4 py-2 font-semibold text-black hover:bg-[#3da398]"
-                >
-                  <i className="fa-solid fa-floppy-disk" />
-                  {t('account.info.save_changes')}
-                </button>
-              </div>
-            </div>
-          </div>
-
-        <div className="glass-section space-y-2">
-          <div>
-            <h2 className="text-lg font-semibold">{t('account.about.section_title')}</h2>
-            <p className="text-sm text-white/60">{t('account.about.helper')}</p>
-          </div>
-          {Capacitor.getPlatform() === 'ios' && (
-            <div className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/75">
-              {t('account.about.version_environment', {
-                environment: cpointVersionEnvironment(),
-              })}
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={() => navigate('/about_cpoint')}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-white hover:border-[#4db6ac]/50"
-          >
-            <i className="fa-solid fa-circle-info" />
-            {t('account.about.open')}
-          </button>
+    <div className="min-h-screen overflow-hidden bg-black text-white">
+      <div className="relative mx-auto min-h-screen max-w-xl overflow-hidden bg-black">
+        <div
+          className={`min-h-screen transition-[transform,opacity,filter] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+            isPanelOpen ? '-translate-x-[24%] opacity-45 blur-[1px]' : 'translate-x-0 opacity-100 blur-0'
+          }`}
+        >
+          <SettingsHome
+            username={profile.username}
+            email={profile.email}
+            subscription={profile.subscription}
+            notificationsLabel={notificationLabel}
+            languageLabel={languageLabel}
+            activePanel={activePanel}
+            dangerOpen={dangerOpen}
+            onOpenPanel={openPanel}
+            onOpenDanger={() => {
+              setDangerOpen(true)
+            }}
+          />
         </div>
 
-          {/* Privacy & Security summary */}
-        <div className="glass-section">
-            <div className="space-y-2">
-              <h2 className="text-lg font-semibold">{t('account.privacy.section_title')}</h2>
-              <p className="text-sm text-white/60">
-                {t('account.privacy.helper')}
-              </p>
+        <SettingsPanel title="Account" open={activePanel === 'account'} onBack={closePanel}>
+          {message ? (
+            <div className={`mb-4 rounded-2xl border px-4 py-3 text-sm ${message.type === 'success' ? 'border-white/10 bg-white/[0.055] text-white/75' : 'border-red-400/25 bg-red-500/10 text-red-200'}`}>
+              {message.text}
             </div>
-            <button
-              type="button"
-              onClick={() => navigate('/account_settings/security')}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-white hover:border-white/40"
-            >
-              <i className="fa-solid fa-shield"></i>
-              {t('account.privacy.open')}
+          ) : null}
+          <form onSubmit={handleSave} className="space-y-4">
+            <FieldCard label={t('account.info.username')} helper={t('account.info.username_locked')}>
+              <input
+                type="text"
+                value={profile.username}
+                disabled
+                className="w-full cursor-not-allowed rounded-2xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-white/45"
+              />
+            </FieldCard>
+            <FieldCard label={t('account.info.email')}>
+              <input
+                type="email"
+                value={profile.email || ''}
+                onChange={e => handleInputChange('email', e.target.value)}
+                placeholder={t('account.info.email_placeholder')}
+                className="w-full rounded-2xl border border-white/[0.08] bg-white/[0.08] px-4 py-3 text-white placeholder:text-white/25 focus:border-[#4db6ac] focus:outline-none"
+              />
+            </FieldCard>
+            <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#4db6ac] px-4 py-3 font-bold text-black active:opacity-80">
+              <i className="fa-solid fa-check" />
+              {t('account.info.save_changes')}
             </button>
-            <button
-              type="button"
-              onClick={() => setShowRequestMyData(true)}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 px-4 py-2 text-sm font-medium text-white/80 hover:border-white/30"
-            >
-              <i className="fa-solid fa-download"></i>
-              {t('account.privacy.request_data')}
+          </form>
+        </SettingsPanel>
+
+        <SettingsPanel title="Subscription" open={activePanel === 'subscription'} onBack={closePanel}>
+          <div className="space-y-4">
+            <PanelCard>
+              <div className="p-4">
+                <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/28">{t('account.subscription.label')}</div>
+                <div className="mt-2 flex items-center justify-between">
+                  <div className="text-xl font-bold text-white">{isPro ? t('account.subscription.premium') : t('account.subscription.free')}</div>
+                  {isPro ? <span className="rounded-full bg-[#4db6ac]/12 px-3 py-1 text-xs font-bold text-[#4db6ac]">Pro</span> : null}
+                </div>
+                <p className="mt-2 text-sm text-white/45">{t('account.subscription.helper')}</p>
+              </div>
+            </PanelCard>
+            <button type="button" onClick={() => openMembership('plan')} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#4db6ac] px-4 py-3 font-bold text-black active:opacity-80">
+              <i className="fa-regular fa-credit-card" />
+              {t('account.subscription.manage_membership')}
             </button>
-            <p className="mt-2 text-xs text-white/40">
-              {t('account.privacy.request_data_helper')}
-            </p>
+            <button type="button" onClick={() => openMembership('ai')} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 font-bold text-white/75 active:bg-white/10">
+              <i className="fa-solid fa-robot" />
+              {t('account.subscription.view_ai_usage')}
+            </button>
           </div>
+        </SettingsPanel>
 
-          {/* Subscription Management */}
-        <div className="glass-section">
-            <h2 className="text-lg font-semibold mb-4">{t('account.subscription.section_title')}</h2>
-            <p className="text-sm text-white/60 mb-4">
-              {t('account.subscription.helper')}
-            </p>
-            <div className="space-y-4">
-              <div>
-                <label className="mb-2 block text-sm font-medium">{t('account.subscription.label')}</label>
-                <div
-                  className={`rounded-lg border px-4 py-3 ${
-                    profile.subscription === 'premium'
-                      ? 'bg-[#4db6ac]/10 border-[#4db6ac]/30 text-[#4db6ac]'
-                      : 'bg-white/5 border-white/20 text-white/60'
-                  }`}
-                >
-                  {profile.subscription === 'premium' ? t('account.subscription.premium') : t('account.subscription.free')}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => openMembership('plan')}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-white hover:border-white/40"
-              >
-                <i className="fa-regular fa-credit-card" />
-                {t('account.subscription.manage_membership')}
-              </button>
-              <button
-                type="button"
-                onClick={() => openMembership('ai')}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 px-4 py-2 text-xs font-medium text-white/80 hover:border-white/30"
-              >
-                <i className="fa-solid fa-robot" />
-                {t('account.subscription.view_ai_usage')}
-              </button>
-            </div>
-          </div>
-
-        </form>
-
-        <div className="space-y-6">
-          {/* Notifications — outside the account form so the preview toggle cannot submit the form or conflict with Enter-to-save */}
-          <div className="glass-section space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold">{t('account.notifications.section_title')}</h2>
-              <p className="text-sm text-white/60">{t('account.notifications.helper')}</p>
-            </div>
-            {notifStatus === 'loading' ? (
-              <div className="text-sm text-white/40">{t('account.notifications.checking')}</div>
-            ) : notifStatus === 'granted' ? (
-              <div className="flex items-center gap-3 rounded-lg bg-green-500/10 border border-green-500/20 px-4 py-3">
-                <i className="fa-solid fa-bell text-green-400" />
-                <div>
-                  <div className="text-sm font-medium text-green-400">{t('account.notifications.enabled')}</div>
-                  <div className="text-xs text-white/50">{t('account.notifications.enabled_helper')}</div>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex items-center gap-3 rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-3">
-                  <i className="fa-solid fa-bell-slash text-amber-400" />
-                  <div>
-                    <div className="text-sm font-medium text-amber-400">{t('account.notifications.disabled')}</div>
-                    <div className="text-xs text-white/50">{t('account.notifications.disabled_helper')}</div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={openDeviceSettings}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:bg-[#3da398]"
-                >
-                  <i className="fa-solid fa-gear" />
-                  {t('account.notifications.open_settings')}
-                </button>
-                <p className="text-xs text-white/40 text-center">
-                  {Capacitor.isNativePlatform()
-                    ? t('account.notifications.native_helper')
-                    : t('account.notifications.browser_helper')}
+        <SettingsPanel title="Notifications" open={activePanel === 'notifications'} onBack={closePanel}>
+          <div className="space-y-4">
+            <PanelCard>
+              <div className="p-4">
+                <div className="text-base font-bold text-white">{notificationLabel}</div>
+                <p className="mt-1 text-sm text-white/45">
+                  {notifStatus === 'granted'
+                    ? t('account.notifications.enabled_helper')
+                    : t('account.notifications.disabled_helper')}
                 </p>
               </div>
-            )}
-            <div className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3">
-              <label className="flex cursor-pointer items-start gap-3">
-                <input
-                  type="checkbox"
-                  className="mt-1 h-4 w-4 shrink-0 rounded border-white/30 bg-black/40 text-[#4db6ac] [accent-color:#4db6ac] focus:ring-[#4db6ac]"
-                  checked={profile.notification_show_previews !== false}
-                  onChange={e => {
-                    const v = e.target.checked
-                    const previousValue = profile.notification_show_previews
-                    setProfile(prev => (prev ? { ...prev, notification_show_previews: v } : null))
-                    void saveNotificationPreviewPref(v, previousValue)
-                  }}
-                />
-                <div>
-                  <div className="text-sm font-medium text-white">{t('account.notifications.preview_label')}</div>
-                  <div className="text-xs text-white/50 mt-0.5">
-                    {t('account.notifications.preview_helper')}
-                  </div>
+              {notifStatus !== 'granted' && notifStatus !== 'loading' ? (
+                <div className="border-t border-white/[0.055] p-4">
+                  <button type="button" onClick={openDeviceSettings} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#4db6ac] px-4 py-3 font-bold text-black active:opacity-80">
+                    <i className="fa-solid fa-gear" />
+                    {t('account.notifications.open_settings')}
+                  </button>
                 </div>
-              </label>
-            </div>
+              ) : null}
+            </PanelCard>
+            <PanelCard>
+              <SettingsSwitch
+                checked={profile.notification_show_previews !== false}
+                label={t('account.notifications.preview_label')}
+                description={t('account.notifications.preview_helper')}
+                onChange={v => {
+                  void triggerHaptic('selection')
+                  const previousValue = profile.notification_show_previews
+                  setProfile(prev => (prev ? { ...prev, notification_show_previews: v } : null))
+                  void saveNotificationPreviewPref(v, previousValue)
+                }}
+              />
+            </PanelCard>
           </div>
+        </SettingsPanel>
 
-          {/* Language picker -- locked decision: lives between Notifications and
-              Danger Zone (docs/I18N_ROADMAP.md § 3). */}
-          <LanguagePicker />
+        <SettingsPanel title={t('account.language.section_title')} open={activePanel === 'language'} onBack={closePanel}>
+          <LanguageSettingsPanel onDone={closePanel} onToast={(text, type = 'success') => setToast({ text, type })} />
+        </SettingsPanel>
 
-          {/* Danger Zone */}
-          <div className="rounded-xl border border-red-500/40 bg-red-500/5 p-6">
-            <h2 className="text-lg font-semibold text-red-300">{t('account.danger.section_title')}</h2>
-            <p className="text-sm text-red-200/80 mt-2">
-              {t('account.danger.summary')}
-            </p>
-            <button
-              type="button"
-              onClick={() => navigate('/account_settings/danger')}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-red-300/40 px-4 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/10"
-            >
-              <i className="fa-solid fa-skull"></i>
-              {t('account.danger.go')}
-            </button>
+        <SettingsPanel title={t('account.privacy.section_title')} open={activePanel === 'privacy'} onBack={closePanel}>
+          <div className="space-y-5">
+            <PrivacySecurityPanel />
+            <PanelCard>
+              <button
+                type="button"
+                onClick={() => {
+                  void triggerHaptic('selection')
+                  setShowRequestMyData(true)
+                }}
+                className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left active:bg-white/[0.08]"
+              >
+                <span>
+                  <span className="block text-base font-bold text-white">{t('account.privacy.request_data')}</span>
+                  <span className="mt-0.5 block text-sm text-white/45">{t('account.privacy.request_data_helper')}</span>
+                </span>
+                <i className="fa-solid fa-chevron-right text-xs text-white/22" />
+              </button>
+            </PanelCard>
           </div>
-        </div>
+        </SettingsPanel>
 
-        {showVerifyModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-            <div className="w-[90%] max-w-md rounded-xl border border-white/10 bg-[#0b0b0b] p-4">
-              <div className="text-lg font-semibold mb-1">{t('account.verify.title')}</div>
-              <div className="text-sm text-white/80">
-                {t('account.verify.body')}
+        <SettingsPanel title={t('account.about.section_title')} open={activePanel === 'about'} onBack={closePanel}>
+          <div className="space-y-5">
+            <PanelCard>
+              <div className="border-b border-white/[0.055] p-4">
+                <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/28">Version</div>
+                <div className="mt-2 text-xl font-bold text-white">{cpointVersionEnvironment()}</div>
+                <div className="mt-1 text-sm text-white/35">Up to date</div>
               </div>
-              <div className="mt-3 flex items-center gap-2">
-                <button className="rounded-md bg-[#4db6ac] px-3 py-2 text-black" onClick={() => setShowVerifyModal(false)}>
-                  {t('common.ok')}
-                </button>
-                <button
-                  className="rounded-md border border-white/10 px-3 py-2"
-                  onClick={async () => {
-                    try {
-                      const r = await fetch('/resend_verification', { method: 'POST', credentials: 'include' })
-                      const j = await r.json().catch(() => null)
-                      if (!j?.success) alert(j?.error || t('account.messages.resend_failed'))
-                      else alert(t('account.messages.verification_sent'))
-                    } catch {
-                      alert(t('account.messages.network_error'))
-                    }
-                  }}
-                >
-                  {t('account.verify.resend')}
-                </button>
+              <div className="p-4">
+                <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/28">Build</div>
+                <div className="mt-2 text-xl font-bold text-white">{ABOUT_CPOINT_VERSION_LABEL}</div>
               </div>
-            </div>
+            </PanelCard>
+            <PanelCard>
+              <button type="button" onClick={() => { void triggerHaptic('selection'); navigate('/about_cpoint') }} className="flex w-full items-center justify-between px-4 py-4 text-left active:bg-white/[0.08]">
+                <span>
+                  <span className="block text-base font-bold text-white">{t('account.about.open')}</span>
+                  <span className="mt-0.5 block text-sm text-white/45">{t('account.about.helper')}</span>
+                </span>
+                <i className="fa-solid fa-chevron-right text-xs text-white/22" />
+              </button>
+            </PanelCard>
           </div>
-        )}
+        </SettingsPanel>
       </div>
 
-      <ManageMembershipModal
-        open={membershipTab !== null}
-        initialTab={membershipTab ?? 'plan'}
-        onClose={closeMembership}
-      />
+      {toast ? (
+        <div className={`fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+1rem)] z-[1400] -translate-x-1/2 rounded-full border px-4 py-2 text-sm font-semibold shadow-2xl backdrop-blur-xl ${toast.type === 'success' ? 'border-white/10 bg-white/10 text-white' : 'border-red-400/25 bg-red-500/20 text-red-100'}`}>
+          {toast.text}
+        </div>
+      ) : null}
+
+      {showVerifyModal && (
+        <div className="fixed inset-0 z-[1350] flex items-center justify-center bg-black/70 p-5">
+          <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0b0b0b] p-5">
+            <div className="mb-1 text-lg font-bold">{t('account.verify.title')}</div>
+            <div className="text-sm text-white/70">{t('account.verify.body')}</div>
+            <div className="mt-4 flex items-center gap-2">
+              <button className="rounded-2xl bg-[#4db6ac] px-4 py-2 font-bold text-black" onClick={() => setShowVerifyModal(false)}>
+                {t('common.ok')}
+              </button>
+              <button
+                className="rounded-2xl border border-white/10 px-4 py-2 text-white/75"
+                onClick={async () => {
+                  try {
+                    const r = await fetch('/resend_verification', { method: 'POST', credentials: 'include' })
+                    const j = await r.json().catch(() => null)
+                    if (!j?.success) alert(j?.error || t('account.messages.resend_failed'))
+                    else alert(t('account.messages.verification_sent'))
+                  } catch {
+                    alert(t('account.messages.network_error'))
+                  }
+                }}
+              >
+                {t('account.verify.resend')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <DangerZoneSheet open={dangerOpen} onClose={() => setDangerOpen(false)} />
+      <ManageMembershipModal open={membershipTab !== null} initialTab={membershipTab ?? 'plan'} onClose={closeMembership} />
       <RequestMyDataModal
         open={showRequestMyData}
         onClose={() => setShowRequestMyData(false)}

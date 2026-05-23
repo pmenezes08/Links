@@ -48,6 +48,7 @@ import {
   shouldClientBlockSteveIntent,
 } from '../utils/steveClientGate'
 import { preflightSteveMention } from '../utils/stevePreflight'
+import { triggerHaptic } from '../utils/haptics'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
@@ -2473,7 +2474,10 @@ export default function CommunityFeed() {
           {/* Avatar - opens burger menu */}
           <button 
             className="flex-shrink-0" 
-            onClick={() => setMenuOpen(true)} 
+            onClick={() => {
+              void triggerHaptic('light')
+              setMenuOpen(true)
+            }} 
             aria-label={t('navigation.menu')}
           >
             <Avatar username={currentUsername} url={userAvatar} size={32} />
