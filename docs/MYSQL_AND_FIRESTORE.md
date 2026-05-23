@@ -140,6 +140,7 @@ Many **`exercises`**, **`workouts`**, **`workout_exercises`**, **`exercise_sets`
 
 - **Schema changes:** Prefer adding `ensure_*` in the owning service and running migration in deploy — same pattern as `register_blueprints` bootstraps billing tables.
 - **Source of truth:** For billing amounts, Stripe price IDs, mobile product IDs, `iap_purchases_enabled`, and product rules, **in-app KB** still wins (`AGENTS.md`). These tables hold **operational** data only.
+- **Billing ownership:** `backend/services/billing_ownership.py` reconciles existing `users` billing columns, `communities` billing columns, and `iap_links` rows. No separate ownership table exists in v1; active provider and mode are derived from those operational rows.
 - **Firestore costs:** Driven by read/write volumes on `dm_conversations`, `group_chats`, `posts`, and `steve_user_profiles`.
 
 ---

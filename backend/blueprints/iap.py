@@ -72,7 +72,12 @@ def _confirm(provider: str):
     )
     if ok:
         return jsonify({"success": True, "result": result})
-    return jsonify({"success": False, "error": reason, "reason": reason}), _status(reason)
+    return jsonify({
+        "success": False,
+        "error": _error_message(reason, result),
+        "reason": reason,
+        "detail": result,
+    }), _status(reason)
 
 
 def _restore(provider: str):
@@ -115,7 +120,12 @@ def _restore(provider: str):
         else:
             last_reason = reason
     if restored == 0:
-        return jsonify({"success": False, "error": last_reason, "reason": last_reason}), _status(last_reason)
+        return jsonify({
+            "success": False,
+            "error": _error_message(last_reason, last_result),
+            "reason": last_reason,
+            "detail": last_result,
+        }), _status(last_reason)
     return jsonify({
         "success": True,
         "restored_count": restored,
@@ -151,6 +161,39 @@ def _status(reason: str) -> int:
         "steve_package_redundant",
         "community_subscription_inactive",
         "not_root_community",
+        "already_active_same_provider",
+        "already_active_other_provider",
+        "managed_by_other_provider",
+        "mode_mismatch",
+        "needs_reconciliation",
     ):
         return 409
     return 400
+
+
+def _error_message(reason: str, detail: Optional[Dict[str, Any]]) -> str:
+    provider = ""
+    mode = ""
+    if isinstance(detail, dict):
+        provider = str(detail.get("current_provider") or detail.get("billing_provider") or "")
+        mode = str(detail.get("current_mode") or "")
+    label = _provider_label(provider)
+    if reason in ("already_active_other_provider", "managed_by_other_provider"):
+        return f"This subscription is managed through {label}. Use that provider to make changes."
+    if reason == "already_active_same_provider":
+        return f"This subscription is already active through {label}."
+    if reason == "mode_mismatch":
+        return f"This subscription belongs to Stripe {mode or 'another mode'} and cannot be changed here."
+    if reason == "needs_reconciliation":
+        return "This billing state needs reconciliation before another subscription can be applied."
+    return reason
+
+
+def _provider_label(provider: str) -> str:
+    if provider == "apple":
+        return "App Store"
+    if provider == "google":
+        return "Google Play"
+    if provider == "stripe":
+        return "web billing"
+    return provider or "the original billing platform"

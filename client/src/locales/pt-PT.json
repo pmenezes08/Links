@@ -54,6 +54,7 @@
     "about": {
       "section_title": "Sobre o C-Point",
       "helper": "Manifesto, como funciona e vídeos tutoriais.",
+      "version_environment": "C-Point Version - {{environment}}",
       "open": "Abrir Sobre o C-Point"
     },
     "privacy": {

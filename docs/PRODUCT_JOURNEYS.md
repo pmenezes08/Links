@@ -25,6 +25,8 @@ Short narratives for **how behaviour spans** Flask, Stripe, MySQL, Firestore, cr
 
 **Account Settings billing:** `ManageMembershipModal` keeps **Billing** and **Payment** separate. Billing reads `/api/me/billing`, which treats the stored user billing row (`users.stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `current_period_end`, `subscription_provider`, `stripe_mode`) as the canonical display source before falling back to Stripe email lookup. Payment reads `/api/me/payment-history`, backed by `subscription_invoice_payments`, and lists paid invoices for the user's Premium subscription plus root communities they own.
 
+**Billing ownership guard:** Every checkout/confirm/webhook path runs through `backend/services/billing_ownership.py` before granting or changing an active paid product. A user may have only one active **Premium** owner across Stripe/App Store/Google Play; a root community may have only one active billing owner across community products. Tier changes (`paid_l1`/`paid_l2`/`paid_l3`) are changes inside the `community_tier` family and must use the original active provider. Test/sandbox/license-test vs live/production are diagnostic modes, not permission to double-subscribe; conflicts return stable ownership reasons and write audit rows instead of silently overwriting canonical billing state.
+
 ---
 
 ## 2. Steve / AI usage and ledger
@@ -61,6 +63,7 @@ Communities can have **Stripe-backed** billing separate from the user’s person
 - **One store-billed community per provider account.** `backend/services/iap_links.py` maps Apple `originalTransactionId` / Google `purchaseToken` to the C-Point user and community. Backend confirm rejects a second active community for the same provider with `store_community_limit`.
 - **Additional communities go to web billing.** Native UI opens `https://app.c-point.co/subscription_plans` as a clickable external link for extra communities; it must not open Stripe Checkout inside the native app.
 - **Provider-aware management.** `billing_provider` on community rows and `subscription_provider` on users route management to Stripe, App Store, or Google Play. Stripe portal/change-tier endpoints reject Apple/Google-managed rows with `store_billing_active`. Stripe-managed rows also carry `stripe_mode` so test-mode community subscriptions do not open the live Customer Portal; `/api/me/billing/portal` returns `stripe_mode_mismatch` for that case and the client explains it in-app.
+- **Original-provider upgrades.** A root community's active billing provider owns upgrades/downgrades and add-ons until inactive. Apple-owned roots change tiers/add-ons via StoreKit, Google-owned roots via Play Billing, and Stripe-owned roots via web/Stripe; other providers are blocked by `billing_ownership` with `managed_by_other_provider` / `already_active_other_provider` / `mode_mismatch` / `needs_reconciliation`.
 - **Launch gate.** Production IAP grants stay off until `iap_purchases_enabled=true` in KB after App Store / Play review. Sandbox/license-test restore/confirm paths are kept available for review testing.
 - **Server trust.** Confirm/restore calls `store_purchase_verify` (App Store Server API + Play Developer API) before granting entitlements when not sandbox; ASSN2/RTDN webhooks verify signed payloads when store credentials are configured (`docs/STORE_BILLING_SETUP.md`).
 

@@ -20,6 +20,8 @@ def test_confirm_apple_premium_grants_user_subscription(monkeypatch):
 
     monkeypatch.setattr(mobile_iap, "_grants_allowed", lambda _environment: True)
     monkeypatch.setattr(iap_links, "find", lambda _provider, _purchase_key: None)
+    monkeypatch.setattr(iap_links, "list_for_user", lambda _username: [])
+    monkeypatch.setattr(mobile_iap.user_billing, "get_billing_state", lambda _username: {})
     monkeypatch.setattr(iap_links, "upsert_link", lambda **kwargs: saved.setdefault("link", kwargs) or True)
     monkeypatch.setattr(
         mobile_iap.user_billing,
@@ -73,7 +75,9 @@ def test_second_store_billed_community_is_rejected(monkeypatch):
         "active_community_for_user",
         lambda _provider, _username: {"community_id": 10, "tier_code": "paid_l1"},
     )
+    monkeypatch.setattr(iap_links, "list_for_community", lambda _community_id: [])
     monkeypatch.setattr(mobile_iap.community_svc, "resolve_root_community_id", lambda community_id: (community_id, True))
+    monkeypatch.setattr(mobile_iap.billing_ownership, "resolve_root_community_id", lambda community_id: (community_id, True))
     monkeypatch.setattr(mobile_iap.community_svc, "is_community_owner", lambda _username, _community_id: True)
     monkeypatch.setattr(mobile_iap.community_billing, "get_billing_state", lambda _community_id: {})
     monkeypatch.setattr(mobile_iap, "_tier_member_cap", lambda _tier_code: 75)
@@ -91,3 +95,129 @@ def test_second_store_billed_community_is_rejected(monkeypatch):
     assert ok is False
     assert reason == "store_community_limit"
     assert result is None
+
+
+def test_apple_premium_rejected_when_stripe_premium_active(monkeypatch):
+    monkeypatch.setattr(mobile_iap, "_grants_allowed", lambda _environment: True)
+    monkeypatch.setattr(mobile_iap.store_purchase_verify, "verify_confirm", lambda **_kwargs: (True, "ok", {}))
+    monkeypatch.setattr(iap_links, "find", lambda _provider, _purchase_key: None)
+    monkeypatch.setattr(iap_links, "list_for_user", lambda _username: [])
+    monkeypatch.setattr(
+        mobile_iap.user_billing,
+        "get_billing_state",
+        lambda _username: {
+            "subscription": "premium",
+            "subscription_provider": "stripe",
+            "stripe_subscription_id": "sub_live",
+            "subscription_status": "active",
+            "stripe_mode": "live",
+        },
+    )
+
+    ok, reason, result = mobile_iap.confirm_purchase(
+        provider="apple",
+        username="paulo",
+        product_id="cpoint_premium_monthly",
+        purchase_key="apple_tx",
+        environment="Production",
+    )
+
+    assert ok is False
+    assert reason == "already_active_other_provider"
+    assert result["current_provider"] == "stripe"
+
+
+def test_same_apple_premium_restore_is_idempotent(monkeypatch):
+    saved = {}
+    monkeypatch.setattr(mobile_iap, "_grants_allowed", lambda _environment: True)
+    monkeypatch.setattr(mobile_iap.store_purchase_verify, "verify_confirm", lambda **_kwargs: (True, "ok", {}))
+    monkeypatch.setattr(
+        iap_links,
+        "find",
+        lambda _provider, _purchase_key: {
+            "provider": "apple",
+            "purchase_key": "apple_same",
+            "username": "paulo",
+            "sku": iap_links.SKU_PREMIUM,
+            "status": "active",
+            "environment": "Production",
+        },
+    )
+    monkeypatch.setattr(
+        iap_links,
+        "list_for_user",
+        lambda _username: [{
+            "provider": "apple",
+            "purchase_key": "apple_same",
+            "username": "paulo",
+            "sku": iap_links.SKU_PREMIUM,
+            "status": "active",
+            "environment": "Production",
+        }],
+    )
+    monkeypatch.setattr(
+        mobile_iap.user_billing,
+        "get_billing_state",
+        lambda _username: {
+            "subscription": "premium",
+            "subscription_provider": "apple",
+            "stripe_subscription_id": "apple_same",
+            "subscription_status": "active",
+        },
+    )
+    monkeypatch.setattr(iap_links, "upsert_link", lambda **kwargs: saved.setdefault("link", kwargs) or True)
+    monkeypatch.setattr(
+        mobile_iap.user_billing,
+        "mark_subscription",
+        lambda username, **kwargs: saved.setdefault("user", {"username": username, **kwargs}) or True,
+    )
+    monkeypatch.setattr(mobile_iap.subscription_audit, "log", lambda **_kwargs: None)
+
+    ok, reason, result = mobile_iap.confirm_purchase(
+        provider="apple",
+        username="paulo",
+        product_id="cpoint_premium_monthly",
+        purchase_key="apple_same",
+        environment="Production",
+    )
+
+    assert ok is True
+    assert reason == "ok"
+    assert result["provider"] == "apple"
+
+
+def test_google_community_rejected_when_stripe_root_active(monkeypatch):
+    monkeypatch.setattr(mobile_iap, "_grants_allowed", lambda _environment: True)
+    monkeypatch.setattr(mobile_iap.store_purchase_verify, "verify_confirm", lambda **_kwargs: (True, "ok", {}))
+    monkeypatch.setattr(iap_links, "find", lambda _provider, _purchase_key: None)
+    monkeypatch.setattr(iap_links, "active_community_for_user", lambda _provider, _username: None)
+    monkeypatch.setattr(iap_links, "list_for_community", lambda _community_id: [])
+    monkeypatch.setattr(mobile_iap.community_svc, "resolve_root_community_id", lambda community_id: (community_id, True))
+    monkeypatch.setattr(mobile_iap.billing_ownership, "resolve_root_community_id", lambda community_id: (community_id, True))
+    monkeypatch.setattr(mobile_iap.community_svc, "is_community_owner", lambda _username, _community_id: True)
+    monkeypatch.setattr(
+        mobile_iap.community_billing,
+        "get_billing_state",
+        lambda _community_id: {
+            "tier": "paid_l1",
+            "billing_provider": "stripe",
+            "stripe_subscription_id": "sub_comm",
+            "subscription_status": "active",
+            "stripe_mode": "live",
+        },
+    )
+    monkeypatch.setattr(mobile_iap, "_tier_member_cap", lambda _tier_code: 75)
+    monkeypatch.setattr(mobile_iap, "_count_members", lambda _community_id: 12)
+
+    ok, reason, result = mobile_iap.confirm_purchase(
+        provider="google",
+        username="paulo",
+        product_id="cpoint_community_l2_monthly",
+        purchase_key="google_comm",
+        community_id=22,
+        environment="Production",
+    )
+
+    assert ok is False
+    assert reason == "managed_by_other_provider"
+    assert result["current_provider"] == "stripe"

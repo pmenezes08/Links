@@ -39,6 +39,7 @@ from backend.services import (
     ai_usage,
     api_errors,
     auth_session,
+    billing_ownership,
     community_admin_notifications,
     community_billing,
     community_lifecycle,
@@ -47,6 +48,7 @@ from backend.services import (
     knowledge_base,
     media_assets,
     session_identity,
+    subscription_audit,
     user_billing,
 )
 from backend.services.database import get_db_connection, get_sql_placeholder
@@ -680,6 +682,33 @@ def _resolve_root_community_id(community_id: int) -> Tuple[int, bool]:
     return community_svc.resolve_root_community_id(community_id)
 
 
+def _provider_label(provider: str) -> str:
+    if provider == "apple":
+        return "App Store"
+    if provider == "google":
+        return "Google Play"
+    if provider == "stripe":
+        return "web billing"
+    return provider or "billing"
+
+
+def _ownership_block_payload(decision: billing_ownership.OwnershipDecision, *, message: str) -> Tuple[Dict[str, Any], int]:
+    payload = {
+        "success": False,
+        "error": message,
+        **decision.payload(),
+    }
+    reason = str(payload.get("reason") or "")
+    if reason == billing_ownership.DECISION_MANAGED_BY_OTHER_PROVIDER:
+        payload["reason"] = "managed_by_other_provider"
+    elif reason == billing_ownership.DECISION_ALREADY_ACTIVE_OTHER_PROVIDER:
+        payload["reason"] = "already_active_other_provider"
+    elif reason == billing_ownership.DECISION_ALREADY_ACTIVE_SAME_PROVIDER:
+        payload["reason"] = "already_subscribed"
+        payload["portal_required"] = decision.owner.provider == "stripe" if decision.owner else False
+    return payload, 409
+
+
 def _preflight_premium(username: str) -> Optional[Tuple[Dict[str, Any], int]]:
     """Return ``(payload, status)`` if the upsell must be blocked, else None.
 
@@ -693,22 +722,22 @@ def _preflight_premium(username: str) -> Optional[Tuple[Dict[str, Any], int]]:
         logger.exception("premium preflight: active_seat_for failed for %s", username)
         return None
     if not seat:
-        try:
-            billing = user_billing.get_billing_state(username) or {}
-        except Exception:
-            billing = {}
-        provider = str(billing.get("subscription_provider") or "").strip().lower()
-        active = str(billing.get("subscription") or "").strip().lower() in ("premium", "pro", "paid")
-        if active and provider in ("apple", "google"):
-            label = "App Store" if provider == "apple" else "Google Play"
-            return (
-                {
-                    "success": False,
-                    "error": f"Your Premium subscription is managed through {label}.",
-                    "reason": "store_billing_active",
-                    "billing_provider": provider,
-                },
-                409,
+        decision = billing_ownership.check_premium(
+            username,
+            incoming_provider="stripe",
+            incoming_mode=_stripe_mode(),
+        )
+        if not decision.allowed:
+            provider = decision.owner.provider if decision.owner else "billing"
+            billing_ownership.log_conflict(
+                subscription_audit,
+                username=username,
+                action="billing_ownership_conflict_premium_checkout",
+                decision=decision,
+            )
+            return _ownership_block_payload(
+                decision,
+                message=f"Your Premium subscription is managed through {_provider_label(provider)}.",
             )
         return None
     if not seat.get("active"):
@@ -760,6 +789,38 @@ def _preflight_community_tier(
         )
     state = community_billing.get_billing_state(community_id) or {}
     billing_provider = str(state.get("billing_provider") or "stripe").strip().lower()
+    decision = billing_ownership.check_community(
+        community_id,
+        product_family=billing_ownership.PRODUCT_COMMUNITY_TIER,
+        incoming_provider="stripe",
+        incoming_mode=_stripe_mode(),
+    )
+    if not decision.allowed:
+        owner = decision.owner
+        provider = owner.provider if owner else billing_provider
+        if decision.decision == billing_ownership.DECISION_ALREADY_ACTIVE_SAME_PROVIDER:
+            return (
+                {"success": False,
+                 "error": "This community already has an active subscription. Use Stripe to change or renew it.",
+                 "reason": "already_subscribed",
+                 "community_id": community_id,
+                 "portal_required": True,
+                 **decision.payload()},
+                409,
+            )
+        billing_ownership.log_conflict(
+            subscription_audit,
+            username=username,
+            action="billing_ownership_conflict_community_tier_checkout",
+            decision=decision,
+        )
+        return _ownership_block_payload(
+            decision,
+            message=(
+                "This community billing is managed through "
+                f"{_provider_label(provider)}. Use that provider to change tiers."
+            ),
+        )
     if community_billing.has_active_subscription(community_id):
         if billing_provider in ("apple", "google"):
             label = "App Store" if billing_provider == "apple" else "Google Play"
@@ -845,6 +906,28 @@ def _preflight_steve_package(
         state,
         enterprise_steve_package_included=ent_incl,
     )
+    decision = billing_ownership.check_community(
+        root_id,
+        product_family=billing_ownership.PRODUCT_STEVE_PACKAGE,
+        incoming_provider="stripe",
+        incoming_mode=_stripe_mode(),
+    )
+    if not decision.allowed and decision.decision != billing_ownership.DECISION_ALREADY_ACTIVE_SAME_PROVIDER:
+        owner = decision.owner
+        provider = owner.provider if owner else "billing"
+        billing_ownership.log_conflict(
+            subscription_audit,
+            username=username,
+            action="billing_ownership_conflict_steve_package_checkout",
+            decision=decision,
+        )
+        return _ownership_block_payload(
+            decision,
+            message=(
+                "This community billing is managed through "
+                f"{_provider_label(provider)}. Use that provider for add-ons."
+            ),
+        )
     if health.get("steve_addon_eligible"):
         return None
 
@@ -1025,6 +1108,33 @@ def api_community_billing_change_tier(community_id: int):
 
     state = community_billing.get_billing_state(community_id) or {}
     billing_provider = str(state.get("billing_provider") or "stripe").strip().lower()
+    decision = billing_ownership.check_community(
+        community_id,
+        product_family=billing_ownership.PRODUCT_COMMUNITY_TIER,
+        incoming_provider="stripe",
+        incoming_mode=_stripe_mode(),
+        incoming_id=state.get("stripe_subscription_id"),
+    )
+    if (
+        not decision.allowed
+        and decision.decision != billing_ownership.DECISION_ALREADY_ACTIVE_SAME_PROVIDER
+    ):
+        owner = decision.owner
+        provider = owner.provider if owner else billing_provider
+        billing_ownership.log_conflict(
+            subscription_audit,
+            username=username,
+            action="billing_ownership_conflict_community_tier_change",
+            decision=decision,
+        )
+        payload, status_code = _ownership_block_payload(
+            decision,
+            message=(
+                "This community billing is managed through "
+                f"{_provider_label(provider)}. Use that provider to change tiers."
+            ),
+        )
+        return jsonify(payload), status_code
     if billing_provider in ("apple", "google"):
         label = "App Store" if billing_provider == "apple" else "Google Play"
         return jsonify({
@@ -1125,6 +1235,33 @@ def api_admin_community_billing_change_tier(community_id: int):
 
     state = community_billing.get_billing_state(community_id) or {}
     billing_provider = str(state.get("billing_provider") or "stripe").strip().lower()
+    decision = billing_ownership.check_community(
+        community_id,
+        product_family=billing_ownership.PRODUCT_COMMUNITY_TIER,
+        incoming_provider="stripe",
+        incoming_mode=_stripe_mode(),
+        incoming_id=state.get("stripe_subscription_id"),
+    )
+    if (
+        not decision.allowed
+        and decision.decision != billing_ownership.DECISION_ALREADY_ACTIVE_SAME_PROVIDER
+    ):
+        owner = decision.owner
+        provider = owner.provider if owner else billing_provider
+        billing_ownership.log_conflict(
+            subscription_audit,
+            username=username,
+            action="billing_ownership_conflict_admin_community_tier_change",
+            decision=decision,
+        )
+        payload, status_code = _ownership_block_payload(
+            decision,
+            message=(
+                "This community billing is managed through "
+                f"{_provider_label(provider)}. Use that provider to change tiers."
+            ),
+        )
+        return jsonify(payload), status_code
     if billing_provider in ("apple", "google"):
         return jsonify({
             "success": False,

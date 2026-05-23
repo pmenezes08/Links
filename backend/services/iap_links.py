@@ -246,6 +246,35 @@ def list_for_user(username: str, provider: Optional[str] = None) -> List[Dict[st
     return [_row_to_dict(row) for row in rows]
 
 
+def list_for_community(community_id: int, provider: Optional[str] = None) -> List[Dict[str, Any]]:
+    if not community_id:
+        return []
+    ensure_tables()
+    ph = get_sql_placeholder()
+    clauses = [f"community_id = {ph}"]
+    params: List[Any] = [int(community_id)]
+    if provider:
+        clauses.append(f"provider = {ph}")
+        params.append(provider.strip().lower())
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute(
+                f"""
+                SELECT provider, purchase_key, username, sku, community_id,
+                       tier_code, product_id, status, environment, expires_at
+                FROM iap_links
+                WHERE {' AND '.join(clauses)}
+                ORDER BY updated_at DESC
+                """,
+                tuple(params),
+            )
+            rows = c.fetchall() or []
+        except Exception:
+            return []
+    return [_row_to_dict(row) for row in rows]
+
+
 def _row_to_dict(row: Any) -> Dict[str, Any]:
     if hasattr(row, "keys"):
         return {key: row[key] for key in row.keys()}

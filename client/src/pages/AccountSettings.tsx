@@ -23,6 +23,11 @@ type ProfileData = {
   notification_show_previews?: boolean
 }
 
+function cpointVersionEnvironment(): 'Production' | 'Staging' {
+  const host = typeof window !== 'undefined' ? window.location.hostname : ''
+  return host === 'app.c-point.co' ? 'Production' : 'Staging'
+}
+
 export default function AccountSettings(){
   const { setTitle } = useHeader()
   const navigate = useNavigate()
@@ -285,6 +290,13 @@ export default function AccountSettings(){
             <h2 className="text-lg font-semibold">{t('account.about.section_title')}</h2>
             <p className="text-sm text-white/60">{t('account.about.helper')}</p>
           </div>
+          {Capacitor.getPlatform() === 'ios' && (
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/75">
+              {t('account.about.version_environment', {
+                environment: cpointVersionEnvironment(),
+              })}
+            </div>
+          )}
           <button
             type="button"
             onClick={() => navigate('/about_cpoint')}

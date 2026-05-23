@@ -31,6 +31,7 @@ from typing import Any, Dict, Optional
 from flask import Blueprint, jsonify, request
 
 from backend.services import (
+    billing_ownership,
     community_admin_notifications,
     community_billing,
     community_lifecycle,
@@ -56,6 +57,36 @@ logger = logging.getLogger(__name__)
 def _stripe_mode() -> str:
     key = (os.environ.get("STRIPE_API_KEY") or "").strip()
     return "live" if key.startswith("sk_live_") else "test"
+
+
+def _block_on_ownership_conflict(
+    *,
+    username: str,
+    action: str,
+    decision: billing_ownership.OwnershipDecision,
+) -> bool:
+    if decision.allowed:
+        return False
+    billing_ownership.log_conflict(
+        subscription_audit,
+        username=username,
+        action=action,
+        decision=decision,
+    )
+    return True
+
+
+def _event_subscription_id(event_type: str, obj: Dict[str, Any]) -> Optional[str]:
+    raw = obj.get("subscription") if event_type == "checkout.session.completed" else None
+    if raw is None:
+        raw = obj.get("subscription")
+    if isinstance(raw, dict):
+        raw = raw.get("id")
+    if not raw:
+        raw = ((obj.get("parent") or {}).get("subscription_details") or {}).get("subscription")
+    if not raw and str(obj.get("object") or "") == "subscription":
+        raw = obj.get("id")
+    return str(raw) if raw else None
 
 
 @subscription_webhooks_bp.route("/api/webhooks/stripe", methods=["POST"])
@@ -107,13 +138,25 @@ def stripe_webhook():
 
 def _handle_premium_event(event_type: str, obj: Dict[str, Any], username: Optional[str]) -> None:
     """Personal Premium flow — the pre-existing Step D behavior."""
-    subscription_id = obj.get("subscription") if event_type == "checkout.session.completed" else obj.get("id")
+    subscription_id = _event_subscription_id(event_type, obj)
     customer_id = obj.get("customer")
     if not username and subscription_id:
         username = user_billing.find_by_subscription_id(str(subscription_id))
     if event_type == "checkout.session.completed":
         subscription_snapshot = _retrieve_subscription_snapshot(subscription_id)
         if username:
+            decision = billing_ownership.check_premium(
+                username,
+                incoming_provider="stripe",
+                incoming_mode=_stripe_mode(),
+                incoming_id=str(subscription_id or ""),
+            )
+            if _block_on_ownership_conflict(
+                username=username,
+                action="billing_ownership_conflict_stripe_premium_webhook",
+                decision=decision,
+            ):
+                return
             user_billing.mark_subscription(
                 username,
                 subscription="premium",
@@ -164,6 +207,18 @@ def _handle_premium_event(event_type: str, obj: Dict[str, Any], username: Option
         cancel_at_period_end = bool(obj.get("cancel_at_period_end"))
         status = obj.get("status")
         if username:
+            decision = billing_ownership.check_premium(
+                username,
+                incoming_provider="stripe",
+                incoming_mode=_stripe_mode(),
+                incoming_id=str(subscription_id or ""),
+            )
+            if _block_on_ownership_conflict(
+                username=username,
+                action="billing_ownership_conflict_stripe_premium_webhook",
+                decision=decision,
+            ):
+                return
             user_billing.mark_subscription(
                 username,
                 subscription="premium",
@@ -192,6 +247,18 @@ def _handle_premium_event(event_type: str, obj: Dict[str, Any], username: Option
         )
     elif event_type == "invoice.payment_failed":
         if username:
+            decision = billing_ownership.check_premium(
+                username,
+                incoming_provider="stripe",
+                incoming_mode=_stripe_mode(),
+                incoming_id=str(subscription_id or ""),
+            )
+            if _block_on_ownership_conflict(
+                username=username,
+                action="billing_ownership_conflict_stripe_premium_webhook",
+                decision=decision,
+            ):
+                return
             user_billing.mark_subscription(
                 username,
                 status="past_due",
@@ -223,11 +290,7 @@ def _handle_community_tier_event(
     """
     community_id = _extract_community_id(obj)
     tier_code = _extract_tier_code(obj)
-    subscription_id = (
-        obj.get("subscription")  # checkout.session.completed
-        if event_type == "checkout.session.completed"
-        else obj.get("id")       # customer.subscription.* events
-    )
+    subscription_id = _event_subscription_id(event_type, obj)
     customer_id = obj.get("customer")
 
     # Events that don't carry community_id in metadata (like renewal
@@ -252,6 +315,19 @@ def _handle_community_tier_event(
                 subscription_id,
                 community_id,
             )
+        decision = billing_ownership.check_community(
+            community_id,
+            product_family=billing_ownership.PRODUCT_COMMUNITY_TIER,
+            incoming_provider="stripe",
+            incoming_mode=_stripe_mode(),
+            incoming_id=str(subscription_id or ""),
+        )
+        if _block_on_ownership_conflict(
+            username=username or "",
+            action="billing_ownership_conflict_stripe_community_tier_webhook",
+            decision=decision,
+        ):
+            return
         community_billing.mark_subscription(
             community_id,
             tier_code=tier_code,
@@ -307,6 +383,19 @@ def _handle_community_tier_event(
         state = community_billing.get_billing_state(community_id) or {}
         previous_tier = str(state.get("tier") or "").strip().lower()
         updated_tier = _tier_from_subscription_price(obj) or _extract_tier_code(obj)
+        decision = billing_ownership.check_community(
+            community_id,
+            product_family=billing_ownership.PRODUCT_COMMUNITY_TIER,
+            incoming_provider="stripe",
+            incoming_mode=_stripe_mode(),
+            incoming_id=str(subscription_id or ""),
+        )
+        if _block_on_ownership_conflict(
+            username=username or "",
+            action="billing_ownership_conflict_stripe_community_tier_webhook",
+            decision=decision,
+        ):
+            return
         community_billing.mark_subscription(
             community_id,
             tier_code=updated_tier,
@@ -351,6 +440,19 @@ def _handle_community_tier_event(
                     community_id,
                 )
     elif event_type == "invoice.payment_failed":
+        decision = billing_ownership.check_community(
+            community_id,
+            product_family=billing_ownership.PRODUCT_COMMUNITY_TIER,
+            incoming_provider="stripe",
+            incoming_mode=_stripe_mode(),
+            incoming_id=str(subscription_id or ""),
+        )
+        if _block_on_ownership_conflict(
+            username=username or "",
+            action="billing_ownership_conflict_stripe_community_tier_webhook",
+            decision=decision,
+        ):
+            return
         community_billing.mark_subscription(
             community_id,
             status="past_due",
@@ -377,11 +479,7 @@ def _handle_steve_package_event(
     """Steve Community Package — second Stripe subscription on ``communities``."""
 
     community_id = _extract_community_id(obj)
-    subscription_id = (
-        obj.get("subscription")
-        if event_type == "checkout.session.completed"
-        else obj.get("id")
-    )
+    subscription_id = _event_subscription_id(event_type, obj)
     customer_id = obj.get("customer")
 
     if not community_id and subscription_id:
@@ -413,6 +511,23 @@ def _handle_steve_package_event(
                 subscription_id,
                 community_id,
             )
+        decision = billing_ownership.check_community(
+            community_id,
+            product_family=billing_ownership.PRODUCT_STEVE_PACKAGE,
+            incoming_provider="stripe",
+            incoming_mode=_stripe_mode(),
+            incoming_id=str(subscription_id or ""),
+        )
+        if (
+            not decision.allowed
+            and decision.decision != billing_ownership.DECISION_ALREADY_ACTIVE_SAME_PROVIDER
+        ):
+            _block_on_ownership_conflict(
+                username=username or "",
+                action="billing_ownership_conflict_stripe_steve_package_webhook",
+                decision=decision,
+            )
+            return
         community_billing.mark_steve_package_subscription(
             community_id,
             subscription_id=str(subscription_id or ""),
@@ -449,6 +564,23 @@ def _handle_steve_package_event(
     elif event_type in ("customer.subscription.updated", "customer.subscription.created"):
         status = (obj.get("status") or "").lower() or None
         cancel_at_period_end = bool(obj.get("cancel_at_period_end"))
+        decision = billing_ownership.check_community(
+            community_id,
+            product_family=billing_ownership.PRODUCT_STEVE_PACKAGE,
+            incoming_provider="stripe",
+            incoming_mode=_stripe_mode(),
+            incoming_id=str(subscription_id or ""),
+        )
+        if (
+            not decision.allowed
+            and decision.decision != billing_ownership.DECISION_ALREADY_ACTIVE_SAME_PROVIDER
+        ):
+            _block_on_ownership_conflict(
+                username=username or "",
+                action="billing_ownership_conflict_stripe_steve_package_webhook",
+                decision=decision,
+            )
+            return
         community_billing.mark_steve_package_subscription(
             community_id,
             subscription_id=str(subscription_id or ""),
@@ -469,6 +601,23 @@ def _handle_steve_package_event(
                       "cancel_at_period_end": cancel_at_period_end},
         )
     elif event_type == "invoice.payment_failed":
+        decision = billing_ownership.check_community(
+            community_id,
+            product_family=billing_ownership.PRODUCT_STEVE_PACKAGE,
+            incoming_provider="stripe",
+            incoming_mode=_stripe_mode(),
+            incoming_id=str(subscription_id or ""),
+        )
+        if (
+            not decision.allowed
+            and decision.decision != billing_ownership.DECISION_ALREADY_ACTIVE_SAME_PROVIDER
+        ):
+            _block_on_ownership_conflict(
+                username=username or "",
+                action="billing_ownership_conflict_stripe_steve_package_webhook",
+                decision=decision,
+            )
+            return
         community_billing.mark_steve_package_subscription(
             community_id,
             status="past_due",

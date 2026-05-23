@@ -563,10 +563,38 @@ export default function SubscriptionPlans() {
       if (activeCommunity) {
         const billingProvider = String(activeCommunity.billing_provider || 'stripe').toLowerCase()
         if (billingProvider === 'apple' || billingProvider === 'google') {
+          const provider = currentStoreProvider()
+          const productId = provider === billingProvider
+            ? iapConfig?.[provider]?.community_product_ids?.[pendingTier.tier_code]
+            : ''
+          if (provider !== billingProvider || !productId || !canUseNativeStoreIap(provider, iapConfig, productId)) {
+            setMobileBillingNotice(false)
+            setModalError(
+              t('subscriptions.error_managed_store', { provider: providerLabel(billingProvider) }),
+            )
+            return
+          }
+          const key = `community_tier:${pendingTier.tier_code}:${communityId}`
+          setCheckoutLoading(key)
+          setModalError(null)
           setMobileBillingNotice(false)
-          setModalError(
-            t('subscriptions.error_managed_store', { provider: providerLabel(billingProvider) }),
-          )
+          try {
+            await purchaseStoreSubscription({ provider, productId, communityId })
+            setStatus(
+              t('subscriptions.status_community_provider', {
+                tier: tierLabel(pendingTier.tier_code),
+                provider: providerLabel(provider),
+              }),
+            )
+            setView(null)
+            setPendingTier(null)
+            resetSubscriptionPageScroll()
+            await loadActiveSubscriptions()
+          } catch (err) {
+            setModalError(err instanceof Error ? err.message : t('subscriptions.error_iap'))
+          } finally {
+            setCheckoutLoading(null)
+          }
           return
         }
         const key = `change-tier:${communityId}:${pendingTier.tier_code}`
@@ -664,6 +692,15 @@ export default function SubscriptionPlans() {
   const onSteveCommunityChosen = useCallback(
     async (communityId: number) => {
       const provider = currentStoreProvider()
+      const activeCommunity = activeSubscriptions?.communities?.find((item) => item.id === communityId)
+      const billingProvider = String(activeCommunity?.billing_provider || 'stripe').toLowerCase()
+      const incomingProvider = provider || 'stripe'
+      if (billingProvider && billingProvider !== incomingProvider) {
+        setModalError(
+          t('subscriptions.error_managed_store', { provider: providerLabel(billingProvider) }),
+        )
+        return
+      }
       const steveProductId =
         provider && iapConfig?.[provider]?.steve_product_id
           ? iapConfig[provider].steve_product_id

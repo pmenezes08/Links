@@ -14,6 +14,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
+from backend.services import billing_ownership
 from backend.services import community as community_svc
 from backend.services import community_billing, iap_links, knowledge_base
 from backend.services import store_purchase_verify, subscription_audit, subscription_health, user_billing
@@ -147,6 +148,20 @@ def confirm_purchase(
         return False, "purchase_owned_by_other_user", None
 
     if product["sku"] == iap_links.SKU_PREMIUM:
+        decision = billing_ownership.check_premium(
+            username,
+            incoming_provider=provider,
+            incoming_mode=environment,
+            incoming_id=purchase_key,
+        )
+        if not decision.allowed:
+            billing_ownership.log_conflict(
+                subscription_audit,
+                username=username,
+                action="billing_ownership_conflict_store_premium_confirm",
+                decision=decision,
+            )
+            return False, decision.reason, decision.payload()
         return _grant_premium(
             provider=provider,
             username=username,
@@ -162,6 +177,24 @@ def confirm_purchase(
         steve_error = _steve_preflight(username=username, community_id=int(community_id))
         if steve_error:
             return False, steve_error, None
+        decision = billing_ownership.check_community(
+            int(community_id),
+            product_family=billing_ownership.PRODUCT_STEVE_PACKAGE,
+            incoming_provider=provider,
+            incoming_mode=environment,
+            incoming_id=purchase_key,
+        )
+        if (
+            not decision.allowed
+            and decision.decision != billing_ownership.DECISION_ALREADY_ACTIVE_SAME_PROVIDER
+        ):
+            billing_ownership.log_conflict(
+                subscription_audit,
+                username=username,
+                action="billing_ownership_conflict_store_steve_confirm",
+                decision=decision,
+            )
+            return False, decision.reason, decision.payload()
         return _grant_steve_package(
             provider=provider,
             username=username,
@@ -183,6 +216,21 @@ def confirm_purchase(
     )
     if preflight_error:
         return False, preflight_error, None
+    decision = billing_ownership.check_community(
+        int(community_id),
+        product_family=billing_ownership.PRODUCT_COMMUNITY_TIER,
+        incoming_provider=provider,
+        incoming_mode=environment,
+        incoming_id=purchase_key,
+    )
+    if not decision.allowed:
+        billing_ownership.log_conflict(
+            subscription_audit,
+            username=username,
+            action="billing_ownership_conflict_store_community_confirm",
+            decision=decision,
+        )
+        return False, decision.reason, decision.payload()
     return _grant_community(
         provider=provider,
         username=username,
@@ -212,6 +260,20 @@ def apply_store_lifecycle(
     username = str(link.get("username") or "")
     if sku == iap_links.SKU_PREMIUM:
         if action in ("renewed", "purchased", "active"):
+            decision = billing_ownership.check_premium(
+                username,
+                incoming_provider=provider,
+                incoming_mode=link.get("environment"),
+                incoming_id=purchase_key,
+            )
+            if not decision.allowed:
+                billing_ownership.log_conflict(
+                    subscription_audit,
+                    username=username,
+                    action="billing_ownership_conflict_store_premium_lifecycle",
+                    decision=decision,
+                )
+                return
             user_billing.mark_subscription(
                 username,
                 subscription="premium",
@@ -244,6 +306,24 @@ def apply_store_lifecycle(
         if not community_id:
             return
         if action in ("renewed", "purchased", "active"):
+            decision = billing_ownership.check_community(
+                community_id,
+                product_family=billing_ownership.PRODUCT_STEVE_PACKAGE,
+                incoming_provider=provider,
+                incoming_mode=link.get("environment"),
+                incoming_id=purchase_key,
+            )
+            if (
+                not decision.allowed
+                and decision.decision != billing_ownership.DECISION_ALREADY_ACTIVE_SAME_PROVIDER
+            ):
+                billing_ownership.log_conflict(
+                    subscription_audit,
+                    username=username,
+                    action="billing_ownership_conflict_store_steve_lifecycle",
+                    decision=decision,
+                )
+                return
             community_billing.mark_steve_package_subscription(
                 community_id,
                 subscription_id=purchase_key,
@@ -270,6 +350,21 @@ def apply_store_lifecycle(
     if not community_id:
         return
     if action in ("renewed", "purchased", "active"):
+        decision = billing_ownership.check_community(
+            community_id,
+            product_family=billing_ownership.PRODUCT_COMMUNITY_TIER,
+            incoming_provider=provider,
+            incoming_mode=link.get("environment"),
+            incoming_id=purchase_key,
+        )
+        if not decision.allowed:
+            billing_ownership.log_conflict(
+                subscription_audit,
+                username=username,
+                action="billing_ownership_conflict_store_community_lifecycle",
+                decision=decision,
+            )
+            return
         community_billing.mark_subscription(
             community_id,
             tier_code=str(link.get("tier_code") or ""),
@@ -482,10 +577,6 @@ def _community_preflight(
         existing_id = int(existing.get("community_id") or 0)
         if existing_id and existing_id != int(community_id):
             return "store_community_limit"
-    state = community_billing.get_billing_state(community_id) or {}
-    billing_provider = str(state.get("billing_provider") or "stripe").lower()
-    if state.get("stripe_subscription_id") and billing_provider not in ("", provider):
-        return f"{billing_provider}_billing_active"
     cap = _tier_member_cap(tier_code)
     members = _count_members(community_id)
     if cap is not None and members > cap:
