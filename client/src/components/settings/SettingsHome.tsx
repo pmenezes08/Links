@@ -1,12 +1,14 @@
 import SettingsRow from './SettingsRow'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import Avatar from '../Avatar'
 
 export type SettingsPanelKey = 'account' | 'subscription' | 'notifications' | 'language' | 'privacy' | 'about'
 
 type SettingsHomeProps = {
   username: string
   email: string
+  avatarUrl?: string | null
   subscription: string
   notificationsLabel: string
   languageLabel: string
@@ -34,6 +36,7 @@ function Divider() {
 export default function SettingsHome({
   username,
   email,
+  avatarUrl,
   subscription,
   notificationsLabel,
   languageLabel,
@@ -43,24 +46,27 @@ export default function SettingsHome({
   onOpenDanger,
 }: SettingsHomeProps) {
   const { t } = useTranslation()
-  const initial = (username || email || 'C').trim().slice(0, 1).toUpperCase()
-  const isPro = subscription === 'premium'
+  const isPremium = subscription === 'premium'
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-xl flex-col px-5 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] pt-[calc(env(safe-area-inset-top,0px)+1rem)]">
+    <div className="mx-auto flex min-h-full w-full max-w-xl flex-col px-5 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] pt-4">
       <h1 className="text-center text-xl font-bold tracking-[-0.02em] text-white">Settings</h1>
 
       <div className="mt-8 flex items-center gap-5">
-        <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-[#4db6ac] text-3xl font-bold text-black">
-          {initial}
-        </div>
+        <Avatar
+          username={username}
+          displayName={username}
+          url={avatarUrl}
+          size={80}
+          className="shrink-0 border-[#4db6ac]/35 bg-[#4db6ac]"
+        />
         <div className="min-w-0">
           <div className="truncate text-2xl font-bold tracking-[-0.03em] text-white">{username || 'Account'}</div>
           <div className="mt-0.5 truncate text-base text-white/38">{email}</div>
-          {isPro ? (
+          {isPremium ? (
             <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#4db6ac]/12 px-3 py-1 text-xs font-bold text-[#4db6ac]">
               <i className="fa-solid fa-crown text-[10px]" />
-              Pro
+              Premium
             </span>
           ) : null}
         </div>
@@ -79,11 +85,11 @@ export default function SettingsHome({
           <SettingsRow
             icon="fa-solid fa-crown"
             title={t('account.subscription.section_title')}
-            subtitle={isPro ? t('account.subscription.premium') : t('account.subscription.free')}
+            subtitle={isPremium ? t('account.subscription.premium') : t('account.subscription.free')}
             active={activePanel === 'subscription'}
             badge={
-              isPro ? (
-                <span className="rounded-full bg-[#4db6ac]/12 px-3 py-1 text-xs font-bold text-[#4db6ac]">Pro</span>
+              isPremium ? (
+                <span className="rounded-full bg-[#4db6ac]/12 px-3 py-1 text-xs font-bold text-[#4db6ac]">Premium</span>
               ) : null
             }
             onClick={() => onOpenPanel('subscription')}

@@ -289,19 +289,22 @@ export default function AccountSettings() {
   }
 
   const isPanelOpen = activePanel !== null
-  const isPro = profile.subscription === 'premium'
+  const isPremium = profile.subscription === 'premium'
+  const settingsMinHeight = 'calc(100dvh - var(--app-header-offset, 0px))'
 
   return (
-    <div className="min-h-screen overflow-hidden bg-black text-white">
-      <div className="relative mx-auto min-h-screen max-w-xl overflow-hidden bg-black">
+    <div className="overflow-hidden bg-black text-white" style={{ minHeight: settingsMinHeight }}>
+      <div className="relative mx-auto max-w-xl overflow-hidden bg-black" style={{ minHeight: settingsMinHeight }}>
         <div
-          className={`min-h-screen transition-[transform,opacity,filter] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+          className={`transition-[transform,opacity,filter] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
             isPanelOpen ? '-translate-x-[24%] opacity-45 blur-[1px]' : 'translate-x-0 opacity-100 blur-0'
           }`}
+          style={{ minHeight: settingsMinHeight }}
         >
           <SettingsHome
             username={profile.username}
             email={profile.email}
+            avatarUrl={profile.profile_picture}
             subscription={profile.subscription}
             notificationsLabel={notificationLabel}
             languageLabel={languageLabel}
@@ -351,8 +354,8 @@ export default function AccountSettings() {
               <div className="p-4">
                 <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/28">{t('account.subscription.label')}</div>
                 <div className="mt-2 flex items-center justify-between">
-                  <div className="text-xl font-bold text-white">{isPro ? t('account.subscription.premium') : t('account.subscription.free')}</div>
-                  {isPro ? <span className="rounded-full bg-[#4db6ac]/12 px-3 py-1 text-xs font-bold text-[#4db6ac]">Pro</span> : null}
+                  <div className="text-xl font-bold text-white">{isPremium ? t('account.subscription.premium') : t('account.subscription.free')}</div>
+                  {isPremium ? <span className="rounded-full bg-[#4db6ac]/12 px-3 py-1 text-xs font-bold text-[#4db6ac]">Premium</span> : null}
                 </div>
                 <p className="mt-2 text-sm text-white/45">{t('account.subscription.helper')}</p>
               </div>
