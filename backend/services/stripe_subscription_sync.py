@@ -28,6 +28,11 @@ def _stripe_client():
     return stripe
 
 
+def _stripe_mode() -> str:
+    key = (os.getenv("STRIPE_API_KEY") or "").strip()
+    return "live" if key.startswith("sk_live_") else "test"
+
+
 def sync_community_tier_subscription_from_stripe(community_id: int) -> Dict[str, Any]:
     """Refresh tier subscription status + ``current_period_end`` from Stripe."""
     stripe_mod = _stripe_client()
@@ -61,6 +66,7 @@ def sync_community_tier_subscription_from_stripe(community_id: int) -> Dict[str,
         "current_period_end": cpe,
         "cancel_at_period_end": cancel_at,
         "canceled_at": canceled_at,
+        "stripe_mode": _stripe_mode(),
     }
     if cust_s:
         kwargs["customer_id"] = cust_s
@@ -111,6 +117,7 @@ def sync_user_subscription_from_stripe(username: str) -> Dict[str, Any]:
         cancel_at_period_end=cancel_at,
         canceled_at=canceled_at,
         provider="stripe",
+        stripe_mode=_stripe_mode(),
     )
     return {
         "success": ok,

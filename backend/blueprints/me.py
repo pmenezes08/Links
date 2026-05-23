@@ -347,6 +347,43 @@ def _subscription_from_billing_state(state: Dict[str, Any]) -> Optional[Dict[str
     }
 
 
+def _subscription_status(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _should_prefer_stripe_subscription(
+    local: Optional[Dict[str, Any]],
+    stripe_subscription: Optional[Dict[str, Any]],
+) -> bool:
+    """Use live Stripe display data when the stored row is clearly stale.
+
+    The database row remains the normal source of truth, but Account Settings
+    should not show a canceled/test/past-due row when the current Stripe mode
+    has an active subscription for the same account email.
+    """
+    if not stripe_subscription:
+        return False
+    stripe_status = _subscription_status(stripe_subscription.get("status"))
+    if stripe_status not in ("active", "trialing"):
+        return False
+    if not local:
+        return True
+
+    local_status = _subscription_status(local.get("status"))
+    local_mode = _subscription_status(local.get("stripe_mode"))
+    current_mode = _stripe_mode()
+    if local_mode and local_mode != current_mode:
+        return True
+    if local_status in ("", "past_due", "unpaid", "cancelled", "canceled", "incomplete", "incomplete_expired"):
+        return True
+
+    local_sub = str(local.get("subscription_id") or "").strip()
+    stripe_sub = str(stripe_subscription.get("subscription_id") or "").strip()
+    if local_status not in ("active", "trialing") and stripe_sub and stripe_sub != local_sub:
+        return True
+    return False
+
+
 def _load_user_row(username: str) -> Optional[Dict[str, Any]]:
     ph = get_sql_placeholder()
     with get_db_connection() as conn:
@@ -493,18 +530,28 @@ def me_billing():
     billing_state = user_billing.get_billing_state(username) or {}
     provider = str(billing_state.get("subscription_provider") or "stripe").strip().lower()
     subscription = _subscription_from_billing_state(billing_state)
-    if subscription is None and stripe_configured and user.get("email"):
-        subscription = _find_stripe_subscription(stripe_mod, user["email"])
-        if subscription:
-            subscription["source"] = "stripe_email"
-            subscription["stripe_mode"] = _stripe_mode()
+    billing_state_source = (subscription or {}).get("source") or "none"
+    needs_sync = False
+    stripe_subscription = None
+    if stripe_configured and provider == "stripe" and user.get("email"):
+        stripe_subscription = _find_stripe_subscription(stripe_mod, user["email"])
+        if stripe_subscription:
+            stripe_subscription["source"] = "stripe_email"
+            stripe_subscription["stripe_mode"] = _stripe_mode()
+    if _should_prefer_stripe_subscription(subscription, stripe_subscription):
+        subscription = stripe_subscription
+        billing_state_source = "stripe_email"
+        needs_sync = True
+    elif subscription is not None:
+        billing_state_source = subscription.get("source") or "local"
     stored_mode = str(billing_state.get("stripe_mode") or _stripe_mode()).strip().lower()
+    display_mode = str((subscription or {}).get("stripe_mode") or stored_mode).strip().lower()
     portal_available = bool(
         stripe_configured
         and provider == "stripe"
         and subscription
         and subscription.get("customer_id")
-        and stored_mode == _stripe_mode()
+        and display_mode == _stripe_mode()
     )
 
     return jsonify({
@@ -522,6 +569,8 @@ def me_billing():
             "subscription": subscription,
             "portal_available": portal_available,
             "mode": _stripe_mode(),
+            "billing_state_source": billing_state_source,
+            "needs_sync": needs_sync,
         },
         "caps": {
             # monthly_spend_ceiling_eur deliberately omitted — see the
@@ -649,15 +698,20 @@ def me_billing_portal():
             }), 409
         stored_mode = str(billing_state.get("stripe_mode") or _stripe_mode()).strip().lower()
         if stored_mode != _stripe_mode():
-            return jsonify({
-                "success": False,
-                "error": "This subscription belongs to a different Stripe mode.",
-                "reason": "stripe_mode_mismatch",
-                "billing_provider": provider,
-                "stripe_mode": stored_mode,
-                "current_stripe_mode": _stripe_mode(),
-            }), 409
-        customer_id = billing_state.get("stripe_customer_id") or None
+            user = _load_user_row(username) or {}
+            subscription = _find_stripe_subscription(stripe_mod, user.get("email") or "")
+            if subscription and _subscription_status(subscription.get("status")) in ("active", "trialing"):
+                customer_id = subscription.get("customer_id") or None
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "This subscription belongs to a different Stripe mode.",
+                    "reason": "stripe_mode_mismatch",
+                    "billing_provider": provider,
+                    "stripe_mode": stored_mode,
+                    "current_stripe_mode": _stripe_mode(),
+                }), 409
+        customer_id = customer_id or billing_state.get("stripe_customer_id") or None
         if customer_id:
             pass
         else:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Flask
 
+from backend.blueprints import me as me_mod
 from backend.blueprints.me import me_bp
 from backend.services import community_billing, subscription_billing_ledger, user_billing
 from tests.fixtures import make_community, make_user
@@ -65,6 +66,54 @@ def test_me_billing_prefers_stored_subscription_state(mysql_dsn, monkeypatch):
     assert body["stripe"]["portal_available"] is True
 
 
+def test_me_billing_uses_active_stripe_when_stored_state_is_stale(mysql_dsn, monkeypatch):
+    monkeypatch.setenv("STRIPE_API_KEY", "sk_live_dummy_for_tests")
+    user_billing.ensure_tables()
+    make_user("billing_stale", email="stale@example.com", subscription="free")
+    user_billing.mark_subscription(
+        "billing_stale",
+        subscription="free",
+        subscription_id="sub_old_test",
+        customer_id="cus_old_test",
+        status="cancelled",
+        current_period_end=1_767_225_600,
+        provider="stripe",
+        stripe_mode="test",
+    )
+    monkeypatch.setattr(me_mod, "_stripe_client", lambda: object())
+    monkeypatch.setattr(
+        me_mod,
+        "_find_stripe_subscription",
+        lambda _stripe, email: {
+            "customer_id": "cus_live",
+            "subscription_id": "sub_live",
+            "status": "active",
+            "cancel_at_period_end": False,
+            "current_period_end": 1_782_154_145,
+            "trial_end": None,
+            "price_amount_cents": 799,
+            "price_interval": "month",
+            "price_currency": "EUR",
+        } if email == "stale@example.com" else None,
+    )
+
+    app = Flask(__name__)
+    app.secret_key = "test-secret"
+    app.register_blueprint(me_bp)
+    with app.test_client() as client:
+        _login(client, "billing_stale")
+        resp = client.get("/api/me/billing")
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["stripe"]["subscription"]["subscription_id"] == "sub_live"
+    assert body["stripe"]["subscription"]["status"] == "active"
+    assert body["stripe"]["subscription"]["current_period_end"] == 1_782_154_145
+    assert body["stripe"]["billing_state_source"] == "stripe_email"
+    assert body["stripe"]["needs_sync"] is True
+    assert body["stripe"]["portal_available"] is True
+
+
 def test_me_payment_history_returns_personal_and_community_invoices(mysql_dsn):
     user_billing.ensure_tables()
     community_billing.ensure_tables()
@@ -105,3 +154,25 @@ def test_me_payment_history_returns_personal_and_community_invoices(mysql_dsn):
     assert invoices["in_personal_history"]["scope"] == "personal"
     assert invoices["in_community_history"]["scope"] == "community"
     assert invoices["in_community_history"]["community_name"] == "Growth Network"
+
+
+def test_payment_history_resolves_invoice_by_customer_id(mysql_dsn):
+    user_billing.ensure_tables()
+    subscription_billing_ledger.ensure_tables()
+    make_user("pay_customer", subscription="premium")
+    user_billing.mark_subscription(
+        "pay_customer",
+        subscription="premium",
+        subscription_id="sub_current",
+        customer_id="cus_current",
+        status="active",
+    )
+
+    inserted = subscription_billing_ledger.record_invoice_payment({
+        **_invoice("in_customer_history", "sub_old", 799),
+        "customer": "cus_current",
+    })
+
+    assert inserted is True
+    rows = subscription_billing_ledger.list_for_user("pay_customer")
+    assert rows[0]["stripe_invoice_id"] == "in_customer_history"

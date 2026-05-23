@@ -237,6 +237,7 @@ def _totals(column: str, value: Any) -> Dict[str, int]:
 def _resolve_owner(invoice: Dict[str, Any], subscription_id: Optional[str]) -> tuple[Optional[str], Optional[int]]:
     metadata = _invoice_metadata(invoice)
     sku = str(metadata.get("sku") or metadata.get("plan_id") or "").lower()
+    customer_id = _extract_customer_id(invoice)
     if sku == "community_tier":
         community_id = _int_or_none(metadata.get("community_id"))
         if community_id:
@@ -248,8 +249,46 @@ def _resolve_owner(invoice: Dict[str, Any], subscription_id: Optional[str]) -> t
         username = user_billing.find_by_subscription_id(subscription_id)
         if username:
             return username, None
+    if customer_id:
+        if sku in ("community_tier", "steve_package"):
+            community_id = community_billing.find_by_customer_id(customer_id)
+            if community_id:
+                return str(metadata.get("username") or "") or None, community_id
+        username = user_billing.find_by_customer_id(customer_id)
+        if username:
+            return username, None
+        community_id = community_billing.find_by_customer_id(customer_id)
+        if community_id:
+            return str(metadata.get("username") or "") or None, community_id
     username = metadata.get("username")
-    return (str(username), None) if username else (None, None)
+    if username:
+        return str(username), None
+    email = (
+        invoice.get("customer_email")
+        or ((invoice.get("customer_details") or {}).get("email"))
+    )
+    username = _lookup_username_by_email(str(email or ""))
+    return (username, None) if username else (None, None)
+
+
+def _lookup_username_by_email(email: str) -> Optional[str]:
+    email = (email or "").strip()
+    if not email:
+        return None
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute(
+                f"SELECT username FROM users WHERE LOWER(email) = LOWER({ph}) LIMIT 1",
+                (email,),
+            )
+            row = c.fetchone()
+        except Exception:
+            return None
+    if not row:
+        return None
+    return str(_row_value(row, "username", 0))
 
 
 def _extract_subscription_id(invoice: Dict[str, Any]) -> Optional[str]:

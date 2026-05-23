@@ -197,6 +197,25 @@ def find_by_subscription_id(subscription_id: str) -> Optional[str]:
     return str(_row_value(row, "username", 0))
 
 
+def find_by_customer_id(customer_id: str) -> Optional[str]:
+    if not customer_id:
+        return None
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute(
+                f"SELECT username FROM users WHERE stripe_customer_id = {ph} LIMIT 1",
+                (customer_id,),
+            )
+            row = c.fetchone()
+        except Exception:
+            return None
+    if not row:
+        return None
+    return str(_row_value(row, "username", 0))
+
+
 def _row_value(row: Any, key: str, index: int) -> Any:
     if hasattr(row, "keys") and key in row.keys():
         return row[key]

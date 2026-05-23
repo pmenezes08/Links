@@ -47,6 +47,7 @@ export default function PaidCommunitiesBillingSection() {
   const [stripeMode, setStripeMode] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [portalBusyId, setPortalBusyId] = useState<number | null>(null)
 
   useEffect(() => {
@@ -87,6 +88,15 @@ export default function PaidCommunitiesBillingSection() {
 
   const manageCommunity = async (row: PaidCommunityBillingRow) => {
     const provider = String(row.billing_provider || 'stripe').toLowerCase()
+    const nativeProvider = currentStoreProvider()
+    if (nativeProvider === 'apple' && provider === 'stripe') {
+      setNotice(t('billing.managed_on_web_ios'))
+      return
+    }
+    if (nativeProvider === 'apple' && provider === 'google') {
+      setNotice(t('billing.managed_original_platform'))
+      return
+    }
     if (provider === 'apple' || provider === 'google') {
       openExternalBillingUrl(storeSubscriptionsUrl(provider))
       return
@@ -164,6 +174,11 @@ export default function PaidCommunitiesBillingSection() {
       <div className="px-4 py-3 border-b border-white/10">
         <h4 className="text-sm font-semibold text-white">{t('billing.paid_communities_title')}</h4>
         <p className="mt-1 text-xs text-white/55">{t(subtitleKey)}</p>
+        {notice && (
+          <p className="mt-2 rounded-lg border border-yellow-500/20 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-100">
+            {notice}
+          </p>
+        )}
       </div>
       <ul className="divide-y divide-white/5">
         {rows.map((row) => {

@@ -407,6 +407,25 @@ def find_by_subscription_id(subscription_id: str) -> Optional[int]:
     return int(row["id"] if hasattr(row, "keys") else row[0])
 
 
+def find_by_customer_id(customer_id: str) -> Optional[int]:
+    if not customer_id:
+        return None
+    ph = get_sql_placeholder()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute(
+                f"SELECT id FROM communities WHERE stripe_customer_id = {ph} LIMIT 1",
+                (customer_id,),
+            )
+            row = c.fetchone()
+        except Exception:
+            return None
+    if not row:
+        return None
+    return int(row["id"] if hasattr(row, "keys") else row[0])
+
+
 def has_active_steve_package(community_id: int) -> bool:
     """Return True when the root community has an active Steve-package Stripe sub."""
     state = get_billing_state(community_id) or {}

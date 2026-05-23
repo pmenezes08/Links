@@ -470,6 +470,7 @@ function BillingTab() {
   const [data, setData] = useState<BillingResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
+  const [portalErr, setPortalErr] = useState<string | null>(null)
   const [portalBusy, setPortalBusy] = useState(false)
 
   const load = useCallback(async () => {
@@ -502,14 +503,14 @@ function BillingTab() {
       if (body?.success && body.url) {
         window.location.href = body.url
       } else {
-        setErr(body?.error || 'Failed to open billing portal')
+        setPortalErr(portalErrorMessage(body, t))
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
+      setPortalErr(e instanceof Error ? e.message : String(e))
     } finally {
       setPortalBusy(false)
     }
-  }, [])
+  }, [t])
 
   if (loading) return <div className="text-white/60 text-sm">{t('billing.loading_billing')}</div>
   if (err) return <div className="text-red-400 text-sm">{err}</div>
@@ -518,6 +519,10 @@ function BillingTab() {
   const sub = data.stripe.subscription
   const provider = String(data.plan.subscription_provider || 'stripe').toLowerCase()
   const storeBilled = provider === 'apple' || provider === 'google'
+  const isIos = Capacitor.getPlatform() === 'ios'
+  const iosWebBilled = isIos && provider === 'stripe'
+  const iosOtherStoreBilled = isIos && provider === 'google'
+  const canOpenStoreManagement = provider === 'apple' || !isIos
   const renewal = sub?.current_period_end ? new Date(sub.current_period_end * 1000) : null
   const trial = sub?.trial_end ? new Date(sub.trial_end * 1000) : null
   let amount: string | null = null
@@ -550,7 +555,13 @@ function BillingTab() {
 
         {storeBilled ? (
           <div className="text-sm text-white/70">
-            This Premium subscription is managed through {providerLabel(provider)}. Use the store subscription screen to cancel or change payment.
+            {iosOtherStoreBilled
+              ? t('billing.managed_original_platform')
+              : t('billing.managed_provider_subscription', { provider: providerLabel(provider) })}
+          </div>
+        ) : iosWebBilled ? (
+          <div className="text-sm text-white/70">
+            {t('billing.managed_on_web_ios')}
           </div>
         ) : sub ? (
           <div className="text-sm text-white/80 space-y-1">
@@ -574,7 +585,13 @@ function BillingTab() {
           <div className="text-sm text-white/60">{t('billing.no_active_subscription')}</div>
         )}
 
-        {storeBilled ? (
+        {portalErr && (
+          <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-100">
+            {portalErr}
+          </div>
+        )}
+
+        {storeBilled && canOpenStoreManagement ? (
           <button
             onClick={() => openExternalBillingUrl(
               provider === 'apple'
@@ -586,7 +603,7 @@ function BillingTab() {
             <i className="fa-regular fa-credit-card mr-2" />
             {t('billing.open_provider_subscriptions', { provider: providerLabel(provider) })}
           </button>
-        ) : data.stripe.portal_available && (
+        ) : !iosWebBilled && !iosOtherStoreBilled && data.stripe.portal_available && (
           <button
             onClick={openPortal}
             disabled={portalBusy}
@@ -612,6 +629,25 @@ function BillingTab() {
       )}
     </div>
   )
+}
+
+function portalErrorMessage(body: any, t: (key: string, opts?: Record<string, any>) => string): string {
+  const provider = String(body?.billing_provider || '').toLowerCase()
+  if (body?.reason === 'store_billing_active') {
+    return provider === 'google' && Capacitor.getPlatform() === 'ios'
+      ? t('billing.portal_error_original_platform')
+      : t('billing.portal_error_store', { provider: providerLabel(provider) })
+  }
+  if (body?.reason === 'stripe_mode_mismatch') {
+    return t('billing.portal_error_mode_mismatch')
+  }
+  if (body?.reason === 'no_customer') {
+    return t('billing.portal_error_no_customer')
+  }
+  if (body?.reason === 'stripe_not_configured') {
+    return t('billing.portal_error_not_configured')
+  }
+  return body?.error || t('billing.error_billing_portal')
 }
 
 function PaymentHistoryTab() {
