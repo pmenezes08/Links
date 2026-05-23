@@ -10,6 +10,7 @@ Routes:
     GET  /api/me/entitlements
     GET  /api/me/ai-usage
     GET  /api/me/billing                 — current subscription summary
+    GET  /api/me/payment-history         — paid Stripe invoice history
     POST /api/me/billing/portal          — create a Stripe Customer Portal session
 """
 
@@ -17,12 +18,13 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from urllib.parse import urlencode, urljoin
 
 from flask import Blueprint, jsonify, request, session
 
-from backend.services import ai_usage, auth_session, session_identity, user_billing
+from backend.services import ai_usage, auth_session, session_identity, subscription_billing_ledger, user_billing
 from backend.services import client_ui_flags, i18n, user_locale
 from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.entitlements import resolve_entitlements
@@ -284,6 +286,67 @@ def _stripe_client():
     return stripe
 
 
+def _stripe_mode() -> str:
+    key = (os.environ.get("STRIPE_API_KEY") or "").strip()
+    return "live" if key.startswith("sk_live_") else "test"
+
+
+def _unix_seconds(value: Any) -> Optional[int]:
+    if value in (None, "", 0):
+        return None
+    if isinstance(value, (int, float)):
+        ts = int(value)
+        return ts // 1000 if ts > 1_000_000_000_000 else ts
+    if isinstance(value, datetime):
+        dt = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp())
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        ts = int(text)
+        return ts // 1000 if ts > 1_000_000_000_000 else ts
+    except Exception:
+        pass
+    parsed_dt: Optional[datetime] = None
+    try:
+        parsed_dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except Exception:
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                parsed_dt = datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
+                break
+            except Exception:
+                continue
+    if not parsed_dt:
+        return None
+    if parsed_dt.tzinfo is None:
+        parsed_dt = parsed_dt.replace(tzinfo=timezone.utc)
+    return int(parsed_dt.timestamp())
+
+
+def _subscription_from_billing_state(state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    sub_id = state.get("stripe_subscription_id")
+    customer_id = state.get("stripe_customer_id")
+    status = state.get("subscription_status")
+    period_end = _unix_seconds(state.get("current_period_end"))
+    if not any((sub_id, customer_id, status, period_end)):
+        return None
+    return {
+        "customer_id": customer_id,
+        "subscription_id": sub_id,
+        "status": status,
+        "cancel_at_period_end": bool(state.get("cancel_at_period_end")),
+        "current_period_end": period_end,
+        "trial_end": None,
+        "price_amount_cents": None,
+        "price_interval": None,
+        "price_currency": None,
+        "source": "local",
+        "stripe_mode": state.get("stripe_mode") or _stripe_mode(),
+    }
+
+
 def _load_user_row(username: str) -> Optional[Dict[str, Any]]:
     ph = get_sql_placeholder()
     with get_db_connection() as conn:
@@ -304,6 +367,45 @@ def _load_user_row(username: str) -> Optional[Dict[str, Any]]:
         "subscription": (row["subscription"] if hasattr(row, "keys") else row[2]) or "free",
         "created_at": str(row["created_at"] if hasattr(row, "keys") else row[3]) if (row["created_at"] if hasattr(row, "keys") else row[3]) else None,
     }
+
+
+def _owned_root_communities(username: str) -> Dict[int, str]:
+    if not username:
+        return {}
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"""
+                SELECT DISTINCT c.id, c.name
+                FROM communities c
+                LEFT JOIN user_communities uc ON uc.community_id = c.id
+                LEFT JOIN users u ON u.id = uc.user_id
+                WHERE c.parent_community_id IS NULL
+                  AND (
+                    LOWER(c.creator_username) = LOWER({ph})
+                    OR (
+                      LOWER(u.username) = LOWER({ph})
+                      AND LOWER(COALESCE(uc.role, '')) = 'owner'
+                    )
+                  )
+                """,
+                (username, username),
+            )
+            rows = c.fetchall() or []
+    except Exception:
+        logger.exception("_owned_root_communities failed for %s", username)
+        return {}
+    out: Dict[int, str] = {}
+    for row in rows:
+        cid = row["id"] if hasattr(row, "keys") else row[0]
+        name = row["name"] if hasattr(row, "keys") else row[1]
+        try:
+            out[int(cid)] = str(name or "")
+        except Exception:
+            continue
+    return out
 
 
 def _find_stripe_subscription(stripe_mod, email: str) -> Optional[Dict[str, Any]]:
@@ -388,11 +490,22 @@ def me_billing():
 
     stripe_mod = _stripe_client()
     stripe_configured = stripe_mod is not None
-    subscription: Optional[Dict[str, Any]] = None
-    if stripe_configured and user.get("email"):
-        subscription = _find_stripe_subscription(stripe_mod, user["email"])
     billing_state = user_billing.get_billing_state(username) or {}
-    provider = (billing_state.get("subscription_provider") or "stripe").strip().lower()
+    provider = str(billing_state.get("subscription_provider") or "stripe").strip().lower()
+    subscription = _subscription_from_billing_state(billing_state)
+    if subscription is None and stripe_configured and user.get("email"):
+        subscription = _find_stripe_subscription(stripe_mod, user["email"])
+        if subscription:
+            subscription["source"] = "stripe_email"
+            subscription["stripe_mode"] = _stripe_mode()
+    stored_mode = str(billing_state.get("stripe_mode") or _stripe_mode()).strip().lower()
+    portal_available = bool(
+        stripe_configured
+        and provider == "stripe"
+        and subscription
+        and subscription.get("customer_id")
+        and stored_mode == _stripe_mode()
+    )
 
     return jsonify({
         "success": True,
@@ -407,7 +520,8 @@ def me_billing():
         "stripe": {
             "configured": stripe_configured,
             "subscription": subscription,
-            "portal_available": bool(stripe_configured and subscription and subscription.get("customer_id")),
+            "portal_available": portal_available,
+            "mode": _stripe_mode(),
         },
         "caps": {
             # monthly_spend_ceiling_eur deliberately omitted — see the
@@ -416,6 +530,43 @@ def me_billing():
             "whisper_minutes_per_month": ent.get("whisper_minutes_per_month"),
             "communities_max": ent.get("communities_max"),
         },
+    })
+
+
+@me_bp.route("/api/me/payment-history", methods=["GET"])
+def me_payment_history():
+    """Return paid invoice history for the user and communities they own."""
+    username = _session_username()
+    if not username:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    owned_communities = _owned_root_communities(username)
+    personal = subscription_billing_ledger.list_for_user(username, limit=50)
+    community = subscription_billing_ledger.list_for_communities(
+        list(owned_communities.keys()),
+        limit=50,
+    )
+    payments = []
+    for row in personal:
+        payments.append({
+            **row,
+            "scope": "personal",
+            "label": "Premium membership",
+            "community_name": None,
+        })
+    for row in community:
+        cid = row.get("community_id")
+        payments.append({
+            **row,
+            "scope": "community",
+            "label": owned_communities.get(int(cid or 0), "Community billing"),
+            "community_name": owned_communities.get(int(cid or 0)),
+        })
+
+    payments.sort(key=lambda p: str(p.get("paid_at") or ""), reverse=True)
+    return jsonify({
+        "success": True,
+        "payments": payments[:100],
     })
 
 
@@ -469,6 +620,16 @@ def me_billing_portal():
                 "reason": "store_billing_active",
                 "billing_provider": provider,
             }), 409
+        stored_mode = str(state.get("stripe_mode") or _stripe_mode()).strip().lower()
+        if stored_mode != _stripe_mode():
+            return jsonify({
+                "success": False,
+                "error": "This community subscription belongs to a different Stripe mode.",
+                "reason": "stripe_mode_mismatch",
+                "billing_provider": provider,
+                "stripe_mode": stored_mode,
+                "current_stripe_mode": _stripe_mode(),
+            }), 409
         customer_id = state.get("stripe_customer_id") or None
         if not customer_id:
             return jsonify({
@@ -485,6 +646,16 @@ def me_billing_portal():
                 "error": "This subscription is managed through a mobile store.",
                 "reason": "store_billing_active",
                 "billing_provider": provider,
+            }), 409
+        stored_mode = str(billing_state.get("stripe_mode") or _stripe_mode()).strip().lower()
+        if stored_mode != _stripe_mode():
+            return jsonify({
+                "success": False,
+                "error": "This subscription belongs to a different Stripe mode.",
+                "reason": "stripe_mode_mismatch",
+                "billing_provider": provider,
+                "stripe_mode": stored_mode,
+                "current_stripe_mode": _stripe_mode(),
             }), 409
         customer_id = billing_state.get("stripe_customer_id") or None
         if customer_id:

@@ -73,7 +73,10 @@ interface BillingResponse {
       price_amount_cents?: number | null
       price_interval?: string | null
       price_currency?: string | null
+      source?: string | null
+      stripe_mode?: string | null
     } | null
+    mode?: string | null
   }
   caps: {
     steve_uses_per_month: number | null
@@ -90,6 +93,24 @@ interface AiUsageResponse {
   total_calls?: number
   total_whisper_minutes?: number
   by_surface?: Record<string, number>
+}
+
+interface PaymentHistoryResponse {
+  success: boolean
+  payments?: PaymentHistoryRow[]
+}
+
+interface PaymentHistoryRow {
+  stripe_invoice_id?: string | null
+  amount_paid_cents: number
+  currency?: string | null
+  paid_at?: string | null
+  period_start?: string | null
+  period_end?: string | null
+  scope: 'personal' | 'community'
+  label?: string | null
+  community_name?: string | null
+  hosted_invoice_url?: string | null
 }
 
 const TABS: { id: MembershipTab; labelKey: string; icon: string }[] = [
@@ -122,7 +143,8 @@ export default function ManageMembershipModal({ open, onClose, initialTab = 'pla
   return (
     <>
       <div
-        className="fixed inset-0 bg-black/70 z-50"
+        className="fixed inset-x-0 bottom-0 bg-black/70 z-50"
+        style={{ top: 'var(--app-header-offset, 0px)' }}
         onClick={onClose}
         aria-hidden
       />
@@ -130,11 +152,12 @@ export default function ManageMembershipModal({ open, onClose, initialTab = 'pla
         role="dialog"
         aria-modal="true"
         aria-label={t('billing.modal_title')}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        className="fixed inset-x-0 bottom-0 z-50 flex items-start justify-center overflow-hidden p-3 sm:p-4"
+        style={{ top: 'var(--app-header-offset, 0px)' }}
       >
         <div
           onClick={e => e.stopPropagation()}
-          className="w-full max-w-3xl max-h-[90vh] overflow-hidden bg-[#0f1114] border border-white/10 rounded-2xl shadow-2xl flex flex-col"
+          className="flex max-h-full min-h-0 w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0f1114] shadow-2xl"
         >
           <header className="flex items-center justify-between px-5 py-4 border-b border-white/10">
             <div>
@@ -150,8 +173,8 @@ export default function ManageMembershipModal({ open, onClose, initialTab = 'pla
             </button>
           </header>
 
-          <div className="flex flex-1 overflow-hidden">
-            <nav className="w-44 shrink-0 border-r border-white/10 p-2 overflow-y-auto hidden sm:block">
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            <nav className="hidden w-44 shrink-0 overflow-y-auto border-r border-white/10 p-2 sm:block">
               {TABS.map(tabItem => (
                 <button
                   key={tabItem.id}
@@ -168,7 +191,7 @@ export default function ManageMembershipModal({ open, onClose, initialTab = 'pla
               ))}
             </nav>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="sm:hidden flex gap-1 p-2 border-b border-white/10 overflow-x-auto">
                 {TABS.map(tabItem => (
                   <button
@@ -187,7 +210,8 @@ export default function ManageMembershipModal({ open, onClose, initialTab = 'pla
               <div className="p-5">
                 {tab === 'plan' && <PlanTab />}
                 {tab === 'ai' && <AiUsageTab />}
-                {(tab === 'billing' || tab === 'payment') && <BillingTab variant={tab} />}
+                {tab === 'billing' && <BillingTab />}
+                {tab === 'payment' && <PaymentHistoryTab />}
               </div>
             </div>
           </div>
@@ -441,7 +465,7 @@ function UsageRow({
 
 // --- Billing / Payment ---------------------------------------------------
 
-function BillingTab({ variant }: { variant: 'billing' | 'payment' }) {
+function BillingTab() {
   const { t } = useTranslation()
   const [data, setData] = useState<BillingResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -571,9 +595,7 @@ function BillingTab({ variant }: { variant: 'billing' | 'payment' }) {
             <i className="fa-regular fa-credit-card mr-2" />
             {portalBusy
               ? t('billing.opening_stripe')
-              : variant === 'payment'
-                ? t('billing.manage_payment_method')
-                : t('billing.open_billing_portal')}
+              : t('billing.open_billing_portal')}
           </button>
         )}
       </section>
@@ -592,6 +614,101 @@ function BillingTab({ variant }: { variant: 'billing' | 'payment' }) {
   )
 }
 
+function PaymentHistoryTab() {
+  const { t } = useTranslation()
+  const [data, setData] = useState<PaymentHistoryResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      try {
+        const res = await fetch('/api/me/payment-history', {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+        })
+        const body: PaymentHistoryResponse = await res.json()
+        if (!res.ok || !body?.success) throw new Error('Failed to load payment history')
+        if (!cancelled) {
+          setData(body)
+          setErr(null)
+        }
+      } catch (e) {
+        if (!cancelled) setErr(e instanceof Error ? e.message : String(e))
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
+  if (loading) return <div className="text-white/60 text-sm">{t('billing.loading_payments')}</div>
+  if (err) return <div className="text-red-400 text-sm">{err}</div>
+
+  const payments = data?.payments || []
+  if (payments.length === 0) {
+    return (
+      <section className="rounded-xl border border-white/10 bg-white/5 p-4">
+        <h3 className="text-sm font-semibold text-white">{t('billing.payment_history_title')}</h3>
+        <p className="mt-2 text-sm text-white/55">{t('billing.payment_history_empty')}</p>
+      </section>
+    )
+  }
+
+  return (
+    <section className="rounded-xl border border-white/10 bg-white/5 overflow-hidden">
+      <div className="px-4 py-3 border-b border-white/10">
+        <h3 className="text-sm font-semibold text-white">{t('billing.payment_history_title')}</h3>
+        <p className="mt-1 text-xs text-white/55">{t('billing.payment_history_subtitle')}</p>
+      </div>
+      <ul className="divide-y divide-white/5">
+        {payments.map((payment, idx) => {
+          const paidAt = payment.paid_at ? new Date(payment.paid_at) : null
+          const periodEnd = payment.period_end ? new Date(payment.period_end) : null
+          const label = payment.scope === 'community'
+            ? payment.community_name || payment.label || t('billing.payment_scope_community')
+            : payment.label || t('billing.payment_scope_personal')
+          return (
+            <li key={`${payment.stripe_invoice_id || idx}`} className="px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-medium text-white truncate">{label}</div>
+                  <div className="mt-1 text-xs text-white/45">
+                    {paidAt ? paidAt.toLocaleDateString() : t('billing.payment_date_unknown')}
+                    {periodEnd && (
+                      <span> · {t('billing.payment_period_ends')} {periodEnd.toLocaleDateString()}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="font-semibold text-white">
+                    {formatMoney(payment.amount_paid_cents, payment.currency)}
+                  </div>
+                  <div className="text-[11px] uppercase tracking-wide text-white/40">
+                    {payment.scope === 'community' ? t('billing.payment_scope_community') : t('billing.payment_scope_personal')}
+                  </div>
+                </div>
+              </div>
+              {payment.hosted_invoice_url && (
+                <button
+                  type="button"
+                  onClick={() => openExternalBillingUrl(payment.hosted_invoice_url || '')}
+                  className="mt-2 text-xs font-semibold text-cpoint-turquoise hover:underline"
+                >
+                  {t('billing.view_invoice')}
+                </button>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
 // --- helpers -------------------------------------------------------------
 
 function capLabel(cap: number | null, unit: string, unlimitedLabel: string): string {
@@ -601,4 +718,16 @@ function capLabel(cap: number | null, unit: string, unlimitedLabel: string): str
 
 function formatNum(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(1)
+}
+
+function formatMoney(cents: number, currency?: string | null): string {
+  const code = (currency || 'EUR').toUpperCase()
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: code,
+    }).format((cents || 0) / 100)
+  } catch {
+    return `${code} ${((cents || 0) / 100).toFixed(2)}`
+  }
 }

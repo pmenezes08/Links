@@ -272,6 +272,7 @@ def api_me_subscriptions():
     communities = _fetch_user_billed_communities(username)
     return jsonify({
         "success": True,
+        "stripe_mode": _stripe_mode(),
         "personal": {
             **personal_state,
             "subscription": subscription_value,
@@ -637,6 +638,7 @@ def _fetch_user_billed_communities(username: str) -> List[Dict[str, Any]]:
             "owner": _row_value(row, "creator_username", 2) or "",
             "tier": state.get("tier") or _row_value(row, "tier", 3) or "free",
             **state,
+            "has_stripe_customer": bool(state.get("stripe_customer_id")),
             "tier_subscription_active": tier_live,
             "tier_subscription_live": tier_live,
             "needs_attention": bool(health.get("needs_attention")),

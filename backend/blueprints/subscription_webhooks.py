@@ -53,6 +53,11 @@ logger = logging.getLogger(__name__)
 # Stripe
 # ---------------------------------------------------------------------------
 
+def _stripe_mode() -> str:
+    key = (os.environ.get("STRIPE_API_KEY") or "").strip()
+    return "live" if key.startswith("sk_live_") else "test"
+
+
 @subscription_webhooks_bp.route("/api/webhooks/stripe", methods=["POST"])
 def stripe_webhook():
     """Handle Stripe Checkout / subscription lifecycle events.
@@ -118,6 +123,7 @@ def _handle_premium_event(event_type: str, obj: Dict[str, Any], username: Option
                 current_period_end=subscription_snapshot.get("current_period_end"),
                 cancel_at_period_end=bool(subscription_snapshot.get("cancel_at_period_end", False)),
                 provider="stripe",
+                stripe_mode=_stripe_mode(),
             )
         subscription_audit.log(
             username=username or "",
@@ -139,6 +145,7 @@ def _handle_premium_event(event_type: str, obj: Dict[str, Any], username: Option
                 cancel_at_period_end=False,
                 canceled_at=obj.get("canceled_at") or obj.get("ended_at"),
                 provider="stripe",
+                stripe_mode=_stripe_mode(),
             )
         subscription_audit.log(
             username=username or "",
@@ -167,6 +174,7 @@ def _handle_premium_event(event_type: str, obj: Dict[str, Any], username: Option
                 cancel_at_period_end=cancel_at_period_end,
                 canceled_at=obj.get("canceled_at"),
                 provider="stripe",
+                stripe_mode=_stripe_mode(),
             )
         action = "personal_premium_renewed"
         if cancel_at_period_end:
@@ -188,6 +196,7 @@ def _handle_premium_event(event_type: str, obj: Dict[str, Any], username: Option
                 username,
                 status="past_due",
                 provider="stripe",
+                stripe_mode=_stripe_mode(),
             )
         subscription_audit.log(
             username=username or "",
@@ -251,6 +260,7 @@ def _handle_community_tier_event(
             status="active",
             current_period_end=subscription_snapshot.get("current_period_end"),
             cancel_at_period_end=False,
+            stripe_mode=_stripe_mode(),
         )
         subscription_audit.log(
             username=username or "",
@@ -279,6 +289,7 @@ def _handle_community_tier_event(
             current_period_end=obj.get("current_period_end"),
             cancel_at_period_end=False,
             canceled_at=obj.get("canceled_at") or obj.get("ended_at"),
+            stripe_mode=_stripe_mode(),
         )
         subscription_audit.log(
             username=username or "",
@@ -305,6 +316,7 @@ def _handle_community_tier_event(
             current_period_end=obj.get("current_period_end"),
             cancel_at_period_end=cancel_at_period_end,
             canceled_at=obj.get("canceled_at"),
+            stripe_mode=_stripe_mode(),
         )
         subscription_audit.log(
             username=username or "",
@@ -342,6 +354,7 @@ def _handle_community_tier_event(
         community_billing.mark_subscription(
             community_id,
             status="past_due",
+            stripe_mode=_stripe_mode(),
         )
         subscription_audit.log(
             username=username or "",

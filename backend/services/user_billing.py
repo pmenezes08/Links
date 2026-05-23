@@ -30,6 +30,7 @@ def ensure_tables() -> None:
             ("cancel_at_period_end", "TINYINT(1) NOT NULL DEFAULT 0"),
             ("canceled_at", "DATETIME NULL"),
             ("subscription_provider", "VARCHAR(32) NULL"),
+            ("stripe_mode", "VARCHAR(16) NULL"),
         ):
             try:
                 c.execute(f"ALTER TABLE users ADD COLUMN {column} {col_def}")
@@ -53,7 +54,7 @@ def get_billing_state(username: str) -> Optional[Dict[str, Any]]:
                 SELECT username, email, subscription, stripe_customer_id,
                        stripe_subscription_id, subscription_status,
                        current_period_end, cancel_at_period_end, canceled_at,
-                       subscription_provider
+                       subscription_provider, stripe_mode
                 FROM users WHERE LOWER(username) = LOWER({ph})
                 """,
                 (username,),
@@ -81,6 +82,7 @@ def get_billing_state(username: str) -> Optional[Dict[str, Any]]:
                 "cancel_at_period_end": False,
                 "canceled_at": None,
                 "subscription_provider": None,
+                "stripe_mode": None,
                 "is_canceling": False,
                 "days_remaining": None,
                 "benefits_end_at": None,
@@ -103,6 +105,7 @@ def get_billing_state(username: str) -> Optional[Dict[str, Any]]:
         "cancel_at_period_end": cancel_at_period_end,
         "canceled_at": str(canceled_at) if canceled_at else None,
         "subscription_provider": _row_value(row, "subscription_provider", 9),
+        "stripe_mode": _row_value(row, "stripe_mode", 10),
         "is_canceling": cancel_at_period_end,
         "days_remaining": _days_until(current_period_end),
         "benefits_end_at": current_period_end_str if cancel_at_period_end else None,
@@ -120,6 +123,7 @@ def mark_subscription(
     cancel_at_period_end: Optional[bool] = None,
     canceled_at: Any = None,
     provider: Optional[str] = "stripe",
+    stripe_mode: Optional[str] = None,
 ) -> bool:
     if not username:
         return False
@@ -152,6 +156,9 @@ def mark_subscription(
     if provider is not None:
         sets.append(f"subscription_provider = {ph}")
         params.append(provider or None)
+    if stripe_mode is not None:
+        sets.append(f"stripe_mode = {ph}")
+        params.append((stripe_mode or "").strip().lower() or None)
 
     if not sets:
         return True

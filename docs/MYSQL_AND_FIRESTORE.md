@@ -60,9 +60,10 @@ Also: **`groups`** (optional **`steve_agent_enabled`**, **`steve_agent_preset`**
 
 | Table | Role |
 |-------|------|
-| `user_billing`, `community_billing`-related columns | Stripe state (see `user_billing.py`, `community_billing.py`). |
+| `users` billing columns | Personal subscription state (`stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `current_period_end`, `cancel_at_period_end`, `canceled_at`, `subscription_provider`, `stripe_mode`) owned by `backend/services/user_billing.py`; `/api/me/billing` renders this as the canonical Billing summary before any Stripe email lookup fallback. |
+| `communities` billing columns | Community tier + add-on subscription state (`stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `billing_provider`, `stripe_mode`, `current_period_end`, plus `steve_package_*`) owned by `backend/services/community_billing.py`; Stripe portal routes use `stripe_mode` to block test/live Customer Portal mismatches. |
 | `iap_links` | Apple / Google purchase link table. Keyed by `(provider, purchase_key)` where `purchase_key` is Apple original transaction ID or Google purchase token. Stores `username`, `sku`, optional `community_id`, `tier_code`, `product_id`, `status`, `environment`, and `expires_at`; used by confirm/restore endpoints and store webhooks to mutate `users` / `communities` idempotently. |
-| `subscription_billing_ledger`, `subscription_audit_log` | Ledger & audit (`subscription_billing_ledger.py`, `subscription_audit.py`). |
+| `subscription_invoice_payments`, `subscription_audit_log` | Paid Stripe invoice ledger and audit (`subscription_billing_ledger.py`, `subscription_audit.py`). `subscription_invoice_payments` powers Account Settings → Payment history for personal Premium and root communities the user owns. |
 | `user_enterprise_seats` | Enterprise seat tracking (`enterprise_membership.py`). |
 | `enterprise_iap_nag` | IAP nag state (`enterprise_iap_nag.py`). |
 | `winback_tokens` | Win-back promo (`winback_promo.py`). |

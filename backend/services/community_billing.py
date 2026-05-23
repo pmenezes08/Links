@@ -63,6 +63,7 @@ def ensure_tables() -> None:
             ("stripe_customer_id", "VARCHAR(64) NULL"),
             ("subscription_status", "VARCHAR(32) NULL"),
             ("billing_provider", "VARCHAR(32) NULL"),
+            ("stripe_mode", "VARCHAR(16) NULL"),
             ("current_period_end", "DATETIME NULL"),
             ("cancel_at_period_end", "TINYINT(1) NOT NULL DEFAULT 0"),
             ("canceled_at", "DATETIME NULL"),
@@ -106,7 +107,7 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
             c.execute(
                 f"""
                 SELECT tier, stripe_subscription_id, stripe_customer_id,
-                       subscription_status, billing_provider, current_period_end,
+                       subscription_status, billing_provider, stripe_mode, current_period_end,
                        cancel_at_period_end, canceled_at,
                        steve_package_stripe_subscription_id,
                        steve_package_subscription_status,
@@ -133,6 +134,7 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
                 "stripe_customer_id": None,
                 "subscription_status": None,
                 "billing_provider": None,
+                "stripe_mode": None,
                 "current_period_end": None,
                 "cancel_at_period_end": False,
                 "canceled_at": None,
@@ -156,16 +158,16 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
             return row[key]
         return row[idx]
 
-    current_period_end = _g("current_period_end", 5)
+    current_period_end = _g("current_period_end", 6)
     current_period_end_str = str(current_period_end) if current_period_end else None
-    cancel_at_period_end = bool(_g("cancel_at_period_end", 6))
-    canceled_at = _g("canceled_at", 7)
+    cancel_at_period_end = bool(_g("cancel_at_period_end", 7))
+    canceled_at = _g("canceled_at", 8)
 
-    steve_sub_id = _g("steve_package_stripe_subscription_id", 8)
-    steve_status = _g("steve_package_subscription_status", 9)
-    steve_period_end = _g("steve_package_current_period_end", 10)
-    steve_cancel_end = bool(_g("steve_package_cancel_at_period_end", 11))
-    steve_canceled_at = _g("steve_package_canceled_at", 12)
+    steve_sub_id = _g("steve_package_stripe_subscription_id", 9)
+    steve_status = _g("steve_package_subscription_status", 10)
+    steve_period_end = _g("steve_package_current_period_end", 11)
+    steve_cancel_end = bool(_g("steve_package_cancel_at_period_end", 12))
+    steve_canceled_at = _g("steve_package_canceled_at", 13)
 
     steve_period_end_str = (
         str(steve_period_end) if steve_period_end else None
@@ -180,6 +182,7 @@ def get_billing_state(community_id: int) -> Optional[Dict[str, Any]]:
         "stripe_customer_id": _g("stripe_customer_id", 2),
         "subscription_status": _g("subscription_status", 3),
         "billing_provider": _g("billing_provider", 4) or "stripe",
+        "stripe_mode": _g("stripe_mode", 5),
         "current_period_end": current_period_end_str,
         "cancel_at_period_end": cancel_at_period_end,
         "canceled_at": str(canceled_at) if canceled_at else None,
@@ -302,6 +305,7 @@ def mark_subscription(
     customer_id: Optional[str] = None,
     status: Optional[str] = None,
     provider: Optional[str] = "stripe",
+    stripe_mode: Optional[str] = None,
     current_period_end: Any = None,
     cancel_at_period_end: Optional[bool] = None,
     canceled_at: Any = None,
@@ -338,6 +342,9 @@ def mark_subscription(
     if provider is not None:
         sets.append(f"billing_provider = {ph}")
         params.append((provider or "").strip().lower() or None)
+    if stripe_mode is not None:
+        sets.append(f"stripe_mode = {ph}")
+        params.append((stripe_mode or "").strip().lower() or None)
     if current_period_end is not None:
         sets.append(f"current_period_end = {ph}")
         params.append(_coerce_period_end(current_period_end))

@@ -78,3 +78,31 @@ def test_community_change_tier_blocks_google_provider(client):
     assert res.status_code == 409
     assert body["reason"] == "store_billing_active"
     assert body["billing_provider"] == "google"
+
+
+def test_community_portal_blocks_stripe_mode_mismatch(client, monkeypatch):
+    monkeypatch.setenv("STRIPE_API_KEY", "sk_live_dummy_for_tests")
+    owner = "owner_test_mode"
+    make_user(owner)
+    community_id = make_community("Test Mode Group", creator_username=owner, tier="paid_l1")
+    community_billing.mark_subscription(
+        community_id,
+        tier_code="paid_l1",
+        subscription_id="sub_test_mode",
+        customer_id="cus_test_mode",
+        status="active",
+        provider="stripe",
+        stripe_mode="test",
+    )
+    _login(client, owner)
+
+    res = client.post(
+        f"/api/me/billing/portal?community_id={community_id}",
+        json={"return_path": f"/community/{community_id}/edit"},
+        headers={"Content-Type": "application/json"},
+    )
+    body = res.get_json()
+    assert res.status_code == 409
+    assert body["reason"] == "stripe_mode_mismatch"
+    assert body["stripe_mode"] == "test"
+    assert body["current_stripe_mode"] == "live"

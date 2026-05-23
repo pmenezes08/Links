@@ -141,6 +141,71 @@ def totals_for_community(community_id: int) -> Dict[str, int]:
     return _totals("community_id", int(community_id))
 
 
+def list_for_user(username: str, *, limit: int = 50) -> list[Dict[str, Any]]:
+    if not username:
+        return []
+    return _list_payments("LOWER(username) = LOWER({ph})", (username,), limit=limit)
+
+
+def list_for_communities(community_ids: list[int], *, limit: int = 50) -> list[Dict[str, Any]]:
+    ids = [int(cid) for cid in community_ids if cid]
+    if not ids:
+        return []
+    placeholders = ", ".join([get_sql_placeholder()] * len(ids))
+    return _list_payments(f"community_id IN ({placeholders})", tuple(ids), limit=limit)
+
+
+def _list_payments(where_template: str, params: tuple[Any, ...], *, limit: int) -> list[Dict[str, Any]]:
+    ensure_tables()
+    ph = get_sql_placeholder()
+    where_sql = where_template.format(ph=ph)
+    safe_limit = max(1, min(int(limit or 50), 100))
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute(
+                f"""
+                SELECT stripe_invoice_id, stripe_customer_id, stripe_subscription_id,
+                       username, community_id, amount_paid_cents, currency, paid_at,
+                       period_start, period_end, metadata_json
+                FROM subscription_invoice_payments
+                WHERE {where_sql}
+                ORDER BY paid_at DESC, id DESC
+                LIMIT {safe_limit}
+                """,
+                params,
+            )
+            rows = c.fetchall() or []
+        except Exception:
+            logger.exception("subscription payment list failed")
+            return []
+    return [_payment_row(row) for row in rows]
+
+
+def _payment_row(row: Any) -> Dict[str, Any]:
+    metadata_raw = _row_value(row, "metadata_json", 10)
+    metadata: Dict[str, Any] = {}
+    if metadata_raw:
+        try:
+            metadata = json.loads(metadata_raw)
+        except Exception:
+            metadata = {}
+    return {
+        "stripe_invoice_id": _row_value(row, "stripe_invoice_id", 0),
+        "stripe_customer_id": _row_value(row, "stripe_customer_id", 1),
+        "stripe_subscription_id": _row_value(row, "stripe_subscription_id", 2),
+        "username": _row_value(row, "username", 3),
+        "community_id": _row_value(row, "community_id", 4),
+        "amount_paid_cents": _int_or_zero(_row_value(row, "amount_paid_cents", 5)),
+        "currency": _row_value(row, "currency", 6),
+        "paid_at": str(_row_value(row, "paid_at", 7) or "") or None,
+        "period_start": str(_row_value(row, "period_start", 8) or "") or None,
+        "period_end": str(_row_value(row, "period_end", 9) or "") or None,
+        "billing_reason": metadata.get("billing_reason"),
+        "hosted_invoice_url": metadata.get("hosted_invoice_url"),
+    }
+
+
 def _totals(column: str, value: Any) -> Dict[str, int]:
     ensure_tables()
     ph = get_sql_placeholder()
