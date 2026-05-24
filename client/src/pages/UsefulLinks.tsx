@@ -409,13 +409,13 @@ function SwipeableDocCard({
               rows={2}
             />
             <div className="flex items-center justify-end gap-2">
-              <button 
+              <button
                 className="px-2 py-1 rounded-md bg-[#4db6ac] text-black text-xs hover:brightness-110"
                 onClick={onEditSave}
               >
                 {t('common.save')}
               </button>
-              <button 
+              <button
                 className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5 text-xs"
                 onClick={onEditCancel}
               >
