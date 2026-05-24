@@ -826,7 +826,9 @@
     "delete_document_failed": "Failed to delete",
     "name_empty": "Name cannot be empty",
     "rename_failed": "Failed to rename",
-    "add_link_failed": "Failed to add link"
+    "add_link_failed": "Failed to add link",
+    "load_failed": "Failed to load links and documents",
+    "access_denied": "You don't have access to this community's links and documents."
   },
   "feed": {
     "page_title": "Feed",

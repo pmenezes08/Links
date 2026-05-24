@@ -162,22 +162,43 @@ Compress(app)
 
 # Initialize Firebase Cloud Messaging (required for push notifications)
 # This must be synchronous to ensure notifications work immediately
-# Firebase module now supports both file paths and JSON strings for credentials
+# Firebase module now supports both file paths and JSON strings for credentials.
+# Initialization moved to a background thread so cold-start traffic isn't
+# blocked on credential parsing / outbound calls. ``initialize_firebase()``
+# is idempotent and the only consumers (push notifications) call it lazily
+# before the first send, so deferring is safe.
 import sys
-print("[STARTUP] Initializing Firebase Cloud Messaging...", file=sys.stderr, flush=True)
+print("[STARTUP] Scheduling Firebase Cloud Messaging init (background)...", file=sys.stderr, flush=True)
+_firebase_initialized = False
 try:
-    from backend.services.firebase_notifications import initialize_firebase, FIREBASE_AVAILABLE
-    print(f"[STARTUP] firebase-admin SDK available: {FIREBASE_AVAILABLE}", file=sys.stderr, flush=True)
-    
+    from backend.services.firebase_notifications import (
+        initialize_firebase as _init_firebase,
+        FIREBASE_AVAILABLE,
+    )
     if FIREBASE_AVAILABLE:
-        _firebase_initialized = initialize_firebase()
-        print(f"[STARTUP] Firebase status: {'READY' if _firebase_initialized else 'NOT INITIALIZED'}", file=sys.stderr, flush=True)
+        import threading as _fb_threading
+
+        def _deferred_firebase_init() -> None:
+            global _firebase_initialized
+            try:
+                _firebase_initialized = bool(_init_firebase())
+                print(
+                    f"[STARTUP] Firebase status (background): {'READY' if _firebase_initialized else 'NOT INITIALIZED'}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            except Exception as init_err:
+                print(
+                    f"[STARTUP] Background Firebase initialization error: {type(init_err).__name__}: {init_err}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+
+        _fb_threading.Thread(target=_deferred_firebase_init, daemon=True).start()
     else:
-        _firebase_initialized = False
         print("[STARTUP] Firebase not available - notifications disabled", file=sys.stderr, flush=True)
 except Exception as e:
-    _firebase_initialized = False
-    print(f"[STARTUP] Firebase initialization error: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+    print(f"[STARTUP] Firebase initialization scheduling error: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
     import traceback
     traceback.print_exc(file=sys.stderr)
 
@@ -828,6 +849,11 @@ def _block_unverified_users():
             username = session.get('username')
             if not username:
                 return jsonify({'success': False, 'error': 'unauthenticated'}), 401
+            # Email verification is monotonic — once verified the user
+            # never goes back. Cache the positive result in the session
+            # to skip a SELECT on every authenticated API request.
+            if session.get('email_verified') is True:
+                return None
             with get_db_connection() as conn:
                 c = conn.cursor()
                 c.execute("SELECT email_verified FROM users WHERE username=?", (username,))
@@ -835,6 +861,10 @@ def _block_unverified_users():
                 verified = bool((row['email_verified'] if hasattr(row, 'keys') else row[0]) if row is not None else False)
             if not verified:
                 return jsonify({'success': False, 'error': 'verify_required'}), 403
+            try:
+                session['email_verified'] = True
+            except Exception:
+                pass
             return None
         # API that must remain accessible
         if path.startswith('/api/client_log'):
@@ -843,12 +873,19 @@ def _block_unverified_users():
         username = session.get('username')
         if not username:
             return None
-        # Check email_verified
+        # Check email_verified (cached after first positive hit)
+        if session.get('email_verified') is True:
+            return None
         with get_db_connection() as conn:
             c = conn.cursor()
             c.execute("SELECT email_verified FROM users WHERE username=?", (username,))
             row = c.fetchone()
             verified = bool((row['email_verified'] if hasattr(row, 'keys') else row[0]) if row is not None else False)
+        if verified:
+            try:
+                session['email_verified'] = True
+            except Exception:
+                pass
         if not verified:
             # Allow only verification related pages
             if path.startswith('/verify_email') or path == '/resend_verification' or path == '/resend_verification_pending':
@@ -2906,6 +2943,7 @@ def add_missing_tables():
                 logger.warning(f"Could not ensure useful_docs table: {e}")
 
             # Optional group_id on useful_links / useful_docs / posts / calendar_events / tasks
+            # plus audio columns for group_replies (used to live on the read hot path).
             try:
                 for table_name, col_name, col_def in (
                     ("useful_links", "group_id", "INTEGER NULL"),
@@ -2914,6 +2952,8 @@ def add_missing_tables():
                     ("posts", "group_id", "INTEGER NULL"),
                     ("calendar_events", "group_id", "INTEGER NULL"),
                     ("tasks", "group_id", "INTEGER NULL"),
+                    ("group_replies", "audio_path", "TEXT"),
+                    ("group_replies", "audio_summary", "TEXT"),
                 ):
                     try:
                         if USE_MYSQL:
@@ -6107,14 +6147,36 @@ def user_is_member_of_community(username: str, community_id: int) -> bool:
 
 
 def _can_view_community_content(username: Optional[str], community_id: Optional[int]) -> bool:
+    """Access parity with ``api_community_feed``: app admin, community owner,
+    direct member (including direct parent membership via
+    ``user_is_member_of_community``), or admin/owner of any ancestor community
+    in the parent chain. Falling back to feed-equivalent ancestor admin access
+    keeps Links & Docs visible for ancestor-community admins, matching the
+    feed and the older legacy behaviour users relied on."""
     if not username or not community_id:
         return False
     try:
-        if is_app_admin(username) or is_community_owner(username, community_id):
+        community_id_int = int(community_id)
+    except (TypeError, ValueError):
+        return False
+    try:
+        if is_app_admin(username) or is_community_owner(username, community_id_int):
             return True
-        return user_is_member_of_community(username, int(community_id))
+        if user_is_member_of_community(username, community_id_int):
+            return True
+        try:
+            from backend.services.community import get_parent_chain_ids, is_community_admin
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ancestor_ids = get_parent_chain_ids(c, community_id_int)
+            for ancestor_id in ancestor_ids:
+                if is_community_owner(username, ancestor_id) or is_community_admin(username, ancestor_id):
+                    return True
+        except Exception as anc_exc:
+            logger.debug("ancestor access check failed for %s/%s: %s", username, community_id_int, anc_exc)
+        return False
     except Exception as exc:
-        logger.warning("community content access check failed for %s/%s: %s", username, community_id, exc)
+        logger.warning("community content access check failed for %s/%s: %s", username, community_id_int, exc)
         return False
 
 
@@ -25466,36 +25528,135 @@ def get_post():
                     arr.append(r)
                 return arr
             post['replies'] = build_tree(None)
-            
+
             reaction_counts, user_reaction = get_post_reaction_summary(c, post_id, username)
             post['reactions'] = reaction_counts
             post['user_reaction'] = user_reaction
-            
-            # Add reaction counts for each reply and user reaction
-            def hydrate_reply_metrics(reply):
-                # Attach profile picture per reply
+
+            # Batch-hydrate replies: profile pictures, reactions, view counts,
+            # and child counts all collapse from N queries per reply to one
+            # IN/GROUP BY query per dimension. This is the hot path that
+            # was crashing the post-detail page when threads grew.
+            ph = get_sql_placeholder()
+            all_reply_ids: list[int] = []
+            all_reply_authors: set[str] = set()
+
+            def _collect(reply: dict) -> None:
+                rid = reply.get('id')
+                if rid is not None:
+                    try:
+                        all_reply_ids.append(int(rid))
+                    except (TypeError, ValueError):
+                        pass
+                if reply.get('username'):
+                    all_reply_authors.add(str(reply['username']))
+                for ch in reply.get('children', []) or []:
+                    _collect(ch)
+
+            for reply in post['replies']:
+                _collect(reply)
+
+            pp_map: dict[str, Optional[str]] = {}
+            if all_reply_authors:
                 try:
-                    c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (reply['username'],))
-                    pr = c.fetchone()
-                    reply['profile_picture'] = pr['profile_picture'] if pr and 'profile_picture' in pr.keys() else None
-                except Exception:
-                    reply['profile_picture'] = None
-                counts, user_reaction = get_reply_reaction_summary(c, reply['id'], username)
-                reply['reactions'] = counts
-                reply['user_reaction'] = user_reaction
+                    author_phs = ','.join([ph] * len(all_reply_authors))
+                    c.execute(
+                        f"SELECT username, profile_picture FROM user_profiles WHERE username IN ({author_phs})",
+                        tuple(all_reply_authors),
+                    )
+                    for row in c.fetchall() or []:
+                        if hasattr(row, 'keys'):
+                            pp_map[row['username']] = row['profile_picture']
+                        else:
+                            pp_map[row[0]] = row[1]
+                except Exception as pp_err:
+                    logger.debug("batch reply profile pictures failed: %s", pp_err)
+
+            reactions_map: dict[int, dict] = {}
+            user_reactions_map: dict[int, Optional[str]] = {}
+            view_counts_map: dict[int, int] = {}
+            child_count_map: dict[int, int] = {}
+
+            if all_reply_ids:
+                ids_ph = ','.join([ph] * len(all_reply_ids))
+                try:
+                    c.execute(
+                        f"SELECT reply_id, reaction_type, COUNT(*) AS cnt FROM reply_reactions "
+                        f"WHERE reply_id IN ({ids_ph}) GROUP BY reply_id, reaction_type",
+                        tuple(all_reply_ids),
+                    )
+                    for row in c.fetchall() or []:
+                        if hasattr(row, 'keys'):
+                            rid_int = int(row['reply_id'])
+                            rtype = row['reaction_type']
+                            cnt = int(row['cnt'])
+                        else:
+                            rid_int = int(row[0]); rtype = row[1]; cnt = int(row[2])
+                        reactions_map.setdefault(rid_int, {})[rtype] = cnt
+                except Exception as rx_err:
+                    logger.debug("batch reply reactions failed: %s", rx_err)
+
+                try:
+                    c.execute(
+                        f"SELECT reply_id, reaction_type FROM reply_reactions "
+                        f"WHERE reply_id IN ({ids_ph}) AND username = {ph}",
+                        tuple(all_reply_ids) + (username,),
+                    )
+                    for row in c.fetchall() or []:
+                        if hasattr(row, 'keys'):
+                            user_reactions_map[int(row['reply_id'])] = row['reaction_type']
+                        else:
+                            user_reactions_map[int(row[0])] = row[1]
+                except Exception as urx_err:
+                    logger.debug("batch reply user reactions failed: %s", urx_err)
+
                 try:
                     ensure_reply_views_table(c)
-                    reply['view_count'] = _count_reply_views_excluding_admin(c, reply['id'])
-                except Exception:
-                    reply['view_count'] = 0
+                    c.execute(
+                        f"SELECT reply_id, COUNT(*) AS cnt FROM reply_views "
+                        f"WHERE reply_id IN ({ids_ph}) AND LOWER(username) <> LOWER({ph}) "
+                        f"GROUP BY reply_id",
+                        tuple(all_reply_ids) + ('admin',),
+                    )
+                    for row in c.fetchall() or []:
+                        if hasattr(row, 'keys'):
+                            view_counts_map[int(row['reply_id'])] = int(row['cnt'])
+                        else:
+                            view_counts_map[int(row[0])] = int(row[1])
+                except Exception as vc_err:
+                    logger.debug("batch reply view counts failed: %s", vc_err)
+
                 try:
-                    c.execute("SELECT COUNT(*) as cnt FROM replies WHERE parent_reply_id = ?", (reply['id'],))
-                    cnt_row = c.fetchone()
-                    reply['reply_count'] = cnt_row['cnt'] if cnt_row and hasattr(cnt_row, 'keys') else (cnt_row[0] if cnt_row else 0)
-                except Exception:
-                    reply['reply_count'] = len(reply.get('children', []))
-                for ch in reply.get('children', []):
+                    c.execute(
+                        f"SELECT parent_reply_id, COUNT(*) AS cnt FROM replies "
+                        f"WHERE parent_reply_id IN ({ids_ph}) GROUP BY parent_reply_id",
+                        tuple(all_reply_ids),
+                    )
+                    for row in c.fetchall() or []:
+                        if hasattr(row, 'keys'):
+                            child_count_map[int(row['parent_reply_id'])] = int(row['cnt'])
+                        else:
+                            child_count_map[int(row[0])] = int(row[1])
+                except Exception as cc_err:
+                    logger.debug("batch reply child counts failed: %s", cc_err)
+
+            def hydrate_reply_metrics(reply: dict) -> None:
+                rid = reply.get('id')
+                rid_int: Optional[int]
+                try:
+                    rid_int = int(rid) if rid is not None else None
+                except (TypeError, ValueError):
+                    rid_int = None
+                reply['profile_picture'] = pp_map.get(str(reply.get('username') or ''))
+                reply['reactions'] = reactions_map.get(rid_int or -1, {})
+                reply['user_reaction'] = user_reactions_map.get(rid_int or -1)
+                reply['view_count'] = view_counts_map.get(rid_int or -1, 0)
+                reply['reply_count'] = child_count_map.get(
+                    rid_int or -1, len(reply.get('children', []))
+                )
+                for ch in reply.get('children', []) or []:
                     hydrate_reply_metrics(ch)
+
             for reply in post['replies']:
                 hydrate_reply_metrics(reply)
 
@@ -25695,81 +25856,169 @@ def api_get_reply(reply_id):
             post_raw = c.fetchone()
             post_info = dict(post_raw) if post_raw else None
             
-            # Get profile picture for the main reply
-            try:
-                c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (reply['username'],))
-                pp = c.fetchone()
-                reply['profile_picture'] = pp['profile_picture'] if pp and hasattr(pp, 'keys') else (pp[0] if pp else None)
-            except Exception:
-                reply['profile_picture'] = None
-            
-            # Get reaction counts and user reaction for main reply
-            reply_counts, reply_user_reaction = get_reply_reaction_summary(c, reply_id, username)
-            reply['reactions'] = reply_counts
-            reply['user_reaction'] = reply_user_reaction
-            try:
-                ensure_reply_views_table(c)
-                reply['view_count'] = _count_reply_views_excluding_admin(c, reply_id)
-            except Exception:
-                reply['view_count'] = 0
-            
-            # Fetch all nested replies (replies to this reply)
+            # Main reply profile picture / reactions / view count / child
+            # count are filled below from the batched maps to keep this
+            # endpoint linear in the number of nested replies.
+            reply['profile_picture'] = None
+            reply['reactions'] = {}
+            reply['user_reaction'] = None
+            reply['view_count'] = 0
+
+            # Fetch direct nested replies (children of this reply).
+            # The detail page lazy-loads grandchildren when the user expands a
+            # thread, so we deliberately don't recurse here.
             c.execute(f"SELECT * FROM replies WHERE parent_reply_id = {ph} ORDER BY timestamp ASC", (reply_id,))
             nested_replies_raw = c.fetchall()
             nested_replies = [dict(r) for r in nested_replies_raw]
-            
-            # Collect usernames for profile pictures
-            nested_usernames = set(r['username'] for r in nested_replies if r.get('username'))
-            
-            # Batch fetch profile pictures
-            pp_map = {}
-            if nested_usernames:
-                user_placeholders = ','.join([ph for _ in nested_usernames])
-                c.execute(f"SELECT username, profile_picture FROM user_profiles WHERE username IN ({user_placeholders})", tuple(nested_usernames))
-                for r in c.fetchall():
-                    uname = r['username'] if hasattr(r, 'keys') else r[0]
-                    pp = r['profile_picture'] if hasattr(r, 'keys') else r[1]
-                    pp_map[uname] = pp
-            
-            # Hydrate nested replies with profile pics, reactions, and view counts
-            for nr in nested_replies:
-                nr['profile_picture'] = pp_map.get(nr['username'])
-                nr_counts, nr_user_reaction = get_reply_reaction_summary(c, nr['id'], username)
-                nr['reactions'] = nr_counts
-                nr['user_reaction'] = nr_user_reaction
-                try:
-                    nr['view_count'] = _count_reply_views_excluding_admin(c, nr['id'])
-                except Exception:
-                    nr['view_count'] = 0
-                c.execute(f"SELECT COUNT(*) as cnt FROM replies WHERE parent_reply_id = {ph}", (nr['id'],))
-                cnt_row = c.fetchone()
-                nr['reply_count'] = cnt_row['cnt'] if cnt_row and hasattr(cnt_row, 'keys') else (cnt_row[0] if cnt_row else 0)
-            
-            reply['nested_replies'] = nested_replies
-            
-            # Count direct replies to the main reply
-            c.execute(f"SELECT COUNT(*) as cnt FROM replies WHERE parent_reply_id = {ph}", (reply_id,))
-            cnt_row = c.fetchone()
-            reply['reply_count'] = cnt_row['cnt'] if cnt_row and hasattr(cnt_row, 'keys') else (cnt_row[0] if cnt_row else 0)
-            
-            # Build the full parent chain (all ancestors from root comment to immediate parent)
-            parent_chain = []
+
+            nested_ids = [int(r['id']) for r in nested_replies if r.get('id') is not None]
+
+            # Build the parent chain ids first (single walk) so we can batch
+            # fetch all parent rows and profile pictures.
+            parent_chain_ids: list[int] = []
             current_parent_id = reply.get('parent_reply_id')
-            while current_parent_id:
+            seen_ids: set[int] = set()
+            while current_parent_id and current_parent_id not in seen_ids:
+                seen_ids.add(int(current_parent_id))
                 c.execute(
-                    f"SELECT id, username, content, timestamp, parent_reply_id, image_path, video_path, audio_path, audio_summary FROM replies WHERE id = {ph}",
+                    f"SELECT parent_reply_id FROM replies WHERE id = {ph}",
                     (current_parent_id,),
                 )
-                parent_raw = c.fetchone()
-                if not parent_raw:
+                row = c.fetchone()
+                if not row:
                     break
-                parent_data = dict(parent_raw)
-                # Get profile picture
-                c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (parent_data['username'],))
-                pp = c.fetchone()
-                parent_data['profile_picture'] = pp['profile_picture'] if pp and hasattr(pp, 'keys') else (pp[0] if pp else None)
-                parent_chain.insert(0, parent_data)  # Insert at beginning to maintain order (oldest first)
-                current_parent_id = parent_data.get('parent_reply_id')
+                parent_chain_ids.append(int(current_parent_id))
+                next_parent = row['parent_reply_id'] if hasattr(row, 'keys') else row[0]
+                current_parent_id = next_parent
+
+            parent_rows: dict[int, dict] = {}
+            if parent_chain_ids:
+                in_ph = ','.join([ph] * len(parent_chain_ids))
+                c.execute(
+                    f"SELECT id, username, content, timestamp, parent_reply_id, image_path, video_path, audio_path, audio_summary "
+                    f"FROM replies WHERE id IN ({in_ph})",
+                    tuple(parent_chain_ids),
+                )
+                for row in c.fetchall() or []:
+                    rdict = dict(row)
+                    parent_rows[int(rdict['id'])] = rdict
+
+            all_relevant_ids = list(set(nested_ids + parent_chain_ids))
+            all_relevant_authors: set[str] = set()
+            if reply.get('username'):
+                all_relevant_authors.add(str(reply['username']))
+            for nr in nested_replies:
+                if nr.get('username'):
+                    all_relevant_authors.add(str(nr['username']))
+            for prow in parent_rows.values():
+                if prow.get('username'):
+                    all_relevant_authors.add(str(prow['username']))
+
+            pp_map: dict[str, Optional[str]] = {}
+            if all_relevant_authors:
+                user_placeholders = ','.join([ph] * len(all_relevant_authors))
+                c.execute(
+                    f"SELECT username, profile_picture FROM user_profiles WHERE username IN ({user_placeholders})",
+                    tuple(all_relevant_authors),
+                )
+                for r in c.fetchall() or []:
+                    if hasattr(r, 'keys'):
+                        pp_map[r['username']] = r['profile_picture']
+                    else:
+                        pp_map[r[0]] = r[1]
+
+            reactions_map: dict[int, dict] = {}
+            user_reactions_map: dict[int, Optional[str]] = {}
+            view_counts_map: dict[int, int] = {}
+            child_count_map: dict[int, int] = {}
+
+            batch_ids = list(set(nested_ids + [int(reply_id)]))
+            if batch_ids:
+                ids_ph = ','.join([ph] * len(batch_ids))
+                try:
+                    c.execute(
+                        f"SELECT reply_id, reaction_type, COUNT(*) AS cnt FROM reply_reactions "
+                        f"WHERE reply_id IN ({ids_ph}) GROUP BY reply_id, reaction_type",
+                        tuple(batch_ids),
+                    )
+                    for row in c.fetchall() or []:
+                        if hasattr(row, 'keys'):
+                            rid_i = int(row['reply_id']); rtype = row['reaction_type']; cnt = int(row['cnt'])
+                        else:
+                            rid_i = int(row[0]); rtype = row[1]; cnt = int(row[2])
+                        reactions_map.setdefault(rid_i, {})[rtype] = cnt
+                except Exception as rx_err:
+                    logger.debug("batch nested reactions failed: %s", rx_err)
+
+                try:
+                    c.execute(
+                        f"SELECT reply_id, reaction_type FROM reply_reactions "
+                        f"WHERE reply_id IN ({ids_ph}) AND username = {ph}",
+                        tuple(batch_ids) + (username,),
+                    )
+                    for row in c.fetchall() or []:
+                        if hasattr(row, 'keys'):
+                            user_reactions_map[int(row['reply_id'])] = row['reaction_type']
+                        else:
+                            user_reactions_map[int(row[0])] = row[1]
+                except Exception as urx_err:
+                    logger.debug("batch nested user reactions failed: %s", urx_err)
+
+                try:
+                    ensure_reply_views_table(c)
+                    c.execute(
+                        f"SELECT reply_id, COUNT(*) AS cnt FROM reply_views "
+                        f"WHERE reply_id IN ({ids_ph}) AND LOWER(username) <> LOWER({ph}) "
+                        f"GROUP BY reply_id",
+                        tuple(batch_ids) + ('admin',),
+                    )
+                    for row in c.fetchall() or []:
+                        if hasattr(row, 'keys'):
+                            view_counts_map[int(row['reply_id'])] = int(row['cnt'])
+                        else:
+                            view_counts_map[int(row[0])] = int(row[1])
+                except Exception as vc_err:
+                    logger.debug("batch nested view counts failed: %s", vc_err)
+
+                try:
+                    c.execute(
+                        f"SELECT parent_reply_id, COUNT(*) AS cnt FROM replies "
+                        f"WHERE parent_reply_id IN ({ids_ph}) GROUP BY parent_reply_id",
+                        tuple(batch_ids),
+                    )
+                    for row in c.fetchall() or []:
+                        if hasattr(row, 'keys'):
+                            child_count_map[int(row['parent_reply_id'])] = int(row['cnt'])
+                        else:
+                            child_count_map[int(row[0])] = int(row[1])
+                except Exception as cc_err:
+                    logger.debug("batch nested child counts failed: %s", cc_err)
+
+            for nr in nested_replies:
+                nr_id = int(nr['id']) if nr.get('id') is not None else -1
+                nr['profile_picture'] = pp_map.get(nr.get('username') or '')
+                nr['reactions'] = reactions_map.get(nr_id, {})
+                nr['user_reaction'] = user_reactions_map.get(nr_id)
+                nr['view_count'] = view_counts_map.get(nr_id, 0)
+                nr['reply_count'] = child_count_map.get(nr_id, 0)
+
+            reply['nested_replies'] = nested_replies
+
+            # Main-reply hydration pulled from the batched maps.
+            reply['profile_picture'] = pp_map.get(reply.get('username') or '')
+            reply['reactions'] = reactions_map.get(int(reply_id), {})
+            reply['user_reaction'] = user_reactions_map.get(int(reply_id))
+            reply['view_count'] = view_counts_map.get(int(reply_id), 0)
+            reply['reply_count'] = child_count_map.get(int(reply_id), 0)
+
+            # Stitch parent chain in oldest→newest order.
+            parent_chain: list[dict] = []
+            for parent_id in reversed(parent_chain_ids):
+                pdict = parent_rows.get(parent_id)
+                if not pdict:
+                    continue
+                pdict['profile_picture'] = pp_map.get(pdict.get('username') or '')
+                parent_chain.append(pdict)
             
             # Also get post author's profile picture
             if post_info:
@@ -30299,39 +30548,50 @@ def api_group_post():
             c.execute(f"SELECT reaction FROM {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} WHERE group_post_id = {get_sql_placeholder()} AND username = {get_sql_placeholder()}", (pid, username))
             urr = c.fetchone(); user_reaction = urr['reaction'] if hasattr(urr, 'keys') else (urr[0] if urr else None)
 
-            # Replies (with nested tree, matching /get_post format)
+            # Replies (with nested tree, matching /get_post format).
+            # Schema (audio_path / audio_summary) is ensured at startup; this
+            # endpoint is on the post-detail hot path and must not run DDL.
             gr_table = '`group_replies`' if USE_MYSQL else 'group_replies'
             grr_table = '`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'
             try:
-                c.execute(f"ALTER TABLE {gr_table} ADD COLUMN audio_path TEXT")
-            except Exception:
-                pass
-            try:
-                c.execute(f"ALTER TABLE {gr_table} ADD COLUMN audio_summary TEXT")
-            except Exception:
-                pass
-            c.execute(f"""
-                SELECT gr.id, gr.username, gr.content, gr.image_path, gr.created_at,
-                       gr.parent_reply_id, up.profile_picture,
-                       gr.audio_path, gr.audio_summary
-                FROM {gr_table} gr
-                LEFT JOIN user_profiles up ON up.username = gr.username
-                WHERE gr.group_post_id = {get_sql_placeholder()}
-                ORDER BY gr.id ASC
-            """, (pid,))
-            rep_rows = c.fetchall() or []
-            all_replies = []
+                c.execute(f"""
+                    SELECT gr.id, gr.username, gr.content, gr.image_path, gr.created_at,
+                           gr.parent_reply_id, up.profile_picture,
+                           gr.audio_path, gr.audio_summary
+                    FROM {gr_table} gr
+                    LEFT JOIN user_profiles up ON up.username = gr.username
+                    WHERE gr.group_post_id = {get_sql_placeholder()}
+                    ORDER BY gr.id ASC
+                """, (pid,))
+                rep_rows = c.fetchall() or []
+            except Exception as schema_err:
+                # Deployment may be mid-migration; degrade to the legacy column
+                # set rather than 500ing the entire detail page.
+                logger.warning("group_replies audio columns missing, falling back: %s", schema_err)
+                c.execute(f"""
+                    SELECT gr.id, gr.username, gr.content, gr.image_path, gr.created_at,
+                           gr.parent_reply_id, up.profile_picture
+                    FROM {gr_table} gr
+                    LEFT JOIN user_profiles up ON up.username = gr.username
+                    WHERE gr.group_post_id = {get_sql_placeholder()}
+                    ORDER BY gr.id ASC
+                """, (pid,))
+                rep_rows = c.fetchall() or []
+
+            all_replies: list[dict] = []
+            reply_ids: list[int] = []
             for rr in rep_rows:
                 if hasattr(rr, 'keys'):
+                    cols = set(rr.keys())
                     rid = rr['id']
                     parent_rid = rr['parent_reply_id']
-                    apath = rr.get('audio_path')
-                    asum = rr.get('audio_summary')
+                    apath = rr['audio_path'] if 'audio_path' in cols else None
+                    asum = rr['audio_summary'] if 'audio_summary' in cols else None
                     uname = rr['username']
                     rcontent = rr['content']
                     rimg = rr['image_path']
                     rts = rr['created_at']
-                    rpp = rr.get('profile_picture')
+                    rpp = rr['profile_picture'] if 'profile_picture' in cols else None
                 else:
                     rid = rr[0]
                     uname = rr[1]
@@ -30342,15 +30602,7 @@ def api_group_post():
                     rpp = rr[6] if len(rr) > 6 else None
                     apath = rr[7] if len(rr) > 7 else None
                     asum = rr[8] if len(rr) > 8 else None
-                c.execute(f"SELECT reaction, COUNT(*) as c FROM {grr_table} WHERE group_reply_id = {get_sql_placeholder()} GROUP BY reaction", (rid,))
-                rrx = c.fetchall() or []
-                rreactions = { (r3['reaction'] if hasattr(r3, 'keys') else r3[0]): (r3['c'] if hasattr(r3, 'keys') else r3[1]) for r3 in rrx }
-                c.execute(f"SELECT reaction FROM {grr_table} WHERE group_reply_id = {get_sql_placeholder()} AND username = {get_sql_placeholder()}", (rid, username))
-                rur = c.fetchone(); reply_user_reaction = rur['reaction'] if hasattr(rur, 'keys') else (rur[0] if rur else None)
-                # Count direct children
-                c.execute(f"SELECT COUNT(*) as cnt FROM {gr_table} WHERE parent_reply_id = {get_sql_placeholder()}", (rid,))
-                cnt_row = c.fetchone()
-                reply_count = (cnt_row['cnt'] if hasattr(cnt_row, 'keys') else cnt_row[0]) if cnt_row else 0
+                reply_ids.append(int(rid))
                 all_replies.append({
                     'id': rid,
                     'username': uname,
@@ -30361,11 +30613,67 @@ def api_group_post():
                     'timestamp': rts,
                     'parent_reply_id': parent_rid,
                     'profile_picture': rpp,
-                    'reactions': rreactions,
-                    'user_reaction': reply_user_reaction,
-                    'reply_count': reply_count,
+                    'reactions': {},
+                    'user_reaction': None,
+                    'reply_count': 0,
                     'children': [],
                 })
+
+            reactions_map: dict[int, dict] = {}
+            user_reactions_map: dict[int, str] = {}
+            child_count_map: dict[int, int] = {}
+            if reply_ids:
+                in_ph = ','.join([ph] * len(reply_ids))
+                try:
+                    c.execute(
+                        f"SELECT group_reply_id, reaction, COUNT(*) AS cnt FROM {grr_table} "
+                        f"WHERE group_reply_id IN ({in_ph}) GROUP BY group_reply_id, reaction",
+                        tuple(reply_ids),
+                    )
+                    for row in c.fetchall() or []:
+                        if hasattr(row, 'keys'):
+                            r_id = int(row['group_reply_id'])
+                            r_type = row['reaction']
+                            r_cnt = int(row['cnt'])
+                        else:
+                            r_id = int(row[0]); r_type = row[1]; r_cnt = int(row[2])
+                        reactions_map.setdefault(r_id, {})[r_type] = r_cnt
+                except Exception as rx_err:
+                    logger.warning("batch group reply reactions failed: %s", rx_err)
+
+                try:
+                    c.execute(
+                        f"SELECT group_reply_id, reaction FROM {grr_table} "
+                        f"WHERE group_reply_id IN ({in_ph}) AND username = {ph}",
+                        tuple(reply_ids) + (username,),
+                    )
+                    for row in c.fetchall() or []:
+                        if hasattr(row, 'keys'):
+                            user_reactions_map[int(row['group_reply_id'])] = row['reaction']
+                        else:
+                            user_reactions_map[int(row[0])] = row[1]
+                except Exception as urx_err:
+                    logger.warning("batch group reply user reactions failed: %s", urx_err)
+
+                try:
+                    c.execute(
+                        f"SELECT parent_reply_id, COUNT(*) AS cnt FROM {gr_table} "
+                        f"WHERE parent_reply_id IN ({in_ph}) GROUP BY parent_reply_id",
+                        tuple(reply_ids),
+                    )
+                    for row in c.fetchall() or []:
+                        if hasattr(row, 'keys'):
+                            child_count_map[int(row['parent_reply_id'])] = int(row['cnt'])
+                        else:
+                            child_count_map[int(row[0])] = int(row[1])
+                except Exception as ch_err:
+                    logger.warning("batch group reply child counts failed: %s", ch_err)
+
+            for entry in all_replies:
+                rid_int = int(entry['id'])
+                entry['reactions'] = reactions_map.get(rid_int, {})
+                entry['user_reaction'] = user_reactions_map.get(rid_int)
+                entry['reply_count'] = child_count_map.get(rid_int, 0)
             # Build nested tree
             reply_map = {r['id']: r for r in all_replies}
             root_replies = []

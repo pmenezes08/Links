@@ -1050,6 +1050,48 @@ def _oauth_email_verified(value: Any) -> bool:
     return bool(value)
 
 
+def _oauth_provider_column(provider: str) -> str:
+    """Return the ``users`` table column that stores ``provider``'s subject id."""
+    if provider == "google":
+        return "google_id"
+    if provider == "apple":
+        return "apple_id"
+    raise ValueError(f"Unknown oauth provider: {provider}")
+
+
+def _link_oauth_to_existing_user(
+    cursor,
+    ph: str,
+    provider: str,
+    oauth_id: str,
+    canonical: str,
+    username: str,
+) -> None:
+    """Attach ``provider`` (apple/google) ``oauth_id`` to an existing ``username``.
+
+    Used when an authenticated session asks to link a fresh SSO identity (e.g.
+    user already logged in via password, taps "Continue with Apple"); this
+    keeps the original account intact instead of silently spawning a duplicate
+    user record that has zero community memberships.
+
+    Safe to call only AFTER confirming no other ``users`` row already owns
+    ``oauth_id`` (callers do that lookup first and short-circuit on hit).
+    """
+    column = _oauth_provider_column(provider)
+    cursor.execute(
+        f"UPDATE users SET {column} = {ph}, canonical_email = COALESCE(canonical_email, {ph}) WHERE username = {ph}",
+        (oauth_id, canonical or None, username),
+    )
+
+
+def _truthy_param(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
 def _verify_apple_id_token(id_token: str, nonce: str | None = None) -> dict | None:
     """Verify an Apple identity token and return its claims."""
     try:
@@ -1081,13 +1123,24 @@ def _verify_apple_id_token(id_token: str, nonce: str | None = None) -> dict | No
 def google_sign_in():
     """
     Google Sign-In endpoint for iOS/Android.
-    Body: { id_token, platform: 'ios'|'android', invite_token? }
+    Body: { id_token, platform: 'ios'|'android', invite_token?, link_only? }
+
+    ``link_only=true`` opts the caller into a strict policy: if the Google
+    identity (by ``sub`` or signed email) doesn't already map to a user,
+    return ``{success:false, error:'no_matching_account'}`` instead of
+    silently creating a new user. Useful when the UI knows the user has an
+    existing account and is *connecting* Google to it.
+
+    If the caller is already authenticated (Flask session has ``username``)
+    and the Google identity is new, the route links Google to the existing
+    user instead of spawning a duplicate account.
     """
     logger = current_app.logger
     data = request.get_json() or {}
     id_token_str = (data.get('id_token') or '').strip()
     platform = (data.get('platform') or 'ios').strip().lower()
     invite_token = (data.get('invite_token') or '').strip() or None
+    link_only = _truthy_param(data.get('link_only'))
 
     if not id_token_str:
         return jsonify({'success': False, 'error': 'ID token required'}), 400
@@ -1106,20 +1159,58 @@ def google_sign_in():
     if not google_id or not email:
         return jsonify({'success': False, 'error': 'Incomplete Google profile'}), 400
 
+    # Capture any already-authenticated session BEFORE we mutate state, so a
+    # logged-in user tapping "Continue with Google" links the Google
+    # identity to their current account instead of creating a fresh one.
+    # We re-validate inside the open DB cursor below to avoid a separate
+    # connection acquisition on every SSO call.
+    candidate_session_username = session.get('username')
+
     try:
-        # Drop any prior session keys (pending_username, stale username, etc.) before binding identity.
-        session.clear()
-        session.permanent = False
         ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
             _ensure_google_id_column(c)
+
+            existing_username: str | None = None
+            if candidate_session_username:
+                try:
+                    c.execute(
+                        f"SELECT 1 FROM users WHERE username = {ph} LIMIT 1",
+                        (str(candidate_session_username),),
+                    )
+                    if c.fetchone() is not None:
+                        existing_username = str(candidate_session_username)
+                except Exception as exc:
+                    logger.debug(
+                        "Google sign-in: session validate failed for %s: %s",
+                        candidate_session_username,
+                        exc,
+                    )
 
             # 1. Look up by google_id (returning user)
             c.execute(f"SELECT username, email FROM users WHERE google_id = {ph}", (google_id,))
             row = c.fetchone()
             if row:
                 username = row['username'] if hasattr(row, 'keys') else row[0]
+                if existing_username and existing_username != username:
+                    # Active session for a *different* user — don't silently
+                    # hijack it. Tell the caller so the UI can show "this
+                    # Google account is linked to <other_user>, log out
+                    # first" instead of silently switching identities.
+                    logger.warning(
+                        "Google sign-in conflict: existing session=%s but google_id maps to %s",
+                        existing_username,
+                        username,
+                    )
+                    return jsonify({
+                        'success': False,
+                        'error': 'sso_belongs_to_other_user',
+                        'username_on_token': username,
+                    }), 409
+                # Drop any pending_username before binding identity.
+                session.clear()
+                session.permanent = False
                 apply_oauth_email_verified(c, ph, username, bool(email_verified))
                 conn.commit()
                 session['username'] = username
@@ -1140,10 +1231,20 @@ def google_sign_in():
             row = c.fetchone()
             if row:
                 username = row['username'] if hasattr(row, 'keys') else row[0]
-                c.execute(
-                    f"UPDATE users SET google_id = {ph}, canonical_email = COALESCE(canonical_email, {ph}) WHERE username = {ph}",
-                    (google_id, canonical, username),
-                )
+                if existing_username and existing_username != username:
+                    logger.warning(
+                        "Google sign-in email conflict: existing session=%s but email maps to %s",
+                        existing_username,
+                        username,
+                    )
+                    return jsonify({
+                        'success': False,
+                        'error': 'sso_email_belongs_to_other_user',
+                        'username_on_email': username,
+                    }), 409
+                session.clear()
+                session.permanent = False
+                _link_oauth_to_existing_user(c, ph, 'google', google_id, canonical, username)
                 apply_oauth_email_verified(c, ph, username, bool(email_verified))
                 conn.commit()
                 session['username'] = username
@@ -1159,7 +1260,48 @@ def google_sign_in():
                 auth_session.no_store(resp)
                 return resp
 
-            # 3. Create new user
+            # 3a. No matching user by sub or email — if a session is active,
+            #     attach Google to that account instead of spawning a duplicate.
+            if existing_username:
+                _link_oauth_to_existing_user(c, ph, 'google', google_id, canonical, existing_username)
+                apply_oauth_email_verified(c, ph, existing_username, bool(email_verified))
+                conn.commit()
+                _invalidate_profile_and_dashboard_caches(existing_username)
+                logger.info(
+                    "Google sign-in: linked Google ID to active session user %s (no email match)",
+                    existing_username,
+                )
+                resp = make_response(jsonify({
+                    'success': True,
+                    'username': existing_username,
+                    'is_new': False,
+                    'linked_to_active_session': True,
+                }))
+                stale = _apply_login_persistence(resp, existing_username)
+                logger.info(
+                    "Google sign-in link-to-session persistence stale_revoked=%d user=%s",
+                    stale,
+                    existing_username,
+                )
+                auth_session.no_store(resp)
+                return resp
+
+            # 3b. Strict link mode — refuse to create a new user.
+            if link_only:
+                logger.info(
+                    "Google sign-in link_only=true with no matching account email=%s",
+                    email or '-',
+                )
+                return jsonify({
+                    'success': False,
+                    'error': 'no_matching_account',
+                    'sso_provider': 'google',
+                    'sso_email': email,
+                }), 404
+
+            # 3c. Create new user (default behaviour for first-time signups).
+            session.clear()
+            session.permanent = False
             base_username = re.sub(r'[^a-z0-9_]', '', email.split('@')[0].lower()) or 'user'
             username = base_username
             suffix = 1
@@ -1228,7 +1370,20 @@ def google_sign_in():
 def apple_sign_in():
     """
     Sign in with Apple endpoint for iOS.
-    Body: { id_token, apple_user?, given_name?, family_name?, nonce?, invite_token? }
+    Body: { id_token, apple_user?, given_name?, family_name?, nonce?,
+            invite_token?, link_only? }
+
+    Same opt-in / link-to-session semantics as ``/api/auth/google``:
+
+    - ``link_only=true`` refuses to create a new account when the Apple
+      identity (by ``sub`` or signed email) doesn't already map to a user;
+      returns ``{success:false, error:'no_matching_account'}`` so the UI
+      can prompt the user to log in with username/password and link from
+      Settings instead.
+    - If the caller is already authenticated, an unknown Apple identity is
+      linked to the active user instead of spawning a duplicate. This is
+      the main path that protects iOS users from "Hide my email" sign-ins
+      silently creating a new account that has no community memberships.
     """
     logger = current_app.logger
     data = request.get_json() or {}
@@ -1236,6 +1391,7 @@ def apple_sign_in():
     apple_user = (data.get('apple_user') or '').strip()
     nonce = (data.get('nonce') or '').strip() or None
     invite_token = (data.get('invite_token') or '').strip() or None
+    link_only = _truthy_param(data.get('link_only'))
 
     if not id_token_str:
         return jsonify({'success': False, 'error': 'Apple identity token required'}), 400
@@ -1256,20 +1412,52 @@ def apple_sign_in():
     if apple_user and apple_user != apple_id:
         return jsonify({'success': False, 'error': 'Apple account mismatch'}), 400
 
+    # Capture any already-authenticated session BEFORE we mutate state, so a
+    # logged-in user tapping "Continue with Apple" links the Apple identity
+    # to their current account instead of creating a fresh one. We
+    # re-validate inside the open DB cursor below.
+    candidate_session_username = session.get('username')
+
     try:
-        # Drop any prior session keys (pending_username, stale username, etc.) before binding identity.
-        session.clear()
-        session.permanent = False
         ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
             _ensure_apple_id_column(c)
+
+            existing_username: str | None = None
+            if candidate_session_username:
+                try:
+                    c.execute(
+                        f"SELECT 1 FROM users WHERE username = {ph} LIMIT 1",
+                        (str(candidate_session_username),),
+                    )
+                    if c.fetchone() is not None:
+                        existing_username = str(candidate_session_username)
+                except Exception as exc:
+                    logger.debug(
+                        "Apple sign-in: session validate failed for %s: %s",
+                        candidate_session_username,
+                        exc,
+                    )
 
             # 1. Look up by Apple's stable subject (returning user).
             c.execute(f"SELECT username, email FROM users WHERE apple_id = {ph}", (apple_id,))
             row = c.fetchone()
             if row:
                 username = row['username'] if hasattr(row, 'keys') else row[0]
+                if existing_username and existing_username != username:
+                    logger.warning(
+                        "Apple sign-in conflict: existing session=%s but apple_id maps to %s",
+                        existing_username,
+                        username,
+                    )
+                    return jsonify({
+                        'success': False,
+                        'error': 'sso_belongs_to_other_user',
+                        'username_on_token': username,
+                    }), 409
+                session.clear()
+                session.permanent = False
                 apply_oauth_email_verified(c, ph, username, email_verified)
                 conn.commit()
                 session['username'] = username
@@ -1291,10 +1479,20 @@ def apple_sign_in():
                 row = c.fetchone()
                 if row:
                     username = row['username'] if hasattr(row, 'keys') else row[0]
-                    c.execute(
-                        f"UPDATE users SET apple_id = {ph}, canonical_email = COALESCE(canonical_email, {ph}) WHERE username = {ph}",
-                        (apple_id, canonical, username),
-                    )
+                    if existing_username and existing_username != username:
+                        logger.warning(
+                            "Apple sign-in email conflict: existing session=%s but email maps to %s",
+                            existing_username,
+                            username,
+                        )
+                        return jsonify({
+                            'success': False,
+                            'error': 'sso_email_belongs_to_other_user',
+                            'username_on_email': username,
+                        }), 409
+                    session.clear()
+                    session.permanent = False
+                    _link_oauth_to_existing_user(c, ph, 'apple', apple_id, canonical, username)
                     apply_oauth_email_verified(c, ph, username, email_verified)
                     conn.commit()
                     session['username'] = username
@@ -1307,13 +1505,54 @@ def apple_sign_in():
                     auth_session.no_store(resp)
                     return resp
 
+            # 3a. No matching user — if a session is active, link Apple to it
+            #     instead of spawning a duplicate (handles Hide-My-Email).
+            if existing_username:
+                _link_oauth_to_existing_user(c, ph, 'apple', apple_id, canonical, existing_username)
+                apply_oauth_email_verified(c, ph, existing_username, email_verified)
+                conn.commit()
+                _invalidate_profile_and_dashboard_caches(existing_username)
+                logger.info(
+                    "Apple sign-in: linked Apple ID to active session user %s (no email match)",
+                    existing_username,
+                )
+                resp = make_response(jsonify({
+                    'success': True,
+                    'username': existing_username,
+                    'is_new': False,
+                    'linked_to_active_session': True,
+                }))
+                stale = _apply_login_persistence(resp, existing_username)
+                logger.info(
+                    "Apple sign-in link-to-session persistence stale_revoked=%d user=%s",
+                    stale,
+                    existing_username,
+                )
+                auth_session.no_store(resp)
+                return resp
+
+            # 3b. Strict link mode — refuse to create a new user.
+            if link_only:
+                logger.info(
+                    "Apple sign-in link_only=true with no matching account email=%s",
+                    email or '-',
+                )
+                return jsonify({
+                    'success': False,
+                    'error': 'no_matching_account',
+                    'sso_provider': 'apple',
+                    'sso_email': email or None,
+                }), 404
+
             if not email:
                 return jsonify({
                     'success': False,
                     'error': 'Apple did not provide an email address. Remove C-Point from Sign in with Apple settings and try again.',
                 }), 400
 
-            # 3. Create new user. Apple private relay emails are accepted as the account email.
+            # 3c. Create new user. Apple private relay emails are accepted as the account email.
+            session.clear()
+            session.permanent = False
             base_username = re.sub(r'[^a-z0-9_]', '', email.split('@')[0].lower()) or 'appleuser'
             username = base_username
             suffix = 1

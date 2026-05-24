@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 
 COOKIE_NAME = "remember_token"
 
+# Once-per-process DDL guard so login/restore/revoke don't pay an
+# idempotent ``CREATE TABLE IF NOT EXISTS`` roundtrip on every auth
+# request. Startup migration / first ensure call still runs the DDL.
+_SCHEMA_READY = False
+
 
 def _get_auth_session_lifetime_days() -> int:
     try:
@@ -67,8 +72,16 @@ def _parse_datetime(value) -> Optional[datetime]:
             return None
 
 
-def ensure_tables() -> None:
-    """Create the remember token table and indexes when missing."""
+def ensure_tables(force: bool = False) -> None:
+    """Create the remember token table and indexes when missing.
+
+    Cached after first success so subsequent calls during a hot login /
+    restore / revoke don't pay another DDL roundtrip. Pass ``force=True``
+    to bypass the cache (used by startup bootstrap and tests).
+    """
+    global _SCHEMA_READY
+    if _SCHEMA_READY and not force:
+        return
     with get_db_connection() as conn:
         c = conn.cursor()
         if USE_MYSQL:
@@ -102,6 +115,7 @@ def ensure_tables() -> None:
             c.execute("CREATE INDEX IF NOT EXISTS idx_remember_username ON remember_tokens(username)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_remember_expires ON remember_tokens(expires_at)")
         conn.commit()
+    _SCHEMA_READY = True
 
 
 def issue(response, username: str) -> str:

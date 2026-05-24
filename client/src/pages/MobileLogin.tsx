@@ -153,16 +153,62 @@ export default function MobileLogin() {
           /* ignore */
         }
       }
-      await (window as any).__reregisterPushToken?.()
-      await triggerDashboardServerPull()
-      try {
-        await refresh()
-      } catch {
-        /* ignore; dashboard will refetch */
-      }
-      window.location.assign('/premium_dashboard')
+
+      // Navigate first — session cookies are set on the auth response, so
+      // the dashboard shell can begin fetching while push token /
+      // server-pull / profile refresh run in the background. The previous
+      // ``window.location.assign`` triggered a full reload + waterfall
+      // (push token → server pull → profile fetch → reload) that pushed
+      // login-to-dashboard latency past two seconds.
+      navigate('/premium_dashboard', { replace: true })
+
+      void (async () => {
+        try {
+          await (window as any).__reregisterPushToken?.()
+        } catch {
+          /* ignore */
+        }
+        try {
+          await triggerDashboardServerPull()
+        } catch {
+          /* ignore */
+        }
+        try {
+          await refresh()
+        } catch {
+          /* ignore; dashboard will refetch */
+        }
+      })()
     },
-    [inviteToken, refresh],
+    [inviteToken, refresh, navigate],
+  )
+
+  /**
+   * Surface the structured error codes returned by the linking-aware SSO
+   * routes (``/api/auth/google`` / ``/api/auth/apple``) so iOS users see a
+   * clear message instead of a raw code. The backend may now respond with:
+   *   - ``sso_belongs_to_other_user`` (409): SSO ID is already linked to a
+   *     different C-Point account on this device.
+   *   - ``sso_email_belongs_to_other_user`` (409): SSO email matches a
+   *     different C-Point account.
+   *   - ``no_matching_account`` (404, only when ``link_only`` is sent): the
+   *     caller asked for strict-link behaviour and the SSO identity wasn't
+   *     found.
+   */
+  const ssoErrorMessage = useCallback(
+    (provider: 'Google' | 'Apple', code: string | undefined, fallback: string): string => {
+      switch (code) {
+        case 'sso_belongs_to_other_user':
+          return `${provider} sign-in: this account is already linked to a different C-Point user. Sign out first or log in with username/password.`
+        case 'sso_email_belongs_to_other_user':
+          return `${provider} sign-in: an existing C-Point account already uses this email. Log in with username/password to link.`
+        case 'no_matching_account':
+          return `${provider} sign-in: no C-Point account found for this identity.`
+        default:
+          return code || fallback
+      }
+    },
+    [],
   )
 
   const postGoogleIdToken = useCallback(
@@ -197,7 +243,7 @@ export default function MobileLogin() {
           if (j?.success) {
             await finishAuthSuccess(j)
           } else {
-            setError(j?.error || `Google sign-in failed (HTTP ${r.status})`)
+            setError(ssoErrorMessage('Google', j?.error, `Google sign-in failed (HTTP ${r.status})`))
           }
           return
         }
@@ -206,7 +252,7 @@ export default function MobileLogin() {
         if (j?.success) {
           await finishAuthSuccess(j)
         } else {
-          setError(j?.error || 'Google sign-in failed')
+          setError(ssoErrorMessage('Google', j?.error, 'Google sign-in failed'))
         }
       } catch {
         setError(
@@ -216,7 +262,7 @@ export default function MobileLogin() {
         )
       }
     },
-    [finishAuthSuccess, inviteToken],
+    [finishAuthSuccess, inviteToken, ssoErrorMessage],
   )
 
   const postAppleIdentityToken = useCallback(
@@ -249,13 +295,13 @@ export default function MobileLogin() {
         if (j?.success) {
           await finishAuthSuccess(j)
         } else {
-          setError(j?.error || 'Apple sign-in failed')
+          setError(ssoErrorMessage('Apple', j?.error, 'Apple sign-in failed'))
         }
       } catch {
         setError('Apple sign-in failed. Please try again.')
       }
     },
-    [finishAuthSuccess, inviteToken],
+    [finishAuthSuccess, inviteToken, ssoErrorMessage],
   )
 
   useEffect(() => {
@@ -499,10 +545,18 @@ export default function MobileLogin() {
                     return
                   }
                   
-                  // Successful login - re-register push token, clear stored username, redirect
+                  // Successful login — SPA navigate (session cookies are
+                  // attached to the auth response). Push token / cache
+                  // refresh run in the background to keep first paint fast.
                   try { sessionStorage.removeItem('cpoint_pending_username') } catch {}
-                  await (window as any).__reregisterPushToken?.()
-                  window.location.href = url.pathname + url.search
+                  invalidateDashboardCache()
+                  void deleteCachedKeyVal('dashboard-data')
+                  navigate(url.pathname + url.search, { replace: true })
+                  void (async () => {
+                    try { await (window as any).__reregisterPushToken?.() } catch {}
+                    try { await triggerDashboardServerPull() } catch {}
+                    try { await refresh() } catch {}
+                  })()
                   return
                 }
                 
@@ -516,8 +570,14 @@ export default function MobileLogin() {
                     setError('Incorrect password. Please try again.')
                   }
                 } else if (response.ok) {
-                  await (window as any).__reregisterPushToken?.()
-                  window.location.href = '/premium_dashboard'
+                  invalidateDashboardCache()
+                  void deleteCachedKeyVal('dashboard-data')
+                  navigate('/premium_dashboard', { replace: true })
+                  void (async () => {
+                    try { await (window as any).__reregisterPushToken?.() } catch {}
+                    try { await triggerDashboardServerPull() } catch {}
+                    try { await refresh() } catch {}
+                  })()
                 } else {
                   setError('Login failed. Please try again.')
                 }

@@ -95,6 +95,8 @@ Also: **`groups`** (optional **`steve_agent_enabled`**, **`steve_agent_preset`**
 | Table | Role |
 |-------|------|
 | `community_stories`, `community_story_*` | Stories (`community_stories.py`). Startup/background schema bootstrap ensures these tables; story list reads treat missing/empty tables as an empty story payload instead of running DDL on the feed hot path. |
+| `useful_links`, `useful_docs` | Community / group resource metadata (`useful_links_read.py`). Optional columns (`useful_docs.details`, `useful_links.group_id`, `useful_docs.group_id`) are ensured at startup in `add_missing_tables()`; the read path logs a warning and degrades to a community-only filter when a column is briefly missing instead of returning an empty docs list. |
+| `group_replies` (audio columns) | `audio_path`, `audio_summary` for voice replies. Now ensured at startup alongside the other optional-column migrations rather than via `ALTER TABLE` inside `/api/group_post` on every read. |
 | `community_invitations` | Invites. |
 | `community_lifecycle_notifications` | Grace / lifecycle emails (`community_lifecycle.py`). |
 | `community_media_assets` | Accounting (`media_assets.py`). |

@@ -71,39 +71,41 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(about_tutorials_bp)
     app.register_blueprint(branding_assets_bp)
 
-    # Make sure the Stripe/community-billing columns exist before the
-    # first webhook fires. Each service's ensure_tables() is already
-    # idempotent; calling it here keeps schema drift from silently
-    # breaking writes when the service is only reached via webhook.
-    try:
-        from backend.services import community_billing as _cb
-        _cb.ensure_tables()
-        from backend.services import user_billing as _ub
-        _ub.ensure_tables()
-        from backend.services import subscription_billing_ledger as _ledger
-        _ledger.ensure_tables()
-        from backend.services import iap_links as _iap_links
-        _iap_links.ensure_tables()
-        from backend.services import community_lifecycle as _community_lifecycle
-        _community_lifecycle.ensure_tables()
-        from backend.services import media_assets as _media_assets
-        _media_assets.ensure_tables()
-        from backend.services import remember_tokens as _remember_tokens
-        _remember_tokens.ensure_tables()
-    except Exception:
-        # Never let schema-bootstrap crash app startup — log and move on.
-        import logging
-        logging.getLogger(__name__).exception(
-            "billing ensure_tables failed during blueprint registration"
-        )
+    # Defer schema bootstrap to a background thread so cold-start traffic
+    # isn't blocked by ``CREATE TABLE IF NOT EXISTS`` / FK migrations on a
+    # warm production DB. Each service's ensure_tables() is idempotent,
+    # and webhook handlers are retry-tolerant; the schema is reliably in
+    # place by the time the first paying webhook arrives at a healthy
+    # instance.
+    import logging as _logging
+    import threading as _threading
 
-    try:
-        from backend.services import community as _community
-        _community.ensure_community_delete_cascade_constraints()
-    except Exception:
-        # Same startup rule: schema hardening should be visible in logs, not
-        # take the app down.
-        import logging
-        logging.getLogger(__name__).exception(
-            "community delete-cascade FK migration failed during blueprint registration"
-        )
+    log = _logging.getLogger(__name__)
+
+    def _bootstrap_schema_in_background() -> None:
+        try:
+            from backend.services import community_billing as _cb
+            _cb.ensure_tables()
+            from backend.services import user_billing as _ub
+            _ub.ensure_tables()
+            from backend.services import subscription_billing_ledger as _ledger
+            _ledger.ensure_tables()
+            from backend.services import iap_links as _iap_links
+            _iap_links.ensure_tables()
+            from backend.services import community_lifecycle as _community_lifecycle
+            _community_lifecycle.ensure_tables()
+            from backend.services import media_assets as _media_assets
+            _media_assets.ensure_tables()
+            from backend.services import remember_tokens as _remember_tokens
+            _remember_tokens.ensure_tables()
+        except Exception:
+            log.exception("billing ensure_tables failed during background bootstrap")
+
+        try:
+            from backend.services import community as _community
+            _community.ensure_community_delete_cascade_constraints()
+        except Exception:
+            log.exception("community delete-cascade FK migration failed during background bootstrap")
+
+    _t = _threading.Thread(target=_bootstrap_schema_in_background, daemon=True)
+    _t.start()

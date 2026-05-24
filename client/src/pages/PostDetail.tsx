@@ -837,27 +837,58 @@ export default function PostDetail(){
     }
   }, [file, replyGif])
 
-  const refreshPost = useCallback(async () => {
+  const navState = (location.state || {}) as { groupId?: number | string | null }
+  const navGroupHint = navState?.groupId !== undefined && navState?.groupId !== null && navState?.groupId !== ''
+
+  const fetchPostBundle = useCallback(async (preferGroup: boolean): Promise<{ post: Post | null; isGroupPost: boolean; error?: string }> => {
+    const groupUrl = `/api/group_post?post_id=${post_id}`
+    const postUrl = `/get_post?post_id=${post_id}`
+    const headers = { 'Accept': 'application/json' }
+    const tryFetch = async (url: string) => {
+      const res = await fetch(url, { credentials: 'include', headers })
+      const json = await res.json().catch(() => null)
+      return { res, json }
+    }
     try {
-      const [gRes, pRes] = await Promise.all([
-        fetch(`/api/group_post?post_id=${post_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } }),
-        fetch(`/get_post?post_id=${post_id}`, { credentials: 'include' }),
-      ])
-      const gJson = await gRes.json().catch(() => null)
-      const pJson = await pRes.json().catch(() => null)
-      if (gJson?.success && gJson.post) {
-        const nextPost = normalizePostForDetail(gJson.post)
-        setPost(nextPost)
-        setIsGroupPost(true)
-        if (nextPost) writeDeviceCache(`post-${post_id}`, { post: nextPost, isGroupPost: true, detailComplete: true }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
-      } else if (pJson?.success && pJson.post) {
-        const nextPost = normalizePostForDetail(pJson.post)
-        setPost(nextPost)
-        setIsGroupPost(false)
-        if (nextPost) writeDeviceCache(`post-${post_id}`, { post: nextPost, isGroupPost: false, detailComplete: true }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
+      const primary = preferGroup
+        ? await tryFetch(groupUrl)
+        : await tryFetch(postUrl)
+      if (primary.json?.success && primary.json.post) {
+        return {
+          post: normalizePostForDetail(primary.json.post),
+          isGroupPost: preferGroup,
+        }
       }
-    } catch {}
+      if (primary.res.status !== 404 && primary.json?.error) {
+        return { post: null, isGroupPost: preferGroup, error: primary.json.error }
+      }
+      const fallback = preferGroup ? await tryFetch(postUrl) : await tryFetch(groupUrl)
+      if (fallback.json?.success && fallback.json.post) {
+        return {
+          post: normalizePostForDetail(fallback.json.post),
+          isGroupPost: !preferGroup,
+        }
+      }
+      return { post: null, isGroupPost: preferGroup, error: fallback.json?.error || primary.json?.error || 'Error' }
+    } catch (err) {
+      return { post: null, isGroupPost: preferGroup, error: 'Error loading post' }
+    }
   }, [post_id])
+
+  const refreshPost = useCallback(async () => {
+    const preferGroup = navGroupHint || isGroupPost
+    const result = await fetchPostBundle(preferGroup)
+    if (result.post) {
+      setPost(result.post)
+      setIsGroupPost(result.isGroupPost)
+      writeDeviceCache(
+        `post-${post_id}`,
+        { post: result.post, isGroupPost: result.isGroupPost, detailComplete: true },
+        POST_DETAIL_CACHE_TTL_MS,
+        POST_DETAIL_CACHE_VERSION,
+      )
+    }
+  }, [fetchPostBundle, isGroupPost, navGroupHint, post_id])
 
   const writePostDetailCache = useCallback((nextPost: Post | null, nextIsGroupPost = isGroupPost) => {
     if (!nextPost?.id) return
@@ -938,41 +969,30 @@ export default function PostDetail(){
 
   useEffect(() => {
     let mounted = true
-    async function load() {
-      try {
-        const [gRes, pRes] = await Promise.all([
-          fetch(`/api/group_post?post_id=${post_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } }),
-          fetch(`/get_post?post_id=${post_id}`, { credentials: 'include' }),
-        ])
-        const gJson = await gRes.json().catch(() => null)
-        const pJson = await pRes.json().catch(() => null)
-        if (!mounted) return
-        if (gJson?.success && gJson.post) {
-          const nextPost = normalizePostForDetail(gJson.post)
-          setPost(nextPost)
-          setIsGroupPost(true)
-          setError(null)
-          if (nextPost) writeDeviceCache(`post-${post_id}`, { post: nextPost, isGroupPost: true, detailComplete: true }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
-        } else if (pJson?.success && pJson.post) {
-          const nextPost = normalizePostForDetail(pJson.post)
-          setPost(nextPost)
-          setIsGroupPost(false)
-          setError(null)
-          if (nextPost) writeDeviceCache(`post-${post_id}`, { post: nextPost, isGroupPost: false, detailComplete: true }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
-        } else {
-          setError(gJson?.error || pJson?.error || 'Error')
-        }
-      } catch {
-        if (mounted) setError('Error loading post')
-      } finally {
-        if (mounted) setLoading(false)
+    const cached = readCachedPostDetail(post_id)
+    const preferGroup = navGroupHint || cached.isGroupPost
+    fetchPostBundle(preferGroup).then(result => {
+      if (!mounted) return
+      if (result.post) {
+        setPost(result.post)
+        setIsGroupPost(result.isGroupPost)
+        setError(null)
+        writeDeviceCache(
+          `post-${post_id}`,
+          { post: result.post, isGroupPost: result.isGroupPost, detailComplete: true },
+          POST_DETAIL_CACHE_TTL_MS,
+          POST_DETAIL_CACHE_VERSION,
+        )
+      } else {
+        setError(result.error || 'Error')
       }
-    }
-    load()
+    }).finally(() => {
+      if (mounted) setLoading(false)
+    })
     return () => {
       mounted = false
     }
-  }, [post_id])
+  }, [post_id, fetchPostBundle, navGroupHint])
 
   // Load current username for ownership checks — defer until after first paint to avoid competing with post fetch
   useEffect(() => {

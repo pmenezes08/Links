@@ -257,6 +257,31 @@ CREATE TABLE IF NOT EXISTS notifications (
 )
 """
 
+_USEFUL_LINKS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS useful_links (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    community_id INT NULL,
+    group_id INT NULL,
+    username VARCHAR(191) NOT NULL,
+    url TEXT NOT NULL,
+    description TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
+_USEFUL_DOCS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS useful_docs (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    community_id INT NULL,
+    group_id INT NULL,
+    username VARCHAR(191) NOT NULL,
+    file_path TEXT NOT NULL,
+    description TEXT,
+    details TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
 
 def _bootstrap_schema() -> None:
     """Create the tables the services depend on.
@@ -314,6 +339,8 @@ def _bootstrap_schema() -> None:
         c.execute(_POST_VIEWS_TABLE_SQL)
         c.execute(_REPLIES_TABLE_SQL)
         c.execute(_NOTIFICATIONS_TABLE_SQL)
+        c.execute(_USEFUL_LINKS_TABLE_SQL)
+        c.execute(_USEFUL_DOCS_TABLE_SQL)
         try:
             conn.commit()
         except Exception:
@@ -361,6 +388,8 @@ _TRUNCATE_TABLES: List[str] = [
     "community_story_reactions",
     "community_story_comments",
     "notifications",
+    "useful_links",
+    "useful_docs",
     "ai_usage_log",
     "special_access_log",
     "kb_pages",

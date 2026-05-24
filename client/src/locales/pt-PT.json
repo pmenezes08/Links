@@ -826,7 +826,9 @@
     "delete_document_failed": "Falha ao apagar",
     "name_empty": "O nome não pode estar vazio",
     "rename_failed": "Falha ao renomear",
-    "add_link_failed": "Falha ao adicionar ligação"
+    "add_link_failed": "Falha ao adicionar ligação",
+    "load_failed": "Falha ao carregar ligações e documentos",
+    "access_denied": "Não tem acesso às ligações e documentos desta comunidade."
   },
   "feed": {
     "page_title": "Feed",

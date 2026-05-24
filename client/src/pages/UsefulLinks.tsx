@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useHeader } from '../contexts/HeaderContext'
+import { openExternalInApp } from '../utils/openExternalInApp'
 
 type LinkItem = { id:number; username:string; url:string; description:string; created_at:string; can_delete?:boolean }
 type DocItem = { id:number; username:string; file_path:string; description:string; details?:string; created_at:string }
@@ -16,6 +17,24 @@ function resolveDocUrl(filePath: string): string {
   return `/uploads/${filePath}`
 }
 
+/**
+ * Absolute URL suitable for opening in a native in-app browser.
+ * iOS WKWebView silently swallows ``<a target="_blank">`` and ``window.open``
+ * calls for same-origin relative paths, so the in-app browser plugin needs a
+ * fully qualified URL. Falls back to the relative path on web where the
+ * browser handles relative URLs natively.
+ */
+function absoluteDocUrl(filePath: string): string {
+  const resolved = resolveDocUrl(filePath)
+  if (!resolved) return ''
+  if (/^https?:\/\//i.test(resolved)) return resolved
+  try {
+    return new URL(resolved, window.location.origin).href
+  } catch {
+    return resolved
+  }
+}
+
 export default function UsefulLinks(){
   const { t } = useTranslation()
   const { community_id } = useParams()
@@ -26,6 +45,8 @@ export default function UsefulLinks(){
   const [links, setLinks] = useState<LinkItem[]>([])
   const [docs, setDocs] = useState<DocItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [docsError, setDocsError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'list'|'add'>('list')
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [editingDocId, setEditingDocId] = useState<number | null>(null)
@@ -54,19 +75,58 @@ export default function UsefulLinks(){
 
   async function load(){
     setLoading(true)
+    setLoadError(null)
+    setDocsError(null)
     try{
       let qs = ''
       if (community_id) {
         qs = `?community_id=${community_id}`
         if (groupId) qs += `&group_id=${encodeURIComponent(groupId)}`
       }
-      const r = await fetch(`/get_links${qs}`, { credentials:'include' })
-      const j = await r.json()
+      const r = await fetch(`/get_links${qs}`, {
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' },
+      })
+      if (r.status === 401 || r.status === 403){
+        setLinks([])
+        setDocs([])
+        setLoadError(t('links_docs.access_denied'))
+        return
+      }
+      // ``@login_required`` redirects unauthenticated requests to ``/login``
+      // (HTML 302 → 200). ``fetch`` follows redirects transparently and the
+      // final response is HTML, which used to surface as a generic
+      // "load failed" message. Detect that bounce explicitly so the user
+      // sees the auth-related message instead.
+      const finalUrl = (() => {
+        try { return new URL(r.url) } catch { return null }
+      })()
+      const hitLoginWall = (
+        r.redirected ||
+        (finalUrl ? finalUrl.pathname === '/login' || finalUrl.pathname.startsWith('/login/') : false)
+      ) && !r.headers.get('content-type')?.toLowerCase().includes('application/json')
+      if (hitLoginWall){
+        setLinks([])
+        setDocs([])
+        setLoadError(t('links_docs.access_denied'))
+        return
+      }
+      const j = await r.json().catch(() => null)
       if (j?.success){
         setLinks(j.links || [])
         setDocs(j.docs || [])
+        if (j.docs_error) setDocsError(String(j.docs_error))
+      } else {
+        setLinks([])
+        setDocs([])
+        setLoadError(j?.error || t('links_docs.load_failed'))
       }
-    }finally{ setLoading(false) }
+    } catch (err) {
+      console.error('Failed to load links/docs:', err)
+      setLinks([])
+      setDocs([])
+      setLoadError(t('errors.network'))
+    } finally { setLoading(false) }
   }
   
   useEffect(()=>{ load() }, [community_id, groupId])
@@ -209,15 +269,42 @@ export default function UsefulLinks(){
           <div className="space-y-3">
             {loading ? (
               <div className="text-[#9fb0b5]">{t('common.loading')}</div>
+            ) : loadError ? (
+              <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200 flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <div className="font-semibold mb-1">{t('links_docs.load_failed')}</div>
+                  <div className="text-red-100/90">{loadError}</div>
+                </div>
+                <button
+                  type="button"
+                  className="px-2 py-1 rounded-md border border-red-300/40 hover:bg-red-500/20 text-xs flex-shrink-0"
+                  onClick={() => load()}
+                >
+                  {t('common.retry')}
+                </button>
+              </div>
             ) : (
               <>
+                {docsError ? (
+                  <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-200">
+                    {docsError}
+                  </div>
+                ) : null}
                 <div className="space-y-2">
                   {links.length === 0 ? (
                     <div className="text-[#9fb0b5]">{t('links_docs.no_links')}</div>
                   ) : (
                     links.map(l => (
                       <div key={l.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                        <div className="text-teal-300 truncate"><a className="hover:underline" href={l.url} target="_blank" rel="noreferrer">{l.url}</a></div>
+                        <div className="text-teal-300 truncate">
+                          <button
+                            type="button"
+                            className="hover:underline text-left truncate max-w-full"
+                            onClick={() => { void openExternalInApp(l.url) }}
+                          >
+                            {l.url}
+                          </button>
+                        </div>
                         <div className="text-sm text-[#cfd8dc] truncate">{l.description}</div>
                         <div className="mt-2 flex justify-end">
                           {l.can_delete ? (
@@ -255,7 +342,7 @@ export default function UsefulLinks(){
                         editingDetails={editingDetails}
                         onEditDetailsChange={setEditingDetails}
                         onDelete={() => removeDoc(d.id)}
-                        resolveDocUrl={resolveDocUrl}
+                        resolveDocUrl={absoluteDocUrl}
                       />
                     )})
                   )}
@@ -430,15 +517,14 @@ function SwipeableDocCard({
               {doc.details ? <div className="text-sm text-[#cfd8dc] line-clamp-2 mt-0.5">{doc.details}</div> : null}
               <div className="text-xs text-[#9fb0b5]">{doc.username} • {new Date(doc.created_at).toLocaleString()}</div>
             </div>
-            <a 
-              href={resolveDocUrl(doc.file_path)} 
-              target="_blank" 
-              rel="noreferrer"
+            <button
+              type="button"
+              onClick={() => { void openExternalInApp(resolveDocUrl(doc.file_path)) }}
               className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm flex-shrink-0"
             >
               <i className="fa-solid fa-external-link mr-1.5" />
               {t('links_docs.open')}
-            </a>
+            </button>
           </div>
         )}
       </div>
