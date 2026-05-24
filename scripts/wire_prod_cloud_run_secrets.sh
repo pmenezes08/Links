@@ -12,6 +12,7 @@ set -euo pipefail
 PROJECT="${GCP_PROJECT:-cpoint-127c2}"
 REGION="${GCP_REGION:-europe-west1}"
 SERVICE="${CLOUD_RUN_SERVICE:-cpoint-app}"
+INSTANCE_CONNECTION_NAME="${CLOUD_SQL_INSTANCE:-cpoint-127c2:europe-west1:cpoint-db}"
 
 # Keep in sync with docs/PROD_CLOUD_RUN_RECOVERY.md
 UPDATE_SECRETS="MYSQL_PASSWORD=mysql-password:latest"
@@ -26,11 +27,15 @@ UPDATE_SECRETS+=",STRIPE_API_KEY=stripe-api-key:latest"
 UPDATE_SECRETS+=",STRIPE_PUBLISHABLE_KEY=stripe-publishable-key:latest"
 UPDATE_SECRETS+=",STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest"
 UPDATE_SECRETS+=",GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=google-play-service-account-json:latest"
+UPDATE_SECRETS+=",/secrets/firebase/credentials.json=firebase-credentials:latest"
+UPDATE_SECRETS+=",/secrets/apns/key.p8=apns-key:latest"
 
 echo "Updating ${SERVICE} (${PROJECT}/${REGION}) secret bindings..."
 gcloud run services update "${SERVICE}" \
   --project="${PROJECT}" \
   --region="${REGION}" \
+  --add-cloudsql-instances="${INSTANCE_CONNECTION_NAME}" \
+  --update-env-vars="MYSQL_UNIX_SOCKET=/cloudsql/${INSTANCE_CONNECTION_NAME},FIREBASE_CREDENTIALS=/secrets/firebase/credentials.json,APNS_KEY_PATH=/secrets/apns/key.p8" \
   --update-secrets="${UPDATE_SECRETS}"
 
 echo "Done. Run: bash scripts/smoke_prod.sh"

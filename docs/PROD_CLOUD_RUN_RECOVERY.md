@@ -94,6 +94,22 @@ bash scripts/smoke_prod.sh
 
 Stripe-only updates: `scripts/wire_prod_stripe_secrets.ps1` (run **after** the table above is wired).
 
+### Required production secret files / Cloud SQL connector
+
+`scripts/wire_prod_cloud_run_secrets.sh` must also preserve file mounts
+and the Cloud SQL connector path:
+
+| Runtime path / env var | Source |
+|------------------------|--------|
+| `FIREBASE_CREDENTIALS=/secrets/firebase/credentials.json` | Secret file `firebase-credentials:latest` |
+| `APNS_KEY_PATH=/secrets/apns/key.p8` | Secret file `apns-key:latest` |
+| `MYSQL_UNIX_SOCKET=/cloudsql/cpoint-127c2:europe-west1:cpoint-db` | Cloud Run Cloud SQL mount |
+
+If `FIREBASE_CREDENTIALS` points at a missing file, push
+notifications/Firestore startup will log `Credentials path does not
+exist`. If MySQL connects to the public IP and times out, verify the
+Cloud SQL annotation and `MYSQL_UNIX_SOCKET` are present on `cpoint-app`.
+
 **Do not set** `SESSION_COOKIE_DOMAIN=app.c-point.co` (invalid). For `CANONICAL_HOST=app.c-point.co` the app uses **host-only** session cookies (see `bodybuilding_app.py`).
 
 ---

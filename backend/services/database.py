@@ -51,6 +51,7 @@ def get_db_connection():
             raise
 
         host = os.environ.get("MYSQL_HOST")
+        unix_socket = os.environ.get("MYSQL_UNIX_SOCKET")
         user = os.environ.get("MYSQL_USER")
         password = os.environ.get("MYSQL_PASSWORD")
         database = os.environ.get("MYSQL_DB")
@@ -63,25 +64,30 @@ def get_db_connection():
             port = int(os.environ.get("MYSQL_PORT", "3306"))
         except ValueError:
             raise RuntimeError("MYSQL_PORT must be an integer if set")
-        if not all([host, user, password, database]):
-            raise RuntimeError("Missing MySQL env vars: MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DB")
+        if not all([user, password, database]) or not (host or unix_socket):
+            raise RuntimeError("Missing MySQL env vars: MYSQL_HOST or MYSQL_UNIX_SOCKET, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DB")
 
         last_error = None
         for attempt in range(MYSQL_MAX_RETRIES):
             try:
-                conn = pymysql.connect(
-                    host=host,
-                    port=port,
-                    user=user,
-                    password=password,
-                    database=database,
-                    charset="utf8mb4",
-                    autocommit=True,
-                    cursorclass=DictCursor,
-                    connect_timeout=int(os.environ.get("MYSQL_CONNECT_TIMEOUT", "10")),
-                    read_timeout=int(os.environ.get("MYSQL_READ_TIMEOUT", "30")),
-                    write_timeout=int(os.environ.get("MYSQL_WRITE_TIMEOUT", "30")),
-                )
+                connect_kwargs = {
+                    "user": user,
+                    "password": password,
+                    "database": database,
+                    "charset": "utf8mb4",
+                    "autocommit": True,
+                    "cursorclass": DictCursor,
+                    "connect_timeout": int(os.environ.get("MYSQL_CONNECT_TIMEOUT", "10")),
+                    "read_timeout": int(os.environ.get("MYSQL_READ_TIMEOUT", "30")),
+                    "write_timeout": int(os.environ.get("MYSQL_WRITE_TIMEOUT", "30")),
+                }
+                if unix_socket:
+                    connect_kwargs["unix_socket"] = unix_socket
+                else:
+                    connect_kwargs["host"] = host
+                    connect_kwargs["port"] = port
+
+                conn = pymysql.connect(**connect_kwargs)
 
                 try:
                     orig_cursor = conn.cursor

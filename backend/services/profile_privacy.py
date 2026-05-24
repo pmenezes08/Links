@@ -49,13 +49,16 @@ def is_app_admin_username(cursor: Any, username: Optional[str]) -> bool:
         return False
     if norm == "admin":
         return True
-    ph = get_sql_placeholder()
-    cursor.execute(
-        f"SELECT is_admin FROM users WHERE LOWER(username) = LOWER({ph})",
-        (username,),
-    )
-    row = cursor.fetchone()
-    return bool(_row_value(row, "is_admin", 0))
+    try:
+        ph = get_sql_placeholder()
+        cursor.execute(
+            f"SELECT is_admin FROM users WHERE LOWER(username) = LOWER({ph})",
+            (username,),
+        )
+        row = cursor.fetchone()
+        return bool(_row_value(row, "is_admin", 0))
+    except Exception:
+        return False
 
 
 def _resolve_root_community_id(cursor: Any, community_id: Any) -> Optional[int]:
@@ -97,29 +100,32 @@ def user_root_community_ids(cursor: Any, username: str) -> Set[int]:
     if not username:
         return set()
 
-    ph = get_sql_placeholder()
-    cursor.execute(
-        f"""
-        SELECT DISTINCT community_id
-        FROM (
-            SELECT uc.community_id AS community_id
-            FROM user_communities uc
-            JOIN users u ON u.id = uc.user_id
-            WHERE LOWER(u.username) = LOWER({ph})
-            UNION
-            SELECT c.id AS community_id
-            FROM communities c
-            WHERE LOWER(c.creator_username) = LOWER({ph})
-        ) roots
-        """,
-        (username, username),
-    )
-    roots: Set[int] = set()
-    for row in cursor.fetchall() or []:
-        root_id = _resolve_root_community_id(cursor, _row_value(row, "community_id", 0))
-        if root_id is not None:
-            roots.add(root_id)
-    return roots
+    try:
+        ph = get_sql_placeholder()
+        cursor.execute(
+            f"""
+            SELECT DISTINCT community_id
+            FROM (
+                SELECT uc.community_id AS community_id
+                FROM user_communities uc
+                JOIN users u ON u.id = uc.user_id
+                WHERE LOWER(u.username) = LOWER({ph})
+                UNION
+                SELECT c.id AS community_id
+                FROM communities c
+                WHERE LOWER(c.creator_username) = LOWER({ph})
+            ) roots
+            """,
+            (username, username),
+        )
+        roots: Set[int] = set()
+        for row in cursor.fetchall() or []:
+            root_id = _resolve_root_community_id(cursor, _row_value(row, "community_id", 0))
+            if root_id is not None:
+                roots.add(root_id)
+        return roots
+    except Exception:
+        return set()
 
 
 def share_any_community(

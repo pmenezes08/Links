@@ -163,11 +163,11 @@ export default function PublicProfile() {
             setFollowingCount(Number(payload.profile.following_count || 0))
             setError(null)
           } else {
-            setError(payload?.error || t('profile.error.not_found'))
+            setError(t('profile.error.not_found_title', { defaultValue: 'Profile not found' }))
           }
         }
       } catch {
-        if (!cancelled) setError(t('profile.error.load_failed'))
+        if (!cancelled) setError(t('profile.error.not_found_title', { defaultValue: 'Profile not found' }))
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -310,7 +310,41 @@ export default function PublicProfile() {
   const presentLabel = t('profile.public.present')
 
   if (loading) return <div className="glass-page min-h-screen text-white px-4">{t('profile.loading')}</div>
-  if (error || !profile) return <div className="glass-page min-h-screen text-white px-4 text-red-400">{error || t('profile.error.not_found')}</div>
+  if (error || !profile) {
+    return (
+      <div className="glass-page min-h-screen text-white px-4 flex items-center justify-center">
+        <div className="glass-card glass-card--plain w-full max-w-md p-6 text-center space-y-4">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[#9fb0b5]">
+            <i className="fa-regular fa-user" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-xl font-semibold">{t('profile.error.not_found_title', { defaultValue: 'Profile not found' })}</h1>
+            <p className="text-sm leading-relaxed text-[#9fb0b5]">
+              {t('profile.error.not_found_description', {
+                defaultValue: 'This profile may no longer be available, or you may not have access to view it.',
+              })}
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <button
+              type="button"
+              className="rounded-md bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110"
+              onClick={() => navigate(-1)}
+            >
+              {t('profile.public.back')}
+            </button>
+            <button
+              type="button"
+              className="rounded-md border border-white/10 bg-white/5 px-4 py-2 text-sm text-white hover:bg-white/10"
+              onClick={() => navigate('/communities')}
+            >
+              {t('profile.error.return_to_communities', { defaultValue: 'Go to communities' })}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const personal = profile.personal || {}
   const professional = profile.professional || {}
