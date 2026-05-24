@@ -188,3 +188,75 @@ def test_thread_aware_doc_followup_activates_without_pdf_keyword():
         recent_comments=["Steve: I can review the document."],
         manifest=manifest,
     )
+
+
+def test_document_title_reference_activates_and_prioritizes_matching_doc(monkeypatch):
+    fs = _FakeFirestore()
+    monkeypatch.setattr(docmem, "_get_firestore_client", lambda: fs)
+    monkeypatch.setattr(docmem, "_compute_embedding_safe", lambda text: None)
+
+    def fake_pages(file_path: str):
+        if "Por dentro do Chega" in file_path:
+            return (
+                [
+                    {
+                        "page": 1,
+                        "text": "Por dentro do Chega. Estrutura do livro: origem, liderança, discurso público e conclusões.",
+                    }
+                ],
+                docmem.TEXT_STATUS_READABLE,
+                None,
+                1,
+            )
+        return (
+            [{"page": 1, "text": "Unrelated investor deck content that should not be selected."}],
+            docmem.TEXT_STATUS_READABLE,
+            None,
+            1,
+        )
+
+    monkeypatch.setattr(docmem, "extract_pdf_pages", fake_pages)
+    docmem.index_useful_doc(_row(6, 50, "Por dentro do Chega"), compute_embeddings=False)
+    docmem.index_useful_doc(_row(7, 50, "Investor Deck"), compute_embeddings=False)
+
+    context, meta = docmem.build_doc_memory_context(
+        "faz-nos um resumo do livro do Chega. Diz-nos como esta estruturado",
+        community_id=50,
+    )
+
+    assert meta["include_chunks"] is True
+    assert meta["chunk_count"] == 1
+    assert "Por dentro do Chega" in context
+    assert "Estrutura do livro" in context
+    assert "Investor Deck" in context  # manifest remains visible
+    assert "Unrelated investor deck content" not in context
+
+
+def test_document_identity_score_matches_title_without_language_keywords():
+    manifest = [
+        {"doc_id": 8, "title": "Por dentro do Chega", "text_status": docmem.TEXT_STATUS_READABLE, "chunk_count": 2},
+        {"doc_id": 9, "title": "Capstone Timetable", "text_status": docmem.TEXT_STATUS_READABLE, "chunk_count": 1},
+    ]
+
+    assert docmem.matched_document_ids("livro do Chega", manifest) == [8]
+
+
+def test_document_identity_score_matches_optional_description_details():
+    manifest = [
+        {
+            "doc_id": 10,
+            "title": "Reading notes",
+            "details": "Portuguese politics book about Chega and its internal structure",
+            "text_status": docmem.TEXT_STATUS_READABLE,
+            "chunk_count": 2,
+        },
+        {
+            "doc_id": 11,
+            "title": "Class timetable",
+            "details": "MBA schedule and classroom locations",
+            "text_status": docmem.TEXT_STATUS_READABLE,
+            "chunk_count": 1,
+        },
+    ]
+
+    assert docmem.matched_document_ids("Chega internal structure", manifest) == [10]
