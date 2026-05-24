@@ -38,6 +38,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY bodybuilding_app.py .
 COPY redis_cache.py .
 COPY backend/ ./backend/
+COPY scripts/backfill_steve_document_memory.py ./scripts/backfill_steve_document_memory.py
 COPY templates/ ./templates/
 COPY static/ ./static/
 COPY --from=client-builder /client/dist ./client/dist/
