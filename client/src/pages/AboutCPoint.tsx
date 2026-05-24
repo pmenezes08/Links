@@ -266,9 +266,10 @@ export default function AboutCPoint() {
   }, [])
 
   const bottomPad = 'pb-[calc(3.5rem+env(safe-area-inset-bottom,0px)+12px)]'
+  const pageMinHeight = 'calc(100dvh - var(--app-header-offset, 0px))'
 
   return (
-    <div className={`min-h-screen bg-black text-white ${bottomPad} ${isWeb ? 'lg:ml-64' : ''}`}>
+    <div className={`bg-black text-white ${bottomPad} ${isWeb ? 'lg:ml-64' : ''}`} style={{ minHeight: pageMinHeight }}>
       <div className="max-w-xl mx-auto px-3 py-4 space-y-4">
         <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3 sm:p-4">
           <div className="flex items-center gap-3">

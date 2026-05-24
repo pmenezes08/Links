@@ -422,7 +422,9 @@ export default function OnboardingChat({
 
   const NATIVE_KEYBOARD_MIN_HEIGHT = 60
   const KEYBOARD_OFFSET_EPSILON = 6
-  const isIOS = Capacitor.getPlatform() === 'ios'
+  const platform = Capacitor.getPlatform()
+  const isIOS = platform === 'ios'
+  const isAndroid = platform === 'android'
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -470,9 +472,9 @@ export default function OnboardingChat({
     }
   }, [])
 
-  // Native keyboard handling (Capacitor — iOS only)
+  // Native keyboard handling (Capacitor native — iOS pre-animation, Android stable post-animation height)
   useEffect(() => {
-    if (Capacitor.getPlatform() !== 'ios') return
+    if (!isIOS && !isAndroid) return
     let showSub: PluginListenerHandle | undefined
     let hideSub: PluginListenerHandle | undefined
 
@@ -493,22 +495,31 @@ export default function OnboardingChat({
       setKeyboardOffset(0)
     }
 
-    Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
-      showSub = handle
-    })
-    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
-      hideSub = handle
-    })
+    if (isAndroid) {
+      Keyboard.addListener('keyboardDidShow', handleShow).then(handle => {
+        showSub = handle
+      })
+      Keyboard.addListener('keyboardDidHide', handleHide).then(handle => {
+        hideSub = handle
+      })
+    } else {
+      Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
+        showSub = handle
+      })
+      Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
+        hideSub = handle
+      })
+    }
 
     return () => {
       showSub?.remove()
       hideSub?.remove()
     }
-  }, [scrollToBottom])
+  }, [isAndroid, isIOS, scrollToBottom])
 
   // Visual viewport keyboard handling (web + Android)
   useEffect(() => {
-    if (isIOS) return
+    if (isIOS || isAndroid) return
     if (typeof window === 'undefined') return
     const viewport = window.visualViewport
     if (!viewport) return

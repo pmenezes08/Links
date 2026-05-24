@@ -230,12 +230,14 @@ export default function CommunityFeed() {
   const [savingAnn, setSavingAnn] = useState(false)
   // Ads removed
   const [moreOpen, setMoreOpen] = useState(false)
+  const [moreMenuRendered, setMoreMenuRendered] = useState(false)
   const [showContentGeneration, setShowContentGeneration] = useState(false)
   const [communityMuted, setCommunityMuted] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
   const [q, setQ] = useState('#')
   const [results, setResults] = useState<Array<{id:number, username:string, content:string, timestamp:string}>>([])
   const scrollRef = useRef<HTMLDivElement|null>(null)
+  const moreMenuCloseTimerRef = useRef<number | null>(null)
   const [refreshHint, setRefreshHint] = useState(false)
   const [pullPx, setPullPx] = useState(0)
   const [previewImageSrc, setPreviewImageSrc] = useState<string|null>(null)
@@ -253,6 +255,31 @@ export default function CommunityFeed() {
   const communityNameLower = (data?.community?.name || '').toLowerCase()
   const showTasks = communityTypeLower === 'general' || communityTypeLower.includes('university') || communityNameLower.includes('university')
   const showResourcesSection = communityTypeLower !== 'business'
+
+  const openMoreMenu = useCallback(() => {
+    if (moreMenuCloseTimerRef.current !== null) {
+      window.clearTimeout(moreMenuCloseTimerRef.current)
+      moreMenuCloseTimerRef.current = null
+    }
+    setMoreMenuRendered(true)
+    requestAnimationFrame(() => setMoreOpen(true))
+  }, [])
+
+  const closeMoreMenu = useCallback(() => {
+    setMoreOpen(false)
+    if (moreMenuCloseTimerRef.current !== null) window.clearTimeout(moreMenuCloseTimerRef.current)
+    moreMenuCloseTimerRef.current = window.setTimeout(() => {
+      setMoreMenuRendered(false)
+      moreMenuCloseTimerRef.current = null
+    }, 220)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (moreMenuCloseTimerRef.current !== null) window.clearTimeout(moreMenuCloseTimerRef.current)
+    }
+  }, [])
+
   const recordedViewsRef = useRef<Set<number>>(new Set())
   const storyFileInputRef = useRef<HTMLInputElement | null>(null)
   const viewedStoriesRef = useRef<Set<number>>(new Set())
@@ -3619,7 +3646,7 @@ export default function CommunityFeed() {
               {hasUnseenAnnouncements ? (<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />) : null}
             </span>
           </button>
-            <button className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label={t('common.more')} onClick={()=> setMoreOpen(true)}>
+            <button className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label={t('common.more')} onClick={openMoreMenu}>
             <span className="relative inline-block">
               <i className="fa-solid fa-ellipsis text-lg" />
               {(hasUnansweredPolls || hasUnseenDocs || hasPendingRsvps) && (
@@ -3632,29 +3659,39 @@ export default function CommunityFeed() {
       </div>
 
       {/* Bottom sheet for More - appears above bottom nav */}
-      {moreOpen && (
-        <div className="fixed inset-0 z-[110] bg-black/30 flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
-          <div className="w-[75%] max-w-sm mr-2 bg-black backdrop-blur-sm border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0" style={{ marginBottom: 'calc(70px + env(safe-area-inset-bottom))' }}>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/key_posts`) }}>
+      {moreMenuRendered && (
+        <div
+          className={`fixed inset-0 z-[110] flex items-end justify-end bg-black/30 transition-opacity duration-200 ease-out ${
+            moreOpen ? 'opacity-100' : 'opacity-0'
+          }`}
+          onClick={(e)=> e.currentTarget===e.target && closeMoreMenu()}
+        >
+          <div
+            className={`w-[75%] max-w-sm mr-2 bg-black backdrop-blur-sm border border-white/10 rounded-2xl p-2 space-y-2 transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+              moreOpen ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0'
+            }`}
+            style={{ marginBottom: 'calc(70px + env(safe-area-inset-bottom))' }}
+          >
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/key_posts`) }}>
               {t('feed.key_posts')}
             </button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/polls_react`) }}>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/polls_react`) }}>
               {t('feed.polls')}
               {hasUnansweredPolls && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
             </button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/calendar_react`) }}>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/calendar_react`) }}>
               {t('feed.calendar')}
               {hasPendingRsvps && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
             </button>
             {showTasks && (
-              <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/tasks_react`) }}>{t('feed.tasks')}</button>
+              <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/tasks_react`) }}>{t('feed.tasks')}</button>
             )}
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/photos_react`) }}>{t('feed.media')}</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/photos_react`) }}>{t('feed.media')}</button>
             {/* Forum/Useful Links visibility */}
             {showResourcesSection && (
               <>
-                <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/resources_react`) }}>{t('feed.forum')}</button>
-                <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/useful_links_react`) }}>
+                <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/resources_react`) }}>{t('feed.forum')}</button>
+                <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { closeMoreMenu(); navigate(`/community/${community_id}/useful_links_react`) }}>
                   {t('feed.useful_links_docs')}
                   {hasUnseenDocs && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
                 </button>
@@ -3666,7 +3703,7 @@ export default function CommunityFeed() {
                 const d = await r.json()
                 if (d?.success) setCommunityMuted(d.muted)
               } catch {}
-              setMoreOpen(false)
+              closeMoreMenu()
             }}>
               <i className={`fa-solid ${communityMuted ? 'fa-bell' : 'fa-bell-slash'} text-xs ${communityMuted ? 'text-[#4db6ac]' : 'text-white/40'}`} />
               {communityMuted ? t('feed.unmute_notifications') : t('feed.mute_notifications')}
@@ -3676,10 +3713,10 @@ export default function CommunityFeed() {
             </p>
             <ContentGenerationButton
               communityId={String(community_id)}
-              onClose={() => setMoreOpen(false)}
+              onClose={closeMoreMenu}
               onOpen={() => setShowContentGeneration(true)}
             />
-            <EditCommunityButton communityId={String(community_id)} onClose={()=> setMoreOpen(false)} />
+            <EditCommunityButton communityId={String(community_id)} onClose={closeMoreMenu} />
           </div>
         </div>
       )}
