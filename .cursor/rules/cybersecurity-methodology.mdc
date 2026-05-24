@@ -17,6 +17,14 @@ Security is part of every code, dependency, infrastructure, and product decision
 - Validate authentication, authorization, CSRF/origin, rate limits, ownership, and audit logging for every sensitive route.
 - Keep security behavior observable without leaking secrets.
 
+## Privacy and personal data
+
+- Treat profile data, usernames, display names, avatars, social links, AI-enriched profile sections, membership lists, and user IDs as personal data.
+- Enforce profile visibility on the backend. A viewer may access another user's profile or profile-derived data only after proving self access, an app-admin bypass, or a shared community/root-network relationship.
+- Frontend hiding is not access control. Mention rendering, search suggestions, route guards, and disabled buttons can improve UX, but backend routes must still authorize every read.
+- Username lookup endpoints are privacy-sensitive. Resolve only the identifier needed for authorization, then return non-enumerating errors when access is denied.
+- Cache profile or identity data with viewer/tenant/relationship context in the key, and invalidate when profile visibility or community membership changes.
+
 ## Supply chain checklist
 
 - Check lockfile diffs for unexpected packages, install scripts, GitHub dependencies, registry changes, or removed integrity hashes.

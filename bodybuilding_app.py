@@ -51,6 +51,7 @@ from backend.services.dm_chats_tables import ensure_archived_chats_table
 from backend.services import ai_usage as _ai_usage
 from backend.services import api_errors as _api_errors
 from backend.services import community_lifecycle as _community_lifecycle
+from backend.services import profile_privacy
 from backend.services import remember_tokens as remember_tokens_service
 from backend.services import session_identity
 from backend.services.community import (
@@ -9916,6 +9917,8 @@ def api_public_profile(username):
                     return None
 
             actual_username = gv('username', 0)
+            if not profile_privacy.can_view_profile(viewer_username, actual_username, c):
+                return jsonify({'success': False, 'error': 'not found'}), 404
 
             # Check cache (keyed per viewer so follow status is correct)
             pub_cache_key = f"public_profile:{actual_username}:{viewer_username or '_anon'}"
@@ -27843,22 +27846,24 @@ def api_community_feed(community_id):
 @login_required
 def api_community_member_suggest():
     try:
+        username = session.get('username')
         q = (request.args.get('q') or '').strip()
         community_id = request.args.get('community_id', type=int)
         post_id = request.args.get('post_id', type=int)
         reply_id = request.args.get('reply_id', type=int)
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
             # Derive community_id from post_id or reply_id if not provided
             if not community_id:
                 try:
                     if post_id:
-                        c.execute("SELECT community_id FROM posts WHERE id = ?", (post_id,))
+                        c.execute(f"SELECT community_id FROM posts WHERE id = {ph}", (post_id,))
                         row = c.fetchone()
                         if row:
                             community_id = row['community_id'] if hasattr(row, 'keys') else row[0]
                     elif reply_id:
-                        c.execute("SELECT community_id FROM replies WHERE id = ?", (reply_id,))
+                        c.execute(f"SELECT community_id FROM replies WHERE id = {ph}", (reply_id,))
                         row = c.fetchone()
                         if row:
                             community_id = row['community_id'] if hasattr(row, 'keys') else row[0]
@@ -27868,7 +27873,12 @@ def api_community_member_suggest():
             # Require at least 1 char and a resolved community_id
             if not community_id or len(q) < 1:
                 return jsonify({'success': True, 'members': []})
-            ph = get_sql_placeholder()
+            if (
+                not is_app_admin(username)
+                and not can_manage_community(username, community_id)
+                and not user_is_member_of_community(username, community_id)
+            ):
+                return jsonify({'success': False, 'members': [], 'error': 'not found'}), 404
             # Only members of this community
             c.execute(f"""
                 SELECT u.username,
@@ -31100,6 +31110,12 @@ def api_group_members_list(group_id):
                 return jsonify({'success': False, 'error': 'Group not found'}), 404
             community_id = g['community_id'] if hasattr(g, 'keys') else g[0]
             group_owner = g['created_by'] if hasattr(g, 'keys') else g[1]
+            if (
+                not is_app_admin(username)
+                and not can_manage_community(username, community_id)
+                and not user_is_member_of_community(username, community_id)
+            ):
+                return jsonify({'success': False, 'error': 'Group not found'}), 404
 
             gm_table = '`group_members`' if USE_MYSQL else 'group_members'
             # Ensure role column exists
@@ -31158,6 +31174,7 @@ def api_group_members_list(group_id):
 @login_required
 def api_group_members_available(group_id):
     """List parent community members NOT yet in this group."""
+    username = session.get('username')
     ph = get_sql_placeholder()
     try:
         with get_db_connection() as conn:
@@ -31168,6 +31185,12 @@ def api_group_members_available(group_id):
             if not g:
                 return jsonify({'success': False, 'error': 'Group not found'}), 404
             community_id = g['community_id'] if hasattr(g, 'keys') else g[0]
+            if (
+                not is_app_admin(username)
+                and not can_manage_community(username, community_id)
+                and not user_is_member_of_community(username, community_id)
+            ):
+                return jsonify({'success': False, 'error': 'Group not found'}), 404
             c.execute(f"SELECT parent_community_id FROM communities WHERE id = {ph}", (community_id,))
             prow = c.fetchone()
             parent_id = (prow['parent_community_id'] if hasattr(prow, 'keys') else prow[0]) if prow else None
@@ -31198,6 +31221,7 @@ def api_group_members_available(group_id):
 @login_required
 def api_group_members_add(group_id):
     """Add members to a community group."""
+    username = session.get('username')
     data = request.get_json() or {}
     usernames = data.get('usernames', [])
     if not usernames:
@@ -31206,7 +31230,20 @@ def api_group_members_add(group_id):
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            groups_table = '`groups`' if USE_MYSQL else 'groups'
             gm_table = '`group_members`' if USE_MYSQL else 'group_members'
+            c.execute(f"SELECT community_id, created_by FROM {groups_table} WHERE id = {ph}", (group_id,))
+            g = c.fetchone()
+            if not g:
+                return jsonify({'success': False, 'error': 'Group not found'}), 404
+            community_id = g['community_id'] if hasattr(g, 'keys') else g[0]
+            group_owner = g['created_by'] if hasattr(g, 'keys') else g[1]
+            if (
+                username != group_owner
+                and not is_app_admin(username)
+                and not can_manage_community(username, community_id)
+            ):
+                return jsonify({'success': False, 'error': 'Permission denied'}), 403
             added = 0
             for un in usernames:
                 try:
@@ -34530,15 +34567,19 @@ def seed_dummy_data():
 @login_required
 def api_get_user_id_by_username():
     try:
+        viewer_username = session.get('username')
         username = request.form.get('username','').strip()
         if not username:
             return jsonify({ 'success': False, 'error': 'username required' }), 400
         ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute(f"SELECT id FROM users WHERE username={ph}", (username,))
+            c.execute(f"SELECT id, username FROM users WHERE LOWER(username)=LOWER({ph})", (username,))
             row = c.fetchone()
             if not row:
+                return jsonify({ 'success': False, 'error': 'user not found' }), 404
+            actual_username = row['username'] if hasattr(row, 'keys') else row[1]
+            if not profile_privacy.can_view_profile(viewer_username, actual_username, c):
                 return jsonify({ 'success': False, 'error': 'user not found' }), 404
             user_id = row['id'] if hasattr(row, 'keys') else row[0]
             return jsonify({ 'success': True, 'user_id': user_id })
@@ -34551,12 +34592,24 @@ def api_get_user_id_by_username():
 def api_get_user_profile_brief():
     """Return brief profile info for a given username: display_name and profile_picture (relative path)"""
     try:
+        viewer_username = session.get('username')
         username = request.args.get('username','').strip()
         if not username:
             return jsonify({ 'success': False, 'error': 'username required' }), 400
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT display_name, profile_picture FROM user_profiles WHERE username=?", (username,))
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM users WHERE LOWER(username)=LOWER({ph})", (username,))
+            user_row = c.fetchone()
+            if not user_row:
+                return jsonify({ 'success': False, 'error': 'user not found' }), 404
+            actual_username = user_row['username'] if hasattr(user_row, 'keys') else user_row[0]
+            if not profile_privacy.can_view_profile(viewer_username, actual_username, c):
+                return jsonify({ 'success': False, 'error': 'user not found' }), 404
+            c.execute(
+                f"SELECT display_name, profile_picture FROM user_profiles WHERE username={ph}",
+                (actual_username,),
+            )
             row = c.fetchone()
             display_name = None
             profile_picture = None
@@ -34566,7 +34619,7 @@ def api_get_user_profile_brief():
                     profile_picture = row['profile_picture'] if hasattr(row, 'keys') and 'profile_picture' in row.keys() else row[1]
                 except Exception:
                     pass
-        return jsonify({ 'success': True, 'username': username, 'display_name': display_name or username, 'profile_picture': profile_picture })
+        return jsonify({ 'success': True, 'username': actual_username, 'display_name': display_name or actual_username, 'profile_picture': profile_picture })
     except Exception as e:
         logger.error(f"Error in api_get_user_profile_brief: {e}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500

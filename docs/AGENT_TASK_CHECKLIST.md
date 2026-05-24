@@ -17,6 +17,7 @@ Reference docs are **part of the implementation**. If the code you ship makes a 
 | **Product Roadmap** row added, renamed, merged, dropped, or materially retargeted (`knowledge_base.py` → **`product-roadmap` → roadmap_items**) | Update **both** KB seeds **and** the Notion hub **Product roadmap** database (**same Names / titles**, **Area**, status). Prefer editing KB first, then mirror to Notion (or Notion MCP from Cursor). Details: § **Product roadmap (KB ↔ Notion)** below. |
 | New integration, blueprint, or architectural seam worth documenting | Edit **`docs/C_POINT_ARCHITECTURE.md`**. |
 | User-facing strings, locale handling, push/email copy, or new locale | Follow **[`docs/I18N_ROADMAP.md`](I18N_ROADMAP.md)** — keys in catalogs, recipient locale for push/email, no monolith additions. |
+| Route returns profile, username, avatar, user ID, membership, or other identity data | Apply backend relationship/tenant authorization, use non-enumerating denials, and add regression coverage. |
 
 Skips are only OK when the change **cannot** affect the doc (e.g. typo-only, pure test fixture rename with no route/schema/journey impact).
 
@@ -24,6 +25,7 @@ Skips are only OK when the change **cannot** affect the doc (e.g. typo-only, pur
 
 - [ ] Task scope is clear; no unrelated refactors or drive-by edits.
 - [ ] Read **`AGENTS.md`** (project invariants).
+- [ ] Any user/profile/identity read proves backend authorization (self, admin, shared community/root network, or tenant ownership) before returning personal data.
 - [ ] If the change touches **Steve / voice / any paid LLM or Whisper**: read **`docs/STEVE_AND_VOICE_NOTES.md`** and use **`ai_usage`**, **`entitlements`**, **`whisper_service`** — no direct vendor API calls.
 
 ## Backend structure

@@ -51,6 +51,28 @@ flows.
   `ai_usage.log_block(...)`. No raw SQL inserts into that table from
   anywhere else.
 
+## Privacy and personal data
+
+- **Profile visibility is a server-side authorization decision.** A
+  user may access another user's profile or profile-derived data only
+  when the backend proves self access, an app-admin bypass, or a shared
+  community/root network. Hiding a link, button, mention, or search
+  result in the frontend is never sufficient access control.
+- **Username lookups are profile access.** Endpoints that resolve
+  usernames, user IDs, display names, avatars, brief profiles, mention
+  suggestions, or member lists must apply the same relationship/tenant
+  gate as the full profile route and should use non-enumerating errors
+  when denied.
+- **Minimize data returned before authorization.** Resolve only the
+  stable identifier needed to check access, then authorize before
+  reading or returning profile, AI, social, contact, follower, or
+  community-derived fields. Cache keys for profile data must include
+  the viewer or the relationship context.
+- **Steve-specific profile/KB access has stricter rules.** Before
+  touching Steve context, profiling, or KB reads, follow
+  **[docs/STEVE_PRIVACY_GATE.md](docs/STEVE_PRIVACY_GATE.md)** in
+  addition to this general profile privacy invariant.
+
 ## Branding
 
 - The product name is **C-Point** in UI copy, docs, prompts, emails, and
