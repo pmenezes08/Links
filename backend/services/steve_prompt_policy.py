@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Optional
+from typing import Iterable, Optional
 
 from backend.services.steve_tool_policy import (
     normalize_message_for_live_search_signals,
@@ -41,6 +41,12 @@ _CASUAL_RE = re.compile(
 )
 _COMMUNITY_RESOURCE_RE = re.compile(
     r"\b(document|docs|file|pdf|event|calendar|link|poll|community resource|uploaded|attachment)\b",
+    re.IGNORECASE,
+)
+_RESOURCE_FOLLOWUP_RE = re.compile(
+    r"\b(summary|summarize|summarise|feedback|review|critique|evaluate|analyse|analyze|assess|"
+    r"structure|recommendation|recommend|takeaways|key points|what does it say|what is it about|"
+    r"read it|explain it|the new one|latest|that one|this one)\b",
     re.IGNORECASE,
 )
 _PROFILE_RE = re.compile(
@@ -85,6 +91,35 @@ def should_include_user_profile(user_message: str) -> bool:
 
 def should_include_community_resources(user_message: str) -> bool:
     return bool(_COMMUNITY_RESOURCE_RE.search(user_message or ""))
+
+
+def should_include_community_resources_from_thread(
+    user_message: str,
+    *,
+    original_post: str = "",
+    parent_reply: str = "",
+    recent_replies: Optional[Iterable[str]] = None,
+    has_recent_docs: bool = False,
+) -> bool:
+    """Language-neutral resource activation using thread/resource state.
+
+    The model is multilingual, but this decision happens before Steve sees
+    context. We therefore use broad structural signals instead of trying to
+    enumerate every language.
+    """
+    current = user_message or ""
+    thread_text = "\n".join(
+        part
+        for part in [current, original_post or "", parent_reply or "", "\n".join(list(recent_replies or [])[-8:])]
+        if part
+    )
+    if _COMMUNITY_RESOURCE_RE.search(thread_text):
+        return True
+    if has_recent_docs and _RESOURCE_FOLLOWUP_RE.search(thread_text):
+        return True
+    if has_recent_docs and len((current or "").strip()) >= 12:
+        return bool(re.search(r"\b(it|this|that|latest|new|one|summary|feedback|review|explain|structure)\b", current, re.IGNORECASE))
+    return False
 
 
 def render_hosted_search_capability_instructions(

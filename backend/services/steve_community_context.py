@@ -19,6 +19,7 @@ import requests
 
 from backend.services.database import USE_MYSQL
 from backend.services.group_feed_access import check_group_feed_access
+from backend.services.steve_document_memory import build_doc_memory_context
 
 logger = logging.getLogger(__name__)
 
@@ -419,31 +420,43 @@ def build_steve_community_resource_context(
 
     try:
         if int(docs_limit or 0) > 0 and int(max_doc_chars_total or 0) > 0:
-            cursor.execute(
-                f"""
-                SELECT file_path, description
-                FROM useful_docs
-                WHERE community_id = {ph}
-                  AND (group_id IS NULL OR COALESCE(group_id, 0) = 0)
-                ORDER BY created_at DESC
-                LIMIT {int(docs_limit)}
-                """,
-                (cid,),
+            skip_legacy_docs = False
+            doc_memory, doc_meta = build_doc_memory_context(
+                "",
+                community_id=cid,
+                manifest_limit=int(docs_limit),
+                chunk_limit=3,
+                max_chars=int(max_doc_chars_total),
             )
-            lines = []
-            chars_remaining = int(max_doc_chars_total)
-            for doc in cursor.fetchall() or []:
-                fp = _row_value(doc, "file_path", 0, "")
-                desc = _row_value(doc, "description", 1, "") or fp
-                text = extract_pdf_text_for_steve(str(fp), max_chars=min(4000, chars_remaining))
-                excerpt = text if text else "(Could not read document.)"
-                lines.append(f"Document: {desc}\nContent (excerpt): {excerpt}")
-                if text:
-                    chars_remaining -= len(text)
-                if chars_remaining <= 0:
-                    break
-            if lines:
-                parts.append("Community documents:\n" + "\n\n---\n\n".join(lines))
+            if doc_memory:
+                parts.append("Community document memory:\n" + doc_memory)
+                skip_legacy_docs = True
+            if not skip_legacy_docs:
+                cursor.execute(
+                    f"""
+                    SELECT file_path, description
+                    FROM useful_docs
+                    WHERE community_id = {ph}
+                      AND (group_id IS NULL OR COALESCE(group_id, 0) = 0)
+                    ORDER BY created_at DESC
+                    LIMIT {int(docs_limit)}
+                    """,
+                    (cid,),
+                )
+                lines = []
+                chars_remaining = int(max_doc_chars_total)
+                for doc in cursor.fetchall() or []:
+                    fp = _row_value(doc, "file_path", 0, "")
+                    desc = _row_value(doc, "description", 1, "") or fp
+                    text = extract_pdf_text_for_steve(str(fp), max_chars=min(4000, chars_remaining))
+                    excerpt = text if text else "(Could not read document.)"
+                    lines.append(f"Document: {desc}\nContent (excerpt): {excerpt}")
+                    if text:
+                        chars_remaining -= len(text)
+                    if chars_remaining <= 0:
+                        break
+                if lines:
+                    parts.append("Community documents:\n" + "\n\n---\n\n".join(lines))
     except Exception as exc:
         logger.warning("Steve exact community docs context failed: %s", exc)
 
@@ -577,30 +590,42 @@ def build_steve_group_resource_context(
 
     try:
         if int(docs_limit or 0) > 0 and int(max_doc_chars_total or 0) > 0:
-            cursor.execute(
-                f"""
-                SELECT file_path, description
-                FROM useful_docs
-                WHERE group_id = {ph}
-                ORDER BY created_at DESC
-                LIMIT {int(docs_limit)}
-                """,
-                (gid,),
+            skip_legacy_docs = False
+            doc_memory, doc_meta = build_doc_memory_context(
+                "",
+                group_id=gid,
+                manifest_limit=int(docs_limit),
+                chunk_limit=3,
+                max_chars=int(max_doc_chars_total),
             )
-            lines = []
-            chars_remaining = int(max_doc_chars_total)
-            for doc in cursor.fetchall() or []:
-                fp = _row_value(doc, "file_path", 0, "")
-                desc = _row_value(doc, "description", 1, "") or fp
-                text = extract_pdf_text_for_steve(str(fp), max_chars=min(4000, chars_remaining))
-                excerpt = text if text else "(Could not read document.)"
-                lines.append(f"Document: {desc}\nContent (excerpt): {excerpt}")
-                if text:
-                    chars_remaining -= len(text)
-                if chars_remaining <= 0:
-                    break
-            if lines:
-                parts.append("Group documents:\n" + "\n\n---\n\n".join(lines))
+            if doc_memory:
+                parts.append("Group document memory:\n" + doc_memory)
+                skip_legacy_docs = True
+            if not skip_legacy_docs:
+                cursor.execute(
+                    f"""
+                    SELECT file_path, description
+                    FROM useful_docs
+                    WHERE group_id = {ph}
+                    ORDER BY created_at DESC
+                    LIMIT {int(docs_limit)}
+                    """,
+                    (gid,),
+                )
+                lines = []
+                chars_remaining = int(max_doc_chars_total)
+                for doc in cursor.fetchall() or []:
+                    fp = _row_value(doc, "file_path", 0, "")
+                    desc = _row_value(doc, "description", 1, "") or fp
+                    text = extract_pdf_text_for_steve(str(fp), max_chars=min(4000, chars_remaining))
+                    excerpt = text if text else "(Could not read document.)"
+                    lines.append(f"Document: {desc}\nContent (excerpt): {excerpt}")
+                    if text:
+                        chars_remaining -= len(text)
+                    if chars_remaining <= 0:
+                        break
+                if lines:
+                    parts.append("Group documents:\n" + "\n\n---\n\n".join(lines))
     except Exception as exc:
         logger.warning("Steve exact group docs context failed: %s", exc)
 
@@ -684,6 +709,7 @@ def build_steve_feed_corpus(
 
     comments_limit = max(0, min(50, int(recent_comments_limit or 0)))
     comment_count = 0
+    recent_comment_texts: List[str] = []
     if comments_limit:
         try:
             try:
@@ -715,6 +741,7 @@ def build_steve_feed_corpus(
                     cu = _row_value(comment, "username", 0, "")
                     cc = _row_value(comment, "content", 1, "")
                     if cc:
+                        recent_comment_texts.append(str(cc))
                         label = "[Steve (AI) replied]" if str(cu).lower() == "steve" else str(cu)
                         media_note = ""
                         img = _row_value(comment, "image_path", 5)
@@ -737,6 +764,23 @@ def build_steve_feed_corpus(
         parts.append(f"User {viewer_username} now says: {user_message}")
     current_datetime = datetime.utcnow()
     parts.append(f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]")
+
+    try:
+        doc_memory, doc_meta = build_doc_memory_context(
+            user_message,
+            community_id=community_id,
+            original_post=str(post.get("content") or ""),
+            recent_comments=recent_comment_texts,
+            manifest_limit=docs_limit,
+            chunk_limit=5,
+            max_chars=max_doc_chars_total,
+        )
+        if doc_memory:
+            parts.append("Document memory for this exact community only:\n" + doc_memory)
+            if doc_meta.get("include_chunks"):
+                include_resources = True
+    except Exception as exc:
+        logger.debug("Steve feed document memory skipped: %s", exc)
 
     if include_resources:
         resources = build_steve_community_resource_context(
@@ -813,6 +857,7 @@ def build_steve_group_corpus(
     gr_t = "`group_replies`" if USE_MYSQL else "group_replies"
     comments_limit = max(0, min(50, int(recent_comments_limit or 0)))
     comment_count = 0
+    recent_comment_texts: List[str] = []
     if comments_limit:
         try:
             try:
@@ -844,6 +889,7 @@ def build_steve_group_corpus(
                     cu = _row_value(comment, "username", 0, "")
                     cc = _row_value(comment, "content", 1, "")
                     if cc:
+                        recent_comment_texts.append(str(cc))
                         label = "[Steve (AI) replied]" if str(cu).lower() == "steve" else str(cu)
                         media_note = ""
                         img = _row_value(comment, "image_path", 5)
@@ -863,6 +909,23 @@ def build_steve_group_corpus(
         parts.append(f"User {viewer_username} now says: {user_message}")
     current_datetime = datetime.utcnow()
     parts.append(f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]")
+
+    try:
+        doc_memory, doc_meta = build_doc_memory_context(
+            user_message,
+            group_id=group_id,
+            original_post=str(post.get("content") or ""),
+            recent_comments=recent_comment_texts,
+            manifest_limit=docs_limit,
+            chunk_limit=5,
+            max_chars=max_doc_chars_total,
+        )
+        if doc_memory:
+            parts.append("Document memory for this exact group only:\n" + doc_memory)
+            if doc_meta.get("include_chunks"):
+                include_resources = True
+    except Exception as exc:
+        logger.debug("Steve group document memory skipped: %s", exc)
 
     if include_resources:
         resources = build_steve_group_resource_context(

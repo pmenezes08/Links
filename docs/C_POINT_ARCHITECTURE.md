@@ -126,7 +126,7 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | `steve_model_config.py` | Official xAI Grok 4.3 pricing, KB-backed token caps, response usage extraction, and shared cost estimation for Steve surfaces. |
 | `steve_prompt_policy.py` | Shared adaptive prompt policy for Steve: casual vs substantive modes, structured Markdown/bullets, internal reasoning guidance, and context-use heuristics. |
 | `steve_tool_policy.py` | Intent + KB rules for when interactive Steve (feed, DM, group) passes Grok **`web_search` / `x_search`**: suppress for platform-manual and professional-advice-only turns; prefer platform KB for profile-style asks; enable for explicit phrases and **news_current_events** heuristics; KB **`external_search_explicit_only`** / **default web-X** / **`feed_attach_*`** channel kill-switches on **`SteveCommunityConfig`**. |
-| `steve_community_context.py` | Exact-scope Steve community corpus builder: authorizes the server-derived current `community_id` / `group_id`, then assembles posts, comments/replies, authorized image URLs, links, document excerpts, calendar events, tasks, and polls. It deliberately does not expand to parent/root or sibling communities; profile KB gating remains in `steve_profiling_gates.py`. |
+| `steve_community_context.py` | Exact-scope Steve community corpus builder: authorizes the server-derived current `community_id` / `group_id`, then assembles posts, comments/replies, authorized image URLs, links, document memory, calendar events, tasks, and polls. It deliberately does not expand to parent/root or sibling communities; profile KB gating remains in `steve_profiling_gates.py`. |
 
 ### Billing & subscriptions
 
@@ -221,6 +221,7 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | `steve_content_enrichment.py` | Enrich text for Steve / sources metadata. |
 | `steve_community_config.py` | KB-backed Steve Community package config: shared pool, provider ceiling, model overrides, context budgets, and package output cap. Model pricing delegates to `steve_model_config`. |
 | `steve_community_memory.py` | Firestore compact community memory reader for community-feed Steve prompts. |
+| `steve_document_memory.py` | Firestore-backed exact-scope PDF memory for Steve: indexes committed `useful_docs` rows, extracts page text, chunks/summarizes PDFs, stores optional embeddings, and retrieves scoped page/section chunks for feed/group turns. |
 | `steve_feedback.py` | Feedback queue backend. |
 | `steve_community_welcome.py` | Welcome post backfill + Firestore mirror. |
 | `steve_reminder_vault.py` | Vault storage. |
@@ -248,7 +249,7 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 
 | File | Role |
 |------|------|
-| `embedding_service.py` | **OpenAI embeddings**, FAISS / numpy similarity, Firestore vector index. |
+| `embedding_service.py` | **OpenAI embeddings**, FAISS / numpy similarity, Firestore vector index; reused by Steve document memory for optional PDF chunk embeddings. |
 | `profile_structured_fields.py` | Structured profile fields used in discovery. |
 
 ### Misc

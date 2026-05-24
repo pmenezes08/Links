@@ -20939,6 +20939,7 @@ def upload_doc():
                 INSERT INTO useful_docs (community_id, group_id, username, file_path, description, created_at)
                 VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
             """, (community_id if community_id else None, group_id_int, username, file_path, description, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            doc_id = int(getattr(c, "lastrowid", 0) or 0)
             
             # Send notifications to community members (community-wide resources only)
             if community_id and group_id_int is None:
@@ -20946,12 +20947,38 @@ def upload_doc():
                 notify_community_new_resource(community_id, username, 'doc', doc_description, conn)
             
             conn.commit()
+
+        if doc_id:
+            def _index_uploaded_doc_async():
+                try:
+                    from backend.services.steve_document_memory import index_useful_doc
+
+                    index_useful_doc(
+                        {
+                            "id": doc_id,
+                            "community_id": int(community_id) if community_id else None,
+                            "group_id": group_id_int,
+                            "username": username,
+                            "file_path": file_path,
+                            "description": description or orig,
+                            "created_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        }
+                    )
+                except Exception as index_err:
+                    logger.warning("Steve document memory indexing failed doc_id=%s: %s", doc_id, index_err)
+
+            try:
+                import threading
+
+                threading.Thread(target=_index_uploaded_doc_async, daemon=True).start()
+            except Exception as start_err:
+                logger.warning("Could not start Steve document memory indexing doc_id=%s: %s", doc_id, start_err)
         
         # Return appropriate path based on storage type
         if file_path.startswith('http'):
-            return jsonify({'success': True, 'message': 'Document uploaded to CDN', 'path': file_path})
+            return jsonify({'success': True, 'message': 'Document uploaded to CDN', 'path': file_path, 'doc_id': doc_id, 'steve_indexing': 'queued' if doc_id else 'not_queued'})
         else:
-            return jsonify({'success': True, 'message': 'Document uploaded', 'path': f"/uploads/{file_path}"})
+            return jsonify({'success': True, 'message': 'Document uploaded', 'path': f"/uploads/{file_path}", 'doc_id': doc_id, 'steve_indexing': 'queued' if doc_id else 'not_queued'})
     except Exception as e:
         logger.error(f"upload_doc error: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
@@ -23153,6 +23180,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
     from backend.services.steve_prompt_policy import (
         append_response_policy,
         should_include_community_resources,
+        should_include_community_resources_from_thread,
         should_include_user_profile,
     )
     
@@ -23298,7 +23326,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             except Exception as corpus_err:
                 logger.warning("Steve scoped feed corpus failed for post trigger: %s", corpus_err)
             
-            if should_include_community_resources(post_content):
+            if should_include_community_resources_from_thread(post_content, has_recent_docs=True):
                 try:
                     community_context = _build_steve_community_context(
                         c,
@@ -23608,6 +23636,7 @@ def _steve_ai_reply_for_group_post(
         append_response_policy,
         render_hosted_search_capability_instructions,
         should_include_community_resources,
+        should_include_community_resources_from_thread,
         should_include_user_profile,
     )
     from backend.services.steve_profiling_gates import user_can_access_steve_kb
@@ -23766,7 +23795,15 @@ def _steve_ai_reply_for_group_post(
             viewer_username=username,
             group_post_id=group_post_id,
             user_message=user_message,
-            include_resources=bool(should_include_community_resources(user_message)),
+            include_resources=bool(
+                should_include_community_resources_from_thread(
+                    user_message,
+                    original_post=post_content or "",
+                    parent_reply=parent_content or "",
+                    recent_replies=[(row["content"] if hasattr(row, "keys") else row[1]) for row in all_comments],
+                    has_recent_docs=True,
+                )
+            ),
             max_doc_chars_total=steve_config.doc_excerpt_chars_default,
             recent_comments_limit=steve_config.recent_comments_limit,
             events_limit=steve_config.events_limit,
@@ -24249,6 +24286,7 @@ def ai_steve_reply():
         from backend.services.steve_prompt_policy import (
             append_response_policy,
             should_include_community_resources,
+            should_include_community_resources_from_thread,
             should_include_user_profile,
         )
 
@@ -24568,7 +24606,15 @@ def ai_steve_reply():
             context_parts.append("\nNote: If the user asks you to respond to or help another user, look through the comments above to find that user's question or message and address it directly.")
             
             # Community context: same as post @Steve — calendar, links, PDF excerpts, polls (not for exclusive group posts)
-            if community_id and should_include_community_resources(user_message) and not is_group_post:
+            include_thread_resources = should_include_community_resources_from_thread(
+                user_message,
+                original_post=post_content or "",
+                parent_reply=parent_content or "",
+                recent_replies=[(row["content"] if hasattr(row, "keys") else row[1]) for row in (all_comments or [])],
+                has_recent_docs=True,
+            )
+
+            if community_id and include_thread_resources and not is_group_post:
                 try:
                     community_context = _build_steve_community_context(
                         c,
@@ -24604,9 +24650,7 @@ def ai_steve_reply():
                     viewer_username=username,
                     post_id=post_id,
                     user_message=user_message,
-                    include_resources=bool(
-                        community_id and should_include_community_resources(user_message) and not is_group_post
-                    ),
+                    include_resources=bool(community_id and include_thread_resources and not is_group_post),
                     max_doc_chars_total=steve_config.doc_excerpt_chars_default,
                     recent_comments_limit=steve_config.recent_comments_limit,
                     events_limit=steve_config.events_limit,
