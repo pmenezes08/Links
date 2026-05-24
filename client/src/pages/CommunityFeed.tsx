@@ -779,6 +779,7 @@ export default function CommunityFeed() {
 
   const [isRefreshing, setIsRefreshing] = useState(false)
   const lastRefreshRef = useRef(0)
+  const lastVisibilityRefreshRef = useRef(0)
 
   const invalidateLocalFeedCache = useCallback(() => {
     if (deviceFeedCacheKey) {
@@ -922,6 +923,9 @@ export default function CommunityFeed() {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (!document.hidden) {
+        const now = Date.now()
+        if (now - lastVisibilityRefreshRef.current < 60000) return
+        lastVisibilityRefreshRef.current = now
         setRefreshKey(prev => prev + 1)
       }
     }
@@ -1091,11 +1095,11 @@ export default function CommunityFeed() {
     async function checkPendingRsvps(){
       if (!community_id) return
       try{
-        const r = await fetch(`/api/calendar_events/${community_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
+        const r = await fetch('/get_calendar_events', { credentials: 'include', headers: { 'Accept': 'application/json' } })
         const j = await r.json()
         if (!mounted) return
         if (j?.success){
-          const events = j.events || []
+          const events = (j.events || []).filter((e:any) => String(e.community_id || '') === String(community_id))
           // Check for future events without RSVP
           const now = new Date()
           const hasPending = events.some((e:any) => {
@@ -1228,6 +1232,7 @@ export default function CommunityFeed() {
           ? raw.user_reaction
           : (typeof raw.userReaction === 'string' ? raw.userReaction : null),
         text_overlays: textOverlays,
+        story_group_id: raw.story_group_id ?? raw.storyGroupId ?? null,
       }
     }
     const groups: StoryGroup[] = []
@@ -4146,6 +4151,11 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   const [replyText, setReplyText] = useState('')
   const [replyGif, setReplyGif] = useState<GifSelection | null>(null)
   const [sendingReply, setSendingReply] = useState(false)
+  const createDedupeToken = () => `${Date.now()}_${Math.random().toString(36).slice(2)}`
+  const replySendingRef = useRef(false)
+  const childReplySendingRef = useRef(false)
+  const replyTokenRef = useRef(createDedupeToken())
+  const childReplyTokenRef = useRef(createDedupeToken())
   const [activeChildReplyFor, setActiveChildReplyFor] = useState<number|null>(null)
   const [childReplyText, setChildReplyText] = useState('')
   const [steveIsTyping, setSteveIsTyping] = useState(false)
@@ -5144,27 +5154,28 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                           disabled={sendingChildReply || (!childReplyText.trim() && !childReplyGif)}
                             onClick={async (ev)=>{
                               ev.stopPropagation()
-                              if (sendingChildReply || (!childReplyText.trim() && !childReplyGif)) return
+                              if (childReplySendingRef.current || (!childReplyText.trim() && !childReplyGif)) return
                               if (!navigator.onLine) { alert(t('feed.go_back_online_reply')); return }
-                              const messageText = childReplyText.trim()
-                              if (blockSteveMentionReply(messageText)) return
-                              const preflight = await preflightSteveMention({
-                                text: messageText,
-                                communityId,
-                                postId: post.id,
-                                entitlementsHandler,
-                              })
-                              if (!preflight.ok) {
-                                if (preflight.error) alert(preflight.error)
-                                return
-                              }
+                              childReplySendingRef.current = true
+                              setSendingChildReply(true)
                               try{
-                                setSendingChildReply(true)
+                                const messageText = childReplyText.trim()
+                                if (blockSteveMentionReply(messageText)) return
+                                const preflight = await preflightSteveMention({
+                                  text: messageText,
+                                  communityId,
+                                  postId: post.id,
+                                  entitlementsHandler,
+                                })
+                                if (!preflight.ok) {
+                                  if (preflight.error) alert(preflight.error)
+                                  return
+                                }
                                 const fd = new FormData()
                                 fd.append('post_id', String(post.id))
                                 fd.append('content', childReplyText.trim())
                                 fd.append('parent_reply_id', String(r.id))
-                                fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
+                                fd.append('dedupe_token', childReplyTokenRef.current)
                                 if (childReplyGif){
                                   const gifFile = await gifSelectionToFile(childReplyGif, 'community-reply')
                                   fd.append('image', gifFile)
@@ -5186,6 +5197,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                                   setChildReplyText('')
                                   setChildReplyGif(null)
                                   setActiveChildReplyFor(null)
+                                  childReplyTokenRef.current = createDedupeToken()
                                 } else {
                                   alert(j?.error || t('feed.reply_failed'))
                                 }
@@ -5193,6 +5205,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                                 console.error('Failed to send reply with GIF', _err)
                                 alert(t('feed.send_reply_failed'))
                               }finally{
+                                childReplySendingRef.current = false
                                 setSendingChildReply(false)
                               }
                             }}
@@ -5284,26 +5297,27 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#4db6ac] text-black font-semibold uppercase tracking-wide text-[11px] hover:brightness-110 disabled:opacity-40"
                 disabled={sendingReply || (!replyText.trim() && !replyGif)}
                 onClick={async ()=>{
-                  if (sendingReply || (!replyText.trim() && !replyGif)) return
+                  if (replySendingRef.current || (!replyText.trim() && !replyGif)) return
                   if (!navigator.onLine) { alert(t('feed.go_back_online_reply')); return }
-                  const messageText = replyText.trim()
-                  if (blockSteveMentionReply(messageText)) return
-                  const preflight = await preflightSteveMention({
-                    text: messageText,
-                    communityId,
-                    postId: post.id,
-                    entitlementsHandler,
-                  })
-                  if (!preflight.ok) {
-                    if (preflight.error) alert(preflight.error)
-                    return
-                  }
-                    try{
-                      setSendingReply(true)
+                  replySendingRef.current = true
+                  setSendingReply(true)
+                  try{
+                      const messageText = replyText.trim()
+                      if (blockSteveMentionReply(messageText)) return
+                      const preflight = await preflightSteveMention({
+                        text: messageText,
+                        communityId,
+                        postId: post.id,
+                        entitlementsHandler,
+                      })
+                      if (!preflight.ok) {
+                        if (preflight.error) alert(preflight.error)
+                        return
+                      }
                       const fd = new FormData()
                       fd.append('post_id', String(post.id))
                       fd.append('content', replyText.trim())
-                      fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
+                      fd.append('dedupe_token', replyTokenRef.current)
                       if (replyGif){
                         const gifFile = await gifSelectionToFile(replyGif, 'community-reply')
                         fd.append('image', gifFile)
@@ -5324,6 +5338,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                         }
                         setReplyText('')
                         setReplyGif(null)
+                        replyTokenRef.current = createDedupeToken()
                       } else {
                         alert(j?.error || t('feed.reply_failed'))
                       }
@@ -5331,6 +5346,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       console.error('Failed to send reply with GIF', _err)
                       alert(t('feed.send_reply_failed'))
                     }finally{
+                      replySendingRef.current = false
                       setSendingReply(false)
                     }
                 }}

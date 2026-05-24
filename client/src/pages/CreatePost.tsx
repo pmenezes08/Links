@@ -54,7 +54,9 @@ export default function CreatePost(){
   const [pendingShareUrls, setPendingShareUrls] = useState<string[]>([])
   const [renamingLink, setRenamingLink] = useState<DetectedLink | null>(null)
   const [linkDisplayName, setLinkDisplayName] = useState('')
-  const tokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
+  const createDedupeToken = () => `${Date.now()}_${Math.random().toString(36).slice(2)}`
+  const submitInFlightRef = useRef(false)
+  const tokenRef = useRef<string>(createDedupeToken())
   const shareAttachDoneRef = useRef(false)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const headerOffsetVar = 'var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px)))'
@@ -321,46 +323,46 @@ export default function CreatePost(){
       return
     }
 
-    // If user is still recording, stop and wait briefly for preview to finalize
-    if (recording) await ensurePreview(5000)
-    
-    if (submitting) return
+    if (submitInFlightRef.current) return
+    submitInFlightRef.current = true
+    setSubmitting(true)
+    let completed = false
 
-    const urlsFromText = extractUrls(content)
-    const allLinkUrls = [...new Set([...pendingShareUrls, ...urlsFromText])]
-    const captionStripped = stripExtractedUrlsFromText(content, allLinkUrls)
-    const groupMerged =
-      groupId && pendingShareUrls.length > 0
-        ? [pendingShareUrls.join('\n\n'), content].filter(Boolean).join('\n\n')
-        : content
+    try{
+      // If user is still recording, stop and wait briefly for preview to finalize
+      if (recording) await ensurePreview(5000)
 
-    const canPost = groupId
-      ? !!(groupMerged.trim() || mediaFiles.length > 0 || gifFile || preview?.blob)
-      : !!(captionStripped.trim() || mediaFiles.length > 0 || gifFile || preview?.blob || allLinkUrls.length > 0)
+      const urlsFromText = extractUrls(content)
+      const allLinkUrls = [...new Set([...pendingShareUrls, ...urlsFromText])]
+      const captionStripped = stripExtractedUrlsFromText(content, allLinkUrls)
+      const groupMerged =
+        groupId && pendingShareUrls.length > 0
+          ? [pendingShareUrls.join('\n\n'), content].filter(Boolean).join('\n\n')
+          : content
 
-    if (!canPost) {
-      alert(t('feed.add_content_before_post'))
-      return
-    }
+      const canPost = groupId
+        ? !!(groupMerged.trim() || mediaFiles.length > 0 || gifFile || preview?.blob)
+        : !!(captionStripped.trim() || mediaFiles.length > 0 || gifFile || preview?.blob || allLinkUrls.length > 0)
 
-    if (communityId && !groupId) {
-      const preflight = await preflightSteveMention({
-        text: captionStripped,
-        communityId,
-        entitlementsHandler,
-      })
-      if (!preflight.ok) {
-        if (preflight.error) alert(preflight.error)
+      if (!canPost) {
+        alert(t('feed.add_content_before_post'))
         return
       }
-    }
 
-    setSubmitting(true)
-    
-    // Check if this is from onboarding (first post)
-    const isFirstPost = params.get('first_post') === 'true'
-    
-    try{
+      if (communityId && !groupId) {
+        const preflight = await preflightSteveMention({
+          text: captionStripped,
+          communityId,
+          entitlementsHandler,
+        })
+        if (!preflight.ok) {
+          if (preflight.error) alert(preflight.error)
+          return
+        }
+      }
+
+      // Check if this is from onboarding (first post)
+      const isFirstPost = params.get('first_post') === 'true'
       const fd = new FormData()
       if (groupId) {
         fd.append('content', groupMerged)
@@ -443,7 +445,6 @@ export default function CreatePost(){
       
       if (postResult && postResult.success === false) {
         alert(postResult.error || t('feed.create_failed'))
-        setSubmitting(false)
         return
       }
       
@@ -478,9 +479,15 @@ export default function CreatePost(){
       setMediaCarouselIndex(0)
       if (fileInputRef.current) fileInputRef.current.value = ''
       clearPreview()
+      tokenRef.current = createDedupeToken()
+      completed = true
     }catch{
-      setSubmitting(false)
       alert(t('feed.post_failed'))
+    } finally {
+      if (!completed) {
+        submitInFlightRef.current = false
+        setSubmitting(false)
+      }
     }
   }
 

@@ -70,6 +70,29 @@ def _coerce_timestamp(value: Any) -> Optional[str]:
     return str(value)
 
 
+def _is_missing_story_table_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return (
+        "community_stories" in text
+        and (
+            "doesn't exist" in text
+            or "does not exist" in text
+            or "no such table" in text
+            or "unknown table" in text
+        )
+    )
+
+
+def _empty_story_list_payload(community_id: int, community_name: Optional[str]) -> Dict[str, Any]:
+    return {
+        "success": True,
+        "community": {"id": community_id, "name": community_name},
+        "has_new": False,
+        "groups": [],
+        "stories": [],
+    }
+
+
 def ensure_story_tables(c) -> bool:
     """Ensure community story tables exist."""
     try:
@@ -255,7 +278,6 @@ def fetch_story_reaction_maps(
 ) -> Tuple[Dict[int, Dict[str, int]], Dict[int, Optional[str]]]:
     if not story_ids:
         return {}, {}
-    ensure_story_tables(c)
     ph = get_sql_placeholder()
     placeholders = ",".join([ph] * len(story_ids))
     reaction_counts: Dict[int, Dict[str, int]] = {}
@@ -399,7 +421,6 @@ def list_community_stories(username: str, community_id: int) -> Tuple[Dict[str, 
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            ensure_story_tables(c)
             ph = get_sql_placeholder()
             c.execute(
                 f"SELECT id, name, creator_username, parent_community_id FROM communities WHERE id = {ph}",
@@ -431,6 +452,8 @@ def list_community_stories(username: str, community_id: int) -> Tuple[Dict[str, 
                 (community_id, now_str),
             )
             rows = c.fetchall() or []
+            if not rows:
+                return _empty_story_list_payload(community_id, community_name), 200
             story_ids = [int(_row_value(row, "id", 0)) for row in rows if _row_value(row, "id", 0)]
 
             viewed_ids: Set[int] = set()
@@ -511,6 +534,9 @@ def list_community_stories(username: str, community_id: int) -> Tuple[Dict[str, 
                 "stories": stories_payload,
             }, 200
     except Exception as exc:
+        if _is_missing_story_table_error(exc):
+            logger.warning("Community story tables missing while listing community %s; returning empty story list", community_id)
+            return _empty_story_list_payload(community_id, None), 200
         logger.error("Error loading community stories for %s: %s", community_id, exc)
         return {"success": False, "error": "Server error"}, 500
 

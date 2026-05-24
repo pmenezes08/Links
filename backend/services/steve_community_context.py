@@ -13,6 +13,7 @@ import io
 import json
 import logging
 import os
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -25,6 +26,11 @@ logger = logging.getLogger(__name__)
 
 IMAGE_EXT = (".png", ".jpg", ".jpeg", ".gif", ".webp")
 VIDEO_EXT = (".mp4", ".mov", ".m4v", ".webm", ".avi")
+DOC_CONTEXT_RE = re.compile(
+    r"\b(document|documents|doc|docs|file|files|pdf|attachment|attachments|upload|uploaded|"
+    r"paper|report|deck|brief|whitepaper|proposal|section|chapter|page|pages|summary|summarize)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -78,6 +84,10 @@ def _append_media_url(out: List[str], path: Any, *, images_only: bool = True) ->
     url = _full_media_url(path)
     if url and url not in out:
         out.append(url)
+
+
+def _thread_requests_document_context(*texts: Any) -> bool:
+    return any(DOC_CONTEXT_RE.search(str(text or "")) for text in texts if text)
 
 
 def _image_urls_from_media_paths(raw: Any) -> List[str]:
@@ -765,22 +775,23 @@ def build_steve_feed_corpus(
     current_datetime = datetime.utcnow()
     parts.append(f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]")
 
-    try:
-        doc_memory, doc_meta = build_doc_memory_context(
-            user_message,
-            community_id=community_id,
-            original_post=str(post.get("content") or ""),
-            recent_comments=recent_comment_texts,
-            manifest_limit=docs_limit,
-            chunk_limit=5,
-            max_chars=max_doc_chars_total,
-        )
-        if doc_memory:
-            parts.append("Document memory for this exact community only:\n" + doc_memory)
-            if doc_meta.get("include_chunks"):
-                include_resources = True
-    except Exception as exc:
-        logger.debug("Steve feed document memory skipped: %s", exc)
+    if include_resources or _thread_requests_document_context(user_message, post.get("content"), *recent_comment_texts[-4:]):
+        try:
+            doc_memory, doc_meta = build_doc_memory_context(
+                user_message,
+                community_id=community_id,
+                original_post=str(post.get("content") or ""),
+                recent_comments=recent_comment_texts,
+                manifest_limit=docs_limit,
+                chunk_limit=5,
+                max_chars=max_doc_chars_total,
+            )
+            if doc_memory:
+                parts.append("Document memory for this exact community only:\n" + doc_memory)
+                if doc_meta.get("include_chunks"):
+                    include_resources = True
+        except Exception as exc:
+            logger.debug("Steve feed document memory skipped: %s", exc)
 
     if include_resources:
         resources = build_steve_community_resource_context(
@@ -910,22 +921,23 @@ def build_steve_group_corpus(
     current_datetime = datetime.utcnow()
     parts.append(f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]")
 
-    try:
-        doc_memory, doc_meta = build_doc_memory_context(
-            user_message,
-            group_id=group_id,
-            original_post=str(post.get("content") or ""),
-            recent_comments=recent_comment_texts,
-            manifest_limit=docs_limit,
-            chunk_limit=5,
-            max_chars=max_doc_chars_total,
-        )
-        if doc_memory:
-            parts.append("Document memory for this exact group only:\n" + doc_memory)
-            if doc_meta.get("include_chunks"):
-                include_resources = True
-    except Exception as exc:
-        logger.debug("Steve group document memory skipped: %s", exc)
+    if include_resources or _thread_requests_document_context(user_message, post.get("content"), *recent_comment_texts[-4:]):
+        try:
+            doc_memory, doc_meta = build_doc_memory_context(
+                user_message,
+                group_id=group_id,
+                original_post=str(post.get("content") or ""),
+                recent_comments=recent_comment_texts,
+                manifest_limit=docs_limit,
+                chunk_limit=5,
+                max_chars=max_doc_chars_total,
+            )
+            if doc_memory:
+                parts.append("Document memory for this exact group only:\n" + doc_memory)
+                if doc_meta.get("include_chunks"):
+                    include_resources = True
+        except Exception as exc:
+            logger.debug("Steve group document memory skipped: %s", exc)
 
     if include_resources:
         resources = build_steve_group_resource_context(

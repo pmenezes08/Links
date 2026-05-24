@@ -22,21 +22,39 @@ function Fail($msg) {
 
 function Invoke-Http {
     param([string]$Method, [string]$Uri, [string]$Body = $null, [hashtable]$Headers = @{})
+    $headersFile = [System.IO.Path]::GetTempFileName()
+    $bodyFile = [System.IO.Path]::GetTempFileName()
     try {
-        $args = @{ Method = $Method; Uri = $Uri; Headers = $Headers; ErrorAction = 'Stop' }
-        if ($Body -and $Method -notin @('GET', 'HEAD')) { $args.Body = $Body }
-        if ($PSVersionTable.PSVersion.Major -ge 7) {
-            $resp = Invoke-WebRequest @args -SkipHttpErrorCheck
-        } else {
-            $resp = Invoke-WebRequest @args -UseBasicParsing
+        $curlArgs = @('-sS', '-m', '30', '-D', $headersFile, '-o', $bodyFile, '-w', '%{http_code}', '-X', $Method)
+        foreach ($key in $Headers.Keys) {
+            $curlArgs += @('-H', "${key}: $($Headers[$key])")
         }
-        return @{ Status = [int]$resp.StatusCode; Body = $resp.Content; Headers = $resp.Headers }
-    } catch [System.Net.WebException] {
-        $r = $_.Exception.Response
-        if ($null -eq $r) { throw }
-        $reader = New-Object System.IO.StreamReader($r.GetResponseStream())
-        $body = $reader.ReadToEnd()
-        return @{ Status = [int]$r.StatusCode; Body = $body; Headers = @{} }
+        if ($Body -and $Method -notin @('GET', 'HEAD')) {
+            $curlArgs += @('--data-raw', $Body)
+        }
+        $curlArgs += $Uri
+
+        $statusText = (& curl.exe @curlArgs).Trim()
+        if ($LASTEXITCODE -ne 0) {
+            throw "curl failed with exit code $LASTEXITCODE for $Uri"
+        }
+        $bodyText = if (Test-Path $bodyFile) { Get-Content -Raw -Path $bodyFile } else { '' }
+        $headerMap = @{}
+        foreach ($line in (Get-Content -Path $headersFile)) {
+            if ($line -notmatch '^\s*([^:]+):\s*(.*)$') { continue }
+            $name = $Matches[1]
+            $value = $Matches[2].Trim()
+            if ($headerMap.ContainsKey($name)) {
+                $headerMap[$name] = @($headerMap[$name]) + $value
+            } else {
+                $headerMap[$name] = @($value)
+            }
+        }
+        return @{ Status = [int]$statusText; Body = $bodyText; Headers = $headerMap }
+    } catch {
+        throw
+    } finally {
+        Remove-Item -ErrorAction SilentlyContinue -Path $headersFile, $bodyFile
     }
 }
 
@@ -49,31 +67,34 @@ $r = Invoke-Http -Method GET -Uri "$BaseUrl/welcome_cards"
 if ($r.Body -match '"success"\s*:\s*true') {
     Pass '/welcome_cards (MySQL reachable)'
 } else {
-    Fail "/welcome_cards — expected success:true (got: $($r.Body.Substring(0, [Math]::Min(200, $r.Body.Length))))"
-    Write-Host '  → Likely missing MYSQL_PASSWORD. See docs/PROD_CLOUD_RUN_RECOVERY.md' -ForegroundColor Yellow
+    $preview = if ($r.Body) { $r.Body.Substring(0, [Math]::Min(200, $r.Body.Length)) } else { '' }
+    Fail "/welcome_cards - expected success:true (got: $preview)"
+    Write-Host '  -> Likely missing MYSQL_PASSWORD. See docs/PROD_CLOUD_RUN_RECOVERY.md' -ForegroundColor Yellow
 }
 
 $r = Invoke-Http -Method GET -Uri "$BaseUrl/api/invitation/verify?token=smoke-invalid-token"
 if ($r.Status -eq 404 -or $r.Body -match 'Invalid invitation') {
     Pass '/api/invitation/verify (DB query works)'
 } elseif ($r.Body -match 'Server error') {
-    Fail '/api/invitation/verify — server error (DB/env)'
+    Fail '/api/invitation/verify - server error (DB/env)'
 } else {
-    Fail "/api/invitation/verify — status=$($r.Status)"
+    Fail "/api/invitation/verify - status=$($r.Status)"
 }
 
 $r = Invoke-Http -Method POST -Uri "$BaseUrl/login" `
     -Body 'username=__smoke_nonexistent_user__' `
     -Headers @{ 'Content-Type' = 'application/x-www-form-urlencoded' }
 $setCookie = ($r.Headers['Set-Cookie'] -join '; ')
-if ($setCookie -match 'cpoint_session') {
+if ($r.Status -eq 302 -or $r.Status -eq 303) {
     if ($setCookie -match 'Domain=app\.c-point\.co') {
-        Fail 'login Set-Cookie — invalid Domain=app.c-point.co'
+        Fail 'login Set-Cookie - invalid Domain=app.c-point.co'
     } else {
-        Pass 'login issues Set-Cookie'
+        Pass 'login step 1 (unknown user -> redirect, no 500)'
     }
+} elseif ($r.Status -eq 500) {
+    Fail "login - server error (status $($r.Status))"
 } else {
-    Fail 'login — no cpoint_session Set-Cookie'
+    Fail "login - unexpected status $($r.Status)"
 }
 
 Write-Host ''

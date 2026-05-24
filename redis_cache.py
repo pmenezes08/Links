@@ -34,6 +34,8 @@ REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
 REDIS_PORT = int(os.environ.get('REDIS_PORT', 6379))
 REDIS_PASSWORD = os.environ.get('REDIS_PASSWORD', None)
 REDIS_DB = int(os.environ.get('REDIS_DB', 0))
+REDIS_MAX_CONNECTIONS = int(os.environ.get('REDIS_MAX_CONNECTIONS', '4'))
+REDIS_POOL_TIMEOUT = float(os.environ.get('REDIS_POOL_TIMEOUT', '1'))
 
 # Cache settings (optimized for performance)
 DEFAULT_CACHE_TTL = int(os.environ.get('CACHE_TTL_DEFAULT', '300'))  # 5 minutes
@@ -155,27 +157,30 @@ class RedisCache:
         """Connect to Redis server"""
         try:
             # Redis Cloud connection with username support
-            redis_kwargs = {
+            pool_kwargs = {
                 'host': REDIS_HOST,
                 'port': REDIS_PORT,
                 'password': REDIS_PASSWORD,
                 'db': REDIS_DB,
                 'decode_responses': True,
                 'socket_connect_timeout': 5,
-                'socket_timeout': 5
+                'socket_timeout': 5,
+                'max_connections': REDIS_MAX_CONNECTIONS,
+                'timeout': REDIS_POOL_TIMEOUT,
             }
             
             # Add username if provided (Redis Cloud requires this)
             redis_username = os.environ.get('REDIS_USERNAME')
             if redis_username:
-                redis_kwargs['username'] = redis_username
+                pool_kwargs['username'] = redis_username
             
-            self.redis_client = redis.Redis(**redis_kwargs)
+            connection_pool = redis.BlockingConnectionPool(**pool_kwargs)
+            self.redis_client = redis.Redis(connection_pool=connection_pool)
             
             # Test connection
             self.redis_client.ping()
             self.enabled = True
-            msg = f"OK Redis connected successfully at {REDIS_HOST}:{REDIS_PORT}"
+            msg = f"OK Redis connected successfully at {REDIS_HOST}:{REDIS_PORT} (max_connections={REDIS_MAX_CONNECTIONS})"
             logger.info(msg)
             print(msg, flush=True)  # Ensure it appears in error log
             

@@ -2251,6 +2251,34 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure post_views table: {e}")
 
+            # Ensure community story tables at startup, not during story reads.
+            try:
+                from backend.services.community_stories import ensure_story_tables
+
+                ensure_story_tables(c)
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure community story tables: {e}")
+
+            # Profile/admin gates read users.is_admin on hot community paths.
+            try:
+                if USE_MYSQL:
+                    c.execute("SHOW COLUMNS FROM users LIKE 'is_admin'")
+                    has_is_admin = c.fetchone() is not None
+                    if not has_is_admin:
+                        c.execute("ALTER TABLE users ADD COLUMN is_admin TINYINT(1) DEFAULT 0")
+                else:
+                    c.execute("PRAGMA table_info(users)")
+                    has_is_admin = any(
+                        (row["name"] if hasattr(row, "keys") else row[1]) == "is_admin"
+                        for row in (c.fetchall() or [])
+                    )
+                    if not has_is_admin:
+                        c.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0")
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure users.is_admin column: {e}")
+
             # Idempotency tokens for post creation (prevent duplicate posts)
             try:
                 if USE_MYSQL:
@@ -6070,6 +6098,18 @@ def user_is_member_of_community(username: str, community_id: int) -> bool:
             return False
     except Exception as e:
         logger.debug(f"Error checking membership for {username} in community {community_id}: {e}")
+        return False
+
+
+def _can_view_community_content(username: Optional[str], community_id: Optional[int]) -> bool:
+    if not username or not community_id:
+        return False
+    try:
+        if is_app_admin(username) or is_community_owner(username, community_id):
+            return True
+        return user_is_member_of_community(username, int(community_id))
+    except Exception as exc:
+        logger.warning("community content access check failed for %s/%s: %s", username, community_id, exc)
         return False
 
 
@@ -18013,16 +18053,43 @@ def post_reply():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT id FROM posts WHERE id= ?", (post_id,))
-            if not c.fetchone():
+            c.execute(
+                """
+                SELECT p.id, p.community_id, c.creator_username
+                FROM posts p
+                LEFT JOIN communities c ON c.id = p.community_id
+                WHERE p.id = ?
+                """,
+                (post_id,),
+            )
+            post_data = c.fetchone()
+            if not post_data:
                 return jsonify({'success': False, 'error': 'Post not found!'}), 404
 
-            # Get the community_id from the post
-            c.execute("SELECT community_id FROM posts WHERE id = ?", (post_id,))
-            post_data = c.fetchone()
-            community_id = post_data['community_id'] if post_data else None
+            community_id = post_data['community_id'] if hasattr(post_data, 'keys') else post_data[1]
+            creator_username = post_data['creator_username'] if hasattr(post_data, 'keys') else post_data[2]
+            if (
+                community_id
+                and username != creator_username
+                and not _can_view_community_content(username, int(community_id))
+            ):
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
             
             parent_reply_id = request.form.get('parent_reply_id', type=int)
+            if parent_reply_id:
+                c.execute(
+                    "SELECT post_id, community_id FROM replies WHERE id = ?",
+                    (parent_reply_id,),
+                )
+                parent_reply = c.fetchone()
+                if not parent_reply:
+                    return jsonify({'success': False, 'error': 'Parent reply not found'}), 404
+                parent_post_id = parent_reply['post_id'] if hasattr(parent_reply, 'keys') else parent_reply[0]
+                parent_community_id = parent_reply['community_id'] if hasattr(parent_reply, 'keys') else parent_reply[1]
+                if int(parent_post_id or 0) != int(post_id):
+                    return jsonify({'success': False, 'error': 'Parent reply does not belong to this post'}), 400
+                if parent_community_id and community_id and int(parent_community_id) != int(community_id):
+                    return jsonify({'success': False, 'error': 'Parent reply does not belong to this community'}), 400
 
             # Strong dedupe: token-based and content-based within window
             try:
@@ -20736,6 +20803,13 @@ def get_links():
         username = session['username']
         community_id = request.args.get('community_id')
         group_id_param = request.args.get('group_id')
+        if community_id:
+            try:
+                community_id_int = int(community_id)
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': 'Invalid community_id'}), 400
+            if not _can_view_community_content(username, community_id_int):
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
 
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -23488,6 +23562,11 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             
             steve_reply_id = c.lastrowid
             conn.commit()
+            try:
+                if community_id:
+                    invalidate_community_cache(community_id)
+            except Exception as cache_err:
+                logger.warning("Failed to invalidate cache after Steve post reply for community %s: %s", community_id, cache_err)
             
             # MIGRATED to backend/services/ai_usage.py — safe to delete when monolith-split runs
             try:
@@ -24470,8 +24549,10 @@ def ai_steve_reply():
                     log_request_type=_log_rt,
                 )
 
-            # Get post content for context (including media)
-            c.execute(f"SELECT content, username, image_path, video_path, media_paths FROM posts WHERE id = {placeholder}", (post_id,))
+            # Get post content for context (including media). The post row is
+            # authoritative for community scope; don't trust a client-supplied
+            # community_id when validating parent replies or billing scope.
+            c.execute(f"SELECT content, username, image_path, video_path, media_paths, community_id FROM posts WHERE id = {placeholder}", (post_id,))
             post_row = c.fetchone()
             if not post_row:
                 return jsonify({'success': False, 'error': 'Post not found'}), 404
@@ -24481,6 +24562,11 @@ def ai_steve_reply():
             post_image_path = post_row['image_path'] if hasattr(post_row, 'keys') else post_row[2]
             post_video_path = post_row['video_path'] if hasattr(post_row, 'keys') else post_row[3]
             post_media_paths = post_row['media_paths'] if hasattr(post_row, 'keys') else post_row[4]
+            post_community_id = post_row['community_id'] if hasattr(post_row, 'keys') else post_row[5]
+            if post_community_id is not None:
+                community_id = post_community_id
+                if not _can_view_community_content(username, int(post_community_id)):
+                    return jsonify({'success': False, 'error': 'Forbidden'}), 403
             
             # Collect all image URLs from the post
             post_image_urls = []
@@ -24537,11 +24623,25 @@ def ai_steve_reply():
             parent_content = None
             parent_author = None
             if parent_reply_id:
-                c.execute(f"SELECT content, username FROM replies WHERE id = {placeholder}", (parent_reply_id,))
+                try:
+                    parent_reply_id = int(parent_reply_id)
+                except Exception:
+                    return jsonify({'success': False, 'error': 'Invalid parent_reply_id'}), 400
+                c.execute(
+                    f"SELECT content, username, post_id, community_id FROM replies WHERE id = {placeholder}",
+                    (parent_reply_id,),
+                )
                 parent_row = c.fetchone()
-                if parent_row:
-                    parent_content = parent_row['content'] if hasattr(parent_row, 'keys') else parent_row[0]
-                    parent_author = parent_row['username'] if hasattr(parent_row, 'keys') else parent_row[1]
+                if not parent_row:
+                    return jsonify({'success': False, 'error': 'Parent reply not found'}), 404
+                parent_post_id = parent_row['post_id'] if hasattr(parent_row, 'keys') else parent_row[2]
+                parent_community_id = parent_row['community_id'] if hasattr(parent_row, 'keys') else parent_row[3]
+                if int(parent_post_id or 0) != int(post_id):
+                    return jsonify({'success': False, 'error': 'Parent reply does not belong to this post'}), 400
+                if parent_community_id and community_id and int(parent_community_id) != int(community_id):
+                    return jsonify({'success': False, 'error': 'Parent reply does not belong to this community'}), 400
+                parent_content = parent_row['content'] if hasattr(parent_row, 'keys') else parent_row[0]
+                parent_author = parent_row['username'] if hasattr(parent_row, 'keys') else parent_row[1]
             
             # Get community's AI personality setting
             ai_personality = 'friendly'  # default
@@ -24832,6 +24932,11 @@ def ai_steve_reply():
                 logger.warning(f"Could not log AI usage: {log_err}")
             
             conn.commit()
+            try:
+                if community_id:
+                    invalidate_community_cache(community_id)
+            except Exception as cache_err:
+                logger.warning("Failed to invalidate cache after Steve reply for community %s: %s", community_id, cache_err)
             
             # Get Steve's profile picture
             steve_profile_pic = None
@@ -34256,10 +34361,17 @@ def save_community_announcement():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/get_community_announcements', methods=['GET'])
+@login_required
 def get_community_announcements():
     try:
         community_id = request.args.get('community_id')
         logger.info(f"Getting announcements for community_id: {community_id}")
+        try:
+            community_id_int = int(community_id)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid community_id'}), 400
+        if not _can_view_community_content(session.get('username'), community_id_int):
+            return jsonify({'success': False, 'error': 'Forbidden'}), 403
         
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -34269,7 +34381,7 @@ def get_community_announcements():
             FROM community_announcements 
             WHERE community_id = ?
             ORDER BY created_at DESC
-        ''', (community_id,))
+        ''', (community_id_int,))
         
         rows = cursor.fetchall()
         logger.info(f"Found {len(rows)} announcements for community {community_id}")
@@ -34307,6 +34419,12 @@ def get_community_announcements():
         return jsonify({'success': True, 'announcements': announcements})
         
     except Exception as e:
+        if "community_announcements" in str(e).lower() and (
+            "doesn't exist" in str(e).lower()
+            or "does not exist" in str(e).lower()
+            or "no such table" in str(e).lower()
+        ):
+            return jsonify({'success': True, 'announcements': []})
         logger.error(f"Error getting community announcements: {e}")
         return jsonify({'success': False, 'error': str(e)})
 

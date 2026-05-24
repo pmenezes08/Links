@@ -789,6 +789,11 @@ def is_app_admin(username):
             )
             row = c.fetchone()
     except Exception as exc:  # pragma: no cover - defensive
+        # Older/prod-recovered schemas can briefly miss this newer flag.
+        # The legacy "admin" username is handled above, so a missing column
+        # should behave as a normal non-admin user without flooding logs.
+        if "is_admin" in str(exc) and ("unknown column" in str(exc).lower() or "no such column" in str(exc).lower()):
+            return False
         logger.warning("is_app_admin failed: %s", exc)
         return False
 

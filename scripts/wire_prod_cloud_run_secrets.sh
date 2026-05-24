@@ -35,7 +35,10 @@ gcloud run services update "${SERVICE}" \
   --project="${PROJECT}" \
   --region="${REGION}" \
   --add-cloudsql-instances="${INSTANCE_CONNECTION_NAME}" \
-  --update-env-vars="MYSQL_UNIX_SOCKET=/cloudsql/${INSTANCE_CONNECTION_NAME},FIREBASE_CREDENTIALS=/secrets/firebase/credentials.json,APNS_KEY_PATH=/secrets/apns/key.p8" \
+  --min-instances=1 \
+  --max-instances=2 \
+  --concurrency=8 \
+  --update-env-vars="MYSQL_UNIX_SOCKET=/cloudsql/${INSTANCE_CONNECTION_NAME},FIREBASE_CREDENTIALS=/secrets/firebase/credentials.json,APNS_KEY_PATH=/secrets/apns/key.p8,REDIS_MAX_CONNECTIONS=4,REDIS_POOL_TIMEOUT=1" \
   --update-secrets="${UPDATE_SECRETS}"
 
 echo "Done. Run: bash scripts/smoke_prod.sh"

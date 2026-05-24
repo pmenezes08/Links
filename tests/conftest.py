@@ -179,6 +179,9 @@ CREATE TABLE IF NOT EXISTS posts (
     community_id INT,
     username VARCHAR(191),
     content TEXT,
+    image_path TEXT,
+    video_path TEXT,
+    media_paths TEXT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_posts_community_ts (community_id, timestamp)
 )
@@ -203,8 +206,13 @@ CREATE TABLE IF NOT EXISTS replies (
     id INT PRIMARY KEY AUTO_INCREMENT,
     post_id INT,
     community_id INT,
+    parent_reply_id INT NULL,
     username VARCHAR(191),
     content TEXT,
+    image_path TEXT,
+    video_path TEXT,
+    audio_path TEXT,
+    audio_summary TEXT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_replies_user_ts (username, timestamp)
 )
@@ -348,6 +356,10 @@ _TRUNCATE_TABLES: List[str] = [
     "post_views",
     "posts",
     "replies",
+    "community_stories",
+    "community_story_views",
+    "community_story_reactions",
+    "community_story_comments",
     "notifications",
     "ai_usage_log",
     "special_access_log",

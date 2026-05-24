@@ -99,8 +99,8 @@ def upsert_post_view(c, post_id: int, username: Optional[str]) -> Optional[int]:
 
 
 def record_community_post_view(username: str, post_id: int) -> Dict[str, Any]:
-    """Membership check, persist view, clear related notifications, invalidate feed cache."""
-    from redis_cache import invalidate_community_cache, invalidate_user_parent_dashboard
+    """Membership check, persist view, clear related notifications, refresh user dashboard cache."""
+    from redis_cache import invalidate_user_parent_dashboard
 
     try:
         post_id = int(post_id)
@@ -154,13 +154,11 @@ def record_community_post_view(username: str, post_id: int) -> Dict[str, Any]:
                 )
 
             try:
-                if community_id:
-                    invalidate_community_cache(community_id)
                 if username:
                     invalidate_user_parent_dashboard(username)
             except Exception as inv_err:
                 logger.warning(
-                    "Failed to invalidate cache after post view (community=%s user=%s): %s",
+                    "Failed to invalidate dashboard cache after post view (community=%s user=%s): %s",
                     community_id,
                     username,
                     inv_err,

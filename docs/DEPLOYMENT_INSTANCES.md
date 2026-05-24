@@ -14,7 +14,7 @@ Out-of-repo or legacy names (`evalio`, `links` as separate cost centres) are cal
 
 | Service | Build config | Typical URL | Role |
 |---------|--------------|------------|------|
-| **`cpoint-app`** | `cloudbuild-production.yaml` → image `cpoint-app:latest` | **`https://cpoint-app-739552904126.europe-west1.run.app`**; users often enter via custom domain **`https://app.c-point.co`** (see [cloud-scheduler-cron.md](cloud-scheduler-cron.md)). | **Production Flask API** (`bodybuilding_app.py` + blueprints). Prod secrets, usually `min-instances=1` to avoid cold starts. |
+| **`cpoint-app`** | `cloudbuild-production.yaml` → image `cpoint-app:latest` | **`https://cpoint-app-739552904126.europe-west1.run.app`**; users often enter via custom domain **`https://app.c-point.co`** (see [cloud-scheduler-cron.md](cloud-scheduler-cron.md)). | **Production Flask API** (`bodybuilding_app.py` + blueprints). Prod deploys and secret rewiring enforce `min-instances=1` to avoid cold starts. |
 | **`cpoint-app-staging`** | `cloudbuild.yaml` → `cpoint-app-staging:latest` | **`https://cpoint-app-staging-739552904126.europe-west1.run.app`** | **Staging API** — same codebase. `min-instances` may be **0** (cold start acceptable); see **OPERATIONS** §0.2. |
 | **`cpoint-admin`** | `cloudbuild-admin.yaml` | Cloud Run hostname for **admin SPA**; **OPERATIONS** references admin alongside the app (team may map **admin.c-point.co** at the edge). | Static **admin-web** build; API calls go to **`cpoint-app`** (check `admin-web/Dockerfile` build args). |
 | **`cpoint-admin-staging`** | `cloudbuild-admin-staging.yaml` | Example: **`https://cpoint-admin-staging-739552904126.europe-west1.run.app`** (confirm in Console) | Staging **admin** — baked to talk to **`cpoint-app-staging`** (`VITE_API_BASE` / `API_PROXY_*` in `cloudbuild-admin-staging.yaml`). |
@@ -27,7 +27,7 @@ Out-of-repo or legacy names (`evalio`, `links` as separate cost centres) are cal
 | Topic | Prod (`cpoint-app`) | Staging (`cpoint-app-staging`) |
 |-------|---------------------|--------------------------------|
 | **Purpose** | Live traffic, revenue, cron in prod. | Smoke tests, manual QA, experiments. |
-| **Scale / cold start** | Typically warm (`min-instances` ≥ 1). | Often 0 min instances → first request can cold-start. |
+| **Scale / cold start** | Warm (`min-instances` ≥ 1; production deploy and recovery commands set this explicitly). Cloud Run concurrency is `8` and `max-instances=2` to stay under the Redis Cloud Essentials connection cap; `REDIS_MAX_CONNECTIONS=4` bounds each instance pool. | Often 0 min instances → first request can cold-start. |
 | **Cron** | Scheduler jobs use prod `run.app` URL + `cron-shared-secret`. | Staging jobs use staging URL + `cron-shared-secret-staging`. See [cloud-scheduler-cron.md](cloud-scheduler-cron.md). |
 | **Admin pairing** | Admin prod build targets prod API. | Staging **API** sets **`CSRF_ALLOWED_ORIGINS`** to the **staging admin** origin (`cloudbuild.yaml` — the staging admin **`.run.app`** URL). |
 
@@ -78,6 +78,6 @@ Before broad launch, set **`ENTITLEMENTS_ENFORCEMENT_ENABLED=true`** on producti
 - Backend **production:** `gcloud builds submit --config=cloudbuild-production.yaml --project=cpoint-127c2 .`
 - Admin **staging:** from `admin-web/`, `gcloud builds submit --config=../cloudbuild-admin-staging.yaml --project=cpoint-127c2 .`
 
-**Production secrets (`cpoint-app`):** `cloudbuild-production.yaml` deploys the image, runs **`scripts/wire_prod_cloud_run_secrets.sh`**, then **`scripts/smoke_prod.sh`**. If prod breaks while staging works, use **`docs/PROD_CLOUD_RUN_RECOVERY.md`** (agent runbook). Manual repair: `bash scripts/wire_prod_cloud_run_secrets.sh` then `bash scripts/smoke_prod.sh`. Do **not** set `SESSION_COOKIE_DOMAIN=app.c-point.co` — invalid; host-only is used when `CANONICAL_HOST=app.c-point.co`.
+**Production secrets (`cpoint-app`):** `cloudbuild-production.yaml` deploys the image, runs **`scripts/wire_prod_cloud_run_secrets.sh`**, then **`scripts/smoke_prod.sh`**. If prod breaks while staging works, use **`docs/PROD_CLOUD_RUN_RECOVERY.md`** (agent runbook). Manual repair: `bash scripts/wire_prod_cloud_run_secrets.sh` then `bash scripts/smoke_prod.sh`; on Windows, run `powershell -ExecutionPolicy Bypass -File scripts/smoke_prod.ps1` for smoke checks. Do **not** set `SESSION_COOKIE_DOMAIN=app.c-point.co` — invalid; host-only is used when `CANONICAL_HOST=app.c-point.co`.
 
 If a Run service URL changes, update **admin build args** and any **`CSRF_ALLOWED_ORIGINS`** on the API service that accepts browser POSTs from that admin origin.

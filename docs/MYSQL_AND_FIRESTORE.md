@@ -94,7 +94,7 @@ Also: **`groups`** (optional **`steve_agent_enabled`**, **`steve_agent_preset`**
 
 | Table | Role |
 |-------|------|
-| `community_stories`, `community_story_*` | Stories (`community_stories.py`). |
+| `community_stories`, `community_story_*` | Stories (`community_stories.py`). Startup/background schema bootstrap ensures these tables; story list reads treat missing/empty tables as an empty story payload instead of running DDL on the feed hot path. |
 | `community_invitations` | Invites. |
 | `community_lifecycle_notifications` | Grace / lifecycle emails (`community_lifecycle.py`). |
 | `community_media_assets` | Accounting (`media_assets.py`). |

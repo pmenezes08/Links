@@ -112,6 +112,7 @@ export default function CommentReply() {
   )
   const mainReplyRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [reply, setReply] = useState<Reply | null>(null)
   const [post, setPost] = useState<PostInfo | null>(null)
   const [parentChain, setParentChain] = useState<ParentReply[]>([])
@@ -125,7 +126,9 @@ export default function CommentReply() {
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const replyTokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
+  const createDedupeToken = () => `${Date.now()}_${Math.random().toString(36).slice(2)}`
+  const replySubmittingRef = useRef(false)
+  const replyTokenRef = useRef<string>(createDedupeToken())
   const { recording, recordMs, preview: replyPreview, start: startRec, stop: stopRec, clearPreview: clearReplyPreview, level } = useAudioRecorder() as any
 
   const openArticleReader = useCallback((url: string) => {
@@ -402,17 +405,21 @@ export default function CommentReply() {
       const res = await fetch(url, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const data = await res.json()
       if (data.success) {
+        setLoadError(null)
         setReply(data.reply)
         setPost(data.post)
         setParentChain(data.parent_chain || [])
         setEditMainText(data.reply.content)
+      } else {
+        setLoadError(data?.error || t('feed.reply_not_found'))
       }
     } catch (err) {
       console.error('Failed to fetch reply:', err)
+      setLoadError(t('errors.network'))
     } finally {
       setLoading(false)
     }
-  }, [reply_id, isGroupThread])
+  }, [reply_id, isGroupThread, t])
 
   useEffect(() => {
     fetchReply()
@@ -619,20 +626,24 @@ export default function CommentReply() {
     if (!reply || !post) return
     const hasMedia = !!(selectedGif || file || uploadFile || replyPreview?.blob)
     if (!replyText.trim() && !hasMedia) return
-    const messageText = replyText.trim()
-    if (blockSteveMentionReply(messageText, post?.community_id)) return
-    const preflight = await preflightSteveMention({
-      text: messageText,
-      communityId: post?.community_id,
-      postId: post.id,
-      entitlementsHandler,
-    })
-    if (!preflight.ok) {
-      if (preflight.error) alert(preflight.error)
-      return
-    }
+    if (replySubmittingRef.current) return
+
+    replySubmittingRef.current = true
     setSendingReply(true)
+    const messageText = replyText.trim()
     try {
+      if (blockSteveMentionReply(messageText, post?.community_id)) return
+      const preflight = await preflightSteveMention({
+        text: messageText,
+        communityId: post?.community_id,
+        postId: post.id,
+        entitlementsHandler,
+      })
+      if (!preflight.ok) {
+        if (preflight.error) alert(preflight.error)
+        return
+      }
+
       const fd = new FormData()
       fd.append('post_id', String(post.id))
       fd.append('content', replyText.trim())
@@ -699,7 +710,7 @@ export default function CommentReply() {
         if (fileInputRef.current) fileInputRef.current.value = ''
         setShowAttachMenu(false)
         setReplyComposerExpanded(false)
-        replyTokenRef.current = `${Date.now()}_${Math.random().toString(36).slice(2)}`
+        replyTokenRef.current = createDedupeToken()
       } else {
         alert(data.error || t('feed.post_reply_failed'))
       }
@@ -707,6 +718,7 @@ export default function CommentReply() {
       console.error('Failed to submit reply:', err)
       alert(t('feed.post_reply_failed'))
     } finally {
+      replySubmittingRef.current = false
       setSendingReply(false)
     }
   }
@@ -892,7 +904,7 @@ export default function CommentReply() {
   if (!reply) {
     return (
       <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center gap-4">
-        <p className="text-white/60">{t('feed.reply_not_found')}</p>
+        <p className="text-white/60">{loadError || t('feed.reply_not_found')}</p>
         <button
           onClick={() => {
             // Simple approach: always go to the post (PostDetail will handle community context)

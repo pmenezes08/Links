@@ -247,7 +247,11 @@ export default function PostDetail(){
   
   const hasMultipleMedia = parsedMediaPaths.length > 1
   const { recording, recordMs, preview: replyPreview, start: startRec, stop: stopRec, clearPreview: clearReplyPreview, level } = useAudioRecorder() as any
-  const replyTokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
+  const createDedupeToken = () => `${Date.now()}_${Math.random().toString(36).slice(2)}`
+  const replySubmittingRef = useRef(false)
+  const inlineSendingRef = useRef<Record<number, boolean>>({})
+  const inlineReplyTokensRef = useRef<Record<number, string>>({})
+  const replyTokenRef = useRef<string>(createDedupeToken())
   const [inlineSending, setInlineSending] = useState<Record<number, boolean>>({})
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const [refreshHint, setRefreshHint] = useState(false)
@@ -1053,66 +1057,153 @@ export default function PostDetail(){
 
   async function submitReply(parentReplyId?: number){
     if (!post || (!content && !file && !replyPreview?.blob && !replyGif)) return
-    if (submittingReply) return
+    if (replySubmittingRef.current) return
 
-    const messageText = content.trim()
-    const communityId = (post as { community_id?: number | string | null }).community_id
-    if (blockSteveMentionReply(messageText, communityId)) return
-    if (!isGroupPost) {
-      const preflight = await preflightSteveMention({
-        text: messageText,
-        communityId,
-        postId: post.id,
-        entitlementsHandler,
-      })
-      if (!preflight.ok) {
-        if (preflight.error) alert(preflight.error)
+    replySubmittingRef.current = true
+    setSubmittingReply(true)
+    try {
+      const messageText = content.trim()
+      const communityId = (post as { community_id?: number | string | null }).community_id
+      if (blockSteveMentionReply(messageText, communityId)) return
+      if (!isGroupPost) {
+        const preflight = await preflightSteveMention({
+          text: messageText,
+          communityId,
+          postId: post.id,
+          entitlementsHandler,
+        })
+        if (!preflight.ok) {
+          if (preflight.error) alert(preflight.error)
+          return
+        }
+      }
+
+      const fd = new FormData()
+      if (isGroupPost) {
+        fd.append('group_post_id', String(post.id))
+      } else {
+        fd.append('post_id', String(post.id))
+      }
+      fd.append('content', content)
+      if (parentReplyId) fd.append('parent_reply_id', String(parentReplyId))
+
+      try {
+        let imageFile: File | null = null
+        if (replyGif){
+          imageFile = await gifSelectionToFile(replyGif, 'post-reply')
+        } else if (uploadFile){
+          imageFile = uploadFile
+        } else if (file){
+          imageFile = file
+        }
+        if (imageFile) fd.append('image', imageFile)
+      } catch (err){
+        console.error('Failed to prepare GIF attachment', err)
+        alert(t('feed.gif_attach_failed'))
         return
       }
-    }
-    
-    setSubmittingReply(true)
-    const fd = new FormData()
-    if (isGroupPost) {
-      fd.append('group_post_id', String(post.id))
-    } else {
-      fd.append('post_id', String(post.id))
-    }
-    fd.append('content', content)
-    if (parentReplyId) fd.append('parent_reply_id', String(parentReplyId))
-    try {
-      let imageFile: File | null = null
-      if (replyGif){
-        imageFile = await gifSelectionToFile(replyGif, 'post-reply')
-      } else if (uploadFile){
-        imageFile = uploadFile
-      } else if (file){
-        imageFile = file
+
+      if (replyPreview?.blob) {
+        fd.append('audio', replyPreview.blob, (replyPreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm'))
+        const durSec = (replyPreview as { duration?: number }).duration ?? (recordMs / 1000)
+        if (durSec > 0) fd.append('voice_duration_seconds', String(durSec))
       }
-      if (imageFile) fd.append('image', imageFile)
-    } catch (err){
-      console.error('Failed to prepare GIF attachment', err)
+      fd.append('dedupe_token', replyTokenRef.current)
+      const replyEndpoint = isGroupPost ? '/api/group_replies' : '/post_reply'
+      const r = await fetch(replyEndpoint, { method:'POST', credentials:'include', body: fd })
+      const j = await r.json().catch(()=>null)
+      if (j?.success && j.reply){
+        setPost(p => {
+          if (!p) return p
+          if (parentReplyId){
+            function attach(list: Reply[]): Reply[] {
+              return list.map(item => {
+                if (item.id === parentReplyId){
+                  const children = item.children ? [j.reply, ...item.children] : [j.reply]
+                  return { ...item, children }
+                }
+                return { ...item, children: item.children ? attach(item.children) : item.children }
+              })
+            }
+            return { ...p, replies: attach(p.replies) }
+          }
+          return { ...p, replies: [j.reply, ...p.replies] }
+        })
+        // Check if user mentioned @Steve and trigger AI reply (defer so user reply is committed first — avoids attach race)
+        if (containsSteveMention(messageText)) {
+          const parentId = j.reply.id as number
+          queueMicrotask(() => {
+            void callSteveAI(messageText, parentId)
+          })
+        }
+        setReplyComposerExpanded(false)
+        setContent(''); setFile(null); setUploadFile(null); setReplyGif(null); setFilePreviewUrl(null); if (fileInputRef.current) fileInputRef.current.value = ''
+        replyTokenRef.current = createDedupeToken()
+      } else {
+        alert(j?.error || t('feed.post_reply_failed'))
+      }
+    } catch (err) {
+      console.error('Failed to submit reply:', err)
+      alert(t('feed.post_reply_failed'))
+    } finally {
+      replySubmittingRef.current = false
       setSubmittingReply(false)
-      alert(t('feed.gif_attach_failed'))
-      return
     }
-    if (replyPreview?.blob) {
-      fd.append('audio', replyPreview.blob, (replyPreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm'))
-      const durSec = (replyPreview as { duration?: number }).duration ?? (recordMs / 1000)
-      if (durSec > 0) fd.append('voice_duration_seconds', String(durSec))
-    }
-    fd.append('dedupe_token', replyTokenRef.current)
-    const replyEndpoint = isGroupPost ? '/api/group_replies' : '/post_reply'
-    const r = await fetch(replyEndpoint, { method:'POST', credentials:'include', body: fd })
-    const j = await r.json().catch(()=>null)
-    setSubmittingReply(false)
-    if (j?.success && j.reply){
-      setPost(p => {
-        if (!p) return p
-        if (parentReplyId){
+  }
+
+  async function submitInlineReply(parentId: number, text: string, file?: File, voiceDurationSec?: number){
+    if (!post || (!text && !file)) return
+    if (inlineSendingRef.current[parentId]) return
+    inlineSendingRef.current[parentId] = true
+    setInlineSending(s => ({ ...s, [parentId]: true }))
+    try {
+      const messageText = (text || '').trim()
+      const communityId = (post as { community_id?: number | string | null }).community_id
+      if (blockSteveMentionReply(messageText, communityId)) return
+      if (!isGroupPost) {
+        const preflight = await preflightSteveMention({
+          text: messageText,
+          communityId,
+          postId: post.id,
+          entitlementsHandler,
+        })
+        if (!preflight.ok) {
+          if (preflight.error) alert(preflight.error)
+          return
+        }
+      }
+      const fd = new FormData()
+      if (isGroupPost) {
+        fd.append('group_post_id', String(post.id))
+      } else {
+        fd.append('post_id', String(post.id))
+      }
+      fd.append('content', text || '')
+      fd.append('parent_reply_id', String(parentId))
+      if (file) {
+        if (typeof (file as any).type === 'string' && (file as any).type.startsWith('audio/')) {
+          fd.append('audio', file)
+          if (typeof voiceDurationSec === 'number' && voiceDurationSec > 0) {
+            fd.append('voice_duration_seconds', String(voiceDurationSec))
+          }
+        } else if (typeof (file as any).type === 'string' && (file as any).type.startsWith('image/')) {
+          fd.append('image', file)
+        } else {
+          fd.append('image', file)
+        }
+      }
+      const dedupeToken = inlineReplyTokensRef.current[parentId] || createDedupeToken()
+      inlineReplyTokensRef.current[parentId] = dedupeToken
+      fd.append('dedupe_token', dedupeToken)
+      const inlineEndpoint = isGroupPost ? '/api/group_replies' : '/post_reply'
+      const r = await fetch(inlineEndpoint, { method:'POST', credentials:'include', body: fd })
+      const j = await r.json().catch(()=>null)
+      if (j?.success && j.reply){
+        setPost(p => {
+          if (!p) return p
           function attach(list: Reply[]): Reply[] {
             return list.map(item => {
-              if (item.id === parentReplyId){
+              if (item.id === parentId){
                 const children = item.children ? [j.reply, ...item.children] : [j.reply]
                 return { ...item, children }
               }
@@ -1120,88 +1211,24 @@ export default function PostDetail(){
             })
           }
           return { ...p, replies: attach(p.replies) }
-        }
-        return { ...p, replies: [j.reply, ...p.replies] }
-      })
-      // Check if user mentioned @Steve and trigger AI reply (defer so user reply is committed first — avoids attach race)
-      const messageText = content.trim()
-      if (containsSteveMention(messageText)) {
-        const parentId = j.reply.id as number
-        queueMicrotask(() => {
-          void callSteveAI(messageText, parentId)
         })
-      }
-      setReplyComposerExpanded(false)
-      setContent(''); setFile(null); setUploadFile(null); setReplyGif(null); setFilePreviewUrl(null); if (fileInputRef.current) fileInputRef.current.value = ''
-      replyTokenRef.current = `${Date.now()}_${Math.random().toString(36).slice(2)}`
-    }
-  }
-
-  async function submitInlineReply(parentId: number, text: string, file?: File, voiceDurationSec?: number){
-    if (!post || (!text && !file)) return
-    if (inlineSending[parentId]) return
-    const messageText = (text || '').trim()
-    const communityId = (post as { community_id?: number | string | null }).community_id
-    if (blockSteveMentionReply(messageText, communityId)) return
-    if (!isGroupPost) {
-      const preflight = await preflightSteveMention({
-        text: messageText,
-        communityId,
-        postId: post.id,
-        entitlementsHandler,
-      })
-      if (!preflight.ok) {
-        if (preflight.error) alert(preflight.error)
-        return
-      }
-    }
-    setInlineSending(s => ({ ...s, [parentId]: true }))
-    const fd = new FormData()
-    if (isGroupPost) {
-      fd.append('group_post_id', String(post.id))
-    } else {
-      fd.append('post_id', String(post.id))
-    }
-    fd.append('content', text || '')
-    fd.append('parent_reply_id', String(parentId))
-    if (file) {
-      if (typeof (file as any).type === 'string' && (file as any).type.startsWith('audio/')) {
-        fd.append('audio', file)
-        if (typeof voiceDurationSec === 'number' && voiceDurationSec > 0) {
-          fd.append('voice_duration_seconds', String(voiceDurationSec))
-        }
-      } else if (typeof (file as any).type === 'string' && (file as any).type.startsWith('image/')) {
-        fd.append('image', file)
-      } else {
-        fd.append('image', file)
-      }
-    }
-    fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
-    const inlineEndpoint = isGroupPost ? '/api/group_replies' : '/post_reply'
-    const r = await fetch(inlineEndpoint, { method:'POST', credentials:'include', body: fd })
-    const j = await r.json().catch(()=>null)
-    setInlineSending(s => ({ ...s, [parentId]: false }))
-    if (j?.success && j.reply){
-      setPost(p => {
-        if (!p) return p
-        function attach(list: Reply[]): Reply[] {
-          return list.map(item => {
-            if (item.id === parentId){
-              const children = item.children ? [j.reply, ...item.children] : [j.reply]
-              return { ...item, children }
-            }
-            return { ...item, children: item.children ? attach(item.children) : item.children }
+        delete inlineReplyTokensRef.current[parentId]
+        if (containsSteveMention(text)) {
+          const parentId = j.reply.id as number
+          const msg = text
+          queueMicrotask(() => {
+            void callSteveAI(msg, parentId)
           })
         }
-        return { ...p, replies: attach(p.replies) }
-      })
-      if (containsSteveMention(text)) {
-        const parentId = j.reply.id as number
-        const msg = text
-        queueMicrotask(() => {
-          void callSteveAI(msg, parentId)
-        })
+      } else {
+        alert(j?.error || t('feed.post_reply_failed'))
       }
+    } catch (err) {
+      console.error('Failed to submit inline reply:', err)
+      alert(t('feed.post_reply_failed'))
+    } finally {
+      inlineSendingRef.current[parentId] = false
+      setInlineSending(s => ({ ...s, [parentId]: false }))
     }
   }
 
