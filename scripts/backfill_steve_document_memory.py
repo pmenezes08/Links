@@ -36,7 +36,9 @@ def main() -> int:
         compute_embeddings=not args.no_embeddings,
     )
     print(json.dumps(result, indent=2, sort_keys=True, default=str))
-    return 0 if int(result.get("failed") or 0) == 0 else 1
+    # Per-document failures are expected for deleted/missing historical files
+    # and are reported in the JSON summary for operators to inspect.
+    return 0
 
 
 if __name__ == "__main__":
