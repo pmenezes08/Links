@@ -75,35 +75,38 @@ def fetch_useful_links_payload(
 
     docs: list[dict[str, Any]] = []
     try:
+        has_doc_details = True
         if community_id:
             if group_id is not None:
-                cursor.execute(
-                    f"""
-                    SELECT id, username, file_path, description, created_at
-                    FROM useful_docs
-                    WHERE community_id = {ph} AND group_id = {ph}
-                    ORDER BY created_at DESC
-                    """,
-                    (community_id, group_id),
-                )
+                params = (community_id, group_id)
+                where_clause = f"WHERE community_id = {ph} AND group_id = {ph}"
             else:
-                cursor.execute(
-                    f"""
-                    SELECT id, username, file_path, description, created_at
-                    FROM useful_docs
-                    WHERE community_id = {ph} AND group_id IS NULL
-                    ORDER BY created_at DESC
-                    """,
-                    (community_id,),
-                )
+                params = (community_id,)
+                where_clause = f"WHERE community_id = {ph} AND group_id IS NULL"
         else:
+            params = ()
+            where_clause = "WHERE community_id IS NULL"
+
+        try:
             cursor.execute(
-                """
+                f"""
+                SELECT id, username, file_path, description, details, created_at
+                FROM useful_docs
+                {where_clause}
+                ORDER BY created_at DESC
+                """,
+                params,
+            )
+        except Exception:
+            has_doc_details = False
+            cursor.execute(
+                f"""
                 SELECT id, username, file_path, description, created_at
                 FROM useful_docs
-                WHERE community_id IS NULL
+                {where_clause}
                 ORDER BY created_at DESC
-                """
+                """,
+                params,
             )
         for d in cursor.fetchall() or []:
             docs.append(
@@ -112,7 +115,8 @@ def fetch_useful_links_payload(
                     "username": d["username"] if hasattr(d, "keys") else d[1],
                     "file_path": d["file_path"] if hasattr(d, "keys") else d[2],
                     "description": d["description"] if hasattr(d, "keys") else d[3],
-                    "created_at": d["created_at"] if hasattr(d, "keys") else d[4],
+                    "details": (d["details"] if hasattr(d, "keys") else d[4]) if has_doc_details else "",
+                    "created_at": (d["created_at"] if hasattr(d, "keys") else d[5]) if has_doc_details else (d["created_at"] if hasattr(d, "keys") else d[4]),
                 }
             )
     except Exception:

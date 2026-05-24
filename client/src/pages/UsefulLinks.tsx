@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useHeader } from '../contexts/HeaderContext'
 
 type LinkItem = { id:number; username:string; url:string; description:string; created_at:string; can_delete?:boolean }
-type DocItem = { id:number; username:string; file_path:string; description:string; created_at:string }
+type DocItem = { id:number; username:string; file_path:string; description:string; details?:string; created_at:string }
 
 function resolveDocUrl(filePath: string): string {
   if (!filePath) return ''
@@ -30,11 +30,13 @@ export default function UsefulLinks(){
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [editingDocId, setEditingDocId] = useState<number | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [editingDetails, setEditingDetails] = useState('')
   const [swipedDocId, setSwipedDocId] = useState<number | null>(null)
   const scrollRef = useRef<HTMLDivElement|null>(null)
   const urlRef = useRef<HTMLInputElement|null>(null)
   const descRef = useRef<HTMLInputElement|null>(null)
-  const pdfDescRef = useRef<HTMLInputElement|null>(null)
+  const pdfNameRef = useRef<HTMLInputElement|null>(null)
+  const pdfDetailsRef = useRef<HTMLTextAreaElement|null>(null)
   const pdfInputRef = useRef<HTMLInputElement|null>(null)
 
   useEffect(() => { 
@@ -90,19 +92,23 @@ export default function UsefulLinks(){
 
   async function uploadPdf(){
     const file = pdfInputRef.current?.files?.[0]
-    const d = pdfDescRef.current?.value.trim() || ''
+    const name = pdfNameRef.current?.value.trim() || ''
+    const details = pdfDetailsRef.current?.value.trim() || ''
     if (!file){ alert(t('links_docs.select_pdf')); return }
     if (!file.name.toLowerCase().endsWith('.pdf')){ alert(t('links_docs.pdf_only')); return }
+    if (!name){ alert(t('links_docs.name_required')); return }
     const fd = new FormData()
     fd.append('file', file)
-    if (d) fd.append('description', d)
+    fd.append('name', name)
+    if (details) fd.append('details', details)
     if (community_id) fd.append('community_id', String(community_id))
     if (groupId) fd.append('group_id', groupId)
     const r = await fetch('/upload_doc', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
     if (j?.success){ 
       if (pdfInputRef.current) pdfInputRef.current.value=''
-      if (pdfDescRef.current) pdfDescRef.current.value=''
+      if (pdfNameRef.current) pdfNameRef.current.value=''
+      if (pdfDetailsRef.current) pdfDetailsRef.current.value=''
       showToast(t('links_docs.document_uploaded'))
       setActiveTab('list')
       load()
@@ -128,19 +134,20 @@ export default function UsefulLinks(){
     else alert(j?.error || j?.message || t('links_docs.delete_document_failed'))
   }
 
-  async function renameDoc(id: number, newName: string) {
+  async function renameDoc(id: number, newName: string, newDetails: string) {
     if (!newName.trim()) {
       showToast(t('links_docs.name_empty'), 'error')
       return
     }
-    const body = new URLSearchParams({ doc_id: String(id), new_name: newName.trim() })
+    const body = new URLSearchParams({ doc_id: String(id), new_name: newName.trim(), details: newDetails.trim() })
     const r = await fetch('/rename_doc', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body })
     const j = await r.json().catch(() => null)
     if (j?.success) {
-      setDocs(prev => prev.map(d => d.id === id ? { ...d, description: newName.trim() } : d))
+      setDocs(prev => prev.map(d => d.id === id ? { ...d, description: newName.trim(), details: newDetails.trim() } : d))
       setEditingDocId(null)
       setEditingName('')
-      showToast(t('links_docs.document_renamed'))
+      setEditingDetails('')
+      showToast(t('links_docs.document_updated'))
     } else {
       showToast(j?.error || t('links_docs.rename_failed'), 'error')
     }
@@ -192,7 +199,8 @@ export default function UsefulLinks(){
               <div className="text-sm font-semibold mb-2">{t('links_docs.upload_pdf_title')}</div>
               <div className="flex flex-col sm:flex-row gap-2 items-center">
                 <input ref={pdfInputRef} type="file" accept="application/pdf" className="flex-1 text-sm" />
-                <input ref={pdfDescRef} className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder={t('links_docs.description_optional')} />
+                <input ref={pdfNameRef} className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder={t('links_docs.document_name_required')} />
+                <textarea ref={pdfDetailsRef} className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none resize-none" placeholder={t('links_docs.document_description_optional')} rows={2} />
                 <button className="px-3 py-2 rounded-md bg-[#4db6ac] text_black text-sm hover:brightness-110" onClick={uploadPdf}>{t('links_docs.upload')}</button>
               </div>
             </div>
@@ -240,10 +248,12 @@ export default function UsefulLinks(){
                         isSwiped={isSwiped}
                         editingName={editingName}
                         onSwipe={(swiped) => setSwipedDocId(swiped ? d.id : null)}
-                        onEditStart={() => { setEditingDocId(d.id); setEditingName(d.description || ''); setSwipedDocId(null) }}
-                        onEditCancel={() => { setEditingDocId(null); setEditingName('') }}
-                        onEditSave={() => renameDoc(d.id, editingName)}
+                        onEditStart={() => { setEditingDocId(d.id); setEditingName(d.description || ''); setEditingDetails(d.details || ''); setSwipedDocId(null) }}
+                        onEditCancel={() => { setEditingDocId(null); setEditingName(''); setEditingDetails('') }}
+                        onEditSave={() => renameDoc(d.id, editingName, editingDetails)}
                         onEditNameChange={setEditingName}
+                        editingDetails={editingDetails}
+                        onEditDetailsChange={setEditingDetails}
                         onDelete={() => removeDoc(d.id)}
                         resolveDocUrl={resolveDocUrl}
                       />
@@ -279,11 +289,13 @@ function SwipeableDocCard({
   isEditing, 
   isSwiped,
   editingName,
+  editingDetails,
   onSwipe,
   onEditStart, 
   onEditCancel, 
   onEditSave,
   onEditNameChange,
+  onEditDetailsChange,
   onDelete,
   resolveDocUrl 
 }: {
@@ -292,11 +304,13 @@ function SwipeableDocCard({
   isEditing: boolean
   isSwiped: boolean
   editingName: string
+  editingDetails: string
   onSwipe: (swiped: boolean) => void
   onEditStart: () => void
   onEditCancel: () => void
   onEditSave: () => void
   onEditNameChange: (name: string) => void
+  onEditDetailsChange: (details: string) => void
   onDelete: () => void
   resolveDocUrl: (path: string) => string
 }) {
@@ -374,7 +388,7 @@ function SwipeableDocCard({
         onTouchEnd={handleTouchEnd}
       >
         {isEditing ? (
-          <div className="flex items-center gap-2">
+          <div className="space-y-2">
             <input
               type="text"
               value={editingName}
@@ -387,23 +401,33 @@ function SwipeableDocCard({
                 if (e.key === 'Escape') onEditCancel()
               }}
             />
-            <button 
-              className="px-2 py-1 rounded-md bg-[#4db6ac] text-black text-xs hover:brightness-110"
-              onClick={onEditSave}
-            >
-              {t('common.save')}
-            </button>
-            <button 
-              className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5 text-xs"
-              onClick={onEditCancel}
-            >
-              {t('common.cancel')}
-            </button>
+            <textarea
+              value={editingDetails}
+              onChange={(e) => onEditDetailsChange(e.target.value)}
+              className="w-full rounded-md bg-black border border-white/20 px-2 py-1 text-sm focus:border-teal-400/70 outline-none resize-none"
+              placeholder={t('links_docs.document_description_optional')}
+              rows={2}
+            />
+            <div className="flex items-center justify-end gap-2">
+              <button 
+                className="px-2 py-1 rounded-md bg-[#4db6ac] text-black text-xs hover:brightness-110"
+                onClick={onEditSave}
+              >
+                {t('common.save')}
+              </button>
+              <button 
+                className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5 text-xs"
+                onClick={onEditCancel}
+              >
+                {t('common.cancel')}
+              </button>
+            </div>
           </div>
         ) : (
           <div className="flex items-center justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="text-white/90 text-sm truncate">{displayName}</div>
+              {doc.details ? <div className="text-sm text-[#cfd8dc] line-clamp-2 mt-0.5">{doc.details}</div> : null}
               <div className="text-xs text-[#9fb0b5]">{doc.username} • {new Date(doc.created_at).toLocaleString()}</div>
             </div>
             <a 

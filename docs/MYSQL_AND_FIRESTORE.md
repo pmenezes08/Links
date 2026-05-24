@@ -121,7 +121,7 @@ Many **`exercises`**, **`workouts`**, **`workout_exercises`**, **`exercise_sets`
 |-------|------|
 | `key_posts`, `community_key_posts` | Pinned posts. |
 | `product_posts`, `product_replies`, `product_polls`, `product_poll_votes` | Product-area feed. |
-| `useful_links`, `useful_docs`, `community_files`, `community_announcements` | Resources; `useful_*` rows with `group_id` set are listed **only** in group context (`get_links` + `group_id`), not merged with community-wide (`group_id` null) rows. `useful_docs` is also the MySQL source of truth for Steve doc memory indexing; `/upload_doc` best-effort indexes the committed row into Firestore, and `scripts/backfill_steve_document_memory.py` backfills existing rows. |
+| `useful_links`, `useful_docs`, `community_files`, `community_announcements` | Resources; `useful_*` rows with `group_id` set are listed **only** in group context (`get_links` + `group_id`), not merged with community-wide (`group_id` null) rows. `useful_docs.description` is the required document **Name** and `useful_docs.details` is the optional user-facing **Description**. `useful_docs` is also the MySQL source of truth for Steve doc memory indexing; `/upload_doc` best-effort indexes the committed row into Firestore, and `scripts/backfill_steve_document_memory.py` backfills existing rows. |
 | `university_ads` | Ads. |
 | `archived_chats`, `deleted_chat_threads` | DM UX (`dm_chats_tables.py`). |
 | `typing_status`, `encryption_*` | Typing / E2E helpers. |

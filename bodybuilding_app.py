@@ -2851,6 +2851,7 @@ def add_missing_tables():
                                          username VARCHAR(191) NOT NULL,
                                          file_path TEXT NOT NULL,
                                          description TEXT,
+                                         details TEXT,
                                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                          FOREIGN KEY (community_id) REFERENCES communities(id)
                                      )''')
@@ -2862,6 +2863,7 @@ def add_missing_tables():
                                      username VARCHAR(191) NOT NULL,
                                      file_path TEXT NOT NULL,
                                      description TEXT,
+                                     details TEXT,
                                      created_at TEXT DEFAULT (datetime('now'))
                                  )''')
                     conn.commit()
@@ -2873,6 +2875,7 @@ def add_missing_tables():
                 for table_name, col_name, col_def in (
                     ("useful_links", "group_id", "INTEGER NULL"),
                     ("useful_docs", "group_id", "INTEGER NULL"),
+                    ("useful_docs", "details", "TEXT"),
                     ("posts", "group_id", "INTEGER NULL"),
                     ("calendar_events", "group_id", "INTEGER NULL"),
                     ("tasks", "group_id", "INTEGER NULL"),
@@ -3456,6 +3459,7 @@ def init_db():
                                  username VARCHAR(191) NOT NULL,
                                  file_path TEXT NOT NULL,
                                  description TEXT,
+                                 details TEXT,
                                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                  FOREIGN KEY (community_id) REFERENCES communities(id)
                              )''')
@@ -3466,6 +3470,7 @@ def init_db():
                                  username VARCHAR(191) NOT NULL,
                                  file_path TEXT NOT NULL,
                                  description TEXT,
+                                 details TEXT,
                                  created_at TEXT DEFAULT (datetime('now'))
                              )''')
 
@@ -20897,7 +20902,12 @@ def upload_doc():
                 group_id_int = int(group_id_raw)
             except Exception:
                 return jsonify({'success': False, 'error': 'Invalid group_id'})
-        description = (request.form.get('description') or '').strip()
+        name = (request.form.get('name') or request.form.get('description') or '').strip()
+        details = (request.form.get('details') or '').strip()
+        if not name:
+            return jsonify({'success': False, 'error': 'Document name required'}), 400
+        if len(name) > 200:
+            return jsonify({'success': False, 'error': 'Name too long (max 200 characters)'}), 400
         if 'file' not in request.files:
             return jsonify({'success': False, 'error': 'No file provided'})
         f = request.files['file']
@@ -20951,14 +20961,14 @@ def upload_doc():
                 if not ok:
                     return jsonify({'success': False, 'error': err or 'Forbidden'}), 403
             c.execute(f"""
-                INSERT INTO useful_docs (community_id, group_id, username, file_path, description, created_at)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-            """, (community_id if community_id else None, group_id_int, username, file_path, description, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                INSERT INTO useful_docs (community_id, group_id, username, file_path, description, details, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """, (community_id if community_id else None, group_id_int, username, file_path, name, details, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             doc_id = int(getattr(c, "lastrowid", 0) or 0)
             
             # Send notifications to community members (community-wide resources only)
             if community_id and group_id_int is None:
-                doc_description = description or orig  # Use filename if no description
+                doc_description = name or orig
                 notify_community_new_resource(community_id, username, 'doc', doc_description, conn)
             
             conn.commit()
@@ -20975,7 +20985,8 @@ def upload_doc():
                             "group_id": group_id_int,
                             "username": username,
                             "file_path": file_path,
-                            "description": description or orig,
+                            "description": name,
+                            "details": details,
                             "created_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                         }
                     )
@@ -21037,11 +21048,12 @@ def delete_doc():
 @app.route('/rename_doc', methods=['POST'])
 @login_required
 def rename_doc():
-    """Rename a document's description/display name"""
+    """Update a document's display name and optional description."""
     try:
         username = session.get('username')
         doc_id = request.form.get('doc_id')
         new_name = request.form.get('new_name', '').strip()
+        details = (request.form.get('details') or '').strip()
         
         if not doc_id:
             return jsonify({'success': False, 'error': 'doc_id required'})
@@ -21052,20 +21064,35 @@ def rename_doc():
             
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
             # Check ownership
-            c.execute("SELECT username FROM useful_docs WHERE id = ?", (doc_id,))
+            c.execute(f"SELECT username FROM useful_docs WHERE id = {ph}", (doc_id,))
             row = c.fetchone()
             if not row:
                 return jsonify({'success': False, 'error': 'Document not found'})
             owner = row['username'] if hasattr(row, 'keys') else row[0]
             if username != owner and not is_app_admin(username):
-                return jsonify({'success': False, 'error': 'Only the uploader can rename this document'})
+                return jsonify({'success': False, 'error': 'Only the uploader can edit this document'})
             
-            # Update description
-            c.execute("UPDATE useful_docs SET description = ? WHERE id = ?", (new_name, doc_id))
+            c.execute(f"UPDATE useful_docs SET description = {ph}, details = {ph} WHERE id = {ph}", (new_name, details, doc_id))
             conn.commit()
+
+        def _reindex_doc_metadata_async():
+            try:
+                from backend.services.steve_document_memory import index_useful_doc_by_id
+
+                index_useful_doc_by_id(int(doc_id), force=True)
+            except Exception as index_err:
+                logger.warning("Steve document memory metadata reindex failed doc_id=%s: %s", doc_id, index_err)
+
+        try:
+            import threading
+
+            threading.Thread(target=_reindex_doc_metadata_async, daemon=True).start()
+        except Exception as start_err:
+            logger.warning("Could not start Steve document metadata reindex doc_id=%s: %s", doc_id, start_err)
             
-        return jsonify({'success': True, 'message': 'Document renamed'})
+        return jsonify({'success': True, 'message': 'Document updated', 'name': new_name, 'details': details})
     except Exception as e:
         logger.error(f"Error renaming doc: {e}")
         return jsonify({'success': False, 'error': 'Server error'})

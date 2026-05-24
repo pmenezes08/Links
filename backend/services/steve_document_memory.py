@@ -15,6 +15,7 @@ import logging
 import math
 import os
 import re
+import unicodedata
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import requests
@@ -49,6 +50,19 @@ _DOC_FOLLOWUP_RE = re.compile(
     re.IGNORECASE,
 )
 _HEADING_RE = re.compile(r"^\s*(?:\d+(?:\.\d+)*\.?\s+)?([A-Z][A-Za-z0-9][^\n]{4,120})\s*$")
+_IDENTITY_STOP_TOKENS = {
+    "attachment",
+    "attachments",
+    "document",
+    "documents",
+    "file",
+    "files",
+    "page",
+    "pages",
+    "pdf",
+    "upload",
+    "uploaded",
+}
 
 
 @dataclass
@@ -98,6 +112,95 @@ def _get_firestore_client():
 
 def _hash_text(value: str) -> str:
     return hashlib.sha256((value or "").encode("utf-8")).hexdigest()
+
+
+def _normalize_identity_text(value: Any) -> str:
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
+def _identity_tokens(value: Any) -> List[str]:
+    normalized = _normalize_identity_text(value)
+    return [
+        token
+        for token in normalized.split()
+        if len(token) >= 3 and token not in _IDENTITY_STOP_TOKENS
+    ]
+
+
+def _doc_identity_blob(doc: Dict[str, Any]) -> str:
+    outline = doc.get("outline") or []
+    topics = doc.get("topics") or []
+    if isinstance(outline, list):
+        outline_text = " ".join(str(item) for item in outline[:20])
+    else:
+        outline_text = str(outline)
+    if isinstance(topics, list):
+        topics_text = " ".join(str(item) for item in topics[:20])
+    else:
+        topics_text = str(topics)
+    return " ".join(
+        str(part or "")
+        for part in (
+            doc.get("title"),
+            doc.get("details"),
+            doc.get("description"),
+            doc.get("file_name"),
+            doc.get("source_file_name"),
+            topics_text,
+            outline_text,
+        )
+    )
+
+
+def document_identity_score(query: str, doc: Dict[str, Any]) -> float:
+    """Score whether a user ask names or describes this manifest.
+
+    This is intentionally language-agnostic: it matches normalized terms from
+    document identity fields and lets the LLM handle multilingual semantics once
+    the right document context is present.
+    """
+    query_norm = _normalize_identity_text(query)
+    if not query_norm:
+        return 0.0
+    query_tokens = set(_identity_tokens(query_norm))
+    if not query_tokens:
+        return 0.0
+
+    title_norm = _normalize_identity_text(doc.get("title"))
+    score = 0.0
+    if title_norm and len(title_norm) >= 5:
+        if title_norm in query_norm or query_norm in title_norm:
+            score += 1.2
+
+    title_tokens = set(_identity_tokens(doc.get("title")))
+    if title_tokens:
+        overlap = query_tokens & title_tokens
+        score += len(overlap) / max(1, min(len(title_tokens), 4))
+        if overlap and any(len(token) >= 5 for token in overlap):
+            score += 0.2
+
+    identity_tokens = set(_identity_tokens(_doc_identity_blob(doc)))
+    if identity_tokens:
+        overlap = query_tokens & identity_tokens
+        score += min(0.6, len(overlap) * 0.12)
+        if overlap and any(len(token) >= 5 for token in overlap):
+            score += 0.18
+    return score
+
+
+def matched_document_ids(query: str, manifest: Sequence[Dict[str, Any]], *, threshold: float = 0.3) -> List[int]:
+    scored: List[Tuple[float, int]] = []
+    for doc in manifest or []:
+        doc_id = int(doc.get("doc_id") or 0)
+        if not doc_id:
+            continue
+        score = document_identity_score(query, doc)
+        if score >= threshold:
+            scored.append((score, doc_id))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [doc_id for _, doc_id in scored]
 
 
 def _normalize_local_candidates(file_path: str) -> List[str]:
@@ -293,14 +396,26 @@ def _compute_embedding_safe(text: str) -> Optional[List[float]]:
 
 
 def fetch_useful_doc_row(cursor: Any, ph: str, doc_id: int) -> Optional[Dict[str, Any]]:
-    cursor.execute(
-        f"""
-        SELECT id, community_id, group_id, username, file_path, description, created_at
-        FROM useful_docs
-        WHERE id = {ph}
-        """,
-        (doc_id,),
-    )
+    has_details = True
+    try:
+        cursor.execute(
+            f"""
+            SELECT id, community_id, group_id, username, file_path, description, details, created_at
+            FROM useful_docs
+            WHERE id = {ph}
+            """,
+            (doc_id,),
+        )
+    except Exception:
+        has_details = False
+        cursor.execute(
+            f"""
+            SELECT id, community_id, group_id, username, file_path, description, created_at
+            FROM useful_docs
+            WHERE id = {ph}
+            """,
+            (doc_id,),
+        )
     row = cursor.fetchone()
     if not row:
         return None
@@ -311,7 +426,8 @@ def fetch_useful_doc_row(cursor: Any, ph: str, doc_id: int) -> Optional[Dict[str
         "username": _row_value(row, "username", 3),
         "file_path": _row_value(row, "file_path", 4),
         "description": _row_value(row, "description", 5),
-        "created_at": _row_value(row, "created_at", 6),
+        "details": _row_value(row, "details", 6, "") if has_details else "",
+        "created_at": _row_value(row, "created_at", 7 if has_details else 6),
     }
 
 
@@ -323,12 +439,13 @@ def index_useful_doc(doc_row: Dict[str, Any], *, force: bool = False, compute_em
     scope_key = scope_key_for_doc(community_id, group_id)
     title = str(doc_row.get("description") or os.path.basename(str(doc_row.get("file_path") or "")) or f"Document {doc_id}")
     file_path = str(doc_row.get("file_path") or "")
+    file_name = os.path.basename(file_path.split("?", 1)[0].rstrip("/"))
     fs = _get_firestore_client()
     if not fs:
         return IndexedDocument(doc_id=doc_id, status=TEXT_STATUS_FAILED, scope_key=scope_key, title=title, error="firestore_disabled")
 
     doc_ref = fs.collection(COLLECTION).document(scope_key).collection("docs").document(str(doc_id))
-    source_hash = _hash_text(f"{file_path}|{doc_row.get('created_at') or ''}|{title}")
+    source_hash = _hash_text(f"{file_path}|{doc_row.get('created_at') or ''}|{title}|{doc_row.get('details') or ''}")
     if not force:
         snap = doc_ref.get()
         if snap.exists:
@@ -356,6 +473,8 @@ def index_useful_doc(doc_row: Dict[str, Any], *, force: bool = False, compute_em
         "community_id": int(community_id) if community_id is not None else None,
         "group_id": int(group_id) if group_id is not None else None,
         "title": title,
+        "file_name": file_name,
+        "details": str(doc_row.get("details") or ""),
         "uploader": doc_row.get("username"),
         "file_path_hash": _hash_text(file_path),
         "source_hash": source_hash,
@@ -413,20 +532,33 @@ def backfill_existing_docs(*, limit: int = 100, force: bool = False, compute_emb
     out: Dict[str, Any] = {"indexed": 0, "failed": 0, "skipped": 0, "results": []}
     with get_db_connection() as conn:
         cursor = conn.cursor()
+        has_details = True
         try:
             cursor.execute(
                 f"""
-                SELECT id, community_id, group_id, username, file_path, description, created_at
+                SELECT id, community_id, group_id, username, file_path, description, details, created_at
                 FROM useful_docs
                 ORDER BY created_at DESC
                 LIMIT {int(limit)}
                 """
             )
             rows = cursor.fetchall() or []
-        except Exception as exc:
-            out["failed"] = 1
-            out["error"] = f"useful_docs_unavailable:{exc!s}"[:220]
-            return out
+        except Exception:
+            try:
+                has_details = False
+                cursor.execute(
+                    f"""
+                    SELECT id, community_id, group_id, username, file_path, description, created_at
+                    FROM useful_docs
+                    ORDER BY created_at DESC
+                    LIMIT {int(limit)}
+                    """
+                )
+                rows = cursor.fetchall() or []
+            except Exception as fallback_exc:
+                out["failed"] = 1
+                out["error"] = f"useful_docs_unavailable:{fallback_exc!s}"[:220]
+                return out
     for row in rows:
         doc_row = {
             "id": int(_row_value(row, "id", 0)),
@@ -435,7 +567,8 @@ def backfill_existing_docs(*, limit: int = 100, force: bool = False, compute_emb
             "username": _row_value(row, "username", 3),
             "file_path": _row_value(row, "file_path", 4),
             "description": _row_value(row, "description", 5),
-            "created_at": _row_value(row, "created_at", 6),
+            "details": _row_value(row, "details", 6, "") if has_details else "",
+            "created_at": _row_value(row, "created_at", 7 if has_details else 6),
         }
         result = index_useful_doc(doc_row, force=force, compute_embeddings=compute_embeddings)
         out["results"].append(result.__dict__)
@@ -504,6 +637,9 @@ def should_retrieve_docs_from_thread(
     texts = [user_message or "", original_post or ""]
     texts.extend(list(recent_comments or [])[-8:])
     joined = "\n".join(texts)
+    matched_ids = matched_document_ids(joined, manifest or [])
+    if matched_ids:
+        return True
     if _DOC_EXPLICIT_RE.search(joined):
         return True
     has_readable_doc = any((doc.get("text_status") == TEXT_STATUS_READABLE and int(doc.get("chunk_count") or 0) > 0) for doc in (manifest or []))
@@ -543,26 +679,34 @@ def retrieve_doc_chunks(
     query_vec = _compute_embedding_safe(query or "")
     scored: List[Tuple[float, Dict[str, Any]]] = []
     query_lower = (query or "").lower()
+    matched_ids = set(matched_document_ids(query or "", docs))
     try:
         for doc in docs[:MANIFEST_LIMIT_DEFAULT]:
             doc_id = int(doc.get("doc_id") or 0)
             if not doc_id or doc.get("text_status") != TEXT_STATUS_READABLE:
                 continue
+            doc_identity_boost = document_identity_score(query or "", doc)
             chunks_ref = fs.collection(COLLECTION).document(scope_key).collection("docs").document(str(doc_id)).collection("chunks")
             for snap in chunks_ref.limit(80).stream():
                 chunk = snap.to_dict() or {}
                 chunk["doc_id"] = doc_id
                 chunk["doc_title"] = doc.get("title") or f"Document {doc_id}"
                 score = 0.0
+                if doc_id in matched_ids:
+                    score += 1.0
+                score += min(0.5, doc_identity_boost)
                 emb = chunk.get("embedding")
                 if query_vec and isinstance(emb, list):
-                    score = _cosine_similarity(query_vec, emb)
+                    score += _cosine_similarity(query_vec, emb)
                 text = f"{chunk.get('heading') or ''} {chunk.get('summary') or ''} {chunk.get('text') or ''}".lower()
                 lexical_hits = sum(1 for word in set(re.findall(r"[a-zA-Z]{4,}", query_lower)) if word in text)
                 score += min(0.25, lexical_hits * 0.03)
                 scored.append((score, chunk))
         scored.sort(key=lambda item: item[0], reverse=True)
-        return [chunk for score, chunk in scored[: max(1, int(limit))] if score > 0 or not query_vec][: max(1, int(limit))]
+        max_results = max(1, int(limit))
+        if any(score > 0 for score, _ in scored):
+            return [chunk for score, chunk in scored if score > 0][:max_results]
+        return [chunk for _, chunk in scored[:max_results]] if not query_vec else []
     except Exception as exc:
         logger.debug("Steve doc chunk retrieval failed: %s", exc)
         return []
