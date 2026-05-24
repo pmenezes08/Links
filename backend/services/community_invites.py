@@ -55,6 +55,7 @@ def _err(key: str, status: int, **params: Any) -> Tuple[Dict[str, Any], int]:
 
 logger = logging.getLogger(__name__)
 EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+USERNAME_INVITE_GENERIC_MESSAGE = "If that user exists, we will send an invite."
 
 
 @lru_cache(maxsize=1)
@@ -342,12 +343,6 @@ def invite_username(username: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any]
             ph = get_sql_placeholder()
             if not _has_manage_permission(username, community_id):
                 return _err("communities.admin_required", 403)
-            c.execute(f"SELECT id, username FROM users WHERE LOWER(username) = LOWER({ph})", (target_username,))
-            target_row = c.fetchone()
-            if not target_row:
-                return _err("communities.invite.user_not_found", 404)
-            target_user_id = _row_value(target_row, "id", 0)
-            resolved_target_username = _row_value(target_row, "username", 1)
             c.execute(f"SELECT name, parent_community_id FROM communities WHERE id = {ph}", (community_id,))
             community_row = c.fetchone()
             if not community_row:
@@ -355,15 +350,26 @@ def invite_username(username: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any]
             community_name = _row_value(community_row, "name", 0)
             if _row_value(community_row, "parent_community_id", 1):
                 return _err("communities.invite.root_only", 400)
+            cap_payload = _member_cap_payload(c, community_id, username, target_username)
+            if cap_payload:
+                return cap_payload
+            generic_payload = {
+                "success": True,
+                "community_name": community_name,
+                "message": USERNAME_INVITE_GENERIC_MESSAGE,
+            }
+            c.execute(f"SELECT id, username FROM users WHERE LOWER(username) = LOWER({ph})", (target_username,))
+            target_row = c.fetchone()
+            if not target_row:
+                return generic_payload, 200
+            target_user_id = _row_value(target_row, "id", 0)
+            resolved_target_username = _row_value(target_row, "username", 1)
             c.execute(
                 f"SELECT 1 FROM user_communities WHERE user_id = {ph} AND community_id = {ph}",
                 (target_user_id, community_id),
             )
             if c.fetchone():
-                return _err("communities.invite.already_member", 400)
-            cap_payload = _member_cap_payload(c, community_id, username, resolved_target_username)
-            if cap_payload:
-                return cap_payload
+                return generic_payload, 200
             c.execute(
                 f"""
                 SELECT id, token
@@ -427,13 +433,7 @@ def invite_username(username: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any]
             except Exception as exc:
                 logger.warning("Failed to send username invite push to %s: %s", resolved_target_username, exc)
             conn.commit()
-            return {
-                "success": True,
-                "invite_id": invite_id,
-                "community_name": community_name,
-                "username": resolved_target_username,
-                "message": f"Invite sent to @{resolved_target_username}",
-            }, 200
+            return generic_payload, 200
     except Exception as exc:
         logger.error("Error creating username invite: %s", exc, exc_info=True)
         return {"success": False, "error": "Server error"}, 500

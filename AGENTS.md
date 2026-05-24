@@ -72,6 +72,15 @@ flows.
   touching Steve context, profiling, or KB reads, follow
   **[docs/STEVE_PRIVACY_GATE.md](docs/STEVE_PRIVACY_GATE.md)** in
   addition to this general profile privacy invariant.
+- **Steve community corpus is exact-scope.** When Steve answers inside a
+  community or group, posts, comments, replies, media, links, documents,
+  calendar events, tasks, polls, and excerpts must be loaded only from
+  the server-derived current `community_id` / `group_id`. Do not widen
+  community-resource reads to a parent/root network or sibling
+  community. `user_can_access_steve_kb(...)` gates person/profile KB
+  blocks only; it is not authorization to read unrelated community
+  content. Authorize media/documents by the owning DB row before using
+  any public URL.
 
 ## Branding
 

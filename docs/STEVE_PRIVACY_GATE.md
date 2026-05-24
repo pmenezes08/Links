@@ -22,12 +22,20 @@ These two accounts (and Steve internally) always bypass and receive full KB. No 
 
 ## Connection Rules
 
-### Community Activity (Feed, Post Detail, Comments, Replies, Nested Replies)
+### Person/Profile KB in Community Activity
 - **Permissive root-parent check**.
 - Resolve the **root/parent community** of the community in which the *original post was created* (use existing `_get_user_network_ids` logic from `steve_knowledge_base.py`).
 - If target user is a member of that root parent network → allow full KB.
 - Example: Parent A (10k members) contains Sub B (20 members). User in B asking about User Y (only in A, not in B) → allowed.
 - Even if viewed from a different community Z, anchor to the post's original community's root parent.
+- This rule gates **person/profile KB blocks only** (for example “WHAT YOU KNOW ABOUT @Jane”). It does **not** authorize reading community posts, documents, media, events, tasks, links, or polls.
+
+### Community Corpus in Feed / Post Detail / Comments / Replies
+- **Exact current-scope check**.
+- Community content is not inherited. If root community A has sub-communities B and C, content posted in A is readable only in A, content posted in B is readable only in B, and content posted in C is readable only in C.
+- When Steve is called from community C, Steve receives only C-scoped corpus: current thread, posts/comments/replies, media, links, documents, calendar events, tasks, polls, and excerpts from DB rows whose owning `community_id` is C.
+- Membership in a root/parent network does **not** let Steve inject child/sibling content. Public CDN URLs do not grant access; first authorize the owning DB row.
+- Use `backend.services.steve_community_context` for community corpus assembly. Do not use `user_can_access_steve_kb(...)` to widen corpus reads.
 
 ### Group Chats
 - **Strict intersection rule**.

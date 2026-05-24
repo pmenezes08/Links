@@ -118,6 +118,13 @@ from backend.services.reactions import (
 )
 from backend.services.steve_tool_policy import steve_tool_names_for_log as _steve_tool_names_for_log
 from backend.services.steve_tool_router import resolve_steve_hosted_tools as _resolve_steve_hosted_tools
+from backend.services.steve_community_context import (
+    build_steve_community_resource_context as _scoped_steve_community_resource_context,
+    build_steve_feed_corpus as _build_scoped_steve_feed_corpus,
+    build_steve_group_corpus as _build_scoped_steve_group_corpus,
+    build_steve_group_resource_context as _scoped_steve_group_resource_context,
+    extract_pdf_text_for_steve as _scoped_extract_pdf_text_for_steve,
+)
 
 try:
     from PIL import Image
@@ -22892,36 +22899,7 @@ Never be rude or offensive. Always be supportive even when sarcastic or cynical.
 
 def extract_pdf_text_for_steve(file_path: str, max_chars: int = 4000):
     """Extract plain text from a PDF for Steve context."""
-    try:
-        import io
-        pdf_bytes = None
-        if file_path.startswith('http'):
-            import requests as _req
-            resp = _req.get(file_path, timeout=30)
-            resp.raise_for_status()
-            pdf_bytes = resp.content
-        else:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            full_path = os.path.join(base_dir, 'static', 'uploads', file_path.lstrip('/'))
-            if not os.path.exists(full_path):
-                full_path = os.path.join(base_dir, 'uploads', file_path.lstrip('/'))
-            if not os.path.exists(full_path):
-                return None
-            with open(full_path, 'rb') as f:
-                pdf_bytes = f.read()
-        if not pdf_bytes:
-            return None
-        from pypdf import PdfReader
-        reader = PdfReader(io.BytesIO(pdf_bytes))
-        text = ""
-        for i in range(min(len(reader.pages), 15)):
-            page_text = reader.pages[i].extract_text() or ""
-            text += page_text + "\n"
-        text = ' '.join(text.split())
-        return text[:max_chars] if text.strip() else None
-    except Exception as e:
-        logger.warning(f"PDF extraction failed for {file_path}: {e}")
-        return None
+    return _scoped_extract_pdf_text_for_steve(file_path, max_chars=max_chars)
 
 
 def _build_steve_community_context(
@@ -22936,116 +22914,16 @@ def _build_steve_community_context(
     polls_limit=5,
 ):
     """Build community context string: calendar + links/docs + polls."""
-    from backend.services.database import USE_MYSQL
-    parts = []
-    events_limit = max(0, int(events_limit or 0))
-    links_limit = max(0, int(links_limit or 0))
-    docs_limit = max(0, int(docs_limit or 0))
-    polls_limit = max(0, int(polls_limit or 0))
-
-    try:
-        from backend.services.steve_community_memory import get_compact_community_memory
-
-        memory = get_compact_community_memory(int(community_id))
-        if memory:
-            parts.append("Compact community memory:\n" + memory)
-    except Exception as e:
-        logger.debug("Steve community memory context failed: %s", e)
-    
-    # Calendar events
-    try:
-        if events_limit <= 0:
-            raise ValueError("events disabled by context budget")
-        if USE_MYSQL:
-            c.execute(f"SELECT title, date, start_time, end_time, description FROM calendar_events WHERE community_id = {placeholder} AND date >= CURDATE() ORDER BY date ASC LIMIT {events_limit}", (community_id,))
-        else:
-            c.execute(f"SELECT title, date, start_time, end_time, description FROM calendar_events WHERE community_id = {placeholder} AND date >= date('now') ORDER BY date ASC LIMIT {events_limit}", (community_id,))
-        events = c.fetchall()
-        if events:
-            lines = []
-            for evt in events:
-                t = evt['title'] if hasattr(evt, 'keys') else evt[0]
-                d = evt['date'] if hasattr(evt, 'keys') else evt[1]
-                st = evt['start_time'] if hasattr(evt, 'keys') else evt[2]
-                desc = (evt['description'] if hasattr(evt, 'keys') else evt[4]) or ''
-                lines.append(f"- {t} | Date: {d}" + (f" | Time: {st}" if st else "") + (f" | {desc[:100]}" if desc else ""))
-            parts.append("Upcoming events in this community:\n" + "\n".join(lines))
-    except ValueError:
-        pass
-    except Exception as e:
-        logger.warning(f"Steve calendar context failed: {e}")
-    
-    # Useful links
-    try:
-        if links_limit <= 0:
-            raise ValueError("links disabled by context budget")
-        c.execute(f"SELECT url, description FROM useful_links WHERE community_id = {placeholder} ORDER BY created_at DESC LIMIT {links_limit}", (community_id,))
-        links = c.fetchall()
-        if links:
-            lines = []
-            for lnk in links:
-                url = lnk['url'] if hasattr(lnk, 'keys') else lnk[0]
-                desc = (lnk['description'] if hasattr(lnk, 'keys') else lnk[1]) or url
-                lines.append(f"- {desc} ({url})")
-            parts.append("Useful links in this community:\n" + "\n".join(lines))
-    except ValueError:
-        pass
-    except Exception as e:
-        logger.warning(f"Steve links context failed: {e}")
-    
-    # Documents with PDF text
-    try:
-        if docs_limit <= 0 or max_doc_chars_total <= 0:
-            raise ValueError("documents disabled by context budget")
-        c.execute(f"SELECT file_path, description FROM useful_docs WHERE community_id = {placeholder} ORDER BY created_at DESC LIMIT {docs_limit}", (community_id,))
-        docs = c.fetchall()
-        if docs:
-            doc_lines = []
-            chars_remaining = max_doc_chars_total
-            for doc in docs:
-                fp = doc['file_path'] if hasattr(doc, 'keys') else doc[0]
-                desc = (doc['description'] if hasattr(doc, 'keys') else doc[1]) or fp
-                text = extract_pdf_text_for_steve(fp, max_chars=min(4000, chars_remaining))
-                excerpt = text if text else "(Could not read document.)"
-                doc_lines.append(f"Document: {desc}\nContent (excerpt): {excerpt}")
-                if text:
-                    chars_remaining -= len(text)
-                if chars_remaining <= 0:
-                    break
-            parts.append("Community documents:\n" + "\n\n---\n\n".join(doc_lines))
-    except ValueError:
-        pass
-    except Exception as e:
-        logger.warning(f"Steve docs context failed: {e}")
-    
-    # Active polls
-    try:
-        if polls_limit <= 0:
-            raise ValueError("polls disabled by context budget")
-        if USE_MYSQL:
-            c.execute(f"SELECT p.id, p.question FROM polls p JOIN posts po ON p.post_id = po.id WHERE po.community_id = {placeholder} AND p.is_active = 1 ORDER BY po.timestamp DESC LIMIT {polls_limit}", (community_id,))
-        else:
-            c.execute(f"SELECT p.id, p.question FROM polls p JOIN posts po ON p.post_id = po.id WHERE po.community_id = {placeholder} AND p.is_active = 1 ORDER BY po.timestamp DESC LIMIT {polls_limit}", (community_id,))
-        polls = c.fetchall()
-        if polls:
-            poll_lines = []
-            for poll in polls:
-                pid = poll['id'] if hasattr(poll, 'keys') else poll[0]
-                q = poll['question'] if hasattr(poll, 'keys') else poll[1]
-                try:
-                    c.execute(f"SELECT option_text, votes FROM poll_options WHERE poll_id = {placeholder} ORDER BY id", (pid,))
-                    opts = c.fetchall()
-                    opt_strs = [f"{(o['option_text'] if hasattr(o, 'keys') else o[0])} ({(o['votes'] if hasattr(o, 'keys') else o[1])} votes)" for o in opts]
-                    poll_lines.append(f"- Poll: {q} | Options: {', '.join(opt_strs)}")
-                except Exception:
-                    poll_lines.append(f"- Poll: {q}")
-            parts.append("Active polls in this community:\n" + "\n".join(poll_lines))
-    except ValueError:
-        pass
-    except Exception as e:
-        logger.warning(f"Steve polls context failed: {e}")
-    
-    return "\n\n".join(parts)
+    return _scoped_steve_community_resource_context(
+        c,
+        community_id,
+        placeholder,
+        max_doc_chars_total=max_doc_chars_total,
+        events_limit=events_limit,
+        links_limit=links_limit,
+        docs_limit=docs_limit,
+        polls_limit=polls_limit,
+    )
 
 
 def _build_steve_group_resource_context(
@@ -23063,6 +22941,16 @@ def _build_steve_group_resource_context(
 
     Does not load community memory or parent-community-only rows (no ``group_id`` on those rows).
     """
+    return _scoped_steve_group_resource_context(
+        c,
+        group_id,
+        placeholder,
+        max_doc_chars_total=max_doc_chars_total,
+        events_limit=events_limit,
+        links_limit=links_limit,
+        docs_limit=docs_limit,
+        polls_limit=polls_limit,
+    )
     from backend.services.database import USE_MYSQL
     from backend.services.group_polls_data import ensure_group_poll_tables, poll_expired
 
@@ -23382,6 +23270,33 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 f"\nUser {author_username} mentioned you (@Steve) in their post. Respond to their post directly.",
                 f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]"
             ]
+            try:
+                _scoped_corpus = _build_scoped_steve_feed_corpus(
+                    c,
+                    placeholder,
+                    viewer_username=author_username,
+                    post_id=post_id,
+                    user_message="",
+                    include_resources=False,
+                    max_doc_chars_total=steve_config.doc_excerpt_chars_default,
+                    recent_comments_limit=steve_config.recent_comments_limit,
+                    events_limit=steve_config.events_limit,
+                    links_limit=steve_config.links_limit,
+                    docs_limit=steve_config.docs_limit,
+                    polls_limit=steve_config.polls_limit,
+                )
+                if _scoped_corpus.text:
+                    post_image_urls = _scoped_corpus.image_urls
+                    has_images = len(post_image_urls) > 0
+                    if _scoped_corpus.community_id is not None:
+                        community_id = _scoped_corpus.community_id
+                    context_parts = [
+                        _scoped_corpus.text,
+                        f"\nUser {author_username} mentioned you (@Steve) in their post. Respond to their post directly.",
+                        f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]",
+                    ]
+            except Exception as corpus_err:
+                logger.warning("Steve scoped feed corpus failed for post trigger: %s", corpus_err)
             
             if should_include_community_resources(post_content):
                 try:
@@ -23692,6 +23607,7 @@ def _steve_ai_reply_for_group_post(
     from backend.services.steve_prompt_policy import (
         append_response_policy,
         render_hosted_search_capability_instructions,
+        should_include_community_resources,
         should_include_user_profile,
     )
     from backend.services.steve_profiling_gates import user_can_access_steve_kb
@@ -23842,6 +23758,32 @@ def _steve_ai_reply_for_group_post(
         commenter_profile_ctx = ""
     else:
         commenter_profile_ctx = get_steve_context_for_user(username)
+
+    try:
+        _group_corpus = _build_scoped_steve_group_corpus(
+            c,
+            placeholder,
+            viewer_username=username,
+            group_post_id=group_post_id,
+            user_message=user_message,
+            include_resources=bool(should_include_community_resources(user_message)),
+            max_doc_chars_total=steve_config.doc_excerpt_chars_default,
+            recent_comments_limit=steve_config.recent_comments_limit,
+            events_limit=steve_config.events_limit,
+            links_limit=steve_config.links_limit,
+            docs_limit=steve_config.docs_limit,
+            polls_limit=steve_config.polls_limit,
+        )
+        if _group_corpus.text:
+            context_parts = [_group_corpus.text]
+            post_image_urls = _group_corpus.image_urls
+            has_images = len(post_image_urls) > 0
+            if _group_corpus.group_id is not None:
+                exclusive_group_id = _group_corpus.group_id
+            if _group_corpus.community_id is not None:
+                community_id = _group_corpus.community_id
+    except Exception as corpus_err:
+        logger.warning("Steve scoped group corpus failed: %s", corpus_err)
 
     context = "\n\n".join(context_parts)
     system_prompt = get_ai_personality_prompt(ai_personality)
@@ -24654,6 +24596,35 @@ def ai_steve_reply():
                 commenter_profile_ctx = ""
             else:
                 commenter_profile_ctx = get_steve_context_for_user(username)
+
+            try:
+                _feed_corpus = _build_scoped_steve_feed_corpus(
+                    c,
+                    placeholder,
+                    viewer_username=username,
+                    post_id=post_id,
+                    user_message=user_message,
+                    include_resources=bool(
+                        community_id and should_include_community_resources(user_message) and not is_group_post
+                    ),
+                    max_doc_chars_total=steve_config.doc_excerpt_chars_default,
+                    recent_comments_limit=steve_config.recent_comments_limit,
+                    events_limit=steve_config.events_limit,
+                    links_limit=steve_config.links_limit,
+                    docs_limit=steve_config.docs_limit,
+                    polls_limit=steve_config.polls_limit,
+                )
+                if _feed_corpus.text:
+                    post_image_urls = _feed_corpus.image_urls
+                    has_images = len(post_image_urls) > 0
+                    if _feed_corpus.community_id is not None:
+                        community_id = _feed_corpus.community_id
+                    context_parts = [
+                        _feed_corpus.text,
+                        "\nNote: If the user asks you to respond to or help another user, look through the comments above to find that user's question or message and address it directly.",
+                    ]
+            except Exception as corpus_err:
+                logger.warning("Steve scoped feed corpus failed for comment reply: %s", corpus_err)
 
             context = "\n\n".join(context_parts)
             
