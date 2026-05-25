@@ -65,7 +65,11 @@ function readCachedPostDetail(viewer: string, postId: string | undefined): { pos
   if (!postId) return { post: null, isGroupPost: false, cachedAt: 0 }
   const c = readDeviceCache<PostDetailCachePayload>(postDetailCacheKey(viewer, postId), POST_DETAIL_CACHE_VERSION)
   if (!c?.detailComplete) return { post: null, isGroupPost: false, cachedAt: 0 }
-  return { post: c?.post ?? null, isGroupPost: !!c?.isGroupPost, cachedAt: c?.cachedAt ?? 0 }
+  return {
+    post: normalizePostForDetail(c?.post ?? null) as Post | null,
+    isGroupPost: !!c?.isGroupPost,
+    cachedAt: c?.cachedAt ?? 0,
+  }
 }
 
 // old formatTimestamp removed; using formatSmartTime
@@ -77,50 +81,6 @@ function normalizePath(p?: string | null): string {
   if (s.startsWith('/uploads') || s.startsWith('/static')) return s
   if (s.startsWith('uploads') || s.startsWith('static')) return `/${s}`
   return `/uploads/${s}`
-}
-
-/** Matches server AI_USERNAME (bodybuilding_app.py) — Steve replies have parent_reply_id but must list with top-level rows. */
-const STEVE_AI_USERNAME = 'steve'
-function isSteveAiReply(r: Reply): boolean {
-  return (r.username || '').toLowerCase() === STEVE_AI_USERNAME
-}
-function isReplyRowTopLevel(r: Reply): boolean {
-  return !r.parent_reply_id || isSteveAiReply(r)
-}
-
-function normalizeReplyTreeForDetail(replies: Reply[] | undefined | null): Reply[] {
-  const visit = (reply: Reply): { reply: Reply | null; steveRows: Reply[] } => {
-    const normalizedChildren: Reply[] = []
-    const steveRows: Reply[] = []
-    for (const child of reply.children || []) {
-      const nextChild = visit(child)
-      if (nextChild.reply) normalizedChildren.push(nextChild.reply)
-      steveRows.push(...nextChild.steveRows)
-    }
-
-    const normalizedReply = { ...reply, children: normalizedChildren }
-    if (isSteveAiReply(normalizedReply)) {
-      return { reply: null, steveRows: [normalizedReply, ...steveRows] }
-    }
-    return { reply: normalizedReply, steveRows }
-  }
-
-  const roots: Reply[] = []
-  for (const reply of replies || []) {
-    const nextReply = visit(reply)
-    if (nextReply.reply) roots.push(nextReply.reply)
-    roots.push(...nextReply.steveRows)
-  }
-
-  return roots
-}
-
-function normalizePostForDetail(rawPost: Post | null | undefined): Post | null {
-  if (!rawPost) return null
-  return {
-    ...rawPost,
-    replies: normalizeReplyTreeForDetail(rawPost.replies),
-  }
 }
 
 export default function PostDetail(){
@@ -231,8 +191,11 @@ export default function PostDetail(){
       
       if (data.success && data.reply) {
         const steveReply = data.reply as Reply
-        // Prepend like CommunityFeed onAddReply so the row exists even if nested attach races; list filter shows Steve despite parent_reply_id.
-        setPost(p => (p ? { ...p, replies: [steveReply, ...(p.replies || [])] } : p))
+        setPost(p => {
+          if (!p) return p
+          const replies = attachReplyToPostTree(p.replies || [], steveReply, parentReplyId)
+          return normalizePostForDetail({ ...p, replies }) as Post
+        })
         try { window.dispatchEvent(new Event(ENTITLEMENTS_REFRESH_EVENT)) } catch { /* noop */ }
       } else if (!data.success) {
         console.error('[Steve AI] Error:', data.error)
@@ -1003,19 +966,10 @@ export default function PostDetail(){
     if (j?.success && j.reply){
       setPost(p => {
         if (!p) return p
-        if (parentReplyId){
-          function attach(list: Reply[]): Reply[] {
-            return list.map(item => {
-              if (item.id === parentReplyId){
-                const children = item.children ? [j.reply, ...item.children] : [j.reply]
-                return { ...item, children }
-              }
-              return { ...item, children: item.children ? attach(item.children) : item.children }
-            })
-          }
-          return { ...p, replies: attach(p.replies) }
-        }
-        return { ...p, replies: [j.reply, ...p.replies] }
+        const replies = parentReplyId
+          ? attachReplyToPostTree(p.replies, j.reply, parentReplyId)
+          : attachReplyToPostTree(p.replies, j.reply, null)
+        return normalizePostForDetail({ ...p, replies }) as Post
       })
       // Check if user mentioned @Steve and trigger AI reply (defer so user reply is committed first — avoids attach race)
       const messageText = content.trim()
@@ -1083,16 +1037,8 @@ export default function PostDetail(){
     if (j?.success && j.reply){
       setPost(p => {
         if (!p) return p
-        function attach(list: Reply[]): Reply[] {
-          return list.map(item => {
-            if (item.id === parentId){
-              const children = item.children ? [j.reply, ...item.children] : [j.reply]
-              return { ...item, children }
-            }
-            return { ...item, children: item.children ? attach(item.children) : item.children }
-          })
-        }
-        return { ...p, replies: attach(p.replies) }
+        const replies = attachReplyToPostTree(p.replies, j.reply, parentId)
+        return normalizePostForDetail({ ...p, replies }) as Post
       })
       if (containsSteveMention(text)) {
         const parentId = j.reply.id as number
@@ -1133,7 +1079,8 @@ export default function PostDetail(){
           }
           return out
         }
-        return { ...p, replies: removeById(p.replies) }
+        const next = normalizePostForDetail({ ...p, replies: removeById(p.replies) })
+        return next as Post
       })
       // Clear cache so post detail and feed reflect the deletion immediately
       clearDeviceCache(`post-${post_id}`)
@@ -2049,8 +1996,7 @@ export default function PostDetail(){
         </div>
 
         <div className="mt-3 rounded-2xl border border-white/10">
-          {/* Top-level + Steve AI replies (Steve has parent_reply_id in DB but should appear in this list) */}
-          {post.replies.filter(r => isReplyRowTopLevel(r)).map(r => (
+          {post.replies.map(r => (
             <ReplyNodeMemo
               key={r.id}
               reply={r}
