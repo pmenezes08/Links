@@ -1542,7 +1542,7 @@ export default function CommentReply() {
           flexDirection: 'column',
         }}
       >
-        <div className="max-w-2xl mx-auto px-3 py-3 w-full">
+        <div className="max-w-2xl mx-auto px-3 py-2 w-full">
           {(file || selectedGif || replyPreview) && (
             <div className="mb-2 flex items-center gap-2 flex-wrap">
               {file && filePreviewUrl && (
@@ -1595,7 +1595,7 @@ export default function CommentReply() {
             </div>
           )}
 
-          <div className="flex min-w-0 items-end gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <div className="relative">
               <button
                 type="button"
@@ -1646,7 +1646,7 @@ export default function CommentReply() {
               className="hidden"
             />
 
-            <div className="flex-1 min-w-0 flex items-center rounded-lg border border-white/20 bg-white/5">
+            <div className="flex-1 min-w-0 flex min-h-9 items-center rounded-lg border border-[#4db6ac] bg-white/8">
               <MentionTextarea
                 value={replyText}
                 onChange={setReplyText}
@@ -1654,7 +1654,7 @@ export default function CommentReply() {
                 postId={post?.id}
                 replyId={reply.id}
                 placeholder={t('feed.reply_to_user_ellipsis', { username: reply.username })}
-                className="bg-transparent px-3 py-2 text-[15px] text-white placeholder-white/40 outline-none resize-none max-h-24 min-h-[36px]"
+                className="w-full bg-transparent px-3 py-1 text-[15px] leading-5 text-white placeholder-white/40 outline-none resize-none max-h-24 min-h-0"
                 rows={1}
                 autoExpand
                 perfDegraded={!!uploadFile}

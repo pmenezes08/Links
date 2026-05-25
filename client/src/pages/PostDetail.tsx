@@ -2256,7 +2256,7 @@ export default function PostDetail(){
         {/* Composer card */}
         <div
           ref={composerCardRef}
-          className="relative max-w-2xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-2.5 py-3"
+          className="relative max-w-2xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-2.5 py-2"
           style={{ background: '#0a0a0c' }}
         >
           {/* Attachment previews - show above input row when files attached */}
@@ -2322,7 +2322,7 @@ export default function PostDetail(){
           )}
 
           {/* Main input row */}
-          <div className="flex min-w-0 items-end gap-1.5">
+          <div className="flex min-w-0 items-center gap-1.5">
             {/* Attachment + button with dropdown */}
             <div className="relative">
               <button 
@@ -2384,14 +2384,14 @@ export default function PostDetail(){
             />
 
             {/* Message input container with turquoise border */}
-            <div className="flex-1 min-w-0 flex items-center rounded-lg border border-[#4db6ac] bg-white/8">
+            <div className="flex-1 min-w-0 flex min-h-9 items-center rounded-lg border border-[#4db6ac] bg-white/8">
               <MentionTextarea
                 value={content}
                 onChange={setContent}
                 communityId={(post as any)?.community_id}
                 postId={post?.id}
                 placeholder={t('feed.write_reply_placeholder')}
-                className="bg-transparent px-3 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[36px]"
+                className="w-full bg-transparent px-3 py-1 text-[15px] leading-5 text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-0"
                 rows={1}
                 autoExpand
                 perfDegraded={!!uploadFile}
@@ -3284,7 +3284,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             </div>
           )}
           {/* Input row */}
-          <div className="flex min-w-0 items-end gap-1.5">
+          <div className="flex min-w-0 items-center gap-1.5">
             {/* + button with dropdown */}
             <div className="relative">
               <button 
@@ -3325,14 +3325,14 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             
             <input ref={inlineFileRef} type="file" accept="image/*,video/*" onChange={(e) => { const next = (e.target as HTMLInputElement).files?.[0] || null; setImg(next); setInlineGif(null); setGifFile(null) }} className="hidden" />
             
-            <div className="flex-1 min-w-0 flex items-center rounded-lg border border-[#4db6ac] bg-white/5">
+            <div className="flex-1 min-w-0 flex min-h-8 items-center rounded-lg border border-[#4db6ac] bg-white/5">
               <MentionTextarea
                 value={text}
                 onChange={setText}
                 communityId={communityId}
                 postId={postId}
                 placeholder={t('feed.reply_to_user', { username: reply.username })}
-                className="bg-transparent px-3 py-2 text-[14px] text-white placeholder-white/50 outline-none resize-none max-h-20 min-h-[36px]"
+                className="w-full bg-transparent px-3 py-1 text-[14px] leading-5 text-white placeholder-white/50 outline-none resize-none max-h-20 min-h-0"
                 rows={1}
                 autoExpand
               />
