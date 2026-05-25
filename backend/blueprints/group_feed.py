@@ -656,6 +656,11 @@ def api_toggle_group_key_post():
                 conn.commit()
             else:
                 conn.commit()
+            try:
+                from backend.services.post_detail_cache import invalidate_post_detail_viewer
+                invalidate_post_detail_viewer(group_post_id, username, scope="group")
+            except Exception:
+                pass
             return jsonify({"success": True, "starred": not existing})
     except Exception as e:
         logger.error("toggle_group_key_post error: %s", e, exc_info=True)
@@ -719,6 +724,11 @@ def api_toggle_group_community_key_post():
                     (group_id, group_post_id, now),
                 )
             conn.commit()
+            try:
+                from backend.services.post_detail_cache import invalidate_post_detail
+                invalidate_post_detail(group_post_id, scope="group")
+            except Exception:
+                pass
             return jsonify({"success": True, "starred": not existing})
     except Exception as e:
         logger.error("toggle_group_community_key_post error: %s", e, exc_info=True)

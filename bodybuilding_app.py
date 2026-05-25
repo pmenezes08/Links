@@ -16441,6 +16441,11 @@ def add_reaction():
                 invalidate_community_cache(comm_id)
         except Exception as cache_err:
             logger.warning(f"Failed to invalidate cache after reaction for community {comm_id}: {cache_err}")
+        try:
+            from backend.services.post_detail_cache import invalidate_post_detail
+            invalidate_post_detail(post_id, scope="community")
+        except Exception as cache_err:
+            logger.warning(f"Post detail cache invalidate after reaction failed: {cache_err}")
 
 
 
@@ -18180,6 +18185,11 @@ def post_reply():
                 invalidate_community_cache(community_id)
         except Exception as cache_err:
             logger.warning(f"Failed to invalidate cache after reply for community {community_id}: {cache_err}")
+        try:
+            from backend.services.post_detail_cache import invalidate_post_detail
+            invalidate_post_detail(post_id, scope="community")
+        except Exception as cache_err:
+            logger.warning(f"Post detail cache invalidate after reply add failed: {cache_err}")
 
         return jsonify({
             'success': True,
@@ -21292,6 +21302,11 @@ def delete_post():
                 logger.info(f"Invalidated cache for community {post_community_id} after post deletion")
             except Exception as cache_err:
                 logger.warning(f"Failed to invalidate cache after delete for community {post_community_id}: {cache_err}")
+        try:
+            from backend.services.post_detail_cache import invalidate_post_detail
+            invalidate_post_detail(post_id, scope="community")
+        except Exception as cache_err:
+            logger.warning(f"Post detail cache invalidate after delete failed: {cache_err}")
         
         logger.info(f"Post {post_id} deleted successfully by {username}")
         return jsonify({'success': True, 'message': 'Post deleted!'}), 200
@@ -22049,6 +22064,11 @@ def edit_post():
                 invalidate_community_cache(post_community_id)
             except Exception as cache_err:
                 logger.warning(f"Failed to invalidate cache after edit for community {post_community_id}: {cache_err}")
+        try:
+            from backend.services.post_detail_cache import invalidate_post_detail
+            invalidate_post_detail(post_id, scope="community")
+        except Exception as cache_err:
+            logger.warning(f"Post detail cache invalidate after edit failed: {cache_err}")
         
         # Dual-write: update Firestore so PostDetail reads fresh content
         try:
@@ -22634,10 +22654,11 @@ def delete_reply():
 
             # Invalidate caches so deleted comment no longer appears in post detail or feed
             try:
+                from backend.services.post_detail_cache import invalidate_post_detail
                 if reply_community_id:
                     invalidate_community_cache(reply_community_id)
                 if reply_post_id:
-                    cache.delete(f"post:{reply_post_id}")
+                    invalidate_post_detail(reply_post_id, scope="community")
                 invalidate_user_cache(reply_owner)
             except Exception as cache_err:
                 logger.warning(f"Cache invalidation after reply delete failed: {cache_err}")
@@ -24628,7 +24649,12 @@ def ai_steve_reply():
             except Exception:
                 pass
             
-            # Return the AI reply with all necessary fields for frontend
+            try:
+                from backend.services.post_detail_cache import invalidate_post_detail
+                invalidate_post_detail(post_id, scope="community")
+            except Exception as cache_err:
+                logger.warning(f"Post detail cache invalidate after Steve reply failed: {cache_err}")
+
             return jsonify({
                 'success': True,
                 'reply': {
@@ -24678,6 +24704,15 @@ def add_reply_reaction():
                 c.execute("INSERT INTO reply_reactions (reply_id, username, reaction_type) VALUES (?, ?, ?)", (reply_id, username, reaction_type))
             conn.commit()
             new_counts, new_user_reaction = get_reply_reaction_summary(c, reply_id, username)
+            try:
+                c.execute("SELECT post_id FROM replies WHERE id = ?", (reply_id,))
+                pr = c.fetchone()
+                pid_for_cache = (pr['post_id'] if hasattr(pr, 'keys') else pr[0]) if pr else None
+                if pid_for_cache:
+                    from backend.services.post_detail_cache import invalidate_post_detail
+                    invalidate_post_detail(int(pid_for_cache), scope="community")
+            except Exception as cache_err:
+                logger.warning(f"Post detail cache invalidate after reply reaction failed: {cache_err}")
             return jsonify({'success': True, 'counts': new_counts, 'user_reaction': new_user_reaction})
     except Exception as e:
         logger.error(f"Error adding reply reaction: {str(e)}")
@@ -24810,12 +24845,12 @@ def get_reply_reactors(reply_id: int):
 @app.route('/get_post')
 @login_required
 def get_post():
-    """Thin wrapper over ``post_detail_read.read_community_post_detail``."""
-    from backend.services.post_detail_read import read_community_post_detail
+    """Thin wrapper over the cached community post-detail read."""
+    from backend.services.post_detail_cache import get_cached_community_post_detail
 
     username = session.get('username')
     post_id = request.args.get('post_id', type=int)
-    body, status = read_community_post_detail(post_id or 0, username)
+    body, status = get_cached_community_post_detail(post_id or 0, username)
     return jsonify(body), status
 
 
@@ -27338,6 +27373,11 @@ def api_toggle_key_post():
                     schedule_steve_profiling_snapshot_refresh(username)
                 except Exception:
                     pass
+                try:
+                    from backend.services.post_detail_cache import invalidate_post_detail_viewer
+                    invalidate_post_detail_viewer(post_id, username, scope="community")
+                except Exception:
+                    pass
                 return jsonify({'success': True, 'starred': False})
             else:
                 now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -27348,6 +27388,11 @@ def api_toggle_key_post():
                         schedule_steve_profiling_snapshot_refresh,
                     )
                     schedule_steve_profiling_snapshot_refresh(username)
+                except Exception:
+                    pass
+                try:
+                    from backend.services.post_detail_cache import invalidate_post_detail_viewer
+                    invalidate_post_detail_viewer(post_id, username, scope="community")
                 except Exception:
                     pass
                 return jsonify({'success': True, 'starred': True})
@@ -27383,11 +27428,21 @@ def api_toggle_community_key_post():
             if existing:
                 c.execute("DELETE FROM community_key_posts WHERE community_id = ? AND post_id = ?", (community_id, post_id))
                 conn.commit()
+                try:
+                    from backend.services.post_detail_cache import invalidate_post_detail
+                    invalidate_post_detail(post_id, scope="community")
+                except Exception:
+                    pass
                 return jsonify({'success': True, 'starred': False})
             else:
                 now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 c.execute("INSERT INTO community_key_posts (community_id, post_id, created_at) VALUES (?, ?, ?)", (community_id, post_id, now))
                 conn.commit()
+                try:
+                    from backend.services.post_detail_cache import invalidate_post_detail
+                    invalidate_post_detail(post_id, scope="community")
+                except Exception:
+                    pass
                 return jsonify({'success': True, 'starred': True})
     except Exception as e:
         logger.error(f"toggle community key post error: {e}")
@@ -27864,7 +27919,16 @@ def edit_reply():
             c.execute(f"UPDATE replies SET content={ph} WHERE id={ph}", (new_content, reply_id))
             conn.commit()
 
-            # Return minimal updated reply
+            try:
+                c.execute(f"SELECT post_id FROM replies WHERE id={ph}", (reply_id,))
+                pr = c.fetchone()
+                pid_for_cache = (pr['post_id'] if hasattr(pr, 'keys') else pr[0]) if pr else None
+                if pid_for_cache:
+                    from backend.services.post_detail_cache import invalidate_post_detail
+                    invalidate_post_detail(int(pid_for_cache), scope="community")
+            except Exception as cache_err:
+                logger.warning(f"Post detail cache invalidate after reply edit failed: {cache_err}")
+
             return jsonify({'success': True, 'reply': {'id': reply_id, 'content': new_content}})
     except Exception as e:
         logger.error(f"Error editing reply {username}: {e}")
@@ -29501,15 +29565,15 @@ def api_groups_my():
 @app.route('/api/group_post')
 @login_required
 def api_group_post():
-    """Thin wrapper over ``post_detail_read.read_group_post_detail``."""
-    from backend.services.post_detail_read import read_group_post_detail
+    """Thin wrapper over the cached group post-detail read."""
+    from backend.services.post_detail_cache import get_cached_group_post_detail
 
     username = session.get('username')
     try:
         post_id = int(request.args.get('post_id', '0'))
     except Exception:
         return jsonify({'success': False, 'error': 'Invalid post_id'})
-    body, status = read_group_post_detail(post_id, username)
+    body, status = get_cached_group_post_detail(post_id, username)
     return jsonify(body), status
 
 
@@ -29836,12 +29900,27 @@ def api_group_posts_react():
                     if prev == reaction:
                         c.execute(f"DELETE FROM {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} WHERE group_post_id={get_sql_placeholder()} AND username={get_sql_placeholder()}", (post_id, username))
                         if not USE_MYSQL: conn.commit()
+                        try:
+                            from backend.services.post_detail_cache import invalidate_post_detail
+                            invalidate_post_detail(post_id, scope="group")
+                        except Exception:
+                            pass
                         return jsonify({'success': True, 'user_reaction': None})
                     else:
                         c.execute(f"UPDATE {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} SET reaction={get_sql_placeholder()} WHERE group_post_id={get_sql_placeholder()} AND username={get_sql_placeholder()}", (reaction, post_id, username))
                         if not USE_MYSQL: conn.commit()
+                        try:
+                            from backend.services.post_detail_cache import invalidate_post_detail
+                            invalidate_post_detail(post_id, scope="group")
+                        except Exception:
+                            pass
                         return jsonify({'success': True, 'user_reaction': reaction})
             if not USE_MYSQL: conn.commit()
+            try:
+                from backend.services.post_detail_cache import invalidate_post_detail
+                invalidate_post_detail(post_id, scope="group")
+            except Exception:
+                pass
             return jsonify({'success': True, 'user_reaction': reaction})
     except Exception as e:
         logger.error(f"api_group_posts_react error: {e}")
@@ -29897,6 +29976,11 @@ def api_group_posts_edit():
             else:
                 c.execute(f"UPDATE {'`group_posts`' if USE_MYSQL else 'group_posts'} SET content={ph} WHERE id={ph}", (content, post_id))
             if not USE_MYSQL: conn.commit()
+            try:
+                from backend.services.post_detail_cache import invalidate_post_detail
+                invalidate_post_detail(post_id, scope="group")
+            except Exception as cache_err:
+                logger.warning(f"Post detail cache invalidate after group edit failed: {cache_err}")
             return jsonify({'success': True})
     except Exception as e:
         logger.error(f"api_group_posts_edit error: {e}")
@@ -29938,6 +30022,11 @@ def api_group_posts_delete():
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
             c.execute(f"DELETE FROM {'`group_posts`' if USE_MYSQL else 'group_posts'} WHERE id={ph}", (post_id,))
             if not USE_MYSQL: conn.commit()
+            try:
+                from backend.services.post_detail_cache import invalidate_post_detail
+                invalidate_post_detail(post_id, scope="group")
+            except Exception as cache_err:
+                logger.warning(f"Post detail cache invalidate after group delete failed: {cache_err}")
             return jsonify({'success': True})
     except Exception as e:
         logger.error(f"api_group_posts_delete error: {e}")
@@ -30157,6 +30246,11 @@ def api_group_replies_create():
                 ),
                 daemon=True,
             ).start()
+        try:
+            from backend.services.post_detail_cache import invalidate_post_detail
+            invalidate_post_detail(post_id, scope="group")
+        except Exception as cache_err:
+            logger.warning(f"Post detail cache invalidate after group reply failed: {cache_err}")
         return jsonify(resp_body)
     except Exception as e:
         logger.error(f"api_group_replies_create error: {e}")
@@ -30209,6 +30303,16 @@ def api_group_replies_react():
             grr_t = '`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'
             c.execute(f"SELECT reaction, COUNT(*) as c FROM {grr_t} WHERE group_reply_id={get_sql_placeholder()} GROUP BY reaction", (reply_id,))
             counts = { (r['reaction'] if hasattr(r, 'keys') else r[0]): (r['c'] if hasattr(r, 'keys') else r[1]) for r in (c.fetchall() or []) }
+            try:
+                gr_t = '`group_replies`' if USE_MYSQL else 'group_replies'
+                c.execute(f"SELECT group_post_id FROM {gr_t} WHERE id={ph}", (reply_id,))
+                gpr = c.fetchone()
+                gpid_for_cache = (gpr['group_post_id'] if hasattr(gpr, 'keys') else gpr[0]) if gpr else None
+                if gpid_for_cache:
+                    from backend.services.post_detail_cache import invalidate_post_detail
+                    invalidate_post_detail(int(gpid_for_cache), scope="group")
+            except Exception as cache_err:
+                logger.warning(f"Post detail cache invalidate after group reply react failed: {cache_err}")
             return jsonify({'success': True, 'user_reaction': ur, 'counts': counts})
     except Exception as e:
         logger.error(f"api_group_replies_react error: {e}")

@@ -44,6 +44,11 @@ CACHE_TTL_USER_PARENT_DASHBOARD = int(os.environ.get('CACHE_TTL_USER_PARENT_DASH
 MESSAGE_CACHE_TTL = int(os.environ.get('CACHE_TTL_MESSAGES', '5'))  # 5 seconds to reduce stale windows
 CHAT_THREADS_TTL = int(os.environ.get('CACHE_TTL_CHAT_THREADS', '120')) # 2 minutes
 IMAGE_CACHE_TTL = int(os.environ.get('CACHE_TTL_IMAGES', '7200'))    # 2 hours
+# Post detail cache (viewer-scoped, versioned prefix). Tight TTL so a stale
+# blob is short-lived; explicit invalidation runs at mutation sites.
+CACHE_TTL_POST_DETAIL = int(os.environ.get('CACHE_TTL_POST_DETAIL', '60'))
+CACHE_TTL_POST_DETAIL_METRICS = int(os.environ.get('CACHE_TTL_POST_DETAIL_METRICS', '30'))
+POST_DETAIL_CACHE_VERSION = os.environ.get('POST_DETAIL_CACHE_VERSION', 'v1')
 
 # Memory management
 MAX_CACHE_ENTRIES = int(os.environ.get('CACHE_MAX_ENTRIES', '10000'))
@@ -342,6 +347,28 @@ def community_feed_user_cache_key(community_id, username):
 
 def user_parent_dashboard_cache_key(username):
     return f"user_parent_dashboard:{username}"
+
+
+# --- Post detail cache keys (viewer-scoped, versioned) -----------------------
+
+def post_detail_community_cache_key(post_id, viewer):
+    """Viewer-scoped key for a community/general post detail blob."""
+    return f"post_detail:{POST_DETAIL_CACHE_VERSION}:community:{int(post_id)}:viewer:{(viewer or '_anon').lower()}"
+
+
+def post_detail_group_cache_key(post_id, viewer):
+    """Viewer-scoped key for a group post detail blob."""
+    return f"post_detail:{POST_DETAIL_CACHE_VERSION}:group:{int(post_id)}:viewer:{(viewer or '_anon').lower()}"
+
+
+def post_detail_community_cache_pattern(post_id):
+    """Wildcard pattern for invalidating every viewer of one community post."""
+    return f"post_detail:{POST_DETAIL_CACHE_VERSION}:community:{int(post_id)}:viewer:*"
+
+
+def post_detail_group_cache_pattern(post_id):
+    """Wildcard pattern for invalidating every viewer of one group post."""
+    return f"post_detail:{POST_DETAIL_CACHE_VERSION}:group:{int(post_id)}:viewer:*"
 
 def user_community_tree_cache_key(username):
     return f"user_community_tree:{username}"
