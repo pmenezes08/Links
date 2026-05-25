@@ -12835,51 +12835,63 @@ def get_messages():
                     from backend.services.firestore_reads import get_dm_messages as fs_get_dm
                     messages, is_delta, has_more = fs_get_dm(username, peer_username, since_id=since_id_int, before_id=before_id_int)
                     logger.info(f"Firestore DM read: {len(messages)} msgs for {username}<->{peer_username} (delta={is_delta}, more={has_more})")
-                    # Mark messages as read in MySQL (badges/unread counts come from MySQL)
-                    dm_marked_read = 0
-                    if not before_id_int:
+                    fs_initial_empty = (
+                        not since_id_int
+                        and not before_id_int
+                        and not messages
+                    )
+                    if fs_initial_empty:
+                        logger.info(
+                            "Firestore DM empty on initial load for %s<->%s; falling back to MySQL",
+                            username,
+                            peer_username,
+                        )
+                    else:
+                        # Mark messages as read in MySQL (badges/unread counts come from MySQL)
+                        dm_marked_read = 0
+                        if not before_id_int:
+                            try:
+                                with get_db_connection() as _mr_conn:
+                                    _mr_c = _mr_conn.cursor()
+                                    _mr_c.execute("UPDATE messages SET is_read=1 WHERE sender=%s AND receiver=%s AND is_read=0" if USE_MYSQL else "UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (peer_username, username))
+                                    dm_marked_read = _mr_c.rowcount or 0
+                                    _mr_conn.commit()
+                                    if dm_marked_read > 0:
+                                        try:
+                                            from backend.services.firebase_notifications import send_fcm_to_user_badge_only, get_total_badge_count
+                                            badge_count = get_total_badge_count(username)
+                                            send_fcm_to_user_badge_only(username, badge_count=badge_count)
+                                        except Exception:
+                                            pass
+                                        try:
+                                            invalidate_message_cache(username, peer_username)
+                                        except Exception:
+                                            pass
+                            except Exception as mr_err:
+                                logger.warning(f"Failed to mark DM messages as read: {mr_err}")
+                        # WhatsApp-style delete: filter Firestore messages by deleted_at
                         try:
-                            with get_db_connection() as _mr_conn:
-                                _mr_c = _mr_conn.cursor()
-                                _mr_c.execute("UPDATE messages SET is_read=1 WHERE sender=%s AND receiver=%s AND is_read=0" if USE_MYSQL else "UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (peer_username, username))
-                                dm_marked_read = _mr_c.rowcount or 0
-                                _mr_conn.commit()
-                                if dm_marked_read > 0:
-                                    try:
-                                        from backend.services.firebase_notifications import send_fcm_to_user_badge_only, get_total_badge_count
-                                        badge_count = get_total_badge_count(username)
-                                        send_fcm_to_user_badge_only(username, badge_count=badge_count)
-                                    except Exception:
-                                        pass
-                                    try:
-                                        invalidate_message_cache(username, peer_username)
-                                    except Exception:
-                                        pass
-                        except Exception as mr_err:
-                            logger.warning(f"Failed to mark DM messages as read: {mr_err}")
-                    # WhatsApp-style delete: filter Firestore messages by deleted_at
-                    try:
-                        with get_db_connection() as _dc2:
-                            _dcc2 = _dc2.cursor()
-                            _dcc2.execute("SELECT deleted_at FROM deleted_chat_threads WHERE username = ? AND other_username = ?", (username, peer_username))
-                            _dr2 = _dcc2.fetchone()
-                            if _dr2:
-                                _da2 = str(_dr2['deleted_at'] if hasattr(_dr2, 'keys') else _dr2[0])
-                                if _da2:
-                                    from datetime import datetime as _dt
-                                    _del_dt2 = _dt.strptime(_da2[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
-                                    messages = [m for m in messages if m.get('time') and _dt.strptime(str(m['time'])[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S') > _del_dt2]
-                    except Exception:
-                        pass
-                    if not messages:
-                        has_more = False
-                    return jsonify({
-                        'success': True,
-                        'messages': messages,
-                        'is_delta': is_delta,
-                        'has_more': has_more,
-                        'steve_is_typing': _steve_dm_typing_for(peer_username),
-                    })
+                            with get_db_connection() as _dc2:
+                                _dcc2 = _dc2.cursor()
+                                _dcc2.execute("SELECT deleted_at FROM deleted_chat_threads WHERE username = ? AND other_username = ?", (username, peer_username))
+                                _dr2 = _dcc2.fetchone()
+                                if _dr2:
+                                    _da2 = str(_dr2['deleted_at'] if hasattr(_dr2, 'keys') else _dr2[0])
+                                    if _da2:
+                                        from datetime import datetime as _dt
+                                        _del_dt2 = _dt.strptime(_da2[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                                        messages = [m for m in messages if m.get('time') and _dt.strptime(str(m['time'])[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S') > _del_dt2]
+                        except Exception:
+                            pass
+                        if not messages:
+                            has_more = False
+                        return jsonify({
+                            'success': True,
+                            'messages': messages,
+                            'is_delta': is_delta,
+                            'has_more': has_more,
+                            'steve_is_typing': _steve_dm_typing_for(peer_username),
+                        })
     except Exception as fs_err:
         logger.warning(f"Firestore DM read failed, falling back to MySQL: {fs_err}")
 

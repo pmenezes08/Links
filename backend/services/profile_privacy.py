@@ -9,6 +9,9 @@ from backend.services.database import get_db_connection, get_sql_placeholder
 
 _MAX_PARENT_DEPTH = 32
 
+# Product/system DM peers — not community members but always reachable in DMs.
+_SYSTEM_DM_PEER_USERNAMES = frozenset({"steve"})
+
 
 def _row_value(row: Any, key: str, idx: int) -> Any:
     if row is None:
@@ -26,6 +29,11 @@ def _row_value(row: Any, key: str, idx: int) -> Any:
 
 def _normalize_username(username: Optional[str]) -> str:
     return str(username or "").strip().lower()
+
+
+def is_system_dm_peer_username(username: Optional[str]) -> bool:
+    """Return true for built-in DM peers (e.g. Steve) that are not in user communities."""
+    return _normalize_username(username) in _SYSTEM_DM_PEER_USERNAMES
 
 
 def resolve_username_case(cursor: Any, username: str) -> Optional[str]:
@@ -146,6 +154,8 @@ def can_view_profile(
     if not viewer or not target:
         return False
     if _normalize_username(viewer) == _normalize_username(target):
+        return True
+    if is_system_dm_peer_username(target):
         return True
 
     if cursor is None:
