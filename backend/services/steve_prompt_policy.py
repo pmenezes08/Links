@@ -40,13 +40,31 @@ _CASUAL_RE = re.compile(
     re.IGNORECASE,
 )
 _COMMUNITY_RESOURCE_RE = re.compile(
-    r"\b(document|docs|file|pdf|event|calendar|link|poll|community resource|uploaded|attachment)\b",
+    r"\b("
+    r"document|documents|doc|docs|"
+    r"file|files|"
+    r"pdf|pdfs|"
+    r"event|events|calendar|"
+    r"link|links|poll|polls|"
+    r"community resource|community resources|"
+    r"uploaded|upload|attachment|attachments|"
+    r"documento|documentos|ficheiro|ficheiros|arquivo|arquivos|"
+    r"calend[aá]rio|evento|eventos|"
+    r"vota[cç][aã]o|vota[cç][õo]es"
+    r")\b",
     re.IGNORECASE,
 )
 _RESOURCE_FOLLOWUP_RE = re.compile(
-    r"\b(summary|summarize|summarise|feedback|review|critique|evaluate|analyse|analyze|assess|"
-    r"structure|recommendation|recommend|takeaways|key points|what does it say|what is it about|"
-    r"read it|explain it|the new one|latest|that one|this one)\b",
+    r"\b("
+    r"summary|summarize|summarise|"
+    r"feedback|review|critique|evaluate|analyse|analyze|assess|"
+    r"structure|recommendation|recommend|takeaways|key points|"
+    r"what does it say|what is it about|"
+    r"read it|read them|explain it|"
+    r"the new one|latest|that one|this one|"
+    r"resumo|resumir|ler|lê|leia|"
+    r"o que diz|sobre o que"
+    r")\b",
     re.IGNORECASE,
 )
 _PROFILE_RE = re.compile(
@@ -91,6 +109,48 @@ def should_include_user_profile(user_message: str) -> bool:
 
 def should_include_community_resources(user_message: str) -> bool:
     return bool(_COMMUNITY_RESOURCE_RE.search(user_message or ""))
+
+
+def context_includes_document_section(context: str) -> bool:
+    """True when assembled Steve resource context includes a documents block."""
+    text = context or ""
+    return "Community documents:" in text or "Group documents:" in text
+
+
+def render_community_resource_system_appendix(*, includes_documents: bool) -> str:
+    """System-prompt lines for community/group resource grounding."""
+    if includes_documents:
+        return (
+            "\nYou have access to this community's upcoming events, useful links, "
+            "document excerpts, and active polls. Use them when answering questions about community resources. "
+            "If the user asks about an uploaded document, base your answer only on the document excerpts in the context; "
+            "if there is no excerpt or it says the document could not be read, say so instead of inventing content."
+        )
+    return (
+        "\nYou have access to this community's upcoming events, useful links, and active polls. "
+        "Use them when answering questions about community resources."
+    )
+
+
+def render_group_resource_system_appendix(*, includes_documents: bool) -> str:
+    """System-prompt lines for exclusive-group resource grounding."""
+    doc_clause = (
+        "document excerpts, "
+        if includes_documents
+        else ""
+    )
+    doc_grounding = (
+        " Prefer facts from those excerpts over guessing; "
+        "if an excerpt is missing or unreadable, say so."
+        if includes_documents
+        else " Prefer facts from that block over guessing."
+    )
+    return (
+        f"\nBase your answer on this group thread, the optional \"Group resources\" block in the user message "
+        f"(this group's calendar, links, {doc_clause}and polls), "
+        f"and any user/mention context below.{doc_grounding} "
+        "Do not rely on parent-community resources that are not present in that block or the thread."
+    )
 
 
 def should_include_community_resources_from_thread(

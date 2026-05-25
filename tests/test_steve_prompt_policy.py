@@ -7,8 +7,11 @@ from backend.services.steve_prompt_policy import (
     MODE_REVIEW_CRITIQUE,
     MODE_SUBSTANTIVE_ANALYSIS,
     classify_response_mode,
+    context_includes_document_section,
+    render_community_resource_system_appendix,
     render_response_policy_prompt,
     should_include_community_resources,
+    should_include_community_resources_from_thread,
     should_include_user_profile,
 )
 
@@ -58,4 +61,33 @@ def test_context_injection_heuristics_are_deliberate():
 
     assert should_include_community_resources("Can you summarize the uploaded PDF?")
     assert should_include_community_resources("What events are in the calendar?")
+    assert should_include_community_resources("read the documents")
+    assert should_include_community_resources("podes ler os documentos?")
     assert not should_include_community_resources("What do you think about this idea?")
+
+
+def test_thread_activation_with_plurals_and_followups():
+    assert should_include_community_resources_from_thread("read the documents")
+    assert should_include_community_resources_from_thread("summarize the pdf")
+    assert should_include_community_resources_from_thread("resumo do documento")
+    assert should_include_community_resources_from_thread(
+        "what do you think?",
+        has_recent_docs=True,
+        original_post="Can you read them?",
+    )
+    assert not should_include_community_resources_from_thread(
+        "nice post!",
+        has_recent_docs=False,
+    )
+
+
+def test_document_section_detection_and_conditional_system_prompt():
+    assert context_includes_document_section("Community documents:\n- foo")
+    assert context_includes_document_section("Group documents:\n- bar")
+    assert not context_includes_document_section("Upcoming events in this community:\n- Meetup")
+
+    with_docs = render_community_resource_system_appendix(includes_documents=True)
+    without_docs = render_community_resource_system_appendix(includes_documents=False)
+    assert "document excerpts" in with_docs
+    assert "document excerpts" not in without_docs
+    assert "could not be read" in with_docs

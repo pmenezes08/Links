@@ -22,6 +22,49 @@ from typing import Any, Iterable, Optional, Sequence
 logger = logging.getLogger(__name__)
 
 
+def scope_has_useful_docs(
+    c: Any,
+    placeholder: str,
+    *,
+    community_id: Optional[int] = None,
+    group_id: Optional[int] = None,
+) -> bool:
+    """Return True when the exact scope has at least one useful_docs row."""
+    try:
+        if group_id is not None:
+            c.execute(
+                f"SELECT 1 FROM useful_docs WHERE group_id = {placeholder} LIMIT 1",
+                (int(group_id),),
+            )
+        elif community_id is not None:
+            c.execute(
+                f"""
+                SELECT 1 FROM useful_docs
+                WHERE community_id = {placeholder}
+                  AND (group_id IS NULL OR COALESCE(group_id, 0) = 0)
+                LIMIT 1
+                """,
+                (int(community_id),),
+            )
+        else:
+            return False
+        return c.fetchone() is not None
+    except Exception as e:
+        logger.debug("scope_has_useful_docs failed: %s", e)
+        return False
+
+
+def _memory_context_is_usable(memory_text: str, info: dict) -> bool:
+    """Prefer Firestore memory only when readable chunk text was retrieved."""
+    if not (memory_text or "").strip():
+        return False
+    if (info.get("chunk_count") or 0) > 0:
+        return True
+    if "Relevant document excerpts" in memory_text:
+        return True
+    return False
+
+
 def extract_pdf_text_for_steve(file_path: str, max_chars: int = 4000) -> Optional[str]:
     """Legacy on-the-fly PDF text extraction for Steve context.
 
@@ -105,7 +148,7 @@ def _docs_section_from_memory_or_legacy(
         memory_text = ""
         info = {"manifest_count": 0}
 
-    if memory_text and (info.get("manifest_count") or 0) > 0:
+    if _memory_context_is_usable(memory_text, info):
         return f"{section_label}:\n{memory_text}"
 
     try:
@@ -220,7 +263,7 @@ def build_steve_community_context(
     docs_section = _docs_section_from_memory_or_legacy(
         c,
         placeholder,
-        scope_sql=f"community_id = {placeholder}",
+        scope_sql=f"community_id = {placeholder} AND (group_id IS NULL OR COALESCE(group_id, 0) = 0)",
         scope_params=(community_id,),
         docs_limit=docs_limit,
         max_doc_chars_total=max_doc_chars_total,

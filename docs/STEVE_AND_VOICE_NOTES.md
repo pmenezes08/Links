@@ -69,10 +69,14 @@ status, summaries/outlines, page chunks, token estimates, and optional embedding
 context (calendar + links + documents + polls) is assembled by
 **`backend/services/steve_resource_context.py`**, which prefers the compact manifest and retrieves
 only relevant chunks when the current thread, parent/original post, recent replies, or recent upload
-state makes a document ask active. The legacy on-the-fly PDF text fallback only fires when memory has
-not indexed anything for that scope. Large PDFs are never injected wholesale; group docs use
+state makes a document ask active. The legacy on-the-fly PDF text fallback fires when Firestore memory
+has no readable chunks for that scope (manifest-only or pending rows still fall back to PDF extract).
+Large PDFs are never injected wholesale; group docs use
 `group:{id}` memory only and are not visible from the parent community feed. Activation is gated by
-**`steve_prompt_policy.should_include_community_resources_from_thread`** with `has_recent_docs=True`.
+**`steve_prompt_policy.should_include_community_resources_from_thread`**, which uses a real MySQL
+``scope_has_useful_docs`` check (not a hardcoded flag) plus broad plural/PT resource phrases
+(``documents``, ``read them``, ``documento``, ``ler``, …). The system prompt claims document access
+only when the assembled context includes a **Community documents** or **Group documents** block.
 
 ---
 

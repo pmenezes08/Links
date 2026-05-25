@@ -23070,9 +23070,12 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
     from backend.services.steve_model_config import estimate_response_cost_usd, output_cap_for_surface
     from backend.services.steve_prompt_policy import (
         append_response_policy,
+        context_includes_document_section,
+        render_community_resource_system_appendix,
         should_include_community_resources_from_thread,
         should_include_user_profile,
     )
+    from backend.services.steve_resource_context import scope_has_useful_docs
     
     logger.info(f"Steve replying to post {post_id} in community {community_id}")
     
@@ -23189,7 +23192,12 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]"
             ]
             
-            if should_include_community_resources_from_thread(post_content, has_recent_docs=True):
+            community_context = ""
+            has_recent_docs = scope_has_useful_docs(c, placeholder, community_id=community_id)
+            if should_include_community_resources_from_thread(
+                post_content,
+                has_recent_docs=has_recent_docs,
+            ):
                 try:
                     community_context = _build_steve_community_context(
                         c,
@@ -23226,12 +23234,10 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             system_prompt = f"""You are Steve, with real-time knowledge and web search capabilities.
 
 {base_system_prompt}"""
-            system_prompt += (
-                "\nYou have access to this community's upcoming events, useful links, document excerpts, and active polls. "
-                "Use them when answering questions about community resources. "
-                "If the user asks about an uploaded document, base your answer only on the document excerpts in the context; "
-                "if there is no excerpt or it says the document could not be read, say so instead of inventing content."
-            )
+            if community_context and community_context.strip():
+                system_prompt += render_community_resource_system_appendix(
+                    includes_documents=context_includes_document_section(community_context),
+                )
             if author_profile_ctx:
                 system_prompt += f"\n\nWHAT YOU KNOW ABOUT @{author_username}:\n{author_profile_ctx}\nUse this knowledge naturally — don't announce it, but let it guide your tone and relevance."
             _mention_apx = build_steve_gated_mention_profile_appendix_for_feed(
@@ -23499,6 +23505,8 @@ def _steve_ai_reply_for_group_post(
     from backend.services.steve_model_config import estimate_response_cost_usd, output_cap_for_surface
     from backend.services.steve_prompt_policy import (
         append_response_policy,
+        context_includes_document_section,
+        render_group_resource_system_appendix,
         render_hosted_search_capability_instructions,
         should_include_user_profile,
     )
@@ -23625,6 +23633,7 @@ def _steve_ai_reply_for_group_post(
         f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]"
     )
     if exclusive_group_id:
+        grp_ctx = ""
         try:
             grp_ctx = _build_steve_group_resource_context(
                 c,
@@ -23663,12 +23672,8 @@ def _steve_ai_reply_for_group_post(
             "Invite others in the group to share lived experience when relevant. "
             "For real job postings at external companies, follow THIRD-PARTY JOBS / EMPLOYERS in the policy appended below—verify or say you cannot."
         )
-    system_prompt += (
-        "\nBase your answer on this group thread, the optional \"Group resources\" block in the user message "
-        "(this group's calendar, links, document excerpts, and polls), "
-        "and any user/mention context below. Prefer facts from those excerpts over guessing; "
-        "if an excerpt is missing or unreadable, say so. "
-        "Do not rely on parent-community resources that are not present in that block or the thread."
+    system_prompt += render_group_resource_system_appendix(
+        includes_documents=context_includes_document_section(grp_ctx if exclusive_group_id else ""),
     )
     if commenter_profile_ctx:
         system_prompt += (
@@ -24117,9 +24122,12 @@ def ai_steve_reply():
         from backend.services.steve_model_config import estimate_response_cost_usd, output_cap_for_surface
         from backend.services.steve_prompt_policy import (
             append_response_policy,
+            context_includes_document_section,
+            render_community_resource_system_appendix,
             should_include_community_resources_from_thread,
             should_include_user_profile,
         )
+        from backend.services.steve_resource_context import scope_has_useful_docs
 
         steve_config = get_paid_steve_package_config()
         data = request.get_json() or {}
@@ -24437,12 +24445,14 @@ def ai_steve_reply():
             context_parts.append("\nNote: If the user asks you to respond to or help another user, look through the comments above to find that user's question or message and address it directly.")
             
             # Community context: same as post @Steve — calendar, links, PDF excerpts, polls (not for exclusive group posts)
+            community_context = ""
+            has_recent_docs = scope_has_useful_docs(c, placeholder, community_id=community_id)
             include_thread_resources = should_include_community_resources_from_thread(
                 user_message,
                 original_post=post_content or "",
                 parent_reply=parent_content or "",
                 recent_replies=[(row["content"] if hasattr(row, "keys") else row[1]) for row in (all_comments or [])],
-                has_recent_docs=True,
+                has_recent_docs=has_recent_docs,
             )
 
             if community_id and include_thread_resources and not is_group_post:
@@ -24482,12 +24492,9 @@ def ai_steve_reply():
             logger.info(f"[Steve AI] Context built, length: {len(context)} chars, personality: {ai_personality}")
             
             system_prompt = get_ai_personality_prompt(ai_personality)
-            if community_id:
-                system_prompt += (
-                    "\nYou have access to this community's upcoming events, useful links, "
-                    "document excerpts, and active polls. Use them when answering questions about community resources. "
-                    "If the user asks about an uploaded document, base your answer only on the document excerpts in the context; "
-                    "if there is no excerpt or it says the document could not be read, say so instead of inventing content."
+            if community_id and include_thread_resources and not is_group_post and community_context.strip():
+                system_prompt += render_community_resource_system_appendix(
+                    includes_documents=context_includes_document_section(community_context),
                 )
             if commenter_profile_ctx:
                 system_prompt += f"\n\nWHAT YOU KNOW ABOUT @{username}:\n{commenter_profile_ctx}\nUse this knowledge naturally — don't announce it, but let it guide your tone and relevance."
