@@ -793,6 +793,9 @@ def current_month_summary(username: str) -> Dict[str, Any]:
     calendar midnight; the ``daily_count`` enforcement is a sliding 24h
     window (see :func:`daily_count`), so labeling it as "resets at midnight"
     would mislead users.
+
+    ``by_surface`` counts raw successful rows per surface. ``steve_call_count``
+    matches :func:`monthly_steve_count` (weighted credits when enabled).
     """
     if not username:
         return _empty_summary()
@@ -872,7 +875,7 @@ def current_month_summary(username: str) -> Dict[str, Any]:
         "total_tokens_out": total_out,
         "total_cost_usd": round(total_cost, 6),
         "whisper_minutes": round(whisper_seconds / 60.0, 2),
-        "steve_call_count": sum(by_surface[s] for s in STEVE_SURFACES),
+        "steve_call_count": monthly_steve_count(username),
         "resets_at_monthly": next_month.isoformat().replace("+00:00", "Z"),
         "resets_at_daily": rolling_daily_reset,
     }

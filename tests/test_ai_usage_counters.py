@@ -50,6 +50,16 @@ from tests.fixtures import (
 )
 
 
+def _one_credit_row(username: str, *, surface: str, **kwargs) -> None:
+    """Insert a row that debits exactly one credit (isolates bucket tests from surface weights)."""
+    log_row(username, surface=surface, credits_debited=1.0, **kwargs)
+
+
+def _one_credit_rows(username: str, surface: str, n: int, **kwargs) -> None:
+    for _ in range(n):
+        _one_credit_row(username, surface=surface, **kwargs)
+
+
 # ── 1. Whisper minutes ──────────────────────────────────────────────────
 
 
@@ -117,8 +127,8 @@ class TestDailyMonthlyConsistency:
 
     def test_daily_never_exceeds_monthly(self, mysql_dsn):
         make_user("alice")
-        log_rows("alice", SURFACE_DM, 2, created_at=hours_ago(2))
-        log_rows("alice", SURFACE_GROUP, 1, created_at=hours_ago(1))
+        _one_credit_rows("alice", SURFACE_DM, 2, created_at=hours_ago(2))
+        _one_credit_row("alice", surface=SURFACE_GROUP, created_at=hours_ago(1))
         daily = daily_count("alice")
         monthly = monthly_steve_count("alice")
         assert daily == 3
@@ -138,7 +148,7 @@ class TestDailyMonthlyConsistency:
         """Content-gen is community-pool; never billed against personal Steve cap."""
         make_user("alice")
         log_row("alice", surface=SURFACE_CONTENT_GEN, created_at=hours_ago(1))
-        log_row("alice", surface=SURFACE_FEED, created_at=hours_ago(1))
+        _one_credit_row("alice", surface=SURFACE_FEED, created_at=hours_ago(1))
         assert daily_count("alice") == 1
         assert monthly_steve_count("alice") == 1
 
@@ -161,8 +171,8 @@ class TestDailyMonthlyConsistency:
 
     def test_community_pool_rows_do_not_count_personal_daily_or_monthly(self, mysql_dsn):
         make_user("alice")
-        log_row("alice", surface=SURFACE_FEED, community_id=123, cost_usd=0.10, created_at=hours_ago(1))
-        log_row("alice", surface=SURFACE_DM, cost_usd=0.20, created_at=hours_ago(1))
+        _one_credit_row("alice", surface=SURFACE_FEED, community_id=123, cost_usd=0.10, created_at=hours_ago(1))
+        _one_credit_row("alice", surface=SURFACE_DM, cost_usd=0.20, created_at=hours_ago(1))
 
         assert daily_count("alice") == 1
         assert monthly_steve_count("alice") == 1
@@ -273,10 +283,10 @@ class TestCurrentMonthSummary:
         assert summary["by_surface"][SURFACE_DM] == 3
         assert summary["by_surface"][SURFACE_GROUP] == 2
         assert summary["by_surface"][SURFACE_WHISPER] == 2
-        assert summary["steve_call_count"] == 5
         assert summary["whisper_minutes"] == pytest.approx(2.0)
-        # Consistency invariant: summary's steve count == monthly_steve_count.
+        # Consistency invariant: summary's steve count == monthly_steve_count (weighted).
         assert summary["steve_call_count"] == monthly_steve_count("alice")
+        assert summary["steve_call_count"] == 9
         # Whisper minutes via summary == whisper_minutes_this_month.
         assert summary["whisper_minutes"] == pytest.approx(
             whisper_minutes_this_month("alice"), rel=1e-6
@@ -284,8 +294,8 @@ class TestCurrentMonthSummary:
 
     def test_summary_excludes_community_pool_rows_from_personal_steve_count(self, mysql_dsn):
         make_user("alice")
-        log_rows("alice", SURFACE_DM, 2)
-        log_row("alice", surface=SURFACE_FEED, community_id=123)
+        _one_credit_rows("alice", SURFACE_DM, 2)
+        _one_credit_row("alice", surface=SURFACE_FEED, community_id=123)
 
         summary = ai_usage.current_month_summary("alice")
 
