@@ -25,6 +25,7 @@ import { isVideoAttachmentPath } from '../utils/replyMedia'
 import { openExternalInApp } from '../utils/openExternalInApp'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
 import { ENTITLEMENTS_REFRESH_EVENT, useEntitlements } from '../hooks/useEntitlements'
+import { useUserProfile } from '../contexts/UserProfileContext'
 import {
   buildClientPremiumRequiredError,
   mentionsSteve,
@@ -36,16 +37,29 @@ type Reply = { id: number; username: string; content: string; timestamp: string;
 type MediaItem = { type: 'image' | 'video'; path: string }
 type Post = { id: number; username: string; content: string; link_urls?: string[] | string | null; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}>; view_count?: number; reply_count?: number; media_paths?: MediaItem[] | string | null }
 
-const POST_DETAIL_CACHE_VERSION = 'post-detail-v2'
-const POST_DETAIL_CACHE_TTL_MS = 30 * 1000
+const POST_DETAIL_CACHE_VERSION = 'post-detail-v3'
+// SWR window: long enough that repeat opens skip the spinner, short enough that
+// a backgrounded user does not see truly stale data on their next visit. Server
+// invalidates every mutation, so a 5 minute drift cap is safe.
+const POST_DETAIL_CACHE_TTL_MS = 5 * 60 * 1000
+// Within this window we trust the cache entirely and skip the background
+// revalidation fetch; outside it we still paint the cache then re-fetch.
+const POST_DETAIL_FRESH_MS = 30 * 1000
 
-type PostDetailCachePayload = { post: Post; isGroupPost: boolean; detailComplete?: boolean }
+type PostDetailCachePayload = { post: Post; isGroupPost: boolean; detailComplete?: boolean; cachedAt?: number }
 
-function readCachedPostDetail(postId: string | undefined): { post: Post | null; isGroupPost: boolean } {
-  if (!postId) return { post: null, isGroupPost: false }
-  const c = readDeviceCache<PostDetailCachePayload>(`post-${postId}`, POST_DETAIL_CACHE_VERSION)
-  if (!c?.detailComplete) return { post: null, isGroupPost: false }
-  return { post: c?.post ?? null, isGroupPost: !!c?.isGroupPost }
+function postDetailCacheKey(viewer: string, postId: string | undefined): string {
+  // Viewer-scoped so per-viewer flags (`is_starred`, `is_community_admin`,
+  // etc.) never leak across accounts on the same device.
+  const v = (viewer || '_anon').toLowerCase()
+  return `post-${v}-${postId ?? ''}`
+}
+
+function readCachedPostDetail(viewer: string, postId: string | undefined): { post: Post | null; isGroupPost: boolean; cachedAt: number } {
+  if (!postId) return { post: null, isGroupPost: false, cachedAt: 0 }
+  const c = readDeviceCache<PostDetailCachePayload>(postDetailCacheKey(viewer, postId), POST_DETAIL_CACHE_VERSION)
+  if (!c?.detailComplete) return { post: null, isGroupPost: false, cachedAt: 0 }
+  return { post: c?.post ?? null, isGroupPost: !!c?.isGroupPost, cachedAt: c?.cachedAt ?? 0 }
 }
 
 // old formatTimestamp removed; using formatSmartTime
@@ -130,10 +144,14 @@ export default function PostDetail(){
     },
     [enforcement_enabled, entitlementsLoading, entitlements, entitlementsHandler],
   )
+  const { profile: userProfile } = useUserProfile()
+  const viewerUsername = ((userProfile as any)?.username || '') as string
+  const viewerProfilePicture = ((userProfile as any)?.profile_picture || null) as string | null
   const [post, setPost] = useState<Post|null>(null)
   const [isGroupPost, setIsGroupPost] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
+  const [retryNonce, setRetryNonce] = useState(0)
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
   const [uploadFile, setUploadFile] = useState<File|null>(null)
@@ -833,39 +851,61 @@ export default function PostDetail(){
     }
   }, [file, replyGif])
 
-  const refreshPost = useCallback(async () => {
-    try {
-      const [gRes, pRes] = await Promise.all([
-        fetch(`/api/group_post?post_id=${post_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } }),
-        fetch(`/get_post?post_id=${post_id}`, { credentials: 'include' }),
-      ])
-      const gJson = await gRes.json().catch(() => null)
-      const pJson = await pRes.json().catch(() => null)
-      if (gJson?.success && gJson.post) {
-        const nextPost = normalizePostForDetail(gJson.post)
-        setPost(nextPost)
-        setIsGroupPost(true)
-        if (nextPost) writeDeviceCache(`post-${post_id}`, { post: nextPost, isGroupPost: true, detailComplete: true }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
-      } else if (pJson?.success && pJson.post) {
-        const nextPost = normalizePostForDetail(pJson.post)
-        setPost(nextPost)
-        setIsGroupPost(false)
-        if (nextPost) writeDeviceCache(`post-${post_id}`, { post: nextPost, isGroupPost: false, detailComplete: true }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
-      }
-    } catch {}
+  // Fetches a single post detail without going through both endpoints when we
+  // already know the scope. Honours an AbortSignal so route changes cancel
+  // in-flight requests cleanly.
+  const fetchPostDetail = useCallback(async (
+    knownScope: 'community' | 'group' | 'unknown',
+    signal?: AbortSignal,
+  ): Promise<{ post: Post | null; isGroupPost: boolean; error?: string }> => {
+    const initCommon = { credentials: 'include' as const, headers: { 'Accept': 'application/json' }, signal }
+    if (knownScope === 'group') {
+      const r = await fetch(`/api/group_post?post_id=${post_id}`, initCommon)
+      const j = await r.json().catch(() => null)
+      if (j?.success && j.post) return { post: normalizePostForDetail(j.post), isGroupPost: true }
+      return { post: null, isGroupPost: true, error: j?.error || 'Error' }
+    }
+    if (knownScope === 'community') {
+      const r = await fetch(`/get_post?post_id=${post_id}`, initCommon)
+      const j = await r.json().catch(() => null)
+      if (j?.success && j.post) return { post: normalizePostForDetail(j.post), isGroupPost: false }
+      return { post: null, isGroupPost: false, error: j?.error || 'Error' }
+    }
+    // Cold open without a scope hint: race both endpoints, settle on whichever
+    // returns a real post. The loser is harmless — server caching means the
+    // wasted call still warms its own per-viewer key.
+    const [gRes, pRes] = await Promise.all([
+      fetch(`/api/group_post?post_id=${post_id}`, initCommon),
+      fetch(`/get_post?post_id=${post_id}`, initCommon),
+    ])
+    const gJson = await gRes.json().catch(() => null)
+    const pJson = await pRes.json().catch(() => null)
+    if (gJson?.success && gJson.post) return { post: normalizePostForDetail(gJson.post), isGroupPost: true }
+    if (pJson?.success && pJson.post) return { post: normalizePostForDetail(pJson.post), isGroupPost: false }
+    return { post: null, isGroupPost: false, error: gJson?.error || pJson?.error || 'Error' }
   }, [post_id])
 
-  const writePostDetailCache = useCallback((nextPost: Post | null, nextIsGroupPost = isGroupPost) => {
+  const writePostDetailCache = useCallback((nextPost: Post | null, nextIsGroupPost: boolean) => {
     if (!nextPost?.id) return
     const normalizedPost = normalizePostForDetail(nextPost)
     if (!normalizedPost) return
     writeDeviceCache(
-      `post-${nextPost.id}`,
-      { post: normalizedPost, isGroupPost: nextIsGroupPost, detailComplete: true },
+      postDetailCacheKey(viewerUsername, String(nextPost.id)),
+      { post: normalizedPost, isGroupPost: nextIsGroupPost, detailComplete: true, cachedAt: Date.now() },
       POST_DETAIL_CACHE_TTL_MS,
       POST_DETAIL_CACHE_VERSION,
     )
-  }, [isGroupPost])
+  }, [viewerUsername])
+
+  const refreshPost = useCallback(async () => {
+    const scope: 'community' | 'group' | 'unknown' = isGroupPost ? 'group' : (post ? 'community' : 'unknown')
+    const r = await fetchPostDetail(scope)
+    if (r.post) {
+      setPost(r.post)
+      setIsGroupPost(r.isGroupPost)
+      writePostDetailCache(r.post, r.isGroupPost)
+    }
+  }, [fetchPostDetail, isGroupPost, post, writePostDetailCache])
 
   const clearRelatedPostListCaches = useCallback((nextPost: Post | null) => {
     if (!nextPost?.id) return
@@ -924,75 +964,62 @@ export default function PostDetail(){
 
   // (inline) top refresh hint UI rendered conditionally in JSX below
 
+  // Paint from cache synchronously so repeat opens skip the loading spinner.
   useLayoutEffect(() => {
-    const c = readCachedPostDetail(post_id)
+    const c = readCachedPostDetail(viewerUsername, post_id)
     setPost(c.post)
     setIsGroupPost(c.isGroupPost)
     setLoading(!c.post)
     setError(null)
-  }, [post_id])
+  }, [post_id, viewerUsername])
 
+  // Stale-while-revalidate: if the cache is still fresh (<30s old) skip the
+  // network round-trip entirely; otherwise revalidate in the background and
+  // swap in the updated post when it arrives. Cold opens still wait for the
+  // initial fetch so the user sees real content, not nothing.
   useEffect(() => {
+    const cached = readCachedPostDetail(viewerUsername, post_id)
+    const isFresh = cached.post && (Date.now() - (cached.cachedAt || 0)) < POST_DETAIL_FRESH_MS
+    if (isFresh) {
+      setLoading(false)
+      return
+    }
+    const controller = new AbortController()
     let mounted = true
-    async function load() {
-      try {
-        const [gRes, pRes] = await Promise.all([
-          fetch(`/api/group_post?post_id=${post_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } }),
-          fetch(`/get_post?post_id=${post_id}`, { credentials: 'include' }),
-        ])
-        const gJson = await gRes.json().catch(() => null)
-        const pJson = await pRes.json().catch(() => null)
+    const scope: 'community' | 'group' | 'unknown' = cached.post ? (cached.isGroupPost ? 'group' : 'community') : 'unknown'
+    fetchPostDetail(scope, controller.signal)
+      .then(result => {
         if (!mounted) return
-        if (gJson?.success && gJson.post) {
-          const nextPost = normalizePostForDetail(gJson.post)
-          setPost(nextPost)
-          setIsGroupPost(true)
+        if (result.post) {
+          setPost(result.post)
+          setIsGroupPost(result.isGroupPost)
           setError(null)
-          if (nextPost) writeDeviceCache(`post-${post_id}`, { post: nextPost, isGroupPost: true, detailComplete: true }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
-        } else if (pJson?.success && pJson.post) {
-          const nextPost = normalizePostForDetail(pJson.post)
-          setPost(nextPost)
-          setIsGroupPost(false)
-          setError(null)
-          if (nextPost) writeDeviceCache(`post-${post_id}`, { post: nextPost, isGroupPost: false, detailComplete: true }, POST_DETAIL_CACHE_TTL_MS, POST_DETAIL_CACHE_VERSION)
-        } else {
-          setError(gJson?.error || pJson?.error || 'Error')
+          writePostDetailCache(result.post, result.isGroupPost)
+        } else if (!cached.post) {
+          // Only surface an error when we have nothing to paint; a background
+          // revalidate failure with stale data on screen is silent.
+          setError(result.error || 'Error loading post')
         }
-      } catch {
-        if (mounted) setError('Error loading post')
-      } finally {
-        if (mounted) setLoading(false)
-      }
-    }
-    load()
+      })
+      .catch(err => {
+        if (!mounted) return
+        if ((err as any)?.name === 'AbortError') return
+        if (!cached.post) setError('Error loading post')
+      })
+      .finally(() => { if (mounted) setLoading(false) })
     return () => {
       mounted = false
+      try { controller.abort() } catch {}
     }
-  }, [post_id])
+  }, [post_id, viewerUsername, retryNonce, fetchPostDetail, writePostDetailCache])
 
-  // Load current username for ownership checks — defer until after first paint to avoid competing with post fetch
+  // Keep `currentUser` aligned with the shared profile context so we no longer
+  // duplicate `/api/home_timeline`.
   useEffect(() => {
-    let mounted = true
-    const t = window.setTimeout(() => {
-      ;(async () => {
-        try {
-          const r = await fetch('/api/home_timeline', { credentials: 'include', headers: { 'Accept': 'application/json' } })
-          const j = await r.json().catch(() => null)
-          if (!mounted) return
-          if (j?.success && j.username) {
-            setCurrentUser({
-              username: j.username,
-              profile_picture: j.profile_picture || null,
-            })
-          }
-        } catch {}
-      })()
-    }, 0)
-    return () => {
-      mounted = false
-      window.clearTimeout(t)
+    if (viewerUsername) {
+      setCurrentUser({ username: viewerUsername, profile_picture: viewerProfilePicture })
     }
-  }, [])
+  }, [viewerUsername, viewerProfilePicture])
 
   async function toggleReaction(reaction: string){
     if (!post) return
@@ -1676,7 +1703,18 @@ export default function PostDetail(){
 
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">{t('common.loading')}</div>
-  if (error || !post) return <div className="p-4 text-red-400">{error||t('errors.generic')}</div>
+  if (error || !post) return (
+    <div className="p-4 text-center text-[#9fb0b5]">
+      <div className="text-red-400 mb-3">{error || t('errors.generic')}</div>
+      <button
+        type="button"
+        onClick={() => { setError(null); setLoading(true); setRetryNonce(n => n + 1) }}
+        className="px-3 py-1.5 rounded-md border border-[#2a3942] text-sm hover:bg-[#1f2c33]"
+      >
+        {t('common.retry')}
+      </button>
+    </div>
+  )
 
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
   const liftSource = Math.max(keyboardOffset, viewportLift)
