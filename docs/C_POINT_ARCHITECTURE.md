@@ -220,6 +220,8 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | `steve_content_enrichment.py` | Enrich text for Steve / sources metadata. |
 | `steve_community_config.py` | KB-backed Steve Community package config: shared pool, provider ceiling, model overrides, context budgets, and package output cap. Model pricing delegates to `steve_model_config`. |
 | `steve_community_memory.py` | Firestore compact community memory reader for community-feed Steve prompts. |
+| `steve_document_memory.py` | Firestore-backed exact-scope PDF memory for Steve: indexes committed `useful_docs` rows, extracts page text, chunks/summarizes PDFs, stores optional embeddings, and retrieves scoped page/section chunks for feed/group turns. |
+| `steve_resource_context.py` | Exact-scope Steve resource context builder (calendar, links, documents, polls) for community and group post replies; documents section prefers Firestore doc memory and falls back to legacy on-the-fly PDF text extraction. |
 | `steve_feedback.py` | Feedback queue backend. |
 | `steve_community_welcome.py` | Welcome post backfill + Firestore mirror. |
 | `steve_reminder_vault.py` | Vault storage. |
@@ -247,7 +249,7 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 
 | File | Role |
 |------|------|
-| `embedding_service.py` | **OpenAI embeddings**, FAISS / numpy similarity, Firestore vector index. |
+| `embedding_service.py` | **OpenAI embeddings**, FAISS / numpy similarity, Firestore vector index; reused by Steve document memory for optional PDF chunk embeddings. |
 | `profile_structured_fields.py` | Structured profile fields used in discovery. |
 
 ### Misc

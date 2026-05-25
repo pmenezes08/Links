@@ -23,6 +23,7 @@ Database name: env `FIRESTORE_DATABASE` (default **`cpoint`**).
 | **`steve_knowledge_base`** | Chunked docs per user (e.g. `{username}_Index`, `{username}_Identity`, dimension shards) | — | Retrieved knowledge for Steve RAG (`steve_knowledge_base.py`). |
 | **`steve_community_memory`** | root community id as string | optional **`episodes`** | Compact community memory for feed Steve (`currentSummary`, topics, important docs/links, active decisions). MySQL remains canonical for posts/docs/events/polls; Firestore is synthesized prompt memory only. |
 | **`steve_community_memory`** | root community id as string | optional **`episodes`** | Compact community memory for feed Steve (`currentSummary`, topics, important docs/links, active decisions). MySQL remains canonical for posts/docs/events/polls; Firestore is synthesized prompt memory only. |
+| **`steve_doc_memory`** | exact scope key: `community:{id}` or `group:{id}` | **`docs/{doc_id}/chunks/{chunk_id}`** | Steve document memory for uploaded PDFs. MySQL `useful_docs` remains authoritative for ownership/scope; Firestore stores extraction status, summaries, outline/topics, page chunks, token estimates, and optional embeddings for scoped retrieval (`steve_document_memory.py`). |
 | **`steve_onboarding`** | `username` | — | Onboarding state: `stage`, `collected`, conversation messages (`onboarding_session.py`, `onboarding.py` blueprint). Reminder sweeps read collection. |
 
 **Environment:** `GOOGLE_CLOUD_PROJECT` / `GCP_PROJECT`; toggles `USE_FIRESTORE_READS`, `USE_FIRESTORE_WRITES`.
@@ -120,7 +121,7 @@ Many **`exercises`**, **`workouts`**, **`workout_exercises`**, **`exercise_sets`
 |-------|------|
 | `key_posts`, `community_key_posts` | Pinned posts. |
 | `product_posts`, `product_replies`, `product_polls`, `product_poll_votes` | Product-area feed. |
-| `useful_links`, `useful_docs`, `community_files`, `community_announcements` | Resources; `useful_*` rows with `group_id` set are listed **only** in group context (`get_links` + `group_id`), not merged with community-wide (`group_id` null) rows. |
+| `useful_links`, `useful_docs`, `community_files`, `community_announcements` | Resources; `useful_*` rows with `group_id` set are listed **only** in group context (`get_links` + `group_id`), not merged with community-wide (`group_id` null) rows. `useful_docs` is also the MySQL source of truth for Steve doc memory indexing; `/upload_doc` best-effort indexes the committed row into Firestore, and `scripts/backfill_steve_document_memory.py` backfills existing rows. |
 | `university_ads` | Ads. |
 | `archived_chats`, `deleted_chat_threads` | DM UX (`dm_chats_tables.py`). |
 | `typing_status`, `encryption_*` | Typing / E2E helpers. |
@@ -141,7 +142,7 @@ Many **`exercises`**, **`workouts`**, **`workout_exercises`**, **`exercise_sets`
 - **Schema changes:** Prefer adding `ensure_*` in the owning service and running migration in deploy — same pattern as `register_blueprints` bootstraps billing tables.
 - **Source of truth:** For billing amounts, Stripe price IDs, mobile product IDs, `iap_purchases_enabled`, and product rules, **in-app KB** still wins (`AGENTS.md`). These tables hold **operational** data only.
 - **Billing ownership:** `backend/services/billing_ownership.py` reconciles existing `users` billing columns, `communities` billing columns, and `iap_links` rows. No separate ownership table exists in v1; active provider and mode are derived from those operational rows.
-- **Firestore costs:** Driven by read/write volumes on `dm_conversations`, `group_chats`, `posts`, and `steve_user_profiles`.
+- **Firestore costs:** Driven by read/write volumes on `dm_conversations`, `group_chats`, `posts`, `steve_user_profiles`, and `steve_doc_memory` (PDF chunks/embeddings are written once per upload/backfill, then read during Steve document retrieval).
 
 ---
 

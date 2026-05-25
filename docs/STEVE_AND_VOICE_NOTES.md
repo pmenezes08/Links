@@ -59,6 +59,21 @@ Skip any of the above and the user's "Steve uses this month" counter
 will silently lie to them. We've already fixed that bug once, don't
 reintroduce it.
 
+### Document memory (Steve resource context)
+
+Uploaded PDFs are indexed by **`backend/services/steve_document_memory.py`** after the `useful_docs`
+row commits in `/upload_doc`, and existing rows can be backfilled with
+**`scripts/backfill_steve_document_memory.py`**. Firestore
+**`steve_doc_memory/{community:id|group:id}/docs/{doc_id}/chunks/{chunk_id}`** stores extraction
+status, summaries/outlines, page chunks, token estimates, and optional embeddings. Steve's resource
+context (calendar + links + documents + polls) is assembled by
+**`backend/services/steve_resource_context.py`**, which prefers the compact manifest and retrieves
+only relevant chunks when the current thread, parent/original post, recent replies, or recent upload
+state makes a document ask active. The legacy on-the-fly PDF text fallback only fires when memory has
+not indexed anything for that scope. Large PDFs are never injected wholesale; group docs use
+`group:{id}` memory only and are not visible from the parent community feed. Activation is gated by
+**`steve_prompt_policy.should_include_community_resources_from_thread`** with `has_recent_docs=True`.
+
 ---
 
 ## Exclusive group Steve agent (group feed)

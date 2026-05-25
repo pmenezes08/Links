@@ -20944,6 +20944,7 @@ def upload_doc():
                 INSERT INTO useful_docs (community_id, group_id, username, file_path, description, created_at)
                 VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
             """, (community_id if community_id else None, group_id_int, username, file_path, description, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            doc_id = int(getattr(c, "lastrowid", 0) or 0)
             
             # Send notifications to community members (community-wide resources only)
             if community_id and group_id_int is None:
@@ -20951,12 +20952,38 @@ def upload_doc():
                 notify_community_new_resource(community_id, username, 'doc', doc_description, conn)
             
             conn.commit()
+
+        if doc_id:
+            def _index_uploaded_doc_async():
+                try:
+                    from backend.services.steve_document_memory import index_useful_doc
+
+                    index_useful_doc(
+                        {
+                            "id": doc_id,
+                            "community_id": int(community_id) if community_id else None,
+                            "group_id": group_id_int,
+                            "username": username,
+                            "file_path": file_path,
+                            "description": description or orig,
+                            "created_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        }
+                    )
+                except Exception as index_err:
+                    logger.warning("Steve document memory indexing failed doc_id=%s: %s", doc_id, index_err)
+
+            try:
+                import threading
+
+                threading.Thread(target=_index_uploaded_doc_async, daemon=True).start()
+            except Exception as start_err:
+                logger.warning("Could not start Steve document memory indexing doc_id=%s: %s", doc_id, start_err)
         
         # Return appropriate path based on storage type
         if file_path.startswith('http'):
-            return jsonify({'success': True, 'message': 'Document uploaded to CDN', 'path': file_path})
+            return jsonify({'success': True, 'message': 'Document uploaded to CDN', 'path': file_path, 'doc_id': doc_id, 'steve_indexing': 'queued' if doc_id else 'not_queued'})
         else:
-            return jsonify({'success': True, 'message': 'Document uploaded', 'path': f"/uploads/{file_path}"})
+            return jsonify({'success': True, 'message': 'Document uploaded', 'path': f"/uploads/{file_path}", 'doc_id': doc_id, 'steve_indexing': 'queued' if doc_id else 'not_queued'})
     except Exception as e:
         logger.error(f"upload_doc error: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
@@ -22903,37 +22930,14 @@ Never be rude or offensive. Always be supportive even when sarcastic or cynical.
 
 
 def extract_pdf_text_for_steve(file_path: str, max_chars: int = 4000):
-    """Extract plain text from a PDF for Steve context."""
-    try:
-        import io
-        pdf_bytes = None
-        if file_path.startswith('http'):
-            import requests as _req
-            resp = _req.get(file_path, timeout=30)
-            resp.raise_for_status()
-            pdf_bytes = resp.content
-        else:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            full_path = os.path.join(base_dir, 'static', 'uploads', file_path.lstrip('/'))
-            if not os.path.exists(full_path):
-                full_path = os.path.join(base_dir, 'uploads', file_path.lstrip('/'))
-            if not os.path.exists(full_path):
-                return None
-            with open(full_path, 'rb') as f:
-                pdf_bytes = f.read()
-        if not pdf_bytes:
-            return None
-        from pypdf import PdfReader
-        reader = PdfReader(io.BytesIO(pdf_bytes))
-        text = ""
-        for i in range(min(len(reader.pages), 15)):
-            page_text = reader.pages[i].extract_text() or ""
-            text += page_text + "\n"
-        text = ' '.join(text.split())
-        return text[:max_chars] if text.strip() else None
-    except Exception as e:
-        logger.warning(f"PDF extraction failed for {file_path}: {e}")
-        return None
+    """Legacy PDF extraction used by Steve resource context fallback.
+
+    Implementation lives in ``backend.services.steve_resource_context``; this
+    wrapper exists for backward compatibility with older call sites.
+    """
+    from backend.services.steve_resource_context import extract_pdf_text_for_steve as _impl
+
+    return _impl(file_path, max_chars=max_chars)
 
 
 def _build_steve_community_context(
@@ -22946,118 +22950,26 @@ def _build_steve_community_context(
     links_limit=10,
     docs_limit=10,
     polls_limit=5,
+    user_message: str = "",
+    original_post: str = "",
+    recent_comments=None,
 ):
-    """Build community context string: calendar + links/docs + polls."""
-    from backend.services.database import USE_MYSQL
-    parts = []
-    events_limit = max(0, int(events_limit or 0))
-    links_limit = max(0, int(links_limit or 0))
-    docs_limit = max(0, int(docs_limit or 0))
-    polls_limit = max(0, int(polls_limit or 0))
+    """Backward-compatible wrapper; logic lives in ``steve_resource_context``."""
+    from backend.services.steve_resource_context import build_steve_community_context as _impl
 
-    try:
-        from backend.services.steve_community_memory import get_compact_community_memory
-
-        memory = get_compact_community_memory(int(community_id))
-        if memory:
-            parts.append("Compact community memory:\n" + memory)
-    except Exception as e:
-        logger.debug("Steve community memory context failed: %s", e)
-    
-    # Calendar events
-    try:
-        if events_limit <= 0:
-            raise ValueError("events disabled by context budget")
-        if USE_MYSQL:
-            c.execute(f"SELECT title, date, start_time, end_time, description FROM calendar_events WHERE community_id = {placeholder} AND date >= CURDATE() ORDER BY date ASC LIMIT {events_limit}", (community_id,))
-        else:
-            c.execute(f"SELECT title, date, start_time, end_time, description FROM calendar_events WHERE community_id = {placeholder} AND date >= date('now') ORDER BY date ASC LIMIT {events_limit}", (community_id,))
-        events = c.fetchall()
-        if events:
-            lines = []
-            for evt in events:
-                t = evt['title'] if hasattr(evt, 'keys') else evt[0]
-                d = evt['date'] if hasattr(evt, 'keys') else evt[1]
-                st = evt['start_time'] if hasattr(evt, 'keys') else evt[2]
-                desc = (evt['description'] if hasattr(evt, 'keys') else evt[4]) or ''
-                lines.append(f"- {t} | Date: {d}" + (f" | Time: {st}" if st else "") + (f" | {desc[:100]}" if desc else ""))
-            parts.append("Upcoming events in this community:\n" + "\n".join(lines))
-    except ValueError:
-        pass
-    except Exception as e:
-        logger.warning(f"Steve calendar context failed: {e}")
-    
-    # Useful links
-    try:
-        if links_limit <= 0:
-            raise ValueError("links disabled by context budget")
-        c.execute(f"SELECT url, description FROM useful_links WHERE community_id = {placeholder} ORDER BY created_at DESC LIMIT {links_limit}", (community_id,))
-        links = c.fetchall()
-        if links:
-            lines = []
-            for lnk in links:
-                url = lnk['url'] if hasattr(lnk, 'keys') else lnk[0]
-                desc = (lnk['description'] if hasattr(lnk, 'keys') else lnk[1]) or url
-                lines.append(f"- {desc} ({url})")
-            parts.append("Useful links in this community:\n" + "\n".join(lines))
-    except ValueError:
-        pass
-    except Exception as e:
-        logger.warning(f"Steve links context failed: {e}")
-    
-    # Documents with PDF text
-    try:
-        if docs_limit <= 0 or max_doc_chars_total <= 0:
-            raise ValueError("documents disabled by context budget")
-        c.execute(f"SELECT file_path, description FROM useful_docs WHERE community_id = {placeholder} ORDER BY created_at DESC LIMIT {docs_limit}", (community_id,))
-        docs = c.fetchall()
-        if docs:
-            doc_lines = []
-            chars_remaining = max_doc_chars_total
-            for doc in docs:
-                fp = doc['file_path'] if hasattr(doc, 'keys') else doc[0]
-                desc = (doc['description'] if hasattr(doc, 'keys') else doc[1]) or fp
-                text = extract_pdf_text_for_steve(fp, max_chars=min(4000, chars_remaining))
-                excerpt = text if text else "(Could not read document.)"
-                doc_lines.append(f"Document: {desc}\nContent (excerpt): {excerpt}")
-                if text:
-                    chars_remaining -= len(text)
-                if chars_remaining <= 0:
-                    break
-            parts.append("Community documents:\n" + "\n\n---\n\n".join(doc_lines))
-    except ValueError:
-        pass
-    except Exception as e:
-        logger.warning(f"Steve docs context failed: {e}")
-    
-    # Active polls
-    try:
-        if polls_limit <= 0:
-            raise ValueError("polls disabled by context budget")
-        if USE_MYSQL:
-            c.execute(f"SELECT p.id, p.question FROM polls p JOIN posts po ON p.post_id = po.id WHERE po.community_id = {placeholder} AND p.is_active = 1 ORDER BY po.timestamp DESC LIMIT {polls_limit}", (community_id,))
-        else:
-            c.execute(f"SELECT p.id, p.question FROM polls p JOIN posts po ON p.post_id = po.id WHERE po.community_id = {placeholder} AND p.is_active = 1 ORDER BY po.timestamp DESC LIMIT {polls_limit}", (community_id,))
-        polls = c.fetchall()
-        if polls:
-            poll_lines = []
-            for poll in polls:
-                pid = poll['id'] if hasattr(poll, 'keys') else poll[0]
-                q = poll['question'] if hasattr(poll, 'keys') else poll[1]
-                try:
-                    c.execute(f"SELECT option_text, votes FROM poll_options WHERE poll_id = {placeholder} ORDER BY id", (pid,))
-                    opts = c.fetchall()
-                    opt_strs = [f"{(o['option_text'] if hasattr(o, 'keys') else o[0])} ({(o['votes'] if hasattr(o, 'keys') else o[1])} votes)" for o in opts]
-                    poll_lines.append(f"- Poll: {q} | Options: {', '.join(opt_strs)}")
-                except Exception:
-                    poll_lines.append(f"- Poll: {q}")
-            parts.append("Active polls in this community:\n" + "\n".join(poll_lines))
-    except ValueError:
-        pass
-    except Exception as e:
-        logger.warning(f"Steve polls context failed: {e}")
-    
-    return "\n\n".join(parts)
+    return _impl(
+        c,
+        community_id,
+        placeholder,
+        max_doc_chars_total,
+        events_limit=events_limit,
+        links_limit=links_limit,
+        docs_limit=docs_limit,
+        polls_limit=polls_limit,
+        user_message=user_message,
+        original_post=original_post,
+        recent_comments=recent_comments,
+    )
 
 
 def _build_steve_group_resource_context(
@@ -23070,165 +22982,26 @@ def _build_steve_group_resource_context(
     links_limit=10,
     docs_limit=10,
     polls_limit=5,
+    user_message: str = "",
+    original_post: str = "",
+    recent_comments=None,
 ):
-    """Links, document excerpts, calendar, polls for one exclusive group (``group_id`` only).
+    """Backward-compatible wrapper; logic lives in ``steve_resource_context``."""
+    from backend.services.steve_resource_context import build_steve_group_resource_context as _impl
 
-    Does not load community memory or parent-community-only rows (no ``group_id`` on those rows).
-    """
-    from backend.services.database import USE_MYSQL
-    from backend.services.group_polls_data import ensure_group_poll_tables, poll_expired
-
-    parts = []
-    gid = int(group_id)
-    events_limit = max(0, int(events_limit or 0))
-    links_limit = max(0, int(links_limit or 0))
-    docs_limit = max(0, int(docs_limit or 0))
-    polls_limit = max(0, int(polls_limit or 0))
-
-    try:
-        if events_limit <= 0:
-            raise ValueError("events disabled by context budget")
-        if USE_MYSQL:
-            c.execute(
-                f"""
-                SELECT title, date, start_time, end_time, description
-                FROM calendar_events
-                WHERE group_id = {placeholder} AND date >= CURDATE()
-                ORDER BY date ASC
-                LIMIT {events_limit}
-                """,
-                (gid,),
-            )
-        else:
-            c.execute(
-                f"""
-                SELECT title, date, start_time, end_time, description
-                FROM calendar_events
-                WHERE group_id = {placeholder} AND date >= date('now')
-                ORDER BY date ASC
-                LIMIT {events_limit}
-                """,
-                (gid,),
-            )
-        events = c.fetchall()
-        if events:
-            lines = []
-            for evt in events:
-                t = evt["title"] if hasattr(evt, "keys") else evt[0]
-                d = evt["date"] if hasattr(evt, "keys") else evt[1]
-                st = evt["start_time"] if hasattr(evt, "keys") else evt[2]
-                desc = (evt["description"] if hasattr(evt, "keys") else evt[4]) or ""
-                lines.append(
-                    f"- {t} | Date: {d}" + (f" | Time: {st}" if st else "") + (f" | {desc[:100]}" if desc else "")
-                )
-            parts.append("Upcoming events in this group:\n" + "\n".join(lines))
-    except ValueError:
-        pass
-    except Exception as e:
-        logger.warning(f"Steve group calendar context failed: {e}")
-
-    try:
-        if links_limit <= 0:
-            raise ValueError("links disabled by context budget")
-        c.execute(
-            f"""
-            SELECT url, description FROM useful_links
-            WHERE group_id = {placeholder}
-            ORDER BY created_at DESC
-            LIMIT {links_limit}
-            """,
-            (gid,),
-        )
-        links = c.fetchall()
-        if links:
-            lines = []
-            for lnk in links:
-                url = lnk["url"] if hasattr(lnk, "keys") else lnk[0]
-                desc = (lnk["description"] if hasattr(lnk, "keys") else lnk[1]) or url
-                lines.append(f"- {desc} ({url})")
-            parts.append("Useful links in this group:\n" + "\n".join(lines))
-    except ValueError:
-        pass
-    except Exception as e:
-        logger.warning(f"Steve group links context failed: {e}")
-
-    try:
-        if docs_limit <= 0 or max_doc_chars_total <= 0:
-            raise ValueError("documents disabled by context budget")
-        c.execute(
-            f"""
-            SELECT file_path, description FROM useful_docs
-            WHERE group_id = {placeholder}
-            ORDER BY created_at DESC
-            LIMIT {docs_limit}
-            """,
-            (gid,),
-        )
-        docs = c.fetchall()
-        if docs:
-            doc_lines = []
-            chars_remaining = max_doc_chars_total
-            for doc in docs:
-                fp = doc["file_path"] if hasattr(doc, "keys") else doc[0]
-                desc = (doc["description"] if hasattr(doc, "keys") else doc[1]) or fp
-                text = extract_pdf_text_for_steve(fp, max_chars=min(4000, chars_remaining))
-                excerpt = text if text else "(Could not read document.)"
-                doc_lines.append(f"Document: {desc}\nContent (excerpt): {excerpt}")
-                if text:
-                    chars_remaining -= len(text)
-                if chars_remaining <= 0:
-                    break
-            parts.append("Group documents:\n" + "\n\n---\n\n".join(doc_lines))
-    except ValueError:
-        pass
-    except Exception as e:
-        logger.warning(f"Steve group docs context failed: {e}")
-
-    try:
-        if polls_limit <= 0:
-            raise ValueError("polls disabled by context budget")
-        ensure_group_poll_tables(c)
-        gp_t = "`group_polls`" if USE_MYSQL else "group_polls"
-        gpo_t = "`group_poll_options`" if USE_MYSQL else "group_poll_options"
-        c.execute(
-            f"""
-            SELECT id, question, expires_at FROM {gp_t}
-            WHERE group_id = {placeholder} AND is_active = 1
-            ORDER BY created_at DESC
-            LIMIT {polls_limit}
-            """,
-            (gid,),
-        )
-        polls = c.fetchall()
-        if polls:
-            poll_lines = []
-            for poll in polls:
-                pid = poll["id"] if hasattr(poll, "keys") else poll[0]
-                q = poll["question"] if hasattr(poll, "keys") else poll[1]
-                exp_raw = poll["expires_at"] if hasattr(poll, "keys") else poll[2]
-                if poll_expired(exp_raw):
-                    continue
-                try:
-                    c.execute(
-                        f"SELECT option_text, votes FROM {gpo_t} WHERE group_poll_id = {placeholder} ORDER BY id",
-                        (pid,),
-                    )
-                    opts = c.fetchall()
-                    opt_strs = [
-                        f"{(o['option_text'] if hasattr(o, 'keys') else o[0])} ({(o['votes'] if hasattr(o, 'keys') else o[1])} votes)"
-                        for o in opts
-                    ]
-                    poll_lines.append(f"- Poll: {q} | Options: {', '.join(opt_strs)}")
-                except Exception:
-                    poll_lines.append(f"- Poll: {q}")
-            if poll_lines:
-                parts.append("Active polls in this group:\n" + "\n".join(poll_lines))
-    except ValueError:
-        pass
-    except Exception as e:
-        logger.warning(f"Steve group polls context failed: {e}")
-
-    return "\n\n".join(parts)
+    return _impl(
+        c,
+        group_id,
+        placeholder,
+        max_doc_chars_total,
+        events_limit=events_limit,
+        links_limit=links_limit,
+        docs_limit=docs_limit,
+        polls_limit=polls_limit,
+        user_message=user_message,
+        original_post=original_post,
+        recent_comments=recent_comments,
+    )
 
 
 def _needs_community_analysis(message: str) -> bool:
@@ -23276,7 +23049,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
     from backend.services.steve_model_config import estimate_response_cost_usd, output_cap_for_surface
     from backend.services.steve_prompt_policy import (
         append_response_policy,
-        should_include_community_resources,
+        should_include_community_resources_from_thread,
         should_include_user_profile,
     )
     
@@ -23395,7 +23168,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]"
             ]
             
-            if should_include_community_resources(post_content):
+            if should_include_community_resources_from_thread(post_content, has_recent_docs=True):
                 try:
                     community_context = _build_steve_community_context(
                         c,
@@ -23406,6 +23179,8 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                         links_limit=steve_config.links_limit,
                         docs_limit=steve_config.docs_limit,
                         polls_limit=steve_config.polls_limit,
+                        user_message=post_content or "",
+                        original_post=post_content or "",
                     )
                     if community_context and community_context.strip():
                         context_parts.append(
@@ -23839,6 +23614,9 @@ def _steve_ai_reply_for_group_post(
                 links_limit=steve_config.links_limit,
                 docs_limit=steve_config.docs_limit,
                 polls_limit=steve_config.polls_limit,
+                user_message=user_message or "",
+                original_post=post_content or "",
+                recent_comments=[(row["content"] if hasattr(row, "keys") else row[1]) for row in all_comments],
             )
             if grp_ctx and grp_ctx.strip():
                 context_parts.append(
@@ -24318,7 +24096,7 @@ def ai_steve_reply():
         from backend.services.steve_model_config import estimate_response_cost_usd, output_cap_for_surface
         from backend.services.steve_prompt_policy import (
             append_response_policy,
-            should_include_community_resources,
+            should_include_community_resources_from_thread,
             should_include_user_profile,
         )
 
@@ -24638,7 +24416,15 @@ def ai_steve_reply():
             context_parts.append("\nNote: If the user asks you to respond to or help another user, look through the comments above to find that user's question or message and address it directly.")
             
             # Community context: same as post @Steve — calendar, links, PDF excerpts, polls (not for exclusive group posts)
-            if community_id and should_include_community_resources(user_message) and not is_group_post:
+            include_thread_resources = should_include_community_resources_from_thread(
+                user_message,
+                original_post=post_content or "",
+                parent_reply=parent_content or "",
+                recent_replies=[(row["content"] if hasattr(row, "keys") else row[1]) for row in (all_comments or [])],
+                has_recent_docs=True,
+            )
+
+            if community_id and include_thread_resources and not is_group_post:
                 try:
                     community_context = _build_steve_community_context(
                         c,
@@ -24649,6 +24435,9 @@ def ai_steve_reply():
                         links_limit=steve_config.links_limit,
                         docs_limit=steve_config.docs_limit,
                         polls_limit=steve_config.polls_limit,
+                        user_message=user_message,
+                        original_post=post_content or "",
+                        recent_comments=[(row["content"] if hasattr(row, "keys") else row[1]) for row in (all_comments or [])],
                     )
                     if community_context and community_context.strip():
                         context_parts.append(
