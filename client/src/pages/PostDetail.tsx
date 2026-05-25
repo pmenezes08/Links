@@ -1733,11 +1733,10 @@ export default function PostDetail(){
   const showKeyboard = liftSource > 2
   const expandedComposerLift = Math.max(keyboardLift, expandedComposerViewportLift)
   const expandedComposerKeyboardOpen = expandedComposerLift > 2
-  // Padding to ensure content doesn't hide behind composer (extra when inline reply is open)
-  const inlineComposerExtra = activeInlineReplyFor !== null ? 88 : 0
+  // Padding to ensure content doesn't hide behind composer
   const contentPaddingBottom = showKeyboard
-    ? `${effectiveComposerHeight + keyboardLift + 16 + inlineComposerExtra}px`
-    : `calc(${safeBottom} + ${effectiveComposerHeight + 32 + inlineComposerExtra}px)`
+    ? `${effectiveComposerHeight + keyboardLift + 16}px`
+    : `calc(${safeBottom} + ${effectiveComposerHeight + 32}px)`
 
   return (
     <div
@@ -2249,7 +2248,7 @@ export default function PostDetail(){
         ref={composerRef}
         className="fixed left-0 right-0 z-[100]"
         style={{
-          bottom: showKeyboard ? `${keyboardLift}px` : 0,
+          bottom: keyboardLift > 0 ? `${keyboardLift}px` : 0,
           display: 'flex',
           flexDirection: 'column',
         }}
@@ -2258,11 +2257,7 @@ export default function PostDetail(){
         <div
           ref={composerCardRef}
           className="relative max-w-2xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-2.5 py-3"
-          style={{
-            background: '#0a0a0c',
-            paddingLeft: 'max(10px, env(safe-area-inset-left, 0px))',
-            paddingRight: 'max(10px, env(safe-area-inset-right, 0px))',
-          }}
+          style={{ background: '#0a0a0c' }}
         >
           {/* Attachment previews - show above input row when files attached */}
           {(file || replyGif || replyPreview) && (
@@ -2468,12 +2463,10 @@ export default function PostDetail(){
             )}
           </div>
         </div>
-        {/* Safe area spacer — always reserve a minimum so the Send button never collides with the home indicator, even if keyboard dismissal races. */}
-        <div 
+        {/* Safe area spacer — 0 while keyboard is up to avoid double spacing (ChatThread pattern) */}
+        <div
           style={{
-            height: showKeyboard
-              ? 'max(env(safe-area-inset-bottom, 0px), 6px)'
-              : 'max(env(safe-area-inset-bottom, 0px), 12px)',
+            height: keyboardLift > 0 ? '0px' : `${safeBottomPx}px`,
             background: '#000',
             flexShrink: 0,
           }}
@@ -3252,7 +3245,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
       </div>
       {/* Inline reply composer - full width outside the avatar+content flex */}
       {showComposer ? (
-        <div className="mt-2 mx-3 space-y-2 rounded-xl bg-[#0a0a0c] p-3 overflow-visible" data-inline-reply-id={reply.id} onClick={(e) => e.stopPropagation()}>
+        <div className="mt-2 mx-3 space-y-2 rounded-xl bg-[#0a0a0c] p-3" data-inline-reply-id={reply.id} onClick={(e) => e.stopPropagation()}>
           {/* Attachment previews */}
           {(img || inlineGif || inlinePreview) && (
             <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -3291,7 +3284,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             </div>
           )}
           {/* Input row */}
-          <div className="flex min-w-0 items-end gap-1.5 overflow-visible">
+          <div className="flex min-w-0 items-end gap-1.5">
             {/* + button with dropdown */}
             <div className="relative">
               <button 
@@ -3370,6 +3363,8 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                     variant="composer"
                     className="h-8 w-8 shrink-0 rounded-lg"
                     disabled={inlineSendingFlag}
+                    onPointerDown={(e) => e.preventDefault()}
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
                       if (!text && !img && !inlinePreview && !gifFile) return
                       const attachment = inlinePreview

@@ -181,6 +181,12 @@ export default function CommentReply() {
     setReplyComposerExpanded(true)
   }
 
+  // Keep the textarea focused on mobile so tapping Send doesn't dismiss the keyboard
+  // and shove the fixed bar into the safe area.
+  const preventComposerBlur = (event: { preventDefault(): void }) => {
+    event.preventDefault()
+  }
+
   // Call Steve AI to generate a reply - matching CommunityFeed implementation
   // Privacy gate is enforced on backend via user_can_access_steve_kb
   // (see docs/STEVE_PRIVACY_GATE.md - uses root parent of post's original community)
@@ -1528,21 +1534,15 @@ export default function CommentReply() {
       </div>
 
       {/* Fixed bottom reply composer */}
-      <div 
-        className="fixed left-0 right-0 z-[100]"
+      <div
+        className="fixed left-0 right-0 z-[100] bg-black border-t border-white/10"
         style={{
-          bottom: showKeyboard ? keyboardLift : 0,
+          bottom: keyboardLift > 0 ? `${keyboardLift}px` : 0,
           display: 'flex',
           flexDirection: 'column',
         }}
       >
-        <div
-          className="max-w-2xl mx-auto w-full border-t border-white/10 bg-black px-3 py-3"
-          style={{
-            paddingLeft: 'max(12px, env(safe-area-inset-left, 0px))',
-            paddingRight: 'max(12px, env(safe-area-inset-right, 0px))',
-          }}
-        >
+        <div className="max-w-2xl mx-auto px-3 py-3 w-full">
           {(file || selectedGif || replyPreview) && (
             <div className="mb-2 flex items-center gap-2 flex-wrap">
               {file && filePreviewUrl && (
@@ -1702,6 +1702,8 @@ export default function CommentReply() {
               <NativeActionButton
                 variant="composer"
                 className="h-9 w-9 flex-none rounded-lg"
+                onPointerDown={preventComposerBlur}
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={handleSubmitReply}
                 disabled={sendingReply}
                 aria-label={t('feed.send_reply')}
@@ -1715,12 +1717,10 @@ export default function CommentReply() {
             )}
           </div>
         </div>
-        {/* Safe area spacer — reserve minimum so Send never collides with home indicator */}
+        {/* Safe area spacer — 0 while keyboard is up to avoid double spacing (ChatThread pattern) */}
         <div
           style={{
-            height: showKeyboard
-              ? 'max(env(safe-area-inset-bottom, 0px), 6px)'
-              : 'max(env(safe-area-inset-bottom, 0px), 12px)',
+            height: keyboardLift > 0 ? '0px' : `${safeBottomPx}px`,
             background: '#000',
             flexShrink: 0,
           }}
