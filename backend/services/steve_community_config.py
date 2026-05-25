@@ -30,7 +30,8 @@ class SteveCommunityConfig:
     feed_attach_web_search_tool: bool = True
     feed_attach_x_search_tool: bool = True
     max_output_tokens: int = 1400
-    recent_comments_limit: int = 8
+    recent_comments_limit: int = 24
+    thread_chars_max: int = 12000
     doc_excerpt_chars_default: int = 2000
     doc_excerpt_chars_deep: int = 4000
     docs_limit: int = 10
@@ -150,6 +151,11 @@ def get_paid_steve_package_config(fields: Optional[dict[str, Any]] = None) -> St
             f.get("paid_steve_package_recent_comments_limit"),
             defaults.recent_comments_limit,
             minimum=0,
+        ),
+        thread_chars_max=_int(
+            f.get("paid_steve_package_thread_chars_max"),
+            defaults.thread_chars_max,
+            minimum=1000,
         ),
         doc_excerpt_chars_default=_int(
             f.get("paid_steve_package_doc_excerpt_chars_default"),

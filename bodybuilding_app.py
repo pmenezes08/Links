@@ -23150,6 +23150,7 @@ def _steve_ai_reply_for_group_post(
         context_includes_document_section,
         render_group_resource_system_appendix,
         render_hosted_search_capability_instructions,
+        render_thread_grounding_appendix,
         should_include_user_profile,
     )
     from backend.services.steve_profiling_gates import user_can_access_steve_kb
@@ -23243,37 +23244,32 @@ def _steve_ai_reply_for_group_post(
         except Exception:
             pass
 
-    limit_n = max(1, min(50, int(steve_config.recent_comments_limit or 20)))
-    c.execute(
-        f"""
-        SELECT username, content, id, parent_reply_id, created_at FROM {gr_t}
-        WHERE group_post_id = {placeholder}
-        ORDER BY id ASC LIMIT {limit_n}
-        """,
-        (group_post_id,),
+    limit_n = max(0, min(50, int(steve_config.recent_comments_limit or 24)))
+    from backend.services.steve_feed_thread_context import (
+        fetch_recent_group_comments,
+        format_thread_for_steve,
     )
-    all_comments = c.fetchall() or []
-    context_parts = []
+
+    gr_table = gr_t
+    thread_comments = fetch_recent_group_comments(
+        c,
+        placeholder,
+        group_post_id=int(group_post_id),
+        limit=limit_n,
+        table_name=gr_table,
+    )
     desc = f"Original group post by {post_author}: {post_content}"
     if has_images:
         desc += f"\n[This post includes {len(post_image_urls)} image(s)]"
-    context_parts.append(desc)
-    if all_comments:
-        context_parts.append("\n--- All comments on this group post ---")
-        for comment in all_comments:
-            cu = comment['username'] if hasattr(comment, 'keys') else comment[0]
-            cc = comment['content'] if hasattr(comment, 'keys') else comment[1]
-            if cc:
-                if str(cu).lower() == 'steve':
-                    context_parts.append(f"[Steve (AI) replied]: {cc}")
-                else:
-                    context_parts.append(f"{cu}: {cc}")
-        context_parts.append("--- End of comments ---\n")
-    context_parts.append(f"User {username} now says: {user_message}")
-    current_datetime = datetime.utcnow()
-    context_parts.append(
-        f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]"
+    thread_block, recent_reply_texts = format_thread_for_steve(
+        thread_comments,
+        post_description=desc,
+        current_username=username,
+        current_message=user_message or "",
+        max_chars=int(getattr(steve_config, "thread_chars_max", 12000) or 12000),
+        include_multi_user_note=False,
     )
+    context_parts = [thread_block]
     if exclusive_group_id:
         grp_ctx = ""
         try:
@@ -23288,7 +23284,7 @@ def _steve_ai_reply_for_group_post(
                 polls_limit=steve_config.polls_limit,
                 user_message=user_message or "",
                 original_post=post_content or "",
-                recent_comments=[(row["content"] if hasattr(row, "keys") else row[1]) for row in all_comments],
+                recent_comments=recent_reply_texts,
             )
             if grp_ctx and grp_ctx.strip():
                 context_parts.append(
@@ -23307,6 +23303,7 @@ def _steve_ai_reply_for_group_post(
 
     context = "\n\n".join(context_parts)
     system_prompt = get_ai_personality_prompt(ai_personality)
+    system_prompt += render_thread_grounding_appendix()
     if agent_mode == PRESET_CAREER_EXPERT:
         system_prompt += (
             "\n\nYou are this group's Career Expert agent. Lead with empathy; use a short TL;DR when the answer is long. "
@@ -23766,6 +23763,7 @@ def ai_steve_reply():
             append_response_policy,
             context_includes_document_section,
             render_community_resource_system_appendix,
+            render_thread_grounding_appendix,
             should_include_community_resources_from_thread,
             should_include_user_profile,
         )
@@ -24035,8 +24033,7 @@ def ai_steve_reply():
                 except Exception as pers_err:
                     logger.warning(f"Could not fetch AI personality: {pers_err}")
             
-            # Build context for AI - include all comments on the post for full context
-            context_parts = []
+            # Build context for AI — post + most recent comment tail (not oldest-N)
             post_description = f"Original post by {post_author}: {post_content}"
             
             logger.info(f"[Steve AI] Building context for post {post_id}, author: {post_author}, content length: {len(post_content) if post_content else 0}")
@@ -24048,43 +24045,35 @@ def ai_steve_reply():
                 post_description += f"\n[This post includes {len(post_image_urls)} image(s)]"
             elif has_video:
                 post_description += "\n[This post includes a video]"
-            
-            context_parts.append(post_description)
-            
-            # Fetch ALL comments on this post for full context (up to 20 most recent)
+
+            from backend.services.steve_feed_thread_context import (
+                fetch_recent_post_comments,
+                format_thread_for_steve,
+            )
+
+            recent_reply_texts: list[str] = []
+            comment_limit = max(0, min(50, int(steve_config.recent_comments_limit or 24)))
             try:
-                c.execute(f"""
-                    SELECT username, content, id, parent_reply_id, timestamp FROM replies 
-                    WHERE post_id = {placeholder} 
-                    ORDER BY timestamp ASC LIMIT {max(0, int(steve_config.recent_comments_limit or 0))}
-                """, (post_id,))
-                all_comments = c.fetchall()
-                
-                if all_comments:
-                    context_parts.append("\n--- All comments on this post ---")
-                    for comment in all_comments:
-                        comment_user = comment['username'] if hasattr(comment, 'keys') else comment[0]
-                        comment_content = comment['content'] if hasattr(comment, 'keys') else comment[1]
-                        if comment_content:
-                            # Mark Steve's own previous replies
-                            if comment_user.lower() == 'steve':
-                                context_parts.append(f"[Steve (AI) replied]: {comment_content}")
-                            else:
-                                context_parts.append(f"{comment_user}: {comment_content}")
-                    context_parts.append("--- End of comments ---\n")
+                thread_comments = fetch_recent_post_comments(
+                    c,
+                    placeholder,
+                    post_id=int(post_id),
+                    limit=comment_limit,
+                )
+                thread_block, recent_reply_texts = format_thread_for_steve(
+                    thread_comments,
+                    post_description=post_description,
+                    current_username=username,
+                    current_message=user_message or "",
+                    max_chars=int(getattr(steve_config, "thread_chars_max", 12000) or 12000),
+                )
+                context_parts = [thread_block]
             except Exception as comments_err:
                 logger.warning(f"Could not fetch all comments: {comments_err}")
-                # Fall back to just parent content if available
+                context_parts = [post_description, f"User {username} now says: {user_message}"]
                 if parent_content:
-                    context_parts.append(f"Comment by {parent_author}: {parent_content}")
-            
-            context_parts.append(f"User {username} now says: {user_message}")
-            
-            # Add current date/time for time-aware responses
-            from datetime import datetime
-            current_datetime = datetime.utcnow()
-            context_parts.append(f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]")
-            context_parts.append("\nNote: If the user asks you to respond to or help another user, look through the comments above to find that user's question or message and address it directly.")
+                    context_parts.insert(1, f"Comment by {parent_author}: {parent_content}")
+                    recent_reply_texts = [parent_content]
             
             # Community context: same as post @Steve — calendar, links, PDF excerpts, polls (not for exclusive group posts)
             community_context = ""
@@ -24093,7 +24082,7 @@ def ai_steve_reply():
                 user_message,
                 original_post=post_content or "",
                 parent_reply=parent_content or "",
-                recent_replies=[(row["content"] if hasattr(row, "keys") else row[1]) for row in (all_comments or [])],
+                recent_replies=recent_reply_texts,
                 has_recent_docs=has_recent_docs,
             )
 
@@ -24110,7 +24099,7 @@ def ai_steve_reply():
                         polls_limit=steve_config.polls_limit,
                         user_message=user_message,
                         original_post=post_content or "",
-                        recent_comments=[(row["content"] if hasattr(row, "keys") else row[1]) for row in (all_comments or [])],
+                        recent_comments=recent_reply_texts,
                     )
                     if community_context and community_context.strip():
                         context_parts.append(
@@ -24134,6 +24123,7 @@ def ai_steve_reply():
             logger.info(f"[Steve AI] Context built, length: {len(context)} chars, personality: {ai_personality}")
             
             system_prompt = get_ai_personality_prompt(ai_personality)
+            system_prompt += render_thread_grounding_appendix()
             if community_id and include_thread_resources and not is_group_post and community_context.strip():
                 system_prompt += render_community_resource_system_appendix(
                     includes_documents=context_includes_document_section(community_context),

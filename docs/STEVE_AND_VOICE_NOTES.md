@@ -80,6 +80,19 @@ fall back to PDF extract). Default doc excerpt budget is KB **`paid_steve_packag
 (``documents``, ``read them``, ``documento``, ``ler``, …). The system prompt claims document access
 only when the assembled context includes a **Community documents** or **Group documents** block.
 
+### Thread context (feed / group @Steve replies)
+
+Comment-thread assembly for **`/api/ai/steve_reply`** and group @Steve lives in
+**`backend/services/steve_feed_thread_context.py`**. Steve receives the **original post plus the most
+recent N comments** on that post (tail of the thread, not the oldest N). Limits come from KB
+**`paid_steve_package_recent_comments_limit`** (default 24) and optional
+**`paid_steve_package_thread_chars_max`** (default 12000); when over budget, oldest numbered comments
+drop first while keeping at least the three newest. Each comment is numbered; replies show
+``↳ reply to #k`` when ``parent_reply_id`` is in the fetched window. Steve's own earlier lines are
+marked **`[Steve — your prior reply]`**; **`steve_prompt_policy.render_thread_grounding_appendix`**
+instructs the model to stay multilingual and consistent with those lines. Pre-LLM doc/resource gates
+remain separate from reply language.
+
 ---
 
 ## Exclusive group Steve agent (group feed)

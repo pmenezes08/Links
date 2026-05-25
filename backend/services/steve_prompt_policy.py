@@ -153,6 +153,20 @@ def render_group_resource_system_appendix(*, includes_documents: bool) -> str:
     )
 
 
+def render_thread_grounding_appendix() -> str:
+    """System-prompt rules for multilingual feed/group thread continuity."""
+    from backend.services.steve_feed_thread_context import STEVE_PRIOR_REPLY_LABEL
+
+    return (
+        "\nTHREAD CONTEXT:\n"
+        "- You are a multilingual agent; reply in the language used in the current thread unless the user clearly switches language.\n"
+        f"- Lines marked **{STEVE_PRIOR_REPLY_LABEL}** are your earlier answers in this thread — stay consistent with them; "
+        "do not deny or contradict what you already said here.\n"
+        "- If the user asks for sources or citations you did not actually retrieve on this turn, say so honestly "
+        "instead of inventing links or denying prior statements."
+    )
+
+
 def should_include_community_resources_from_thread(
     user_message: str,
     *,
