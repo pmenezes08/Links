@@ -34,6 +34,7 @@ import {
 } from '../utils/linkUtils.tsx'
 import EditableAISummary from '../components/EditableAISummary'
 import GifPicker from '../components/GifPicker'
+import { NativeActionButton } from '../components/NativeActionButton'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import LazyVideo from '../components/LazyVideo'
@@ -4207,6 +4208,67 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
       setSteveIsTyping(false)
     }
   }
+
+  const submitFeedReply = useCallback(async (opts: {
+    text: string
+    gif: GifSelection | null
+    parentReplyId?: number | null
+    setSending: (v: boolean) => void
+    onSuccess: (messageText: string, replyId: number) => void
+    onClear: () => void
+  }) => {
+    const { text, gif, parentReplyId, setSending, onSuccess, onClear } = opts
+    const messageText = text.trim()
+    if (!messageText && !gif) return
+    if (!navigator.onLine) {
+      alert(t('feed.go_back_online_reply'))
+      return
+    }
+    if (blockSteveMentionReply(messageText)) return
+
+    void triggerHaptic('light')
+    setSending(true)
+    try {
+      const preflight = await preflightSteveMention({
+        text: messageText,
+        communityId,
+        postId: post.id,
+        entitlementsHandler,
+      })
+      if (!preflight.ok) {
+        if (preflight.error) alert(preflight.error)
+        return
+      }
+
+      const fd = new FormData()
+      fd.append('post_id', String(post.id))
+      fd.append('content', messageText)
+      fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
+      if (parentReplyId != null) {
+        fd.append('parent_reply_id', String(parentReplyId))
+      }
+      if (gif) {
+        const gifFile = await gifSelectionToFile(gif, 'community-reply')
+        fd.append('image', gifFile)
+      }
+      const resp = await fetch('/post_reply', { method: 'POST', credentials: 'include', body: fd })
+      const j = await resp.json().catch(() => null)
+      if (j?.success && j.reply) {
+        if (onAddReply) {
+          onAddReply(post.id, j.reply as any)
+        }
+        onSuccess(messageText, j.reply.id)
+        onClear()
+      } else {
+        alert(j?.error || t('feed.reply_failed'))
+      }
+    } catch (_err) {
+      console.error('Failed to send reply with GIF', _err)
+      alert(t('feed.send_reply_failed'))
+    } finally {
+      setSending(false)
+    }
+  }, [blockSteveMentionReply, communityId, entitlementsHandler, onAddReply, post.id, t])
   useEffect(() => {
     if (!onMarkViewed) return
     if (post.has_viewed) return
@@ -5138,68 +5200,32 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                           <i className="fa-solid fa-images" />
                           GIF
                         </button>
-                          <button
-                          type="button"
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#4db6ac] text-black font-semibold hover:brightness-110 disabled:opacity-40 uppercase tracking-wide text-[11px]"
+                          <NativeActionButton
+                          className="px-2.5 py-1.5 rounded-lg font-semibold uppercase tracking-wide text-[11px]"
                           disabled={sendingChildReply || (!childReplyText.trim() && !childReplyGif)}
-                            onClick={async (ev)=>{
+                            onClick={(ev)=>{
                               ev.stopPropagation()
-                              if (sendingChildReply || (!childReplyText.trim() && !childReplyGif)) return
-                              if (!navigator.onLine) { alert(t('feed.go_back_online_reply')); return }
-                              const messageText = childReplyText.trim()
-                              if (blockSteveMentionReply(messageText)) return
-                              const preflight = await preflightSteveMention({
-                                text: messageText,
-                                communityId,
-                                postId: post.id,
-                                entitlementsHandler,
-                              })
-                              if (!preflight.ok) {
-                                if (preflight.error) alert(preflight.error)
-                                return
-                              }
-                              try{
-                                setSendingChildReply(true)
-                                const fd = new FormData()
-                                fd.append('post_id', String(post.id))
-                                fd.append('content', childReplyText.trim())
-                                fd.append('parent_reply_id', String(r.id))
-                                fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
-                                if (childReplyGif){
-                                  const gifFile = await gifSelectionToFile(childReplyGif, 'community-reply')
-                                  fd.append('image', gifFile)
-                                }
-                                const resp = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
-                                const j = await resp.json().catch(()=>null)
-                                if (j?.success && j.reply){
-                                  if (onAddReply) {
-                                    onAddReply(post.id, j.reply as any)
-                                  }
-                                  // Check if user mentioned @Steve (required to trigger AI and count against rate limit)
-                                  const messageText = childReplyText.trim()
-                                  console.log('[Steve AI] Child reply posted, checking message:', messageText)
+                              void submitFeedReply({
+                                text: childReplyText,
+                                gif: childReplyGif,
+                                parentReplyId: r.id,
+                                setSending: setSendingChildReply,
+                                onSuccess: (messageText, replyId) => {
                                   if (containsSteveMention(messageText)) {
-                                    console.log('[Steve AI] @Steve found in child reply, calling AI with user reply ID:', j.reply.id)
-                                    // Pass the user's new reply ID so Steve replies directly to it
-                                    callSteveAI(messageText, j.reply.id)
+                                    callSteveAI(messageText, replyId)
                                   }
+                                },
+                                onClear: () => {
                                   setChildReplyText('')
                                   setChildReplyGif(null)
                                   setActiveChildReplyFor(null)
-                                } else {
-                                  alert(j?.error || t('feed.reply_failed'))
-                                }
-                              }catch (_err){
-                                console.error('Failed to send reply with GIF', _err)
-                                alert(t('feed.send_reply_failed'))
-                              }finally{
-                                setSendingChildReply(false)
-                              }
+                                },
+                              })
                             }}
                           aria-label={t('feed.send_reply')}
                         >
                           {sendingChildReply ? <i className="fa-solid fa-spinner fa-spin" /> : <><i className="fa-solid fa-paper-plane text-[11px]" /><span className="uppercase tracking-[0.2em] text-[10px] font-semibold">{t('common.send')}</span></>}
-                        </button>
+                        </NativeActionButton>
                       </div>
                     </div>
                   )}
@@ -5279,65 +5305,29 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                 <i className="fa-solid fa-images" />
                 GIF
               </button>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#4db6ac] text-black font-semibold uppercase tracking-wide text-[11px] hover:brightness-110 disabled:opacity-40"
+              <NativeActionButton
+                className="px-2.5 py-1.5 rounded-lg font-semibold uppercase tracking-wide text-[11px]"
                 disabled={sendingReply || (!replyText.trim() && !replyGif)}
-                onClick={async ()=>{
-                  if (sendingReply || (!replyText.trim() && !replyGif)) return
-                  if (!navigator.onLine) { alert(t('feed.go_back_online_reply')); return }
-                  const messageText = replyText.trim()
-                  if (blockSteveMentionReply(messageText)) return
-                  const preflight = await preflightSteveMention({
-                    text: messageText,
-                    communityId,
-                    postId: post.id,
-                    entitlementsHandler,
+                onClick={()=>{
+                  void submitFeedReply({
+                    text: replyText,
+                    gif: replyGif,
+                    setSending: setSendingReply,
+                    onSuccess: (messageText, replyId) => {
+                      if (containsSteveMention(messageText)) {
+                        callSteveAI(messageText, replyId)
+                      }
+                    },
+                    onClear: () => {
+                      setReplyText('')
+                      setReplyGif(null)
+                    },
                   })
-                  if (!preflight.ok) {
-                    if (preflight.error) alert(preflight.error)
-                    return
-                  }
-                    try{
-                      setSendingReply(true)
-                      const fd = new FormData()
-                      fd.append('post_id', String(post.id))
-                      fd.append('content', replyText.trim())
-                      fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
-                      if (replyGif){
-                        const gifFile = await gifSelectionToFile(replyGif, 'community-reply')
-                        fd.append('image', gifFile)
-                      }
-                      const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
-                      const j = await r.json().catch(()=>null)
-                        if (j?.success && j.reply){
-                        if (onAddReply) {
-                          onAddReply(post.id, j.reply as any)
-                        }
-                        // Check if user mentioned @Steve and trigger AI reply
-                        const messageText = replyText.trim()
-                        console.log('[Steve AI] Main reply posted, checking message:', messageText)
-                        if (containsSteveMention(messageText)) {
-                          console.log('[Steve AI] @Steve found in main reply, calling AI with user reply ID:', j.reply.id)
-                          // Pass the user's new reply ID so Steve replies directly to it
-                          callSteveAI(messageText, j.reply.id)
-                        }
-                        setReplyText('')
-                        setReplyGif(null)
-                      } else {
-                        alert(j?.error || t('feed.reply_failed'))
-                      }
-                    }catch (_err){
-                      console.error('Failed to send reply with GIF', _err)
-                      alert(t('feed.send_reply_failed'))
-                    }finally{
-                      setSendingReply(false)
-                    }
                 }}
                 aria-label={t('feed.send_reply')}
               >
                 {sendingReply ? <i className="fa-solid fa-spinner fa-spin" /> : <><i className="fa-solid fa-paper-plane text-[11px]" /><span className="uppercase tracking-[0.2em] text-[10px] font-semibold">{t('feed.reply')}</span></>}
-              </button>
+              </NativeActionButton>
             </div>
           </div>
         </div>

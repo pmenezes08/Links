@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next'
 import { detectLinks, replaceLinkInText, type DetectedLink } from '../utils/linkUtils.tsx'
 import { extractUrls, stripExtractedUrlsFromText } from '../components/LinkPreview'
 import GifPicker from '../components/GifPicker'
+import { NativeActionButton } from '../components/NativeActionButton'
 import { clearDeviceCache } from '../utils/deviceCache'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
@@ -17,6 +18,7 @@ import { fileIsPdf } from '../services/shareImport'
 import { takePendingShareFilesOnce, takePendingShareUrlsOnce, releaseShareHandoffKey, releaseShareUrlHandoffKey } from '../services/shareImportStore'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
 import { preflightSteveMention } from '../utils/stevePreflight'
+import { triggerHaptic } from '../utils/haptics'
 
 export default function CreatePost(){
   const [params, setSearchParams] = useSearchParams()
@@ -321,9 +323,6 @@ export default function CreatePost(){
       return
     }
 
-    // If user is still recording, stop and wait briefly for preview to finalize
-    if (recording) await ensurePreview(5000)
-    
     if (submitting) return
 
     const urlsFromText = extractUrls(content)
@@ -343,6 +342,21 @@ export default function CreatePost(){
       return
     }
 
+    // Show posting state immediately so the tap feels native (before preflight / upload work).
+    setSubmitting(true)
+    void triggerHaptic('light')
+
+    // If user is still recording, stop and wait briefly for preview to finalize
+    if (recording) {
+      try {
+        await ensurePreview(5000)
+      } catch {
+        setSubmitting(false)
+        alert(t('feed.post_failed'))
+        return
+      }
+    }
+
     if (communityId && !groupId) {
       const preflight = await preflightSteveMention({
         text: captionStripped,
@@ -351,12 +365,11 @@ export default function CreatePost(){
       })
       if (!preflight.ok) {
         if (preflight.error) alert(preflight.error)
+        setSubmitting(false)
         return
       }
     }
 
-    setSubmitting(true)
-    
     // Check if this is from onboarding (first post)
     const isFirstPost = params.get('first_post') === 'true'
     
@@ -841,9 +854,13 @@ export default function CreatePost(){
               </button>
             )}
           </div>
-          <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting || (!content && !hasMediaAttachment && !gifFile && !preview)}>
+          <NativeActionButton
+            className={`px-4 py-2 rounded-full font-semibold ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed active:scale-100' : ''}`}
+            onClick={submit}
+            disabled={submitting || (!content && !hasMediaAttachment && !gifFile && !preview)}
+          >
             {submitting ? t('feed.posting') : t('feed.post')}
-          </button>
+          </NativeActionButton>
         </div>
       </div>
       <div 
