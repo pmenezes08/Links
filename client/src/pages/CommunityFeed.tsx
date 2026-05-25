@@ -1595,6 +1595,7 @@ export default function CommunityFeed() {
 
   const handleSubmitStoryComment = useCallback(async (storyId: number) => {
     if (!storyCommentText.trim() || storyCommentSending) return
+    void triggerHaptic('light')
     setStoryCommentSending(true)
     try {
       const r = await fetch(`/api/community_stories/${storyId}/comments`, {
@@ -1629,6 +1630,7 @@ export default function CommunityFeed() {
     if (!storyPrivateReplyText.trim() || storyPrivateReplySending) return
     if (!story?.username || !data?.username) return
     if (story.username.toLowerCase() === data.username.toLowerCase()) return
+    void triggerHaptic('light')
     setStoryPrivateReplySending(true)
     try {
       const idFd = new FormData()
@@ -3104,13 +3106,19 @@ export default function CommunityFeed() {
                   rows={1}
                   disabled={storyCommentSending}
                 />
-                <button
+                <NativeActionButton
+                  variant="composer"
+                  className="h-9 w-9 rounded-full flex-shrink-0"
                   onClick={() => handleSubmitStoryComment(currentStory.id)}
                   disabled={!storyCommentText.trim() || storyCommentSending}
-                  className="w-9 h-9 rounded-full bg-[#4db6ac] text-white flex items-center justify-center disabled:opacity-40 flex-shrink-0"
+                  aria-label={t('feed.send_reply')}
                 >
-                  {storyCommentSending ? <i className="fa-solid fa-spinner fa-spin text-xs" /> : <i className="fa-solid fa-paper-plane text-xs" />}
-                </button>
+                  {storyCommentSending ? (
+                    <i className="fa-solid fa-spinner fa-spin text-xs pointer-events-none" />
+                  ) : (
+                    <i className="fa-solid fa-paper-plane text-xs pointer-events-none" />
+                  )}
+                </NativeActionButton>
               </div>
             </div>
           )}
@@ -3161,13 +3169,19 @@ export default function CommunityFeed() {
                   disabled={storyPrivateReplySending}
                   autoFocus
                 />
-                <button
+                <NativeActionButton
+                  variant="composer"
+                  className="h-9 w-9 rounded-full flex-shrink-0 mb-0.5"
                   onClick={() => handleSendPrivateReply(currentStory)}
                   disabled={!storyPrivateReplyText.trim() || storyPrivateReplySending}
-                  className="w-9 h-9 rounded-full bg-[#4db6ac] text-white flex items-center justify-center disabled:opacity-40 flex-shrink-0 mb-0.5"
+                  aria-label={t('feed.send_reply')}
                 >
-                  {storyPrivateReplySending ? <i className="fa-solid fa-spinner fa-spin text-xs" /> : <i className="fa-solid fa-paper-plane text-xs" />}
-                </button>
+                  {storyPrivateReplySending ? (
+                    <i className="fa-solid fa-spinner fa-spin text-xs pointer-events-none" />
+                  ) : (
+                    <i className="fa-solid fa-paper-plane text-xs pointer-events-none" />
+                  )}
+                </NativeActionButton>
                 <button onClick={() => { setStoryPrivateReplyOpen(false); setStoryPrivateReplyText('') }} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/70 text-xs flex-shrink-0 mb-0.5"><i className="fa-solid fa-xmark" /></button>
               </div>
             )}
@@ -3247,14 +3261,19 @@ export default function CommunityFeed() {
                     )}
 
                     {(storyCommentFocused || storyCommentText.trim()) && (
-                      <button
-                        type="button"
+                      <NativeActionButton
+                        variant="composer"
+                        className="h-10 w-10 rounded-full flex-shrink-0 mb-0.5"
                         onClick={() => handleSubmitStoryComment(currentStory.id)}
                         disabled={!storyCommentText.trim() || storyCommentSending}
-                        className="w-10 h-10 rounded-full bg-[#4db6ac] text-white flex items-center justify-center disabled:opacity-40 flex-shrink-0 mb-0.5"
+                        aria-label={t('feed.send_reply')}
                       >
-                        {storyCommentSending ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
-                      </button>
+                        {storyCommentSending ? (
+                          <i className="fa-solid fa-spinner fa-spin text-sm pointer-events-none" />
+                        ) : (
+                          <i className="fa-solid fa-paper-plane text-sm pointer-events-none" />
+                        )}
+                      </NativeActionButton>
                     )}
                   </div>
                 ) : (

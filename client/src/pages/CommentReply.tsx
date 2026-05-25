@@ -27,6 +27,8 @@ import {
   shouldClientBlockSteveIntent,
 } from '../utils/steveClientGate'
 import { preflightSteveMention } from '../utils/stevePreflight'
+import { NativeActionButton } from '../components/NativeActionButton'
+import { triggerHaptic } from '../utils/haptics'
 
 function replyDisplayUrl(raw: string | null | undefined): string {
   const s = (raw ?? '').trim()
@@ -619,8 +621,13 @@ export default function CommentReply() {
     if (!reply || !post) return
     const hasMedia = !!(selectedGif || file || uploadFile || replyPreview?.blob)
     if (!replyText.trim() && !hasMedia) return
+    if (sendingReply) return
     const messageText = replyText.trim()
     if (blockSteveMentionReply(messageText, post?.community_id)) return
+
+    void triggerHaptic('light')
+    setSendingReply(true)
+
     const preflight = await preflightSteveMention({
       text: messageText,
       communityId: post?.community_id,
@@ -629,9 +636,10 @@ export default function CommentReply() {
     })
     if (!preflight.ok) {
       if (preflight.error) alert(preflight.error)
+      setSendingReply(false)
       return
     }
-    setSendingReply(true)
+
     try {
       const fd = new FormData()
       fd.append('post_id', String(post.id))
@@ -1521,10 +1529,20 @@ export default function CommentReply() {
 
       {/* Fixed bottom reply composer */}
       <div 
-        className="fixed left-0 right-0 z-[100] bg-black border-t border-white/10"
-        style={{ bottom: showKeyboard ? keyboardLift : 0 }}
+        className="fixed left-0 right-0 z-[100]"
+        style={{
+          bottom: showKeyboard ? keyboardLift : 0,
+          display: 'flex',
+          flexDirection: 'column',
+        }}
       >
-        <div className="max-w-2xl mx-auto px-3 py-3">
+        <div
+          className="max-w-2xl mx-auto w-full border-t border-white/10 bg-black px-3 py-3"
+          style={{
+            paddingLeft: 'max(12px, env(safe-area-inset-left, 0px))',
+            paddingRight: 'max(12px, env(safe-area-inset-right, 0px))',
+          }}
+        >
           {(file || selectedGif || replyPreview) && (
             <div className="mb-2 flex items-center gap-2 flex-wrap">
               {file && filePreviewUrl && (
@@ -1681,23 +1699,32 @@ export default function CommentReply() {
             )}
 
             {!recording && (replyText.trim() || file || replyPreview || selectedGif) && (
-              <button
-                type="button"
+              <NativeActionButton
+                variant="composer"
+                className="h-9 w-9 flex-none rounded-lg"
                 onClick={handleSubmitReply}
                 disabled={sendingReply}
-                className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-[#4db6ac] text-white transition-opacity disabled:opacity-40"
+                aria-label={t('feed.send_reply')}
               >
-                <span className="inline-flex h-5 w-5 items-center justify-center" aria-hidden>
-                  {sendingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
-                </span>
-              </button>
+                {sendingReply ? (
+                  <i className="fa-solid fa-spinner fa-spin text-sm pointer-events-none" />
+                ) : (
+                  <i className="fa-solid fa-paper-plane text-sm pointer-events-none" />
+                )}
+              </NativeActionButton>
             )}
           </div>
         </div>
-        {/* Safe area spacer for iOS - only when keyboard is closed */}
-        {!showKeyboard && (
-          <div style={{ height: 'env(safe-area-inset-bottom, 0px)' }} />
-        )}
+        {/* Safe area spacer — reserve minimum so Send never collides with home indicator */}
+        <div
+          style={{
+            height: showKeyboard
+              ? 'max(env(safe-area-inset-bottom, 0px), 6px)'
+              : 'max(env(safe-area-inset-bottom, 0px), 12px)',
+            background: '#000',
+            flexShrink: 0,
+          }}
+        />
       </div>
 
       {replyComposerExpanded && reply && post && (
@@ -1825,15 +1852,19 @@ export default function CommentReply() {
               >
                 {t('common.cancel')}
               </button>
-              <button
-                type="button"
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-[#4db6ac] text-sm font-semibold text-white shadow-[0_10px_28px_rgba(77,182,172,0.22)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+              <NativeActionButton
+                variant="composer"
+                className="h-10 w-10 rounded-full shadow-[0_10px_28px_rgba(77,182,172,0.22)]"
                 onClick={handleSubmitReply}
                 aria-label={t('feed.send_reply')}
                 disabled={sendingReply || (!replyText.trim() && !file && !replyPreview && !selectedGif)}
               >
-                {sendingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
-              </button>
+                {sendingReply ? (
+                  <i className="fa-solid fa-spinner fa-spin text-sm pointer-events-none" />
+                ) : (
+                  <i className="fa-solid fa-paper-plane text-sm pointer-events-none" />
+                )}
+              </NativeActionButton>
             </footer>
           </div>
         </div>

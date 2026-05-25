@@ -32,6 +32,8 @@ import {
   shouldClientBlockSteveIntent,
 } from '../utils/steveClientGate'
 import { preflightSteveMention } from '../utils/stevePreflight'
+import { NativeActionButton } from '../components/NativeActionButton'
+import { triggerHaptic } from '../utils/haptics'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, audio_path?: string|null, audio_summary?: string|null, reply_count?: number, view_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
@@ -1085,6 +1087,10 @@ export default function PostDetail(){
     const messageText = content.trim()
     const communityId = (post as { community_id?: number | string | null }).community_id
     if (blockSteveMentionReply(messageText, communityId)) return
+
+    void triggerHaptic('light')
+    setSubmittingReply(true)
+
     if (!isGroupPost) {
       const preflight = await preflightSteveMention({
         text: messageText,
@@ -1094,11 +1100,11 @@ export default function PostDetail(){
       })
       if (!preflight.ok) {
         if (preflight.error) alert(preflight.error)
+        setSubmittingReply(false)
         return
       }
     }
-    
-    setSubmittingReply(true)
+
     const fd = new FormData()
     if (isGroupPost) {
       fd.append('group_post_id', String(post.id))
@@ -1170,6 +1176,10 @@ export default function PostDetail(){
     const messageText = (text || '').trim()
     const communityId = (post as { community_id?: number | string | null }).community_id
     if (blockSteveMentionReply(messageText, communityId)) return
+
+    void triggerHaptic('light')
+    setInlineSending(s => ({ ...s, [parentId]: true }))
+
     if (!isGroupPost) {
       const preflight = await preflightSteveMention({
         text: messageText,
@@ -1179,10 +1189,11 @@ export default function PostDetail(){
       })
       if (!preflight.ok) {
         if (preflight.error) alert(preflight.error)
+        setInlineSending(s => ({ ...s, [parentId]: false }))
         return
       }
     }
-    setInlineSending(s => ({ ...s, [parentId]: true }))
+
     const fd = new FormData()
     if (isGroupPost) {
       fd.append('group_post_id', String(post.id))
@@ -1722,10 +1733,11 @@ export default function PostDetail(){
   const showKeyboard = liftSource > 2
   const expandedComposerLift = Math.max(keyboardLift, expandedComposerViewportLift)
   const expandedComposerKeyboardOpen = expandedComposerLift > 2
-  // Padding to ensure content doesn't hide behind composer
+  // Padding to ensure content doesn't hide behind composer (extra when inline reply is open)
+  const inlineComposerExtra = activeInlineReplyFor !== null ? 88 : 0
   const contentPaddingBottom = showKeyboard
-    ? `${effectiveComposerHeight + keyboardLift + 16}px`
-    : `calc(${safeBottom} + ${effectiveComposerHeight + 32}px)`
+    ? `${effectiveComposerHeight + keyboardLift + 16 + inlineComposerExtra}px`
+    : `calc(${safeBottom} + ${effectiveComposerHeight + 32 + inlineComposerExtra}px)`
 
   return (
     <div
@@ -2246,7 +2258,11 @@ export default function PostDetail(){
         <div
           ref={composerCardRef}
           className="relative max-w-2xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-2.5 py-3"
-          style={{ background: '#0a0a0c' }}
+          style={{
+            background: '#0a0a0c',
+            paddingLeft: 'max(10px, env(safe-area-inset-left, 0px))',
+            paddingRight: 'max(10px, env(safe-area-inset-right, 0px))',
+          }}
         >
           {/* Attachment previews - show above input row when files attached */}
           {(file || replyGif || replyPreview) && (
@@ -2434,19 +2450,21 @@ export default function PostDetail(){
 
             {/* Send button - when has content or attachment */}
             {!recording && (content.trim() || file || replyPreview || replyGif) && (
-              <button
-                type="button"
-                className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-[#4db6ac] text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 transition-opacity"
+              <NativeActionButton
+                variant="composer"
+                className="h-9 w-9 flex-none rounded-xl"
                 onPointerDown={preventComposerBlur}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => submitReply()}
                 aria-label={t('feed.send_reply')}
                 disabled={submittingReply}
               >
-                <span className="inline-flex h-5 w-5 items-center justify-center" aria-hidden>
-                  {submittingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
-                </span>
-              </button>
+                {submittingReply ? (
+                  <i className="fa-solid fa-spinner fa-spin text-sm pointer-events-none" />
+                ) : (
+                  <i className="fa-solid fa-paper-plane text-sm pointer-events-none" />
+                )}
+              </NativeActionButton>
             )}
           </div>
         </div>
@@ -2582,15 +2600,19 @@ export default function PostDetail(){
               >
                 {t('common.cancel')}
               </button>
-              <button
-                type="button"
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-[#4db6ac] text-sm font-semibold text-white shadow-[0_10px_28px_rgba(77,182,172,0.22)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+              <NativeActionButton
+                variant="composer"
+                className="h-10 w-10 rounded-full shadow-[0_10px_28px_rgba(77,182,172,0.22)]"
                 onClick={() => submitReply()}
                 aria-label={t('feed.send_reply')}
                 disabled={submittingReply || (!content.trim() && !file && !replyPreview && !replyGif)}
               >
-                {submittingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
-              </button>
+                {submittingReply ? (
+                  <i className="fa-solid fa-spinner fa-spin text-sm pointer-events-none" />
+                ) : (
+                  <i className="fa-solid fa-paper-plane text-sm pointer-events-none" />
+                )}
+              </NativeActionButton>
             </footer>
           </div>
         </div>
@@ -3230,7 +3252,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
       </div>
       {/* Inline reply composer - full width outside the avatar+content flex */}
       {showComposer ? (
-        <div className="mt-2 mx-3 space-y-2 rounded-xl bg-[#0a0a0c] p-3" data-inline-reply-id={reply.id} onClick={(e) => e.stopPropagation()}>
+        <div className="mt-2 mx-3 space-y-2 rounded-xl bg-[#0a0a0c] p-3 overflow-visible" data-inline-reply-id={reply.id} onClick={(e) => e.stopPropagation()}>
           {/* Attachment previews */}
           {(img || inlineGif || inlinePreview) && (
             <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -3269,7 +3291,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             </div>
           )}
           {/* Input row */}
-          <div className="flex min-w-0 items-end gap-1.5">
+          <div className="flex min-w-0 items-end gap-1.5 overflow-visible">
             {/* + button with dropdown */}
             <div className="relative">
               <button 
@@ -3344,9 +3366,9 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
               <>
                 {/* Has content - show send button */}
                 {(text.trim() || img || inlinePreview || gifFile) ? (
-                  <button 
-                    type="button"
-                    className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#4db6ac] disabled:opacity-50 transition-opacity"
+                  <NativeActionButton
+                    variant="composer"
+                    className="h-8 w-8 shrink-0 rounded-lg"
                     disabled={inlineSendingFlag}
                     onClick={() => {
                       if (!text && !img && !inlinePreview && !gifFile) return
@@ -3366,10 +3388,12 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                       setShowComposer(false)
                     }}
                   >
-                    <span className="inline-flex size-3.5 items-center justify-center text-white" aria-hidden>
-                      {inlineSendingFlag ? <i className="fa-solid fa-spinner fa-spin text-xs" /> : <i className="fa-solid fa-paper-plane text-xs" />}
-                    </span>
-                  </button>
+                    {inlineSendingFlag ? (
+                      <i className="fa-solid fa-spinner fa-spin text-xs pointer-events-none" />
+                    ) : (
+                      <i className="fa-solid fa-paper-plane text-xs pointer-events-none" />
+                    )}
+                  </NativeActionButton>
                 ) : (
                   /* No content - show mic button */
                   <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20" onClick={() => startInlineRec()}>
