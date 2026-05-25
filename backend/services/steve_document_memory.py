@@ -528,6 +528,30 @@ def index_useful_doc_by_id(doc_id: int, *, force: bool = False, compute_embeddin
         return index_useful_doc(row, force=force, compute_embeddings=compute_embeddings)
 
 
+def purge_useful_doc(
+    doc_id: int,
+    *,
+    community_id: Optional[int] = None,
+    group_id: Optional[int] = None,
+) -> bool:
+    """Best-effort delete of Firestore manifest + chunks for one useful doc."""
+    fs = _get_firestore_client()
+    if not fs:
+        return False
+    scope_key = scope_key_for_doc(community_id, group_id)
+    doc_ref = fs.collection(COLLECTION).document(scope_key).collection("docs").document(str(int(doc_id)))
+    try:
+        chunks_ref = doc_ref.collection("chunks")
+        for chunk_snap in chunks_ref.stream():
+            chunk_snap.reference.delete()
+        doc_ref.delete()
+        logger.info("Purged Steve doc memory doc_id=%s scope=%s", doc_id, scope_key)
+        return True
+    except Exception as exc:
+        logger.warning("Steve doc memory purge failed doc_id=%s scope=%s: %s", doc_id, scope_key, exc)
+        return False
+
+
 def backfill_existing_docs(*, limit: int = 100, force: bool = False, compute_embeddings: bool = True) -> Dict[str, Any]:
     out: Dict[str, Any] = {"indexed": 0, "failed": 0, "skipped": 0, "results": []}
     with get_db_connection() as conn:

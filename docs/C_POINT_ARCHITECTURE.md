@@ -222,6 +222,9 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | `steve_community_memory.py` | Firestore compact community memory reader for community-feed Steve prompts. |
 | `steve_document_memory.py` | Firestore-backed exact-scope PDF memory for Steve: indexes committed `useful_docs` rows, extracts page text, chunks/summarizes PDFs, stores optional embeddings, and retrieves scoped page/section chunks for feed/group turns. |
 | `steve_resource_context.py` | Exact-scope Steve resource context builder (calendar, links, documents, polls) for community and group post replies; documents section prefers Firestore doc memory and falls back to legacy on-the-fly PDF text extraction. |
+| `useful_links_read.py` / `useful_links_write.py` / `useful_docs_write.py` | Useful Links & Docs read/write services (community/group scoped). |
+| `useful_resources_notify.py` / `community_access.py` | Member notifications on new community resources; membership/group gates for mutations. |
+| `backend/blueprints/useful_resources.py` | HTTP routes for `/get_links`, `/add_link`, `/delete_link`, `/upload_doc`, `/rename_doc`, `/delete_doc`. |
 | `steve_feedback.py` | Feedback queue backend. |
 | `steve_community_welcome.py` | Welcome post backfill + Firestore mirror. |
 | `steve_reminder_vault.py` | Vault storage. |
