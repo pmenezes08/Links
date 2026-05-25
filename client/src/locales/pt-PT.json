@@ -1457,7 +1457,10 @@
     "error": {
       "generic": "Algo correu mal",
       "load_failed": "Não foi possível carregar o perfil",
-      "not_found": "Perfil não encontrado"
+      "not_found": "Perfil não encontrado",
+      "unavailable_title": "Perfil indisponível",
+      "unavailable_hint": "Não conseguimos mostrar este perfil agora. O utilizador pode ter alterado as definições de privacidade ou o link pode já não ser válido.",
+      "back": "Voltar"
     },
     "alert": {
       "offline_save": "Volta a estar online para guardar alterações",
@@ -1632,6 +1635,8 @@
       "send_failed": "Não foi possível enviar o convite",
       "sent_single": "Convite enviado para @{{username}}",
       "sent_multiple": "Enviados {{count}} convites para @{{username}}",
+      "sent_if_exists": "Se esse utilizador existir, iremos enviar um convite.",
+      "sent_multiple_generic": "Pedidos de convite enviados para {{count}} comunidades.",
       "already_member": "Já é membro",
       "send": "Enviar convite",
       "sending": "A enviar..."
@@ -1773,6 +1778,7 @@
     "send_username_invite": "Enviar convite por nome de utilizador",
     "username_required": "O nome de utilizador é obrigatório",
     "invite_sent_to_username": "Convite enviado para @{{username}}",
+    "invite_sent_if_exists": "Se esse utilizador existir, iremos enviar um convite.",
     "failed_username_invite": "Falha ao enviar convite por nome de utilizador",
     "email_label": "Endereço de e-mail",
     "email_placeholder": "email@exemplo.com",

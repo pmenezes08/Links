@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
+import ProfileUnavailable from '../components/profile/ProfileUnavailable'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
 import { profileIndustryLabel } from '../utils/profileOptionLabel'
@@ -296,8 +297,8 @@ export default function PublicProfile() {
 
       setInviteSuccess(
         results.length === 1
-          ? (results[0]?.message || t('profile.invite.sent_single', { username: profile.username }))
-          : t('profile.invite.sent_multiple', { count: results.length, username: profile.username })
+          ? (results[0]?.message || t('profile.invite.sent_if_exists'))
+          : t('profile.invite.sent_multiple_generic', { count: results.length })
       )
       setSelectedInviteCommunityIds([])
     } catch (err) {
@@ -310,7 +311,7 @@ export default function PublicProfile() {
   const presentLabel = t('profile.public.present')
 
   if (loading) return <div className="glass-page min-h-screen text-white px-4">{t('profile.loading')}</div>
-  if (error || !profile) return <div className="glass-page min-h-screen text-white px-4 text-red-400">{error || t('profile.error.not_found')}</div>
+  if (error || !profile) return <ProfileUnavailable />
 
   const personal = profile.personal || {}
   const professional = profile.professional || {}
