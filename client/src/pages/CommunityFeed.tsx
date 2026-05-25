@@ -1,4 +1,4 @@
-import { type ChangeEvent, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ChangeEvent, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Capacitor } from '@capacitor/core'
@@ -21,7 +21,7 @@ import ZoomableImage from '../components/ZoomableImage'
 import BurgerMenuDrawer from '../components/BurgerMenuDrawer'
 import { useHeader } from '../contexts/HeaderContext'
 import { useEntitlementsHandler } from '../contexts/EntitlementsContext'
-import { ENTITLEMENTS_REFRESH_EVENT, useEntitlements } from '../hooks/useEntitlements'
+import { ENTITLEMENTS_REFRESH_EVENT, useEntitlements, type EntitlementsSnapshot } from '../hooks/useEntitlements'
 import VideoEmbed from '../components/VideoEmbed'
 import LinkPreview, { feedPostLinkPreviewUrls } from '../components/LinkPreview'
 import { extractVideoEmbedFromPost, removeVideoUrlFromText } from '../utils/videoEmbed'
@@ -193,6 +193,11 @@ export default function CommunityFeed() {
   const navigate = useNavigate()
   const routerLocation = useLocation()
   const { refreshBadges } = useBadges()
+  const {
+    entitlements: feedEntitlements,
+    enforcement_enabled: feedEnforcementEnabled,
+    loading: feedEntitlementsLoading,
+  } = useEntitlements()
   /** iOS keeps legacy 20px offset (layout verified there). Android + web use h-14 (56px) so feed clears the fixed header. */
   const feedScrollHeaderBodyPx = useMemo(
     () => (Capacitor.getPlatform() === 'ios' ? 20 : 56),
@@ -2314,6 +2319,7 @@ export default function CommunityFeed() {
   // Reply reactions handled inside PostDetail page
 
   async function handlePollVote(postId: number, pollId: number, optionId: number){
+    void triggerHaptic('selection')
     // Optimistic update for poll vote
     setData((prev:any) => {
       if (!prev) return prev
@@ -2761,16 +2767,17 @@ export default function CommunityFeed() {
                 <p className="text-sm text-white/50 text-center max-w-xs mb-6">
                   {t('feed.first_to_share_community')}
                 </p>
-                <button
+                <NativeActionButton
+                  haptic="light"
+                  className="px-4 py-2 rounded-lg text-sm font-medium"
                   onClick={() => {
                     if (!navigator.onLine) { alert(t('feed.go_back_online')); return }
                     navigate(`/compose?community_id=${community_id}`)
                   }}
-                  className="px-4 py-2 bg-[#4db6ac] text-black rounded-lg text-sm font-medium hover:brightness-110"
                 >
                   <i className="fa-solid fa-plus mr-2" />
                   {t('feed.create_first_post')}
-                </button>
+                </NativeActionButton>
               </div>
             ) : visiblePosts.map((p: Post, idx: number) => (
               <div key={p.id} className="relative">
@@ -2780,6 +2787,9 @@ export default function CommunityFeed() {
                   currentUser={data.username}
                   isAdmin={!!(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin')}
                   highlightStep={highlightStep}
+                  entitlements={feedEntitlements}
+                  enforcement_enabled={feedEnforcementEnabled}
+                  entitlementsLoading={feedEntitlementsLoading}
                   onOpen={() => {
                     markPostViewed(p.id, p.has_viewed)
                     clearDeviceCache(`post-${p.id}`)
@@ -3089,7 +3099,7 @@ export default function CommunityFeed() {
                   </div>
                 ))}
               </div>
-              <div className="flex items-end gap-2 px-4 py-3 border-t border-white/10 flex-shrink-0" style={{ paddingBottom: keyboardHeight > 0 ? '8px' : 'max(12px, env(safe-area-inset-bottom, 0px))' }}>
+              <div className="flex items-center gap-2 px-4 py-3 border-t border-white/10 flex-shrink-0" style={{ paddingBottom: keyboardHeight > 0 ? '8px' : 'max(12px, env(safe-area-inset-bottom, 0px))' }}>
                 <textarea
                   ref={storyCommentInputRef}
                   value={storyCommentText}
@@ -3101,8 +3111,8 @@ export default function CommunityFeed() {
                   }}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && storyCommentText.trim()) { e.preventDefault(); handleSubmitStoryComment(currentStory.id) } }}
                   placeholder="Add a comment..."
-                  className="flex-1 bg-white/10 border border-white/20 rounded-2xl px-4 py-2 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac] resize-none overflow-y-auto"
-                  style={{ minHeight: '36px', maxHeight: '120px' }}
+                  className="flex-1 min-h-9 bg-white/10 border border-white/20 rounded-2xl px-4 py-1 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac] resize-none overflow-y-auto"
+                  style={{ maxHeight: '120px' }}
                   rows={1}
                   disabled={storyCommentSending}
                 />
@@ -3151,7 +3161,7 @@ export default function CommunityFeed() {
             
             {/* Private reply inline input */}
             {storyPrivateReplyOpen && currentStory.username?.toLowerCase() !== data?.username?.toLowerCase() && (
-              <div className="px-4 py-2 flex items-end gap-2 border-b border-white/10">
+              <div className="px-4 py-2 flex items-center gap-2 border-b border-white/10">
                 <textarea
                   ref={storyPrivateReplyInputRef}
                   value={storyPrivateReplyText}
@@ -3163,15 +3173,16 @@ export default function CommunityFeed() {
                   }}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && storyPrivateReplyText.trim()) { e.preventDefault(); handleSendPrivateReply(currentStory) } }}
                   placeholder={`Message @${currentStory.username} privately...`}
-                  className="flex-1 bg-white/10 border border-white/20 rounded-2xl px-4 py-2 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac] resize-none overflow-y-auto"
-                  style={{ minHeight: '36px', maxHeight: '120px' }}
+                  className="flex-1 min-h-9 bg-white/10 border border-white/20 rounded-2xl px-4 py-1 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac] resize-none overflow-y-auto"
+                  style={{ maxHeight: '120px' }}
                   rows={1}
                   disabled={storyPrivateReplySending}
                   autoFocus
                 />
                 <NativeActionButton
                   variant="composer"
-                  className="h-9 w-9 rounded-full flex-shrink-0 mb-0.5"
+                  haptic="light"
+                  className="h-9 w-9 rounded-full flex-shrink-0"
                   onClick={() => handleSendPrivateReply(currentStory)}
                   disabled={!storyPrivateReplyText.trim() || storyPrivateReplySending}
                   aria-label={t('feed.send_reply')}
@@ -3190,7 +3201,7 @@ export default function CommunityFeed() {
             {!storyPrivateReplyOpen && (
               <div className="px-4 py-3">
                 {currentStory.username?.toLowerCase() !== data?.username?.toLowerCase() ? (
-                  <div className="flex items-end gap-2">
+                  <div className="flex items-center gap-2">
                     <div className="flex-1 relative min-w-0">
                       <textarea
                         ref={storyReplyInputRef}
@@ -3210,10 +3221,10 @@ export default function CommunityFeed() {
                         onFocus={() => setStoryCommentFocused(true)}
                         onBlur={() => { setTimeout(() => { if (!storyCommentText.trim()) setStoryCommentFocused(false) }, 150) }}
                         placeholder="Comment..."
-                        className={`w-full bg-white/10 border border-white/20 px-4 py-2.5 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac] resize-none overflow-y-auto transition-all duration-200 ${
+                        className={`w-full min-h-9 bg-white/10 border border-white/20 px-4 py-1 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac] resize-none overflow-y-auto transition-all duration-200 ${
                           storyCommentFocused || storyCommentText.trim() ? 'rounded-2xl' : 'rounded-full'
                         }`}
-                        style={{ minHeight: '40px', maxHeight: '120px' }}
+                        style={{ maxHeight: '120px' }}
                         rows={1}
                         disabled={storyCommentSending}
                       />
@@ -3502,7 +3513,14 @@ export default function CommunityFeed() {
                 <div className="mb-3 p-2 rounded-xl border border-white/10 bg-white/[0.02]">
                   <textarea value={newAnnouncement} onChange={(e)=> setNewAnnouncement(e.target.value)} placeholder={t('feed.write_announcement_placeholder')} className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none min-h-[72px]" />
                   <div className="text-right mt-2">
-                    <button disabled={savingAnn || !newAnnouncement.trim()} onClick={saveAnnouncement} className="px-3 py-1.5 rounded-md bg-[#4db6ac] disabled:opacity-50 text-black text-sm hover:brightness-110">{t('common.post')}</button>
+                    <NativeActionButton
+                      haptic="light"
+                      disabled={savingAnn || !newAnnouncement.trim()}
+                      onClick={saveAnnouncement}
+                      className="px-3 py-1.5 rounded-md text-sm"
+                    >
+                      {t('common.post')}
+                    </NativeActionButton>
                   </div>
                 </div>
               )}
@@ -3532,7 +3550,9 @@ export default function CommunityFeed() {
             <div className="flex items-center gap-2 mb-2">
               <i className="fa-solid fa-hashtag text-[#4db6ac]" />
               <input id="hashtag-input" value={q} onChange={(e)=> setQ(e.target.value)} placeholder="#hashtag" className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" />
-              <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110" onClick={runSearch}>{t('common.search')}</button>
+              <NativeActionButton haptic="selection" className="px-3 py-2 rounded-md text-sm" onClick={runSearch}>
+                {t('common.search')}
+              </NativeActionButton>
             </div>
               <div className="max-h-[320px] overflow-y-auto space-y-2">
                 {results.length === 0 ? (
@@ -3639,8 +3659,9 @@ export default function CommunityFeed() {
             <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label={t('navigation.members')} onClick={()=> navigate(`/community/${community_id}/members`)}>
             <i className="fa-solid fa-users text-lg" />
           </button>
-          <button 
-              className={`w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center transition-all ${highlightStep === 'post' ? 'ring-[6px] ring-[#4db6ac] shadow-[0_0_40px_rgba(77,182,172,0.8)] animate-pulse scale-125 z-[40] relative' : ''}`}
+          <NativeActionButton
+              haptic="light"
+              className={`w-10 h-10 rounded-md p-0 grid place-items-center ${highlightStep === 'post' ? 'ring-[6px] ring-[#4db6ac] shadow-[0_0_40px_rgba(77,182,172,0.8)] animate-pulse scale-125 z-[40] relative' : ''}`}
             aria-label={t('feed.new_post')} 
             onClick={()=> {
               if (!navigator.onLine) { alert(t('feed.go_back_online')); return }
@@ -3659,7 +3680,7 @@ export default function CommunityFeed() {
             }}
           >
             <i className="fa-solid fa-plus" />
-          </button>
+          </NativeActionButton>
             <button className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label={t('feed.announcements')} onClick={()=> { fetchAnnouncements() }}>
             <span className="relative inline-block">
               <i className="fa-solid fa-bullhorn text-lg" style={hasUnseenAnnouncements ? { color:'#4db6ac' } : undefined} />
@@ -4056,13 +4077,12 @@ export default function CommunityFeed() {
 
 // Ad components removed
 
-function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate, onMarkViewed, onDeletePost, onDeletePoll, onHidePost, onReportPost, onBlockUser }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void, onMarkViewed?: (postId: number, alreadyViewed?: boolean) => void | Promise<boolean>, onDeletePost?: (postId: number) => void, onDeletePoll?: (postId: number, pollId: number) => void, onHidePost?: (post: Post) => void, onReportPost?: (post: Post) => void, onBlockUser?: (data: { username: string; postId?: number }) => void }) {
+const PostCard = memo(function PostCard({ post, idx, currentUser, isAdmin, highlightStep, entitlements, enforcement_enabled, entitlementsLoading, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate, onMarkViewed, onDeletePost, onDeletePoll, onHidePost, onReportPost, onBlockUser }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, entitlements: EntitlementsSnapshot | null, enforcement_enabled: boolean, entitlementsLoading: boolean, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void, onMarkViewed?: (postId: number, alreadyViewed?: boolean) => void | Promise<boolean>, onDeletePost?: (postId: number) => void, onDeletePoll?: (postId: number, pollId: number) => void, onHidePost?: (post: Post) => void, onReportPost?: (post: Post) => void, onBlockUser?: (data: { username: string; postId?: number }) => void }) {
   const { t } = useTranslation()
   const mentionToProfile = useCallback((u: string) => {
     navigate?.(`/profile/${encodeURIComponent(u)}`)
   }, [navigate])
   const entitlementsHandler = useEntitlementsHandler()
-  const { entitlements, enforcement_enabled, loading: entitlementsLoading } = useEntitlements()
   const blockSteveMentionReply = useCallback(
     (text: string) => {
       if (!mentionsSteve(text)) return false
@@ -4928,7 +4948,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                     type="button"
                     disabled={isExpired}
                     className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isExpired ? 'opacity-60 cursor-not-allowed' : (isUserVote ? 'border-[#4db6ac] bg-[#4db6ac]/10' : 'border-white/10 hover:bg-white/5')}`}
-                    onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (!isExpired && onPollVote) onPollVote(post.id, post.poll!.id, option.id) }}
+                    onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (!isExpired && onPollVote) { void triggerHaptic('selection'); onPollVote(post.id, post.poll!.id, option.id) } }}
                   >
                     <div className="absolute inset-0 bg-[#4db6ac]/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
                     <div className="relative flex items-center justify-between">
@@ -5472,7 +5492,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
       )}
     </div>
   )
-}
+})
 
 function ReactionFA({ icon, count, active, onClick, isHighlighted }:{ icon: string, count: number, active: boolean, onClick: ()=>void, isHighlighted?: boolean }){
   // Border-only turquoise for active icon (stroke/outline vibe); neutral grey. No pill/border backgrounds.
@@ -5484,10 +5504,16 @@ function ReactionFA({ icon, count, active, onClick, isHighlighted }:{ icon: stri
     : { color: '#6c757d' }
   const handleClick = () => {
     setPopping(true)
+    void triggerHaptic('selection')
     try { onClick() } finally { setTimeout(() => setPopping(false), 140) }
   }
   return (
-    <button className={`px-2 py-1 rounded transition-colors`} onClick={handleClick}>
+    <button
+      type="button"
+      className="px-2 py-1 rounded transition-[transform,background-color] duration-100 active:scale-95 active:bg-white/5 select-none cursor-pointer touch-manipulation"
+      style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
+      onClick={handleClick}
+    >
       <i className={`${icon} ${popping ? 'scale-125' : 'scale-100'} transition-transform duration-150`} style={iconStyle} />
       <span className="ml-1" style={{ color: isHighlighted ? '#5ffff0' : (active ? '#cfe9e7' : '#9fb0b5'), filter: isHighlighted ? 'brightness(1.5)' : undefined }}>{count}</span>
     </button>

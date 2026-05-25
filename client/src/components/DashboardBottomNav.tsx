@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { triggerHaptic } from '../utils/haptics'
 
 export function isPremiumDashboardPath(path: string): boolean {
   return (
@@ -62,7 +63,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
   }
 
   const steveRowBtn =
-    'w-full text-left px-4 py-3.5 rounded-xl border border-white/10 bg-white/[0.04] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] hover:border-[#4db6ac]/40 hover:bg-[#4db6ac]/10 active:bg-[#4db6ac]/15 transition-colors touch-manipulation'
+    'w-full text-left px-4 py-3.5 rounded-xl border border-white/10 bg-white/[0.04] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] hover:border-[#4db6ac]/40 hover:bg-[#4db6ac]/10 active:bg-[#4db6ac]/15 active:scale-[0.98] transition-[transform,background-color,border-color] duration-100 touch-manipulation'
 
   const steveModal =
     steveOpen ? (
@@ -172,6 +173,10 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
       </div>
     ) : null
 
+  const tabPress = () => {
+    void triggerHaptic('selection')
+  }
+
   return (
     <>
       <div
@@ -188,38 +193,38 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
           <div className="h-14 flex items-center justify-between gap-1 text-[#cfd8dc] px-2 sm:px-4">
             <button
               type="button"
-              className={`p-2 sm:p-3 rounded-full transition-colors touch-manipulation ${isDashboard ? 'bg-white/10' : 'hover:bg-white/10 active:bg-white/15'}`}
+              className={`p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${isDashboard ? 'bg-white/10' : 'hover:bg-white/10 active:bg-white/15'}`}
               aria-label={t('navigation.communities')}
               aria-current={isDashboard ? 'page' : undefined}
-              onClick={() => navigate('/premium_dashboard')}
+              onClick={() => { tabPress(); navigate('/premium_dashboard') }}
             >
               <i className={`fa-solid fa-th text-lg ${isDashboard ? 'text-[#4db6ac]' : ''}`} />
             </button>
             <button
               type="button"
-              className={`p-2 sm:p-3 rounded-full transition-colors touch-manipulation ${isFeed ? 'bg-white/10' : 'hover:bg-white/10 active:bg-white/15'}`}
+              className={`p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${isFeed ? 'bg-white/10' : 'hover:bg-white/10 active:bg-white/15'}`}
               aria-label={t('navigation.feed')}
               aria-current={isFeed ? 'page' : undefined}
-              onClick={() => navigate('/feed')}
+              onClick={() => { tabPress(); navigate('/feed') }}
             >
               <i className={`fa-solid fa-rss text-lg ${isFeed ? 'text-[#4db6ac]' : ''}`} />
             </button>
             <button
               type="button"
-              className="py-1 px-2 sm:px-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors touch-manipulation flex flex-col items-center justify-center gap-0 leading-none min-w-0"
+              className="py-1 px-2 sm:px-3 rounded-full hover:bg-white/10 active:bg-white/15 active:scale-95 transition-[transform,background-color] duration-100 touch-manipulation flex flex-col items-center justify-center gap-0 leading-none min-w-0"
               aria-label={t('steve.options_label')}
               aria-expanded={steveOpen}
-              onClick={() => setSteveOpen(true)}
+              onClick={() => { tabPress(); setSteveOpen(true) }}
             >
               <i className="fa-solid fa-user text-[15px] sm:text-base leading-none" />
               <span className="text-[8px] sm:text-[9px] text-[#cfd8dc]/90 font-medium tracking-tight">{t('steve.label')}</span>
             </button>
             <button
               type="button"
-              className={`p-2 sm:p-3 rounded-full transition-colors touch-manipulation ${!isFeed && !isAbout && searchOpen ? 'bg-white/10 text-[#4db6ac]' : 'hover:bg-white/10 active:bg-white/15'}`}
+              className={`p-2 sm:p-3 rounded-full transition-[transform,background-color] duration-100 touch-manipulation active:scale-95 ${!isFeed && !isAbout && searchOpen ? 'bg-white/10 text-[#4db6ac]' : 'hover:bg-white/10 active:bg-white/15'}`}
               aria-label={searchOpen && !isFeed && !isAbout ? t('navigation.close_search') : t('navigation.search_communities')}
               aria-pressed={!isFeed && !isAbout && searchOpen}
-              onClick={onSearch}
+              onClick={() => { tabPress(); onSearch() }}
             >
               <i className="fa-solid fa-magnifying-glass text-lg" />
             </button>

@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Capacitor } from '@capacitor/core'
 import { useTranslation } from 'react-i18next'
-import type { PluginListenerHandle } from '@capacitor/core'
-import { Keyboard } from '@capacitor/keyboard'
-import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
@@ -28,6 +24,10 @@ import {
 } from '../utils/steveClientGate'
 import { preflightSteveMention } from '../utils/stevePreflight'
 import { NativeActionButton } from '../components/NativeActionButton'
+import { NativeIconButton } from '../components/NativeIconButton'
+import { FixedComposerShell } from '../components/FixedComposerShell'
+import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
+import { composerControlPointerProps } from '../utils/composerBlurGuard'
 import { triggerHaptic } from '../utils/haptics'
 
 function replyDisplayUrl(raw: string | null | undefined): string {
@@ -158,6 +158,15 @@ export default function CommentReply() {
   const [lightboxImageSrc, setLightboxImageSrc] = useState<string | null>(null)
   const [lightboxVideoSrc, setLightboxVideoSrc] = useState<string | null>(null)
   const scrollAreaRef = useRef<HTMLDivElement | null>(null)
+  const { keyboardLift, showKeyboard, safeBottomPx } = useFixedComposerKeyboard({
+    onLayoutNudge: () => {
+      try {
+        scrollAreaRef.current?.scrollBy({ top: 0, left: 0 })
+      } catch {
+        /* ignore */
+      }
+    },
+  })
   const [replyComposerExpanded, setReplyComposerExpanded] = useState(false)
   const [expandedComposerViewportLift, setExpandedComposerViewportLift] = useState(0)
   const expandedComposerRef = useRef<HTMLDivElement | null>(null)
@@ -179,12 +188,6 @@ export default function CommentReply() {
     }
     setShowAttachMenu(false)
     setReplyComposerExpanded(true)
-  }
-
-  // Keep the textarea focused on mobile so tapping Send doesn't dismiss the keyboard
-  // and shove the fixed bar into the safe area.
-  const preventComposerBlur = (event: { preventDefault(): void }) => {
-    event.preventDefault()
   }
 
   // Call Steve AI to generate a reply - matching CommunityFeed implementation
@@ -242,152 +245,6 @@ export default function CommentReply() {
       setSteveIsTyping(false)
     }
   }
-
-  // Keyboard handling state
-  const keyboardOffsetRef = useRef(0)
-  const [keyboardOffset, setKeyboardOffset] = useState(0)
-  const viewportBaseRef = useRef<number | null>(null)
-  const [safeBottomPx, setSafeBottomPx] = useState(0)
-
-  // Measure safe-area-inset-bottom
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return
-    const probe = document.createElement('div')
-    probe.style.position = 'fixed'
-    probe.style.bottom = '0'
-    probe.style.left = '0'
-    probe.style.width = '0'
-    probe.style.height = 'env(safe-area-inset-bottom, 0px)'
-    probe.style.pointerEvents = 'none'
-    probe.style.opacity = '0'
-    probe.style.zIndex = '-1'
-    document.body.appendChild(probe)
-
-    const updateSafeBottom = () => {
-      const rect = probe.getBoundingClientRect()
-      const next = rect.height || 0
-      setSafeBottomPx(prev => (Math.abs(prev - next) < 1 ? prev : next))
-    }
-
-    updateSafeBottom()
-    window.addEventListener('resize', updateSafeBottom)
-
-    return () => {
-      window.removeEventListener('resize', updateSafeBottom)
-      probe.remove()
-    }
-  }, [])
-
-  // Visual viewport tracking for web keyboard only (native uses Capacitor Keyboard;
-  // dual sources caused bogus keyboard offset after iOS resume).
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (Capacitor.getPlatform() !== 'web') return
-    const viewport = window.visualViewport
-    if (!viewport) return
-
-    let rafId: number | null = null
-
-    const updateOffset = () => {
-      const currentHeight = viewport.height
-      if (
-        viewportBaseRef.current === null ||
-        currentHeight > (viewportBaseRef.current ?? currentHeight) - 4
-      ) {
-        viewportBaseRef.current = currentHeight
-      }
-      const baseHeight = viewportBaseRef.current ?? currentHeight
-      const nextOffset = Math.max(0, baseHeight - currentHeight - viewport.offsetTop)
-      if (Math.abs(keyboardOffsetRef.current - nextOffset) < 1) return
-      keyboardOffsetRef.current = nextOffset
-      setKeyboardOffset(nextOffset)
-    }
-
-    const handleChange = () => {
-      if (rafId) cancelAnimationFrame(rafId)
-      rafId = requestAnimationFrame(updateOffset)
-    }
-
-    viewport.addEventListener('resize', handleChange)
-    viewport.addEventListener('scroll', handleChange)
-    updateOffset()
-
-    return () => {
-      if (rafId) cancelAnimationFrame(rafId)
-      viewport.removeEventListener('resize', handleChange)
-      viewport.removeEventListener('scroll', handleChange)
-    }
-  }, [])
-
-  // Native keyboard events for Capacitor
-  useEffect(() => {
-    if (Capacitor.getPlatform() === 'web') return
-    let showSub: PluginListenerHandle | undefined
-    let hideSub: PluginListenerHandle | undefined
-
-    const handleShow = (info: KeyboardInfo) => {
-      const height = info?.keyboardHeight ?? 0
-      if (Math.abs(keyboardOffsetRef.current - height) < 2) return
-      keyboardOffsetRef.current = height
-      setKeyboardOffset(height)
-    }
-
-    const handleHide = () => {
-      if (keyboardOffsetRef.current === 0) return
-      keyboardOffsetRef.current = 0
-      setKeyboardOffset(0)
-    }
-
-    Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
-      showSub = handle
-    })
-    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
-      hideSub = handle
-    })
-
-    return () => {
-      showSub?.remove()
-      hideSub?.remove()
-    }
-  }, [])
-
-  // Reset keyboard lift and nudge layout after app resume (fixes frozen / dead touches on iOS WebView).
-  useEffect(() => {
-    const nudgeLayout = () => {
-      keyboardOffsetRef.current = 0
-      setKeyboardOffset(0)
-      requestAnimationFrame(() => {
-        window.dispatchEvent(new Event('resize'))
-        requestAnimationFrame(() => {
-          try {
-            scrollAreaRef.current?.scrollBy({ top: 0, left: 0 })
-          } catch {
-            /* ignore */
-          }
-        })
-      })
-    }
-
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') nudgeLayout()
-    }
-    document.addEventListener('visibilitychange', onVisibility)
-
-    let resumeHandle: { remove: () => Promise<void> } | undefined
-    const setupResume = async () => {
-      if (!Capacitor.isNativePlatform()) return
-      const { App } = await import('@capacitor/app')
-      resumeHandle = await App.addListener('resume', () => {
-        nudgeLayout()
-      })
-    }
-    void setupResume()
-
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibility)
-      void resumeHandle?.remove()
-    }
-  }, [])
 
   // Fetch current user
   useEffect(() => {
@@ -931,9 +788,6 @@ export default function CommentReply() {
   const thumbsDownCount = reply.reactions?.['thumbs-down'] || 0
   const isThumbsDownActive = reply.user_reaction === 'thumbs-down'
   
-  // Calculate keyboard lift (subtract safe area since keyboard height includes it on iOS)
-  const keyboardLift = Math.max(0, keyboardOffset - safeBottomPx)
-  const showKeyboard = keyboardOffset > 2
   const expandedComposerLift = Math.max(keyboardLift, expandedComposerViewportLift)
   const expandedComposerKeyboardOpen = expandedComposerLift > 2
 
@@ -1534,13 +1388,10 @@ export default function CommentReply() {
       </div>
 
       {/* Fixed bottom reply composer */}
-      <div
+      <FixedComposerShell
+        keyboardLift={keyboardLift}
+        safeBottomPx={safeBottomPx}
         className="fixed left-0 right-0 z-[100] bg-black border-t border-white/10"
-        style={{
-          bottom: keyboardLift > 0 ? `${keyboardLift}px` : 0,
-          display: 'flex',
-          flexDirection: 'column',
-        }}
       >
         <div className="max-w-2xl mx-auto px-3 py-2 w-full">
           {(file || selectedGif || replyPreview) && (
@@ -1597,14 +1448,16 @@ export default function CommentReply() {
 
           <div className="flex min-w-0 items-center gap-2">
             <div className="relative">
-              <button
-                type="button"
-                className="w-9 h-9 flex-none flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/15"
-                onClick={() => setShowAttachMenu(!showAttachMenu)}
+              <NativeIconButton
+                preventBlur
+                size="md"
+                variant="muted"
+                className="rounded-lg"
                 aria-label={t('feed.add_attachment')}
+                onClick={() => setShowAttachMenu(!showAttachMenu)}
               >
                 <i className={`fa-solid ${showAttachMenu ? 'fa-times' : 'fa-plus'} text-sm`} style={{ color: (file || selectedGif) ? '#7fe7df' : '#fff' }} />
-              </button>
+              </NativeIconButton>
               {showAttachMenu && (
                 <div className="absolute bottom-full left-0 mb-2 w-40 rounded-xl bg-[#1a1a1c] border border-white/10 shadow-xl overflow-hidden z-10">
                   <button
@@ -1661,49 +1514,54 @@ export default function CommentReply() {
               />
             </div>
 
-            <button
-              type="button"
-              className="w-9 h-9 flex-none flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/15"
-              onClick={openExpandedReplyComposer}
+            <NativeIconButton
+              preventBlur
+              size="md"
+              variant="muted"
+              className="rounded-lg"
               aria-label={t('feed.expand_reply_composer')}
               title={t('feed.expand_reply_composer')}
+              onClick={openExpandedReplyComposer}
             >
               <i className="fa-solid fa-up-right-and-down-left-from-center text-xs text-white/80" />
-            </button>
+            </NativeIconButton>
 
             {!recording && !replyText.trim() && (
-              <button
-                type="button"
-                className="w-9 h-9 flex-none flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/15"
-                onClick={() => startRec()}
+              <NativeIconButton
+                preventBlur
+                size="md"
+                variant="muted"
+                className="rounded-lg"
                 aria-label={t('feed.record_audio')}
+                onClick={() => startRec()}
               >
                 <i className="fa-solid fa-microphone text-sm text-white/70" />
-              </button>
+              </NativeIconButton>
             )}
 
             {recording && (
-              <button
-                type="button"
-                className="w-9 h-9 flex-none flex items-center justify-center rounded-lg bg-[#4db6ac] text-white"
+              <NativeIconButton
+                preventBlur
+                size="md"
+                className="rounded-lg bg-[#4db6ac] text-white"
+                aria-label={t('feed.stop_recording')}
                 onClick={async () => {
                   const p = await stopRec()
                   if (!p?.blob?.size) {
                     alert(t('feed.audio_capture_minimum_short'))
                   }
                 }}
-                aria-label={t('feed.stop_recording')}
               >
                 <i className="fa-solid fa-stop text-sm" />
-              </button>
+              </NativeIconButton>
             )}
 
             {!recording && (replyText.trim() || file || replyPreview || selectedGif) && (
               <NativeActionButton
                 variant="composer"
+                haptic="light"
                 className="h-9 w-9 flex-none rounded-lg"
-                onPointerDown={preventComposerBlur}
-                onMouseDown={(e) => e.preventDefault()}
+                {...composerControlPointerProps}
                 onClick={handleSubmitReply}
                 disabled={sendingReply}
                 aria-label={t('feed.send_reply')}
@@ -1717,15 +1575,7 @@ export default function CommentReply() {
             )}
           </div>
         </div>
-        {/* Safe area spacer — 0 while keyboard is up to avoid double spacing (ChatThread pattern) */}
-        <div
-          style={{
-            height: keyboardLift > 0 ? '0px' : `${safeBottomPx}px`,
-            background: '#000',
-            flexShrink: 0,
-          }}
-        />
-      </div>
+      </FixedComposerShell>
 
       {replyComposerExpanded && reply && post && (
         <div

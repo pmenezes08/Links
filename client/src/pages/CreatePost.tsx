@@ -11,6 +11,7 @@ import { detectLinks, replaceLinkInText, type DetectedLink } from '../utils/link
 import { extractUrls, stripExtractedUrlsFromText } from '../components/LinkPreview'
 import GifPicker from '../components/GifPicker'
 import { NativeActionButton } from '../components/NativeActionButton'
+import { NativeIconButton } from '../components/NativeIconButton'
 import { clearDeviceCache } from '../utils/deviceCache'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
@@ -838,20 +839,34 @@ export default function CreatePost(){
                 style={{ display: 'none' }}
               />
             </label>
-            <button
-              className="px-3 py-2 rounded-full text-[#4db6ac] hover:bg-white/5"
+            <NativeIconButton
+              preventBlur
+              variant="muted"
+              className="rounded-full px-3 py-2 h-auto w-auto text-[#4db6ac] bg-transparent hover:bg-white/5"
               aria-label={t('feed.add_gif')}
-              onClick={()=> setGifPickerOpen(true)}
+              onClick={() => setGifPickerOpen(true)}
             >
               <i className="fa-solid fa-images" />
-            </button>
-            <button className={`px-3 py-2 rounded-full text-[#4db6ac] hover:bg-white/5 ${recording ? 'brightness-125' : ''}`} aria-label={recording ? t('feed.stop_recording') : t('feed.record_audio')} onClick={handleMicButton}>
+            </NativeIconButton>
+            <NativeIconButton
+              preventBlur
+              variant="muted"
+              className={`rounded-full px-3 py-2 h-auto w-auto text-[#4db6ac] bg-transparent hover:bg-white/5 ${recording ? 'brightness-125' : ''}`}
+              aria-label={recording ? t('feed.stop_recording') : t('feed.record_audio')}
+              onClick={handleMicButton}
+            >
               <i className={`fa-solid ${recording ? 'fa-stop' : 'fa-microphone'}`} />
-            </button>
+            </NativeIconButton>
             {preview && (
-              <button className="px-3 py-2 rounded-full text-white/70 hover:bg-white/5" onClick={clearPreview} aria-label={t('feed.discard_audio')}>
+              <NativeIconButton
+                preventBlur
+                variant="muted"
+                className="rounded-full px-3 py-2 h-auto w-auto text-white/70 bg-transparent hover:bg-white/5"
+                onClick={clearPreview}
+                aria-label={t('feed.discard_audio')}
+              >
                 <i className="fa-solid fa-trash" />
-              </button>
+              </NativeIconButton>
             )}
           </div>
           <NativeActionButton

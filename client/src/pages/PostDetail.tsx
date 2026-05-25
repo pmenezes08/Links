@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, memo } from 'react'
-import { Capacitor } from '@capacitor/core'
 import { useTranslation } from 'react-i18next'
-import type { PluginListenerHandle } from '@capacitor/core'
-import { Keyboard } from '@capacitor/keyboard'
-import type { KeyboardInfo } from '@capacitor/keyboard'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
@@ -33,7 +29,15 @@ import {
 } from '../utils/steveClientGate'
 import { preflightSteveMention } from '../utils/stevePreflight'
 import { NativeActionButton } from '../components/NativeActionButton'
+import { NativeIconButton } from '../components/NativeIconButton'
+import { FixedComposerShell } from '../components/FixedComposerShell'
+import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
+import { preventComposerBlur, composerControlPointerProps } from '../utils/composerBlurGuard'
 import { triggerHaptic } from '../utils/haptics'
+import {
+  attachReplyToPostTree,
+  normalizePostForDetail,
+} from '../utils/postDetailReplyTree'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, audio_path?: string|null, audio_summary?: string|null, reply_count?: number, view_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
@@ -183,12 +187,6 @@ export default function PostDetail(){
     return /@steve\b/i.test(text)
   }
 
-  // Keep the textarea focused on mobile so tapping composer controls
-  // doesn't dismiss the keyboard and shove the fixed bar into the safe area.
-  const preventComposerBlur = (event: { preventDefault(): void }) => {
-    event.preventDefault()
-  }
-
   const openExpandedReplyComposer = () => {
     try {
       if (document.activeElement instanceof HTMLElement) {
@@ -286,12 +284,16 @@ export default function PostDetail(){
   const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
   const composerRef = useRef<HTMLDivElement | null>(null)
   const composerCardRef = useRef<HTMLDivElement | null>(null)
-  const keyboardOffsetRef = useRef(0)
-  const [keyboardOffset, setKeyboardOffset] = useState(0)
-  const [safeBottomPx, setSafeBottomPx] = useState(0)
-  const viewportBaseRef = useRef<number | null>(null)
-  const [viewportLift, setViewportLift] = useState(0)
   const contentRef = useRef<HTMLDivElement | null>(null)
+  const { keyboardLift, showKeyboard, safeBottomPx } = useFixedComposerKeyboard({
+    onLayoutNudge: () => {
+      try {
+        contentRef.current?.scrollBy({ top: 0, left: 0 })
+      } catch {
+        /* ignore */
+      }
+    },
+  })
   
   // Report/Hide/Block post state
   const [showHideModal, setShowHideModal] = useState(false)
@@ -420,147 +422,6 @@ export default function PostDetail(){
     observer.observe(node)
 
     return () => observer.disconnect()
-  }, [])
-
-  // Measure safe-area-inset-bottom
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return
-    const probe = document.createElement('div')
-    probe.style.position = 'fixed'
-    probe.style.bottom = '0'
-    probe.style.left = '0'
-    probe.style.width = '0'
-    probe.style.height = 'env(safe-area-inset-bottom, 0px)'
-    probe.style.pointerEvents = 'none'
-    probe.style.opacity = '0'
-    probe.style.zIndex = '-1'
-    document.body.appendChild(probe)
-
-    const updateSafeBottom = () => {
-      const rect = probe.getBoundingClientRect()
-      const next = rect.height || 0
-      setSafeBottomPx(prev => (Math.abs(prev - next) < 1 ? prev : next))
-    }
-
-    updateSafeBottom()
-    window.addEventListener('resize', updateSafeBottom)
-
-    return () => {
-      window.removeEventListener('resize', updateSafeBottom)
-      probe.remove()
-    }
-  }, [])
-
-  // Visual viewport tracking for web only. Native uses Capacitor Keyboard;
-  // mixing both sources can leave stale offsets after notification/resume.
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (Capacitor.getPlatform() !== 'web') return
-    const viewport = window.visualViewport
-    if (!viewport) return
-
-    let rafId: number | null = null
-
-    const updateOffset = () => {
-      const currentHeight = viewport.height
-      if (
-        viewportBaseRef.current === null ||
-        currentHeight > (viewportBaseRef.current ?? currentHeight) - 4
-      ) {
-        viewportBaseRef.current = currentHeight
-      }
-      const baseHeight = viewportBaseRef.current ?? currentHeight
-      const nextOffset = Math.max(0, baseHeight - currentHeight - viewport.offsetTop)
-      setViewportLift(prev => (Math.abs(prev - nextOffset) < 1 ? prev : nextOffset))
-      if (Math.abs(keyboardOffsetRef.current - nextOffset) < 1) return
-      keyboardOffsetRef.current = nextOffset
-      setKeyboardOffset(nextOffset)
-    }
-
-    const handleChange = () => {
-      if (rafId) cancelAnimationFrame(rafId)
-      rafId = requestAnimationFrame(updateOffset)
-    }
-
-    viewport.addEventListener('resize', handleChange)
-    viewport.addEventListener('scroll', handleChange)
-    updateOffset()
-
-    return () => {
-      if (rafId) cancelAnimationFrame(rafId)
-      viewport.removeEventListener('resize', handleChange)
-      viewport.removeEventListener('scroll', handleChange)
-    }
-  }, [])
-
-  // Reset keyboard lift and nudge layout after app resume/notification open.
-  useEffect(() => {
-    const nudgeLayout = () => {
-      keyboardOffsetRef.current = 0
-      setKeyboardOffset(0)
-      setViewportLift(0)
-      viewportBaseRef.current = null
-      requestAnimationFrame(() => {
-        window.dispatchEvent(new Event('resize'))
-        requestAnimationFrame(() => {
-          try {
-            contentRef.current?.scrollBy({ top: 0, left: 0 })
-          } catch {
-            /* ignore */
-          }
-        })
-      })
-    }
-
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') nudgeLayout()
-    }
-    document.addEventListener('visibilitychange', onVisibility)
-
-    let resumeHandle: PluginListenerHandle | undefined
-    const setupResume = async () => {
-      if (!Capacitor.isNativePlatform()) return
-      const { App } = await import('@capacitor/app')
-      resumeHandle = await App.addListener('resume', nudgeLayout)
-    }
-    void setupResume()
-
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibility)
-      void resumeHandle?.remove()
-    }
-  }, [])
-
-  // Native keyboard events for Capacitor
-  useEffect(() => {
-    if (Capacitor.getPlatform() === 'web') return
-    let showSub: PluginListenerHandle | undefined
-    let hideSub: PluginListenerHandle | undefined
-
-    const handleShow = (info: KeyboardInfo) => {
-      const height = info?.keyboardHeight ?? 0
-      if (Math.abs(keyboardOffsetRef.current - height) < 2) return
-      keyboardOffsetRef.current = height
-      setKeyboardOffset(height)
-    }
-
-    const handleHide = () => {
-      if (keyboardOffsetRef.current === 0) return
-      keyboardOffsetRef.current = 0
-      setKeyboardOffset(0)
-    }
-
-    Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
-      showSub = handle
-    })
-    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
-      hideSub = handle
-    })
-
-    return () => {
-      showSub?.remove()
-      hideSub?.remove()
-    }
   }, [])
 
   // Close attachment menu when clicking outside
@@ -1728,9 +1589,6 @@ export default function PostDetail(){
   )
 
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
-  const liftSource = Math.max(keyboardOffset, viewportLift)
-  const keyboardLift = Math.max(0, liftSource - safeBottomPx)
-  const showKeyboard = liftSource > 2
   const expandedComposerLift = Math.max(keyboardLift, expandedComposerViewportLift)
   const expandedComposerKeyboardOpen = expandedComposerLift > 2
   // Padding to ensure content doesn't hide behind composer
@@ -2244,14 +2102,10 @@ export default function PostDetail(){
 
       {/* Fixed-bottom reply composer - hidden when inline reply is active */}
       {activeInlineReplyFor === null && (
-      <div
-        ref={composerRef}
-        className="fixed left-0 right-0 z-[100]"
-        style={{
-          bottom: keyboardLift > 0 ? `${keyboardLift}px` : 0,
-          display: 'flex',
-          flexDirection: 'column',
-        }}
+      <FixedComposerShell
+        shellRef={composerRef}
+        keyboardLift={keyboardLift}
+        safeBottomPx={safeBottomPx}
       >
         {/* Composer card */}
         <div
@@ -2325,16 +2179,13 @@ export default function PostDetail(){
           <div className="flex min-w-0 items-center gap-1.5">
             {/* Attachment + button with dropdown */}
             <div className="relative">
-              <button 
-                type="button" 
-                className="w-9 h-9 flex-none flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
-                onPointerDown={preventComposerBlur}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => setShowAttachMenu(!showAttachMenu)}
+              <NativeIconButton
+                preventBlur
                 aria-label={t('feed.add_attachment')}
+                onClick={() => setShowAttachMenu(!showAttachMenu)}
               >
                 <i className={`fa-solid ${showAttachMenu ? 'fa-times' : 'fa-plus'} text-sm`} style={{ color: (file || replyGif) ? '#7fe7df' : '#fff' }} />
-              </button>
+              </NativeIconButton>
               
               {/* Attachment dropdown menu */}
               {showAttachMenu && (
@@ -2398,58 +2249,50 @@ export default function PostDetail(){
               />
             </div>
 
-            <button
-              type="button"
-              className="w-9 h-9 flex-none flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
-              onPointerDown={preventComposerBlur}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={openExpandedReplyComposer}
+            <NativeIconButton
+              preventBlur
               aria-label={t('feed.expand_reply_composer')}
               title={t('feed.expand_reply_composer')}
+              onClick={openExpandedReplyComposer}
             >
               <i className="fa-solid fa-up-right-and-down-left-from-center text-xs text-white" />
-            </button>
+            </NativeIconButton>
 
             {/* Mic button - when not recording and no text */}
             {!recording && !content.trim() && (
-              <button
-                type="button"
-                className="w-9 h-9 flex-none flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
-                onPointerDown={preventComposerBlur}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => startRec()}
+              <NativeIconButton
+                preventBlur
                 aria-label={t('feed.record_audio')}
+                onClick={() => startRec()}
               >
                 <i className="fa-solid fa-microphone text-sm text-white" />
-              </button>
+              </NativeIconButton>
             )}
 
             {/* Stop recording button */}
             {recording && (
-              <button
-                type="button"
-                className="w-9 h-9 flex-none flex items-center justify-center rounded-xl bg-[#4db6ac] text-white transition-all"
-                onPointerDown={preventComposerBlur}
-                onMouseDown={(e) => e.preventDefault()}
+              <NativeIconButton
+                preventBlur
+                className="bg-[#4db6ac] text-white"
+                aria-label={t('feed.stop_recording')}
                 onClick={async () => {
                   const p = await stopRec()
                   if (!p?.blob?.size) {
                     alert(t('feed.audio_capture_minimum'))
                   }
                 }}
-                aria-label={t('feed.stop_recording')}
               >
                 <i className="fa-solid fa-stop text-sm" />
-              </button>
+              </NativeIconButton>
             )}
 
             {/* Send button - when has content or attachment */}
             {!recording && (content.trim() || file || replyPreview || replyGif) && (
               <NativeActionButton
                 variant="composer"
+                haptic="light"
                 className="h-9 w-9 flex-none rounded-xl"
-                onPointerDown={preventComposerBlur}
-                onMouseDown={(e) => e.preventDefault()}
+                {...composerControlPointerProps}
                 onClick={() => submitReply()}
                 aria-label={t('feed.send_reply')}
                 disabled={submittingReply}
@@ -2463,15 +2306,7 @@ export default function PostDetail(){
             )}
           </div>
         </div>
-        {/* Safe area spacer — 0 while keyboard is up to avoid double spacing (ChatThread pattern) */}
-        <div
-          style={{
-            height: keyboardLift > 0 ? '0px' : `${safeBottomPx}px`,
-            background: '#000',
-            flexShrink: 0,
-          }}
-        />
-      </div>
+      </FixedComposerShell>
       )}
       {replyComposerExpanded && (
         <div

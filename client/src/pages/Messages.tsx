@@ -6,6 +6,8 @@ import { useBadges } from '../contexts/BadgeContext'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
+import { NativeListRow } from '../components/NativeListRow'
+import { SkeletonList } from '../components/SkeletonRow'
 import ParentCommunityPicker from '../components/ParentCommunityPicker'
 import GroupChatCreator from '../components/GroupChatCreator'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
@@ -881,7 +883,7 @@ export default function Messages(){
                 </button>
               )}
               {!directMessagesCollapsed && (loading ? (
-                <div className="px-4 py-4 text-sm text-[#9fb0b5]">{t('chat.loading_chats')}</div>
+                <SkeletonList count={4} />
               ) : visibleThreads.length === 0 ? (
                 <div className="px-4 py-4 text-sm text-[#9fb0b5]">
                   {communityFilter === 'all'
@@ -965,7 +967,7 @@ export default function Messages(){
                   </div>
 
                   {/* Swipeable content */}
-                  <button
+                  <NativeListRow
                     onClick={() => {
                       const count = thread.unread_count || 0
                       setThreads(prev => prev.map(x => x.other_username===thread.other_username ? { ...x, unread_count: 0 } : x))
@@ -994,7 +996,7 @@ export default function Messages(){
                       setDragX(0)
                       draggingIdRef.current = null
                     }}
-                    className="w-full px-3 py-2 flex items-center gap-3 bg-transparent"
+                    className="px-3 py-2 gap-3 bg-transparent"
                     style={{ transform: `translateX(${tx}px)`, transition }}
                   >
                     <Avatar username={thread.other_username} url={thread.profile_picture_url || undefined} size={48} linkToProfile displayName={thread.display_name} loading="eager" />
@@ -1019,7 +1021,7 @@ export default function Messages(){
                         {thread.unread_count > 99 ? '99+' : thread.unread_count}
                       </div>
                     ) : null}
-                  </button>
+                  </NativeListRow>
                 </div>
                 )
               })
