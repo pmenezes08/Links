@@ -55,12 +55,16 @@ def scope_has_useful_docs(
 
 
 def _memory_context_is_usable(memory_text: str, info: dict) -> bool:
-    """Prefer Firestore memory only when readable chunk text was retrieved."""
+    """Prefer Firestore memory when dossier or readable chunk text was retrieved."""
     if not (memory_text or "").strip():
         return False
     if (info.get("chunk_count") or 0) > 0:
         return True
+    if (info.get("dossier_chars") or 0) > 0:
+        return True
     if "Relevant document excerpts" in memory_text:
+        return True
+    if "Document dossier" in memory_text:
         return True
     return False
 

@@ -634,15 +634,59 @@ def load_doc_manifest(
         return []
 
 
+def format_doc_dossier(
+    manifest: Sequence[Dict[str, Any]],
+    *,
+    matched_ids: Optional[Sequence[int]] = None,
+    max_chars: int = 2000,
+) -> str:
+    """Compact index-time summary + outline for holistic document questions."""
+    matched = {int(doc_id) for doc_id in (matched_ids or []) if doc_id}
+    parts: List[str] = []
+    remaining = max(200, int(max_chars))
+    for doc in manifest:
+        doc_id = int(doc.get("doc_id") or 0)
+        if matched and doc_id not in matched:
+            continue
+        if doc.get("text_status") != TEXT_STATUS_READABLE:
+            continue
+        title = doc.get("title") or f"Document {doc_id}"
+        details = str(doc.get("details") or "").strip()
+        summary = str(doc.get("summary_short") or doc.get("summary_structured") or "").strip()
+        outline = doc.get("outline") or []
+        block_lines = [f"Document: {title}"]
+        if details:
+            block_lines.append(f"Description: {details[:240]}")
+        if summary:
+            block_lines.append(f"Summary: {summary[: min(900, remaining)]}")
+        if outline:
+            outline_text = "; ".join(str(item) for item in outline[:10])
+            block_lines.append(f"Outline: {outline_text[: min(500, remaining)]}")
+        block = "\n".join(block_lines)
+        if len(block) > remaining:
+            block = block[:remaining]
+        if block.strip():
+            parts.append(block)
+            remaining -= len(block)
+        if remaining <= 0:
+            break
+    if not parts:
+        return ""
+    return "Document dossier (index-time summaries):\n\n" + "\n\n---\n\n".join(parts)
+
+
 def format_doc_manifest(manifest: Sequence[Dict[str, Any]], *, max_docs: int = 5) -> str:
     lines = []
     for doc in list(manifest)[:max_docs]:
         title = doc.get("title") or f"Document {doc.get('doc_id')}"
+        details = str(doc.get("details") or "").strip()
         status = doc.get("text_status") or TEXT_STATUS_PENDING
         pages = doc.get("page_count") or "?"
         chunks = doc.get("chunk_count") or 0
         topics = ", ".join((doc.get("topics") or [])[:5])
         line = f"- Doc {doc.get('doc_id')}: {title} | status={status} | pages={pages} | chunks={chunks}"
+        if details:
+            line += f" | description: {details[:120]}"
         if topics:
             line += f" | topics: {topics}"
         lines.append(line)
@@ -774,6 +818,18 @@ def build_doc_memory_context(
 ) -> Tuple[str, Dict[str, Any]]:
     manifest = load_doc_manifest(community_id=community_id, group_id=group_id, limit=manifest_limit)
     manifest_text = format_doc_manifest(manifest)
+    thread_text = "\n".join(
+        part
+        for part in [query or "", original_post or "", "\n".join(list(recent_comments or [])[-8:])]
+        if part
+    )
+    matched = matched_document_ids(thread_text, manifest)
+    dossier_budget = max(500, int(max_chars * 0.45))
+    dossier_text = format_doc_dossier(
+        manifest,
+        matched_ids=matched if matched else None,
+        max_chars=dossier_budget,
+    )
     include_chunks = should_retrieve_docs_from_thread(
         user_message=query,
         original_post=original_post,
@@ -790,10 +846,12 @@ def build_doc_memory_context(
             manifest=manifest,
             limit=chunk_limit,
         )
-        chunk_text = format_retrieved_doc_context(chunks, max_chars=max_chars)
-    context = "\n\n".join(part for part in (manifest_text, chunk_text) if part.strip())
+        chunk_budget = max(500, int(max_chars) - len(dossier_text) - len(manifest_text) - 4)
+        chunk_text = format_retrieved_doc_context(chunks, max_chars=chunk_budget)
+    context = "\n\n".join(part for part in (manifest_text, dossier_text, chunk_text) if part.strip())
     return context, {
         "manifest_count": len(manifest),
         "chunk_count": len(chunks),
         "include_chunks": include_chunks,
+        "dossier_chars": len(dossier_text),
     }

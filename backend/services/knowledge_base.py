@@ -816,7 +816,7 @@ def _seed_pages() -> List[Dict[str, Any]]:
                  "help": "When intent allows external tools, pass Grok hosted x_search. Matches web flag semantics for all interactive Steve surfaces that read SteveCommunityConfig.", "group": "paid_steve_package"},
                 {"name": "paid_steve_package_max_output_tokens", "label": "Max output tokens", "type": "integer", "value": 1400, "group": "paid_steve_package"},
                 {"name": "paid_steve_package_recent_comments_limit", "label": "Recent comments in context", "type": "integer", "value": 8, "group": "paid_steve_package"},
-                {"name": "paid_steve_package_doc_excerpt_chars_default", "label": "Default document excerpt chars", "type": "integer", "value": 2000, "group": "paid_steve_package"},
+                {"name": "paid_steve_package_doc_excerpt_chars_default", "label": "Default document excerpt chars", "type": "integer", "value": 4000, "group": "paid_steve_package"},
                 {"name": "paid_steve_package_doc_excerpt_chars_deep", "label": "Deep document excerpt chars", "type": "integer", "value": 4000, "group": "paid_steve_package"},
                 {"name": "paid_steve_package_docs_limit", "label": "Documents in context", "type": "integer", "value": 10, "group": "paid_steve_package"},
                 {"name": "paid_steve_package_links_limit", "label": "Useful links in context", "type": "integer", "value": 10, "group": "paid_steve_package"},

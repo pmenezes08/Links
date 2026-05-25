@@ -67,11 +67,13 @@ row commits in `/upload_doc`, and existing rows can be backfilled with
 **`steve_doc_memory/{community:id|group:id}/docs/{doc_id}/chunks/{chunk_id}`** stores extraction
 status, summaries/outlines, page chunks, token estimates, and optional embeddings. Steve's resource
 context (calendar + links + documents + polls) is assembled by
-**`backend/services/steve_resource_context.py`**, which prefers the compact manifest and retrieves
-only relevant chunks when the current thread, parent/original post, recent replies, or recent upload
-state makes a document ask active. The legacy on-the-fly PDF text fallback fires when Firestore memory
-has no readable chunks for that scope (manifest-only or pending rows still fall back to PDF extract).
-Large PDFs are never injected wholesale; group docs use
+**`backend/services/steve_resource_context.py`**, which injects a compact manifest, an index-time
+**document dossier** (`summary_short` + outline from Firestore, no extra LLM), and retrieved page
+chunks within a shared character budget when the current thread, parent/original post, recent replies,
+or recent upload state makes a document ask active. The legacy on-the-fly PDF text fallback fires when
+Firestore memory has no readable dossier or chunks for that scope (manifest-only pending rows still
+fall back to PDF extract). Default doc excerpt budget is KB **`paid_steve_package_doc_excerpt_chars_default`**
+(4000 chars). Large PDFs are never injected wholesale; group docs use
 `group:{id}` memory only and are not visible from the parent community feed. Activation is gated by
 **`steve_prompt_policy.should_include_community_resources_from_thread`**, which uses a real MySQL
 ``scope_has_useful_docs`` check (not a hardcoded flag) plus broad plural/PT resource phrases

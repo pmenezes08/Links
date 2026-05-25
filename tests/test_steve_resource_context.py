@@ -17,8 +17,8 @@ def test_memory_context_is_usable_requires_chunks():
         {"manifest_count": 1, "chunk_count": 2},
     ) is True
     assert _memory_context_is_usable(
-        "Relevant document excerpts from this exact scope:\n\nDocument: Plan",
-        {"manifest_count": 1, "chunk_count": 0},
+        "Document dossier (index-time summaries):\n\nDocument: Plan",
+        {"manifest_count": 1, "chunk_count": 0, "dossier_chars": 120},
     ) is True
 
 

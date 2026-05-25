@@ -260,3 +260,54 @@ def test_document_identity_score_matches_optional_description_details():
     ]
 
     assert docmem.matched_document_ids("Chega internal structure", manifest) == [10]
+
+
+def test_format_doc_dossier_includes_name_description_summary_outline():
+    manifest = [
+        {
+            "doc_id": 1,
+            "title": "Quarterly Plan",
+            "details": "Finance roadmap for Q3",
+            "summary_short": "Revenue targets and hiring plan.",
+            "outline": ["Executive summary", "Hiring", "Budget"],
+            "text_status": docmem.TEXT_STATUS_READABLE,
+            "chunk_count": 4,
+        }
+    ]
+
+    dossier = docmem.format_doc_dossier(manifest, max_chars=2000)
+
+    assert "Document dossier" in dossier
+    assert "Quarterly Plan" in dossier
+    assert "Finance roadmap for Q3" in dossier
+    assert "Revenue targets" in dossier
+    assert "Executive summary" in dossier
+
+
+def test_build_doc_memory_context_splits_dossier_and_chunk_budget(monkeypatch):
+    manifest = [
+        {
+            "doc_id": 1,
+            "title": "Policy Handbook",
+            "summary_short": "A" * 1200,
+            "outline": ["Intro"],
+            "text_status": docmem.TEXT_STATUS_READABLE,
+            "chunk_count": 3,
+        }
+    ]
+
+    monkeypatch.setattr(docmem, "load_doc_manifest", lambda **kwargs: manifest)
+    monkeypatch.setattr(docmem, "should_retrieve_docs_from_thread", lambda **kwargs: True)
+    monkeypatch.setattr(
+        docmem,
+        "retrieve_doc_chunks",
+        lambda *args, **kwargs: [{"title": "Policy Handbook", "page_start": 1, "page_end": 1, "text": "B" * 800, "heading": ""}],
+    )
+
+    context, info = docmem.build_doc_memory_context("summarize the handbook", community_id=1, max_chars=3000)
+
+    assert info["dossier_chars"] > 0
+    assert info["chunk_count"] == 1
+    assert "Document dossier" in context
+    assert "Relevant document excerpts" in context
+    assert len(context) <= 3100
