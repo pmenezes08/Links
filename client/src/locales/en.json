@@ -1632,8 +1632,6 @@
       "send_failed": "Failed to send invite",
       "sent_single": "Invite sent to @{{username}}",
       "sent_multiple": "Sent {{count}} invites to @{{username}}",
-      "sent_if_exists": "If that user exists, we will send an invite.",
-      "sent_multiple_generic": "Invite requests sent for {{count}} communities.",
       "already_member": "Already a member",
       "send": "Send Invite",
       "sending": "Sending..."
@@ -1775,7 +1773,6 @@
     "send_username_invite": "Send Username Invite",
     "username_required": "Username is required",
     "invite_sent_to_username": "Invite sent to @{{username}}",
-    "invite_sent_if_exists": "If that user exists, we will send an invite.",
     "failed_username_invite": "Failed to send username invitation",
     "email_label": "E-mail address",
     "email_placeholder": "email@example.com",

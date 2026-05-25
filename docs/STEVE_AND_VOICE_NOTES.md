@@ -53,11 +53,6 @@ and then write the code. Do **not** silently diverge.
    **`steve_prompt_policy`** require verifiable external postings (no fabricated listings). DM and group
    chat use the same resolver. **@Mentioned** users on feed/group may receive gated profile context when
    **`user_can_access_steve_kb`** allows.
-   **Community corpus is exact-scope:** feed/group Steve context comes from
-   **`backend.services.steve_community_context`**, which authorizes the server-derived current
-   `community_id` / `group_id` before reading posts, comments/replies, media, links, PDF excerpts,
-   calendar events, tasks, and polls. Root/parent community membership may gate profile KB, but it must
-   not widen community-resource reads or authorize a public media/document URL without its owning DB row.
    **News and current-events** replies use **`steve_prompt_policy` `news_current_events`** mode: structured sections (Key developments, Why it matters, Sources), substantive bullets, reputable-source guidance, and **`[Article headline](URL)`** Markdown for sources where possible; bare URLs and numeric citations are normalised in **`format_steve_response_links`**. The canonical **“what Steve can do”** inventory is KB **`steve-platform-manual`** card **`steve.what_can_i_do`** (seeded from **`docs/STEVE_PLATFORM_KB.md`**).
 
 Skip any of the above and the user's "Steve uses this month" counter

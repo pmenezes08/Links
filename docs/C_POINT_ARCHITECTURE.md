@@ -126,7 +126,6 @@ Grouped by domain. Each `.py` encapsulates DB/API/cache rules; blueprints and th
 | `steve_model_config.py` | Official xAI Grok 4.3 pricing, KB-backed token caps, response usage extraction, and shared cost estimation for Steve surfaces. |
 | `steve_prompt_policy.py` | Shared adaptive prompt policy for Steve: casual vs substantive modes, structured Markdown/bullets, internal reasoning guidance, and context-use heuristics. |
 | `steve_tool_policy.py` | Intent + KB rules for when interactive Steve (feed, DM, group) passes Grok **`web_search` / `x_search`**: suppress for platform-manual and professional-advice-only turns; prefer platform KB for profile-style asks; enable for explicit phrases and **news_current_events** heuristics; KB **`external_search_explicit_only`** / **default web-X** / **`feed_attach_*`** channel kill-switches on **`SteveCommunityConfig`**. |
-| `steve_community_context.py` | Exact-scope Steve community corpus builder: authorizes the server-derived current `community_id` / `group_id`, then assembles posts, comments/replies, authorized image URLs, links, document excerpts, calendar events, tasks, and polls. It deliberately does not expand to parent/root or sibling communities; profile KB gating remains in `steve_profiling_gates.py`. |
 
 ### Billing & subscriptions
 

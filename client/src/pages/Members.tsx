@@ -307,7 +307,7 @@ export default function Members(){
 
       if (response.ok && data.success) {
         setInviteSuccess(true)
-        setInviteSuccessMessage(data.message || t('social.invite_sent_if_exists'))
+        setInviteSuccessMessage(data.message || t('social.invite_sent_to_username', { username: targetUsername }))
         setInviteUsername('')
       } else {
         if (data?.show_upgrade && data?.upgrade_url) setInviteUpgradeUrl(data.upgrade_url)

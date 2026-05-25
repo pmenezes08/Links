@@ -50,9 +50,7 @@ def test_username_invite_accepts_into_community(mysql_dsn, monkeypatch):
     assert create_resp.status_code == 200
     create_data = create_resp.get_json()
     assert create_data["success"] is True
-    assert "username" not in create_data
-    assert "invite_id" not in create_data
-    assert create_data["message"] == "If that user exists, we will send an invite."
+    assert create_data["username"] == "target_username_invite"
     assert pushed and pushed[0][0] == "target_username_invite"
     assert "You've been invited to community username-invite-accept by username owner_username_invite" in pushed[0][1]["body"]
     assert not _member_exists("target_username_invite", community_id)
@@ -101,10 +99,9 @@ def test_username_invite_decline_does_not_add_member(mysql_dsn, monkeypatch):
         "/api/community/invite_username",
         json={"community_id": community_id, "username": "target_username_decline"},
     )
+    invite_id = create_resp.get_json()["invite_id"]
 
     _login(client, "target_username_decline")
-    pending_resp = client.get("/api/community/invites/pending")
-    invite_id = pending_resp.get_json()["invites"][0]["id"]
     decline_resp = client.post(f"/api/community/invites/{invite_id}/decline")
     assert decline_resp.status_code == 200
     assert decline_resp.get_json()["success"] is True
@@ -143,41 +140,6 @@ def test_non_admin_cannot_create_username_invite(mysql_dsn):
     )
     assert resp.status_code == 403
     assert resp.get_json()["success"] is False
-
-
-def test_username_invite_does_not_enumerate_missing_user(mysql_dsn, monkeypatch):
-    import bodybuilding_app
-
-    pushed = []
-    monkeypatch.setattr(bodybuilding_app, "send_push_to_user", lambda username, payload: pushed.append((username, payload)))
-
-    make_user("owner_username_missing", subscription="premium")
-    community_id = make_community(
-        "username-invite-missing",
-        tier="free",
-        creator_username="owner_username_missing",
-    )
-
-    client = bodybuilding_app.app.test_client()
-    _login(client, "owner_username_missing")
-    resp = client.post(
-        "/api/community/invite_username",
-        json={"community_id": community_id, "username": "definitely_missing_username"},
-    )
-
-    assert resp.status_code == 200
-    body = resp.get_json()
-    assert body["success"] is True
-    assert body["message"] == "If that user exists, we will send an invite."
-    assert "username" not in body
-    assert "invite_id" not in body
-    assert pushed == []
-    with get_db_connection() as conn:
-        c = conn.cursor()
-        ph = get_sql_placeholder()
-        c.execute(f"SELECT COUNT(*) as cnt FROM community_invitations WHERE community_id = {ph}", (community_id,))
-        row = c.fetchone()
-        assert int(row["cnt"] if hasattr(row, "keys") else row[0]) == 0
 
 
 def test_username_invite_rejects_sub_community(mysql_dsn, monkeypatch):

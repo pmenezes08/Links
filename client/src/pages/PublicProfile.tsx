@@ -296,8 +296,8 @@ export default function PublicProfile() {
 
       setInviteSuccess(
         results.length === 1
-          ? (results[0]?.message || t('profile.invite.sent_if_exists'))
-          : t('profile.invite.sent_multiple_generic', { count: results.length })
+          ? (results[0]?.message || t('profile.invite.sent_single', { username: profile.username }))
+          : t('profile.invite.sent_multiple', { count: results.length, username: profile.username })
       )
       setSelectedInviteCommunityIds([])
     } catch (err) {

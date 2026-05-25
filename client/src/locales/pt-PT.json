@@ -1632,8 +1632,6 @@
       "send_failed": "Não foi possível enviar o convite",
       "sent_single": "Convite enviado para @{{username}}",
       "sent_multiple": "Enviados {{count}} convites para @{{username}}",
-      "sent_if_exists": "Se esse utilizador existir, iremos enviar um convite.",
-      "sent_multiple_generic": "Pedidos de convite enviados para {{count}} comunidades.",
       "already_member": "Já é membro",
       "send": "Enviar convite",
       "sending": "A enviar..."
@@ -1775,7 +1773,6 @@
     "send_username_invite": "Enviar convite por nome de utilizador",
     "username_required": "O nome de utilizador é obrigatório",
     "invite_sent_to_username": "Convite enviado para @{{username}}",
-    "invite_sent_if_exists": "Se esse utilizador existir, iremos enviar um convite.",
     "failed_username_invite": "Falha ao enviar convite por nome de utilizador",
     "email_label": "Endereço de e-mail",
     "email_placeholder": "email@exemplo.com",
