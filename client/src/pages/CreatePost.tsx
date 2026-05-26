@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
+import { computeKeyboardLift, readCssPxVar } from '../utils/keyboardLift'
 import MentionTextarea from '../components/MentionTextarea'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -61,7 +63,6 @@ export default function CreatePost(){
   const shareAttachDoneRef = useRef(false)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const headerOffsetVar = 'var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px)))'
-  const safeBottom = 'env(safe-area-inset-bottom, 0px)'
   const conversationMinHeight = `calc(100vh - ${headerOffsetVar})`
   const composerBaseline = 140
   const [composerHeight, setComposerHeight] = useState(composerBaseline)
@@ -188,30 +189,20 @@ export default function CreatePost(){
   }, [])
 
   useEffect(() => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return
-    const probe = document.createElement('div')
-    probe.style.position = 'fixed'
-    probe.style.bottom = '0'
-    probe.style.left = '0'
-    probe.style.width = '0'
-    probe.style.height = 'env(safe-area-inset-bottom, 0px)'
-    probe.style.pointerEvents = 'none'
-    probe.style.opacity = '0'
-    probe.style.zIndex = '-1'
-    document.body.appendChild(probe)
+    if (typeof window === 'undefined') return
 
-    const updateSafeBottom = () => {
-      const rect = probe.getBoundingClientRect()
-      const next = rect.height || 0
+    const syncSafeBottom = () => {
+      const next = readCssPxVar('--sab-px')
       setSafeBottomPx(prev => (Math.abs(prev - next) < 1 ? prev : next))
     }
 
-    updateSafeBottom()
-    window.addEventListener('resize', updateSafeBottom)
+    syncSafeBottom()
+    window.addEventListener('resize', syncSafeBottom)
+    window.visualViewport?.addEventListener('resize', syncSafeBottom)
 
     return () => {
-      window.removeEventListener('resize', updateSafeBottom)
-      probe.remove()
+      window.removeEventListener('resize', syncSafeBottom)
+      window.visualViewport?.removeEventListener('resize', syncSafeBottom)
     }
   }, [])
 
@@ -500,13 +491,15 @@ export default function CreatePost(){
 
   const effectiveComposerHeight = Math.max(composerHeight, composerBaseline)
   const liftSource = Math.max(keyboardOffset, viewportLift)
-  const keyboardLift = Math.max(0, liftSource - safeBottomPx)
-  const showKeyboard = liftSource > 2
+  const keyboardLift = computeKeyboardLift(liftSource)
+  const showKeyboard = keyboardLift > 0
   const conversationDynamicHeight = viewportHeight
     ? `calc(${viewportHeight.toFixed(2)}px - ${headerOffsetVar})`
     : conversationMinHeight
-  const contentPaddingBottom = `calc(${effectiveComposerHeight}px + ${keyboardLift}px + ${safeBottom} + 2rem)`
-  const contentPaddingTop = 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + var(--app-content-gap, 8px))'
+  const contentPaddingBottom = showKeyboard
+    ? `calc(${effectiveComposerHeight}px + ${keyboardLift}px + 2rem)`
+    : `calc(${effectiveComposerHeight}px + ${safeBottomPx}px + 2rem)`
+  const contentPaddingTop = 'calc(var(--app-header-offset, calc(56px + var(--sat-px, 0px))) + var(--app-content-gap, 8px))'
 
   return (
     <>
@@ -778,7 +771,7 @@ export default function CreatePost(){
       )}
     </div>
     
-    {/* Floating composer */}
+    {typeof document !== 'undefined' && createPortal(
     <div 
       ref={composerRef}
       className="fixed left-0 right-0"
@@ -789,11 +782,13 @@ export default function CreatePost(){
         display: 'flex',
         flexDirection: 'column',
         paddingTop: showKeyboard ? '4px' : '8px',
-        paddingBottom: showKeyboard ? '4px' : `calc(env(safe-area-inset-bottom, 0px) + 6px)`,
-        paddingLeft: 'env(safe-area-inset-left, 0px)',
-        paddingRight: 'env(safe-area-inset-right, 0px)',
+        paddingBottom: showKeyboard ? '4px' : `calc(var(--sab-px, 0px) + 6px)`,
+        paddingLeft: 'var(--sal-px, 0px)',
+        paddingRight: 'var(--sar-px, 0px)',
         background: 'linear-gradient(180deg, rgba(3,3,4,0) 0%, rgba(3,3,4,0.65) 30%, rgba(3,3,4,0.9) 65%, #000 90%)',
         transition: 'transform 140ms ease-out',
+        touchAction: 'manipulation',
+        pointerEvents: 'auto',
       }}
     >
       <div
@@ -880,12 +875,14 @@ export default function CreatePost(){
       </div>
       <div 
         style={{
-          height: showKeyboard ? '4px' : 'env(safe-area-inset-bottom, 0px)',
+          height: showKeyboard ? '4px' : 'var(--sab-px, 0px)',
           background: '#000',
           flexShrink: 0,
         }}
       />
-    </div>
+    </div>,
+    document.body
+    )}
 
     <GifPicker
       isOpen={gifPickerOpen}

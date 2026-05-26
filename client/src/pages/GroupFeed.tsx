@@ -60,11 +60,8 @@ export default function GroupFeed(){
   }, [userProfile])
   const currentUsername = (userProfile as any)?.username || ''
   const currentDisplayName = (userProfile as any)?.display_name || currentUsername
-  /** Same offset convention as CommunityFeed (iOS legacy 20px, else h-14 body). */
-  const feedScrollHeaderBodyPx = useMemo(
-    () => (Capacitor.getPlatform() === 'ios' ? 20 : 56),
-    [],
-  )
+  /** Fixed header body is h-14 (56px) on all platforms; sat-px is applied separately. */
+  const feedScrollHeaderBodyPx = 56
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [groupInfoOpen, setGroupInfoOpen] = useState(false)

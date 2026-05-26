@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
+import { computeKeyboardLift } from '../utils/keyboardLift'
 import {
   b2bNetworkSizeLabel,
   b2bNetworkSizeOptions,
@@ -2291,7 +2292,7 @@ export default function OnboardingChat({
     !composingBio &&
     !showCvUpload
   const showPhotoUpload = lastSteveMsg?.photoUpload && stage === 'photo'
-  const keyboardLift = keyboardOffset > 0 ? Math.max(0, keyboardOffset - safeBottomPx) : 0
+  const keyboardLift = computeKeyboardLift(keyboardOffset)
   const composerBottom = `${keyboardLift}px`
   const composerClearance = showPhotoUpload || showCvUpload ? 124 : showInput ? 112 : 24
   const composerPaddingBottom = keyboardLift > 0 ? '8px' : `calc(env(safe-area-inset-bottom, 0px) + 8px)`

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { CSSProperties } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -6,6 +7,7 @@ import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
+import { computeKeyboardLift, readCssPxVar } from '../utils/keyboardLift'
 import Avatar from '../components/Avatar'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
@@ -395,31 +397,24 @@ export default function GroupChatThread() {
   }, [])
 
   useEffect(() => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return
-    const probe = document.createElement('div')
-    probe.style.position = 'fixed'
-    probe.style.bottom = '0'
-    probe.style.left = '0'
-    probe.style.width = '0'
-    probe.style.height = 'env(safe-area-inset-bottom, 0px)'
-    probe.style.pointerEvents = 'none'
-    probe.style.opacity = '0'
-    probe.style.zIndex = '-1'
-    document.body.appendChild(probe)
-    const updateSafeBottom = () => {
+    if (typeof window === 'undefined') return
+
+    const syncSafeBottom = () => {
       if (keyboardOffsetRef.current > 0) return
-      const rect = probe.getBoundingClientRect()
-      const next = rect.height || 0
+      const next = readCssPxVar('--sab-px')
       setSafeBottomPx(prev => {
         if (next < 1 && prev > 1) return prev
         return Math.abs(prev - next) < 1 ? prev : next
       })
     }
-    updateSafeBottom()
-    window.addEventListener('resize', updateSafeBottom)
+
+    syncSafeBottom()
+    window.addEventListener('resize', syncSafeBottom)
+    window.visualViewport?.addEventListener('resize', syncSafeBottom)
+
     return () => {
-      window.removeEventListener('resize', updateSafeBottom)
-      probe.remove()
+      window.removeEventListener('resize', syncSafeBottom)
+      window.visualViewport?.removeEventListener('resize', syncSafeBottom)
     }
   }, [])
 
@@ -434,11 +429,12 @@ export default function GroupChatThread() {
   const androidComposerBottom = androidKeyboardOpen
     ? Math.max(0, window.innerHeight - ((window.visualViewport?.offsetTop ?? 0) + (window.visualViewport?.height ?? window.innerHeight)))
     : 0
-  const keyboardLift = androidKeyboardOpen ? androidComposerBottom : Math.max(0, liftSource - safeBottomPx)
+  const keyboardLift = androidKeyboardOpen ? androidComposerBottom : computeKeyboardLift(liftSource)
 
   const composerGapPx = 4
-  const listPaddingBottom = `${(androidKeyboardOpen ? 0 : safeBottomPx) + (androidKeyboardOpen ? 0 : keyboardLift) + effectiveComposerHeight + composerGapPx}px`
-  const scrollButtonBottom = `${(androidKeyboardOpen ? 0 : safeBottomPx) + (androidKeyboardOpen ? 0 : keyboardLift) + effectiveComposerHeight + 12}px`
+  const bottomChromeInset = keyboardLift > 0 || androidKeyboardOpen ? keyboardLift : safeBottomPx
+  const listPaddingBottom = `${bottomChromeInset + effectiveComposerHeight + composerGapPx}px`
+  const scrollButtonBottom = `${bottomChromeInset + effectiveComposerHeight + 12}px`
 
   const scrollListToBottom = useCallback((behavior: ScrollBehavior) => {
     const el = listRef.current
@@ -558,7 +554,7 @@ export default function GroupChatThread() {
   useEffect(() => {
     if (!isMobile) return
     const platform = Capacitor.getPlatform()
-    if (platform !== 'web' && platform !== 'android') return
+    if (platform !== 'web' && platform !== 'android' && platform !== 'ios') return
     if (typeof window === 'undefined') return
     const viewport = window.visualViewport
     if (!viewport) return
@@ -2567,7 +2563,8 @@ export default function GroupChatThread() {
         </button>
       )}
 
-      {/* ====== COMPOSER - FIXED AT BOTTOM ====== */}
+      {/* ====== COMPOSER - FIXED AT BOTTOM (portaled for keyboard lift) ====== */}
+      {typeof document !== 'undefined' && createPortal(
       <div
         ref={composerRef}
         className={`fixed bottom-0 ${isWeb ? 'left-1/2 -translate-x-1/2 max-w-3xl w-full' : 'left-0 right-0'}`}
@@ -2576,6 +2573,8 @@ export default function GroupChatThread() {
           zIndex: 1000,
           display: 'flex',
           flexDirection: 'column',
+          touchAction: 'manipulation',
+          pointerEvents: 'auto',
         }}
       >
         {/* Selection action bar - shown when in selection mode */}
@@ -3138,7 +3137,9 @@ export default function GroupChatThread() {
             flexShrink: 0,
           }}
         />
-      </div>
+      </div>,
+      document.body
+      )}
 
       {/* GIF Picker */}
       <GifPicker

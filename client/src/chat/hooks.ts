@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
+import { computeKeyboardLift } from '../utils/keyboardLift'
 
 // Layout constants
 const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
@@ -179,7 +180,7 @@ export function useKeyboardLayout({
 
   const effectiveComposerHeight = Math.max(composerHeight, DEFAULT_COMPOSER_PADDING)
   const liftSource = Math.max(keyboardOffset, viewportLift)
-  const keyboardLift = Math.max(0, liftSource - safeBottomPx)
+  const keyboardLift = computeKeyboardLift(liftSource)
   // Use higher threshold to prevent toggling from small viewport fluctuations
   const showKeyboard = liftSource > 50
 

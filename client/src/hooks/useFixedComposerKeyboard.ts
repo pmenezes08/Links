@@ -3,6 +3,10 @@ import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
+import { computeKeyboardLift, readCssPxVar } from '../utils/keyboardLift'
+
+const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
+const NATIVE_KEYBOARD_MIN_HEIGHT = 60
 
 type UseFixedComposerKeyboardOptions = {
   /** Called after keyboard offset reset (visibility/resume) to nudge scroll containers. */
@@ -21,40 +25,30 @@ export function useFixedComposerKeyboard(options: UseFixedComposerKeyboardOption
   const [safeBottomPx, setSafeBottomPx] = useState(0)
 
   useEffect(() => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return
-    const probe = document.createElement('div')
-    probe.style.position = 'fixed'
-    probe.style.bottom = '0'
-    probe.style.left = '0'
-    probe.style.width = '0'
-    probe.style.height = 'env(safe-area-inset-bottom, 0px)'
-    probe.style.pointerEvents = 'none'
-    probe.style.opacity = '0'
-    probe.style.zIndex = '-1'
-    document.body.appendChild(probe)
+    if (typeof window === 'undefined') return
 
-    const updateSafeBottom = () => {
-      const rect = probe.getBoundingClientRect()
-      const next = rect.height || 0
+    const syncSafeBottom = () => {
+      const next = readCssPxVar('--sab-px')
       setSafeBottomPx(prev => (Math.abs(prev - next) < 1 ? prev : next))
     }
 
-    updateSafeBottom()
-    window.addEventListener('resize', updateSafeBottom)
+    syncSafeBottom()
+    window.addEventListener('resize', syncSafeBottom)
+    window.visualViewport?.addEventListener('resize', syncSafeBottom)
 
     return () => {
-      window.removeEventListener('resize', updateSafeBottom)
-      probe.remove()
+      window.removeEventListener('resize', syncSafeBottom)
+      window.visualViewport?.removeEventListener('resize', syncSafeBottom)
     }
   }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (Capacitor.getPlatform() !== 'web') return
     const viewport = window.visualViewport
     if (!viewport) return
 
     let rafId: number | null = null
+    const isWeb = Capacitor.getPlatform() === 'web'
 
     const updateOffset = () => {
       const currentHeight = viewport.height
@@ -65,7 +59,10 @@ export function useFixedComposerKeyboard(options: UseFixedComposerKeyboardOption
         viewportBaseRef.current = currentHeight
       }
       const baseHeight = viewportBaseRef.current ?? currentHeight
-      const nextOffset = Math.max(0, baseHeight - currentHeight - viewport.offsetTop)
+      const rawOffset = isWeb
+        ? Math.max(0, baseHeight - currentHeight - viewport.offsetTop)
+        : Math.max(0, baseHeight - currentHeight)
+      const nextOffset = rawOffset < VISUAL_VIEWPORT_KEYBOARD_THRESHOLD ? 0 : rawOffset
       setViewportLift(prev => (Math.abs(prev - nextOffset) < 1 ? prev : nextOffset))
       if (Math.abs(keyboardOffsetRef.current - nextOffset) < 1) return
       keyboardOffsetRef.current = nextOffset
@@ -126,8 +123,11 @@ export function useFixedComposerKeyboard(options: UseFixedComposerKeyboardOption
     let showSub: PluginListenerHandle | undefined
     let hideSub: PluginListenerHandle | undefined
 
+    const normalizeHeight = (raw: number) => (raw < NATIVE_KEYBOARD_MIN_HEIGHT ? 0 : raw)
+
     const handleShow = (info: KeyboardInfo) => {
-      const height = info?.keyboardHeight ?? 0
+      const height = normalizeHeight(info?.keyboardHeight ?? 0)
+      if (height === 0) return
       if (Math.abs(keyboardOffsetRef.current - height) < 2) return
       keyboardOffsetRef.current = height
       setKeyboardOffset(height)
@@ -153,8 +153,8 @@ export function useFixedComposerKeyboard(options: UseFixedComposerKeyboardOption
   }, [])
 
   const liftSource = Math.max(keyboardOffset, viewportLift)
-  const keyboardLift = Math.max(0, liftSource - safeBottomPx)
-  const showKeyboard = liftSource > 2
+  const keyboardLift = computeKeyboardLift(liftSource)
+  const showKeyboard = keyboardLift > 0
 
   return {
     keyboardOffset,

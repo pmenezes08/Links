@@ -199,11 +199,8 @@ export default function CommunityFeed() {
     enforcement_enabled: feedEnforcementEnabled,
     loading: feedEntitlementsLoading,
   } = useEntitlements()
-  /** iOS keeps legacy 20px offset (layout verified there). Android + web use h-14 (56px) so feed clears the fixed header. */
-  const feedScrollHeaderBodyPx = useMemo(
-    () => (Capacitor.getPlatform() === 'ios' ? 20 : 56),
-    []
-  )
+  /** Fixed header body is h-14 (56px) on all platforms; sat-px is applied separately. */
+  const feedScrollHeaderBodyPx = 56
   const storyViewerShellClass = useMemo(
     () => Capacitor.getPlatform() === 'web'
       ? 'relative h-full w-full overflow-hidden bg-black shadow-2xl lg:h-[calc(100dvh-48px)] lg:max-h-[860px] lg:max-w-[430px] lg:rounded-[32px] lg:border lg:border-white/10'

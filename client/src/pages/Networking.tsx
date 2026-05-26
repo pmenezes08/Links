@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
+import { computeKeyboardLift } from '../utils/keyboardLift'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import { useNavigate } from 'react-router-dom'
@@ -264,7 +265,7 @@ export default function Networking() {
   }, [scrollToBottom])
 
   const liftSource = Math.max(keyboardOffset, viewportLift)
-  const keyboardLift = Math.max(0, liftSource - safeBottomPx)
+  const keyboardLift = computeKeyboardLift(liftSource)
   const showKeyboard = liftSource > 50
 
   // Personal state
@@ -906,7 +907,7 @@ export default function Networking() {
             className="fixed left-0 right-0 z-50 bg-black border-t border-white/10 px-3 py-2"
             style={{
               bottom: showKeyboard ? `${keyboardLift}px` : 0,
-              paddingBottom: showKeyboard ? '4px' : 'calc(env(safe-area-inset-bottom, 0px) + 8px)',
+              paddingBottom: showKeyboard ? '4px' : `calc(${safeBottomPx}px + 8px)`,
               transition: 'bottom 0.1s ease-out',
             }}
           >
