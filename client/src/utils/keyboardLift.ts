@@ -11,3 +11,12 @@ export function readCssPxVar(name: string): number {
   const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
   return parseFloat(raw) || 0
 }
+
+/** Distance from layout viewport bottom to visual viewport bottom (IME height on Android). */
+export function readVisualViewportImeInset(threshold = 48): number {
+  if (typeof window === 'undefined') return 0
+  const viewport = window.visualViewport
+  if (!viewport) return 0
+  const inset = Math.max(0, window.innerHeight - viewport.offsetTop - viewport.height)
+  return inset < threshold ? 0 : inset
+}

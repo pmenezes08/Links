@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
-import { computeKeyboardLift, readCssPxVar } from '../utils/keyboardLift'
+import { computeKeyboardLift, readCssPxVar, readVisualViewportImeInset } from '../utils/keyboardLift'
 
 const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
 const NATIVE_KEYBOARD_MIN_HEIGHT = 60
@@ -22,7 +22,10 @@ export function useFixedComposerKeyboard(options: UseFixedComposerKeyboardOption
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const viewportBaseRef = useRef<number | null>(null)
   const [viewportLift, setViewportLift] = useState(0)
+  const [androidImeInset, setAndroidImeInset] = useState(0)
   const [safeBottomPx, setSafeBottomPx] = useState(0)
+
+  const isAndroid = Capacitor.getPlatform() === 'android'
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -52,6 +55,15 @@ export function useFixedComposerKeyboard(options: UseFixedComposerKeyboardOption
     const isWeb = Capacitor.getPlatform() === 'web'
 
     const updateOffset = () => {
+      if (isAndroid) {
+        const ime = readVisualViewportImeInset(VISUAL_VIEWPORT_KEYBOARD_THRESHOLD)
+        setAndroidImeInset(prev => (Math.abs(prev - ime) < 1 ? prev : ime))
+        keyboardOffsetRef.current = ime
+        setKeyboardOffset(ime)
+        setViewportLift(ime)
+        return
+      }
+
       const currentHeight = viewport.height
       if (
         viewportBaseRef.current === null ||
@@ -84,13 +96,14 @@ export function useFixedComposerKeyboard(options: UseFixedComposerKeyboardOption
       viewport.removeEventListener('resize', handleChange)
       viewport.removeEventListener('scroll', handleChange)
     }
-  }, [])
+  }, [isAndroid])
 
   useEffect(() => {
     const nudgeLayout = () => {
       keyboardOffsetRef.current = 0
       setKeyboardOffset(0)
       setViewportLift(0)
+      setAndroidImeInset(0)
       viewportBaseRef.current = null
       requestAnimationFrame(() => {
         window.dispatchEvent(new Event('resize'))
@@ -119,7 +132,7 @@ export function useFixedComposerKeyboard(options: UseFixedComposerKeyboardOption
     }
   }, [])
 
-  // iOS only — Android uses visualViewport (Capacitor plugin over-reports with adjustNothing).
+  // iOS only — Android uses visualViewport IME inset (Capacitor plugin over-reports with adjustNothing).
   useEffect(() => {
     if (Capacitor.getPlatform() !== 'ios') return
     let showSub: PluginListenerHandle | undefined
@@ -155,18 +168,9 @@ export function useFixedComposerKeyboard(options: UseFixedComposerKeyboardOption
   }, [])
 
   const liftSource = Math.max(keyboardOffset, viewportLift)
-  const isAndroid =
-    typeof navigator !== 'undefined' &&
-    Capacitor.getPlatform() === 'android'
-  const androidKeyboardOpen = isAndroid && liftSource > 0
-  const androidComposerBottom = androidKeyboardOpen
-    ? Math.max(
-        0,
-        window.innerHeight -
-          ((window.visualViewport?.offsetTop ?? 0) + (window.visualViewport?.height ?? window.innerHeight))
-      )
-    : 0
-  const keyboardLift = androidKeyboardOpen ? androidComposerBottom : computeKeyboardLift(liftSource)
+  const keyboardLift = isAndroid
+    ? androidImeInset
+    : computeKeyboardLift(liftSource)
   const showKeyboard = keyboardLift > 0
 
   return {

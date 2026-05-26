@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { useHeader } from '../contexts/HeaderContext'
@@ -761,6 +762,8 @@ export default function PremiumDashboard() {
     !onboardingStateSummary.onboardingComplete &&
     (onboardingStateSummary.profileDeferUntil || onboardingStateSummary.requiresOnboardingResume)
   )
+  const onboardingOverlayActive =
+    showOnboarding || showOnboardingWelcome || onboardingLaunching || onboardingGateRequired
   const onboardingRemaining = formatOnboardingRemaining(
     onboardingStateSummary?.profileDeferUntil,
     onboardingStateSummary?.serverTime,
@@ -1118,7 +1121,7 @@ export default function PremiumDashboard() {
             )}
         </div>
 
-        {communities.length > 0 && (
+        {communities.length > 0 && !onboardingOverlayActive && (
           <button
             type="button"
             aria-label={t('dashboard.create_community_short')}
@@ -1133,83 +1136,88 @@ export default function PremiumDashboard() {
           </button>
         )}
 
-        <DashboardBottomNav show searchOpen={searchOpen} onToggleSearch={() => setSearchOpen((v) => !v)} />
+        <DashboardBottomNav show={!onboardingOverlayActive} searchOpen={searchOpen} onToggleSearch={() => setSearchOpen((v) => !v)} />
       </div>
 
-      {/* Conversational Onboarding with Steve */}
-      {showOnboardingWelcome && !showOnboarding && !onboardingGateRequired && (
-        <OnboardingIntroGate
-          onStart={() => {
-            setShowOnboardingWelcome(false)
-            setOnboardingLaunching(true)
-            setShowOnboarding(true)
-          }}
-        />
-      )}
-      {onboardingGateRequired && !showOnboarding && (
-        <div className="fixed inset-0 z-[1101] bg-black/90 backdrop-blur-md flex items-center justify-center px-6">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0d1214] p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.55)]">
-            <img src="/api/public/logo" alt="C-Point" className="w-14 h-14 rounded-2xl object-contain mx-auto mb-4" />
-            <h2 className="text-lg font-semibold text-white mb-2">{t('dashboard.finish_profile_title')}</h2>
-            <p className="text-sm text-[#9fb0b5] mb-6">
-              {t('dashboard.finish_profile_body')}
-            </p>
-            <button
-              type="button"
-              className="w-full rounded-xl bg-[#4db6ac] text-black font-semibold py-3 text-sm hover:brightness-110 transition"
-              onClick={openOnboardingResume}
-            >
-              {t('dashboard.continue_with_steve')}
-            </button>
-          </div>
-        </div>
-      )}
-      {onboardingLaunching && !showOnboarding && !onboardingGateRequired && (
-        <div className="fixed inset-0 z-[1100] bg-black/80 backdrop-blur-sm flex items-center justify-center px-6">
-          <div className="flex flex-col items-center gap-4 text-center">
-            <img src="/api/public/logo" alt="C-Point" className="w-14 h-14 rounded-2xl object-contain" />
-            <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-[#4db6ac] animate-spin" />
-            <div className="text-sm text-white/65">{t('dashboard.opening_steve')}</div>
-          </div>
-        </div>
-      )}
-      {showOnboarding && (
-        <OnboardingChat
-          firstName={firstName}
-          lastName={lastName}
-          username={username}
-          displayName={displayName}
-          communityName={resolvedCommunityName !== communityFallback ? resolvedCommunityName : null}
-          hasCommunity={hasAnyCommunity}
-          existingProfilePic={existingProfilePic}
-          mode={onboardingMode}
-          onComplete={() => {
-            setShowOnboarding(false)
-            setShowOnboardingWelcome(false)
-            setOnboardingLaunching(false)
-            setOnboardingGateRequired(false)
-            onboardingTriggeredRef.current = false
-            window.location.href = '/premium_dashboard'
-          }}
-          onCreateCommunity={() => {
-            setShowOnboarding(false)
-            setShowOnboardingWelcome(false)
-            setOnboardingLaunching(false)
-            setShowCreateModal(true)
-          }}
-          onGoToCommunity={() => {
-            setShowOnboarding(false)
-            setShowOnboardingWelcome(false)
-            setOnboardingLaunching(false)
-            handleGoToCommunity()
-          }}
-          onExit={() => {
-            setShowOnboarding(false)
-            setShowOnboardingWelcome(false)
-            setOnboardingLaunching(false)
-            setTimeout(() => { void refreshOnboardingStateSummary() }, 900)
-          }}
-        />
+      {/* Conversational Onboarding — portaled to body so z-index clears dashboard nav (main is z-0). */}
+      {onboardingOverlayActive && typeof document !== 'undefined' && createPortal(
+        <>
+          {showOnboardingWelcome && !showOnboarding && !onboardingGateRequired && (
+            <OnboardingIntroGate
+              onStart={() => {
+                setShowOnboardingWelcome(false)
+                setOnboardingLaunching(true)
+                setShowOnboarding(true)
+              }}
+            />
+          )}
+          {onboardingGateRequired && !showOnboarding && (
+            <div className="fixed inset-0 z-[1200] bg-black/90 backdrop-blur-md flex items-center justify-center px-6">
+              <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0d1214] p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.55)]">
+                <img src="/api/public/logo" alt="C-Point" className="w-14 h-14 rounded-2xl object-contain mx-auto mb-4" />
+                <h2 className="text-lg font-semibold text-white mb-2">{t('dashboard.finish_profile_title')}</h2>
+                <p className="text-sm text-[#9fb0b5] mb-6">
+                  {t('dashboard.finish_profile_body')}
+                </p>
+                <button
+                  type="button"
+                  className="w-full rounded-xl bg-[#4db6ac] text-black font-semibold py-3 text-sm hover:brightness-110 transition"
+                  onClick={openOnboardingResume}
+                >
+                  {t('dashboard.continue_with_steve')}
+                </button>
+              </div>
+            </div>
+          )}
+          {onboardingLaunching && !showOnboarding && !onboardingGateRequired && (
+            <div className="fixed inset-0 z-[1200] bg-black/80 backdrop-blur-sm flex items-center justify-center px-6">
+              <div className="flex flex-col items-center gap-4 text-center">
+                <img src="/api/public/logo" alt="C-Point" className="w-14 h-14 rounded-2xl object-contain" />
+                <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-[#4db6ac] animate-spin" />
+                <div className="text-sm text-white/65">{t('dashboard.opening_steve')}</div>
+              </div>
+            </div>
+          )}
+          {showOnboarding && (
+            <OnboardingChat
+              firstName={firstName}
+              lastName={lastName}
+              username={username}
+              displayName={displayName}
+              communityName={resolvedCommunityName !== communityFallback ? resolvedCommunityName : null}
+              hasCommunity={hasAnyCommunity}
+              existingProfilePic={existingProfilePic}
+              mode={onboardingMode}
+              onComplete={() => {
+                setShowOnboarding(false)
+                setShowOnboardingWelcome(false)
+                setOnboardingLaunching(false)
+                setOnboardingGateRequired(false)
+                onboardingTriggeredRef.current = false
+                window.location.href = '/premium_dashboard'
+              }}
+              onCreateCommunity={() => {
+                setShowOnboarding(false)
+                setShowOnboardingWelcome(false)
+                setOnboardingLaunching(false)
+                setShowCreateModal(true)
+              }}
+              onGoToCommunity={() => {
+                setShowOnboarding(false)
+                setShowOnboardingWelcome(false)
+                setOnboardingLaunching(false)
+                handleGoToCommunity()
+              }}
+              onExit={() => {
+                setShowOnboarding(false)
+                setShowOnboardingWelcome(false)
+                setOnboardingLaunching(false)
+                setTimeout(() => { void refreshOnboardingStateSummary() }, 900)
+              }}
+            />
+          )}
+        </>,
+        document.body
       )}
 
       {/* Success Toast - Subtle notification */}

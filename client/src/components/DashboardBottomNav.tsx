@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { triggerHaptic } from '../utils/haptics'
+import { isOnboardingFullscreenOverlayActive } from '../utils/fullscreenOverlay'
 
 export const DASHBOARD_BOTTOM_NAV_HEIGHT_CSS = 'var(--app-dashboard-bottom-nav-height)'
 
@@ -34,6 +35,13 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
   const { t } = useTranslation()
   const [steveOpen, setSteveOpen] = useState(false)
   const [steveModalView, setSteveModalView] = useState<SteveModalView>('main')
+  const [onboardingOverlayActive, setOnboardingOverlayActive] = useState(isOnboardingFullscreenOverlayActive)
+
+  useEffect(() => {
+    const sync = () => setOnboardingOverlayActive(isOnboardingFullscreenOverlayActive())
+    window.addEventListener('cpoint-fullscreen-overlay', sync)
+    return () => window.removeEventListener('cpoint-fullscreen-overlay', sync)
+  }, [])
 
   useEffect(() => {
     if (!steveOpen) setSteveModalView('main')
@@ -50,7 +58,7 @@ export default function DashboardBottomNav({ show, searchOpen = false, onToggleS
     return () => window.removeEventListener('keydown', onKey)
   }, [steveOpen, steveModalView])
 
-  if (!show) return null
+  if (!show || onboardingOverlayActive) return null
 
   const isFeed = location.pathname === '/feed'
   const isDashboard = isPremiumDashboardPath(location.pathname)

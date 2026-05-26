@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
-import { createPortal } from 'react-dom'
+import { FixedComposerShell } from '../components/FixedComposerShell'
 import { useTranslation } from 'react-i18next'
 import { useFixedComposerKeyboard } from '../hooks/useFixedComposerKeyboard'
 import {
@@ -434,7 +434,7 @@ export default function OnboardingChat({
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
   }, [])
 
-  const { keyboardLift, safeBottomPx, showKeyboard } = useFixedComposerKeyboard({ onLayoutNudge: scrollToBottom })
+  const { keyboardLift, safeBottomPx } = useFixedComposerKeyboard({ onLayoutNudge: scrollToBottom })
 
   const addSteveMessage = useCallback((text: string, opts?: Partial<ChatMessage>) => {
     setIsTyping(true)
@@ -2213,7 +2213,7 @@ export default function OnboardingChat({
 
   if (booting) {
     return (
-      <div className="fixed inset-0 z-[1100] bg-black flex items-center justify-center px-6" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+      <div className="fixed inset-0 z-[1200] bg-black flex items-center justify-center px-6" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         <div className="flex flex-col items-center gap-4 text-center">
           <img
             src={headerLogoSrc}
@@ -2229,7 +2229,7 @@ export default function OnboardingChat({
   }
 
   return (
-    <div className="fixed inset-0 z-[1100] bg-black flex flex-col" style={{ height: '100dvh' }}>
+    <div className="fixed inset-0 z-[1200] bg-black flex flex-col" style={{ height: '100dvh' }}>
       {/* Header with logo */}
       <div className="shrink-0 border-b border-white/10 bg-black/95 backdrop-blur-sm">
         <div className="max-w-lg mx-auto px-4 pb-2 flex flex-col items-center" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}>
@@ -2527,18 +2527,13 @@ export default function OnboardingChat({
       </div>
 
       {/* Composer — portaled for Android keyboard lift (matches ChatThread) */}
-      {showComposer && typeof document !== 'undefined' && createPortal(
-        <div
-          ref={composerRef}
-          className="fixed left-0 right-0"
-          style={{
-            bottom: keyboardLift > 0 ? `${keyboardLift}px` : '0',
-            zIndex: 1101,
-            display: 'flex',
-            flexDirection: 'column',
-            touchAction: 'manipulation',
-            pointerEvents: 'auto',
-          }}
+      {showComposer && (
+        <FixedComposerShell
+          keyboardLift={keyboardLift}
+          safeBottomPx={safeBottomPx}
+          shellRef={composerRef}
+          className="fixed left-0 right-0 z-[1201]"
+          spacerBackground="#000"
         >
           <div
             ref={composerCardRef}
@@ -2675,19 +2670,11 @@ export default function OnboardingChat({
               </div>
             )}
           </div>
-          <div
-            style={{
-              height: showKeyboard ? '0px' : `${safeBottomPx}px`,
-              background: '#000',
-              flexShrink: 0,
-            }}
-          />
-        </div>,
-        document.body
+        </FixedComposerShell>
       )}
 
       {showDeferConfirm && (
-        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+        <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
           <div className="w-full max-w-sm rounded-3xl border border-[#4db6ac]/25 bg-[#0d1214] p-5 shadow-[0_24px_80px_rgba(77,182,172,0.16)]">
             <div className="text-lg font-semibold text-white">{oc(t, 'ui.need_more_time')}</div>
             <div className="mt-3 text-sm leading-relaxed text-white/70">{oc(t, 'ui.defer_body')}</div>
